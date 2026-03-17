@@ -1,0 +1,455 @@
+---
+title: "Diagnostics spatiaux — Bassin SLSO"
+author: "meandre"
+format:
+  html:
+    code-fold: true
+    toc: true
+    toc-depth: 3
+execute:
+  warning: false
+  echo: true
+---
+
+# Diagnostics spatiaux du modèle YHydro
+
+Ce notebook charge le modèle entraîné, simule en mode diagnostique (débit naturalisé,
+sans prélèvements), puis cartographie les champs hydrologiques distribués : ETR, recharge,
+ruissellement latéral, neige, etc.
+
+## 1. Configuration et chargement
+
+```{python}
+#| label: setup
+import os
+import tomllib
+from pathlib import Path
+
+import duckdb
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+import xarray as xr
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+from meandre.data.basin_cache import BasinCache
+from meandre.data.gridded_forcing import extract_forcing
+from meandre.model import YHydro
+from meandre.routing.withdrawals import WithdrawalData
+from meandre.utils.state import HydroState
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device : {device}")
+```
+
+```{python}
+#| label: load-config
+# Charger la configuration
+CONFIG = Path("notebooks/slso/config/slso.toml")
+with open(CONFIG, "rb") as f:
+    cfg = tomllib.load(f)
+
+paths = cfg["paths"]
+temporal = cfg["temporal"]
+mcfg = cfg["model"]
+```
+
+```{python}
+#| label: load-basin
+# Charger les données du bassin
+cache = BasinCache(paths["basin_db"])
+hydro = cache.load(device=device)
+
+graph = hydro["graph"]
+territorial = hydro["territorial"]
+node_coords = hydro["node_coords"]
+n_nodes = hydro["n_nodes"]
+
+print(f"Noeuds : {n_nodes}")
+print(f"Arêtes : {graph.n_edges}")
+```
+
+```{python}
+#| label: load-forcing
+# Période diagnostique : on utilise 2 ans de validation pour éviter les OOM
+# (return_diagnostics=True conserve tous les champs en mémoire)
+DIAG_START = "2010-01-01"
+DIAG_END   = "2011-12-31"
+
+forcing = extract_forcing(
+    zarr_path=paths["weather_grid"],
+    node_coords=node_coords,
+    node_elev=None,
+    date_start=temporal["date_start"],
+    date_end=temporal["date_end"],
+    cache_nc=paths["forcing_cache"],
+    device=device,
+)
+
+# Dates et jour de l'année
+ds_time = xr.open_dataset(paths["forcing_cache"])
+all_dates = ds_time.time.sel(
+    time=slice(temporal["date_start"], temporal["date_end"])
+).values
+ds_time.close()
+
+dates_pd = pd.DatetimeIndex(all_dates)
+doy = torch.tensor(dates_pd.dayofyear.values, dtype=torch.long, device=device)
+
+print(f"Forçage total : {forcing.shape} ({all_dates[0]} à {all_dates[-1]})")
+```
+
+```{python}
+#| label: load-model
+# Charger le modèle entraîné
+model = YHydro(
+    n_nodes=n_nodes,
+    n_territorial=territorial.n_features,
+    n_forcing=mcfg["n_forcing"],
+    context_window=mcfg["context_window"],
+    residual_history=mcfg["residual_history"],
+    max_travel_time=mcfg["max_travel_days"],
+    use_temporal=True,
+    use_residual=True,
+    use_travel_time_attn=True,
+    use_temperature=True,
+    dropout=mcfg.get("dropout", 0.0),
+    param_mode=mcfg.get("param_mode", "nerf"),
+).to(device)
+
+ckpt_path = Path(paths["checkpoint"])
+model.load(str(ckpt_path))
+model.eval()
+
+n_params = sum(p.numel() for p in model.parameters())
+print(f"Checkpoint : {ckpt_path}")
+print(f"Paramètres : {n_params:,}")
+```
+
+## 2. Simulation diagnostique
+
+On simule avec zéro prélèvements (débit naturalisé) et `return_diagnostics=True`
+pour obtenir les champs spatialisés jour par jour.
+
+Le spinup couvre 2000-01-01 à 2009-12-31 (avant la période diagnostique).
+On ne conserve les diagnostics que pour la fenêtre 2010–2011 pour limiter la mémoire.
+
+```{python}
+#| label: simulate
+# Indices temporels
+days = all_dates.astype("datetime64[D]")
+diag_start_idx = int(np.searchsorted(days, np.datetime64(DIAG_START, "D")))
+diag_end_idx = int(np.searchsorted(days, np.datetime64(DIAG_END, "D"), side="right"))
+
+print(f"Période diagnostique : {DIAG_START} à {DIAG_END}")
+print(f"  indices [{diag_start_idx}:{diag_end_idx}] sur {len(days)} jours total")
+
+# Phase 1 : spinup (sans diagnostics) pour initialiser l'état
+print("Spinup en cours...")
+with torch.no_grad():
+    Q_spinup, spinup_state = model.simulate(
+        forcing=forcing[:diag_start_idx],
+        initial_state=HydroState.zeros(n_nodes, device=device),
+        graph=graph,
+        node_coords=node_coords,
+        territorial=territorial,
+        withdrawals=WithdrawalData.empty(n_nodes),
+        day_of_year=doy[:diag_start_idx],
+        return_diagnostics=False,
+    )
+del Q_spinup
+torch.cuda.empty_cache() if device.type == "cuda" else None
+
+# Phase 2 : simulation diagnostique
+print("Simulation diagnostique en cours...")
+with torch.no_grad():
+    Q_sim, final_state, diag = model.simulate(
+        forcing=forcing[diag_start_idx:diag_end_idx],
+        initial_state=spinup_state,
+        graph=graph,
+        node_coords=node_coords,
+        territorial=territorial,
+        withdrawals=WithdrawalData.empty(n_nodes),
+        day_of_year=doy[diag_start_idx:diag_end_idx],
+        return_diagnostics=True,
+    )
+
+diag_dates = pd.date_range(DIAG_START, DIAG_END, freq="D")
+n_diag_days = Q_sim.shape[0]
+print(f"Simulation terminée : {n_diag_days} jours, {n_nodes} noeuds")
+print(f"Champs diagnostiques : {list(diag.to_dict().keys())}")
+```
+
+## 3. Bilan hydrique annuel
+
+Bilan moyen annuel (mm/an) sur l'ensemble des noeuds.
+
+```{python}
+#| label: tbl-water-balance
+#| tbl-cap: "Bilan hydrique annuel moyen (mm/an) — période diagnostique"
+
+# Extraire les moyennes spatiales (mm/jour → mm/an × 365.25)
+fields_mm = {
+    "ETP": diag.etp,
+    "ETR": diag.etr,
+    "Fonte neige": diag.snowmelt,
+    "Ruissellement lat.": diag.lateral_mm,
+    "Recharge": diag.recharge,
+    "Débit de base": diag.q_baseflow,
+}
+
+n_years = n_diag_days / 365.25
+rows = []
+for name, tensor in fields_mm.items():
+    t = tensor.cpu().numpy()
+    # Moyenne spatiale par jour, puis total annuel
+    daily_mean = t.mean(axis=1)  # moyenne sur les noeuds
+    total = float(daily_mean.sum() / n_years)
+    spatial_std = float(t.sum(axis=0).mean() / n_years)  # variabilité inter-noeuds
+    rows.append({"Variable": name, "Moyenne (mm/an)": f"{total:.0f}",
+                 "Min noeud (mm/an)": f"{t.sum(axis=0).min() / n_years:.0f}",
+                 "Max noeud (mm/an)": f"{t.sum(axis=0).max() / n_years:.0f}"})
+
+df_balance = pd.DataFrame(rows)
+df_balance
+```
+
+## 4. Cartes spatiales
+
+Cartes des champs moyens annuels sur le bassin SLSO.
+
+```{python}
+#| label: fig-spatial-maps
+#| fig-cap: "Champs hydrologiques moyens annuels (mm/an) — SLSO 2010–2011"
+
+lon = node_coords[:, 0].cpu().numpy()
+lat = node_coords[:, 1].cpu().numpy()
+
+# Calcul des moyennes annuelles par noeud (mm/jour → mm/an)
+etr_annual = diag.etr.cpu().numpy().sum(axis=0) / n_years
+recharge_annual = diag.recharge.cpu().numpy().sum(axis=0) / n_years
+lateral_annual = diag.lateral_mm.cpu().numpy().sum(axis=0) / n_years
+snowmelt_annual = diag.snowmelt.cpu().numpy().sum(axis=0) / n_years
+baseflow_annual = diag.q_baseflow.cpu().numpy().sum(axis=0) / n_years
+etp_annual = diag.etp.cpu().numpy().sum(axis=0) / n_years
+
+fields = [
+    ("ETR (mm/an)", etr_annual, "YlGn"),
+    ("ETP (mm/an)", etp_annual, "YlOrRd"),
+    ("Recharge (mm/an)", recharge_annual, "Blues"),
+    ("Ruissellement latéral (mm/an)", lateral_annual, "PuBu"),
+    ("Fonte de neige (mm/an)", snowmelt_annual, "cool"),
+    ("Débit de base (mm/an)", baseflow_annual, "GnBu"),
+]
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+for ax, (title, values, cmap) in zip(axes.flat, fields):
+    sc = ax.scatter(lon, lat, c=values, s=3, cmap=cmap, edgecolors="none")
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_aspect("equal")
+    plt.colorbar(sc, ax=ax, shrink=0.7)
+
+fig.suptitle(f"Bassin SLSO — Moyennes annuelles ({DIAG_START} à {DIAG_END})",
+             fontsize=14, fontweight="bold")
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-deficit-map
+#| fig-cap: "Déficit hydrique (ETP - ETR) et ratio ETR/ETP"
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+
+# Déficit
+deficit = etp_annual - etr_annual
+sc1 = axes[0].scatter(lon, lat, c=deficit, s=3, cmap="RdYlBu_r", edgecolors="none")
+axes[0].set_title("Déficit hydrique ETP − ETR (mm/an)")
+axes[0].set_xlabel("Longitude")
+axes[0].set_ylabel("Latitude")
+axes[0].set_aspect("equal")
+plt.colorbar(sc1, ax=axes[0], shrink=0.7)
+
+# Ratio ETR/ETP
+ratio = np.where(etp_annual > 0, etr_annual / etp_annual, 0)
+sc2 = axes[1].scatter(lon, lat, c=ratio, s=3, cmap="RdYlGn", vmin=0, vmax=1,
+                       edgecolors="none")
+axes[1].set_title("Ratio ETR / ETP (–)")
+axes[1].set_xlabel("Longitude")
+axes[1].set_ylabel("Latitude")
+axes[1].set_aspect("equal")
+plt.colorbar(sc2, ax=axes[1], shrink=0.7)
+
+plt.tight_layout()
+plt.show()
+```
+
+## 5. Séries temporelles
+
+### Débit simulé à l'exutoire
+
+```{python}
+#| label: fig-discharge-outlet
+#| fig-cap: "Débit simulé (naturalisé) à l'exutoire — SLSO 2010–2011"
+
+# L'exutoire est le dernier noeud dans l'ordre topologique
+outlet_idx = graph.order[-1].item() if hasattr(graph, 'order') else 0
+
+q_outlet = Q_sim[:, outlet_idx].cpu().numpy()
+
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.plot(diag_dates[:n_diag_days], q_outlet, color="steelblue", linewidth=0.8)
+ax.set_ylabel("Débit (m³/s)")
+ax.set_xlabel("Date")
+ax.set_title(f"Débit naturalisé à l'exutoire (noeud {outlet_idx})")
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+```
+
+### Moyennes spatiales des flux verticaux
+
+```{python}
+#| label: fig-timeseries-fluxes
+#| fig-cap: "Séries temporelles des flux verticaux moyens sur le bassin (mm/jour)"
+
+fig, axes = plt.subplots(4, 1, figsize=(14, 12), sharex=True)
+
+# ETR vs ETP
+axes[0].plot(diag_dates[:n_diag_days], diag.etp.cpu().numpy().mean(axis=1),
+             color="orange", linewidth=0.6, alpha=0.8, label="ETP")
+axes[0].plot(diag_dates[:n_diag_days], diag.etr.cpu().numpy().mean(axis=1),
+             color="green", linewidth=0.6, alpha=0.8, label="ETR")
+axes[0].set_ylabel("mm/jour")
+axes[0].set_title("Évapotranspiration")
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# Fonte de neige
+axes[1].plot(diag_dates[:n_diag_days], diag.snowmelt.cpu().numpy().mean(axis=1),
+             color="deepskyblue", linewidth=0.6)
+axes[1].set_ylabel("mm/jour")
+axes[1].set_title("Fonte de neige")
+axes[1].grid(True, alpha=0.3)
+
+# Recharge et débit de base
+axes[2].plot(diag_dates[:n_diag_days], diag.recharge.cpu().numpy().mean(axis=1),
+             color="royalblue", linewidth=0.6, alpha=0.8, label="Recharge")
+axes[2].plot(diag_dates[:n_diag_days], diag.q_baseflow.cpu().numpy().mean(axis=1),
+             color="darkgreen", linewidth=0.6, alpha=0.8, label="Débit de base")
+axes[2].set_ylabel("mm/jour")
+axes[2].set_title("Recharge et débit de base")
+axes[2].legend()
+axes[2].grid(True, alpha=0.3)
+
+# Ruissellement latéral
+axes[3].plot(diag_dates[:n_diag_days], diag.lateral_mm.cpu().numpy().mean(axis=1),
+             color="purple", linewidth=0.6)
+axes[3].set_ylabel("mm/jour")
+axes[3].set_title("Ruissellement latéral")
+axes[3].set_xlabel("Date")
+axes[3].grid(True, alpha=0.3)
+
+fig.suptitle("Flux verticaux — moyenne spatiale sur le bassin SLSO",
+             fontsize=13, fontweight="bold")
+plt.tight_layout()
+plt.show()
+```
+
+### Température de l'eau (si disponible)
+
+```{python}
+#| label: fig-temperature
+#| fig-cap: "Température de l'eau simulée à l'exutoire"
+
+if diag.T_water is not None:
+    t_water_outlet = diag.T_water[:, outlet_idx].cpu().numpy()
+
+    fig, ax = plt.subplots(figsize=(14, 3.5))
+    ax.plot(diag_dates[:n_diag_days], t_water_outlet, color="firebrick", linewidth=0.7)
+    ax.set_ylabel("Température (°C)")
+    ax.set_xlabel("Date")
+    ax.set_title(f"Température de l'eau — exutoire (noeud {outlet_idx})")
+    ax.axhline(0, color="gray", linestyle="--", linewidth=0.5)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+else:
+    print("Module de température désactivé — pas de données T_water.")
+```
+
+## 6. Export NetCDF
+
+Sauvegarde de tous les champs diagnostiques dans un fichier NetCDF pour
+analyses ultérieures (SIG, comparaison inter-modèles, etc.).
+
+```{python}
+#| label: export-netcdf
+
+# Construire le dataset xarray
+coords_dict = {
+    "time": diag_dates[:n_diag_days],
+    "node": np.arange(n_nodes),
+}
+
+data_vars = {}
+
+# Débit simulé
+data_vars["Q_sim"] = (["time", "node"], Q_sim.cpu().numpy(), {
+    "units": "m3/s",
+    "long_name": "Débit simulé naturalisé",
+})
+
+# Champs diagnostiques
+long_names = {
+    "etp": "Évapotranspiration potentielle",
+    "etr": "Évapotranspiration réelle",
+    "snowmelt": "Fonte de neige",
+    "lateral_mm": "Ruissellement latéral",
+    "recharge": "Recharge de la nappe",
+    "q_baseflow": "Débit de base",
+    "q_lateral": "Apport latéral",
+    "q_upstream": "Apport amont",
+    "T_water": "Température de l'eau",
+}
+
+for name, tensor in diag.to_dict().items():
+    data_vars[name] = (
+        ["time", "node"],
+        tensor.cpu().numpy(),
+        {"units": diag.units[name], "long_name": long_names.get(name, name)},
+    )
+
+# Coordonnées géographiques des noeuds
+data_vars["lon"] = (["node"], lon, {"units": "degrees_east", "long_name": "Longitude"})
+data_vars["lat"] = (["node"], lat, {"units": "degrees_north", "long_name": "Latitude"})
+
+ds = xr.Dataset(data_vars=data_vars, coords=coords_dict)
+ds.attrs["title"] = "Diagnostics spatiaux YHydro — Bassin SLSO"
+ds.attrs["source"] = f"meandre, checkpoint: {ckpt_path.name}"
+ds.attrs["period"] = f"{DIAG_START} à {DIAG_END}"
+ds.attrs["mode"] = "Débit naturalisé (zéro prélèvements)"
+ds.attrs["history"] = f"Créé le {pd.Timestamp.now().isoformat()}"
+
+# Sauvegarder
+output_nc = Path("notebooks/slso/results/diagnostics.nc")
+output_nc.parent.mkdir(parents=True, exist_ok=True)
+ds.to_netcdf(output_nc, engine="netcdf4")
+print(f"NetCDF exporté : {output_nc} ({output_nc.stat().st_size / 1e6:.1f} Mo)")
+print(f"Variables : {list(ds.data_vars)}")
+print(f"Dimensions : time={ds.sizes['time']}, node={ds.sizes['node']}")
+ds
+```
+
+```{python}
+#| label: summary
+print("=== Diagnostics terminés ===")
+print(f"  Période      : {DIAG_START} à {DIAG_END}")
+print(f"  Noeuds       : {n_nodes}")
+print(f"  Pas de temps : {n_diag_days}")
+print(f"  Export        : {output_nc}")
+```

@@ -1,0 +1,53 @@
+# ─── SLSO Basin Configuration ─────────────────────────────────────────────
+# All paths are relative to repo root (project runs from there).
+# Weather grid is an absolute path (large external dataset).
+# Supported formats: .zarr, .nc, .grib/.grib2/.grb
+
+[paths]
+basin_db       = "notebooks/slso/data/slso.duckdb"
+weather_grid   = "/home/essi/Documents/quebec.zarr"
+forcing_cache  = "notebooks/slso/data/forcing.nc"
+checkpoint     = "notebooks/slso/checkpoints/best.pt"
+fields_nc      = "notebooks/slso/results/fields.nc"
+reach_parquet  = "notebooks/slso/results/reach.parquet"
+runs_db        = "notebooks/slso/runs.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start  = "2000-01-01"
+spinup_end  = "2000-12-31"
+train_start = "2001-01-01"
+train_end   = "2009-12-31"
+val_start   = "2010-01-01"
+val_end     = "2019-12-31"
+date_end    = "2019-12-31"
+
+[model]
+n_forcing        = 6      # P, T_min, T_max, R_n, u2, e_a
+context_window   = 30
+residual_history = 14
+max_travel_days  = 20
+dropout          = 0.1    # MC Dropout rate for epistemic uncertainty
+
+# Spatial parameter mode: "nerf" or "static"
+# nerf: Learn continuous parameter fields per-node (default YHydro mode)
+# static: Use global parameters like Hydrotel (28 params only!)
+param_mode = "nerf"
+
+[training]
+n_epochs      = 200
+lr            = 1e-4
+weight_decay  = 2e-4
+grad_clip     = 1.0
+tbptt_steps   = 90
+chunk_steps   = 365
+val_every     = 3
+patience      = 30
+compile_modules = false
+
+# Curriculum: epoch at which each module is activated
+enable_temporal_epoch  = 60
+enable_residual_epoch  = 9999   # disabled
+enable_travel_epoch    = 9999   # disabled

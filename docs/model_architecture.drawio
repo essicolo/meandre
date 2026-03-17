@@ -1,0 +1,425 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.2.5 Chrome/138.0.7204.251 Electron/37.6.1 Safari/537.36" version="28.2.5">
+  <diagram name="YHydro Architecture" id="model-arch">
+    <mxGraphModel dx="4844" dy="3473" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b&gt;model — Differentiable Hydrological Model&lt;/b&gt;&lt;br&gt;&lt;i&gt;Physics-based vertical column + neural routing&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;" parent="1" vertex="1">
+          <mxGeometry x="315" y="-580" width="600" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_inputs" value="inputs (T: time, N: nodes)" style="swimlane;startSize=25;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;fontSize=13;" parent="1" vertex="1">
+          <mxGeometry x="50" y="-320" width="1130" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="in_forcing" value="&lt;b&gt;Weather forcing&lt;/b&gt;&lt;br&gt;(T, N, 6)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Daily P (mm), T_min/T_max (C), net radiation (MJ/m²/day), wind speed (m/s), actual vapor pressure (kPa). From ERA5/RDRS gridded data, interpolated to node centroids.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="10" y="30" width="130" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_coords" value="&lt;b&gt;Node Coords&lt;/b&gt;&lt;br&gt;(N, 2) [lon, lat]&lt;br&gt;Longitude/latitude of each reach centroid." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="150" y="30" width="130" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_terr" value="&lt;b&gt;Territorial&lt;/b&gt;&lt;br&gt;(N, 17)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;static landscape features&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;font-size: x-small; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;per node: land use fractions, soil type, slope, drainage area, etc. Imported From Physitel.&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="290" y="30" width="130" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_graph" value="&lt;b&gt;RiverGraph&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;edges, topo_order,&lt;br&gt;is_lake&lt;br&gt;Network topology: edge_index (upstream→downstream), topo_order, is_lake flags, edge attributes (length, slope).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="430" y="30" width="130" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_state" value="&lt;b&gt;Initial State&lt;/b&gt;&lt;br&gt;HydroState (N, 9)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;theta1/2/3, swe, t_soil,&lt;br&gt;canopy, wetland, S_gw, T_water&lt;br&gt;Starting values for soil moisture (3 layers), SWE, soil temperature, canopy storage, wetland storage. Usually zeros (model spins up).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="570" y="30" width="140" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_withdraw" value="&lt;b&gt;Withdrawals&lt;/b&gt;&lt;br&gt;(T, N) × 5 types&lt;br&gt;&lt;font size=&quot;1&quot;&gt;GPE, PR, ELEVAGE,&lt;br&gt;EFFLUENT, CULTURE&lt;br&gt;Water removed/added per reach per day in m³/s.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="720" y="30" width="140" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_doy" value="&lt;b&gt;Day of Year&lt;/b&gt;&lt;br&gt;(T,) 1-366&lt;br&gt;Integer 1-366 for sinusoidal seasonal encoding.&lt;span style=&quot;white-space:pre&quot;&gt;&#x9;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="870" y="30" width="110" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="in_qobs" value="&lt;b&gt;Q_obs&lt;/b&gt;&lt;br&gt;(T, n_stations)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;observed discharge&lt;br&gt;NaN = missing&lt;br&gt;Observed discharge at gauge stations, NaN for missing. Not used by the model forward pass — only by the loss function.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;" parent="grp_inputs" vertex="1">
+          <mxGeometry x="990" y="30" width="130" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_spatial" value="SpatialFieldNetwork" style="swimlane;startSize=35;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="50" y="-40" width="300" height="530" as="geometry" />
+        </mxCell>
+        <mxCell id="sp_fourier" value="&lt;b&gt;coord_enc&lt;/b&gt;: FourierPositionalEncoding&lt;br&gt;&lt;font size=&quot;1&quot;&gt;(lon, lat) → 6 freq bands × sin/cos + raw = 26D&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
+          <mxGeometry x="10" y="40" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="sp_concat" value="concat([enc, territorial]) → &lt;b&gt;x0&lt;/b&gt; (26+17 = 43D)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="grp_spatial" vertex="1">
+          <mxGeometry x="10" y="140" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="sp_output" value="&lt;b&gt;SpatialParams (N, 27)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;K_sat×3, porosity×3, FC×3, WP×3, f_root×3&lt;br&gt;C_f, T_melt, T_snow, intercept_cap, frost_α&lt;br&gt;f_wetland, slope_factor, krec, k_gw, T_gw, K_atm&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" parent="grp_spatial" vertex="1">
+          <mxGeometry x="10" y="440" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="sp_constraints" value="&lt;b&gt;_apply_constraints()&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;scaled-tanh: center + range × tanh(raw × 0.3)&lt;br&gt;log-normal for K_sat/krec, softmax for f_root&lt;br&gt;chained fractions: porosity → FC → WP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
+          <mxGeometry x="10" y="340" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="sp_mlp" value="&lt;b&gt;fc1&lt;/b&gt;(43→256) → SiLU → cat(h, x0) →&lt;br&gt;&lt;b&gt;fc2&lt;/b&gt;(299→256) → SiLU → &lt;b&gt;fc_out&lt;/b&gt;(256→27)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;skip connection, MC Dropout (self.drop)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
+          <mxGeometry x="10" y="240" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="spa1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_spatial" source="sp_fourier" target="sp_concat" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="spa2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_spatial" source="sp_concat" target="sp_mlp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="spa3" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_spatial" source="sp_mlp" target="sp_constraints" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="spa4" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_spatial" source="sp_constraints" target="sp_output" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_tce" value="TemporalContextEncoder" style="swimlane;startSize=35;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="400" y="-40" width="310" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="tce_proj" value="&lt;b&gt;input_proj&lt;/b&gt;: Linear(6→64)&lt;br&gt;+ &lt;b&gt;doy_encoding&lt;/b&gt;: SinusoidalDOYEncoding(64)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;element-wise addition (not concat)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_tce" vertex="1">
+          <mxGeometry x="10" y="40" width="290" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tce_gru" value="&lt;b&gt;rnn&lt;/b&gt;: GRU(64, 64, num_layers=1)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;chunked TBPTT (chunk_size=90 days)&lt;br&gt;gradient checkpointing for memory&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_tce" vertex="1">
+          <mxGeometry x="10" y="140" width="290" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tce_out" value="&lt;b&gt;norm&lt;/b&gt;: LayerNorm(64) → &lt;b&gt;output_proj&lt;/b&gt;: Linear(64→16)&lt;br&gt;→ &lt;b&gt;all_context (T, N, 16)&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="grp_tce" vertex="1">
+          <mxGeometry x="10" y="240" width="290" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tca1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_tce" source="tce_proj" target="tce_gru" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tca2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_tce" source="tce_gru" target="tce_out" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_temporal" value="TEMPORAL LOOP (for t = 0 to t-1)" style="swimlane;startSize=25;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;rounded=1;fontSize=14;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="30" y="530" width="910" height="1120" as="geometry" />
+        </mxCell>
+        <mxCell id="enrich" value="&lt;b&gt;Enriched Forcing&lt;/b&gt;&lt;br&gt;[forcing[t] | context[t]]&lt;br&gt;(N, 6+16=22)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="grp_temporal" vertex="1">
+          <mxGeometry x="660" y="60" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_vertical" value="Vertical Column (7-module physics chain)" style="swimlane;startSize=25;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;fontSize=13;" parent="grp_temporal" vertex="1">
+          <mxGeometry x="20" y="50" width="480" height="740" as="geometry" />
+        </mxCell>
+        <mxCell id="v_snow" value="&lt;b&gt;1. Snow Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;P → rain/snow partition (T_snow)&lt;br&gt;Melt = C_f × softplus(T - T_melt)&lt;br&gt;P_eff = P_rain + melt&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="35" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v_snow_io" value="SWE →&lt;br&gt;← swe_new" style="text;html=1;fontSize=9;align=left;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="305" y="47.5" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="v_snow_out" value="&lt;b&gt;P_eff&lt;/b&gt;" style="text;html=1;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="104" y="95" width="60" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="v_frost" value="&lt;b&gt;2. Frost Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;T_soil relaxation toward T_air&lt;br&gt;K_sat_1_eff = K_sat_1 × frost_factor&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="120" width="280" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="v_frost_io" value="t_soil →&lt;br&gt;← t_soil_new" style="text;html=1;fontSize=9;align=left;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="305" y="127.5" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="v_intercept" value="&lt;b&gt;3. Interception&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Canopy fill → P_throughfall&lt;br&gt;E_canopy = min(ETP, storage)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="200" width="280" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="v_int_io" value="canopy →&lt;br&gt;← canopy_new" style="text;html=1;fontSize=9;align=left;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="305" y="207.5" width="90" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="v_et" value="&lt;b&gt;4. Evapotranspiration&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Penman-Monteith ETP (FAO-56)&lt;br&gt;ET_i = ETP × f_root_i × stress(θ_i)&lt;br&gt;stress = (θ - WP)/(FC - WP)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="280" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_et_out" value="&lt;b&gt;ET1, ET2, ET3&lt;/b&gt;" style="text;html=1;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="60" y="350" width="100" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="v_soil" value="&lt;b&gt;5. Soil Module&lt;/b&gt; (3-layer van Genuchten)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Z1=0.3m, Z2=0.7m, Z3=1.0m&lt;br&gt;• Saturation-excess runoff (layer 1)&lt;br&gt;• Inter-layer Darcy flux: K(θ) × (dψ/dz + 1)&lt;br&gt;• Interflow (layers 1+2): f(excess × slope)&lt;br&gt;• Baseflow (layer 3): K(θ₃) or krec × Z₃ × θ₃&lt;br&gt;• Mass balance: Δθ = (in - out - ET) / z&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="380" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="v_soil_io" value="θ1/2/3 →&lt;br&gt;← θ1/2/3 new" style="text;html=1;fontSize=9;align=left;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="305" y="298" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="v_soil_out" value="&lt;b&gt;R_surface&lt;br&gt;interflow&lt;br&gt;baseflow&lt;/b&gt;" style="text;html=1;fontSize=10;fontStyle=1;align=center;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="76" y="477" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="v_wetland" value="&lt;b&gt;6. Wetland Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;R_wet = R_surface × f_wetland&lt;br&gt;Q_wet = k × S^β (power-law)&lt;br&gt;R_direct = R_surface × (1 - f_wetland)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="520" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_wet_io" value="wetland →&lt;br&gt;← wetland_new" style="text;html=1;fontSize=9;align=left;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="300" y="430" width="90" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="FtdpPyqYreaSlpyzp5ir-1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;curved=0;" parent="grp_vertical" source="v_aquifer" target="v_wet_out" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v_aquifer" value="&lt;b&gt;7. Aquifer Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Lumped linear reservoir: dS/dt = recharge - k_gw × S&lt;br&gt;Q_recharge = k_gw × S_gw (analytical solution)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="10" y="600" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="v_aq_io" value="S_gw →&lt;br&gt;← S_gw_new" style="text;html=1;fontSize=9;align=left;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="305" y="608" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="va6" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_vertical" source="v_wetland" target="v_aquifer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="v_wet_out" value="&lt;b&gt;lateral_inflow&lt;/b&gt;&lt;br&gt;(N,) mm/day&lt;br&gt;&lt;font size=&quot;1&quot;&gt;= R_direct + Q_wet&lt;br&gt;+ interflow + Q_baseflow&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" parent="grp_vertical" vertex="1">
+          <mxGeometry x="310" y="650" width="160" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="va1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_vertical" source="v_snow" target="v_frost" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="va2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_vertical" source="v_frost" target="v_intercept" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="va3" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_vertical" source="v_intercept" target="v_et" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="va4" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_vertical" source="v_et" target="v_soil" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="va5" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_vertical" source="v_soil" target="v_wetland" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_corrections" value="State Corrections" style="swimlane;startSize=25;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;fontSize=12;" parent="grp_temporal" vertex="1">
+          <mxGeometry x="570" y="120" width="320" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="residual" value="&lt;b&gt;Residual Corrector&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;GRU over state_history (N, 14, 9)&lt;br&gt;δ = proj(gru_hidden)&lt;br&gt;state_corrected = physics + gate × δ&lt;br&gt;gate init ≈ 0.05 (starts as pure physics)&lt;br&gt;Zero-sum constraint on soil layers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="grp_corrections" vertex="1">
+          <mxGeometry x="10" y="40" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="noise" value="&lt;b&gt;AR(1) State Noise&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;η_t = ρ × η_{t-1} + σ × ε_t&lt;br&gt;Applied to θ1, θ2, θ3, SWE&lt;br&gt;Learned ρ (persistence) and σ (amplitude)&lt;br&gt;For ensemble uncertainty&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="grp_corrections" vertex="1">
+          <mxGeometry x="10" y="190" width="300" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="arr_vc" value="HydroState" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#d6b656;fontStyle=2;fontSize=10;rounded=1;fillColor=#fff2cc;" parent="grp_temporal" source="grp_vertical" target="grp_corrections" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="420" />
+              <mxPoint x="550" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="convert" value="&lt;b&gt;mm/day → m³/s&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;q_lat × 1e-3 × area_km² × 1e6 / 86400&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="grp_temporal" vertex="1">
+          <mxGeometry x="570" y="700" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="arr_lat_conv" style="edgeStyle=orthogonalEdgeStyle;curved=1;strokeWidth=1;strokeColor=#6c8ebf;" parent="grp_temporal" source="v_wet_out" target="convert" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_routing" value="Routing Layer" style="swimlane;startSize=25;fillColor=#ffe6cc;strokeColor=#d79b00;rounded=1;fontSize=13;" parent="grp_temporal" vertex="1">
+          <mxGeometry x="20" y="850" width="880" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="r_topo" value="&lt;b&gt;Topological Sweep&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Kahn&#39;s algorithm levels&lt;br&gt;Per-level: scatter_add(Q_out[src] → Q_agg[dst])&lt;br&gt;Apply net_withdrawal: Q_in = clamp(Q_agg - W_net, 0)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
+          <mxGeometry x="10" y="45" width="270" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r_musk" value="&lt;b&gt;Muskingum-Cunge&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Q_out = (c0+c1)×Q_in + c2×Q_prev + (c0+c1)×q_lat&lt;br&gt;K ≥ 0.5h (softplus), x ∈ (0, 0.5)&lt;br&gt;dt = 86400s, n_substeps = 1&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
+          <mxGeometry x="300" y="45" width="270" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r_lake" value="&lt;b&gt;Lake Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Power-law: Q = k × depth^β × area&lt;br&gt;Mass balance: S_new = S + (Q_in - Q_out)×dt&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
+          <mxGeometry x="300" y="110" width="270" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="r_tta" value="&lt;b&gt;Travel-Time Attention&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Learned temporal weighting of&lt;br&gt;upstream flow histories&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
+          <mxGeometry x="600" y="45" width="260" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="r_withdraw" value="&lt;b&gt;Withdrawals&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;net = Σ(consumed_i) - effluent&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
+          <mxGeometry x="600" y="110" width="260" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="r_temp" value="&lt;b&gt;Stream Temperature&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Heat load advection: H = Q × T&lt;br&gt;Atmospheric exchange: T → T_eq&lt;br&gt;Lateral: surface(T_air) + melt(0°C) + GW(T_gw)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
+          <mxGeometry x="600" y="180" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="r_qout" value="&lt;b&gt;Q_out[t]&lt;/b&gt;&lt;br&gt;(N,) m³/s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" parent="grp_routing" vertex="1">
+          <mxGeometry x="10" y="130" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ra1" value="river nodes" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;fontStyle=2;fontSize=9;" parent="grp_routing" source="r_topo" target="r_musk" edge="1">
+          <mxGeometry y="9" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ra2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0;exitY=0.75;exitDx=0;exitDy=0;" parent="grp_routing" source="r_musk" target="r_qout" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="284" y="90" />
+              <mxPoint x="284" y="150" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ra3" value="lake nodes" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;fontStyle=2;fontSize=9;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="grp_routing" source="r_topo" target="r_lake" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ra4" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="grp_routing" source="r_lake" target="r_qout" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="368" y="190" />
+              <mxPoint x="75" y="190" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ra5" value="net_W" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;fontStyle=2;fontSize=9;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.907;entryY=1.013;entryDx=0;entryDy=0;entryPerimeter=0;" parent="grp_routing" source="r_withdraw" target="r_topo" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="665" y="170" />
+              <mxPoint x="255" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ra6" value="alt. aggregation" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;fontStyle=2;fontSize=9;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" parent="grp_routing" source="r_tta" target="r_topo" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="665" y="30" />
+              <mxPoint x="213" y="30" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arr_conv_route" value="q_lat (m³/s)" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#d79b00;fontStyle=2;fontSize=10;rounded=1;" parent="grp_temporal" source="convert" target="grp_routing" edge="1">
+          <mxGeometry x="-0.1034" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arr_enrich_vc" value="enriched (N, 22)" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#6c8ebf;fontStyle=2;fontSize=10;entryX=1;entryY=0.08;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;rounded=1;fillColor=#dae8fc;verticalAlign=middle;" parent="grp_temporal" source="enrich" target="grp_vertical" edge="1">
+          <mxGeometry x="-0.4897" y="-8" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arr_corrections_feedback" value="state[t] → next iteration" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#6c8ebf;fontStyle=2;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;rounded=1;fillColor=#dae8fc;" parent="grp_temporal" source="grp_corrections" target="grp_vertical" edge="1">
+          <mxGeometry x="-0.2727" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="730" y="460" />
+              <mxPoint x="520" y="460" />
+              <mxPoint x="520" y="235" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="grp_output" value="OUTPUT" style="swimlane;startSize=25;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;fontSize=13;" parent="1" vertex="1">
+          <mxGeometry x="30" y="1740" width="510" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="out_qsim" value="&lt;b&gt;Q_sim&lt;/b&gt;&lt;br&gt;(T, N) m³/s&lt;br&gt;&lt;font size=&quot;1&quot;&gt;simulated discharge&lt;br&gt;at all nodes&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="grp_output" vertex="1">
+          <mxGeometry x="10" y="30" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="out_state" value="&lt;b&gt;Final State&lt;/b&gt;&lt;br&gt;HydroState (N, 9)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;for warm restart&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="grp_output" vertex="1">
+          <mxGeometry x="180" y="30" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="out_diag" value="&lt;b&gt;Diagnostics&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;ETP, ETR, snowmelt,&lt;br&gt;lateral_mm, q_baseflow,&lt;br&gt;q_upstream, T_water&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="grp_output" vertex="1">
+          <mxGeometry x="350" y="30" width="150" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="arr_loop_out" value="stack Q_out[0:T]" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#82b366;fontStyle=2;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;rounded=1;" parent="1" source="grp_temporal" target="grp_output" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="525" y="1590" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="grp_loss" value="Loss Function" style="swimlane;startSize=25;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;fontSize=13;" parent="1" vertex="1">
+          <mxGeometry x="570" y="1740" width="590" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="loss_skill" value="&lt;b&gt;Skill Scores&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;w_nse × (1-NSE) + w_kge × (1-KGE)&lt;br&gt;+ w_pbias × |PBIAS| + w_mse × MSE&lt;br&gt;+ w_log_nse × (1-logNSE)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_loss" vertex="1">
+          <mxGeometry x="10" y="30" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="loss_phys" value="&lt;b&gt;Physics&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;w_physics × water_balance²&lt;br&gt;w_residual × gate²&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_loss" vertex="1">
+          <mxGeometry x="220" y="30" width="160" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="loss_crps" value="&lt;b&gt;CRPS&lt;/b&gt; (ensemble)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;E|X-y| - 0.5 E|X-X&#39;|&lt;br&gt;for ensemble calibration&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_loss" vertex="1">
+          <mxGeometry x="390" y="30" width="190" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="arr_qsim_loss" value="Q_sim vs Q_obs" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#b85450;fontStyle=2;fontSize=10;rounded=1;" parent="1" source="out_qsim" target="grp_loss" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="135" y="1720" />
+              <mxPoint x="865" y="1720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" value="Legend" style="swimlane;startSize=20;fillColor=#f5f5f5;strokeColor=#666666;rounded=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="-490" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="Learned (neural)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="legend" vertex="1">
+          <mxGeometry x="10" y="25" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="Physics-based" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=10;" parent="legend" vertex="1">
+          <mxGeometry x="150" y="25" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="Input / Output" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="legend" vertex="1">
+          <mxGeometry x="10" y="50" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="Correction / Uncertainty" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="legend" vertex="1">
+          <mxGeometry x="150" y="50" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="Routing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="legend" vertex="1">
+          <mxGeometry x="10" y="75" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg6" value="Constraint / hybrid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="legend" vertex="1">
+          <mxGeometry x="150" y="75" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_note" value="&lt;font size=&quot;1&quot;&gt;All modules are differentiable (end-to-end backprop)&lt;br&gt;Params: scaled-tanh constraints → weight decay = implicit prior&lt;/font&gt;" style="text;html=1;align=center;fontSize=9;" parent="legend" vertex="1">
+          <mxGeometry x="10" y="100" width="280" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="grp_params" value="Learned Parameters" style="swimlane;startSize=20;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="380" y="-490" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="params_list" value="&lt;font size=&quot;1&quot;&gt;&lt;b&gt;SpatialFieldNetwork MLP weights&lt;/b&gt; → 27 params/node&lt;br&gt;&lt;b&gt;log_K_musk&lt;/b&gt; (N,) — Muskingum travel time&lt;br&gt;&lt;b&gt;logit_x_musk&lt;/b&gt; (N,) — Muskingum weighting&lt;br&gt;&lt;b&gt;TemporalContextEncoder&lt;/b&gt; — GRU + projections&lt;br&gt;&lt;b&gt;StateResidualCorrector&lt;/b&gt; — GRU + gate logits&lt;br&gt;&lt;b&gt;TravelTimeAttention&lt;/b&gt; — Q/K/V projections&lt;br&gt;&lt;b&gt;CorrelatedStateNoise&lt;/b&gt; — ρ, σ per variable&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontSize=10;" parent="grp_params" vertex="1">
+          <mxGeometry x="5" y="25" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=0;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" source="in_forcing" target="grp_tce" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;curved=0;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" source="in_coords" target="sp_fourier" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;curved=0;" parent="1" source="in_terr" target="sp_concat" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="405" y="-70" />
+              <mxPoint x="370" y="-70" />
+              <mxPoint x="370" y="135" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="in_state" target="grp_temporal" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="690" y="-90" />
+              <mxPoint x="750" y="-90" />
+              <mxPoint x="750" y="330" />
+              <mxPoint x="485" y="330" />
+            </Array>
+            <mxPoint x="670" y="-110" as="sourcePoint" />
+            <mxPoint x="485" y="520" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;curved=0;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" source="in_doy" target="grp_tce" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="975" y="-60" />
+              <mxPoint x="632" y="-60" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;curved=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" source="in_forcing" target="grp_vertical" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint y="-205" />
+              <mxPoint y="765" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;curved=0;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" source="in_graph" target="r_topo" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="1290" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="513" y="-330" />
+              <mxPoint x="-20" y="-330" />
+              <mxPoint x="-20" y="1455" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-22" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;curved=0;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" source="in_withdraw" target="r_withdraw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="875" y="-330" />
+              <mxPoint x="1220" y="-330" />
+              <mxPoint x="1220" y="1510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-23" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;curved=0;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" source="in_qobs" target="grp_loss" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1210" y="-205" />
+              <mxPoint x="1210" y="1810" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-24" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" source="grp_spatial" target="grp_vertical" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="200" y="520" />
+              <mxPoint x="290" y="520" />
+            </Array>
+            <mxPoint x="220" y="650" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="HCEVgp1oZP0yzxFW_nFa-25" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;curved=0;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" source="grp_tce" target="enrich" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

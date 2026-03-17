@@ -1,0 +1,931 @@
+"""Load a HYDROTEL project directory into meandre data structures.
+
+Converts HYDROTEL SLNO-format physitel/etat files to:
+
+    RiverGraph            n_nodes = n_troncons (reach-level routing)
+    TerritorialFeatures per-troncon, aggregated from UHRH-level data
+    HydroState            warm start from the latest etat/ snapshot
+
+Node choice
+-----------
+Troncons (reaches) are used as nodes rather than UHRHs.  Each troncon
+groups one or more UHRHs; its territorial attributes are area-weighted
+means of its constituent UHRHs.  This matches HYDROTEL's routing
+granularity and keeps the graph manageable for the SLNO basin (3 362
+nodes vs 8 676).
+
+Files used
+----------
+physitel/uhrh.csv               UHRH attributes (elevation, slope, area, coords)
+physitel/occupation_sol.cla     Per-UHRH pixel counts for 9 land-cover classes
+physitel/type_sol.cla           Per-UHRH dominant soil texture class (1 per line)
+physitel/proprietehydrolique.sol Soil texture names (row order = class index)
+physitel/troncon.trl            Reach topology (type, UHRHs, downstream reach)
+etat/bilan_vertical_*.csv       Soil moisture state (theta1/2/3 per UHRH)
+etat/fonte_neige_*.csv          Snow state (SWE per UHRH)
+
+The user is responsible for providing forcing (meteorological inputs) and
+observed streamflow — this loader handles only static and state data.
+"""
+
+from __future__ import annotations
+
+import collections
+import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import numpy as np
+import torch
+from torch import Tensor
+
+from meandre.routing.graph import RiverGraph
+from meandre.spatial.territorial import TerritorialFeatures
+from meandre.utils.state import HydroState
+
+if TYPE_CHECKING:
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Land-cover class → TerritorialFeatures field mapping
+# occupation_sol.cla class order (0-based):
+#   0 no_data, 1 eau, 2 sol_nu, 3 foret_feuillus, 4 agricole_paturage,
+#   5 foret_coniferes, 6 impermeable, 7 tourbiere, 8 milieu_humide
+# ---------------------------------------------------------------------------
+
+_LC_FOREST = (3, 5)        # foret_feuillus + foret_coniferes
+_LC_AGRICULTURE = (2, 4)   # sol_nu (bare soil) + agricole_paturage
+_LC_URBAN = (6,)           # impermeable
+_LC_WETLAND = (7, 8)       # tourbiere + milieu_humide
+_LC_WATER = (1,)           # eau
+
+# Approximate sand/silt/clay fractions by soil texture (USDA classification)
+# Row order matches proprietehydrolique.sol (1-indexed → subtract 1 for 0-based)
+_TEXTURE_FRACTIONS: list[tuple[float, float, float]] = [
+    (0.92, 0.05, 0.03),   #  1 sand
+    (0.82, 0.12, 0.06),   #  2 loamy_sand
+    (0.65, 0.25, 0.10),   #  3 sandy_loam
+    (0.42, 0.40, 0.18),   #  4 loam
+    (0.20, 0.65, 0.15),   #  5 silt_loam
+    (0.07, 0.87, 0.06),   #  6 silt
+    (0.60, 0.15, 0.25),   #  7 sandy_clay_loam
+    (0.34, 0.34, 0.32),   #  8 clay_loam
+    (0.10, 0.56, 0.34),   #  9 silty_clay_loam
+    (0.52, 0.06, 0.42),   # 10 sandy_clay
+    (0.07, 0.47, 0.46),   # 11 silty_clay
+    (0.22, 0.20, 0.58),   # 12 clay
+    (0.33, 0.33, 0.34),   # 13 water      (dummy)
+    (0.33, 0.33, 0.34),   # 14 rocks      (dummy)
+    (0.33, 0.33, 0.34),   # 15 organic    (dummy)
+    (0.33, 0.33, 0.34),   # 16 ice        (dummy)
+    (0.33, 0.33, 0.34),   # 17 peat_Fibric (dummy)
+    (0.33, 0.33, 0.34),   # 18 peat_Hemic (dummy)
+    (0.33, 0.33, 0.34),   # 19 peat_Sapric (dummy)
+    (0.33, 0.33, 0.34),   # 20 peat_Neco   (dummy)
+]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def load_hydrotel(
+    project_dir: str | Path,
+    normalise: bool = True,
+    velocity_m_s: float = 1.0,
+    device: torch.device | None = None,
+) -> dict:
+    """Load all static and state inputs from a HYDROTEL project directory.
+
+    Parameters
+    ----------
+    project_dir:
+        Root directory of the HYDROTEL project (contains physitel/ and etat/).
+    normalise:
+        If True, apply z-score normalisation to TerritorialFeatures.
+    velocity_m_s:
+        Assumed average flow velocity (m/s) used to estimate travel time.
+        Default 1.0 m/s → 86 400 m/day.
+    device:
+        Target PyTorch device.
+
+    Returns
+    -------
+    dict with keys:
+        ``graph``           : RiverGraph  (n_nodes = n_troncons)
+        ``territorial``     : TerritorialFeatures
+        ``node_coords``     : Tensor (n_nodes, 2) [lon, lat]
+        ``initial_state``   : HydroState (from latest etat/ snapshot)
+        ``node_ids``        : list[int]  — troncon IDs in node-index order
+        ``n_nodes``         : int
+    """
+    root = Path(project_dir)
+    physi = root / "physitel"
+    etat_dir = root / "etat"
+
+    # ---- 1. UHRH attributes -----------------------------------------------
+    uhrh = _parse_uhrh(physi / "uhrh.csv")
+
+    # ---- 2. Land cover pixel counts per UHRH --------------------------------
+    lc_pixels = _parse_occupation_sol_cla(physi / "occupation_sol.cla", uhrh)
+
+    # ---- 3. Soil texture class per UHRH ------------------------------------
+    soil_class = _parse_type_sol_cla(physi / "type_sol.cla", uhrh)
+
+    # ---- 4. Troncon topology -------------------------------------------------
+    troncons = _parse_troncon(physi / "troncon.trl")
+
+    # ---- 5. Build graph ------------------------------------------------------
+    graph, node_ids, troncon_idx = _build_graph(
+        troncons, velocity_m_s=velocity_m_s, device=device
+    )
+
+    # ---- 6. Territorial indicators ------------------------------------------
+    territorial, node_coords = _build_territorial(
+        troncons, troncon_idx, node_ids, uhrh, lc_pixels, soil_class,
+        graph, normalise=normalise, device=device,
+    )
+
+    # ---- 7. HydroState from latest etat/ snapshot ---------------------------
+    initial_state = _build_initial_state(
+        etat_dir, troncons, troncon_idx, node_ids, uhrh, device=device
+    )
+
+    n_nodes = len(node_ids)
+    return {
+        "graph": graph,
+        "territorial": territorial,
+        "node_coords": node_coords,
+        "initial_state": initial_state,
+        "node_ids": node_ids,
+        "n_nodes": n_nodes,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
+
+def _parse_uhrh(path: Path) -> dict:
+    """Parse uhrh.csv.  Returns dict keyed by UHRH ID."""
+    import pandas as pd
+
+    # Header line 1 is a version banner, line 2 is blank, line 3 is real header
+    df = pd.read_csv(path, sep=";", skiprows=2, header=0)
+    df.columns = [c.strip() for c in df.columns]
+
+    # Normalise column names to lowercase ASCII
+    rename = {
+        "UHRH ID": "id",
+        "TYPE": "type",
+        "ALTITUDE MOYENNE (m)": "altitude_m",
+        "PENTE MOYENNE": "slope_frac",
+        "ORIENTATION MOYENNE": "orientation_deg",
+        "NB PIXEL": "n_pixel",
+        "SUPERFICIE (km2)": "area_km2",
+        "LONGITUDE": "lon",
+        "LATITUDE": "lat",
+    }
+    df = df.rename(columns=rename)
+
+    uhrh = {}
+    for _, row in df.iterrows():
+        uid = int(row["id"])
+        uhrh[uid] = {
+            "type": str(row.get("type", "SOUS-BASSIN")).strip(),
+            "altitude_m": float(row.get("altitude_m", 0.0)),
+            "slope_pct": float(row.get("slope_frac", 0.0)) * 100.0,
+            "orientation_deg": float(row.get("orientation_deg", 0.0)),
+            "area_km2": float(row.get("area_km2", 0.0)),
+            "lon": float(row.get("lon", 0.0)),
+            "lat": float(row.get("lat", 0.0)),
+        }
+    return uhrh
+
+
+def _parse_occupation_sol_cla(path: Path, uhrh: dict) -> dict[int, np.ndarray]:
+    """Parse occupation_sol.cla.  Returns {uhrh_id: pixel_counts (n_classes,)}."""
+    lines = path.read_text(encoding="latin-1").splitlines()
+    # Line 0: '1' (n attributes per UHRH)
+    # Line 1: '9' (n classes)
+    # Line 2: header string
+    # Lines 3+: uhrh_id cls0 cls1 ... cls8
+    n_classes = int(lines[1].strip())
+    data: dict[int, np.ndarray] = {}
+    for line in lines[3:]:
+        parts = line.split()
+        if not parts:
+            continue
+        uid = int(parts[0])
+        counts = np.array([int(x) for x in parts[1 : 1 + n_classes]], dtype=np.float64)
+        data[uid] = counts
+    return data
+
+
+def _parse_type_sol_cla(path: Path, uhrh: dict) -> dict[int, int]:
+    """Parse type_sol.cla.  Returns {uhrh_id: 1-based soil class index}."""
+    lines = path.read_text(encoding="latin-1").splitlines()
+    # Line 0: '1' (single class per UHRH)
+    # Lines 1+: uhrh_id class_id
+    data: dict[int, int] = {}
+    for line in lines[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            uid = int(parts[0])
+            cls = int(parts[1])
+            data[uid] = cls
+    return data
+
+
+def _parse_troncon(path: Path) -> list[dict]:
+    """Parse troncon.trl.  Returns list of reach dicts in file order.
+
+    Reach dict keys:
+        id              int   — 1-based troncon ID
+        type            int   — 1=river, 2=lake
+        length_m        float
+        width_m         float
+        uhrh_ids        list[int]
+        from_junct      int   — downstream junction node ID (where reach delivers water)
+        to_junct        int   — upstream junction node ID (rivers only; where reach originates)
+        lake_outlets    list[int] — outlet junction IDs (lakes only)
+        downstream_id   int   — HYDROTEL simplified routing target (ds_reach)
+    """
+    text = path.read_text(encoding="latin-1")
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    # Skip header: line 0 = '2', line 1 = '3362', line 2 = 'TRONCONS'
+    troncons: list[dict] = []
+    for line in lines[3:]:
+        tokens = line.split()
+        reach_id = int(tokens[0])
+        type_code = int(tokens[1])
+        from_junct = int(tokens[2])
+
+        if type_code == 1:
+            # River: id type from_junct to_junct length width slope n_uhrh [uhrh_ids] ds_reach
+            to_junct = int(tokens[3])
+            lake_outlets = []
+            ptr = 4  # start of length
+            n_metric = 3  # length, width, slope
+        else:
+            # Lake: id type from_junct n_path [path_nodes] length width v3 v4 n_uhrh [uhrh_ids] ds_reach
+            to_junct = -1
+            n_path = int(tokens[3])
+            lake_outlets = [int(tokens[4 + i]) for i in range(n_path)]
+            ptr = 4 + n_path  # start of length
+            n_metric = 4      # length, width, val3, val4
+
+        length_m = float(tokens[ptr])
+        width_m = float(tokens[ptr + 1])
+        ptr += n_metric
+
+        n_uhrh = int(tokens[ptr])
+        ptr += 1
+        uhrh_ids = [int(tokens[ptr + i]) for i in range(n_uhrh)]
+        ptr += n_uhrh
+
+        downstream_id = int(tokens[ptr])
+
+        troncons.append({
+            "id": reach_id,
+            "type": type_code,
+            "length_m": length_m,
+            "width_m": width_m,
+            "uhrh_ids": uhrh_ids,
+            "from_junct": from_junct,
+            "to_junct": to_junct,
+            "lake_outlets": lake_outlets,
+            "downstream_id": downstream_id,
+        })
+
+    return troncons
+
+
+# ---------------------------------------------------------------------------
+# Graph construction
+# ---------------------------------------------------------------------------
+
+def _break_cycles(
+    src_list: list[int],
+    dst_list: list[int],
+    lengths: list[float],
+    taus: list[int],
+    n_nodes: int,
+) -> tuple[list[int], list[int], list[float], list[int]]:
+    """Remove the minimum set of edges that break all directed cycles.
+
+    Strategy: run Kahn's topological sort; nodes that never reach in-degree 0
+    are in cycles.  Among those cycle nodes, find the one with the highest
+    non-cycle in-degree (= the main lake / outlet node that most upstream
+    non-cycle reaches flow into) and remove all its outgoing edges to other
+    cycle nodes.  This turns the outlet node into a true terminal and breaks
+    the cycle with minimal routing impact.
+    """
+    # Build adjacency structures
+    in_degree = [0] * n_nodes
+    adj: dict[int, list[int]] = collections.defaultdict(list)
+    for s, d in zip(src_list, dst_list):
+        adj[s].append(d)
+        in_degree[d] += 1
+
+    # Kahn's algorithm
+    queue = collections.deque(i for i in range(n_nodes) if in_degree[i] == 0)
+    processed: set[int] = set()
+    while queue:
+        node = queue.popleft()
+        processed.add(node)
+        for nb in adj[node]:
+            in_degree[nb] -= 1
+            if in_degree[nb] == 0:
+                queue.append(nb)
+
+    cycle_nodes: set[int] = set(range(n_nodes)) - processed
+    if not cycle_nodes:
+        return src_list, dst_list, lengths, taus
+
+    warnings.warn(
+        f"Graph has {len(cycle_nodes)} nodes in directed cycles. "
+        "Removing cycle-breaking edges to ensure stable routing.",
+        stacklevel=5,
+    )
+
+    # Count non-cycle in-degree for each cycle node
+    non_cycle_in: dict[int, int] = {cn: 0 for cn in cycle_nodes}
+    for s, d in zip(src_list, dst_list):
+        if d in cycle_nodes and s not in cycle_nodes:
+            non_cycle_in[d] += 1
+
+    # The cycle node with the most non-cycle inflows is the outlet / main lake.
+    # Remove its outgoing edges to other cycle nodes (makes it terminal).
+    outlet = max(non_cycle_in, key=lambda n: non_cycle_in[n])
+
+    keep: list[bool] = []
+    removed = 0
+    for s, d in zip(src_list, dst_list):
+        if s == outlet and d in cycle_nodes:
+            keep.append(False)
+            removed += 1
+        else:
+            keep.append(True)
+
+    if removed:
+        warnings.warn(
+            f"Removed {removed} outgoing edge(s) from cycle node {outlet} "
+            f"(non-cycle in-degree={non_cycle_in[outlet]}) to break cycle.",
+            stacklevel=5,
+        )
+
+    src_list = [x for x, k in zip(src_list, keep) if k]
+    dst_list = [x for x, k in zip(dst_list, keep) if k]
+    lengths = [x for x, k in zip(lengths, keep) if k]
+    taus = [x for x, k in zip(taus, keep) if k]
+
+    # Recursively handle any remaining cycles (rare, but possible)
+    return _break_cycles(src_list, dst_list, lengths, taus, n_nodes)
+
+
+def _build_graph(
+    troncons: list[dict],
+    velocity_m_s: float,
+    device: torch.device | None,
+) -> tuple[RiverGraph, list[int], dict[int, int]]:
+    """Build a RiverGraph from parsed troncon data.
+
+    Uses junction node connectivity (from_junct / to_junct) to derive
+    the physical river network topology.  This replaces the old ds_reach
+    approach which gave HYDROTEL's simplified routing (many tributaries
+    mapped directly to a few collector troncons, producing a flat star
+    topology instead of a proper river tree).
+
+    For rivers: troncon A feeds into troncon B if A.to_junct == B.from_junct.
+    For lakes:  the lake's downstream is taken from ds_reach (the last token),
+                and troncons whose to_junct == lake.from_junct flow into the lake.
+    At distributaries (one junction → multiple outgoing troncons), only the
+    widest downstream troncon receives the upstream edge to keep a tree structure.
+
+    Returns
+    -------
+    graph       : RiverGraph
+    node_ids    : list[int]  — troncon IDs in 0-based node-index order
+    troncon_idx : dict[int, int]  — troncon_id → node index
+    """
+    # Node index: troncon IDs → 0-based indices (sorted for reproducibility)
+    all_ids = sorted(t["id"] for t in troncons)
+    troncon_idx: dict[int, int] = {tid: i for i, tid in enumerate(all_ids)}
+    n_nodes = len(all_ids)
+
+    # Junction connectivity in HYDROTEL troncon.trl:
+    #   from_junct = downstream junction (where the reach delivers water)
+    #   to_junct   = upstream junction (where the reach originates)
+    # Correct edge rule: A → B  if  A.from_junct == B.to_junct
+    # (A's downstream point is B's upstream point → water flows A → B)
+
+    # Build to_junct → troncon lookup (rivers only; lakes have to_junct=-1)
+    to_junct_to_tid: dict[int, list[tuple[int, float]]] = collections.defaultdict(list)
+    for t in troncons:
+        if t["type"] == 1 and t.get("to_junct", -1) >= 0:
+            to_junct_to_tid[t["to_junct"]].append((t["id"], t.get("width_m", 0.0)))
+
+    # Map lake perimeter junctions so rivers can flow INTO lakes.
+    # A river flows into a lake when the river's downstream junction
+    # (from_junct) matches one of the lake's perimeter junctions
+    # (lake_outlets).  The lake's from_junct is its OUTLET (downstream)
+    # junction, NOT an inlet — so we must NOT use it for river→lake edges.
+    lake_inlet_junctions: dict[int, int] = {}  # junction → lake troncon ID
+    for t in troncons:
+        if t["type"] == 2:
+            for oj in t.get("lake_outlets", []):
+                lake_inlet_junctions[oj] = t["id"]
+
+    # Build edges using junction connectivity
+    src_list, dst_list, lengths, taus = [], [], [], []
+    meters_per_day = velocity_m_s * 86_400.0
+
+    def _add_edge(src_tid: int, dst_tid: int, length_m: float) -> None:
+        src_list.append(troncon_idx[src_tid])
+        dst_list.append(troncon_idx[dst_tid])
+        lengths.append(length_m)
+        taus.append(max(1, round(length_m / meters_per_day)))
+
+    for t in troncons:
+        tid = t["id"]
+
+        if t["type"] == 2:
+            # Lake outlet: use junction matching (lake.from_junct == river.to_junct)
+            fj = t["from_junct"]
+            candidates = to_junct_to_tid.get(fj, [])
+            candidates = [(c_tid, c_w) for c_tid, c_w in candidates if c_tid != tid]
+            if candidates:
+                ds_tid = max(candidates, key=lambda x: x[1])[0]
+                _add_edge(tid, ds_tid, t["length_m"])
+            else:
+                # Fallback: ds_reach (rare — only when junction numbering is broken)
+                ds = t["downstream_id"]
+                if ds != tid and ds != 0 and ds in troncon_idx:
+                    _add_edge(tid, ds, t["length_m"])
+            continue
+
+        # River: find downstream troncon via junction matching
+        from_junct = t["from_junct"]
+
+        # Check if this river flows into a lake
+        # (river.from_junct matches a lake perimeter junction)
+        if from_junct in lake_inlet_junctions:
+            lake_tid = lake_inlet_junctions[from_junct]
+            if lake_tid != tid:
+                _add_edge(tid, lake_tid, t["length_m"])
+            continue
+
+        # Find downstream river: one whose to_junct == this river's from_junct
+        candidates = to_junct_to_tid.get(from_junct, [])
+        candidates = [(c_tid, c_w) for c_tid, c_w in candidates if c_tid != tid]
+        if candidates:
+            # Pick the widest downstream troncon (main channel at distributaries)
+            ds_tid = max(candidates, key=lambda x: x[1])[0]
+            _add_edge(tid, ds_tid, t["length_m"])
+        else:
+            # Fallback: ds_reach (when junction numbering has gaps)
+            ds = t["downstream_id"]
+            if ds != tid and ds != 0 and ds in troncon_idx:
+                _add_edge(tid, ds, t["length_m"])
+
+    if src_list:
+        # Break any cycles before constructing tensors.
+        # HYDROTEL lake troncons with multi-channel routing (e.g. bifurcated
+        # floodplains) can produce directed cycles in the reach graph.  An
+        # explicit Muskingum scheme with cycle nodes is unstable: each trip
+        # around the cycle picks up lateral inflows from those nodes again,
+        # causing exponential Q growth.  We detect cycles via Kahn's algorithm
+        # and remove the outgoing edge(s) of the most-upstream cycle node
+        # (identified by highest non-cycle in-degree = the main lake/outlet),
+        # turning it into a true terminal node.
+        src_list, dst_list, lengths, taus = _break_cycles(
+            src_list, dst_list, lengths, taus, n_nodes
+        )
+
+        edge_index = torch.tensor([src_list, dst_list], dtype=torch.long)
+        edge_attr = torch.tensor(
+            [[l, 0.0, float(tau)] for l, tau in zip(lengths, taus)],
+            dtype=torch.float,
+        )
+        travel_time_days = torch.tensor(taus, dtype=torch.long)
+    else:
+        edge_index = torch.zeros(2, 0, dtype=torch.long)
+        edge_attr = torch.zeros(0, 3)
+        travel_time_days = torch.zeros(0, dtype=torch.long)
+
+    # Topological sort
+    topo_order = _topological_sort(edge_index, n_nodes)
+
+    # is_lake flag
+    is_lake = torch.zeros(n_nodes, dtype=torch.bool)
+    for t in troncons:
+        if t["type"] == 2:
+            is_lake[troncon_idx[t["id"]]] = True
+
+    graph = RiverGraph(
+        edge_index=edge_index.to(device) if device else edge_index,
+        edge_attr=edge_attr.to(device) if device else edge_attr,
+        topo_order=topo_order.to(device) if device else topo_order,
+        is_lake=is_lake.to(device) if device else is_lake,
+        travel_time_days=travel_time_days.to(device) if device else travel_time_days,
+    )
+    return graph, all_ids, troncon_idx
+
+
+def _topological_sort(edge_index: Tensor, n_nodes: int) -> Tensor:
+    in_degree = [0] * n_nodes
+    adj: dict[int, list[int]] = collections.defaultdict(list)
+    for e in range(edge_index.shape[1]):
+        s, d = int(edge_index[0, e]), int(edge_index[1, e])
+        adj[s].append(d)
+        in_degree[d] += 1
+
+    queue = collections.deque(i for i in range(n_nodes) if in_degree[i] == 0)
+    order: list[int] = []
+    while queue:
+        node = queue.popleft()
+        order.append(node)
+        for nb in adj[node]:
+            in_degree[nb] -= 1
+            if in_degree[nb] == 0:
+                queue.append(nb)
+
+    if len(order) != n_nodes:
+        warnings.warn(
+            f"Graph has {n_nodes - len(order)} nodes not in topological order "
+            "(possible cycle).  Processing in default order.",
+            stacklevel=4,
+        )
+        order.extend(i for i in range(n_nodes) if i not in set(order))
+
+    return torch.tensor(order, dtype=torch.long)
+
+
+# ---------------------------------------------------------------------------
+# Territorial indicators
+# ---------------------------------------------------------------------------
+
+def _build_territorial(
+    troncons: list[dict],
+    troncon_idx: dict[int, int],
+    node_ids: list[int],
+    uhrh: dict,
+    lc_pixels: dict[int, np.ndarray],
+    soil_class: dict[int, int],
+    graph: RiverGraph,
+    normalise: bool,
+    device: torch.device | None,
+) -> tuple[TerritorialFeatures, Tensor]:
+    """Aggregate UHRH-level attributes to troncon-level indicators."""
+    n_nodes = len(node_ids)
+
+    # Per-troncon accumulators (area-weighted)
+    alt = np.zeros(n_nodes)
+    slope = np.zeros(n_nodes)
+    sin_asp = np.zeros(n_nodes)
+    cos_asp = np.zeros(n_nodes)
+    area_local = np.zeros(n_nodes)   # local drainage area (km²)
+    lon = np.zeros(n_nodes)
+    lat = np.zeros(n_nodes)
+    lake_frac = np.zeros(n_nodes)
+
+    lc_forest = np.zeros(n_nodes)
+    lc_agri = np.zeros(n_nodes)
+    lc_urban = np.zeros(n_nodes)
+    lc_wetland = np.zeros(n_nodes)
+    lc_water = np.zeros(n_nodes)
+
+    sand = np.zeros(n_nodes)
+    silt = np.zeros(n_nodes)
+    clay = np.zeros(n_nodes)
+
+    troncon_map: dict[int, dict] = {t["id"]: t for t in troncons}
+
+    for t in troncons:
+        ni = troncon_idx[t["id"]]
+        uids = t["uhrh_ids"]
+        if not uids:
+            continue
+
+        # Gather UHRH areas for weighting
+        areas = np.array([uhrh.get(u, {}).get("area_km2", 0.0) for u in uids])
+        total_area = areas.sum()
+        if total_area == 0.0:
+            w = np.ones(len(uids)) / max(len(uids), 1)
+            total_area = 1.0
+        else:
+            w = areas / total_area
+
+        area_local[ni] = total_area
+
+        # Topographic attributes (area-weighted)
+        alts = np.array([uhrh.get(u, {}).get("altitude_m", 0.0) for u in uids])
+        alt[ni] = (alts * w).sum()
+
+        slps = np.array([uhrh.get(u, {}).get("slope_pct", 0.0) for u in uids])
+        slope[ni] = (slps * w).sum()
+
+        # Orientation is a compass code 1-8 (1=N, 2=NE, ..., 8=NW), not degrees
+        orient_codes = np.array([uhrh.get(u, {}).get("orientation_deg", 0.0) for u in uids])
+        orients_rad = np.deg2rad((orient_codes - 1) * 45.0)
+        sin_asp[ni] = (np.sin(orients_rad) * w).sum()
+        cos_asp[ni] = (np.cos(orients_rad) * w).sum()
+
+        lons = np.array([uhrh.get(u, {}).get("lon", 0.0) for u in uids])
+        lats = np.array([uhrh.get(u, {}).get("lat", 0.0) for u in uids])
+        lon[ni] = (lons * w).sum()
+        lat[ni] = (lats * w).sum()
+
+        # Land cover (pixel-count weighted then normalised)
+        lc_total = np.zeros(9)
+        for uid in uids:
+            counts = lc_pixels.get(uid, np.zeros(9))
+            lc_total += counts
+        non_nodata = lc_total[1:].sum()  # exclude class 0 (no_data)
+        if non_nodata > 0:
+            lc_forest[ni] = lc_total[3:6:2].sum() / non_nodata   # cols 3,5
+            lc_agri[ni] = (lc_total[2] + lc_total[4]) / non_nodata
+            lc_urban[ni] = lc_total[6] / non_nodata
+            lc_wetland[ni] = (lc_total[7] + lc_total[8]) / non_nodata
+            lc_water[ni] = lc_total[1] / non_nodata
+
+        lake_frac[ni] = 1.0 if t["type"] == 2 else lc_water[ni]
+
+        # Soil texture (area-weighted, then to sand/silt/clay fractions)
+        s_sand, s_silt, s_clay = 0.0, 0.0, 0.0
+        for uid, wi in zip(uids, w):
+            cls = soil_class.get(uid, 1)  # default: sand
+            idx = max(0, min(cls - 1, len(_TEXTURE_FRACTIONS) - 1))
+            fs, fsi, fc = _TEXTURE_FRACTIONS[idx]
+            s_sand += wi * fs
+            s_silt += wi * fsi
+            s_clay += wi * fc
+        sand[ni] = s_sand
+        silt[ni] = s_silt
+        clay[ni] = s_clay
+
+    # Drainage area: accumulate upstream through graph (topo order)
+    cum_area = area_local.copy()
+    topo = graph.topo_order.tolist()
+    # Build downstream lookup
+    downstream: dict[int, int] = {}
+    for e in range(graph.edge_index.shape[1]):
+        s = int(graph.edge_index[0, e])
+        d = int(graph.edge_index[1, e])
+        downstream[s] = d  # last edge wins (should be single downstream per node)
+
+    for ni in topo:
+        ds = downstream.get(ni)
+        if ds is not None:
+            cum_area[ds] += cum_area[ni]
+
+    # Strahler order: bottom-up computation
+    strahler = _compute_strahler(graph, n_nodes)
+
+    # Distance to outlet (km): sum of upstream lengths to outlet
+    dist_km = _compute_dist_to_outlet(graph, n_nodes, troncons, troncon_idx)
+
+    # z-score normalisation
+    def _t(arr: np.ndarray) -> Tensor:
+        x = torch.from_numpy(arr.astype(np.float32))
+        if normalise:
+            mu, sig = x.mean(), x.std()
+            if sig > 0:
+                x = (x - mu) / sig
+        return x.to(device) if device else x
+
+    def _t_noscale(arr: np.ndarray) -> Tensor:
+        x = torch.from_numpy(arr.astype(np.float32))
+        return x.to(device) if device else x
+
+    # Build feature columns (normalised) and physical columns (raw)
+    feature_arrays = {
+        "drainage_area_km2": _t(cum_area),
+        "strahler_order": _t(strahler),
+        "mean_slope_pct": _t(slope),
+        "mean_elevation_m": _t(alt),
+        "sin_aspect": _t_noscale(sin_asp),       # already [-1,1], no z-score
+        "cos_aspect": _t_noscale(cos_asp),
+        "f_forest": _t(lc_forest),
+        "f_agriculture": _t(lc_agri),
+        "f_urban": _t(lc_urban),
+        "f_wetland": _t(lc_wetland),
+        "f_water": _t(lc_water),
+        "f_sand": _t(sand),
+        "f_silt": _t(silt),
+        "f_clay": _t(clay),
+        "depth_to_bedrock_m": _t(np.zeros(n_nodes)),  # not available in HYDROTEL
+        "dist_to_outlet_km": _t(dist_km),
+        "lake_fraction": _t_noscale(lake_frac),
+    }
+    columns = list(feature_arrays.keys())
+    data = torch.stack([feature_arrays[c] for c in columns], dim=-1)
+
+    # Incremental area = cum_area[node] - sum(cum_area[upstream_nodes]).
+    # This gives the local drainage area for each reach (not routed through
+    # another reach).  Must sum to the total basin area.
+    ei = graph.edge_index.numpy() if hasattr(graph.edge_index, 'numpy') else graph.edge_index
+    # Build upstream lookup: dst → list of src nodes
+    upstream_of: dict[int, list[int]] = {i: [] for i in range(n_nodes)}
+    for e in range(ei.shape[1]):
+        upstream_of[int(ei[1, e])].append(int(ei[0, e]))
+
+    area_incremental = np.zeros(n_nodes, dtype=np.float64)
+    for node in range(n_nodes):
+        area_incremental[node] = cum_area[node] - sum(cum_area[u] for u in upstream_of[node])
+        area_incremental[node] = max(area_incremental[node], 0.1)  # floor
+
+    physical = {
+        "area_km2_physical": _t_noscale(np.maximum(cum_area, 1e-3)),
+        "area_km2_local": _t_noscale(np.maximum(area_incremental, 1e-3)),
+        "slope_fraction": _t_noscale(np.maximum(slope / 100.0, 1e-4)),
+    }
+
+    territorial = TerritorialFeatures(
+        data=data, columns=columns, physical=physical,
+    )
+
+    # Node coordinates
+    coords = torch.from_numpy(
+        np.stack([lon, lat], axis=-1).astype(np.float32)
+    )
+    if device:
+        coords = coords.to(device)
+
+    return territorial, coords
+
+
+def _compute_strahler(graph: RiverGraph, n_nodes: int) -> np.ndarray:
+    """Strahler stream order via bottom-up propagation."""
+    # Build in-degree and children lists from edge_index
+    children: dict[int, list[int]] = collections.defaultdict(list)
+    parents: dict[int, list[int]] = collections.defaultdict(list)
+    for e in range(graph.edge_index.shape[1]):
+        s = int(graph.edge_index[0, e])
+        d = int(graph.edge_index[1, e])
+        children[s].append(d)  # s flows to d
+        parents[d].append(s)   # d receives from s
+
+    order = np.ones(n_nodes, dtype=np.float32)
+    for ni in graph.topo_order.tolist():
+        upstream = parents.get(ni, [])
+        if not upstream:
+            order[ni] = 1.0
+        else:
+            up_orders = sorted([order[u] for u in upstream], reverse=True)
+            if len(up_orders) == 1:
+                order[ni] = up_orders[0]
+            elif up_orders[0] == up_orders[1]:
+                order[ni] = up_orders[0] + 1.0
+            else:
+                order[ni] = up_orders[0]
+    return order
+
+
+def _compute_dist_to_outlet(
+    graph: RiverGraph,
+    n_nodes: int,
+    troncons: list[dict],
+    troncon_idx: dict[int, int],
+) -> np.ndarray:
+    """Downstream path length to the outlet (km) per node."""
+    # Build length lookup: node -> downstream length (m)
+    length_to_ds: dict[int, float] = {}
+    for t in troncons:
+        ni = troncon_idx[t["id"]]
+        length_to_ds[ni] = t["length_m"]
+
+    downstream: dict[int, int] = {}
+    for e in range(graph.edge_index.shape[1]):
+        s = int(graph.edge_index[0, e])
+        d = int(graph.edge_index[1, e])
+        downstream[s] = d
+
+    dist = np.zeros(n_nodes, dtype=np.float64)
+    # Process in reverse topological order (outlet first)
+    for ni in reversed(graph.topo_order.tolist()):
+        ds = downstream.get(ni)
+        if ds is not None:
+            dist[ni] = length_to_ds.get(ni, 0.0) + dist[ds]
+        else:
+            dist[ni] = length_to_ds.get(ni, 0.0)  # outlet reach itself
+
+    return dist / 1000.0  # m → km
+
+
+# ---------------------------------------------------------------------------
+# HydroState from etat/
+# ---------------------------------------------------------------------------
+
+def _build_initial_state(
+    etat_dir: Path,
+    troncons: list[dict],
+    troncon_idx: dict[int, int],
+    node_ids: list[int],
+    uhrh: dict,
+    device: torch.device | None,
+) -> HydroState:
+    """Load soil moisture + SWE from the latest etat/ snapshot."""
+    import pandas as pd
+
+    n_nodes = len(node_ids)
+
+    # Find latest bilan_vertical and fonte_neige files
+    bv_files = sorted(etat_dir.glob("bilan_vertical_*.csv"))
+    fn_files = sorted(etat_dir.glob("fonte_neige_*.csv"))
+
+    if not bv_files:
+        warnings.warn(
+            f"No bilan_vertical_*.csv found in {etat_dir}.  "
+            "Using default warm start (theta=0.3).",
+            stacklevel=3,
+        )
+        return HydroState.default_warm(n_nodes, device=device)
+
+    # Parse bilan_vertical (theta1/2/3 per UHRH)
+    bv_path = bv_files[-1]
+    bv_df = pd.read_csv(bv_path, sep=";", skiprows=3, header=0)
+    bv_df.columns = [c.strip() for c in bv_df.columns]
+    bv_df = bv_df.rename(columns={
+        "UHRH": "uhrh_id",
+        "THETA 1": "theta1",
+        "THETA 2": "theta2",
+        "THETA 3": "theta3",
+    })
+    bv_by_uhrh: dict[int, tuple[float, float, float]] = {}
+    for _, row in bv_df.iterrows():
+        uid = int(row["uhrh_id"])
+        bv_by_uhrh[uid] = (
+            float(row.get("theta1", 0.3)),
+            float(row.get("theta2", 0.25)),
+            float(row.get("theta3", 0.2)),
+        )
+
+    # Parse fonte_neige (SWE = STOCK DECOUVERT per UHRH)
+    swe_by_uhrh: dict[int, float] = {}
+    if fn_files:
+        fn_path = fn_files[-1]
+        fn_df = pd.read_csv(fn_path, sep=";", skiprows=3, header=0)
+        fn_df.columns = [c.strip() for c in fn_df.columns]
+        # Column may be "STOCK DECOUVERT" (open land SWE, mm)
+        swe_col = next(
+            (c for c in fn_df.columns if "DECOUVERT" in c.upper() and "STOCK" in c.upper()),
+            None,
+        )
+        uhrh_col = next(
+            (c for c in fn_df.columns if "UHRH" in c.upper()),
+            fn_df.columns[0],
+        )
+        if swe_col:
+            for _, row in fn_df.iterrows():
+                uid = int(row[uhrh_col])
+                swe_by_uhrh[uid] = float(row[swe_col])
+
+    # Aggregate to troncon level (area-weighted mean)
+    theta1 = np.zeros(n_nodes)
+    theta2 = np.zeros(n_nodes)
+    theta3 = np.zeros(n_nodes)
+    swe = np.zeros(n_nodes)
+
+    for t in troncons:
+        ni = troncon_idx[t["id"]]
+        uids = t["uhrh_ids"]
+        if not uids:
+            theta1[ni], theta2[ni], theta3[ni] = 0.3, 0.25, 0.2
+            continue
+
+        areas = np.array([uhrh.get(u, {}).get("area_km2", 0.0) for u in uids])
+        total = areas.sum()
+        w = areas / total if total > 0 else np.ones(len(uids)) / len(uids)
+
+        th1, th2, th3, sw = 0.0, 0.0, 0.0, 0.0
+        for uid, wi in zip(uids, w):
+            bv = bv_by_uhrh.get(uid, (0.3, 0.25, 0.2))
+            th1 += wi * bv[0]
+            th2 += wi * bv[1]
+            th3 += wi * bv[2]
+            sw += wi * swe_by_uhrh.get(uid, 0.0)
+
+        theta1[ni] = th1
+        theta2[ni] = th2
+        theta3[ni] = th3
+        swe[ni] = sw
+
+    def _to(arr: np.ndarray) -> Tensor:
+        t = torch.from_numpy(arr.astype(np.float32))
+        return t.to(device) if device else t
+
+    return HydroState(
+        theta1=_to(theta1),
+        theta2=_to(theta2),
+        theta3=_to(theta3),
+        swe=_to(swe),
+        t_soil=torch.zeros(n_nodes, device=device),
+        canopy_storage=torch.zeros(n_nodes, device=device),
+        wetland_storage=torch.zeros(n_nodes, device=device),
+        S_gw=torch.zeros(n_nodes, device=device),  # Groundwater storage
+        T_water=torch.full((n_nodes,), 10.0, device=device),  # Water temperature default 10°C
+    )
