@@ -70,7 +70,7 @@ Catchment characteristics per node (19 fields).
 | `area_km2_physical` | FLOAT | Physical catchment area (km²) |
 | `area_km2_local` | FLOAT | Local contributing area (km²) |
 
-### initial_state
+### cold_state
 
 Default hydrological initial conditions (cold start).
 
@@ -87,9 +87,9 @@ Default hydrological initial conditions (cold start).
 
 Note: `S_gw` (groundwater storage) and `T_water` (stream temperature) are added at load time with default values (0.0 and 10.0°C) if not present in the table.
 
-### stations
+### gauging_stations
 
-Gauging station metadata.
+Hydrometric gauging station metadata.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -99,7 +99,7 @@ Gauging station metadata.
 | `lat` | DOUBLE | Station latitude |
 | `drainage_area_km2` | DOUBLE | Official drainage area (km²) |
 
-### observations
+### streamflow_obs
 
 Daily discharge measurements at gauging stations.
 
@@ -119,15 +119,15 @@ Saved hydrological state snapshots for warm-starting simulations.
 |--------|------|-------------|
 | `state_date` | TEXT | ISO date of snapshot |
 | `node_idx` | INTEGER | Node index |
-| `theta1`…`wetland_storage` | FLOAT | Same fields as `initial_state` |
+| `theta1`…`wetland_storage` | FLOAT | Same fields as `cold_state` |
 | `lake_storage` | FLOAT | Lake water storage (mm) |
 | `q_out_prev` | FLOAT | Previous timestep outflow (m³/s) |
 
 Primary key: `(state_date, node_idx)`.
 
-### gru_states
+### encoder_states
 
-Saved GRU hidden states for the temporal encoder.
+Saved hidden states for the temporal encoder.
 
 | Column | Type | Description |
 |--------|------|-------------|

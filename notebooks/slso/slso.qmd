@@ -214,7 +214,7 @@ _con = duckdb.connect(str(BASIN_DB), read_only=True)
 lons, lats, areas = [], [], []
 for s in sids:
     row = _con.execute(
-        "SELECT lon, lat, drainage_area_km2 FROM stations WHERE station_id = ?", [s]
+        "SELECT lon, lat, drainage_area_km2 FROM gauging_stations WHERE station_id = ?", [s]
     ).fetchone()
     lons.append(float(row[0]) if row else 0.0)
     lats.append(float(row[1]) if row else 0.0)

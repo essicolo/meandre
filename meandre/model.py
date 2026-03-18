@@ -78,6 +78,8 @@ class YHydro(nn.Module):
         n_territorial: int = 17,
         n_state_vars: int | None = None,
         dropout: float = 0.0,
+        concrete_dropout: bool = False,
+        concrete_init_p: float = 0.1,
         param_mode: str = "nerf",
     ) -> None:
         super().__init__()
@@ -91,7 +93,12 @@ class YHydro(nn.Module):
 
         # Modules
         self.spatial_encoder = SpatialFieldNetwork(
-            n_territorial=n_territorial, dropout=dropout, param_mode=param_mode,
+            n_territorial=n_territorial,
+            dropout=dropout,
+            concrete_dropout=concrete_dropout,
+            concrete_init_p=concrete_init_p,
+            n_data=n_nodes,
+            param_mode=param_mode,
         )
 
         n_context = 16 if use_temporal else 0
@@ -99,6 +106,9 @@ class YHydro(nn.Module):
             n_forcing=n_forcing,
             window=context_window,
             n_context_out=n_context,
+            concrete_dropout=concrete_dropout,
+            concrete_init_p=concrete_init_p * 0.5,  # lower rate for temporal
+            n_data=n_nodes,
         ) if use_temporal else None
 
         self.vertical_column = VerticalColumn()
@@ -414,6 +424,15 @@ class YHydro(nn.Module):
         )
         return Q_sim, state, diagnostics
 
+    # ---- Concrete Dropout regularisation ----
+
+    def concrete_kl(self) -> torch.Tensor:
+        """Aggregate KL from all Concrete Dropout layers (0 if not used)."""
+        kl = self.spatial_encoder.concrete_kl()
+        if self.temporal_encoder is not None:
+            kl = kl + self.temporal_encoder.concrete_kl()
+        return kl
+
     # ---- Persistence ----
 
     def save(self, path: str | Path) -> None:
@@ -437,7 +456,7 @@ class YHydro(nn.Module):
                 "use_state_noise": self.state_noise is not None,
                 "use_temperature": self.temperature is not None,
                 "n_territorial": self.spatial_encoder.n_territorial,
-                "dropout": self.spatial_encoder.drop.p if hasattr(self.spatial_encoder, "drop") else 0.0,
+                "dropout": self.spatial_encoder.drop1.p if hasattr(self.spatial_encoder, "drop1") else 0.0,
                 "n_state_vars": self.residual_corrector.gru.input_size if self.residual_corrector is not None else HydroState.N_VARS,
             },
         }, path)

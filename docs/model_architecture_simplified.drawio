@@ -1,0 +1,160 @@
+<mxfile host="Electron" modified="2026-03-18T15:13:03.597Z" etag="GjQ4zDNuY-Pn-KCustH9" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.4.13 Chrome/124.0.6367.207 Electron/30.0.6 Safari/537.36" version="24.4.13" type="device">
+  <diagram name="Meandre – Architecture simplifiée" id="simplified">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-1" target="Q5qnW7m1aItI5H8EuW-W-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-1" value="&lt;b&gt;Météo&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;P, T, radiation,&lt;br&gt;vent, humidité&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="40" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-2" target="Q5qnW7m1aItI5H8EuW-W-6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-2" value="&lt;b&gt;Paysage&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;occupation du sol,&lt;br&gt;pentes, aires&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="40" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-5" value="&lt;b&gt;Q&lt;sub&gt;obs&lt;/sub&gt;&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;débits observés&lt;br&gt;aux stations&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="920" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-6" target="Q5qnW7m1aItI5H8EuW-W-10" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-6" value="&lt;b&gt;Encodeur spatial&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NeRF : coordonnées + paysage&lt;br&gt;→ 28 paramètres / tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="200" y="120" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-7" target="Q5qnW7m1aItI5H8EuW-W-10" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-7" value="&lt;b&gt;Encodeur temporel&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;GRU : forçage météo&lt;br&gt;→ contexte (16D)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="200" y="200" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-10" value="&lt;b&gt;Neige&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;accumulation / fonte&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="440" y="120" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-11" value="&lt;b&gt;Évapotranspiration&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Penman-Monteith (FAO-56)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="440" y="200" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-12" value="&lt;b&gt;Sol&lt;/b&gt; (3 couches)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;van Genuchten + flux de Darcy&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="440" y="280" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-13" value="&lt;b&gt;Milieux humides + Aquifère&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;réservoirs linéaires&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="440" y="360" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-14" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;strokeColor=#000000;rounded=1;shadow=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-10" target="Q5qnW7m1aItI5H8EuW-W-11" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-15" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;strokeColor=#000000;rounded=1;shadow=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-11" target="Q5qnW7m1aItI5H8EuW-W-12" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-16" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;strokeColor=#000000;rounded=1;shadow=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-12" target="Q5qnW7m1aItI5H8EuW-W-13" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="Q5qnW7m1aItI5H8EuW-W-17" target="oqBWQ3klt4Fjc4Ra4FTu-17">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="650" y="470" />
+              <mxPoint x="650" y="150" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-17" value="&lt;b&gt;Apport latéral&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;ruissellement + interflow&lt;br&gt;+ débit de base&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="440" y="440" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-18" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;strokeColor=#000000;rounded=1;shadow=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-13" target="Q5qnW7m1aItI5H8EuW-W-17" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-32" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;rounded=0;shadow=0;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" target="Q5qnW7m1aItI5H8EuW-W-28" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="245" />
+              <mxPoint x="660" y="470" />
+            </Array>
+            <mxPoint x="680" y="245" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-39" value="&lt;b&gt;Fonction de perte&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NSE + KGE + bilan hydrique&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="920" y="280" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-4" target="oqBWQ3klt4Fjc4Ra4FTu-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="100" />
+              <mxPoint x="660" y="215" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-4" value="&lt;b&gt;Réseau&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;topologie,&lt;br&gt;lacs, tronçons&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="640" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-8" target="oqBWQ3klt4Fjc4Ra4FTu-10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-8" target="oqBWQ3klt4Fjc4Ra4FTu-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-8" target="oqBWQ3klt4Fjc4Ra4FTu-13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-8" value="&lt;b&gt;Balayage topologique&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Kahn&#39;s algorithm&lt;br&gt;scatter_add par niveau&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="680" y="200" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-10" target="oqBWQ3klt4Fjc4Ra4FTu-23">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="725" y="350" />
+              <mxPoint x="900" y="350" />
+              <mxPoint x="900" y="245" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-10" value="&lt;b&gt;Muskingum-Cunge&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;rivières (K, x appris)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="680" y="280" width="90" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-31" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-11" target="oqBWQ3klt4Fjc4Ra4FTu-23">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="890" y="310" />
+              <mxPoint x="890" y="215" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-11" value="&lt;b&gt;Module lac&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;bilan de masse + loi puissance&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="790" y="280" width="90" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-13" target="oqBWQ3klt4Fjc4Ra4FTu-26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-13" value="&lt;b&gt;Thermie&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;advection H = Q × T&lt;br&gt;+ échange atmosphérique&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="680" y="360" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-17" target="oqBWQ3klt4Fjc4Ra4FTu-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-17" value="&lt;b&gt;Prélèvements / rejets&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;net_W appliqué à Q&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="680" y="120" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-19" target="oqBWQ3klt4Fjc4Ra4FTu-17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-19" value="&lt;b&gt;Prélèvements&lt;br&gt;&amp; rejets&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;m³/s par tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="780" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-23" target="Q5qnW7m1aItI5H8EuW-W-39">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-23" value="&lt;b style=&quot;font-size:13px;&quot;&gt;Q&lt;sub&gt;sim&lt;/sub&gt;&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;débit simulé&lt;br&gt;(m³/s) par tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="920" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-26" value="&lt;b style=&quot;font-size:13px;&quot;&gt;T&lt;sub&gt;eau&lt;/sub&gt;&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;température&lt;br&gt;de l&#39;eau (°C)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="920" y="360" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-33" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1.007;entryY=0.554;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="Q5qnW7m1aItI5H8EuW-W-5" target="Q5qnW7m1aItI5H8EuW-W-39">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

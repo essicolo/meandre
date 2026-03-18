@@ -103,7 +103,7 @@ _con = duckdb.connect(str(BASIN_DB), read_only=True)
 areas = []
 for s in sids:
     row = _con.execute(
-        "SELECT drainage_area_km2 FROM stations WHERE station_id = ?", [s]
+        "SELECT drainage_area_km2 FROM gauging_stations WHERE station_id = ?", [s]
     ).fetchone()
     areas.append(float(row[0]) if row else 0.0)
 _con.close()

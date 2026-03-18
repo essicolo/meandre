@@ -118,7 +118,7 @@ def main():
     areas = []
     for s in sids:
         row = _con.execute(
-            "SELECT drainage_area_km2 FROM stations WHERE station_id = ?", [s]
+            "SELECT drainage_area_km2 FROM gauging_stations WHERE station_id = ?", [s]
         ).fetchone()
         areas.append(float(row[0]) if row else 0.0)
     _con.close()
@@ -159,6 +159,8 @@ def main():
         use_travel_time_attn=True,
         use_temperature=True,
         dropout=mcfg.get("dropout", 0.0),
+        concrete_dropout=mcfg.get("concrete_dropout", False),
+        concrete_init_p=mcfg.get("concrete_init_p", 0.1),
         param_mode=mcfg.get("param_mode", "nerf"),
     ).to(device)
 
@@ -241,11 +243,11 @@ def main():
     station_var_t = torch.stack(station_var).to(device)
 
     loss_fn = HydroLoss(
-        w_nse=0.0,         # not chunk-safe
-        w_kge=0.0,         # not chunk-safe
+        w_nse=0.0,
+        w_kge=0.5,         # KGE loss — targets r, beta, gamma directly
         w_pbias=0.1,       # chunk-safe (sum/sum)
-        w_mse=1.0,         # chunk-safe, normalized by station variance
-        w_log_mse=0.5,     # chunk-safe, emphasizes baseflow
+        w_mse=0.5,         # chunk-safe, normalized by station variance
+        w_log_mse=0.3,     # chunk-safe, emphasizes baseflow
         w_nrmse=0.0,
         w_log_nse=0.0,
         w_physics=0.01,
@@ -352,8 +354,8 @@ def main():
     print_metrics("Train period", train_sl)
     print_metrics("Validation period", val_sl)
 
-    # ── MC Dropout ensemble (if dropout > 0) ──────────────────────────────
-    if mcfg.get("dropout", 0.0) > 0:
+    # ── MC Dropout ensemble (if dropout or concrete dropout enabled) ─────
+    if mcfg.get("dropout", 0.0) > 0 or mcfg.get("concrete_dropout", False):
         from meandre.training.uncertainty import generate_ensemble_mc
 
         N_MEMBERS = 20

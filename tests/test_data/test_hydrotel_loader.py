@@ -329,15 +329,19 @@ class TestLoadHydrotel:
     def test_territorial_correct_shape(self, project):
         result = load_hydrotel(project, normalise=False)
         t = result["territorial"]
-        assert t.drainage_area_km2.shape == (2,)
-        assert t.f_forest.shape == (2,)
+        # Feature columns are in t.data, accessed by column index
+        assert "drainage_area_km2" in t.columns
+        assert "f_forest" in t.columns
+        idx = t.columns.index("drainage_area_km2")
+        assert t.data[:, idx].shape == (2,)
 
     def test_territorial_fractions_in_range(self, project):
         result = load_hydrotel(project, normalise=False)
         t = result["territorial"]
         # Before normalisation, fractions should be in [0,1]
         for field in ("f_forest", "f_agriculture", "f_urban", "f_wetland", "f_water"):
-            vals = getattr(t, field)
+            idx = t.columns.index(field)
+            vals = t.data[:, idx]
             assert vals.min() >= -0.01, f"{field} below 0"
             assert vals.max() <= 1.01, f"{field} above 1"
 
@@ -416,7 +420,8 @@ class TestLoadHydrotel:
         # Upstream node drains to downstream — downstream should have larger area
         src = int(g.edge_index[0, 0])
         dst = int(g.edge_index[1, 0])
-        assert t.drainage_area_km2[dst] > t.drainage_area_km2[src]
+        idx = t.columns.index("drainage_area_km2")
+        assert t.data[dst, idx] > t.data[src, idx]
 
     def test_no_crash_without_etat(self, tmp_path):
         """Loader issues a warning and falls back to default warm start."""

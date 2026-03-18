@@ -62,6 +62,9 @@ class TemporalContextEncoder(nn.Module):
         n_heads: int = 4,
         window: int = 60,
         n_context_out: int = 16,
+        concrete_dropout: bool = False,
+        concrete_init_p: float = 0.05,
+        n_data: int = 2889,
     ) -> None:
         super().__init__()
         self.window = window
@@ -70,6 +73,11 @@ class TemporalContextEncoder(nn.Module):
         self.doy_encoding = SinusoidalDOYEncoding(d_model)
         self.rnn = nn.GRU(d_model, d_model, num_layers=1, batch_first=True)
         self.norm = nn.LayerNorm(d_model)
+        if concrete_dropout:
+            from meandre.spatial.concrete_dropout import ConcreteDropout
+            self.drop = ConcreteDropout(n_data=n_data, init_p=concrete_init_p)
+        else:
+            self.drop = nn.Identity()
         self.output_proj = nn.Linear(d_model, n_context_out)
 
     # ------------------------------------------------------------------
@@ -110,7 +118,8 @@ class TemporalContextEncoder(nn.Module):
         h = h0
         for start in range(0, T, chunk_size):
             end = min(start + chunk_size, T)
-            chunk_out, h = torch.utils.checkpoint.checkpoint(
+            from torch.utils.checkpoint import checkpoint as _ckpt
+            chunk_out, h = _ckpt(
                 self._encode_chunk,
                 forcing[start:end],
                 doy_enc[start:end],
@@ -130,8 +139,15 @@ class TemporalContextEncoder(nn.Module):
         x = x + doy_chunk.unsqueeze(1)                           # (C, N, d_model)
         x = x.permute(1, 0, 2)                                   # (N, C, d_model)
         out, h_new = self.rnn(x, h)                               # (N, C, d)
-        out = self.output_proj(self.norm(out.permute(1, 0, 2)))   # (C, N, n_ctx)
+        out = self.output_proj(self.drop(self.norm(out.permute(1, 0, 2))))  # (C, N, n_ctx)
         return out, h_new
+
+    def concrete_kl(self):
+        """Sum of Concrete Dropout KL terms (0 if using Identity/standard)."""
+        from meandre.spatial.concrete_dropout import ConcreteDropout
+        if isinstance(self.drop, ConcreteDropout):
+            return self.drop.regularization(self.output_proj.weight)
+        return torch.tensor(0.0, device=next(self.parameters()).device)
 
     # ------------------------------------------------------------------
     # Window-based API  (kept for backward compatibility with tests)
@@ -163,5 +179,5 @@ class TemporalContextEncoder(nn.Module):
 
         out, _ = self.rnn(x)                                     # (B*N, W, d_model)
         last = out[:, -1, :]                                     # (B*N, d_model)
-        context = self.output_proj(self.norm(last))              # (B*N, n_ctx)
+        context = self.output_proj(self.drop(self.norm(last)))   # (B*N, n_ctx)
         return context.reshape(B, N, -1)                         # (B, N, n_ctx)

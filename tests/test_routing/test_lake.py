@@ -118,7 +118,7 @@ def test_routing_with_lake_node_no_crash():
     x_musk = torch.full((n_nodes,), 0.2)
     dx = torch.ones(n_nodes) * 5000.0
 
-    Q_out, lake_storage_new = layer(
+    Q_out, lake_storage_new, _ = layer(
         lateral_inflow, graph, Q_out_prev, buffer, withdrawals, 0,
         K_musk, x_musk, dx,
         lake_storage=lake_storage,
@@ -151,7 +151,7 @@ def test_routing_lake_storage_accumulates():
     x_musk = torch.full((n_nodes,), 0.2)
     dx = torch.ones(n_nodes) * 1000.0
 
-    Q_out, lake_storage_new = layer(
+    Q_out, lake_storage_new, _ = layer(
         lateral_inflow, graph, Q_out_prev, buffer, withdrawals, 0,
         K_musk, x_musk, dx,
         lake_storage=lake_storage,
@@ -178,7 +178,7 @@ def test_routing_no_lake_returns_none_storage():
     x_musk = torch.full((n_nodes,), 0.2)
     dx = torch.ones(n_nodes) * 5000.0
 
-    Q_out, lake_storage_new = layer(
+    Q_out, lake_storage_new, _ = layer(
         lateral_inflow, graph, Q_out_prev, buffer, withdrawals, 0,
         K_musk, x_musk, dx,
     )

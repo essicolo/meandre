@@ -91,7 +91,7 @@ def test_soil_module_gradients():
     fc = torch.ones(n) * 0.35
     wp = torch.ones(n) * 0.15
 
-    t1, t2, t3, R = soil(
+    t1, t2, t3, R, interflow, baseflow = soil(
         P_eff, ET1, ET2, ET3,
         theta1, theta2, theta3,
         K_sat, K_sat, K_sat,
@@ -99,7 +99,7 @@ def test_soil_module_gradients():
         fc, fc, fc,
         wp, wp, wp,
     )
-    (t1.sum() + t2.sum() + t3.sum() + R.sum()).backward()
+    (t1.sum() + t2.sum() + t3.sum() + R.sum() + interflow.sum() + baseflow.sum()).backward()
     assert P_eff.grad is not None
 
 

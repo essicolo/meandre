@@ -1,6 +1,6 @@
 ---
 title: "Diagnostics spatiaux — Bassin SLSO"
-author: "meandre"
+author: "Essi"
 format:
   html:
     code-fold: true
@@ -11,26 +11,29 @@ execute:
   echo: true
 ---
 
-# Diagnostics spatiaux du modèle YHydro
+# Diagnostics spatiaux du modèle meandre
 
-Ce notebook charge le modèle entraîné, simule en mode diagnostique (débit naturalisé,
-sans prélèvements), puis cartographie les champs hydrologiques distribués : ETR, recharge,
-ruissellement latéral, neige, etc.
+Ce notebook charge le modèle entraîné, simule en mode diagnostique (débit naturalisé, sans prélèvements), puis cartographie les champs hydrologiques distribués : ETR, recharge, ruissellement latéral, neige, etc.
 
 ## 1. Configuration et chargement
 
 ```{python}
 #| label: setup
 import os
+os.chdir("C:/Users/parse01/documents-locaux/GitHub/meandre")
+
 import tomllib
 from pathlib import Path
 
 import duckdb
+import lets_plot as lp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
+
+lp.LetsPlot.setup_html()
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -47,7 +50,7 @@ print(f"Device : {device}")
 ```{python}
 #| label: load-config
 # Charger la configuration
-CONFIG = Path("notebooks/slso/config/slso.toml")
+CONFIG = Path(f"notebooks/slso/config/slso.toml")
 with open(CONFIG, "rb") as f:
     cfg = tomllib.load(f)
 
@@ -66,9 +69,11 @@ graph = hydro["graph"]
 territorial = hydro["territorial"]
 node_coords = hydro["node_coords"]
 n_nodes = hydro["n_nodes"]
+node_ids = hydro["node_ids"]   # identifiants de tronçon Atlas, en ordre node_idx
 
 print(f"Noeuds : {n_nodes}")
 print(f"Arêtes : {graph.n_edges}")
+print(f"Tronçons (ex.) : {node_ids[:5]}")
 ```
 
 ```{python}
@@ -76,7 +81,8 @@ print(f"Arêtes : {graph.n_edges}")
 # Période diagnostique : on utilise 2 ans de validation pour éviter les OOM
 # (return_diagnostics=True conserve tous les champs en mémoire)
 DIAG_START = "2010-01-01"
-DIAG_END   = "2011-12-31"
+DIAG_END   = "2024-12-31"
+DIAG_YEARS = f"{DIAG_START[:4]}–{DIAG_END[:4]}"
 
 forcing = extract_forcing(
     zarr_path=paths["weather_grid"],
@@ -130,11 +136,7 @@ print(f"Paramètres : {n_params:,}")
 
 ## 2. Simulation diagnostique
 
-On simule avec zéro prélèvements (débit naturalisé) et `return_diagnostics=True`
-pour obtenir les champs spatialisés jour par jour.
-
-Le spinup couvre 2000-01-01 à 2009-12-31 (avant la période diagnostique).
-On ne conserve les diagnostics que pour la fenêtre 2010–2011 pour limiter la mémoire.
+On simule avec zéro prélèvements (débit naturalisé) et `return_diagnostics=True` pour obtenir les champs spatialisés jour par jour.
 
 ```{python}
 #| label: simulate
@@ -155,7 +157,7 @@ with torch.no_grad():
         graph=graph,
         node_coords=node_coords,
         territorial=territorial,
-        withdrawals=WithdrawalData.empty(n_nodes),
+        withdrawals=WithdrawalData.zeros(diag_start_idx, n_nodes, device=device),
         day_of_year=doy[:diag_start_idx],
         return_diagnostics=False,
     )
@@ -171,7 +173,7 @@ with torch.no_grad():
         graph=graph,
         node_coords=node_coords,
         territorial=territorial,
-        withdrawals=WithdrawalData.empty(n_nodes),
+        withdrawals=WithdrawalData.zeros(diag_end_idx - diag_start_idx, n_nodes, device=device),
         day_of_year=doy[diag_start_idx:diag_end_idx],
         return_diagnostics=True,
     )
@@ -213,7 +215,7 @@ for name, tensor in fields_mm.items():
                  "Max noeud (mm/an)": f"{t.sum(axis=0).max() / n_years:.0f}"})
 
 df_balance = pd.DataFrame(rows)
-df_balance
+print(df_balance)
 ```
 
 ## 4. Cartes spatiales
@@ -222,7 +224,7 @@ Cartes des champs moyens annuels sur le bassin SLSO.
 
 ```{python}
 #| label: fig-spatial-maps
-#| fig-cap: "Champs hydrologiques moyens annuels (mm/an) — SLSO 2010–2011"
+#| fig-cap: "Champs hydrologiques moyens annuels (mm/an) — SLSO"
 
 lon = node_coords[:, 0].cpu().numpy()
 lat = node_coords[:, 1].cpu().numpy()
@@ -253,7 +255,7 @@ for ax, (title, values, cmap) in zip(axes.flat, fields):
     ax.set_aspect("equal")
     plt.colorbar(sc, ax=ax, shrink=0.7)
 
-fig.suptitle(f"Bassin SLSO — Moyennes annuelles ({DIAG_START} à {DIAG_END})",
+fig.suptitle(f"Bassin SLSO — Moyennes annuelles {DIAG_YEARS}",
              fontsize=14, fontweight="bold")
 plt.tight_layout()
 plt.show()
@@ -294,21 +296,23 @@ plt.show()
 
 ```{python}
 #| label: fig-discharge-outlet
-#| fig-cap: "Débit simulé (naturalisé) à l'exutoire — SLSO 2010–2011"
+#| fig-cap: "Débit simulé (naturalisé) à l'exutoire — SLSO"
 
 # L'exutoire est le dernier noeud dans l'ordre topologique
-outlet_idx = graph.order[-1].item() if hasattr(graph, 'order') else 0
+outlet_idx = graph.topo_order[-1].item()
 
-q_outlet = Q_sim[:, outlet_idx].cpu().numpy()
+df_outlet = pd.DataFrame({
+    "date": diag_dates[:n_diag_days],
+    "Q":    Q_sim[:, outlet_idx].cpu().numpy(),
+})
 
-fig, ax = plt.subplots(figsize=(14, 4))
-ax.plot(diag_dates[:n_diag_days], q_outlet, color="steelblue", linewidth=0.8)
-ax.set_ylabel("Débit (m³/s)")
-ax.set_xlabel("Date")
-ax.set_title(f"Débit naturalisé à l'exutoire (noeud {outlet_idx})")
-ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
+(lp.ggplot(df_outlet, lp.aes("date", "Q"))
+ + lp.geom_line(color="#2166ac", size=0.8)
+ + lp.labs(x="Date", y="Débit (m³/s)",
+           title=f"Débit naturalisé à l'exutoire — tronçon {node_ids[outlet_idx]} ({DIAG_YEARS})")
+ + lp.theme_bw()
+ + lp.ggsize(1300, 320)
+)
 ```
 
 ### Moyennes spatiales des flux verticaux
@@ -317,47 +321,37 @@ plt.show()
 #| label: fig-timeseries-fluxes
 #| fig-cap: "Séries temporelles des flux verticaux moyens sur le bassin (mm/jour)"
 
-fig, axes = plt.subplots(4, 1, figsize=(14, 12), sharex=True)
+_dates = diag_dates[:n_diag_days]
+_d = diag
 
-# ETR vs ETP
-axes[0].plot(diag_dates[:n_diag_days], diag.etp.cpu().numpy().mean(axis=1),
-             color="orange", linewidth=0.6, alpha=0.8, label="ETP")
-axes[0].plot(diag_dates[:n_diag_days], diag.etr.cpu().numpy().mean(axis=1),
-             color="green", linewidth=0.6, alpha=0.8, label="ETR")
-axes[0].set_ylabel("mm/jour")
-axes[0].set_title("Évapotranspiration")
-axes[0].legend()
-axes[0].grid(True, alpha=0.3)
+# Palette et ordre des panneaux
+_panels = [
+    ("ETP",              _d.etp.cpu().numpy().mean(axis=1),       "#e08214"),
+    ("ETR",              _d.etr.cpu().numpy().mean(axis=1),       "#4dac26"),
+    ("Fonte de neige",   _d.snowmelt.cpu().numpy().mean(axis=1),  "#74add1"),
+    ("Ruissellement",    _d.lateral_mm.cpu().numpy().mean(axis=1),"#7b2d8b"),
+    ("Recharge",         _d.recharge.cpu().numpy().mean(axis=1),  "#2166ac"),
+    ("Débit de base",    _d.q_baseflow.cpu().numpy().mean(axis=1),"#1a9641"),
+]
 
-# Fonte de neige
-axes[1].plot(diag_dates[:n_diag_days], diag.snowmelt.cpu().numpy().mean(axis=1),
-             color="deepskyblue", linewidth=0.6)
-axes[1].set_ylabel("mm/jour")
-axes[1].set_title("Fonte de neige")
-axes[1].grid(True, alpha=0.3)
+_rows = []
+for label, values, _ in _panels:
+    for d, v in zip(_dates, values):
+        _rows.append({"date": d, "mm_jour": v, "variable": label})
+df_fluxes = pd.DataFrame(_rows)
 
-# Recharge et débit de base
-axes[2].plot(diag_dates[:n_diag_days], diag.recharge.cpu().numpy().mean(axis=1),
-             color="royalblue", linewidth=0.6, alpha=0.8, label="Recharge")
-axes[2].plot(diag_dates[:n_diag_days], diag.q_baseflow.cpu().numpy().mean(axis=1),
-             color="darkgreen", linewidth=0.6, alpha=0.8, label="Débit de base")
-axes[2].set_ylabel("mm/jour")
-axes[2].set_title("Recharge et débit de base")
-axes[2].legend()
-axes[2].grid(True, alpha=0.3)
+_colors = {label: color for label, _, color in _panels}
 
-# Ruissellement latéral
-axes[3].plot(diag_dates[:n_diag_days], diag.lateral_mm.cpu().numpy().mean(axis=1),
-             color="purple", linewidth=0.6)
-axes[3].set_ylabel("mm/jour")
-axes[3].set_title("Ruissellement latéral")
-axes[3].set_xlabel("Date")
-axes[3].grid(True, alpha=0.3)
-
-fig.suptitle("Flux verticaux — moyenne spatiale sur le bassin SLSO",
-             fontsize=13, fontweight="bold")
-plt.tight_layout()
-plt.show()
+(lp.ggplot(df_fluxes, lp.aes("date", "mm_jour", color="variable"))
+ + lp.geom_line(size=0.6, alpha=0.9)
+ + lp.facet_wrap("variable", ncol=1, scales="free_y")
+ + lp.scale_color_manual(values=list(_colors.values()), name="")
+ + lp.labs(x="Date", y="mm/jour",
+           title="Flux verticaux — moyenne spatiale sur le bassin SLSO")
+ + lp.theme_bw()
+ + lp.theme(legend_position="none", strip_text=lp.element_text(size=10))
+ + lp.ggsize(1300, 220 * len(_panels))
+)
 ```
 
 ### Température de l'eau (si disponible)
@@ -367,22 +361,192 @@ plt.show()
 #| fig-cap: "Température de l'eau simulée à l'exutoire"
 
 if diag.T_water is not None:
-    t_water_outlet = diag.T_water[:, outlet_idx].cpu().numpy()
+    t_arr = diag.T_water[:, outlet_idx].cpu().numpy()
+    print(f"T_water exutoire — moy={t_arr.mean():.2f}°C  "
+          f"min={t_arr.min():.2f}°C  max={t_arr.max():.2f}°C  "
+          f"std={t_arr.std():.3f}°C")
+    if t_arr.std() < 0.5:
+        print("⚠  Faible variance — le module de température n'a probablement pas "
+              "convergé (K_atm/T_gw non entraînés sur ce checkpoint).")
 
-    fig, ax = plt.subplots(figsize=(14, 3.5))
-    ax.plot(diag_dates[:n_diag_days], t_water_outlet, color="firebrick", linewidth=0.7)
-    ax.set_ylabel("Température (°C)")
-    ax.set_xlabel("Date")
-    ax.set_title(f"Température de l'eau — exutoire (noeud {outlet_idx})")
-    ax.axhline(0, color="gray", linestyle="--", linewidth=0.5)
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+    df_temp = pd.DataFrame({
+        "date": diag_dates[:n_diag_days],
+        "T":    t_arr,
+    })
+    (lp.ggplot(df_temp, lp.aes("date", "T"))
+     + lp.geom_line(color="#b2182b", size=0.7)
+     + lp.geom_hline(yintercept=0, color="gray", linetype="dashed", size=0.5)
+     + lp.labs(x="Date", y="Température (°C)",
+               title=f"Température de l'eau — exutoire tronçon {node_ids[outlet_idx]} ({DIAG_YEARS})")
+     + lp.theme_bw()
+     + lp.ggsize(1300, 280)
+    )
 else:
     print("Module de température désactivé — pas de données T_water.")
 ```
 
-## 6. Export NetCDF
+## 6. Influence des prélèvements et rejets
+
+Comparaison débit naturalisé vs débit géré (avec prélèvements/rejets) pour
+identifier les tronçons les plus et les moins affectés.
+
+```{python}
+#| label: simulate-managed
+# Charger les prélèvements/rejets réels depuis le DuckDB
+withdrawals_real = cache.load_withdrawals(
+    date_start=DIAG_START,
+    date_end=DIAG_END,
+    device=device,
+)
+
+w_total = withdrawals_real.net.abs().sum().item()
+print(f"Signal prélèvements/rejets : {w_total:.1f} m³/s·jour cumulé")
+if w_total == 0:
+    print("⚠ Aucun prélèvement/rejet dans la DB — les deux simulations seront identiques.")
+
+print("Simulation gérée en cours...")
+with torch.no_grad():
+    Q_managed, *_ = model.simulate(
+        forcing=forcing[diag_start_idx:diag_end_idx],
+        initial_state=spinup_state,
+        graph=graph,
+        node_coords=node_coords,
+        territorial=territorial,
+        withdrawals=withdrawals_real,
+        day_of_year=doy[diag_start_idx:diag_end_idx],
+        return_diagnostics=False,
+    )
+
+q_nat     = Q_sim.cpu().numpy()           # (T, N)
+q_managed = Q_managed.cpu().numpy()       # (T, N)
+delta     = q_managed - q_nat             # positif = rejet net, négatif = prélèvement net
+```
+```{python}
+#| label: fig-withdrawal-impact-map
+#| fig-cap: "Influence des prélèvements/rejets par tronçon"
+
+# Métrique d'impact
+delta_amp   = np.abs(delta).mean(axis=0)                              # (N,) amplitude moyenne (m³/s)
+q_nat_mean  = np.maximum(q_nat.mean(axis=0), 1e-6)                    # (N,) débit naturalisé moyen
+proportion  = np.clip(delta_amp / q_nat_mean, 0, None)                # (N,) proportion sans borne sup
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+amp_min = delta_amp[delta_amp > 0].min() if (delta_amp > 0).any() else 1e-6
+sc1 = axes[0].scatter(lon, lat, c=delta_amp, s=4,
+                       cmap="OrRd", edgecolors="none",
+                       norm=plt.matplotlib.colors.LogNorm(vmin=amp_min, vmax=delta_amp.max()))
+axes[0].set_title("Amplitude moyenne |ΔQ| (m³/s)\n(échelle log)")
+axes[0].set_aspect("equal")
+plt.colorbar(sc1, ax=axes[0], shrink=0.7)
+
+prop_max = np.percentile(proportion[proportion > 0], 99) if (proportion > 0).any() else 1.0
+sc2 = axes[1].scatter(lon, lat, c=proportion, s=4,
+                       cmap="YlOrRd", edgecolors="none",
+                       vmin=0, vmax=prop_max)
+axes[1].set_title("Proportion d'influence annuelle |ΔQ| / Q_nat (–)\n(impact anthropique / débit naturalisé)")
+axes[1].set_aspect("equal")
+plt.colorbar(sc2, ax=axes[1], shrink=0.7)
+
+fig.suptitle(f"Influence des prélèvements/rejets — SLSO {DIAG_YEARS}",
+             fontsize=13, fontweight="bold")
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-most-impacted
+#| fig-cap: "10 tronçons les plus affectés — naturalisé vs géré"
+
+
+N_TOP = 10
+rank         = np.argsort(delta_amp)[::-1]
+top_nodes    = rank[:N_TOP]
+bottom_nodes = rank[-N_TOP:]
+
+def _reach_df(nodes, q_nat, q_managed, dates, lon, lat, node_ids):
+    """Construit un DataFrame long (naturalisé + géré) pour les noeuds donnés."""
+    rows = []
+    for node in nodes:
+        qn   = q_nat[:, node]
+        qm   = q_managed[:, node]
+        damp = float(np.abs(qm - qn).mean())
+        prop = damp / max(float(qn.mean()), 1e-6)
+        tid  = node_ids[node]
+        label = f"{tid}  |ΔQ|={damp:.4f}  |ΔQ|/Q={prop:.3f}"
+        for d, vn, vm in zip(dates, qn, qm):
+            rows.append({"date": d, "Q": vn, "type": "Naturalisé", "troncon": label})
+            rows.append({"date": d, "Q": vm, "type": "Géré",        "troncon": label})
+    return pd.DataFrame(rows)
+
+def _plot_reach_lp(nodes, title, q_nat, q_managed, dates, lon, lat, node_ids):
+    df = _reach_df(nodes, q_nat, q_managed, dates, lon, lat, node_ids)
+    # Categorical ordonné = lets_plot respecte l'ordre des facettes
+    ordered_labels = [df.loc[df["troncon"].str.startswith(f"{node_ids[n]} "), "troncon"].iloc[0]
+                      for n in nodes]
+    df["troncon"] = pd.Categorical(df["troncon"], categories=ordered_labels, ordered=True)
+    return (
+        lp.ggplot(df, lp.aes("date", "Q", color="type"))
+        + lp.geom_line(size=0.6, alpha=0.85)
+        + lp.facet_wrap("troncon", ncol=1, scales="free_y")
+        + lp.scale_color_manual(["#2166ac", "#b2182b"], name="")
+        + lp.labs(x="Date", y="m³/s", title=title)
+        + lp.theme_bw()
+        + lp.theme(legend_position="top",
+                   strip_text=lp.element_text(size=8),
+                   axis_text_x=lp.element_text(size=7))
+        + lp.ggsize(1300, 240 * N_TOP)
+    )
+```
+
+```{python}
+#| label: fig-most-impacted
+#| fig-cap: "10 tronçons les plus affectés — naturalisé vs géré"
+
+_plot_reach_lp(
+    top_nodes,
+    "10 tronçons les PLUS affectés par les prélèvements/rejets",
+    q_nat, q_managed, diag_dates[:n_diag_days], lon, lat, node_ids,
+)
+```
+
+```{python}
+#| label: fig-least-impacted
+#| fig-cap: "10 tronçons les moins affectés — naturalisé vs géré"
+
+_plot_reach_lp(
+    bottom_nodes,
+    "10 tronçons les MOINS affectés par les prélèvements/rejets",
+    q_nat, q_managed, diag_dates[:n_diag_days], lon, lat, node_ids,
+)
+```
+
+```{python}
+#| label: tbl-impact-summary
+#| tbl-cap: "Résumé de l'impact par tronçon (top 10 + bottom 10)"
+
+rows_impact = []
+for node in list(top_nodes) + list(bottom_nodes):
+    qn   = q_nat[:, node]
+    qm   = q_managed[:, node]
+    damp = float(np.abs(qm - qn).mean())
+    prop = damp / max(float(qn.mean()), 1e-6)
+    rows_impact.append({
+        "Tronçon": node_ids[node],
+        "Lon": f"{lon[node]:.3f}",
+        "Lat": f"{lat[node]:.3f}",
+        "|ΔQ| moy (m³/s)": f"{damp:.4f}",
+        "|ΔQ|/Q_nat (–)": f"{prop:.4f}",
+        "ΔQ max (m³/s)": f"{(qm - qn).max():+.4f}",
+        "ΔQ min (m³/s)": f"{(qm - qn).min():+.4f}",
+        "Groupe": "top 10" if node in top_nodes else "bottom 10",
+    })
+
+df_impact = pd.DataFrame(rows_impact)
+print(df_impact.to_string(index=False))
+```
+
+## 7. Export NetCDF
 
 Sauvegarde de tous les champs diagnostiques dans un fichier NetCDF pour
 analyses ultérieures (SIG, comparaison inter-modèles, etc.).
@@ -393,7 +557,7 @@ analyses ultérieures (SIG, comparaison inter-modèles, etc.).
 # Construire le dataset xarray
 coords_dict = {
     "time": diag_dates[:n_diag_days],
-    "node": np.arange(n_nodes),
+    "node": np.array(node_ids),
 }
 
 data_vars = {}
@@ -448,8 +612,9 @@ ds
 ```{python}
 #| label: summary
 print("=== Diagnostics terminés ===")
-print(f"  Période      : {DIAG_START} à {DIAG_END}")
-print(f"  Noeuds       : {n_nodes}")
-print(f"  Pas de temps : {n_diag_days}")
-print(f"  Export        : {output_nc}")
+print(f"  Période       : {DIAG_START} à {DIAG_END}")
+print(f"  Noeuds        : {n_nodes}")
+print(f"  Pas de temps  : {n_diag_days}")
+print(f"  Export         : {output_nc}")
+print(f"  Tronçons affectés (|ΔQ|>0.01 m³/s) : {(np.abs(delta).mean(axis=0) > 0.01).sum()}/{n_nodes}")
 ```

@@ -244,8 +244,8 @@ class SoilModule(nn.Module):
         ov2 = soft_relu(theta2_raw - porosity_2, self.sharpness) * Z2
         theta2_new = torch.clamp(theta2_raw - ov2 / Z2, min=0.0, max=1.0)
 
-        # Layer 3
-        avail_3 = theta3 * Z3 + torch.clamp(q23_s, min=0.0)
+        # Layer 3 — cascade ov2 from layer 2
+        avail_3 = theta3 * Z3 + torch.clamp(q23_s, min=0.0) + torch.clamp(ov2, min=0.0)
         pos_demand_3 = torch.clamp(ET3_m, min=0.0) + torch.clamp(q_recharge, min=0.0)
         sf3 = torch.where(
             pos_demand_3 > 1e-10,
@@ -254,13 +254,13 @@ class SoilModule(nn.Module):
         )
         q_recharge_s = torch.where(q_recharge > 0, q_recharge * sf3, q_recharge)
 
-        theta3_raw = theta3 + (q23_s - ET3_m * sf3 - q_recharge_s) / Z3
+        theta3_raw = theta3 + (q23_s + ov2 - ET3_m * sf3 - q_recharge_s) / Z3
         ov3 = soft_relu(theta3_raw - porosity_3, self.sharpness) * Z3
         theta3_new = torch.clamp(theta3_raw - ov3 / Z3, min=0.0, max=1.0)
 
-        # All overflow → surface runoff (water balance closes)
-        R_surface = (excess_1 + ov1 + ov2 + ov3) * 1e3  # mm/day
-        interflow = (q_inter_1_s + q_inter_2_s) * 1e3    # mm/day
-        baseflow = q_recharge_s * 1e3                     # mm/day
+        # Overflow cascade: ov2 → L3 (above), ov3 → recharge
+        R_surface = (excess_1 + ov1) * 1e3                    # mm/day
+        interflow = (q_inter_1_s + q_inter_2_s) * 1e3         # mm/day
+        baseflow = (q_recharge_s + ov3) * 1e3                  # mm/day
 
         return theta1_new, theta2_new, theta3_new, R_surface, interflow, baseflow

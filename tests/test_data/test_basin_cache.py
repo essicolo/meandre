@@ -41,6 +41,8 @@ def _make_hydro(n: int = 8) -> dict:
         t_soil=torch.full((n,), 5.0),
         canopy_storage=torch.zeros(n),
         wetland_storage=torch.zeros(n),
+        S_gw=torch.full((n,), 10.0),
+        T_water=torch.full((n,), 8.0),
     )
 
     return {
@@ -82,12 +84,8 @@ def test_roundtrip_static(tmp_path):
     # Topo order preserved
     assert g_load.topo_order.shape == g_orig.topo_order.shape
 
-    # Territorial
+    # Territorial — physical columns round-trip
     t_load = loaded["territorial"]
-    torch.testing.assert_close(
-        t_load.drainage_area_km2,
-        hydro["territorial"].drainage_area_km2,
-    )
     torch.testing.assert_close(
         t_load.area_km2_physical,
         hydro["territorial"].area_km2_physical,
@@ -122,6 +120,8 @@ def test_save_load_state(tmp_path):
         t_soil=torch.randn(n),
         canopy_storage=torch.rand(n),
         wetland_storage=torch.rand(n),
+        S_gw=torch.rand(n) * 10.0,
+        T_water=torch.rand(n) * 15.0,
     )
     lake_storage = torch.rand(n) * 1e6
     q_out_prev = torch.rand(n) * 500.0

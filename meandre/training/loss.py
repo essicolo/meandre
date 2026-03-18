@@ -482,8 +482,9 @@ class HydroLoss(nn.Module):
             L_kge = differentiable_kge_loss(q_o, q_s)
             L_mse = differentiable_mse_loss(q_o, q_s)
             L_nrmse = differentiable_nrmse_loss(q_o, q_s)
-            L_log_nse = differentiable_log_nse_loss(q_o, q_s)
-            L_log_mse = differentiable_log_mse_loss(q_o, q_s)
+            _zero = torch.tensor(0.0, device=q_s.device)
+            L_log_nse = differentiable_log_nse_loss(q_o, q_s) if self.w_log_nse > 0 else _zero
+            L_log_mse = differentiable_log_mse_loss(q_o, q_s) if self.w_log_mse > 0 else _zero
 
         loss = (self.w_nse * L_nse + self.w_pbias * L_pbias
                 + self.w_kge * L_kge + self.w_mse * L_mse

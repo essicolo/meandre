@@ -1,0 +1,310 @@
+<mxfile host="Electron" modified="2026-03-18T15:00:00.000Z" version="24.4.13" etag="simplified" type="device">
+  <diagram name="Meandre – Architecture simplifiée" id="simplified">
+    <mxGraphModel dx="1200" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0" background="#FFFFFF">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ═══ TITLE ═══ -->
+        <mxCell id="title" value="&lt;b style=&quot;font-size:22px;&quot;&gt;Meandre&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-size:13px; color:#666;&quot;&gt;Simulateur hydrologique différentiable&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;" parent="1" vertex="1">
+          <mxGeometry x="540" y="20" width="520" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ INPUTS (left column) ═══ -->
+        <mxCell id="in_meteo" value="&lt;b&gt;Météo&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;P, T, radiation,&lt;br&gt;vent, humidité&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="170" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="in_paysage" value="&lt;b&gt;Paysage&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;occupation du sol,&lt;br&gt;pentes, aires&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="in_reseau" value="&lt;b&gt;Réseau&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;topologie,&lt;br&gt;lacs, tronçons&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="350" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="in_prelevements" value="&lt;b&gt;Prélèvements&lt;br&gt;&amp; rejets&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;m³/s par tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="440" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="in_qobs" value="&lt;b&gt;Q&lt;sub&gt;obs&lt;/sub&gt;&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;débits observés&lt;br&gt;aux stations&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="555" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ SPATIAL ENCODER ═══ -->
+        <mxCell id="spatial" value="&lt;b&gt;Encodeur spatial&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NeRF : coordonnées + paysage&lt;br&gt;→ 27 paramètres / tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="250" y="110" width="200" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ TEMPORAL ENCODER ═══ -->
+        <mxCell id="temporal" value="&lt;b&gt;Encodeur temporel&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;GRU : forçage météo&lt;br&gt;→ contexte (16D)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="250" y="200" width="200" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ VERTICAL COLUMN (main physics block) ═══ -->
+        <mxCell id="grp_vertical" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;shadow=1;opacity=30;" parent="1" vertex="1">
+          <mxGeometry x="530" y="100" width="280" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="vc_title" value="&lt;b style=&quot;font-size:13px;&quot;&gt;Colonne verticale&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-size:10px; color:#555;&quot;&gt;boucle journalière par tronçon&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;" parent="1" vertex="1">
+          <mxGeometry x="545" y="105" width="250" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v_neige" value="&lt;b&gt;Neige&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;accumulation / fonte&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="570" y="150" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="v_et" value="&lt;b&gt;Évapotranspiration&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Penman-Monteith (FAO-56)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="570" y="210" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="v_sol" value="&lt;b&gt;Sol&lt;/b&gt; (3 couches)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;van Genuchten + flux de Darcy&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="570" y="270" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="v_milieux" value="&lt;b&gt;Milieux humides + Aquifère&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;réservoirs linéaires&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="570" y="330" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- vertical arrows inside column -->
+        <mxCell id="va1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#6c8ebf;rounded=1;" parent="1" source="v_neige" target="v_et" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="va2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#6c8ebf;rounded=1;" parent="1" source="v_et" target="v_sol" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="va3" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#6c8ebf;rounded=1;" parent="1" source="v_sol" target="v_milieux" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- lateral inflow label -->
+        <mxCell id="v_lateral" value="&lt;b&gt;Apport latéral&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;ruissellement + interflow&lt;br&gt;+ débit de base&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="570" y="400" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="va4" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#6c8ebf;rounded=1;" parent="1" source="v_milieux" target="v_lateral" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ CORRECTION MODULE ═══ -->
+        <mxCell id="correction" value="&lt;b&gt;Correcteur résiduel&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;GRU sur historique d'états&lt;br&gt;gate × δ (initialisé ≈ 0)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="250" y="335" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ ROUTING ═══ -->
+        <mxCell id="grp_routing" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;shadow=1;opacity=30;" parent="1" vertex="1">
+          <mxGeometry x="920" y="100" width="280" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="rt_title" value="&lt;b style=&quot;font-size:13px;&quot;&gt;Routage en réseau&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-size:10px; color:#555;&quot;&gt;propagation amont → aval&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;" parent="1" vertex="1">
+          <mxGeometry x="935" y="105" width="250" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r_topo" value="&lt;b&gt;Balayage topologique&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Kahn's algorithm&lt;br&gt;scatter_add par niveau&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="960" y="150" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="r_musk" value="&lt;b&gt;Muskingum-Cunge&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;rivières (K, x appris)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="960" y="220" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="r_lac" value="&lt;b&gt;Module lac&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;bilan de masse + loi puissance&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="960" y="280" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="r_temp" value="&lt;b&gt;Thermie&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;advection H = Q × T&lt;br&gt;+ échange atmosphérique&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="960" y="340" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="r_withdraw" value="&lt;b&gt;Prélèvements / rejets&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;net_W appliqué à Q&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="960" y="410" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- routing internal arrows -->
+        <mxCell id="ra1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#d79b00;rounded=1;" parent="1" source="r_topo" target="r_musk" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ra2" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#d79b00;rounded=1;" parent="1" source="r_topo" target="r_lac" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ra3" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#d79b00;rounded=1;" parent="1" source="r_lac" target="r_temp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ OUTPUTS (right column) ═══ -->
+        <mxCell id="out_q" value="&lt;b style=&quot;font-size:13px;&quot;&gt;Q&lt;sub&gt;sim&lt;/sub&gt;&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;débit simulé&lt;br&gt;(m³/s) par tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="1320" y="200" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="out_tw" value="&lt;b style=&quot;font-size:13px;&quot;&gt;T&lt;sub&gt;eau&lt;/sub&gt;&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;température&lt;br&gt;de l'eau (°C)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="1320" y="340" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ LOSS ═══ -->
+        <mxCell id="loss" value="&lt;b&gt;Fonction de perte&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NSE + KGE + bilan hydrique&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="570" y="560" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="backprop" value="&lt;b&gt;Rétropropagation&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;bout en bout à travers toute la physique&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;dashed=1;dashPattern=8 4;shadow=1;" parent="1" vertex="1">
+          <mxGeometry x="570" y="640" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ LEGEND ═══ -->
+        <mxCell id="leg_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="1280" y="560" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_title" value="&lt;b&gt;Légende&lt;/b&gt;" style="text;html=1;align=left;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="1290" y="563" width="100" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="Entrées / Sorties" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1290" y="588" width="115" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="Physique" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#6c8ebf;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1420" y="588" width="115" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="Routage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1290" y="613" width="115" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="Apprentissage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1420" y="613" width="115" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="Correction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1290" y="638" width="115" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg6" value="Optimisation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1420" y="638" width="115" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_note" value="&lt;font size=&quot;1&quot;&gt;Tous les modules sont différentiables (bout en bout)&lt;br&gt;2 889 tronçons · 138 806 paramètres appris&lt;/font&gt;" style="text;html=1;align=center;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1290" y="662" width="260" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════ EDGES ═══════════ -->
+
+        <!-- Inputs → Spatial encoder -->
+        <mxCell id="e_paysage_spatial" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#82b366;rounded=1;" parent="1" source="in_paysage" target="spatial" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Inputs → Temporal encoder -->
+        <mxCell id="e_meteo_temporal" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#82b366;rounded=1;" parent="1" source="in_meteo" target="temporal" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Spatial → Vertical -->
+        <mxCell id="e_spatial_vc" value="&lt;i style=&quot;font-size:9px;&quot;&gt;paramètres&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#9673a6;rounded=1;" parent="1" source="spatial" target="v_neige" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="490" y="142" />
+              <mxPoint x="490" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Temporal → Vertical (enriched forcing) -->
+        <mxCell id="e_temporal_vc" value="&lt;i style=&quot;font-size:9px;&quot;&gt;contexte&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#9673a6;rounded=1;" parent="1" source="temporal" target="v_neige" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="510" y="232" />
+              <mxPoint x="510" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Meteo → Vertical (direct forcing) -->
+        <mxCell id="e_meteo_vc" value="&lt;i style=&quot;font-size:9px;&quot;&gt;forçage&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#6c8ebf;rounded=1;dashed=1;" parent="1" source="in_meteo" target="v_neige" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="200" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Correction ← Vertical -->
+        <mxCell id="e_vc_corr" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#d6b656;rounded=1;" parent="1" source="v_sol" target="correction" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="540" y="290" />
+              <mxPoint x="540" y="362" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Correction → Vertical (feedback) -->
+        <mxCell id="e_corr_vc" value="&lt;i style=&quot;font-size:9px;&quot;&gt;δ état&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#d6b656;rounded=1;dashed=1;" parent="1" source="correction" target="v_sol" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="410" />
+              <mxPoint x="530" y="410" />
+              <mxPoint x="530" y="290" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Vertical → Routing -->
+        <mxCell id="e_vc_routing" value="&lt;b style=&quot;font-size:10px;&quot;&gt;q&lt;sub&gt;lat&lt;/sub&gt; (m³/s)&lt;/b&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;strokeColor=#333333;rounded=1;" parent="1" source="v_lateral" target="r_topo" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="422" />
+              <mxPoint x="880" y="175" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Réseau → Routing -->
+        <mxCell id="e_reseau_routing" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#82b366;rounded=1;" parent="1" source="in_reseau" target="r_topo" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="200" y="380" />
+              <mxPoint x="200" y="90" />
+              <mxPoint x="1060" y="90" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Prélèvements → Routing -->
+        <mxCell id="e_prelev_routing" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#82b366;rounded=1;" parent="1" source="in_prelevements" target="r_withdraw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="210" y="470" />
+              <mxPoint x="210" y="480" />
+              <mxPoint x="930" y="480" />
+              <mxPoint x="930" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Routing → Outputs -->
+        <mxCell id="e_routing_q" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;strokeColor=#82b366;rounded=1;" parent="1" source="r_musk" target="out_q" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1250" y="240" />
+              <mxPoint x="1250" y="230" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_routing_tw" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;strokeColor=#82b366;rounded=1;" parent="1" source="r_temp" target="out_tw" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Outputs → Loss -->
+        <mxCell id="e_q_loss" value="&lt;i style=&quot;font-size:9px;&quot;&gt;Q&lt;sub&gt;sim&lt;/sub&gt; vs Q&lt;sub&gt;obs&lt;/sub&gt;&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#b85450;rounded=1;" parent="1" source="out_q" target="loss" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1385" y="500" />
+              <mxPoint x="670" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_qobs_loss" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#d6b656;rounded=1;" parent="1" source="in_qobs" target="loss" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="100" y="585" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Loss → Backprop -->
+        <mxCell id="e_loss_bp" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#b85450;rounded=1;" parent="1" source="loss" target="backprop" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Backprop feedback (big dashed arrow) -->
+        <mxCell id="e_bp_feedback" value="&lt;i style=&quot;font-size:9px;&quot;&gt;gradients&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1.5;strokeColor=#b85450;rounded=1;dashed=1;dashPattern=8 4;" parent="1" source="backprop" target="spatial" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="665" />
+              <mxPoint x="350" y="500" />
+              <mxPoint x="220" y="500" />
+              <mxPoint x="220" y="142" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

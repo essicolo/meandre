@@ -242,7 +242,7 @@ class Trainer:
                 rmse=f"{val_rmse:.2f}",
             )
             current_lr = scheduler.get_last_lr()[0]
-            logger.info(
+            epoch_msg = (
                 f"Epoch {epoch:4d} | train={train_loss:.4f} "
                 f"| val_nse={val_nse:.4f} | val_kge={val_kge:.4f} "
                 f"| rmse={val_rmse:.2f} | nrmse={val_nrmse:.3f}"
@@ -250,6 +250,16 @@ class Trainer:
                 f" | kge_log={val_kge_log:.4f}"
                 f" | lr={current_lr:.2e}"
             )
+            # Log learned Concrete Dropout rates
+            from meandre.spatial.concrete_dropout import ConcreteDropout
+            cd_rates = []
+            for name, mod in self.model.named_modules():
+                if isinstance(mod, ConcreteDropout):
+                    cd_rates.append(f"{name}={mod.p.item():.3f}")
+            if cd_rates:
+                epoch_msg += f" | p=[{', '.join(cd_rates)}]"
+            logger.info(epoch_msg)
+            print(epoch_msg, flush=True)
 
             if self.run_logger is not None:
                 self.run_logger.log_metrics(
@@ -420,10 +430,10 @@ class Trainer:
                     tbptt_steps=self.config.tbptt_steps,
                 )
 
-                # Loss on last half of chunk only: first half is burn-in so
-                # the model can't cheat by draining initial storage.
-                # Gradients still flow through the full chunk (via Q_chunk).
-                burnin = chunk_len // 2
+                # Burn-in: first chunk after spinup needs longer burn-in to
+                # stabilize state; subsequent chunks only need a short warm-up
+                # since state is propagated from the previous chunk.
+                burnin = min(60, chunk_len // 4) if n_chunks > 0 else chunk_len // 2
                 q_obs_chunk = data.q_obs[obs_offset + burnin:obs_offset + chunk_len]
                 Q_chunk_loss = Q_chunk[burnin:]
                 loss_chunk, comps = self.loss_fn(
@@ -436,6 +446,12 @@ class Trainer:
                         else None
                     ),
                 )
+
+            # Concrete Dropout KL (added once per chunk, scaled by weight)
+            kl = self.model.concrete_kl()
+            if kl.item() != 0.0:
+                loss_chunk = loss_chunk + kl
+                all_components["kl_concrete"] = all_components.get("kl_concrete", 0.0) + float(kl.detach())
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = chunk_len / n_train
@@ -549,6 +565,12 @@ class Trainer:
                     else None
                 ),
             )
+
+        # Concrete Dropout KL regularisation
+        kl = self.model.concrete_kl()
+        if kl.item() != 0.0:
+            loss = loss + kl
+            components["kl_concrete"] = kl.detach()
 
         if torch.isnan(loss):
             logger.warning(

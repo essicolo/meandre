@@ -121,10 +121,15 @@ class RoutingLayer(nn.Module):
         # TTA reads only from the ring buffer (past timesteps), so there is no
         # ordering dependency within a single routing step.
         if self.use_tta and len(outflow_buffer) > 0:
-            return self._route_vectorized_tta(
+            Q_out, lake_storage_new, _ = self._route_vectorized_tta(
                 q_lat_m3s, graph, outflow_buffer, net_W,
                 K_musk, x_musk, lake_storage_new, area_km2, dam_data, t,
             )
+            T_water = (
+                self._temperature_sweep(Q_out, q_lat_m3s, graph, temp_kwargs)
+                if temp_kwargs is not None else None
+            )
+            return Q_out, lake_storage_new, T_water
 
         return self._route_vectorized(
             q_lat_m3s, graph, Q_out_prev, net_W,
@@ -193,10 +198,10 @@ class RoutingLayer(nn.Module):
             Q_agg = torch.zeros(n_nodes, device=device)
             Q_agg.scatter_add_(0, dst, edge_contrib)
 
-        # Upstream inflow only (lateral handled separately in Muskingum)
-        Q_in_upstream = torch.clamp(Q_agg + net_W, min=0.0)
+        # Upstream inflow + withdrawals (allow deficit — clamp Q_out later)
+        Q_in_upstream = Q_agg + net_W
         # Total inflow for lake mass balance (lakes don't use Muskingum)
-        Q_in_total = torch.clamp(Q_agg + q_lat_m3s + net_W, min=0.0)
+        Q_in_total = Q_agg + q_lat_m3s + net_W
 
         # River nodes: Muskingum
         Q_out = torch.zeros(n_nodes, device=device)
@@ -241,6 +246,9 @@ class RoutingLayer(nn.Module):
 
             Q_out[lake_mask] = Q_lake
             lake_storage_new[lake_mask] = S_lake.detach()
+
+        # Clamp after routing: withdrawals can reduce Q to 0 but not below
+        Q_out = torch.clamp(Q_out, min=0.0)
 
         return Q_out, lake_storage_new, None
 
@@ -307,7 +315,7 @@ class RoutingLayer(nn.Module):
                 if edge_src is not None:
                     H_agg.scatter_add_(0, edge_dst_local, H_out[edge_src])
 
-            Q_in_upstream = torch.clamp(Q_agg + net_W[level_nodes], min=0.0)
+            Q_in_upstream = Q_agg + net_W[level_nodes]  # allow deficit
             q_lat_level = q_lat_m3s[level_nodes]
 
             # Separate river and lake nodes within this level
@@ -332,9 +340,8 @@ class RoutingLayer(nn.Module):
                 n_l = int(lake_in_level.sum())
                 zeros_l = torch.zeros(n_l, device=device)
                 area_l = area_km2[lake_idx] if area_km2 is not None else torch.ones(n_l, device=device)
-                Q_in_total = torch.clamp(
-                    Q_agg[lake_in_level] + q_lat_level[lake_in_level] + net_W[lake_idx],
-                    min=0.0,
+                Q_in_total = (
+                    Q_agg[lake_in_level] + q_lat_level[lake_in_level] + net_W[lake_idx]
                 )
 
                 Q_lake, S_lake = self.lake(
@@ -360,6 +367,9 @@ class RoutingLayer(nn.Module):
                 Q_out[lake_idx] = Q_lake
                 lake_storage_new[lake_idx] = S_lake.detach()
 
+            # Clamp after routing: withdrawals can reduce Q to 0 but not below
+            Q_out[level_nodes] = torch.clamp(Q_out[level_nodes], min=0.0)
+
             # Temperature: mix upstream + lateral heat, then atmospheric exchange
             if do_temp:
                 H_total = H_agg + H_lateral[level_nodes]
@@ -380,6 +390,55 @@ class RoutingLayer(nn.Module):
             T_water = torch.clamp(T_water, min=0.0, max=40.0)
 
         return Q_out, lake_storage_new, T_water
+
+    def _temperature_sweep(
+        self,
+        Q_out: Tensor,
+        q_lat_m3s: Tensor,
+        graph: RiverGraph,
+        temp_kwargs: dict,
+    ) -> Tensor:
+        """Topological heat-load sweep to compute stream temperature.
+
+        Separated from the routing sweep so it can be called after any routing
+        path (Muskingum or TTA).  Uses the already-computed Q_out to partition
+        heat loads downstream.
+        """
+        device = Q_out.device
+        n_nodes = graph.n_nodes
+        H_out = torch.zeros(n_nodes, device=device)
+
+        H_lateral = temp_kwargs["H_lateral"]
+        T_air     = temp_kwargs["T_air"]
+        R_n       = temp_kwargs["R_n"]
+        K_atm     = temp_kwargs["K_atm"]
+        _eps = 1e-6
+
+        if not hasattr(graph, '_topo_level_data') or graph._topo_level_data is None:
+            graph._topo_level_data = self._build_topo_level_data(graph)
+
+        for level_nodes, edge_src, edge_dst_local in graph._topo_level_data:
+            n_level = len(level_nodes)
+
+            H_agg = torch.zeros(n_level, device=device)
+            Q_agg = torch.zeros(n_level, device=device)
+            if edge_src is not None:
+                H_agg.scatter_add_(0, edge_dst_local, H_out[edge_src])
+                Q_agg.scatter_add_(0, edge_dst_local, Q_out[edge_src])
+
+            q_lat_level = q_lat_m3s[level_nodes]
+            H_total = H_agg + H_lateral[level_nodes]
+            Q_total = Q_agg + q_lat_level
+            T_mix = H_total / (Q_total + _eps)
+
+            T_eq  = T_air[level_nodes] + R_n[level_nodes] * 0.3
+            T_node = T_mix + K_atm[level_nodes] * (T_eq - T_mix)
+            T_node = torch.clamp(T_node, min=0.0, max=40.0)
+
+            H_out[level_nodes] = Q_out[level_nodes] * T_node
+
+        T_water = H_out / (Q_out + _eps)
+        return torch.clamp(T_water, min=0.0, max=40.0)
 
     @staticmethod
     def _build_topo_level_data(

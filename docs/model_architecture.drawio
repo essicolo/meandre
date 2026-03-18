@@ -1,6 +1,6 @@
-<mxfile host="Electron" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.2.5 Chrome/138.0.7204.251 Electron/37.6.1 Safari/537.36" version="28.2.5">
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.4.13 Chrome/124.0.6367.207 Electron/30.0.6 Safari/537.36" modified="2026-03-18T14:20:23.398Z" version="24.4.13" etag="7R538Uy52WXj5OYSt-JN" type="device">
   <diagram name="YHydro Architecture" id="model-arch">
-    <mxGraphModel dx="4844" dy="3473" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2400" math="0" shadow="0">
+    <mxGraphModel dx="1834" dy="1644" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -43,7 +43,7 @@
         <mxCell id="sp_concat" value="concat([enc, territorial]) → &lt;b&gt;x0&lt;/b&gt; (26+17 = 43D)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="grp_spatial" vertex="1">
           <mxGeometry x="10" y="140" width="280" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="sp_output" value="&lt;b&gt;SpatialParams (N, 27)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;K_sat×3, porosity×3, FC×3, WP×3, f_root×3&lt;br&gt;C_f, T_melt, T_snow, intercept_cap, frost_α&lt;br&gt;f_wetland, slope_factor, krec, k_gw, T_gw, K_atm&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" parent="grp_spatial" vertex="1">
+        <mxCell id="sp_output" value="&lt;b&gt;SpatialParams (N, 28)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;K_sat×3, porosity×3, FC×3, WP×3, f_root×3&lt;br&gt;C_f, T_melt, T_snow, intercept_cap, manning_n, frost_α&lt;br&gt;f_wetland, slope_factor, krec, k_gw, T_gw, K_atm, alpha_T&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" parent="grp_spatial" vertex="1">
           <mxGeometry x="10" y="440" width="280" height="70" as="geometry" />
         </mxCell>
         <mxCell id="sp_constraints" value="&lt;b&gt;_apply_constraints()&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;scaled-tanh: center + range × tanh(raw × 0.3)&lt;br&gt;log-normal for K_sat/krec, softmax for f_root&lt;br&gt;chained fractions: porosity → FC → WP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
@@ -195,6 +195,9 @@
         <mxCell id="r_musk" value="&lt;b&gt;Muskingum-Cunge&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Q_out = (c0+c1)×Q_in + c2×Q_prev + (c0+c1)×q_lat&lt;br&gt;K ≥ 0.5h (softplus), x ∈ (0, 0.5)&lt;br&gt;dt = 86400s, n_substeps = 1&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
           <mxGeometry x="300" y="45" width="270" height="60" as="geometry" />
         </mxCell>
+        <mxCell id="7Cas0O6MVhgDN1_rKOWy-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;curved=0;" edge="1" parent="grp_routing" source="r_lake" target="r_temp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="r_lake" value="&lt;b&gt;Lake Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Power-law: Q = k × depth^β × area&lt;br&gt;Mass balance: S_new = S + (Q_in - Q_out)×dt&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
           <mxGeometry x="300" y="110" width="270" height="50" as="geometry" />
         </mxCell>
@@ -203,6 +206,23 @@
         </mxCell>
         <mxCell id="r_withdraw" value="&lt;b&gt;Withdrawals&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;net = Σ(consumed_i) - effluent&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
           <mxGeometry x="600" y="110" width="260" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="7Cas0O6MVhgDN1_rKOWy-1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;curved=0;" edge="1" parent="grp_routing" source="r_temp" target="r_topo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="7Cas0O6MVhgDN1_rKOWy-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;curved=0;" edge="1" parent="grp_routing" source="r_temp" target="r_twater_out">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="225" />
+              <mxPoint x="370" y="240" />
+              <mxPoint x="75" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="7Cas0O6MVhgDN1_rKOWy-5" value="&lt;span style=&quot;font-size: 9px; font-style: italic;&quot;&gt;T = H/Q&lt;/span&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="7Cas0O6MVhgDN1_rKOWy-4">
+          <mxGeometry x="-0.3699" y="1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
         </mxCell>
         <mxCell id="r_temp" value="&lt;b&gt;Stream Temperature&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Heat load advection: H = Q × T&lt;br&gt;Atmospheric exchange: T → T_eq&lt;br&gt;Lateral: surface(T_air) + melt(0°C) + GW(T_gw)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="grp_routing" vertex="1">
           <mxGeometry x="600" y="180" width="260" height="60" as="geometry" />
@@ -249,6 +269,9 @@
               <mxPoint x="213" y="30" />
             </Array>
           </mxGeometry>
+        </mxCell>
+        <mxCell id="r_twater_out" value="&lt;b&gt;T_water[t]&lt;/b&gt;&lt;br&gt;(N,) °C" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" parent="grp_routing" vertex="1">
+          <mxGeometry x="10" y="185" width="130" height="40" as="geometry" />
         </mxCell>
         <mxCell id="arr_conv_route" value="q_lat (m³/s)" style="edgeStyle=orthogonalEdgeStyle;curved=0;strokeWidth=1;strokeColor=#d79b00;fontStyle=2;fontSize=10;rounded=1;" parent="grp_temporal" source="convert" target="grp_routing" edge="1">
           <mxGeometry x="-0.1034" relative="1" as="geometry">

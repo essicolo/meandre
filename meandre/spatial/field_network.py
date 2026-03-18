@@ -109,6 +109,13 @@ class SpatialFieldNetwork(nn.Module):
         Width of hidden layers.
     dropout : float
         MC Dropout rate for epistemic uncertainty (set > 0 to enable).
+        Ignored when ``concrete_dropout=True``.
+    concrete_dropout : bool
+        Use Concrete Dropout (Gal et al., 2017) with learnable rates.
+    concrete_init_p : float
+        Initial dropout probability for Concrete Dropout layers.
+    n_data : int
+        Number of data points for Concrete Dropout regularisation scaling.
     param_mode : str
         "nerf" for spatially-varying parameters (~13k params)
         "static" for global parameters like Hydrotel (28 params)
@@ -118,8 +125,11 @@ class SpatialFieldNetwork(nn.Module):
         self,
         n_territorial: int = 17,
         n_coord_freqs: int = 6,
-        hidden: int = 256,  # RESTORED to original 256 for full capacity!
+        hidden: int = 256,
         dropout: float = 0.0,
+        concrete_dropout: bool = False,
+        concrete_init_p: float = 0.1,
+        n_data: int = 2889,
         param_mode: str = "nerf",
     ) -> None:
         super().__init__()
@@ -139,7 +149,13 @@ class SpatialFieldNetwork(nn.Module):
             self.fc2 = nn.Linear(hidden + in_dim, hidden)  # skip connection
             self.fc_out = nn.Linear(hidden, SpatialParams.N_PARAMS)
             self.act = nn.SiLU()
-            self.drop = nn.Dropout(p=dropout)
+            if concrete_dropout:
+                from meandre.spatial.concrete_dropout import ConcreteDropout
+                self.drop1 = ConcreteDropout(n_data=n_data, init_p=concrete_init_p)
+                self.drop2 = ConcreteDropout(n_data=n_data, init_p=concrete_init_p)
+            else:
+                self.drop1 = nn.Dropout(p=dropout)
+                self.drop2 = nn.Dropout(p=dropout)
 
     def forward(self, coords: Tensor, territorial: Tensor) -> SpatialParams:
         """
@@ -158,9 +174,9 @@ class SpatialFieldNetwork(nn.Module):
             enc = self.coord_enc(coords)          # (n_nodes, coord_dim)
             x0 = torch.cat([enc, territorial], dim=-1)  # (n_nodes, in_dim)
 
-            h = self.drop(self.act(self.fc1(x0)))
+            h = self.drop1(self.act(self.fc1(x0)))
             h = torch.cat([h, x0], dim=-1)       # skip connection
-            h = self.drop(self.act(self.fc2(h)))
+            h = self.drop2(self.act(self.fc2(h)))
             raw = self.fc_out(h)                  # (n_nodes, N_PARAMS)
 
         return self._apply_constraints(raw)
@@ -261,6 +277,16 @@ class SpatialFieldNetwork(nn.Module):
         constrained.append(soft(cols[i], 0.03, 0.02)); i += 1
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
+
+    def concrete_kl(self) -> Tensor:
+        """Sum of Concrete Dropout KL terms (0 if using standard dropout)."""
+        from meandre.spatial.concrete_dropout import ConcreteDropout
+        total = torch.tensor(0.0, device=next(self.parameters()).device)
+        if isinstance(getattr(self, "drop1", None), ConcreteDropout):
+            total = total + self.drop1.regularization(self.fc1.weight)
+        if isinstance(getattr(self, "drop2", None), ConcreteDropout):
+            total = total + self.drop2.regularization(self.fc2.weight)
+        return total
 
     def boundary_regularization(self, coords: Tensor, territorial: Tensor) -> Tensor:
         """Penalize raw network outputs that push constrained params toward extremes.

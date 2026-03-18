@@ -152,8 +152,11 @@ def test_q_upstream_downstream_positive():
 def test_to_dict_keys():
     """to_dict() returns all expected keys."""
     _, _, diag = _run(return_diagnostics=True)
-    expected = {"etp", "etr", "snowmelt", "lateral_mm", "q_lateral", "q_upstream"}
-    assert set(diag.to_dict().keys()) == expected
+    # Core keys always present; T_water included when temperature module is active
+    core = {"etp", "etr", "snowmelt", "lateral_mm", "recharge", "q_baseflow", "q_lateral", "q_upstream"}
+    keys = set(diag.to_dict().keys())
+    assert core.issubset(keys), f"Missing keys: {core - keys}"
+    assert keys - core <= {"T_water"}, f"Unexpected keys: {keys - core - {'T_water'}}"
 
 
 def test_units_dict():

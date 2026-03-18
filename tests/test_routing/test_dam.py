@@ -99,7 +99,7 @@ def _routing_step(n_nodes, lake_node, dam_data):
     x_musk = torch.full((n_nodes,), 0.2)
     dx = torch.ones(n_nodes) * 5000.0
 
-    Q_out, lake_storage_new = layer(
+    Q_out, lake_storage_new, _ = layer(
         lateral_inflow, graph, Q_out_prev, buffer, withdrawals, t=0,
         K_musk=K_musk, x_musk=x_musk, dx=dx,
         lake_storage=lake_storage,
@@ -159,7 +159,7 @@ def test_forced_release_mass_balance():
     x_musk = torch.full((n_nodes,), 0.2)
     dx = torch.ones(n_nodes) * 1000.0
 
-    Q_out, S_new = layer(
+    Q_out, S_new, _ = layer(
         lateral_inflow, graph, Q_out_prev, buffer, withdrawals, t=0,
         K_musk=K_musk, x_musk=x_musk, dx=dx,
         lake_storage=lake_storage,

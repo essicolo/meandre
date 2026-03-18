@@ -75,12 +75,18 @@ def frozen_dropout(
     originals: dict[str, types.MethodType] = {}
     mask_cache: dict[tuple, Tensor] = {}
 
-    for name, module in model.named_modules():
-        if not isinstance(module, nn.Dropout) or module.p == 0.0:
-            continue
+    from meandre.spatial.concrete_dropout import ConcreteDropout
 
-        originals[name] = module.forward
-        p = module.p
+    for name, module in model.named_modules():
+        # Support both standard nn.Dropout and ConcreteDropout
+        if isinstance(module, ConcreteDropout):
+            originals[name] = module.forward
+            drop_p = module.p.item()
+        elif isinstance(module, nn.Dropout) and module.p > 0.0:
+            originals[name] = module.forward
+            drop_p = module.p
+        else:
+            continue
 
         def _make_forward(mod_name: str, drop_p: float):
             def _frozen_forward(x: Tensor) -> Tensor:
@@ -94,7 +100,7 @@ def frozen_dropout(
                 return x * mask_cache[key]
             return _frozen_forward
 
-        module.forward = _make_forward(name, p)  # type: ignore[method-assign]
+        module.forward = _make_forward(name, drop_p)  # type: ignore[method-assign]
 
     model.train()   # Dropout layers must be in training mode to activate
     try:

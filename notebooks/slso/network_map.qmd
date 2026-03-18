@@ -1,0 +1,242 @@
+---
+title: "Réseau hydrographique SLSO — Carte interactive"
+author: "Essi Parent"
+format:
+  html:
+    code-fold: true
+    toc: false
+    embed-resources: true
+execute:
+  warning: false
+  echo: true
+---
+
+Carte interactive du réseau de tronçons : noeuds, connexions amont→aval (flèches
+sur les cours principaux), lacs, et stations hydrométriques.
+
+```{python}
+#| label: setup
+import os
+os.chdir("C:/Users/parse01/documents-locaux/GitHub/meandre")
+
+import json
+import tomllib
+from pathlib import Path
+
+import duckdb
+import folium
+import folium.plugins as fplugins
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import numpy as np
+import pandas as pd
+
+CONFIG = Path("notebooks/slso/config/slso.toml")
+with open(CONFIG, "rb") as f:
+    cfg = tomllib.load(f)
+
+DB_PATH = cfg["paths"]["basin_db"]
+```
+
+```{python}
+#| label: load-db
+con = duckdb.connect(DB_PATH, read_only=True)
+tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+
+nodes_df = con.execute(
+    "SELECT node_idx, node_id, lon, lat, CAST(is_lake AS BOOLEAN) AS is_lake, topo_order FROM nodes ORDER BY node_idx"
+).df()
+
+edges_df = con.execute(
+    "SELECT src, dst, travel_time_days FROM edges"
+).df()
+
+stations_df = (
+    con.execute("SELECT station_id, node_idx, lon, lat, drainage_area_km2 FROM gauging_stations").df()
+    if "stations" in tables else pd.DataFrame()
+)
+
+con.close()
+
+n_nodes = len(nodes_df)
+n_edges = len(edges_df)
+print(f"Noeuds : {n_nodes}   Arêtes : {n_edges}   Stations : {len(stations_df)}")
+print(f"Lacs   : {nodes_df['is_lake'].sum()}")
+print(f"Ordre topo — min={nodes_df['topo_order'].min()}  max={nodes_df['topo_order'].max()}")
+```
+
+```{python}
+#| label: build-map
+
+# ── Colormap topo_order : bleu clair (tête) → bleu foncé (aval) ──────────
+topo_min = int(nodes_df["topo_order"].min())
+topo_max = int(nodes_df["topo_order"].max())
+_cmap = cm.get_cmap("PuBu")
+
+def _topo_color(topo_order: int) -> str:
+    t = (topo_order - topo_min) / max(topo_max - topo_min, 1)
+    return mcolors.to_hex(_cmap(t))
+
+# ── Exclure le nœud exutoire théorique (topo_order max) de l'affichage ────
+outlet_idx = int(nodes_df.loc[nodes_df["topo_order"].idxmax(), "node_idx"])
+# On garde les coordonnées de l'exutoire pour tracer les arêtes, mais on
+# l'exclut des nœuds affichés sur la carte.
+_xy_all = nodes_df.set_index("node_idx")[["lon", "lat"]]
+nodes_df = nodes_df[nodes_df["node_idx"] != outlet_idx]
+
+# ── Coordonnées source/destination des arêtes ─────────────────────────────
+_xy = _xy_all
+edges_df = edges_df.join(_xy.rename(columns={"lon": "lon_src", "lat": "lat_src"}), on="src")
+edges_df = edges_df.join(_xy.rename(columns={"lon": "lon_dst", "lat": "lat_dst"}), on="dst")
+edges_df = edges_df.dropna(subset=["lon_src", "lon_dst"])
+
+# ── Carte Folium ───────────────────────────────────────────────────────────
+center_lat = nodes_df["lat"].mean()
+center_lon = nodes_df["lon"].mean()
+
+m = folium.Map(
+    location=[center_lat, center_lon],
+    zoom_start=8,
+    tiles="CartoDB positron",
+    prefer_canvas=False,
+)
+
+# Couches séparées pour le contrôle de légende
+fg_edges    = folium.FeatureGroup(name="Réseau (arêtes)", show=True)
+fg_nodes    = folium.FeatureGroup(name="Noeuds", show=True)
+fg_lakes    = folium.FeatureGroup(name="Lacs / réservoirs", show=True)
+fg_stations = folium.FeatureGroup(name="Stations hydrométriques", show=True)
+
+# ── 1. Arêtes avec pointe de flèche via PolyLine ─────────────────────────
+# Lookup rapide topo_order par node_idx
+_topo_lookup = _xy_all.join(
+    nodes_df.set_index("node_idx")[["topo_order"]], how="left"
+)["topo_order"].to_dict()
+
+edge_features = []
+for _, row in edges_df.iterrows():
+    src_topo = _topo_lookup.get(row["src"], topo_min)
+    edge_features.append({
+        "type": "Feature",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [
+                [float(row["lon_src"]), float(row["lat_src"])],
+                [float(row["lon_dst"]), float(row["lat_dst"])],
+            ],
+        },
+        "properties": {
+            "src": int(row["src"]),
+            "dst": int(row["dst"]),
+            "travel_time": int(row["travel_time_days"]),
+            "color": _topo_color(int(src_topo)),
+            "topo_norm": (int(src_topo) - topo_min) / max(topo_max - topo_min, 1),
+        },
+    })
+
+folium.GeoJson(
+    {"type": "FeatureCollection", "features": edge_features},
+    style_function=lambda f: {
+        "color":   f["properties"]["color"],
+        "weight":  0.5 + 2.5 * f["properties"]["topo_norm"],
+        "opacity": 0.7,
+    },
+    tooltip=folium.GeoJsonTooltip(
+        fields=["src", "dst", "travel_time"],
+        aliases=["Amont →", "→ Aval", "Temps de transit (j)"],
+        localize=True,
+    ),
+).add_to(fg_edges)
+
+# ── 3. Noeuds réguliers ───────────────────────────────────────────────────
+regular_nodes = nodes_df[~nodes_df["is_lake"]]
+node_features = []
+for _, row in regular_nodes.iterrows():
+    node_features.append({
+        "type": "Feature",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [float(row["lon"]), float(row["lat"])],
+        },
+        "properties": {
+            "node_idx":   int(row["node_idx"]),
+            "node_id":    str(row["node_id"]),
+            "topo_order": int(row["topo_order"]),
+            "color":      _topo_color(int(row["topo_order"])),
+        },
+    })
+
+folium.GeoJson(
+    {"type": "FeatureCollection", "features": node_features},
+    marker=folium.CircleMarker(radius=3, fill=True, fill_opacity=0.8),
+    style_function=lambda f: {
+        "color":       f["properties"]["color"],
+        "fillColor":   f["properties"]["color"],
+        "fillOpacity": 0.85,
+        "weight":      0,
+        "radius":      3,
+    },
+    tooltip=folium.GeoJsonTooltip(
+        fields=["node_idx", "node_id", "topo_order"],
+        aliases=["Nœud #", "ID", "Ordre topo"],
+    ),
+).add_to(fg_nodes)
+
+# ── 4. Lacs / réservoirs ──────────────────────────────────────────────────
+lake_nodes = nodes_df[nodes_df["is_lake"]]
+for _, row in lake_nodes.iterrows():
+    folium.CircleMarker(
+        location=[float(row["lat"]), float(row["lon"])],
+        radius=8,
+        color="#225ea8",
+        fill=True,
+        fill_color="#41b6c4",
+        fill_opacity=0.9,
+        weight=2,
+        tooltip=(f"Lac/réservoir — nœud {int(row['node_idx'])} | "
+                 f"ID={row['node_id']} | topo={int(row['topo_order'])}"),
+    ).add_to(fg_lakes)
+
+# ── 5. Stations hydrométriques ────────────────────────────────────────────
+for _, row in stations_df.iterrows():
+    folium.Marker(
+        location=[float(row["lat"]), float(row["lon"])],
+        icon=folium.Icon(color="red", icon="tint", prefix="fa"),
+        tooltip=(f"Station {row['station_id']} — nœud {int(row['node_idx'])} | "
+                 f"Aire drainée : {row['drainage_area_km2']:.0f} km²"),
+        popup=folium.Popup(
+            f"<b>{row['station_id']}</b><br>"
+            f"Nœud : {int(row['node_idx'])}<br>"
+            f"Aire : {row['drainage_area_km2']:.0f} km²",
+            max_width=200,
+        ),
+    ).add_to(fg_stations)
+
+# ── Assemblage ────────────────────────────────────────────────────────────
+for fg in [fg_edges, fg_nodes, fg_lakes, fg_stations]:
+    fg.add_to(m)
+
+folium.LayerControl(collapsed=False).add_to(m)
+
+# Légende colormap topo_order
+legend_html = """
+<div style="position:fixed; bottom:30px; left:30px; z-index:1000;
+            background:white; padding:10px 14px; border-radius:6px;
+            box-shadow:0 2px 6px rgba(0,0,0,0.3); font-size:12px; line-height:1.6;">
+  <b>Ordre topologique</b><br>
+  <span style="color:#bdc9e1">■</span> Tête de bassin (amont)<br>
+  <span style="color:#74a9cf">■</span> Cours moyen<br>
+  <span style="color:#023858">■</span> Exutoire (aval)<br>
+  <span style="color:#41b6c4">●</span> Lac / réservoir<br>
+  <span style="color:red">●</span> Station hydrométrique
+</div>
+"""
+m.get_root().html.add_child(folium.Element(legend_html))
+
+m
+```
+
+
+```{python}
+
+```

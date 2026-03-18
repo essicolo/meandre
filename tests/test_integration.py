@@ -42,7 +42,11 @@ def _make_forcing(n_t: int = N_TIMESTEPS, n_nodes: int = N_NODES) -> torch.Tenso
 
 
 def _make_territorial(n_nodes: int = N_NODES) -> TerritorialFeatures:
-    return TerritorialFeatures.zeros(n_nodes=n_nodes, n_features=17)
+    t = TerritorialFeatures.zeros(n_nodes=n_nodes, n_features=17)
+    t.physical["area_km2_physical"] = torch.ones(n_nodes) * 10.0
+    t.physical["area_km2_local"] = torch.ones(n_nodes) * 2.0
+    t.physical["slope_fraction"] = torch.ones(n_nodes) * 0.02
+    return t
 
 
 # ------------------------------------------------------------------
