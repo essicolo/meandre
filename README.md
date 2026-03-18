@@ -2,7 +2,7 @@
 
 Experimental differentiable hydrology modeling with Pytorch and vibe coding.
 
-![](docs/model_architecture.drawio.png)
+![](docs/model_architecture.png)
 
 Experiments on Google Colab
 
