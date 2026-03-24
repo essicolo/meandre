@@ -218,7 +218,7 @@ class SoilModule(nn.Module):
         pos_demand_1 = torch.clamp(ET1_m, min=0.0) + torch.clamp(q12, min=0.0) + torch.clamp(q_inter_1, min=0.0)
         sf1 = torch.where(
             pos_demand_1 > 1e-10,
-            torch.clamp(avail_1 / pos_demand_1, max=1.0),
+            torch.clamp(avail_1 / pos_demand_1, min=0.0, max=1.0),
             torch.ones_like(avail_1),
         )
         # Scale only positive fluxes; negative fluxes (inflows) pass through
@@ -234,7 +234,7 @@ class SoilModule(nn.Module):
         pos_demand_2 = torch.clamp(ET2_m, min=0.0) + torch.clamp(q23, min=0.0) + torch.clamp(q_inter_2, min=0.0)
         sf2 = torch.where(
             pos_demand_2 > 1e-10,
-            torch.clamp(avail_2 / pos_demand_2, max=1.0),
+            torch.clamp(avail_2 / pos_demand_2, min=0.0, max=1.0),
             torch.ones_like(avail_2),
         )
         q23_s = torch.where(q23 > 0, q23 * sf2, q23)
@@ -249,7 +249,7 @@ class SoilModule(nn.Module):
         pos_demand_3 = torch.clamp(ET3_m, min=0.0) + torch.clamp(q_recharge, min=0.0)
         sf3 = torch.where(
             pos_demand_3 > 1e-10,
-            torch.clamp(avail_3 / pos_demand_3, max=1.0),
+            torch.clamp(avail_3 / pos_demand_3, min=0.0, max=1.0),
             torch.ones_like(avail_3),
         )
         q_recharge_s = torch.where(q_recharge > 0, q_recharge * sf3, q_recharge)

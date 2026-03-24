@@ -1,4 +1,4 @@
-"""Top-level YHydro model class.
+"""Top-level HydroModel model class.
 
 Orchestrates: spatial encoder -> temporal context -> vertical column ->
               residual corrector -> routing -> loss.
@@ -30,7 +30,7 @@ from meandre.utils.state import HydroState
 from meandre.vertical.column import VerticalColumn
 
 
-class YHydro(nn.Module):
+class HydroModel(nn.Module):
     """End-to-end differentiable hydrological model.
 
     Parameters
@@ -493,8 +493,8 @@ class YHydro(nn.Module):
     @classmethod
     def from_checkpoint(
         cls, path: str | Path, **kwargs
-    ) -> "YHydro":
-        """Reconstruct a YHydro instance from a checkpoint.
+    ) -> "HydroModel":
+        """Reconstruct a HydroModel instance from a checkpoint.
 
         If the checkpoint contains ``init_kwargs`` (saved by newer ``save()``),
         the model is fully self-contained and no extra kwargs are needed.

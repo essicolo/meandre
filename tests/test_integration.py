@@ -12,7 +12,7 @@ Run: pytest tests/test_integration.py -v
 import pytest
 import torch
 
-from meandre.model import YHydro
+from meandre.model import HydroModel
 from meandre.routing.graph import synthetic_linear_graph
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.spatial.territorial import TerritorialFeatures
@@ -55,7 +55,7 @@ def _make_territorial(n_nodes: int = N_NODES) -> TerritorialFeatures:
 
 def test_forward_pass_no_crash():
     """Full model forward pass on synthetic data must complete without error."""
-    model = YHydro(
+    model = HydroModel(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
         context_window=10,
@@ -88,7 +88,7 @@ def test_forward_pass_no_crash():
 
 def test_loss_is_differentiable():
     """Loss.backward() must produce non-None, non-zero gradients on all params."""
-    model = YHydro(
+    model = HydroModel(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
         context_window=5,
@@ -143,7 +143,7 @@ def test_loss_is_differentiable():
 
 def test_mass_conservation_routing():
     """Total outlet discharge over time must not exceed total lateral inflow."""
-    model = YHydro(
+    model = HydroModel(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
         context_window=5,
@@ -173,7 +173,7 @@ def test_mass_conservation_routing():
 
 def test_naturalized_flow_equals_or_less_than_anthropic():
     """Q_natural >= Q_anthropic when withdrawals < 0 (net removal from stream)."""
-    model = YHydro(
+    model = HydroModel(
         n_nodes=N_NODES, n_forcing=N_FORCING,
         context_window=5, use_temporal=False, use_residual=False,
         use_travel_time_attn=False,

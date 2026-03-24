@@ -59,7 +59,7 @@ class StreamTemperatureModule(nn.Module):
 
         # Weighted average temperature of lateral inflow
         # snowmelt at 0°C, surface/interflow at T_air, GW at T_gw
-        T_lateral = surface_frac * torch.clamp(T_air, min=0.0) + gw_frac * T_gw
+        T_lateral = surface_frac * torch.clamp(T_air, min=-0.05) + gw_frac * T_gw
         # melt_frac * 0.0 is implicit (adds nothing)
 
         # Convert lateral_inflow mm/day → m³/s, then multiply by temperature
@@ -95,4 +95,4 @@ class StreamTemperatureModule(nn.Module):
 
         # Exponential relaxation (dt = 1 day)
         T_new = T_water + K_atm * (T_eq - T_water)
-        return torch.clamp(T_new, min=0.0, max=40.0)
+        return torch.clamp(T_new, min=-0.05, max=40.0)

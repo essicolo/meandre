@@ -1,5 +1,5 @@
 <mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.4.13 Chrome/124.0.6367.207 Electron/30.0.6 Safari/537.36" modified="2026-03-18T14:20:23.398Z" version="24.4.13" etag="7R538Uy52WXj5OYSt-JN" type="device">
-  <diagram name="YHydro Architecture" id="model-arch">
+  <diagram name="HydroModel Architecture" id="model-arch">
     <mxGraphModel dx="1834" dy="1644" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2400" math="0" shadow="0">
       <root>
         <mxCell id="0" />

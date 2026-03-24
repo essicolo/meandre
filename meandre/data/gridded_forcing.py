@@ -10,7 +10,7 @@ The gridded dataset must provide three daily variables on a regular grid:
 Coordinate names ``latitude``/``longitude`` are expected.  Common aliases
 (``lat``/``lon``) are normalized automatically.
 
-Three additional variables required by YHydro (n_forcing=6) are derived:
+Three additional variables required by HydroModel (n_forcing=6) are derived:
     R_n   Net radiation      (MJ/m²/day) — Hargreaves–Samani + FAO-56
     u2    Wind speed at 2 m  (m/s)       — constant (no data available)
     e_a   Actual vapour pres (kPa)       — e_s(T_min), FAO-56 eq. 48

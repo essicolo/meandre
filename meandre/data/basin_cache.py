@@ -8,7 +8,7 @@ Standard hydro dict keys
 graph           RiverGraph
 territorial     TerritorialFeatures
 node_coords     Tensor (n_nodes, 2)
-initial_state   HydroState  (table: cold_state)
+initial_state   HydroState  (table: initial_state)
 node_ids        list[int]
 n_nodes         int
 
@@ -18,9 +18,9 @@ metadata        key/value store (n_nodes, source, created_at, …)
 nodes           node_idx, node_id, lon, lat, is_lake, topo_order
 edges           src, dst, edge_attr_0..2, travel_time_days
 territorial     node_idx + 17 normalised fields + area_km2_physical + area_km2_local
-cold_state      node_idx + 7 HydroState fields
-gauging_stations  station_id, node_idx, lon, lat, drainage_area_km2
-streamflow_obs  station_id, date, discharge
+initial_state      node_idx + 7 HydroState fields
+stations  station_id, node_idx, lon, lat, drainage_area_km2
+observations  station_id, date, discharge
 warm_states     state_date, node_idx + HydroState + lake_storage + q_out_prev
 encoder_states  state_date, run_id, data BLOB (pickled numpy h_context)
 
@@ -366,10 +366,10 @@ class BasinCache:
         try:
             self._ensure_obs_tables(con)
             con.execute(
-                "INSERT OR REPLACE INTO gauging_stations SELECT * FROM gauging_stations_df"
+                "INSERT OR REPLACE INTO stations SELECT * FROM stations_df"
             )
             con.execute(
-                "INSERT OR REPLACE INTO streamflow_obs SELECT * FROM obs_df"
+                "INSERT OR REPLACE INTO observations SELECT * FROM obs_df"
             )
             n = len(obs_df)
         finally:
@@ -422,9 +422,9 @@ class BasinCache:
             # Get stations with enough valid data
             stations_df = con.execute("""
                 SELECT s.station_id, s.node_idx, s.drainage_area_km2
-                FROM gauging_stations s
+                FROM stations s
                 WHERE s.node_idx IS NOT NULL
-                  AND (SELECT COUNT(*) FROM streamflow_obs o
+                  AND (SELECT COUNT(*) FROM observations o
                        WHERE o.station_id = s.station_id
                          AND o.date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
                          AND o.discharge IS NOT NULL) >= ?
@@ -445,7 +445,7 @@ class BasinCache:
 
             obs_df = con.execute(f"""
                 SELECT o.date, o.station_id, o.discharge
-                FROM streamflow_obs o
+                FROM observations o
                 WHERE o.station_id IN ({sid_list})
                   AND o.date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
                 ORDER BY o.date, o.station_id
@@ -766,7 +766,7 @@ class BasinCache:
                        MIN(o.date) AS first_date,
                        MAX(o.date) AS last_date,
                        COUNT(o.discharge) AS n_obs
-                FROM gauging_stations s
+                FROM stations s
                 LEFT JOIN observations o ON o.station_id = s.station_id
                 GROUP BY s.station_id, s.node_idx, s.drainage_area_km2
                 ORDER BY s.station_id
@@ -880,13 +880,13 @@ class BasinCache:
 
         stations_df = pd.DataFrame(stations_rows)
         con.execute(
-            "INSERT OR REPLACE INTO gauging_stations SELECT * FROM gauging_stations_df"
+            "INSERT OR REPLACE INTO stations SELECT * FROM stations_df"
         )
 
         if obs_rows:
             obs_df = pd.DataFrame(obs_rows)
             con.execute(
-                "INSERT OR REPLACE INTO streamflow_obs SELECT * FROM obs_df"
+                "INSERT OR REPLACE INTO observations SELECT * FROM obs_df"
             )
 
         return len(obs_rows)
@@ -921,14 +921,14 @@ class BasinCache:
             else:
                 sdf = pd.read_parquet(stations_path)
             con.execute(
-                "INSERT OR REPLACE INTO gauging_stations SELECT * FROM sdf"
+                "INSERT OR REPLACE INTO stations SELECT * FROM sdf"
             )
 
         obs_df = df[["station_id", "date", "discharge"]].dropna(
             subset=["discharge"]
         )
         con.execute(
-            "INSERT OR REPLACE INTO streamflow_obs SELECT * FROM obs_df"
+            "INSERT OR REPLACE INTO observations SELECT * FROM obs_df"
         )
         return len(obs_df)
 
@@ -981,7 +981,7 @@ class BasinCache:
                 travel_time_days INTEGER
             );
 
-            CREATE TABLE cold_state (
+            CREATE TABLE initial_state (
                 node_idx        INTEGER PRIMARY KEY,
                 theta1          FLOAT,
                 theta2          FLOAT,
@@ -992,7 +992,7 @@ class BasinCache:
                 wetland_storage FLOAT
             );
 
-            CREATE TABLE gauging_stations (
+            CREATE TABLE stations (
                 station_id          TEXT PRIMARY KEY,
                 node_idx            INTEGER,
                 lon                 DOUBLE,
@@ -1000,7 +1000,7 @@ class BasinCache:
                 drainage_area_km2   DOUBLE
             );
 
-            CREATE TABLE streamflow_obs (
+            CREATE TABLE observations (
                 station_id  TEXT,
                 date        DATE,
                 discharge   FLOAT,
@@ -1113,7 +1113,7 @@ class BasinCache:
         df = pd.DataFrame({"node_idx": np.arange(n)})
         for f in _HYDROSTATE_FIELDS:
             df[f] = getattr(s, f).cpu().numpy()
-        con.execute("INSERT INTO cold_state SELECT * FROM df")
+        con.execute("INSERT INTO initial_state SELECT * FROM df")
 
     # ------------------------------------------------------------------
     # Load helpers
@@ -1192,7 +1192,7 @@ class BasinCache:
 
     def _load_initial_state(self, con, device) -> HydroState:
         df = con.execute(
-            "SELECT * FROM cold_state ORDER BY node_idx"
+            "SELECT * FROM initial_state ORDER BY node_idx"
         ).df()
 
         def _t(col: str) -> Tensor:

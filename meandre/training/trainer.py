@@ -156,9 +156,6 @@ class Trainer:
         if self._use_amp:
             logger.info("AMP enabled (bfloat16 autocast)")
 
-        # Spinup warm-start caches: separate per data object to avoid cross-contamination
-        # when train and val have different temporal positions.
-        self._spinup_caches: dict[int, tuple[HydroState, Tensor | None]] = {}
 
         # Maximise intra-op parallelism on CPU
         n_cpu = os.cpu_count() or 1
@@ -201,10 +198,38 @@ class Trainer:
         pbar = tqdm(range(self.config.n_epochs), desc="Training", unit="epoch")
         last_val_metrics: dict[str, float] = {}
         epochs_without_improvement = 0
+        _loss_ema = None          # exponential moving average of train loss
+        _rollback_count = 0       # number of LR reductions so far
+        _MAX_ROLLBACKS = 3        # stop reducing after this many
         for epoch in pbar:
             self._apply_curriculum(epoch)
 
             train_loss, train_comps = self._train_epoch()
+
+            # ── Divergence guard ──────────────────────────────────────
+            # Track EMA of train loss; if current loss exceeds 3× EMA,
+            # reload best checkpoint and halve LR.
+            tl = float(train_loss)
+            if _loss_ema is None:
+                _loss_ema = tl
+            else:
+                _loss_ema = 0.8 * _loss_ema + 0.2 * tl
+            if tl > 3.0 * _loss_ema and _rollback_count < _MAX_ROLLBACKS and self.checkpoint_path:
+                _rollback_count += 1
+                self.model.load(self.checkpoint_path)
+                for pg in self.optimizer.param_groups:
+                    pg["lr"] *= 0.5
+                new_lr = self.optimizer.param_groups[0]["lr"]
+                msg = (f"  [rollback {_rollback_count}/{_MAX_ROLLBACKS}] "
+                       f"train loss spike ({tl:.2f} > 3×EMA {_loss_ema:.2f}) — "
+                       f"reloaded best checkpoint, lr→{new_lr:.2e}")
+                print(msg, flush=True)
+                logger.warning(msg)
+                _loss_ema = None  # reset EMA after rollback
+                # Rebuild scheduler with reduced LR
+                remaining = self.config.n_epochs - epoch
+                scheduler = build_scheduler(self.optimizer, remaining, warmup_epochs=0)
+                continue
 
             # Release fragmented CUDA memory between epochs
             if torch.cuda.is_available():
@@ -301,58 +326,30 @@ class Trainer:
     # ------------------------------------------------------------------
 
     def _run_spinup(self, data: TrainingData) -> tuple[HydroState, Tensor | None]:
-        """Return spun-up (state, h_context), using warm-start cache when available.
+        """Return spun-up (state, h_context).
 
-        Full spinup: run spinup_steps from zeros (epoch 0 or cache disabled).
-        Warm spinup: run warm_spinup_steps from last epoch's cached spinup state.
-
-        Caches are keyed by data object id to prevent cross-contamination when
-        train and val data have different temporal positions.
+        Always runs full spinup from cold start so the initial state is
+        consistent with the current model weights.  The spinup runs under
+        torch.no_grad() so the cost is just the forward pass (~365 days).
         """
-        cfg = self.config
         device = data.forcing.device
-        spinup_end = min(cfg.spinup_steps, data.train_slice.start)
+        spinup_end = min(self.config.spinup_steps, data.train_slice.start)
 
         if spinup_end == 0:
             return HydroState.zeros(self.model.n_nodes, device=device), None
 
-        data_id = id(data)
-        warm = cfg.warm_spinup_steps
-        cached = self._spinup_caches.get(data_id)
-        if warm > 0 and cached is not None:
-            # Mini-spinup from cached state: only re-run the last `warm` steps
-            cached_state, cached_h = cached
-            warm_start = max(0, spinup_end - warm)
-            with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-                _, spun_state = self.model.simulate(
-                    forcing=data.forcing[warm_start:spinup_end],
-                    initial_state=cached_state,
-                    graph=data.graph,
-                    node_coords=data.node_coords,
-                    territorial=data.territorial,
-                    withdrawals=data.withdrawals,
-                    day_of_year=data.day_of_year[warm_start:spinup_end],
-                    h_context=cached_h,
-                )
-        else:
-            # Full spinup from cold start
-            with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-                _, spun_state = self.model.simulate(
-                    forcing=data.forcing[:spinup_end],
-                    initial_state=HydroState.zeros(self.model.n_nodes, device=device),
-                    graph=data.graph,
-                    node_coords=data.node_coords,
-                    territorial=data.territorial,
-                    withdrawals=data.withdrawals,
-                    day_of_year=data.day_of_year[:spinup_end],
-                )
+        with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
+            _, spun_state = self.model.simulate(
+                forcing=data.forcing[:spinup_end],
+                initial_state=HydroState.zeros(self.model.n_nodes, device=device),
+                graph=data.graph,
+                node_coords=data.node_coords,
+                territorial=data.territorial,
+                withdrawals=data.withdrawals,
+                day_of_year=data.day_of_year[:spinup_end],
+            )
 
         h_ctx = self.model._last_h_context
-        # Cache per data object for next epoch
-        self._spinup_caches[data_id] = (
-            spun_state.detach(),
-            h_ctx.detach() if h_ctx is not None else None,
-        )
         return spun_state, h_ctx
 
     def _simulate(
@@ -433,7 +430,7 @@ class Trainer:
                 # Burn-in: first chunk after spinup needs longer burn-in to
                 # stabilize state; subsequent chunks only need a short warm-up
                 # since state is propagated from the previous chunk.
-                burnin = min(60, chunk_len // 4) if n_chunks > 0 else chunk_len // 2
+                burnin = min(60, chunk_len // 4) if n_chunks > 0 else min(90, chunk_len // 4)
                 q_obs_chunk = data.q_obs[obs_offset + burnin:obs_offset + chunk_len]
                 Q_chunk_loss = Q_chunk[burnin:]
                 loss_chunk, comps = self.loss_fn(

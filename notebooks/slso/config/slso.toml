@@ -19,10 +19,10 @@ prefix = "SLSO"
 date_start  = "2000-01-01"
 spinup_end  = "2000-12-31"
 train_start = "2001-01-01"
-train_end   = "2005-12-31"
-val_start   = "2010-01-01"
-val_end     = "2014-12-31"
-date_end    = "2019-12-31"
+train_end   = "2010-12-31"
+val_start   = "2011-01-01"
+val_end     = "2020-12-31"
+date_end    = "2024-12-31"
 
 [model]
 n_forcing        = 6      # P, T_min, T_max, R_n, u2, e_a
@@ -34,22 +34,46 @@ concrete_dropout = true   # Concrete Dropout: learned rates (Gal et al. 2017)
 concrete_init_p  = 0.1    # Initial dropout probability
 
 # Spatial parameter mode: "nerf" or "static"
-# nerf: Learn continuous parameter fields per-node (default YHydro mode)
+# nerf: Learn continuous parameter fields per-node (default HydroModel mode)
 # static: Use global parameters like Hydrotel (28 params only!)
 param_mode = "nerf"
 
 [training]
 n_epochs      = 100
-lr            = 1e-4
+lr            = 5e-4
+lr_finetune   = 1e-4
 weight_decay  = 2e-4
 grad_clip     = 1.0
-tbptt_steps   = 150
-chunk_steps   = 365
+tbptt_steps   = 365
+chunk_steps   = 0              # single-pass (no chunking)
 val_every     = 5
 patience      = 30
+warm_start    = true          # Train from scratch (soil fix invalidates old checkpoint)
 compile_modules = false
 
 # Curriculum: epoch at which each module is activated
 enable_temporal_epoch  = 60
 enable_residual_epoch  = 100
 enable_travel_epoch    = 9999   # disabled
+
+[loss]
+# Poids des composantes de la fonction de perte.
+# NSE/KGE/NRMSE/log-NSE : calculés par station, NON chunk-safe (requiert chunk_steps=0).
+# MSE/log-MSE/PBIAS     : chunk-safe, utilisables avec gradient accumulation.
+#
+# Pour favoriser les étiages : augmenter w_log_nse ou w_log_mse (log-space
+# amplifie les bas débits). Pour un bilan volumétrique juste : augmenter w_pbias.
+# Pour les crues : NSE domine naturellement.
+#
+# Régularisation :
+#   w_physics  — pénalise le résidu du bilan hydrique (fermeture eau)
+#   w_residual — pénalise l'amplitude du correcteur résiduel (garde la physique)
+w_nse       = 0.5 # changer pour 1.0 pour mieux modéliser les crues
+w_kge       = 0.5
+w_pbias     = 0.1
+w_mse       = 0.0
+w_log_nse   = 0.0
+w_log_mse   = 0.0
+w_nrmse     = 0.0
+w_physics   = 0.01
+w_residual  = 0.001

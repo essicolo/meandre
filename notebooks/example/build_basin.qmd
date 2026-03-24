@@ -226,13 +226,13 @@ vérifier que le pipeline fonctionne.
 ```{python}
 #| eval: false
 import torch
-from meandre.model import YHydro
+from meandre.model import HydroModel
 from meandre.data.basin_cache import BasinCache
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 hydro = BasinCache(BASIN_DB).load(device=device)
 
-model = YHydro(
+model = HydroModel(
     n_nodes=hydro["n_nodes"],
     n_territorial=hydro["territorial"].n_features,  # dynamique !
     n_forcing=6,

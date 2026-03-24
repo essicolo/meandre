@@ -3,7 +3,7 @@
 import torch
 import pytest
 
-from meandre.model import YHydro
+from meandre.model import HydroModel
 from meandre.routing.graph import synthetic_linear_graph
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.spatial.territorial import TerritorialFeatures
@@ -16,7 +16,7 @@ T = 20
 
 
 def _make_model(n_nodes=N):
-    return YHydro(
+    return HydroModel(
         n_nodes=n_nodes,
         use_temporal=False,
         use_residual=False,

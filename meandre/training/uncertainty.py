@@ -130,7 +130,7 @@ def generate_ensemble_mc(
     Parameters
     ----------
     model : nn.Module
-        Trained YHydro model with dropout layers.
+        Trained HydroModel model with dropout layers.
     forcing : Tensor
         (n_timesteps, n_nodes, n_forcing)
     initial_state : HydroState
@@ -166,7 +166,7 @@ def ensemble_predict(
 
     Parameters
     ----------
-    models : list of trained YHydro instances.
+    models : list of trained HydroModel instances.
     forcing, initial_state : passed to each ``model.simulate()``.
 
     Returns

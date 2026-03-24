@@ -26,6 +26,8 @@ dependencies = [
     "zarr>=3.1.5",
     "iprogress>=0.4",
     "ipywidgets>=8.1.8",
+    "nbformat>=5.10.4",
+    "jupyter>=1.1.1",
 ]
 
 [project.optional-dependencies]

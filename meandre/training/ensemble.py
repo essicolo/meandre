@@ -35,7 +35,7 @@ def generate_full_ensemble(
 
     Parameters
     ----------
-    model : YHydro
+    model : HydroModel
         Trained model with optional ``CorrelatedStateNoise`` module.
     forcing_members : list of Tensor, each (n_timesteps, n_nodes, n_forcing)
         One tensor per meteorological ensemble member.

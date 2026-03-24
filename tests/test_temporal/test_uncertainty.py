@@ -13,7 +13,7 @@ from __future__ import annotations
 import torch
 import pytest
 
-from meandre.model import YHydro
+from meandre.model import HydroModel
 from meandre.routing.graph import synthetic_linear_graph
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.spatial.territorial import TerritorialFeatures
@@ -33,7 +33,7 @@ N_T = 20
 N_FORCING = 6
 
 
-def _make_model(**kw) -> YHydro:
+def _make_model(**kw) -> HydroModel:
     defaults = dict(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
@@ -45,7 +45,7 @@ def _make_model(**kw) -> YHydro:
         use_travel_time_attn=False,
     )
     defaults.update(kw)
-    return YHydro(**defaults)
+    return HydroModel(**defaults)
 
 
 def _make_simulate_args():

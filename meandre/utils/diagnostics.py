@@ -1,4 +1,4 @@
-"""Diagnostic outputs from YHydro.simulate(return_diagnostics=True).
+"""Diagnostic outputs from HydroModel.simulate(return_diagnostics=True).
 
 All tensors have shape (n_timesteps, n_nodes) and are on the same device
 as the forcing tensor.

@@ -20,7 +20,8 @@ Ce notebook charge le modèle entraîné, simule en mode diagnostique (débit na
 ```{python}
 #| label: setup
 import os
-os.chdir("C:/Users/parse01/documents-locaux/GitHub/meandre")
+#os.chdir("C:/Users/parse01/documents-locaux/GitHub/meandre")
+os.chdir("/home/essi/Documents/GIT/meandre")
 
 import tomllib
 from pathlib import Path
@@ -39,11 +40,12 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 from meandre.data.basin_cache import BasinCache
 from meandre.data.gridded_forcing import extract_forcing
-from meandre.model import YHydro
+from meandre.model import HydroModel
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.utils.state import HydroState
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu") # empêcher le conflit avec le GPU en simulation
 print(f"Device : {device}")
 ```
 
@@ -110,7 +112,7 @@ print(f"Forçage total : {forcing.shape} ({all_dates[0]} à {all_dates[-1]})")
 ```{python}
 #| label: load-model
 # Charger le modèle entraîné
-model = YHydro(
+model = HydroModel(
     n_nodes=n_nodes,
     n_territorial=territorial.n_features,
     n_forcing=mcfg["n_forcing"],
@@ -307,7 +309,7 @@ df_outlet = pd.DataFrame({
 })
 
 (lp.ggplot(df_outlet, lp.aes("date", "Q"))
- + lp.geom_line(color="#2166ac", size=0.8)
+ + lp.geom_line(color="black", size=0.6)
  + lp.labs(x="Date", y="Débit (m³/s)",
            title=f"Débit naturalisé à l'exutoire — tronçon {node_ids[outlet_idx]} ({DIAG_YEARS})")
  + lp.theme_bw()
@@ -319,70 +321,40 @@ df_outlet = pd.DataFrame({
 
 ```{python}
 #| label: fig-timeseries-fluxes
-#| fig-cap: "Séries temporelles des flux verticaux moyens sur le bassin (mm/jour)"
+#| fig-cap: "Séries temporelles des flux verticaux et température moyens sur le bassin"
 
 _dates = diag_dates[:n_diag_days]
 _d = diag
 
-# Palette et ordre des panneaux
+# Palette et ordre des panneaux (flux en mm/jour + température en °C)
 _panels = [
-    ("ETP",              _d.etp.cpu().numpy().mean(axis=1),       "#e08214"),
-    ("ETR",              _d.etr.cpu().numpy().mean(axis=1),       "#4dac26"),
-    ("Fonte de neige",   _d.snowmelt.cpu().numpy().mean(axis=1),  "#74add1"),
-    ("Ruissellement",    _d.lateral_mm.cpu().numpy().mean(axis=1),"#7b2d8b"),
-    ("Recharge",         _d.recharge.cpu().numpy().mean(axis=1),  "#2166ac"),
-    ("Débit de base",    _d.q_baseflow.cpu().numpy().mean(axis=1),"#1a9641"),
+    ("ETP (mm/jour)",              _d.etp.cpu().numpy().mean(axis=1)),
+    ("ETR (mm/jour)",              _d.etr.cpu().numpy().mean(axis=1)),
+    ("Fonte de neige (mm/jour)",   _d.snowmelt.cpu().numpy().mean(axis=1)),
+    ("Ruissellement (mm/jour)",    _d.lateral_mm.cpu().numpy().mean(axis=1)),
+    ("Recharge (mm/jour)",         _d.recharge.cpu().numpy().mean(axis=1)),
+    ("Débit de base (mm/jour)",    _d.q_baseflow.cpu().numpy().mean(axis=1)),
 ]
+if _d.T_water is not None:
+    _panels.append(
+        ("T eau (°C)", _d.T_water.cpu().numpy().mean(axis=1)),
+    )
 
 _rows = []
-for label, values, _ in _panels:
+for label, values in _panels:
     for d, v in zip(_dates, values):
-        _rows.append({"date": d, "mm_jour": v, "variable": label})
+        _rows.append({"date": d, "valeur": v, "variable": label})
 df_fluxes = pd.DataFrame(_rows)
 
-_colors = {label: color for label, _, color in _panels}
-
-(lp.ggplot(df_fluxes, lp.aes("date", "mm_jour", color="variable"))
- + lp.geom_line(size=0.6, alpha=0.9)
- + lp.facet_wrap("variable", ncol=1, scales="free_y")
- + lp.scale_color_manual(values=list(_colors.values()), name="")
- + lp.labs(x="Date", y="mm/jour",
-           title="Flux verticaux — moyenne spatiale sur le bassin SLSO")
+(lp.ggplot(df_fluxes, lp.aes("date", "valeur"))
+ + lp.geom_line(size=0.5, color="black")
+ + lp.facet_wrap("variable", ncol=3, scales="free_y")
+ + lp.labs(x="Date", y="",
+           title="Flux verticaux et température — moyenne spatiale sur le bassin SLSO")
  + lp.theme_bw()
- + lp.theme(legend_position="none", strip_text=lp.element_text(size=10))
- + lp.ggsize(1300, 220 * len(_panels))
+ + lp.theme(strip_text=lp.element_text(size=10))
+ + lp.ggsize(2000, 1400)
 )
-```
-
-### Température de l'eau (si disponible)
-
-```{python}
-#| label: fig-temperature
-#| fig-cap: "Température de l'eau simulée à l'exutoire"
-
-if diag.T_water is not None:
-    t_arr = diag.T_water[:, outlet_idx].cpu().numpy()
-    print(f"T_water exutoire — moy={t_arr.mean():.2f}°C  "
-          f"min={t_arr.min():.2f}°C  max={t_arr.max():.2f}°C  "
-          f"std={t_arr.std():.3f}°C")
-    if t_arr.std() < 0.5:
-        print("⚠  Faible variance — le module de température n'a probablement pas "
-              "convergé (K_atm/T_gw non entraînés sur ce checkpoint).")
-
-    df_temp = pd.DataFrame({
-        "date": diag_dates[:n_diag_days],
-        "T":    t_arr,
-    })
-    (lp.ggplot(df_temp, lp.aes("date", "T"))
-     + lp.geom_line(color="#b2182b", size=0.7)
-     + lp.geom_hline(yintercept=0, color="gray", linetype="dashed", size=0.5)
-     + lp.labs(x="Date", y="Température (°C)",
-               title=f"Température de l'eau — exutoire tronçon {node_ids[outlet_idx]} ({DIAG_YEARS})")
-     + lp.theme_bw()
-     + lp.ggsize(1300, 280)
-    )
-else:
-    print("Module de température désactivé — pas de données T_water.")
 ```
 
 ## 6. Influence des prélèvements et rejets
@@ -421,6 +393,29 @@ q_nat     = Q_sim.cpu().numpy()           # (T, N)
 q_managed = Q_managed.cpu().numpy()       # (T, N)
 delta     = q_managed - q_nat             # positif = rejet net, négatif = prélèvement net
 ```
+
+### Comparaison naturalisé vs géré à l'exutoire
+
+```{python}
+#| label: fig-nat-vs-managed
+#| fig-cap: "Débit naturalisé vs géré à l'exutoire"
+
+_dates_out = diag_dates[:n_diag_days]
+df_cmp = pd.concat([
+    pd.DataFrame({"date": _dates_out, "Q": q_nat[:, outlet_idx],     "série": "Naturalisé"}),
+    pd.DataFrame({"date": _dates_out, "Q": q_managed[:, outlet_idx], "série": "Géré"}),
+], ignore_index=True)
+
+(lp.ggplot(df_cmp, lp.aes("date", "Q", color="série"))
+ + lp.geom_line(size=0.5, alpha=0.8)
+ + lp.scale_color_manual(values=["#2166ac", "#d6604d"], name="")
+ + lp.labs(x="Date", y="Débit (m³/s)",
+           title=f"Débit naturalisé vs géré — exutoire tronçon {node_ids[outlet_idx]} ({DIAG_YEARS})")
+ + lp.theme_bw()
+ + lp.ggsize(1300, 320)
+)
+```
+
 ```{python}
 #| label: fig-withdrawal-impact-map
 #| fig-cap: "Influence des prélèvements/rejets par tronçon"
@@ -441,10 +436,11 @@ axes[0].set_aspect("equal")
 plt.colorbar(sc1, ax=axes[0], shrink=0.7)
 
 prop_max = np.percentile(proportion[proportion > 0], 99) if (proportion > 0).any() else 1.0
-sc2 = axes[1].scatter(lon, lat, c=proportion, s=4,
+from matplotlib.colors import LogNorm
+sc2 = axes[1].scatter(lon, lat, c=proportion.clip(1e-6), s=4,
                        cmap="YlOrRd", edgecolors="none",
-                       vmin=0, vmax=prop_max)
-axes[1].set_title("Proportion d'influence annuelle |ΔQ| / Q_nat (–)\n(impact anthropique / débit naturalisé)")
+                       norm=LogNorm(vmin=1e-4, vmax=max(prop_max, 1e-2)))
+axes[1].set_title("Proportion d'influence annuelle |ΔQ| / Q_nat\n(impact anthropique / débit naturalisé)")
 axes[1].set_aspect("equal")
 plt.colorbar(sc2, ax=axes[1], shrink=0.7)
 
@@ -456,10 +452,10 @@ plt.show()
 
 ```{python}
 #| label: fig-most-impacted
-#| fig-cap: "10 tronçons les plus affectés — naturalisé vs géré"
+#| fig-cap: "12 tronçons les plus affectés — naturalisé vs géré"
 
 
-N_TOP = 10
+N_TOP = 12
 rank         = np.argsort(delta_amp)[::-1]
 top_nodes    = rank[:N_TOP]
 bottom_nodes = rank[-N_TOP:]
@@ -488,14 +484,13 @@ def _plot_reach_lp(nodes, title, q_nat, q_managed, dates, lon, lat, node_ids):
     return (
         lp.ggplot(df, lp.aes("date", "Q", color="type"))
         + lp.geom_line(size=0.6, alpha=0.85)
-        + lp.facet_wrap("troncon", ncol=1, scales="free_y")
-        + lp.scale_color_manual(["#2166ac", "#b2182b"], name="")
+        + lp.facet_wrap("troncon", ncol=4, scales="free_y")
         + lp.labs(x="Date", y="m³/s", title=title)
         + lp.theme_bw()
         + lp.theme(legend_position="top",
                    strip_text=lp.element_text(size=8),
                    axis_text_x=lp.element_text(size=7))
-        + lp.ggsize(1300, 240 * N_TOP)
+        + lp.ggsize(1500, 1000)
     )
 ```
 
@@ -505,21 +500,11 @@ def _plot_reach_lp(nodes, title, q_nat, q_managed, dates, lon, lat, node_ids):
 
 _plot_reach_lp(
     top_nodes,
-    "10 tronçons les PLUS affectés par les prélèvements/rejets",
+    f"{N_TOP} tronçons les PLUS affectés par les prélèvements/rejets",
     q_nat, q_managed, diag_dates[:n_diag_days], lon, lat, node_ids,
 )
 ```
 
-```{python}
-#| label: fig-least-impacted
-#| fig-cap: "10 tronçons les moins affectés — naturalisé vs géré"
-
-_plot_reach_lp(
-    bottom_nodes,
-    "10 tronçons les MOINS affectés par les prélèvements/rejets",
-    q_nat, q_managed, diag_dates[:n_diag_days], lon, lat, node_ids,
-)
-```
 
 ```{python}
 #| label: tbl-impact-summary
@@ -544,6 +529,136 @@ for node in list(top_nodes) + list(bottom_nodes):
 
 df_impact = pd.DataFrame(rows_impact)
 print(df_impact.to_string(index=False))
+```
+
+### Analyse signal/bruit (SNR) des prélèvements
+
+Le ratio signal/bruit (SNR) mesure l'amplitude des prélèvements par rapport au débit naturel pour chaque tronçon affecté — directement ou via un site en amont.
+
+```{python}
+#| label: snr-analysis
+
+# Identifier les nœuds avec prélèvements directs (depuis le DuckDB)
+import duckdb as _ddb
+_con = _ddb.connect(paths["basin_db"], read_only=True)
+wd_nodes = set(_con.execute("SELECT DISTINCT node_idx FROM withdrawals").df()["node_idx"])
+_con.close()
+
+# Remonter le graphe: trouver les nœuds en aval des prélèvements
+edge_src = graph.edge_index[0].numpy() if graph.n_edges > 0 else np.array([], dtype=int)
+edge_dst = graph.edge_index[1].numpy() if graph.n_edges > 0 else np.array([], dtype=int)
+
+# Construire l'adjacence aval (src → dst)
+from collections import defaultdict, deque
+downstream = defaultdict(list)
+for s, d in zip(edge_src, edge_dst):
+    downstream[int(s)].append(int(d))
+
+# Propager en aval: tout nœud en aval d'un prélèvement est affecté
+affected = set(wd_nodes)
+queue = deque(wd_nodes)
+while queue:
+    node = queue.popleft()
+    for child in downstream[node]:
+        if child not in affected:
+            affected.add(child)
+            queue.append(child)
+
+n_direct = len(wd_nodes)
+n_affected = len(affected)
+print(f"Tronçons avec prélèvement direct : {n_direct}")
+print(f"Tronçons affectés (direct + aval) : {n_affected}")
+
+# Calcul du SNR par tronçon affecté
+snr = {}
+for node in affected:
+    q_mean = max(float(q_nat[:, node].mean()), 1e-8)
+    dq_mean = float(np.abs(delta[:, node]).mean())
+    snr[node] = dq_mean / q_mean
+
+snr_pct = np.array(list(snr.values())) * 100  # en %
+
+n_gt_1   = int((snr_pct > 1).sum())
+n_gt_10  = int((snr_pct > 10).sum())
+n_gt_100 = int((snr_pct > 100).sum())
+
+print(f"\n{'─' * 50}")
+print(f"Analyse SNR sur {n_affected} tronçons affectés")
+print(f"{'─' * 50}")
+print(f"  SNR > 1%   : {n_gt_1:4d} tronçons ({100*n_gt_1/n_affected:.1f}%)")
+print(f"  SNR > 10%  : {n_gt_10:4d} tronçons ({100*n_gt_10/n_affected:.1f}%)")
+print(f"  SNR > 100% : {n_gt_100:4d} tronçons ({100*n_gt_100/n_affected:.1f}%)")
+print(f"\n  Médiane SNR : {float(np.median(snr_pct)):.2f}%")
+print(f"  Moyenne SNR : {float(np.mean(snr_pct)):.2f}%")
+print(f"  Max SNR     : {float(np.max(snr_pct)):.1f}% (tronçon {node_ids[max(snr, key=snr.get)]})")
+```
+
+```{python}
+#| label: fig-snr-histogram
+#| fig-cap: "Distribution du SNR (|ΔQ|/Q_nat) sur les tronçons affectés"
+
+df_snr = pd.DataFrame({
+    "troncon": [node_ids[n] for n in snr],
+    "SNR_pct": [snr[n] * 100 for n in snr],
+})
+
+(lp.ggplot(df_snr, lp.aes("SNR_pct"))
+ + lp.geom_histogram(fill="steelblue", color="black", bins=50)
+ + lp.scale_x_log10()
+ + lp.geom_vline(xintercept=1, color="orange", linetype="dashed", size=0.8)
+ + lp.geom_vline(xintercept=10, color="red", linetype="dashed", size=0.8)
+ + lp.labs(x="SNR (%)", y="Nombre de tronçons",
+           title=f"Distribution du ratio signal/bruit — {n_affected} tronçons affectés")
+ + lp.theme_bw()
+ + lp.ggsize(900, 400)
+)
+```
+
+```{python}
+#| label: fig-snr-map
+#| fig-cap: "Carte spatiale du SNR par tronçon affecté"
+
+from matplotlib.colors import LogNorm
+
+# SNR pour tous les nœuds (0 pour les non-affectés)
+snr_all = np.zeros(len(node_ids))
+for node, val in snr.items():
+    snr_all[node] = val * 100  # en %
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+# Arêtes du réseau complet en gris très pâle (structure hydrographique)
+from matplotlib.collections import LineCollection
+segments = [[(lon[s], lat[s]), (lon[d], lat[d])]
+            for s, d in zip(edge_src, edge_dst)]
+lc_bg = LineCollection(segments, colors="whitesmoke", linewidths=0.3, zorder=1)
+ax.add_collection(lc_bg)
+
+# Arêtes affectées colorées par SNR aval
+affected_set = set(snr.keys())
+aff_segs, aff_colors = [], []
+for s, d in zip(edge_src, edge_dst):
+    si, di = int(s), int(d)
+    if di in affected_set:
+        aff_segs.append([(lon[si], lat[si]), (lon[di], lat[di])])
+        aff_colors.append(snr_all[di])
+
+aff_colors = np.array(aff_colors).clip(1e-3)
+lc = LineCollection(aff_segs, cmap="YlOrRd",
+                    norm=LogNorm(vmin=0.01, vmax=max(snr_all.max(), 10)),
+                    linewidths=0.8, zorder=2)
+lc.set_array(aff_colors)
+ax.add_collection(lc)
+
+cb = plt.colorbar(lc, ax=ax, shrink=0.7)
+cb.set_label("SNR (%)")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+ax.set_title(f"Propagation aval des prélèvements — {n_affected} tronçons affectés sur {len(node_ids)}")
+ax.set_aspect("equal")
+ax.autoscale_view()
+fig.tight_layout()
+plt.show()
 ```
 
 ## 7. Export NetCDF
@@ -593,7 +708,7 @@ data_vars["lon"] = (["node"], lon, {"units": "degrees_east", "long_name": "Longi
 data_vars["lat"] = (["node"], lat, {"units": "degrees_north", "long_name": "Latitude"})
 
 ds = xr.Dataset(data_vars=data_vars, coords=coords_dict)
-ds.attrs["title"] = "Diagnostics spatiaux YHydro — Bassin SLSO"
+ds.attrs["title"] = "Diagnostics spatiaux HydroModel — Bassin SLSO"
 ds.attrs["source"] = f"meandre, checkpoint: {ckpt_path.name}"
 ds.attrs["period"] = f"{DIAG_START} à {DIAG_END}"
 ds.attrs["mode"] = "Débit naturalisé (zéro prélèvements)"
@@ -617,4 +732,9 @@ print(f"  Noeuds        : {n_nodes}")
 print(f"  Pas de temps  : {n_diag_days}")
 print(f"  Export         : {output_nc}")
 print(f"  Tronçons affectés (|ΔQ|>0.01 m³/s) : {(np.abs(delta).mean(axis=0) > 0.01).sum()}/{n_nodes}")
+```
+
+
+```{python}
+
 ```
