@@ -109,6 +109,12 @@ class TemporalContextEncoder(nn.Module):
         """
         T, N, _ = forcing.shape
 
+        # Empty sequence (e.g. zero-length spinup): return zeros immediately
+        if T == 0:
+            n_out = self.output_proj.out_features
+            empty = torch.zeros(0, N, n_out, device=forcing.device)
+            return empty, h0
+
         doy_enc = self.doy_encoding(day_of_year)                 # (T, d_model)
 
         # Process in chunks to bound peak GPU memory at O(chunk × N × d).

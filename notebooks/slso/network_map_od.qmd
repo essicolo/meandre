@@ -1,0 +1,265 @@
+---
+title: "Réseau hydrographique SLSO — Planetary Computer"
+author: "Essi Parent"
+format:
+  html:
+    code-fold: true
+    toc: false
+    embed-resources: true
+execute:
+  warning: false
+  echo: true
+---
+
+Carte interactive du réseau dérivé automatiquement (Copernicus DEM 30m + GRHQ/OSM).
+Couches : tronçons GRHQ, arêtes du réseau, noeuds, lacs, stations.
+
+```{python}
+#| label: setup
+import os
+os.chdir("C:/Users/parse01/documents-locaux/GitHub/meandre")
+
+import json
+from pathlib import Path
+
+import duckdb
+import folium
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+from shapely import wkb as _wkb
+```
+
+```{python}
+#| label: load-db
+PC_DB        = Path("notebooks/slso/data/slso-od.duckdb")
+REACH_PARQ   = Path("notebooks/slso/data/reaches_od.parquet")
+
+con = duckdb.connect(str(PC_DB), read_only=True)
+tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+
+nodes_df = con.execute(
+    "SELECT node_idx, node_id, lon, lat, CAST(is_lake AS BOOLEAN) AS is_lake, topo_order FROM nodes ORDER BY node_idx"
+).df()
+
+edges_df = con.execute(
+    "SELECT src, dst, travel_time_days FROM edges"
+).df()
+
+stations_df = (
+    con.execute("SELECT station_id, node_idx, lon, lat, drainage_area_km2 FROM stations").df()
+    if "stations" in tables else pd.DataFrame()
+)
+
+con.close()
+
+print(f"Noeuds : {len(nodes_df)}   Aretes : {len(edges_df)}   Stations : {len(stations_df)}")
+print(f"Lacs   : {nodes_df['is_lake'].sum()}")
+```
+
+```{python}
+#| label: load-reaches
+_df = pd.read_parquet(REACH_PARQ)
+reaches_gdf = gpd.GeoDataFrame(
+    _df.drop(columns="geometry"),
+    geometry=[_wkb.loads(g) for g in _df["geometry"]],
+    crs="EPSG:4326",
+)
+# Join topo_order for styling
+reaches_gdf = reaches_gdf.merge(
+    nodes_df[["node_idx", "topo_order", "is_lake"]], on="node_idx", how="left"
+)
+print(f"Troncons charges : {len(reaches_gdf)}")
+```
+
+```{python}
+#| label: build-map
+
+# ── Colormap topo_order ───────────────────────────────────────────────────
+topo_min = int(nodes_df["topo_order"].min())
+topo_max = int(nodes_df["topo_order"].max())
+_cmap = cm.get_cmap("PuBu")
+
+def _topo_color(topo_order):
+    t = (int(topo_order) - topo_min) / max(topo_max - topo_min, 1)
+    return mcolors.to_hex(_cmap(t))
+
+# ── Edge coords ───────────────────────────────────────────────────────────
+_xy = nodes_df.set_index("node_idx")[["lon", "lat"]]
+edges_df = edges_df.join(_xy.rename(columns={"lon": "lon_src", "lat": "lat_src"}), on="src")
+edges_df = edges_df.join(_xy.rename(columns={"lon": "lon_dst", "lat": "lat_dst"}), on="dst")
+edges_df = edges_df.dropna(subset=["lon_src", "lon_dst"])
+
+edges_df["dist_km"] = np.sqrt(
+    (edges_df["lon_src"] - edges_df["lon_dst"]) ** 2 +
+    (edges_df["lat_src"] - edges_df["lat_dst"]) ** 2
+) * 111.0
+LONG_EDGE_KM = 20.0
+long_edges_df = edges_df[edges_df["dist_km"] > LONG_EDGE_KM]
+print(f"Aretes longues (> {LONG_EDGE_KM} km) : {len(long_edges_df)}")
+
+# ── Carte ─────────────────────────────────────────────────────────────────
+m = folium.Map(
+    location=[nodes_df["lat"].mean(), nodes_df["lon"].mean()],
+    zoom_start=9,
+    tiles="CartoDB positron",
+    prefer_canvas=False,
+)
+
+fg_reaches  = folium.FeatureGroup(name="Troncons GRHQ/OSM", show=True)
+fg_edges    = folium.FeatureGroup(name="Reseau (aretes)", show=False)
+fg_nodes    = folium.FeatureGroup(name="Noeuds", show=False)
+fg_lakes    = folium.FeatureGroup(name="Lacs / reservoirs", show=True)
+fg_stations = folium.FeatureGroup(name="Stations hydrometriques", show=True)
+
+# ── 1. Tronçons GRHQ/OSM ─────────────────────────────────────────────────
+_topo_lookup = nodes_df.set_index("node_idx")["topo_order"].to_dict()
+
+reach_features = []
+for _, row in reaches_gdf.iterrows():
+    topo = row.get("topo_order", topo_min)
+    if topo is None or (isinstance(topo, float) and np.isnan(topo)):
+        topo = topo_min
+    t_norm = (int(topo) - topo_min) / max(topo_max - topo_min, 1)
+    reach_features.append({
+        "type": "Feature",
+        "geometry": row["geometry"].__geo_interface__,
+        "properties": {
+            "node_idx": int(row["node_idx"]),
+            "is_lake":  bool(row.get("is_lake", False)),
+            "color":    _topo_color(topo),
+            "topo_norm": t_norm,
+        },
+    })
+
+folium.GeoJson(
+    {"type": "FeatureCollection", "features": reach_features},
+    style_function=lambda f: {
+        "color":   "#41b6c4" if f["properties"]["is_lake"] else f["properties"]["color"],
+        "weight":  0.8 + 2.5 * f["properties"]["topo_norm"],
+        "opacity": 0.85,
+    },
+    tooltip=folium.GeoJsonTooltip(
+        fields=["node_idx"],
+        aliases=["Noeud #"],
+    ),
+).add_to(fg_reaches)
+
+# ── 2. Arêtes centroïd-à-centroïd ────────────────────────────────────────
+_topo_order_lookup = nodes_df.set_index("node_idx")["topo_order"].to_dict()
+
+edge_features = []
+for _, row in edges_df.iterrows():
+    src_topo = _topo_order_lookup.get(row["src"], topo_min)
+    edge_features.append({
+        "type": "Feature",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [
+                [float(row["lon_src"]), float(row["lat_src"])],
+                [float(row["lon_dst"]), float(row["lat_dst"])],
+            ],
+        },
+        "properties": {
+            "src": int(row["src"]),
+            "dst": int(row["dst"]),
+            "travel_time": int(row["travel_time_days"]),
+            "color": _topo_color(int(src_topo)),
+            "topo_norm": (int(src_topo) - topo_min) / max(topo_max - topo_min, 1),
+        },
+    })
+
+folium.GeoJson(
+    {"type": "FeatureCollection", "features": edge_features},
+    style_function=lambda f: {
+        "color":   f["properties"]["color"],
+        "weight":  0.5 + 2.0 * f["properties"]["topo_norm"],
+        "opacity": 0.6,
+    },
+    tooltip=folium.GeoJsonTooltip(
+        fields=["src", "dst", "travel_time"],
+        aliases=["Amont", "Aval", "Transit (j)"],
+    ),
+).add_to(fg_edges)
+
+# ── 3. Noeuds réguliers ───────────────────────────────────────────────────
+regular_nodes = nodes_df[~nodes_df["is_lake"]]
+node_features = []
+for _, row in regular_nodes.iterrows():
+    node_features.append({
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [float(row["lon"]), float(row["lat"])]},
+        "properties": {
+            "node_idx":   int(row["node_idx"]),
+            "node_id":    str(row["node_id"]),
+            "topo_order": int(row["topo_order"]),
+            "color":      _topo_color(int(row["topo_order"])),
+        },
+    })
+
+folium.GeoJson(
+    {"type": "FeatureCollection", "features": node_features},
+    marker=folium.CircleMarker(radius=2, fill=True, fill_opacity=0.7),
+    style_function=lambda f: {
+        "color":       f["properties"]["color"],
+        "fillColor":   f["properties"]["color"],
+        "fillOpacity": 0.8,
+        "weight":      0,
+        "radius":      2,
+    },
+    tooltip=folium.GeoJsonTooltip(
+        fields=["node_idx", "topo_order"],
+        aliases=["Noeud #", "Ordre topo"],
+    ),
+).add_to(fg_nodes)
+
+# ── 4. Lacs ───────────────────────────────────────────────────────────────
+for _, row in nodes_df[nodes_df["is_lake"]].iterrows():
+    folium.CircleMarker(
+        location=[float(row["lat"]), float(row["lon"])],
+        radius=5,
+        color="#225ea8",
+        fill=True,
+        fill_color="#41b6c4",
+        fill_opacity=0.9,
+        weight=1,
+        tooltip=f"Lac — noeud {int(row['node_idx'])} | topo={int(row['topo_order'])}",
+    ).add_to(fg_lakes)
+
+# ── 5. Stations ───────────────────────────────────────────────────────────
+for _, row in stations_df.iterrows():
+    folium.Marker(
+        location=[float(row["lat"]), float(row["lon"])],
+        icon=folium.Icon(color="red", icon="tint", prefix="fa"),
+        tooltip=f"Station {row['station_id']} — noeud {int(row['node_idx'])}",
+    ).add_to(fg_stations)
+
+# ── Assemblage ────────────────────────────────────────────────────────────
+for fg in [fg_reaches, fg_edges, fg_nodes, fg_lakes, fg_stations]:
+    fg.add_to(m)
+
+folium.LayerControl(collapsed=False).add_to(m)
+
+legend_html = f"""
+<div style="position:fixed; bottom:30px; left:30px; z-index:1000;
+            background:white; padding:10px 14px; border-radius:6px;
+            box-shadow:0 2px 6px rgba(0,0,0,0.3); font-size:12px; line-height:1.8;">
+  <b>Reseau SLSO — Planetary Computer</b><br>
+  <b>Troncons</b> : bleu clair (tete) &rarr; bleu fonce (aval)<br>
+  <span style="color:#41b6c4">&#9644;</span> Troncon lac / reservoir<br>
+  <span style="color:#41b6c4">&#9679;</span> Lac / reservoir (noeud)<br>
+  <span style="color:red">&#9679;</span> Station hydrométrique<br>
+  {len(nodes_df)} noeuds &bull; {len(edges_df)} aretes &bull; {int(nodes_df['is_lake'].sum())} lacs
+</div>
+"""
+m.get_root().html.add_child(folium.Element(legend_html))
+
+m
+```
+
+
+```{python}
+
+```

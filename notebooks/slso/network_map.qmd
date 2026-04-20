@@ -52,7 +52,7 @@ edges_df = con.execute(
 ).df()
 
 stations_df = (
-    con.execute("SELECT station_id, node_idx, lon, lat, drainage_area_km2 FROM gauging_stations").df()
+    con.execute("SELECT station_id, node_idx, lon, lat, drainage_area_km2 FROM stations").df()
     if "stations" in tables else pd.DataFrame()
 )
 
@@ -77,18 +77,26 @@ def _topo_color(topo_order: int) -> str:
     t = (topo_order - topo_min) / max(topo_max - topo_min, 1)
     return mcolors.to_hex(_cmap(t))
 
-# ── Exclure le nœud exutoire théorique (topo_order max) de l'affichage ────
-outlet_idx = int(nodes_df.loc[nodes_df["topo_order"].idxmax(), "node_idx"])
-# On garde les coordonnées de l'exutoire pour tracer les arêtes, mais on
-# l'exclut des nœuds affichés sur la carte.
-_xy_all = nodes_df.set_index("node_idx")[["lon", "lat"]]
-nodes_df = nodes_df[nodes_df["node_idx"] != outlet_idx]
-
 # ── Coordonnées source/destination des arêtes ─────────────────────────────
-_xy = _xy_all
-edges_df = edges_df.join(_xy.rename(columns={"lon": "lon_src", "lat": "lat_src"}), on="src")
-edges_df = edges_df.join(_xy.rename(columns={"lon": "lon_dst", "lat": "lat_dst"}), on="dst")
+_xy_all = nodes_df.set_index("node_idx")[["lon", "lat"]]
+edges_df = edges_df.join(_xy_all.rename(columns={"lon": "lon_src", "lat": "lat_src"}), on="src")
+edges_df = edges_df.join(_xy_all.rename(columns={"lon": "lon_dst", "lat": "lat_dst"}), on="dst")
 edges_df = edges_df.dropna(subset=["lon_src", "lon_dst"])
+
+# ── Distance géographique par arête (diagnostic topologie) ────────────────
+LONG_EDGE_KM = 20.0   # seuil au-delà duquel une arête est suspecte
+
+edges_df["dist_km"] = np.sqrt(
+    (edges_df["lon_src"] - edges_df["lon_dst"]) ** 2 +
+    (edges_df["lat_src"] - edges_df["lat_dst"]) ** 2
+) * 111.0
+
+long_edges_df = edges_df[edges_df["dist_km"] > LONG_EDGE_KM]
+print(f"Arêtes longues (> {LONG_EDGE_KM} km) : {len(long_edges_df)}")
+if len(long_edges_df):
+    for _, r in long_edges_df.iterrows():
+        print(f"  {int(r['src'])} → {int(r['dst'])}  {r['dist_km']:.1f} km  "
+              f"({r['lon_src']:.3f},{r['lat_src']:.3f}) → ({r['lon_dst']:.3f},{r['lat_dst']:.3f})")
 
 # ── Carte Folium ───────────────────────────────────────────────────────────
 center_lat = nodes_df["lat"].mean()
@@ -106,6 +114,7 @@ fg_edges    = folium.FeatureGroup(name="Réseau (arêtes)", show=True)
 fg_nodes    = folium.FeatureGroup(name="Noeuds", show=True)
 fg_lakes    = folium.FeatureGroup(name="Lacs / réservoirs", show=True)
 fg_stations = folium.FeatureGroup(name="Stations hydrométriques", show=True)
+fg_anomalies = folium.FeatureGroup(name=f"⚠ Arêtes longues (> {LONG_EDGE_KM} km)", show=True)
 
 # ── 1. Arêtes avec pointe de flèche via PolyLine ─────────────────────────
 # Lookup rapide topo_order par node_idx
@@ -212,14 +221,29 @@ for _, row in stations_df.iterrows():
         ),
     ).add_to(fg_stations)
 
+# ── 6. Arêtes anomales (longues) ──────────────────────────────────────────
+for _, row in long_edges_df.iterrows():
+    folium.PolyLine(
+        locations=[
+            [float(row["lat_src"]), float(row["lon_src"])],
+            [float(row["lat_dst"]), float(row["lon_dst"])],
+        ],
+        color="crimson",
+        weight=3,
+        opacity=0.9,
+        dash_array="8 4",
+        tooltip=(f"⚠ Arête longue : {int(row['src'])} → {int(row['dst'])} | "
+                 f"{row['dist_km']:.1f} km | τ={int(row['travel_time_days'])} j"),
+    ).add_to(fg_anomalies)
+
 # ── Assemblage ────────────────────────────────────────────────────────────
-for fg in [fg_edges, fg_nodes, fg_lakes, fg_stations]:
+for fg in [fg_edges, fg_nodes, fg_lakes, fg_stations, fg_anomalies]:
     fg.add_to(m)
 
 folium.LayerControl(collapsed=False).add_to(m)
 
 # Légende colormap topo_order
-legend_html = """
+legend_html = f"""
 <div style="position:fixed; bottom:30px; left:30px; z-index:1000;
             background:white; padding:10px 14px; border-radius:6px;
             box-shadow:0 2px 6px rgba(0,0,0,0.3); font-size:12px; line-height:1.6;">
@@ -228,7 +252,9 @@ legend_html = """
   <span style="color:#74a9cf">■</span> Cours moyen<br>
   <span style="color:#023858">■</span> Exutoire (aval)<br>
   <span style="color:#41b6c4">●</span> Lac / réservoir<br>
-  <span style="color:red">●</span> Station hydrométrique
+  <span style="color:red">●</span> Station hydrométrique<br>
+  <span style="color:crimson">╌╌</span> Arête longue (&gt; {LONG_EDGE_KM} km)
+  {"&nbsp;<b style='color:crimson'>⚠ " + str(len(long_edges_df)) + " détectée(s)</b>" if len(long_edges_df) else ""}
 </div>
 """
 m.get_root().html.add_child(folium.Element(legend_html))
@@ -240,3 +266,7 @@ m
 ```{python}
 
 ```
+
+
+
+

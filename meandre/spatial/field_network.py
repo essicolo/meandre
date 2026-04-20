@@ -36,7 +36,6 @@ class SpatialParams:
     porosity_{1,2,3} Total porosity (m3/m3).
     theta_fc_{1,2,3} Field capacity (m3/m3).
     theta_wp_{1,2,3} Wilting point (m3/m3).
-    theta_sat_{1,2,3} Saturation moisture content (m3/m3 = porosity).
     f_root_{1,2,3}  Root fraction per layer.
 
     Snow
@@ -52,10 +51,17 @@ class SpatialParams:
     Routing
     -------
     manning_n       Manning roughness coefficient.
+    K_musk_hours    Muskingum travel time (hours) [4, 48].
+    x_musk          Muskingum weighting factor [0, 0.5].
 
     Frost
     -----
     frost_alpha     Frost K_sat reduction coefficient.
+
+    Soil physics
+    ------------
+    vg_n            van Genuchten n shape parameter [1.1, 2.7].
+    k_interflow     Interflow recession rate (1/day) [0.005, 0.1].
     """
 
     # Soil per layer (9 params x 3 layers)
@@ -77,17 +83,22 @@ class SpatialParams:
     # Wetland
     f_wetland: Tensor
     # Hydrotel-inspired: slope-dependent interflow and baseflow recession
-    slope_factor: Tensor    # interflow amplification from topographic slope [0.01, 2.0]
-    krec: Tensor            # baseflow recession coefficient (1/day) [0.001, 0.2]
+    slope_factor: Tensor    # interflow amplification from topographic slope [0.01, 0.59]
+    krec: Tensor            # baseflow recession coefficient (1/day) [0.001, 0.05]
     # Groundwater
-    k_gw: Tensor            # aquifer recession coefficient (1/day) [0.001, 0.05]
+    k_gw: Tensor            # aquifer recession coefficient (1/day) [0.001, 0.14]
     # Stream temperature
     T_gw: Tensor            # groundwater temperature (C) [3, 13]
     K_atm: Tensor           # atmospheric heat exchange coefficient (1/day) [0.05, 0.55]
     # Frost thermal lag
-    alpha_T: Tensor         # soil thermal damping (1/day) [0.01, 0.15] — fitted per node
+    alpha_T: Tensor         # soil thermal damping (1/day) [0.01, 0.05]
+    # --- New params (E, F, G) ---
+    vg_n: Tensor            # van Genuchten n shape parameter [1.1, 2.7]
+    k_interflow: Tensor     # interflow recession rate (1/day) [0.005, 0.1]
+    K_musk_hours: Tensor    # Muskingum travel time (hours) [4, 48]
+    x_musk: Tensor          # Muskingum weighting factor [0.01, 0.49]
 
-    N_PARAMS: ClassVar[int] = 28
+    N_PARAMS: ClassVar[int] = 32
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -118,7 +129,7 @@ class SpatialFieldNetwork(nn.Module):
         Number of data points for Concrete Dropout regularisation scaling.
     param_mode : str
         "nerf" for spatially-varying parameters (~13k params)
-        "static" for global parameters like Hydrotel (28 params)
+        "static" for global parameters like Hydrotel (32 params)
     """
 
     def __init__(
@@ -137,7 +148,6 @@ class SpatialFieldNetwork(nn.Module):
         self.param_mode = param_mode
 
         if param_mode == "static":
-            # Static mode: just 28 global learnable parameters
             self.static_params = nn.Parameter(torch.randn(SpatialParams.N_PARAMS) * 0.1)
         else:
             # NeRF mode: MLP mapping coordinates to parameters
@@ -156,6 +166,151 @@ class SpatialFieldNetwork(nn.Module):
             else:
                 self.drop1 = nn.Dropout(p=dropout)
                 self.drop2 = nn.Dropout(p=dropout)
+
+    def init_from_hydrotel(self, targets: dict[str, float] | None = None) -> None:
+        """Initialise fc_out bias so _apply_constraints produces Hydrotel-like values.
+
+        Shrinks fc_out.weight so all nodes start with ~identical parameters,
+        then the MLP learns spatial variation from there.  This avoids the
+        cold-start problem where random init puts K_sat 50x too high.
+
+        Parameters
+        ----------
+        targets : dict, optional
+            Mapping of parameter names to target physical values.
+            Missing keys fall back to defaults derived from Hydrotel SLSO
+            (loam/silt_loam averages).
+        """
+        import math
+
+        if self.param_mode == "static":
+            # For static mode, set raw params directly
+            bias = self._hydrotel_raw_vector(targets)
+            self.static_params.data.copy_(bias)
+            return
+
+        # Shrink output weights so initial output ≈ bias only
+        with torch.no_grad():
+            self.fc_out.weight.mul_(0.01)
+            bias = self._hydrotel_raw_vector(targets)
+            self.fc_out.bias.data.copy_(bias)
+
+    def _hydrotel_raw_vector(self, targets: dict[str, float] | None = None) -> Tensor:
+        """Compute raw (pre-constraint) values that produce Hydrotel targets."""
+        import math
+
+        # Defaults: Hydrotel SLSO loam/silt_loam averages
+        d = {
+            # K_sat (m/day) — Hydrotel loam=0.013, silt_loam=0.007
+            "K_sat_1": 0.010, "K_sat_2": 0.005, "K_sat_3": 0.002,
+            # Porosity — loam=0.434, silt_loam=0.486
+            "porosity_1": 0.46, "porosity_2": 0.44, "porosity_3": 0.42,
+            # theta_fc — loam=0.270, silt_loam=0.330
+            "theta_fc_1": 0.30, "theta_fc_2": 0.30, "theta_fc_3": 0.28,
+            # theta_wp — loam=0.117, silt_loam=0.133
+            "theta_wp_1": 0.125, "theta_wp_2": 0.125, "theta_wp_3": 0.12,
+            # Root fractions (Hydrotel: shallow dominant)
+            "f_root_1": 0.50, "f_root_2": 0.30, "f_root_3": 0.20,
+            # Snow — Hydrotel: melt rate 4-5 mm/°C/day, thresholds -2.5 to 0.5°C
+            "C_f": 4.5, "T_melt": -0.5, "T_snow": 1.0,
+            # Canopy
+            "interception_capacity": 1.5,
+            # Manning's n — Hydrotel: 0.10 (autres), 0.30 (forêts)
+            "manning_n": 0.10,
+            # Frost
+            "frost_alpha": 0.50,
+            # Wetland
+            "f_wetland": 0.02,
+            # Slope/recession — Hydrotel BV3C recession = 1e-5 m/h ≈ 2.4e-4 m/day
+            "slope_factor": 0.10, "krec": 0.0005,
+            # Groundwater
+            "k_gw": 0.005,
+            # Stream temperature
+            "T_gw": 6.0, "K_atm": 0.20,
+            # Frost thermal lag
+            "alpha_T": 0.03,
+            # van Genuchten n — loam ~1.5
+            "vg_n": 1.5,
+            # Interflow
+            "k_interflow": 0.01,
+            # Muskingum
+            "K_musk_hours": 24.0, "x_musk": 0.20,
+        }
+        if targets:
+            d.update(targets)
+
+        def inv_bounded(val, lo, hi):
+            """Inverse of lo + (hi-lo)*sigmoid(x) → logit."""
+            frac = (val - lo) / (hi - lo)
+            frac = max(1e-4, min(1.0 - 1e-4, frac))
+            return math.log(frac / (1.0 - frac))
+
+        raw = torch.zeros(SpatialParams.N_PARAMS)
+        i = 0
+
+        # K_sat: exp(clamp(raw*0.3 + log_center)) → raw = (log(target) - log_center) / 0.3
+        log_centers = [math.log(0.5), math.log(0.1), math.log(0.02)]
+        for layer, key in enumerate(["K_sat_1", "K_sat_2", "K_sat_3"]):
+            raw[i] = (math.log(d[key]) - log_centers[layer]) / 0.3
+            i += 1
+        # porosity: bounded [0.20, 0.60]
+        for key in ["porosity_1", "porosity_2", "porosity_3"]:
+            raw[i] = inv_bounded(d[key], 0.20, 0.60)
+            i += 1
+        # theta_fc as fraction of porosity: bounded [0.30, 0.85]
+        for layer, key in enumerate(["theta_fc_1", "theta_fc_2", "theta_fc_3"]):
+            por_key = f"porosity_{layer+1}"
+            fc_frac = d[key] / d[por_key]
+            raw[i] = inv_bounded(fc_frac, 0.30, 0.85)
+            i += 1
+        # theta_wp as fraction of theta_fc: bounded [0.05, 0.60]
+        for layer, key in enumerate(["theta_wp_1", "theta_wp_2", "theta_wp_3"]):
+            fc_key = f"theta_fc_{layer+1}"
+            wp_frac = d[key] / d[fc_key]
+            raw[i] = inv_bounded(wp_frac, 0.05, 0.60)
+            i += 1
+        # f_root: softmax with bias [1.0, 0.5, -0.5], scaled *0.3
+        # We want softmax(raw*0.3 + bias) ≈ [0.50, 0.30, 0.20]
+        # Since bias already gives ~[50,30,20], raw ≈ 0 is fine
+        for _ in range(3):
+            raw[i] = 0.0
+            i += 1
+        # C_f: bounded [0.5, 8.0]
+        raw[i] = inv_bounded(d["C_f"], 0.5, 8.0); i += 1
+        # T_melt: bounded [-1, 1]
+        raw[i] = inv_bounded(d["T_melt"], -1.0, 1.0); i += 1
+        # T_snow: bounded [0, 2]
+        raw[i] = inv_bounded(d["T_snow"], 0.0, 2.0); i += 1
+        # interception_capacity: bounded [0.5, 2.5]
+        raw[i] = inv_bounded(d["interception_capacity"], 0.5, 2.5); i += 1
+        # manning_n: bounded [0.01, 0.20]
+        raw[i] = inv_bounded(d["manning_n"], 0.01, 0.20); i += 1
+        # frost_alpha: bounded [0.0, 1.0]
+        raw[i] = inv_bounded(d["frost_alpha"], 0.0, 1.0); i += 1
+        # f_wetland: bounded [0.0, 0.10]
+        raw[i] = inv_bounded(d["f_wetland"], 0.0, 0.10); i += 1
+        # slope_factor: bounded [0.01, 0.59]
+        raw[i] = inv_bounded(d["slope_factor"], 0.01, 0.59); i += 1
+        # krec: exp(clamp(raw*0.3 + log(0.003)))
+        raw[i] = (math.log(d["krec"]) - math.log(0.003)) / 0.3; i += 1
+        # k_gw: exp(clamp(raw*0.3 + log(0.005)))
+        raw[i] = (math.log(d["k_gw"]) - math.log(0.005)) / 0.3; i += 1
+        # T_gw: bounded [3, 13]
+        raw[i] = inv_bounded(d["T_gw"], 3.0, 13.0); i += 1
+        # K_atm: bounded [0.05, 0.55]
+        raw[i] = inv_bounded(d["K_atm"], 0.05, 0.55); i += 1
+        # alpha_T: bounded [0.01, 0.05]
+        raw[i] = inv_bounded(d["alpha_T"], 0.01, 0.05); i += 1
+        # vg_n: bounded [1.3, 2.7]
+        raw[i] = inv_bounded(d["vg_n"], 1.3, 2.7); i += 1
+        # k_interflow: exp(clamp(raw*0.3 + log(0.03)))
+        raw[i] = (math.log(d["k_interflow"]) - math.log(0.03)) / 0.3; i += 1
+        # K_musk_hours: bounded [4, 48]
+        raw[i] = inv_bounded(d["K_musk_hours"], 4.0, 48.0); i += 1
+        # x_musk: bounded [0.01, 0.49]
+        raw[i] = inv_bounded(d["x_musk"], 0.01, 0.49); i += 1
+
+        return raw
 
     def forward(self, coords: Tensor, territorial: Tensor) -> SpatialParams:
         """
@@ -184,20 +339,18 @@ class SpatialFieldNetwork(nn.Module):
     def _apply_constraints(self, raw: Tensor) -> SpatialParams:
         """Map raw network outputs to physically plausible ranges.
 
-        Uses scaled-tanh parameterization: center + half_range * tanh(x * scale).
-        The scale factor (0.3) means the network needs large raw values (~6) to
-        reach 95% of the range. Weight decay pulls raw values toward 0, which maps
-        to the center (physically reasonable default). This creates implicit
-        regularization without explicit priors or hard sigmoid walls.
+        Uses sigmoid parameterization: lo + (hi-lo) * sigmoid(x).
+        Max gradient at x=0 is (hi-lo)/4, which is much better than the old
+        tanh(x*0.3) approach that had max gradient of 0.3*half_range.
 
         Key constraint: theta_wp < theta_fc < porosity is enforced by
         parameterizing theta_fc and theta_wp as fractions of porosity.
         """
         import math
 
-        def soft(x, center, half_range, scale=0.3):
-            """Scaled-tanh: smoothly bounded around center ± half_range."""
-            return center + half_range * torch.tanh(x * scale)
+        def bounded(x, lo, hi):
+            """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4."""
+            return lo + (hi - lo) * torch.sigmoid(x)
 
         cols = [raw[:, i] for i in range(SpatialParams.N_PARAMS)]
         i = 0
@@ -206,29 +359,29 @@ class SpatialFieldNetwork(nn.Module):
         # K_sat (m/day): log-normal with per-layer centers decreasing with depth.
         log_centers = [math.log(0.5), math.log(0.1), math.log(0.02)]
         for layer in range(3):
-            exponent = torch.clamp(cols[i] * 0.15 + log_centers[layer], min=-8.0, max=4.0)
+            exponent = torch.clamp(cols[i] * 0.3 + log_centers[layer], min=-8.0, max=4.0)
             constrained.append(torch.exp(exponent))
             i += 1
-        # porosity: center 0.40, range ±0.20 → [0.20, 0.60]
+        # porosity: [0.20, 0.60]
         porosities = []
         for _ in range(3):
-            p = soft(cols[i], 0.40, 0.20)
+            p = bounded(cols[i], 0.20, 0.60)
             porosities.append(p)
             constrained.append(p)
             i += 1
-        # theta_fc as fraction of porosity: center 0.575, range ±0.275 → [0.30, 0.85]
+        # theta_fc as fraction of porosity: [0.30, 0.85]
         # Guarantees theta_fc < porosity always
         theta_fcs = []
         for layer in range(3):
-            fc_frac = soft(cols[i], 0.575, 0.275)
+            fc_frac = bounded(cols[i], 0.30, 0.85)
             theta_fc = porosities[layer] * fc_frac
             theta_fcs.append(theta_fc)
             constrained.append(theta_fc)
             i += 1
-        # theta_wp as fraction of theta_fc: center 0.325, range ±0.275 → [0.05, 0.60]
+        # theta_wp as fraction of theta_fc: [0.05, 0.60]
         # Guarantees theta_wp < theta_fc always
         for layer in range(3):
-            wp_frac = soft(cols[i], 0.325, 0.275)
+            wp_frac = bounded(cols[i], 0.05, 0.60)
             theta_wp = theta_fcs[layer] * wp_frac
             constrained.append(theta_wp)
             i += 1
@@ -239,42 +392,46 @@ class SpatialFieldNetwork(nn.Module):
         f_roots = torch.softmax(f_roots_raw, dim=-1)
         constrained.extend([f_roots[:, j] for j in range(3)])
         i += 3
-        # C_f: center 4.25, range ±3.75 → [0.5, 8.0] mm/C/day
-        constrained.append(soft(cols[i], 4.25, 3.75)); i += 1
-        # T_melt: center 0.0, range ±1.0 → [-1, 1] C
-        constrained.append(soft(cols[i], 0.0, 1.0)); i += 1
-        # T_snow: center 1.0, range ±1.0 → [0, 2] C
-        constrained.append(soft(cols[i], 1.0, 1.0)); i += 1
-        # interception_capacity: center 1.5, range ±1.0 → [0.5, 2.5] mm
-        constrained.append(soft(cols[i], 1.5, 1.0)); i += 1
-        # manning_n: center 0.105, range ±0.095 → [0.01, 0.20]
-        constrained.append(soft(cols[i], 0.105, 0.095)); i += 1
-        # frost_alpha: center 0.5, range ±0.5 → [0.0, 1.0]
-        constrained.append(soft(cols[i], 0.5, 0.5)); i += 1
-        # f_wetland: center 0.05, range ±0.05 → [0.0, 0.10]
-        constrained.append(soft(cols[i], 0.05, 0.05)); i += 1
-        # slope_factor: center 0.30, range ±0.29 → [0.01, 0.59]
-        # Hydrotel uses sin(atan(slope)): for 5% slope → 0.05, 20% → 0.20.
-        # Center at 0.30 ≈ sin(atan(0.31)) for moderate Quebec boreal slopes.
-        constrained.append(soft(cols[i], 0.30, 0.29)); i += 1
+        # C_f: [0.5, 8.0] mm/C/day
+        constrained.append(bounded(cols[i], 0.5, 8.0)); i += 1
+        # T_melt: [-1, 1] C
+        constrained.append(bounded(cols[i], -1.0, 1.0)); i += 1
+        # T_snow: [0, 2] C
+        constrained.append(bounded(cols[i], 0.0, 2.0)); i += 1
+        # interception_capacity: [0.5, 2.5] mm
+        constrained.append(bounded(cols[i], 0.5, 2.5)); i += 1
+        # manning_n: [0.01, 0.20]
+        constrained.append(bounded(cols[i], 0.01, 0.20)); i += 1
+        # frost_alpha: [0.0, 1.0]
+        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
+        # f_wetland: [0.0, 0.10]
+        constrained.append(bounded(cols[i], 0.0, 0.10)); i += 1
+        # slope_factor: [0.01, 0.59]
+        constrained.append(bounded(cols[i], 0.01, 0.59)); i += 1
         # krec: baseflow recession (1/day), log-normal.
-        # Center at log(0.003) ≈ 0.3%/day.  With Z3=1m and drainable=0.15,
-        # recharge ≈ 0.003 * 1.0 * 0.15 * 1000 = 0.45 mm/day = 164 mm/yr.
-        # Max exp(-3) ≈ 0.05/day.
-        exponent = torch.clamp(cols[i] * 0.15 + math.log(0.003), min=-8.0, max=-3.0)
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.003), min=-8.0, max=-3.0)
         constrained.append(torch.exp(exponent)); i += 1
         # k_gw: aquifer recession (1/day), log-normal.
-        # Center at log(0.005) ≈ 0.5%/day.  Slower than krec so GW
-        # provides a delayed baseflow signal.  Max exp(-2) ≈ 0.14/day.
-        exponent = torch.clamp(cols[i] * 0.15 + math.log(0.005), min=-8.0, max=-2.0)
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.005), min=-8.0, max=-2.0)
         constrained.append(torch.exp(exponent)); i += 1
-        # T_gw: groundwater temperature (C): center 8.0, range ±5.0 → [3, 13]
-        constrained.append(soft(cols[i], 8.0, 5.0)); i += 1
-        # K_atm: atmospheric heat exchange (1/day): center 0.30, range ±0.25 → [0.05, 0.55]
-        constrained.append(soft(cols[i], 0.30, 0.25)); i += 1
-        # alpha_T: soil thermal damping (1/day): center 0.03, range ±0.02 → [0.01, 0.05]
-        # 0.03/day ≈ 33-day lag; 0.01 ≈ 100-day lag (deep soil); 0.05 ≈ 20-day lag (shallow)
-        constrained.append(soft(cols[i], 0.03, 0.02)); i += 1
+        # T_gw: groundwater temperature (C): [3, 13]
+        constrained.append(bounded(cols[i], 3.0, 13.0)); i += 1
+        # K_atm: atmospheric heat exchange (1/day): [0.05, 0.55]
+        constrained.append(bounded(cols[i], 0.05, 0.55)); i += 1
+        # alpha_T: soil thermal damping (1/day): [0.01, 0.05]
+        constrained.append(bounded(cols[i], 0.01, 0.05)); i += 1
+        # --- New params ---
+        # vg_n: van Genuchten n shape parameter [1.1, 2.7]
+        # Clay ~1.1, loam ~1.5, sand ~2.7
+        constrained.append(bounded(cols[i], 1.3, 2.7)); i += 1
+        # k_interflow: interflow recession rate (1/day) [0.005, 0.1]
+        # Log-normal for better gradient scaling
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.03), min=math.log(0.005), max=math.log(0.1))
+        constrained.append(torch.exp(exponent)); i += 1
+        # K_musk_hours: Muskingum travel time [4, 48] hours
+        constrained.append(bounded(cols[i], 4.0, 48.0)); i += 1
+        # x_musk: Muskingum weighting factor [0.01, 0.49]
+        constrained.append(bounded(cols[i], 0.01, 0.49)); i += 1
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
@@ -302,14 +459,15 @@ class SpatialFieldNetwork(nn.Module):
         h = torch.nn.functional.silu(self.fc2(h))
         raw = self.fc_out(h)  # (n_nodes, N_PARAMS)
 
-        # Softplus params: L2 on raw → pulls toward center
-        # K_sat (0-2), krec (23), k_gw (24)
-        unbounded_cols = [0, 1, 2, 23, 24]
+        # Exp-constrained params: L2 on raw → pulls toward center
+        # K_sat (0-2), krec (23), k_gw (24), k_interflow (29)
+        unbounded_cols = [0, 1, 2, 23, 24, 29]
         unbounded_penalty = (raw[:, unbounded_cols] ** 2).mean()
 
         # Sigmoid-constrained columns: penalize saturation
-        # Skip K_sat (0-2), f_root (12-14), krec (23), k_gw (24)
-        sig_cols = list(range(3, 12)) + list(range(15, 23)) + [25, 26, 27]
+        # Skip K_sat (0-2), f_root (12-14), krec (23), k_gw (24), k_interflow (29)
+        sig_cols = (list(range(3, 12)) + list(range(15, 23))
+                    + [25, 26, 27, 28, 30, 31])
         raw_sig = raw[:, sig_cols]
         sig = torch.sigmoid(raw_sig)
         sig_penalty = ((2.0 * sig - 1.0) ** 4).mean()
@@ -319,50 +477,33 @@ class SpatialFieldNetwork(nn.Module):
     def physical_prior_loss(self, params: SpatialParams) -> Tensor:
         """Soft L2 penalty pulling parameters toward physically reasonable values.
 
-        Operates in physical space — penalizes parameter VALUES that deviate
-        from hydrological literature defaults.  All terms are normalized so
-        that a deviation of ~1 "standard deviation" from the prior gives a
-        contribution of ~1.0.
+        Light-touch: only penalise extreme deviations, not normal variation.
         """
         import math
         device = params.K_sat_1.device
         loss = torch.tensor(0.0, device=device)
 
-        # K_sat in log-space: penalize deviation from layer-appropriate defaults
+        # K_sat in log-space
         for k, target in [(params.K_sat_1, 0.5), (params.K_sat_2, 0.1), (params.K_sat_3, 0.02)]:
-            loss = loss + ((torch.log(k + 1e-8) - math.log(target)) ** 2).mean()
+            loss = loss + ((torch.log(k + 1e-8) - math.log(target)) ** 2).mean() * 0.3
 
-        # Porosity: typical 0.35-0.45
+        # Porosity
         for p in [params.porosity_1, params.porosity_2, params.porosity_3]:
-            loss = loss + ((p - 0.40) ** 2).mean() * 3.0
+            loss = loss + ((p - 0.40) ** 2).mean()
 
-        # C_f: typical degree-day factor 2-4 mm/C/day
-        loss = loss + ((params.C_f - 3.0) ** 2).mean() * 0.5
+        # C_f
+        loss = loss + ((params.C_f - 3.0) ** 2).mean() * 0.3
 
-        # T_melt: should be near 0°C
-        loss = loss + (params.T_melt ** 2).mean()
+        # T_melt: near 0°C
+        loss = loss + (params.T_melt ** 2).mean() * 0.5
 
-        # frost_alpha: typical 0.3-0.7
-        loss = loss + ((params.frost_alpha - 0.5) ** 2).mean()
+        # frost_alpha
+        loss = loss + ((params.frost_alpha - 0.5) ** 2).mean() * 0.3
 
-        # f_root: should concentrate in upper layers (50/30/20 split)
-        loss = loss + ((params.f_root_1 - 0.50) ** 2).mean()
-        loss = loss + ((params.f_root_2 - 0.30) ** 2).mean()
-        loss = loss + ((params.f_root_3 - 0.20) ** 2).mean()
+        # alpha_T: reduced from 100x to 1x
+        loss = loss + ((params.alpha_T - 0.03) ** 2).mean()
 
-        # f_wetland: typical 0.05 for Quebec boreal
-        loss = loss + ((params.f_wetland - 0.05) ** 2).mean()
-
-        # k_gw: typical 1%/day recession
-        loss = loss + ((torch.log(params.k_gw + 1e-8) - math.log(0.01)) ** 2).mean()
-
-        # T_gw: typical ~8°C for Quebec groundwater
-        loss = loss + ((params.T_gw - 8.0) ** 2).mean() * 0.1
-
-        # K_atm: typical 0.3/day atmospheric exchange
-        loss = loss + ((params.K_atm - 0.3) ** 2).mean()
-
-        # alpha_T: typical 0.03/day (~33-day thermal lag)
-        loss = loss + ((params.alpha_T - 0.03) ** 2).mean() * 100.0
+        # vg_n: typical 1.5 for loam
+        loss = loss + ((params.vg_n - 1.5) ** 2).mean() * 0.3
 
         return loss

@@ -87,8 +87,12 @@ class MuskingumCunge(nn.Module):
         """
         n = self.n_substeps
         dt_sub = self.dt / n
+        # Lateral inflow is a rate (m³/s) added once per full timestep.
+        # Divide by n_substeps so the total contribution over all sub-steps
+        # equals q_lateral (otherwise it is counted n times).
+        q_lat_sub = q_lateral / n
 
         Q_out = Q_out_prev
         for _ in range(n):
-            Q_out = self._muskingum_step(Q_in, Q_out, q_lateral, K, x, dt_sub)
+            Q_out = self._muskingum_step(Q_in, Q_out, q_lat_sub, K, x, dt_sub)
         return Q_out

@@ -5,7 +5,10 @@
 
 [paths]
 basin_db       = "notebooks/slso/data/slso.duckdb"
-weather_grid   = "/home/essi/Documents/quebec.zarr"
+basin_db_pc    = "notebooks/slso/data/slso-pc.duckdb"   # version Planetary Computer
+#weather_grid   = "/home/essi/Documents/quebec.zarr"
+weather_grid   = "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-03/data/03_imputation/quebec.zarr"
+#weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/rqh_2026-03/data/03_imputation/quebec.zarr"
 forcing_cache  = "notebooks/slso/data/forcing.nc"
 checkpoint     = "notebooks/slso/checkpoints/best.pt"
 fields_nc      = "notebooks/slso/results/fields.nc"
@@ -16,13 +19,13 @@ runs_db        = "notebooks/slso/runs.duckdb"
 prefix = "SLSO"
 
 [temporal]
-date_start  = "2000-01-01"
-spinup_end  = "2000-12-31"
-train_start = "2001-01-01"
-train_end   = "2010-12-31"
-val_start   = "2011-01-01"
-val_end     = "2020-12-31"
-date_end    = "2024-12-31"
+date_start  = "2016-01-01"   # début du forçage chargé
+spinup_end  = "2016-12-31"   # 1 an de spinup (initialise neige, sol)
+train_start = "2017-01-01"   # début de la période de calage
+train_end   = "2022-12-31"   # fin de la période de calage
+val_start   = "2023-01-01"   # début de la validation
+val_end     = "2024-12-31"   # fin de la validation
+date_end    = "2024-12-31"   # fin du forçage chargé
 
 [model]
 n_forcing        = 6      # P, T_min, T_max, R_n, u2, e_a
@@ -39,22 +42,53 @@ concrete_init_p  = 0.1    # Initial dropout probability
 param_mode = "nerf"
 
 [training]
-n_epochs      = 100
+n_epochs      = 200 # weekend run — autopilot gère les phases
 lr            = 5e-4
 lr_finetune   = 1e-4
+lr_new_features_mult = 10.0   # fc1/fc2 get 10x the base LR when fine-tuning with new features
 weight_decay  = 2e-4
 grad_clip     = 1.0
 tbptt_steps   = 365
-chunk_steps   = 0              # single-pass (no chunking)
-val_every     = 5
-patience      = 30
-warm_start    = true          # Train from scratch (soil fix invalidates old checkpoint)
-compile_modules = false
+chunk_steps   = 180            # gradient-accumulation chunks (memory ∝ chunk, not full sequence) — 180 to fit residual corrector in 8GB VRAM
+val_every     = 1              # validation chaque epoch (requis par autopilot)
+patience      = 50             # long — l'autopilot gère la LR et les restarts
+best_metric   = "kge_station" # Checkpoint selection: "nse", "kge", "kge_station", "kge_median"
+warm_start    = true # Continue from best.pt
+compile_modules = false  # Triton absent sous Windows → torch.compile crashe au premier forward
 
 # Curriculum: epoch at which each module is activated
-enable_temporal_epoch  = 60
-enable_residual_epoch  = 100
-enable_travel_epoch    = 9999   # disabled
+enable_temporal_epoch  = 0
+enable_residual_epoch  = 0 # 10
+enable_travel_epoch    = 9999 # 10, 0 pour le warm start passé les epochs 20.
+# Over this many epochs after residual activation, the effective gate
+# multiplier ramps linearly 0 -> 1.  Avoids the loss spike caused by
+# activating random-init GRU weights abruptly.  Set to 0 to disable.
+residual_warmup_epochs = 5
+# Over this many epochs after TTA activation, the routing aggregation
+# blends linearly from simple sum (Σ Q_actuels) to full TTA attention.
+# Avoids a sudden semantic change when warm-starting from a checkpoint
+# trained without TTA.  Set to 0 to use pure TTA immediately.
+tta_warmup_epochs = 10
+
+# ── Autopilot ──────────────────────────────────────────────────────────
+# Calibration autonome — ajuste les hyperparamètres selon les métriques
+# de validation. Conçu pour les longues runs sans supervision.
+autopilot                         = true
+autopilot_beta_threshold          = 0.15  # |β-1| > 0.15 → augmente w_residual
+autopilot_beta_penalty            = 0.005 # incrément de w_residual par epoch
+autopilot_gamma_threshold         = 0.20  # |γ-1| > 0.20 → augmente w_residual
+autopilot_gamma_penalty           = 0.003
+autopilot_lr_patience             = 8     # epochs sans amélioration → LR × 0.5
+autopilot_lr_factor               = 0.5
+autopilot_lr_min                   = 1e-6
+autopilot_restart_regression       = 0.05 # 5% régression + drift → restart
+autopilot_restart_max              = 3
+autopilot_activate_residual_at_kge = 0.55  # active résiduel quand kge_sta > seuil
+# TTA désactivé par autopilot : les poids random-init crashent le modèle
+# immédiatement. Besoin d'un warmup gate comme le residual corrector
+# (tta_warmup_factor) mais ce warmup n'interagit pas encore avec
+# l'autopilot restart.  À activer seulement quand le warmup est câblé.
+# autopilot_activate_tta_at_kge = 0.65
 
 [loss]
 # Poids des composantes de la fonction de perte.
@@ -68,12 +102,30 @@ enable_travel_epoch    = 9999   # disabled
 # Régularisation :
 #   w_physics  — pénalise le résidu du bilan hydrique (fermeture eau)
 #   w_residual — pénalise l'amplitude du correcteur résiduel (garde la physique)
-w_nse       = 0.5 # changer pour 1.0 pour mieux modéliser les crues
-w_kge       = 0.5
-w_pbias     = 0.1
-w_mse       = 0.0
-w_log_nse   = 0.0
-w_log_mse   = 0.0
-w_nrmse     = 0.0
-w_physics   = 0.01
-w_residual  = 0.001
+w_nse       = 0.0 # Nash-Sutcliffe Efficiency. NOT chunk-safe — disabled with chunk_steps>0
+w_kge       = 0.0 # Kling-Gupta Efficiency. NOT chunk-safe — disabled with chunk_steps>0
+w_pbias     = 0.1 # Biais en pourcentage (volume). Chunk-safe.
+w_mse       = 1.0 # MSE (optionally variance-normalised). Chunk-safe. Main loss.
+w_log_nse   = 0.0 # NSE sur les débits log-transformés. NOT chunk-safe.
+w_log_mse   = 0.75 # MSE on log-flows. Chunk-safe. Emphasises baseflow.
+w_nrmse     = 0.0 # RMSE normalisé. Adimensionnel, donne une erreur relative.
+w_physics   = 0.01 # Pénalise la non-fermeture du bilan d'eau (P − ET − Q − ΔS ≈ 0). Force le modèle à respecter la physique.
+w_residual  = 0.01 # Régularisation L2 sur le correcteur résiduel. Garde les corrections petites pour que la composante physique domine.
+
+# ─── Hydrotel Prior ───────────────────────────────────────────────────────
+# Override spatial parameter initialization when training from scratch.
+# Defaults (in code) come from Hydrotel SLSO loam/silt_loam averages.
+# Uncomment and adjust any value to override the default.
+# Source: Z:\Atlas_hydro\SRH\PLATEFORMES\MG24HS\SLSO_MG24HS_2020
+#
+# [hydrotel_prior]
+# K_sat_1 = 0.010            # m/day (Hydrotel loam=0.013, silt_loam=0.007)
+# K_sat_2 = 0.005            # m/day
+# K_sat_3 = 0.002            # m/day
+# porosity_1 = 0.46          # m3/m3
+# theta_fc_1 = 0.30          # m3/m3
+# theta_wp_1 = 0.125         # m3/m3
+# C_f = 4.5                  # mm/C/day (Hydrotel: 4.0-5.0)
+# T_melt = -0.5              # C (Hydrotel: -2.5 to 0.5)
+# krec = 0.0005              # 1/day (Hydrotel BV3C: 1e-5 m/h = 2.4e-4 m/day)
+# vg_n = 1.5                 # van Genuchten n (loam)

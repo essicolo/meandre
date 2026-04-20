@@ -1,0 +1,62 @@
+# ─── SLSO Sub-basin (station 023448, ~204 nodes) ─────────────────────────
+# Petit sous-bassin pour itération rapide. Généré par extract_subbasin.py.
+
+[paths]
+basin_db       = "notebooks/slso/data/slso-sub.duckdb"
+weather_grid   = "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-03/data/03_imputation/quebec.zarr"
+#weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/rqh_2026-03/data/03_imputation/quebec.zarr"
+forcing_cache  = "notebooks/slso/data/forcing-sub.nc"
+checkpoint     = "notebooks/slso/checkpoints/best-sub.pt"
+fields_nc      = "notebooks/slso/results/fields-sub.nc"
+reach_parquet  = "notebooks/slso/results/reach-sub.parquet"
+runs_db        = "notebooks/slso/runs-sub.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start  = "2016-01-01"
+spinup_end  = "2016-12-31"
+train_start = "2022-01-01"
+train_end   = "2022-12-31"
+val_start   = "2023-01-01"
+val_end     = "2023-12-31"
+date_end    = "2024-12-31"
+
+[model]
+n_forcing        = 6
+context_window   = 30
+residual_history = 14
+max_travel_days  = 20
+dropout          = 0.0
+concrete_dropout = true
+concrete_init_p  = 0.1
+param_mode = "nerf"
+
+[training]
+n_epochs      = 100
+lr            = 5e-4
+lr_finetune   = 1e-4
+weight_decay  = 2e-4
+grad_clip     = 1.0
+tbptt_steps   = 365
+chunk_steps   = 365
+val_every     = 5
+patience      = 30
+warm_start    = false          # pas de checkpoint existant pour le sous-bassin
+compile_modules = false
+
+enable_temporal_epoch  = 0
+enable_residual_epoch  = 20
+enable_travel_epoch    = 9999
+
+[loss]
+w_nse       = 0.5
+w_kge       = 0.5
+w_pbias     = 0.1
+w_mse       = 0.0
+w_log_nse   = 0.0
+w_log_mse   = 0.0
+w_nrmse     = 0.0
+w_physics   = 0.01
+w_residual  = 0.001

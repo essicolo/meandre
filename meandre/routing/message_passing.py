@@ -44,7 +44,14 @@ class RoutingLayer(nn.Module):
         self.use_tta = use_travel_time_attention
         if use_travel_time_attention:
             self.tta = TravelTimeAttention(max_tau_days=max_tau_days)
-        self.muskingum = MuskingumCunge()
+            # Warmup factor for blending simple-sum ↔ TTA aggregation.
+            # 0.0 = pure simple sum (Σ Q_actuels), 1.0 = pure TTA.
+            # Set by Trainer._apply_curriculum during TTA warmup.
+            self.register_buffer("tta_warmup_factor", torch.tensor(0.0))
+        # n_substeps=2 (12h) au lieu de 4 (6h) — divise le coût routing par 2.
+        # Condition de Courant respectée pour K_musk ≥ 4h (borne sigmoid min)
+        # et x_musk ≤ 0.49.  Si instabilité observée, remettre à 4.
+        self.muskingum = MuskingumCunge(n_substeps=2)
         self.lake = LakeModule()
 
     def forward(
@@ -195,8 +202,20 @@ class RoutingLayer(nn.Module):
                 edge_queries, edge_hist, taus, hist_mask
             )  # (n_edges,)
 
-            Q_agg = torch.zeros(n_nodes, device=device)
-            Q_agg.scatter_add_(0, dst, edge_contrib)
+            # TTA aggregation
+            Q_tta = torch.zeros(n_nodes, device=device)
+            Q_tta.scatter_add_(0, dst, edge_contrib.float())
+
+            # Simple sum aggregation (same as _route_vectorized)
+            Q_out_proxy = outflow_buffer._buf[
+                (outflow_buffer._ptr - 1) % outflow_buffer.depth
+            ]
+            Q_simple = torch.zeros(n_nodes, device=device)
+            Q_simple.scatter_add_(0, dst, Q_out_proxy[src].float())
+
+            # Blend: factor 0 = pure simple sum, 1 = pure TTA
+            alpha = self.tta_warmup_factor
+            Q_agg = (1.0 - alpha) * Q_simple + alpha * Q_tta
 
         # Upstream inflow + withdrawals (allow deficit — clamp Q_out later)
         Q_in_upstream = Q_agg + net_W
@@ -204,7 +223,7 @@ class RoutingLayer(nn.Module):
         Q_in_total = Q_agg + q_lat_m3s + net_W
 
         # River nodes: Muskingum
-        Q_out = torch.zeros(n_nodes, device=device)
+        Q_out = torch.zeros(n_nodes, device=device, dtype=Q_agg.dtype)
         # Use Q_agg as implicit Q_out_prev proxy — reuse last pushed buffer value
         Q_out_proxy = outflow_buffer._buf[(outflow_buffer._ptr - 1) % outflow_buffer.depth]
         river_mask = ~graph.is_lake

@@ -61,6 +61,7 @@ class VerticalColumn(nn.Module):
         state: HydroState,
         params: SpatialParams,
         return_diagnostics: bool = False,
+        gw_withdrawal_mm: Tensor | None = None,
     ) -> ColumnOutput:
         """
         Args:
@@ -124,6 +125,8 @@ class VerticalColumn(nn.Module):
             params.theta_wp_1, params.theta_wp_2, params.theta_wp_3,
             slope_factor=params.slope_factor,
             krec=params.krec,
+            vg_n=getattr(params, 'vg_n', None),
+            k_interflow=getattr(params, 'k_interflow', None),
         )
 
         # 6. Wetland
@@ -132,7 +135,11 @@ class VerticalColumn(nn.Module):
         )
 
         # 7. Aquifer: intercept soil recharge, delay through GW storage
-        Q_baseflow, S_gw_new = self.aquifer(recharge, state.S_gw, params.k_gw)
+        # Groundwater withdrawals act directly on S_gw (not on stream Q).
+        Q_baseflow, S_gw_new = self.aquifer(
+            recharge, state.S_gw, params.k_gw,
+            gw_withdrawal=gw_withdrawal_mm,
+        )
 
         lateral_inflow = R_direct + Q_wetland + interflow + Q_baseflow  # mm/day
 

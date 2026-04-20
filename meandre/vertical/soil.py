@@ -39,24 +39,12 @@ class SoilModule(nn.Module):
         z2: float = Z2,
         z3: float = Z3,
         sharpness: float = 50.0,
-        # van Genuchten shape parameters (can be learned or fixed)
-        vg_n: float = 1.5,
         vg_alpha: float = 1.0,
     ) -> None:
         super().__init__()
         self.z = torch.tensor([z1, z2, z3])  # (3,) layer thicknesses
         self.sharpness = sharpness
-        self.vg_n = vg_n
-        self.vg_m = 1.0 - 1.0 / vg_n
         self.vg_alpha = vg_alpha
-        # Learnable interflow recession rate (1/day); init ~0.05/day
-        self.log_k_interflow = nn.Parameter(torch.tensor(-3.0))
-
-    @property
-    def k_interflow(self) -> Tensor:
-        # Cap at 0.1/day — drains drainable water in ~10 days at most.
-        # Hydrotel typical range: 0.01-0.10 /day.
-        return torch.clamp(torch.nn.functional.softplus(self.log_k_interflow), max=0.1)
 
     def _effective_saturation(
         self, theta: Tensor, theta_r: Tensor, porosity: Tensor
@@ -64,25 +52,32 @@ class SoilModule(nn.Module):
         """S_e in [0, 1] — differentiable via soft_threshold on boundaries."""
         denom = porosity - theta_r + 1e-6
         Se = (theta - theta_r) / denom
-        return torch.clamp(Se, 1e-6, 1.0 - 1e-6)
+        return torch.clamp(Se, 1e-4, 1.0 - 1e-6)
 
     def _K(
-        self, theta: Tensor, K_sat: Tensor, theta_r: Tensor, porosity: Tensor
+        self, theta: Tensor, K_sat: Tensor, theta_r: Tensor, porosity: Tensor,
+        vg_n: Tensor | None = None,
     ) -> Tensor:
         """van Genuchten unsaturated hydraulic conductivity K(theta)."""
         Se = self._effective_saturation(theta, theta_r, porosity)
-        m = self.vg_m
+        n = vg_n if vg_n is not None else 1.5
+        m = 1.0 - 1.0 / n
         K = K_sat * Se**0.5 * (1.0 - (1.0 - Se ** (1.0 / m)) ** m) ** 2
         return K
 
     def _psi(
-        self, theta: Tensor, theta_r: Tensor, porosity: Tensor
+        self, theta: Tensor, theta_r: Tensor, porosity: Tensor,
+        vg_n: Tensor | None = None,
     ) -> Tensor:
         """van Genuchten matric potential psi(theta) in m (negative = tension)."""
         Se = self._effective_saturation(theta, theta_r, porosity)
-        n = self.vg_n
-        m = self.vg_m
-        psi = -(1.0 / self.vg_alpha) * (Se ** (-1.0 / m) - 1.0) ** (1.0 / n)
+        n = vg_n if vg_n is not None else 1.5
+        m = 1.0 - 1.0 / n
+        # Clamp the intermediate Se^(-1/m) to prevent float32 overflow
+        # when m is small (vg_n near lower bound).  1e8 is well below
+        # float32 max and already far beyond the psi=-100 m clamp below.
+        Se_inv_m = torch.clamp(Se.pow(-1.0 / m), max=1e8)
+        psi = -(1.0 / self.vg_alpha) * (Se_inv_m - 1.0).pow(1.0 / n)
         # Clamp to ~1 MPa (~100 m head) — prevents gradient explosion through
         # d(psi)/d(Se) ∝ Se^(-1/m - 1) which diverges as Se → 0.
         # -100 m is the permanent wilting point (~-1.5 MPa); beyond this,
@@ -96,6 +91,7 @@ class SoilModule(nn.Module):
         porosity: Tensor,
         z_layer: float,
         slope_factor: Tensor | None = None,
+        k_interflow: Tensor | None = None,
     ) -> Tensor:
         """Lateral subsurface drainage when moisture > field capacity (m/day).
 
@@ -110,7 +106,8 @@ class SoilModule(nn.Module):
             porosity - theta_fc + 1e-6
         )
         excess_frac = torch.clamp(excess_frac, max=1.0)
-        q = self.k_interflow * excess_water * (1.0 + excess_frac)
+        k = k_interflow if k_interflow is not None else 0.03
+        q = k * excess_water * (1.0 + excess_frac)
         # Slope amplification (Hydrotel-style)
         if slope_factor is not None:
             q = q * slope_factor
@@ -126,11 +123,12 @@ class SoilModule(nn.Module):
         theta_r_dn: Tensor,
         porosity_dn: Tensor,
         dz: float,
+        vg_n: Tensor | None = None,
     ) -> Tensor:
         """Gravity + matric potential Darcy flux from upper to lower layer (m/day)."""
-        K_up = self._K(theta_up, K_sat_up, theta_r_up, porosity_up)
-        psi_up = self._psi(theta_up, theta_r_up, porosity_up)
-        psi_dn = self._psi(theta_dn, theta_r_dn, porosity_dn)
+        K_up = self._K(theta_up, K_sat_up, theta_r_up, porosity_up, vg_n=vg_n)
+        psi_up = self._psi(theta_up, theta_r_up, porosity_up, vg_n=vg_n)
+        psi_dn = self._psi(theta_dn, theta_r_dn, porosity_dn, vg_n=vg_n)
         gradient = (psi_up - psi_dn) / dz + 1.0  # head gradient + gravity unit gradient
         flux = K_up * gradient
         # Allow both downward (positive) and upward (negative) flux
@@ -160,6 +158,8 @@ class SoilModule(nn.Module):
         theta_wp_3: Tensor,
         slope_factor: Tensor | None = None,
         krec: Tensor | None = None,
+        vg_n: Tensor | None = None,
+        k_interflow: Tensor | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """One-day soil water balance update.
 
@@ -184,11 +184,11 @@ class SoilModule(nn.Module):
         # Inter-layer Darcy fluxes
         q12 = self._darcy_flux(
             theta1, theta2, K_sat_1, theta_wp_1, porosity_1,
-            theta_wp_2, porosity_2, dz=(Z1 + Z2) / 2,
+            theta_wp_2, porosity_2, dz=(Z1 + Z2) / 2, vg_n=vg_n,
         )
         q23 = self._darcy_flux(
             theta2, theta3, K_sat_2, theta_wp_2, porosity_2,
-            theta_wp_3, porosity_3, dz=(Z2 + Z3) / 2,
+            theta_wp_3, porosity_3, dz=(Z2 + Z3) / 2, vg_n=vg_n,
         )
         # Baseflow: Hydrotel-style linear reservoir recession if krec provided,
         # otherwise free-drainage (Darcy K(theta3)).
@@ -199,13 +199,13 @@ class SoilModule(nn.Module):
             q_recharge = krec * Z3 * drainable_3
         else:
             # Free-drainage bottom BC: unit hydraulic gradient (gravity only).
-            q_recharge = self._K(theta3, K_sat_3, theta_wp_3, porosity_3)
+            q_recharge = self._K(theta3, K_sat_3, theta_wp_3, porosity_3, vg_n=vg_n)
 
         # Interflow: lateral subsurface drainage when moisture exceeds field
         # capacity.  Learnable recession rate on drainable water storage.
         # Slope amplification (Hydrotel-style): steeper → more interflow.
-        q_inter_1 = self._interflow(theta1, theta_fc_1, porosity_1, Z1, slope_factor)
-        q_inter_2 = self._interflow(theta2, theta_fc_2, porosity_2, Z2, slope_factor)
+        q_inter_1 = self._interflow(theta1, theta_fc_1, porosity_1, Z1, slope_factor, k_interflow=k_interflow)
+        q_inter_2 = self._interflow(theta2, theta_fc_2, porosity_2, Z2, slope_factor, k_interflow=k_interflow)
 
         # ── Water-balance-safe mass balance ──────────────────────────────
         # Cap extractions per layer so theta stays in [0, porosity].

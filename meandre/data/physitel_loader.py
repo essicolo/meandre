@@ -434,10 +434,17 @@ def _build_graph(
     # (lake_outlets).  The lake's from_junct is its OUTLET (downstream)
     # junction, NOT an inlet — so we must NOT use it for river→lake edges.
     lake_inlet_junctions: dict[int, int] = {}  # junction → lake troncon ID
+    # Track lake outlet junctions: rivers whose to_junct matches a lake's
+    # from_junct are DOWNSTREAM of the lake (they carry lake outflow to the
+    # domain boundary).  They are terminal within the basin and must NOT use
+    # the ds_reach fallback, which would create spurious long-distance edges.
+    lake_outlet_juncts: set[int] = set()
     for t in troncons:
         if t["type"] == 2:
             for oj in t.get("lake_outlets", []):
                 lake_inlet_junctions[oj] = t["id"]
+            if t["from_junct"] >= 0:
+                lake_outlet_juncts.add(t["from_junct"])
 
     # Build edges using junction connectivity
     src_list, dst_list, lengths, taus = [], [], [], []
@@ -485,8 +492,10 @@ def _build_graph(
             # Pick the widest downstream troncon (main channel at distributaries)
             ds_tid = max(candidates, key=lambda x: x[1])[0]
             _add_edge(tid, ds_tid, t["length_m"])
-        else:
-            # Fallback: ds_reach (when junction numbering has gaps)
+        elif t.get("to_junct", -1) not in lake_outlet_juncts:
+            # Fallback: ds_reach (when junction numbering has gaps).
+            # Skip for reaches whose to_junct is a lake outlet junction —
+            # those are downstream of a lake and terminal in the domain.
             ds = t["downstream_id"]
             if ds != tid and ds != 0 and ds in troncon_idx:
                 _add_edge(tid, ds, t["length_m"])

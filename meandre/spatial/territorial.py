@@ -21,6 +21,7 @@ DEFAULT_PHYSICAL_COLUMNS = frozenset({
     "area_km2_physical",
     "area_km2_local",
     "slope_fraction",
+    "depth_to_bedrock_m",
 })
 
 

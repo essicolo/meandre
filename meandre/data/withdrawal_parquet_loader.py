@@ -149,8 +149,13 @@ def load_withdrawals_parquet(
     date_to_idx = {d: i for i, d in enumerate(daily_dates)}
 
     net = torch.zeros(n_timesteps, n_nodes)
+    net_gw = torch.zeros(n_timesteps, n_nodes)
 
-    agg = daily_df.groupby(["date", "type", "node_idx"])["flow_m3s"].sum().reset_index()
+    has_source = "source" in daily_df.columns
+    group_cols = ["date", "type", "node_idx"] + (["source"] if has_source else [])
+    agg = daily_df.groupby(group_cols)["flow_m3s"].sum().reset_index()
+
+    gw_set = {"Souterrain", "SOUTERRAIN", "GW", "groundwater"}
 
     for _, row in agg.iterrows():
         tidx = date_to_idx.get(row["date"])
@@ -159,21 +164,26 @@ def load_withdrawals_parquet(
         nidx = int(row["node_idx"])
         wtype = row["type"]
         val = float(row["flow_m3s"])
+        is_gw = has_source and str(row["source"]) in gw_set
+        target = net_gw if is_gw else net
 
         if wtype == "WITHDRAWAL":
-            net[tidx, nidx] -= val  # removal → negative
+            target[tidx, nidx] -= val  # removal → negative
         elif wtype == "REJECTION" or wtype == "EFFLUENT":
-            net[tidx, nidx] += val  # return flow → positive
+            target[tidx, nidx] += val  # return flow → positive
         elif wtype in alphas:
-            net[tidx, nidx] -= val * alphas[wtype]  # consumptive removal → negative
+            target[tidx, nidx] -= val * alphas[wtype]  # consumptive removal → negative
         else:
             logger.warning(f"[withdrawal_parquet] Unknown type '{wtype}', treating as withdrawal")
-            net[tidx, nidx] -= val
+            target[tidx, nidx] -= val
 
     if device is not None:
         net = net.to(device)
+        net_gw = net_gw.to(device)
 
     total_net = net.sum().item() / n_timesteps
-    logger.info(f"[withdrawal_parquet] Net withdrawal: {total_net:.3f} m³/s")
+    total_gw = net_gw.sum().item() / n_timesteps
+    logger.info(f"[withdrawal_parquet] Net surface: {total_net:.3f} m³/s, "
+                f"net groundwater: {total_gw:.3f} m³/s")
 
-    return WithdrawalData(net=net)
+    return WithdrawalData(net=net, net_gw=net_gw)

@@ -37,13 +37,18 @@ class AquiferModule(nn.Module):
         recharge: Tensor,
         S_gw: Tensor,
         k_gw: Tensor,
+        gw_withdrawal: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """One-day aquifer update.
 
         Args:
-            recharge: (n_nodes,) recharge from soil L3 (mm/day), >= 0.
-            S_gw:     (n_nodes,) current groundwater storage (mm).
-            k_gw:     (n_nodes,) recession coefficient (1/day).
+            recharge:      (n_nodes,) recharge from soil L3 (mm/day), >= 0.
+            S_gw:          (n_nodes,) current groundwater storage (mm).
+            k_gw:          (n_nodes,) recession coefficient (1/day).
+            gw_withdrawal: (n_nodes,) net withdrawal from the aquifer (mm/day).
+                Positive = water added (artificial recharge), negative =
+                water removed (pumping).  Included as a constant forcing
+                alongside recharge in the linear-reservoir ODE.
 
         Returns:
             Q_baseflow: (n_nodes,) baseflow discharge (mm/day).
@@ -52,6 +57,12 @@ class AquiferModule(nn.Module):
         # Clamp k_gw away from zero for numerical safety.
         # For very small k_gw, use Taylor expansion to avoid (1-exp(-k))/k loss.
         k = torch.clamp(k_gw, min=self.k_gw_min)
+
+        # Treat pumping / artificial recharge as a constant flux over dt.
+        # Sign: withdrawal tensor is positive=add, negative=remove.
+        net_input = recharge
+        if gw_withdrawal is not None:
+            net_input = net_input + gw_withdrawal
 
         # Analytical linear reservoir solution (dt = 1 day implicit)
         decay = torch.exp(-k)
@@ -62,7 +73,9 @@ class AquiferModule(nn.Module):
             1.0 - k * 0.5 + k * k / 6.0,
         )
 
-        S_gw_new = S_gw * decay + recharge * one_minus_decay_over_k
+        S_gw_new = S_gw * decay + net_input * one_minus_decay_over_k
+        # Clamp to 0: if pumping exceeds storage + recharge, the aquifer
+        # simply empties (physically the well would go dry).
         S_gw_new = torch.clamp(S_gw_new, min=0.0)
 
         Q_baseflow = k * S_gw_new

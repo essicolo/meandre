@@ -43,6 +43,19 @@ class TrainingConfig:
     enable_residual_corrector_epoch: int = 30
     enable_travel_time_attn_epoch: int = 50
 
+    # Residual corrector warm-up: over this many epochs after activation,
+    # the effective gate multiplier ramps linearly from 0.0 to 1.0.  This
+    # avoids the large loss spike that happens when gate_logit and random
+    # GRU weights are activated at once.  Set to 0 to disable.
+    residual_warmup_epochs: int = 5
+
+    # TTA warm-up: over this many epochs after TTA activation, the routing
+    # aggregation blends linearly from simple sum (Σ Q_actuels, factor=0)
+    # to full TTA attention (factor=1).  This avoids a sudden semantic
+    # change in routing when warm-starting from a checkpoint trained
+    # without TTA.  Set to 0 to use pure TTA immediately.
+    tta_warmup_epochs: int = 10
+
     # Spin-up steps (run model without contributing to loss; state initialisation)
     spinup_steps: int = 730       # 2 years of daily data
 
@@ -66,14 +79,65 @@ class TrainingConfig:
     # 1 = every epoch (default); 5 = every 5 epochs.
     val_every: int = 1
 
-    # Early stopping: stop training if val_nse hasn't improved for this many
+    # Early stopping: stop training if val metric hasn't improved for this many
     # epochs. 0 = disabled.
     patience: int = 0
+
+    # Metric used for best-checkpoint selection and early stopping.
+    # Must match a key in the validation metrics dict (e.g. "nse", "kge",
+    # "kge_sta", "kge_med").
+    best_metric: str = "nse"
+
+    # Number of warmup epochs for the LR scheduler.  Set to 0 for warm-start
+    # fine-tuning where pre-trained weights don't need a ramp-up from ~zero LR.
+    warmup_epochs: int = 5
+
+    # Multiplier for spatial-encoder fc1/fc2 learning rate when fine-tuning
+    # with new territorial features (discriminative LR).  None = same LR for all.
+    lr_new_features_mult: float | None = None
 
     # Compile hot sub-modules (VerticalColumn + RoutingLayer) with torch.compile.
     # Fuses per-timestep ops into fewer CUDA kernels — big win on GPU, no-op on CPU.
     # Disabled by default; set True once GPU install is confirmed working.
     compile_modules: bool = False
+
+    # ── Autopilot ──────────────────────────────────────────────────────────
+    # When enabled, the trainer automatically adjusts hyperparameters based on
+    # validation metrics.  Designed for unsupervised long runs (e.g. all Québec).
+    # All thresholds are conservative — they only act on clear signals.
+
+    # Enable autopilot?  When True, forces val_every=1 for fast reaction.
+    autopilot: bool = False
+
+    # Beta drift: if pooled β deviates from 1.0 by more than this, increase
+    # w_residual by autopilot_beta_penalty per epoch until β returns.
+    # Catches residual-corrector overfitting (β = volume bias in KGE).
+    autopilot_beta_threshold: float = 0.15   # |β - 1| > 0.15 → act
+    autopilot_beta_penalty: float = 0.005    # increment w_residual per epoch
+
+    # Gamma drift: if pooled γ deviates from 1.0 by more than this, increase
+    # w_residual.  Catches timing/variability overfitting.
+    autopilot_gamma_threshold: float = 0.20  # |γ - 1| > 0.20 → act
+    autopilot_gamma_penalty: float = 0.003   # increment w_residual per epoch
+
+    # ReduceLROnPlateau: if best val metric hasn't improved for this many
+    # epochs, multiply LR by autopilot_lr_factor.
+    autopilot_lr_patience: int = 8
+    autopilot_lr_factor: float = 0.5
+    autopilot_lr_min: float = 1e-6
+
+    # Smart restart: if val metric regresses by more than this fraction from
+    # best AND beta/gamma drift is detected, reload best checkpoint and
+    # reduce LR.  More targeted than the existing divergence guard (which
+    # only checks train loss spikes).
+    autopilot_restart_regression: float = 0.05  # 5% regression from best
+    autopilot_restart_max: int = 3               # max restarts
+
+    # Metric-driven curriculum: instead of fixed epoch numbers, activate
+    # modules when kge_station reaches a threshold.  Overrides the fixed
+    # epoch settings when autopilot is enabled and these are > 0.
+    autopilot_activate_residual_at_kge: float | None = None  # e.g. 0.55
+    autopilot_activate_tta_at_kge: float | None = None       # e.g. 0.65
 
 
 @dataclass
@@ -141,20 +205,77 @@ class Trainer:
         self.run_logger = run_logger
         self.checkpoint_path = checkpoint_path
 
-        self.optimizer = optimizer or AdamW(
-            model.parameters(),
-            lr=self.config.lr,
-            weight_decay=self.config.weight_decay,
-        )
-        self._best_val_nse = -float("inf")
+        if optimizer is not None:
+            self.optimizer = optimizer
+        else:
+            # Discriminative LR: higher rate for fc1/fc2 when new features added
+            padded = getattr(model, "_padded_layers", set())
+            mult = self.config.lr_new_features_mult
+            if padded and mult is not None:
+                new_params, base_params = [], []
+                for name, p in model.named_parameters():
+                    layer = ".".join(name.split(".")[:-1])  # e.g. spatial_encoder.fc1
+                    if layer in padded:
+                        new_params.append(p)
+                    else:
+                        base_params.append(p)
+                param_groups = [
+                    {"params": base_params, "lr": self.config.lr},
+                    {"params": new_params, "lr": self.config.lr * mult},
+                ]
+                logger.info(
+                    "Discriminative LR: base=%.1e, fc1/fc2=%.1e (%d params)",
+                    self.config.lr, self.config.lr * mult, sum(p.numel() for p in new_params),
+                )
+                self.optimizer = AdamW(
+                    param_groups, weight_decay=self.config.weight_decay,
+                )
+            else:
+                self.optimizer = AdamW(
+                    model.parameters(),
+                    lr=self.config.lr,
+                    weight_decay=self.config.weight_decay,
+                )
+        # Autopilot: force val_every=1 for fast reaction
+        if self.config.autopilot and self.config.val_every > 1:
+            logger.info(
+                f"[autopilot] val_every forced from {self.config.val_every} to 1 "
+                "(autopilot requires per-epoch validation)"
+            )
+            self.config.val_every = 1
 
-        # Mixed precision (AMP) with bfloat16 — same exponent range as float32
-        # (no overflow in exp/log physics ops), but faster matmuls on Ampere+.
-        # GradScaler not needed for bfloat16.
-        self._use_amp = next(model.parameters()).is_cuda
-        self._amp_dtype = torch.bfloat16
-        if self._use_amp:
-            logger.info("AMP enabled (bfloat16 autocast)")
+        self._best_val_metric = -float("inf")
+
+        # Autopilot state
+        self._ap_w_residual_orig: float | None = None  # original w_residual
+        self._ap_lr_plateau_count: int = 0
+        self._ap_restart_count: int = 0
+        self._ap_prev_kge_sta: float | None = None
+
+        # Mixed precision (AMP) with bfloat16 — même plage d'exposant que
+        # float32 (pas d'overflow dans exp/log de l'hydrologie), mais
+        # matmuls plus rapides sur Ampere+ / Ada (Tensor Cores).
+        # GradScaler pas nécessaire pour bf16.
+        # Activé automatiquement si GPU récent (SM ≥ 8.0) et >= 1000 nœuds.
+        self._use_amp = False
+        self._amp_dtype = torch.float32
+        if torch.cuda.is_available() and next(model.parameters()).is_cuda:
+            sm_major, _ = torch.cuda.get_device_capability()
+            n_nodes = getattr(model, "n_nodes", 0)
+            if sm_major >= 8 and n_nodes >= 1000:
+                self._use_amp = True
+                self._amp_dtype = torch.bfloat16
+                logger.info(
+                    f"AMP enabled (bfloat16) — GPU SM {sm_major}.x, "
+                    f"{n_nodes} nœuds"
+                )
+            else:
+                logger.info(
+                    f"AMP disabled — SM {sm_major}.x, {n_nodes} nœuds "
+                    f"(seuils : SM≥8, nœuds≥1000)"
+                )
+        else:
+            logger.info("AMP disabled (pas de GPU)")
 
 
         # Maximise intra-op parallelism on CPU
@@ -165,22 +286,18 @@ class Trainer:
         except RuntimeError:
             pass  # already set or parallel work started
 
-        # Optionally fuse per-timestep ops via torch.compile.
-        # Requires Triton (inductor backend), which is Linux-only.
-        # On Windows the compile attempt raises BackendCompilerFailed — we
-        # catch it and fall back to eager execution with a warning.
+        # torch.compile : désactivé par défaut.  Triton (backend inductor)
+        # n'est pas disponible sous Windows.  Le mode "reduce-overhead"
+        # (CUDA graphs) est censé contourner le problème mais en pratique
+        # PyTorch retombe sur inductor quand le graphe n'est pas capturé
+        # intégralement, ce qui crashe au premier forward.
+        # Garder compile_modules = false sous Windows.
         if config is not None and config.compile_modules:
             if next(model.parameters()).is_cuda:
-                try:
-                    import triton  # noqa: F401 — just test availability
-                    model.vertical_column = torch.compile(model.vertical_column)
-                    model.routing = torch.compile(model.routing)
-                    logger.info("torch.compile enabled for vertical_column + routing.")
-                except (ImportError, Exception):
-                    logger.warning(
-                        "torch.compile requested but Triton is unavailable "
-                        "(Windows?). Falling back to eager execution."
-                    )
+                logger.warning(
+                    "compile_modules=True but torch.compile requires Triton "
+                    "(Linux only).  Skipping — run in eager mode."
+                )
 
     # ------------------------------------------------------------------
     # Public API
@@ -193,7 +310,10 @@ class Trainer:
         self._start_run()
 
         from meandre.training.scheduler import build_scheduler
-        scheduler = build_scheduler(self.optimizer, self.config.n_epochs)
+        scheduler = build_scheduler(
+            self.optimizer, self.config.n_epochs,
+            warmup_epochs=self.config.warmup_epochs,
+        )
 
         pbar = tqdm(range(self.config.n_epochs), desc="Training", unit="epoch")
         last_val_metrics: dict[str, float] = {}
@@ -221,8 +341,8 @@ class Trainer:
                     pg["lr"] *= 0.5
                 new_lr = self.optimizer.param_groups[0]["lr"]
                 msg = (f"  [rollback {_rollback_count}/{_MAX_ROLLBACKS}] "
-                       f"train loss spike ({tl:.2f} > 3×EMA {_loss_ema:.2f}) — "
-                       f"reloaded best checkpoint, lr→{new_lr:.2e}")
+                       f"train loss spike ({tl:.2f} > 3xEMA {_loss_ema:.2f}) -- "
+                       f"reloaded best checkpoint, lr->{new_lr:.2e}")
                 print(msg, flush=True)
                 logger.warning(msg)
                 _loss_ema = None  # reset EMA after rollback
@@ -260,9 +380,11 @@ class Trainer:
             val_beta = last_val_metrics.get("beta", float("nan"))
             val_gamma = last_val_metrics.get("gamma", float("nan"))
             val_kge_log = last_val_metrics.get("kge_log", float("nan"))
+            val_kge_sta = last_val_metrics.get("kge_station", float("nan"))
+            val_kge_med = last_val_metrics.get("kge_median", float("nan"))
             pbar.set_postfix(
                 loss=f"{float(train_loss):.4f}",
-                val_nse=f"{val_nse:.4f}",
+                kge_sta=f"{val_kge_sta:.4f}",
                 val_kge=f"{val_kge:.4f}",
                 rmse=f"{val_rmse:.2f}",
             )
@@ -270,6 +392,7 @@ class Trainer:
             epoch_msg = (
                 f"Epoch {epoch:4d} | train={train_loss:.4f} "
                 f"| val_nse={val_nse:.4f} | val_kge={val_kge:.4f} "
+                f"| kge_sta={val_kge_sta:.4f} | kge_med={val_kge_med:.4f}"
                 f"| rmse={val_rmse:.2f} | nrmse={val_nrmse:.3f}"
                 f" | r={val_r:.3f} | beta={val_beta:.3f} | gamma={val_gamma:.3f}"
                 f" | kge_log={val_kge_log:.4f}"
@@ -296,17 +419,25 @@ class Trainer:
                 )
 
             # Save best checkpoint (only when val was actually computed)
-            if run_val and last_val_metrics.get("nse", -999) > self._best_val_nse:
-                self._best_val_nse = last_val_metrics["nse"]
+            _bm = self.config.best_metric
+            _cur = last_val_metrics.get(_bm, -999) if run_val else -999
+            if run_val and _cur > self._best_val_metric:
+                self._best_val_metric = _cur
                 epochs_without_improvement = 0
                 if self.checkpoint_path:
                     self.model.save(self.checkpoint_path)
-                    print(f"  -> best checkpoint saved (NSE={self._best_val_nse:.4f})")
-                    logger.info(f"  -> best checkpoint saved (NSE={self._best_val_nse:.4f})")
+                    print(f"  -> best checkpoint saved ({_bm}={self._best_val_metric:.4f})")
+                    logger.info(f"  -> best checkpoint saved ({_bm}={self._best_val_metric:.4f})")
             elif run_val:
                 epochs_without_improvement += 1
-                print(f"  [no save] val_nse={last_val_metrics.get('nse', 'MISSING')}, "
-                      f"best={self._best_val_nse}, no_improve={epochs_without_improvement}/{self.config.patience}")
+                print(f"  [no save] val_{_bm}={_cur}, "
+                      f"best={self._best_val_metric}, no_improve={epochs_without_improvement}/{self.config.patience}")
+
+            # ── Autopilot ──────────────────────────────────────────────
+            if self.config.autopilot and run_val:
+                self._run_autopilot(
+                    epoch, last_val_metrics, epochs_without_improvement,
+                )
 
             # Early stopping
             if (self.config.patience > 0
@@ -314,7 +445,7 @@ class Trainer:
                 logger.info(
                     f"Early stopping at epoch {epoch} "
                     f"(no improvement for {self.config.patience} epochs, "
-                    f"best NSE={self._best_val_nse:.4f})"
+                    f"best {_bm}={self._best_val_metric:.4f})"
                 )
                 break
 
@@ -328,9 +459,11 @@ class Trainer:
     def _run_spinup(self, data: TrainingData) -> tuple[HydroState, Tensor | None]:
         """Return spun-up (state, h_context).
 
-        Always runs full spinup from cold start so the initial state is
-        consistent with the current model weights.  The spinup runs under
-        torch.no_grad() so the cost is just the forward pass (~365 days).
+        On the first call (or when warm_spinup_steps == 0), runs the full
+        spinup from cold start.  On subsequent calls, reuses the cached
+        spinup state and only runs ``warm_spinup_steps`` additional steps
+        to let the state adjust to updated model weights — much cheaper
+        than replaying the entire spinup every epoch.
         """
         device = data.forcing.device
         spinup_end = min(self.config.spinup_steps, data.train_slice.start)
@@ -338,16 +471,37 @@ class Trainer:
         if spinup_end == 0:
             return HydroState.zeros(self.model.n_nodes, device=device), None
 
-        with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-            _, spun_state = self.model.simulate(
-                forcing=data.forcing[:spinup_end],
-                initial_state=HydroState.zeros(self.model.n_nodes, device=device),
-                graph=data.graph,
-                node_coords=data.node_coords,
-                territorial=data.territorial,
-                withdrawals=data.withdrawals,
-                day_of_year=data.day_of_year[:spinup_end],
-            )
+        warm_steps = self.config.warm_spinup_steps
+        cached = getattr(self, "_cached_spinup_state", None)
+
+        if cached is not None and warm_steps > 0:
+            # Warm spinup: start from cached state, run only the last N days
+            warm_start = max(0, spinup_end - warm_steps)
+            with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
+                _, spun_state = self.model.simulate(
+                    forcing=data.forcing[warm_start:spinup_end],
+                    initial_state=cached,
+                    graph=data.graph,
+                    node_coords=data.node_coords,
+                    territorial=data.territorial,
+                    withdrawals=data.withdrawals,
+                    day_of_year=data.day_of_year[warm_start:spinup_end],
+                )
+        else:
+            # Full spinup from cold start
+            with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
+                _, spun_state = self.model.simulate(
+                    forcing=data.forcing[:spinup_end],
+                    initial_state=HydroState.zeros(self.model.n_nodes, device=device),
+                    graph=data.graph,
+                    node_coords=data.node_coords,
+                    territorial=data.territorial,
+                    withdrawals=data.withdrawals,
+                    day_of_year=data.day_of_year[:spinup_end],
+                )
+
+        # Cache for next epoch
+        self._cached_spinup_state = spun_state.detach()
 
         h_ctx = self.model._last_h_context
         return spun_state, h_ctx
@@ -452,8 +606,16 @@ class Trainer:
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = chunk_len / n_train
-            if not torch.isnan(loss_chunk):
+            if not torch.isnan(loss_chunk) and loss_chunk.requires_grad:
                 (loss_chunk * weight).backward()
+            elif not loss_chunk.requires_grad and loss_chunk.item() == 0.0:
+                n_no_grad = getattr(self, "_n_no_grad_chunks", 0) + 1
+                self._n_no_grad_chunks = n_no_grad
+                if n_no_grad == 1:
+                    logger.warning(
+                        "Loss chunk has no gradient (no valid observations). "
+                        "Check that observation dates overlap with the training period."
+                    )
 
             total_loss = total_loss + loss_chunk.detach() * weight
             for k, v in comps.items():
@@ -473,6 +635,17 @@ class Trainer:
             del Q_chunk, loss_chunk
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+        # Warn if all chunks had no gradient (no obs overlap)
+        n_no_grad = getattr(self, "_n_no_grad_chunks", 0)
+        if n_no_grad == n_chunks and n_chunks > 0:
+            logger.warning(
+                "ALL %d chunks in this epoch had zero loss with no gradient. "
+                "The model will NOT learn. Verify that observations cover the "
+                "training period.",
+                n_chunks,
+            )
+        self._n_no_grad_chunks = 0  # reset for next epoch
 
         # Clip and step (once, on accumulated gradients)
         total_norm = torch.nn.utils.clip_grad_norm_(
@@ -594,7 +767,11 @@ class Trainer:
         return loss.detach(), {k: v.detach() for k, v in components.items()}
 
     def _val_epoch(self) -> dict[str, float]:
-        """Validation: simulate val period, compute evaluation metrics."""
+        """Validation: simulate val period, compute evaluation metrics.
+
+        Reports both pooled metrics (all stations flattened) and per-station
+        weighted KGE/NSE consistent with the training loss function.
+        """
         self.model.eval()
         data = self.val_data
 
@@ -606,7 +783,42 @@ class Trainer:
         q_obs_val = data.q_obs[:n_val]  # (T_val, n_stations)
         q_sim_at_stations = Q_sim[:, data.station_mask]
 
-        # Flatten and mask NaN (in obs or sim — catches NaN model weights)
+        # ── Per-station KGE (consistent with per_station loss) ────────
+        from meandre.utils.metrics import kge as _kge_fn
+        n_stations = q_sim_at_stations.shape[1]
+        kge_per = []
+        nse_per = []
+        for s in range(n_stations):
+            q_o_s = q_obs_val[:, s]
+            q_s_s = q_sim_at_stations[:, s]
+            valid_s = ~torch.isnan(q_o_s) & ~torch.isnan(q_s_s)
+            if valid_s.sum() < 30:
+                continue
+            kge_per.append(float(_kge_fn(q_o_s[valid_s], q_s_s[valid_s])))
+            nse_per.append(float(nse(q_o_s[valid_s], q_s_s[valid_s])))
+
+        if kge_per:
+            # Weighted by station_weights if available (same as loss function)
+            if (self.loss_fn is not None
+                    and hasattr(self.loss_fn, 'station_weights')
+                    and self.loss_fn.station_weights is not None
+                    and len(self.loss_fn.station_weights) == n_stations):
+                sw = self.loss_fn.station_weights[:len(kge_per)]
+                w = sw.cpu().numpy()
+                w = w / w.sum()
+            else:
+                w = torch.full((len(kge_per),), 1.0 / len(kge_per)).numpy()
+            kge_vals = torch.tensor(kge_per)
+            nse_vals = torch.tensor(nse_per)
+            kge_weighted = float((kge_vals * torch.from_numpy(w)).sum())
+            nse_weighted = float((nse_vals * torch.from_numpy(w)).sum())
+            kge_median = float(kge_vals.median())
+        else:
+            kge_weighted = float("nan")
+            nse_weighted = float("nan")
+            kge_median = float("nan")
+
+        # ── Pooled metrics (all stations flattened) ───────────────────
         q_o = q_obs_val.reshape(-1)
         q_s = q_sim_at_stations.reshape(-1)
         valid = ~torch.isnan(q_o) & ~torch.isnan(q_s)
@@ -617,7 +829,9 @@ class Trainer:
                     "rmse": float("nan"), "nrmse": float("nan"), "mae": float("nan"),
                     "r": float("nan"), "beta": float("nan"), "gamma": float("nan"),
                     "r_log": float("nan"), "beta_log": float("nan"), "gamma_log": float("nan"),
-                    "kge_log": float("nan")}
+                    "kge_log": float("nan"),
+                    "kge_station": kge_weighted, "nse_station": nse_weighted,
+                    "kge_median": kge_median}
 
         kge_info = kge_components(q_o, q_s)
         return {
@@ -635,6 +849,9 @@ class Trainer:
             "beta_log": float(kge_info["beta_log"]),
             "gamma_log": float(kge_info["gamma_log"]),
             "kge_log": float(kge_info["kge_log"]),
+            "kge_station": kge_weighted,
+            "nse_station": nse_weighted,
+            "kge_median": kge_median,
         }
 
     def _water_balance_check(self, data: TrainingData, period: str = "train") -> None:
@@ -714,12 +931,162 @@ class Trainer:
             self.model.use_residual = enabled           # skip forward pass when off
             for p in self.model.residual_corrector.parameters():
                 p.requires_grad_(enabled)
+            # Linear warm-up of the effective gate multiplier (0 -> 1) over
+            # the first `residual_warmup_epochs` epochs after activation.
+            if enabled and cfg.residual_warmup_epochs > 0:
+                k = epoch - cfg.enable_residual_corrector_epoch
+                factor = min(1.0, max(0.0, (k + 1) / cfg.residual_warmup_epochs))
+            else:
+                factor = 1.0 if enabled else 0.0
+            self.model.residual_corrector.warmup_factor.fill_(factor)
 
         if hasattr(self.model.routing, "tta"):
             enabled = epoch >= cfg.enable_travel_time_attn_epoch
             self.model.routing.use_tta = enabled
             for p in self.model.routing.tta.parameters():
                 p.requires_grad_(enabled)
+            # Linear warm-up of TTA blending factor (0 -> 1) over
+            # `tta_warmup_epochs` epochs after activation.
+            # factor=0 → pure simple sum (Σ Q_actuels), factor=1 → pure TTA.
+            if enabled and cfg.tta_warmup_epochs > 0:
+                k = epoch - cfg.enable_travel_time_attn_epoch
+                tta_factor = min(1.0, max(0.0, (k + 1) / cfg.tta_warmup_epochs))
+            else:
+                tta_factor = 1.0 if enabled else 0.0
+            if hasattr(self.model.routing, "tta_warmup_factor"):
+                self.model.routing.tta_warmup_factor.fill_(tta_factor)
+
+    def _run_autopilot(
+        self,
+        epoch: int,
+        val_metrics: dict[str, float],
+        epochs_without_improvement: int,
+    ) -> None:
+        """Autopilot: automatic hyperparameter adjustments based on val metrics.
+
+        Called after each validation epoch when autopilot is enabled.
+        Actions are logged and conservative — they only intervene on clear
+        signals (beta/gamma drift, LR plateau, regression from best).
+        """
+        cfg = self.config
+        beta = val_metrics.get("beta", 1.0)
+        gamma = val_metrics.get("gamma", 1.0)
+        kge_sta = val_metrics.get("kge_station", 0.0)
+
+        # ── 1. Beta / Gamma drift → increase w_residual ─────────────
+        # Original w_residual is captured on first autopilot call
+        if self._ap_w_residual_orig is None:
+            self._ap_w_residual_orig = float(self.loss_fn.w_residual)
+
+        beta_drift = abs(beta - 1.0)
+        gamma_drift = abs(gamma - 1.0)
+        actions: list[str] = []
+
+        if beta_drift > cfg.autopilot_beta_threshold:
+            self.loss_fn.w_residual += cfg.autopilot_beta_penalty
+            actions.append(
+                f"β drift |β-1|={beta_drift:.3f} > {cfg.autopilot_beta_threshold} "
+                f"→ w_residual += {cfg.autopilot_beta_penalty} → {self.loss_fn.w_residual:.4f}"
+            )
+
+        if gamma_drift > cfg.autopilot_gamma_threshold:
+            self.loss_fn.w_residual += cfg.autopilot_gamma_penalty
+            actions.append(
+                f"γ drift |γ-1|={gamma_drift:.3f} > {cfg.autopilot_gamma_threshold} "
+                f"→ w_residual += {cfg.autopilot_gamma_penalty} → {self.loss_fn.w_residual:.4f}"
+            )
+
+        # Reset w_residual toward original when drift subsides
+        if (beta_drift < cfg.autopilot_beta_threshold * 0.5
+                and gamma_drift < cfg.autopilot_gamma_threshold * 0.5
+                and self.loss_fn.w_residual > self._ap_w_residual_orig * 1.1):
+            self.loss_fn.w_residual = max(
+                self._ap_w_residual_orig,
+                self.loss_fn.w_residual * 0.9,
+            )
+            actions.append(
+                f"β/γ recovered → w_residual decay → {self.loss_fn.w_residual:.4f}"
+            )
+
+        # ── 2. ReduceLROnPlateau ─────────────────────────────────────
+        if epochs_without_improvement >= cfg.autopilot_lr_patience:
+            self._ap_lr_plateau_count += 1
+            for pg in self.optimizer.param_groups:
+                new_lr = max(pg["lr"] * cfg.autopilot_lr_factor, cfg.autopilot_lr_min)
+                pg["lr"] = new_lr
+            actions.append(
+                f"LR plateau ({epochs_without_improvement} epochs no improve) "
+                f"→ LR ×{cfg.autopilot_lr_factor} → {self.optimizer.param_groups[0]['lr']:.2e}"
+            )
+            # Reset plateau counter after reduction (only count consecutive plateaus)
+            # Note: epochs_without_improvement is managed by fit(), we don't reset it here.
+
+        # ── 3. Smart restart on regression + drift ───────────────────
+        regression = (self._best_val_metric - kge_sta) / (abs(self._best_val_metric) + 1e-8)
+        drift_detected = (beta_drift > cfg.autopilot_beta_threshold
+                          or gamma_drift > cfg.autopilot_gamma_threshold)
+
+        if (regression > cfg.autopilot_restart_regression
+                and drift_detected
+                and self._ap_restart_count < cfg.autopilot_restart_max
+                and self.checkpoint_path):
+            self._ap_restart_count += 1
+            self.model.load(self.checkpoint_path)
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = max(pg["lr"] * 0.5, cfg.autopilot_lr_min)
+            # Reset w_residual to original after restart
+            if self._ap_w_residual_orig is not None:
+                self.loss_fn.w_residual = self._ap_w_residual_orig
+            # Reset cached spinup state (model weights changed)
+            self._cached_spinup_state = None
+            actions.append(
+                f"RESTART {self._ap_restart_count}/{cfg.autopilot_restart_max} "
+                f"regression={regression:.1%} + drift → reload best, "
+                f"LR → {self.optimizer.param_groups[0]['lr']:.2e}, "
+                f"w_residual → {self.loss_fn.w_residual:.4f}"
+            )
+
+        # ── 4. Metric-driven curriculum ───────────────────────────────
+        # Activate modules when kge_station crosses a threshold (instead of
+        # fixed epoch numbers).  Only override if the threshold is set.
+        if cfg.autopilot_activate_residual_at_kge is not None:
+            threshold = cfg.autopilot_activate_residual_at_kge
+            if (kge_sta >= threshold
+                    and not self.model.use_residual
+                    and self.model.residual_corrector is not None):
+                # Override the fixed epoch — activate now
+                cfg.enable_residual_corrector_epoch = epoch
+                actions.append(
+                    f"Metric curriculum: kge_sta={kge_sta:.4f} ≥ {threshold} "
+                    f"→ activate residual corrector"
+                )
+
+        if cfg.autopilot_activate_tta_at_kge is not None:
+            threshold = cfg.autopilot_activate_tta_at_kge
+            if (kge_sta >= threshold
+                    and hasattr(self.model.routing, 'use_tta')
+                    and not self.model.routing.use_tta):
+                cfg.enable_travel_time_attn_epoch = epoch
+                actions.append(
+                    f"Metric curriculum: kge_sta={kge_sta:.4f} ≥ {threshold} "
+                    f"→ activate TTA"
+                )
+
+        # ── Log autopilot actions ─────────────────────────────────────
+        if actions:
+            for a in actions:
+                msg = f"  [autopilot] {a}"
+                print(msg, flush=True)
+                logger.info(msg)
+        else:
+            # Brief status when no action taken
+            logger.debug(
+                f"  [autopilot] epoch={epoch} β={beta:.3f} γ={gamma:.3f} "
+                f"kge_sta={kge_sta:.4f} — no action"
+            )
+
+        # Track previous kge_sta for trend detection
+        self._ap_prev_kge_sta = kge_sta
 
     def _start_run(self) -> None:
         if self.run_logger is None:

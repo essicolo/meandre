@@ -1,4 +1,4 @@
-"""River network graph construction and utilities.
+﻿"""River network graph construction and utilities.
 
 Builds a PyTorch Geometric Data object from a river network description.
 Nodes are subbasins/reaches; edges are upstream -> downstream connections.
@@ -6,10 +6,45 @@ Nodes are subbasins/reaches; edges are upstream -> downstream connections.
 
 from __future__ import annotations
 
+import collections
 from dataclasses import dataclass
 
 import torch
 from torch import Tensor
+
+
+def _topological_sort(edge_index: Tensor, n_nodes: int) -> Tensor:
+    """Kahn's algorithm — returns node indices in topological order.
+
+    Raises
+    ------
+    ValueError
+        If the graph contains a cycle (not a valid DAG).
+    """
+    in_degree = [0] * n_nodes
+    adj: dict[int, list[int]] = collections.defaultdict(list)
+    for e in range(edge_index.shape[1]):
+        src = int(edge_index[0, e].item())
+        dst = int(edge_index[1, e].item())
+        adj[src].append(dst)
+        in_degree[dst] += 1
+
+    queue = collections.deque(i for i in range(n_nodes) if in_degree[i] == 0)
+    order: list[int] = []
+    while queue:
+        node = queue.popleft()
+        order.append(node)
+        for nb in adj[node]:
+            in_degree[nb] -= 1
+            if in_degree[nb] == 0:
+                queue.append(nb)
+
+    if len(order) != n_nodes:
+        raise ValueError(
+            f"Graph has cycles — not a valid DAG. "
+            f"Only {len(order)}/{n_nodes} nodes resolved in topological sort."
+        )
+    return torch.tensor(order, dtype=torch.long)
 
 
 @dataclass
@@ -26,6 +61,12 @@ class RiverGraph:
 
     Node features (geometric) are stored in TerritorialFeatures,
     not here, to keep the graph structure separate from node attributes.
+
+    Raises
+    ------
+    ValueError
+        If the graph contains a cycle (not a valid DAG) or if the
+        node count inferred from edge_index does not match other tensors.
     """
 
     edge_index: Tensor          # (2, n_edges) int64
@@ -33,6 +74,28 @@ class RiverGraph:
     topo_order: Tensor          # (n_nodes,) int
     is_lake: Tensor             # (n_nodes,) bool
     travel_time_days: Tensor    # (n_edges,) int
+
+    def __post_init__(self) -> None:
+        n_nodes = int(self.topo_order.shape[0])
+        if self.edge_index.max().item() >= n_nodes:
+            raise ValueError(
+                f"edge_index contains node index >= n_nodes ({n_nodes}). "
+                f"Found max index {int(self.edge_index.max().item())}."
+            )
+        if self.edge_index.min().item() < 0:
+            raise ValueError("edge_index contains negative node indices.")
+        # Validate DAG via Kahn's algorithm — cheap O(V+E) check that also
+        # confirms topo_order is consistent with the edge structure.
+        try:
+            topo_check = _topological_sort(self.edge_index, n_nodes)
+        except ValueError as exc:
+            raise ValueError(f"RiverGraph construction failed: {exc}") from exc
+        if not torch.equal(topo_check.to(self.topo_order.device), self.topo_order):
+            raise ValueError(
+                "Provided topo_order is inconsistent with edge_index. "
+                "Omit topo_order when constructing RiverGraph; it will be "
+                "computed automatically via Kahn's algorithm."
+            )
 
     @property
     def n_nodes(self) -> int:

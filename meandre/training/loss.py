@@ -8,9 +8,12 @@ L = w1*(1-NSE) + w2*|PBIAS|/100 + w3*(1-KGE)
   + w6*L_physics  + w7*L_residual_reg
 """
 
+import logging
 import torch
 import torch.nn as nn
 from torch import Tensor
+
+logger = logging.getLogger(__name__)
 
 
 def differentiable_nse_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
@@ -396,6 +399,13 @@ class HydroLoss(nn.Module):
             n_keep = keep.sum().item()
 
             if n_keep == 0:
+                logger.warning(
+                    "No stations have >= 30 valid observations in this chunk "
+                    "(total stations: %d, max valid count: %s). "
+                    "Loss will be zero with no gradient.",
+                    n_stations,
+                    int(valid_counts.max().item()) if n_stations > 0 else "N/A",
+                )
                 L_nse = L_pbias = L_kge = L_mse = L_nrmse = L_log_nse = L_log_mse = zero
             else:
                 # Masked obs/sim: set invalid to NaN for nanmean

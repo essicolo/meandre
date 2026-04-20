@@ -512,6 +512,8 @@ class BasinCache:
         lat_col: str = "lat",
         site_col: str | None = None,
         node_col: str | None = None,
+        source_col: str | None = "source",
+        gw_values: tuple[str, ...] = ("Souterrain", "SOUTERRAIN", "GW", "groundwater"),
         max_snap_km: float = 10.0,
     ) -> int:
         """Import net withdrawal data into the DuckDB.
@@ -538,6 +540,14 @@ class BasinCache:
         node_col :
             Column with pre-assigned node indices.  If present, snapping
             is skipped.
+        source_col :
+            Optional column identifying the physical source of the
+            withdrawal.  Rows whose value matches ``gw_values`` are
+            stored in ``net_gw`` (applied to the aquifer reservoir);
+            all other rows go to ``net_surface`` (applied to stream Q).
+            If the column is absent, every row is treated as surface.
+        gw_values :
+            Tuple of strings flagging a groundwater source.
         max_snap_km :
             Warn for sites farther than this from any node.
 
@@ -572,7 +582,22 @@ class BasinCache:
             rename[site_col] = "site_id"
         if node_col and node_col in df.columns:
             rename[node_col] = "node_idx"
+        if source_col and source_col in df.columns and source_col != "source":
+            rename[source_col] = "source"
         df = df.rename(columns=rename)
+
+        # ── Classify rows as surface or groundwater ──────────────────────
+        if "source" in df.columns:
+            gw_set = {v for v in gw_values}
+            is_gw = df["source"].astype(str).isin(gw_set)
+        else:
+            is_gw = pd.Series(False, index=df.index)
+
+        df["net_surface"] = df["net_withdrawal"].where(~is_gw, 0.0)
+        df["net_gw"] = df["net_withdrawal"].where(is_gw, 0.0)
+
+        n_gw_rows = int(is_gw.sum())
+        n_surf_rows = int((~is_gw).sum())
 
         # ── Snap to nearest node if lon/lat present ──────────────────────
         if "node_idx" not in df.columns:
@@ -585,7 +610,7 @@ class BasinCache:
 
         # ── Aggregate by (date, node_idx) — sum if multiple sites ────────
         df = (
-            df.groupby(["date", "node_idx"])[["net_withdrawal"]]
+            df.groupby(["date", "node_idx"])[["net_surface", "net_gw"]]
             .sum()
             .reset_index()
         )
@@ -594,14 +619,34 @@ class BasinCache:
         try:
             con.execute("""
                 CREATE TABLE IF NOT EXISTS withdrawals (
-                    date            DATE,
-                    node_idx        INTEGER,
-                    net_withdrawal  FLOAT,
+                    date         DATE,
+                    node_idx     INTEGER,
+                    net_surface  FLOAT,
+                    net_gw       FLOAT,
                     PRIMARY KEY (date, node_idx)
                 )
             """)
+            # Migrate legacy schema (net_withdrawal → net_surface + net_gw)
+            cols = [r[0] for r in con.execute(
+                "PRAGMA table_info('withdrawals')"
+            ).fetchall()]
+            # DuckDB PRAGMA returns (cid, name, type, ...); grab name column
+            col_names = [r[1] for r in con.execute(
+                "PRAGMA table_info('withdrawals')"
+            ).fetchall()]
+            if "net_withdrawal" in col_names and "net_surface" not in col_names:
+                con.execute(
+                    "ALTER TABLE withdrawals RENAME COLUMN net_withdrawal TO net_surface"
+                )
+                con.execute(
+                    "ALTER TABLE withdrawals ADD COLUMN net_gw FLOAT DEFAULT 0.0"
+                )
+                print("[import_withdrawals] migrated legacy schema "
+                      "(net_withdrawal -> net_surface + net_gw)")
+
             con.execute(
-                "INSERT OR REPLACE INTO withdrawals SELECT * FROM df"
+                "INSERT OR REPLACE INTO withdrawals "
+                "SELECT date, node_idx, net_surface, net_gw FROM df"
             )
         finally:
             con.close()
@@ -609,7 +654,8 @@ class BasinCache:
         n_nodes = df["node_idx"].nunique()
         n_dates = df["date"].nunique()
         print(f"[import_withdrawals] {len(df):,} rows imported "
-              f"({n_nodes} nodes, {n_dates} dates)")
+              f"({n_nodes} nodes, {n_dates} dates; "
+              f"{n_surf_rows} surface, {n_gw_rows} groundwater)")
         return len(df)
 
     def _snap_withdrawals(self, df, max_snap_km: float):
@@ -657,7 +703,7 @@ class BasinCache:
                 continue  # skip sites outside the basin
             snap_map[row["site_id"]] = best_idx
             if best_dist > 1.0:
-                print(f"[import_withdrawals] site '{row['site_id']}' → "
+                print(f"[import_withdrawals] site '{row['site_id']}' -> "
                       f"node {best_idx} ({best_dist:.1f} km)")
 
         if n_dropped:
@@ -694,22 +740,40 @@ class BasinCache:
                 dates = pd.date_range(date_start, date_end, freq="D")
                 return WithdrawalData.zeros(len(dates), n_nodes, device=device)
 
+            # Detect schema version (legacy vs split)
+            col_names = [r[1] for r in con.execute(
+                "PRAGMA table_info('withdrawals')"
+            ).fetchall()]
+            has_split = "net_surface" in col_names and "net_gw" in col_names
+
             # Build date grid
             import pandas as pd
             dates = pd.date_range(date_start, date_end, freq="D")
             n_time = len(dates)
 
-            df = con.execute(
-                "SELECT date, node_idx, net_withdrawal "
-                "FROM withdrawals "
-                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
-                "ORDER BY date, node_idx",
-                [date_start, date_end],
-            ).df()
+            if has_split:
+                df = con.execute(
+                    "SELECT date, node_idx, net_surface, net_gw "
+                    "FROM withdrawals "
+                    "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
+                    "ORDER BY date, node_idx",
+                    [date_start, date_end],
+                ).df()
+            else:
+                # Legacy schema: all values treated as surface withdrawals.
+                df = con.execute(
+                    "SELECT date, node_idx, net_withdrawal AS net_surface, "
+                    "CAST(0.0 AS FLOAT) AS net_gw "
+                    "FROM withdrawals "
+                    "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
+                    "ORDER BY date, node_idx",
+                    [date_start, date_end],
+                ).df()
         finally:
             con.close()
 
-        net = np.zeros((n_time, n_nodes), dtype=np.float32)
+        net_surface = np.zeros((n_time, n_nodes), dtype=np.float32)
+        net_gw = np.zeros((n_time, n_nodes), dtype=np.float32)
 
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"])
@@ -728,7 +792,9 @@ class BasinCache:
                     month_days = pd.date_range(ms, me, freq="D")
                     month_days = month_days[(month_days >= dates[0]) & (month_days <= dates[-1])]
                     if len(month_days) > 0:
-                        month_df = df[df["date"] == ms][["node_idx", "net_withdrawal"]]
+                        month_df = df[df["date"] == ms][
+                            ["node_idx", "net_surface", "net_gw"]
+                        ]
                         for d in month_days:
                             daily_rows.append(month_df.assign(date=d))
                 if daily_rows:
@@ -742,18 +808,24 @@ class BasinCache:
             )
             ti = date_idx_series.reindex(df["date"]).values
             ni = df["node_idx"].values.astype(int)
-            vals = df["net_withdrawal"].values.astype(np.float32)
+            vals_s = df["net_surface"].values.astype(np.float32)
+            vals_gw = df["net_gw"].values.astype(np.float32)
 
             # Filter valid indices
             valid = ~np.isnan(ti)
             ti = ti[valid].astype(int)
             ni = ni[valid]
-            vals = vals[valid]
+            vals_s = vals_s[valid]
+            vals_gw = vals_gw[valid]
 
             # Accumulate (handles duplicates via np.add.at)
-            np.add.at(net, (ti, ni), vals)
+            np.add.at(net_surface, (ti, ni), vals_s)
+            np.add.at(net_gw, (ti, ni), vals_gw)
 
-        return WithdrawalData(net=torch.tensor(net, device=device))
+        return WithdrawalData(
+            net=torch.tensor(net_surface, device=device),
+            net_gw=torch.tensor(net_gw, device=device),
+        )
 
     def list_stations(self) -> list[dict]:
         """List stations with their metadata and observation date ranges."""

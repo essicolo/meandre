@@ -9,20 +9,23 @@
 # ---
 
 # %% [markdown]
-# # SLSO — Simulation
-#
-# ## Configuration
-#
-# Le modèle Physitel est importé pour enregistrer ses informations minimales dans un fichier `{region}.duckdb`. La météo est extraite du Zarr de référence pour les coordonnées des tronçons, puis mise en cache dans un NetCDF pour accélérer les runs suivants.
+"""
+# SLSO — Simulation
+
+## Configuration
+
+Le modèle Physitel est importé pour enregistrer ses informations minimales dans un fichier `{region}.duckdb`. La météo est extraite du Zarr de référence pour les coordonnées des tronçons, puis mise en cache dans un NetCDF pour accélérer les runs suivants.
+"""
 
 # %%
 from pathlib import Path
 import os
+import sys
 os.chdir(Path(__file__).resolve().parents[2])  # notebooks/slso/ → repo root
 import tomllib
 
 # ── Load config ───────────────────────────────────────────────────────────
-CFG_PATH = Path("notebooks/slso/config/slso.toml")
+CFG_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("notebooks/slso/config/slso.toml")
 with open(CFG_PATH, "rb") as f:
     cfg = tomllib.load(f)
 
@@ -54,6 +57,7 @@ MAX_TRAVEL_DAYS  = cfg["model"]["max_travel_days"]
 N_EPOCHS    = cfg["training"]["n_epochs"]
 LR          = cfg["training"]["lr"]
 LR_FINETUNE = cfg["training"].get("lr_finetune", LR * 0.1)
+LR_NEW_MULT = cfg["training"].get("lr_new_features_mult", None)
 WEIGHT_DECAY = cfg["training"]["weight_decay"]
 GRAD_CLIP   = cfg["training"]["grad_clip"]
 WARM_START  = cfg["training"].get("warm_start", False)
@@ -61,13 +65,17 @@ WARM_START  = cfg["training"].get("warm_start", False)
 ENABLE_TEMPORAL_EPOCH  = cfg["training"]["enable_temporal_epoch"]
 ENABLE_RESIDUAL_EPOCH  = cfg["training"]["enable_residual_epoch"]
 ENABLE_TRAVEL_EPOCH    = cfg["training"]["enable_travel_epoch"]
+RESIDUAL_WARMUP_EPOCHS = cfg["training"].get("residual_warmup_epochs", 5)
+TTA_WARMUP_EPOCHS      = cfg["training"].get("tta_warmup_epochs", 10)
 
 print(f"Config loaded from {CFG_PATH}")
 print(f"  Train: {TRAIN_START} – {TRAIN_END}")
 print(f"  Val:   {VAL_START} – {VAL_END}")
 
 # %% [markdown]
-# Supprimer le cache DuckDB des runs précédents pour éviter les conflits de schéma après les évolutions récentes du code.
+"""
+Supprimer le cache DuckDB des runs précédents pour éviter les conflits de schéma après les évolutions récentes du code.
+"""
 
 # %%
 import os
@@ -77,23 +85,28 @@ for f in [RUNS_DB, Path(str(RUNS_DB) + ".wal")]:
         print(f"Removed {f}")
 
 # %% [markdown]
-# Ajouter les effets anthropiques (prélèvements et rejets) dans la BD.
+"""
+Ajouter les effets anthropiques (prélèvements et rejets) dans la BD.
+"""
 
 # %%
 # %%
 # Run once to import withdrawals into DuckDB
 import duckdb
-_con = duckdb.connect("notebooks/slso/data/slso.duckdb", read_only=True)
+from meandre.data.basin_cache import BasinCache as _BC
+_con = duckdb.connect(str(BASIN_DB), read_only=True)
 _has_wd = "withdrawals" in _con.execute("SHOW TABLES").df()["name"].tolist()
 _con.close()
 if not _has_wd:
-    cache.import_withdrawals("notebooks/io-eau-meandre.parquet", site_col="site_id")
+    _BC(BASIN_DB).import_withdrawals("notebooks/io-eau-meandre.parquet", site_col="site_id")
 
 
 # %% [markdown]
-# ## Données statiques du bassin
-#
-# Charge le graphe de la rivière, les indicateurs territoriaux et l'état hydrologique initial. Lors du premier run, convertit le projet PHYSITEL en cache DuckDB (`BASIN_DB`). Les runs suivants chargent rapidement depuis le cache.
+"""
+## Données statiques du bassin
+Charge le graphe de la rivière, les indicateurs territoriaux et l'état hydrologique initial. Lors du premier run, convertit le projet PHYSITEL en cache DuckDB (`BASIN_DB`). Les runs suivants chargent rapidement depuis le cache.
+"""
+
 
 # %%
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -126,9 +139,10 @@ print(f"Lon range: {node_coords[:,0].min():.2f} to {node_coords[:,0].max():.2f}"
 print(f"Lat range: {node_coords[:,1].min():.2f} to {node_coords[:,1].max():.2f}")
 
 # %% [markdown]
-# ## Forçage météorologique
-#
-# Extrait quotidiennement P / T_min / T_max du Zarr du Québec et en dérive R_n (Hargreaves–Samani), e_a (point de rosée ≈ T_min), u2 = 2 m/s. Le résultat est mis en cache dans `FORCING_CACHE` ; les runs suivants sautent la lecture du Zarr.
+"""
+## Forçage météorologique
+Extrait quotidiennement P / T_min / T_max du Zarr du Québec et en dérive R_n (Hargreaves–Samani), e_a (point de rosée ≈ T_min), u2 = 2 m/s. Le résultat est mis en cache dans `FORCING_CACHE` ; les runs suivants sautent la lecture du Zarr.
+"""
 
 # %%
 import numpy as np
@@ -157,7 +171,9 @@ print(f"Forcing shape : {tuple(forcing.shape)}")
 print(f"Date range    : {all_dates[0]} to {all_dates[-1]}")
 
 # %% [markdown]
-# ### Assurance rapide — forçage quotidien moyen sur le bassin
+"""
+### Assurance rapide — forçage quotidien moyen sur le bassin
+"""
 
 # %%
 import pandas as pd
@@ -191,12 +207,13 @@ axes[2].set_title("Basin-mean net radiation (Hargreaves–Samani)")
 
 axes[2].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 fig.tight_layout()
-plt.show()
+#plt.show()
 
 # %% [markdown]
-# ## Débit observé aux stations de jaugeage
-#
-# Filtre la base de données hydrométrique du Québec pour les stations SLSO. Seules les stations avec au moins 365 jours valides dans la fenêtre de simulation sont conservées
+"""
+## Débit observé aux stations de jaugeage
+Filtre la base de données hydrométrique du Québec pour les stations SLSO. Seules les stations avec au moins 365 jours valides dans la fenêtre de simulation sont conservées.
+"""
 
 # %%
 obs = cache.load_observations(
@@ -221,7 +238,9 @@ print(f"Stations retained: {n_stations}")
 print(f"Observed Q shape : {q_obs_tensor.shape}")
 
 # %% [markdown]
-# ### Localisation des stations de jaugeage
+"""
+### Localisation des stations de jaugeage
+"""
 
 # %%
 import duckdb
@@ -251,10 +270,12 @@ ax.set_xlabel("Longitude")
 ax.set_ylabel("Latitude")
 ax.set_title(f"SLSO network ({n_nodes} troncons) and {n_stations} gauging stations")
 fig.tight_layout()
-plt.show()
+#plt.show()
 
 # %% [markdown]
-# ## Indicateurs temporels et découpage des périodes
+"""
+## Indicateurs temporels et découpage des périodes
+"""
 
 # %%
 def dates_to_slice(dates: np.ndarray, start: str, end: str) -> slice:
@@ -284,7 +305,9 @@ print(f"Non-NaN fraction: {(~q_obs_tensor[val_sl].isnan()).float().mean():.3f}")
 print(f"Stations with any obs: {(~q_obs_tensor[val_sl].isnan()).any(dim=0).sum()}")
 
 # %% [markdown]
-# ## Modèle HydroModel
+"""
+## Modèle HydroModel
+"""
 
 # %%
 from meandre.model import HydroModel
@@ -303,6 +326,7 @@ model = HydroModel(
     use_travel_time_attn = True,
     use_temperature = True,
     dropout = DROPOUT,
+    param_mode = cfg["model"].get("param_mode", "nerf"),
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
@@ -314,12 +338,19 @@ if WARM_START and CHECKPOINT.exists():
     LR = LR_FINETUNE
     print(f"Warm-start from {CHECKPOINT} (lr={LR:.1e})")
 else:
-    print("Training from scratch")
+    # Initialise spatial parameters from Hydrotel physical constants.
+    # Without this, K_sat starts ~50x too high (0.5 vs 0.01 m/day for
+    # loam/silt_loam) and the optimizer wastes dozens of epochs just
+    # bringing soil hydraulics into a physically plausible range.
+    hydrotel_targets = cfg.get("hydrotel_prior", None)
+    model.spatial_encoder.init_from_hydrotel(hydrotel_targets)
+    print("Training from scratch (Hydrotel-initialised spatial params)")
 
 # %% [markdown]
-# ## Prélèvements et rejets
-#
-# Chargement des données de prélèvement/rejet depuis le DuckDB. Les données mensuelles sont étalées uniformément sur chaque jour du mois. Convention : positif = eau ajoutée (rejet), négatif = eau retirée (pompage).
+"""
+## Prélèvements et rejets
+Chargement des données de prélèvement/rejet depuis le DuckDB. Les données mensuelles sont étalées uniformément sur chaque jour du mois. Convention : positif = eau ajoutée (rejet), négatif = eau retirée (pompage).
+"""
 
 # %%
 withdrawals = cache.load_withdrawals(
@@ -331,9 +362,10 @@ print(f"Net mean: {withdrawals.net.mean():.4f} m³/s")
 print(f"Range: [{withdrawals.net.min():.3f}, {withdrawals.net.max():.3f}] m³/s")
 
 # %% [markdown]
-# ## Entraînement
-#
-# La boucle d'entraînement est configurée pour activer progressivement les différentes composantes du modèle : contexte temporel, correcteur de résidu et attention sur le temps de parcours. Les checkpoints sont enregistrés dans `CHECKPOINT` et les métriques de validation sont suivies dans `RUNS_DB` via `RunLogger`.
+"""
+## Entraînement
+La boucle d'entraînement est configurée pour activer progressivement les différentes composantes du modèle : contexte temporel, correcteur de résidu et attention sur le temps de parcours. Les checkpoints sont enregistrés dans `CHECKPOINT` et les métriques de validation sont suivies dans `RUNS_DB` via `RunLogger`.
+"""
 
 # %%
 from meandre.training.loss import HydroLoss
@@ -381,6 +413,19 @@ station_areas = torch.sqrt(torch.clamp(
     min=50.0, max=500.0,
 ))
 
+# Variance of observed discharge per station — normalises MSE so each station
+# contributes equally to the loss, regardless of its magnitude.  This is
+# equivalent to (1-NSE) per station but chunk-safe (the denominator is fixed).
+station_var = torch.zeros(n_stations, dtype=torch.float32, device=device)
+for i in range(n_stations):
+    mask = ~torch.isnan(q_obs_tensor[:, i])
+    if mask.sum() > 30:
+        station_var[i] = q_obs_tensor[mask, i].var()
+    else:
+        station_var[i] = 1.0  # fallback for stations with few observations
+
+print(f"station_var range: {station_var.min():.1f} - {station_var.max():.1f}")
+
 lcfg = cfg["loss"]
 loss_fn = HydroLoss(
     w_nse=lcfg["w_nse"], w_kge=lcfg["w_kge"], w_pbias=lcfg["w_pbias"],
@@ -388,7 +433,10 @@ loss_fn = HydroLoss(
     w_log_nse=lcfg["w_log_nse"], w_log_mse=lcfg["w_log_mse"],
     w_physics=lcfg["w_physics"], w_residual=lcfg["w_residual"],
     per_station=True, station_weights=station_areas,
+    station_var=station_var,
 )
+
+tcfg = cfg["training"]
 
 train_cfg = TrainingConfig(
     lr = LR,
@@ -396,14 +444,39 @@ train_cfg = TrainingConfig(
     grad_clip = GRAD_CLIP,
     n_epochs = N_EPOCHS,
     spinup_steps = spinup_steps,
-    warm_spinup_steps = 0,  # full spinup every epoch (consistent state)
-    tbptt_steps = cfg["training"]["tbptt_steps"],
-    val_every = cfg["training"]["val_every"],
+    warm_spinup_steps = 90,  # after epoch 0, reuse cached state + 90-day warm spinup
+    tbptt_steps = tcfg["tbptt_steps"],
+    chunk_steps = tcfg["chunk_steps"],
+    val_every = tcfg["val_every"],
     enable_temporal_context_epoch = ENABLE_TEMPORAL_EPOCH,
     enable_residual_corrector_epoch = ENABLE_RESIDUAL_EPOCH,
+    residual_warmup_epochs = RESIDUAL_WARMUP_EPOCHS,
     enable_travel_time_attn_epoch = ENABLE_TRAVEL_EPOCH,
-    patience = cfg["training"]["patience"],
+    tta_warmup_epochs = TTA_WARMUP_EPOCHS,
+    patience = tcfg["patience"],
+    best_metric = tcfg.get("best_metric", "nse"),
+    warmup_epochs = 0 if WARM_START else 5,
+    lr_new_features_mult = LR_NEW_MULT if WARM_START else None,
+    compile_modules = tcfg.get("compile_modules", False),
+    # Autopilot
+    autopilot = tcfg.get("autopilot", False),
+    autopilot_beta_threshold = tcfg.get("autopilot_beta_threshold", 0.15),
+    autopilot_beta_penalty = tcfg.get("autopilot_beta_penalty", 0.005),
+    autopilot_gamma_threshold = tcfg.get("autopilot_gamma_threshold", 0.20),
+    autopilot_gamma_penalty = tcfg.get("autopilot_gamma_penalty", 0.003),
+    autopilot_lr_patience = tcfg.get("autopilot_lr_patience", 8),
+    autopilot_lr_factor = tcfg.get("autopilot_lr_factor", 0.5),
+    autopilot_lr_min = tcfg.get("autopilot_lr_min", 1e-6),
+    autopilot_restart_regression = tcfg.get("autopilot_restart_regression", 0.05),
+    autopilot_restart_max = tcfg.get("autopilot_restart_max", 3),
+    autopilot_activate_residual_at_kge = tcfg.get("autopilot_activate_residual_at_kge", None),
+    autopilot_activate_tta_at_kge = tcfg.get("autopilot_activate_tta_at_kge", None),
 )
+
+if train_cfg.autopilot:
+    print(f"  Autopilot ON — β_thr={train_cfg.autopilot_beta_threshold}, "
+          f"γ_thr={train_cfg.autopilot_gamma_threshold}, "
+          f"LR_patience={train_cfg.autopilot_lr_patience}")
 
 CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
 
@@ -422,9 +495,10 @@ trainer = Trainer(
 trainer.fit()
 
 # %% [markdown]
-# ## Full-period simulation
-#
-# Run the model over the complete window using the best checkpoint.
+"""
+## Full-period simulation
+Run the model over the complete window using the best checkpoint.
+"""
 
 # %%
 model.load(str(CHECKPOINT))
@@ -445,7 +519,9 @@ with torch.no_grad():
 print(f"Q_sim shape: {tuple(Q_sim.shape)}")  # (T, N)
 
 # %% [markdown]
-# ### Deep diagnostics — water balance internals
+"""
+### Deep diagnostics — water balance internals
+"""
 
 # %%
 # Re-run with diagnostics to get intermediate fluxes
@@ -464,8 +540,6 @@ with torch.no_grad():
 # Also get spatial params
 with torch.no_grad():
     sp = model.spatial_encoder(node_coords, territorial.to_tensor())
-
-import torch.nn.functional as F
 
 print("=" * 60)
 print("SPATIAL PARAMETERS (median across nodes)")
@@ -486,12 +560,10 @@ print(f"  k_gw:       {sp.k_gw.median():.4f} /day")
 print(f"  T_gw:       {sp.T_gw.median():.1f} C")
 print(f"  K_atm:      {sp.K_atm.median():.3f} /day")
 
-K_hours = (F.softplus(model.log_K_musk) + 0.5)
-print(f"\n  K_musk: {K_hours.min():.1f}-{K_hours.median():.1f}-{K_hours.max():.1f} hours")
-x_musk = 0.5 * torch.sigmoid(model.logit_x_musk)
-print(f"  x_musk: {x_musk.median():.3f}")
-k_inter = F.softplus(model.vertical_column.soil.log_k_interflow)
-print(f"  k_interflow: {k_inter:.4f} /day")
+print(f"\n  K_musk: {sp.K_musk_hours.min():.1f}-{sp.K_musk_hours.median():.1f}-{sp.K_musk_hours.max():.1f} hours")
+print(f"  x_musk: {sp.x_musk.median():.3f}")
+print(f"  vg_n: {sp.vg_n.median():.3f}")
+print(f"  k_interflow: {sp.k_interflow.median():.4f} /day")
 
 print("\n" + "=" * 60)
 print("WATER BALANCE (basin-mean mm/day)")
@@ -551,8 +623,8 @@ for sid in list(station_node_map.keys())[:6]:
     ni = station_node_map[sid]
     upstream = set()
     queue = [ni]
-    edge_src = graph.edge_index[0].numpy() if graph.n_edges > 0 else np.array([])
-    edge_dst = graph.edge_index[1].numpy() if graph.n_edges > 0 else np.array([])
+    edge_src = graph.edge_index[0].cpu().numpy() if graph.n_edges > 0 else np.array([])
+    edge_dst = graph.edge_index[1].cpu().numpy() if graph.n_edges > 0 else np.array([])
     while queue:
         node = queue.pop(0)
         for s, d in zip(edge_src, edge_dst):
@@ -573,7 +645,10 @@ for sid in list(station_node_map.keys())[:6]:
           f"Q_obs={q_obs_mean:.1f} m³/s")
 
 # %% [markdown]
-# ## Save results
+"""
+## Save results
+"""
+
 
 # %%
 FIELDS_NC.parent.mkdir(parents=True, exist_ok=True)
@@ -623,9 +698,10 @@ df_reach.to_parquet(REACH_PARQUET, index=False)
 print(f"Reach saved to {REACH_PARQUET}  ({len(df_reach)} rows, {n_nodes} reaches)")
 
 # %% [markdown]
-# ## Evaluation at gauging stations
-#
-# ### Global metrics
+"""
+## Evaluation at gauging stations
+### Global metrics
+"""
 
 # %%
 from meandre.utils.metrics import nse, kge, pbias
@@ -655,7 +731,10 @@ df_metrics = pd.DataFrame(results).sort_values("NSE", ascending=False)
 print(df_metrics.to_string(index=False, float_format="{:.3f}".format))
 
 # %% [markdown]
-# ### Hydrographs — top stations by drainage area
+"""
+### Hydrographs
+Top stations by drainage area
+"""
 
 # %%
 top_sids = sorted(sids, key=lambda s: -areas[sids.index(s)])[:6]
@@ -676,10 +755,13 @@ for ax, sid in zip(axes, top_sids):
 
 axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 fig.tight_layout()
-plt.show()
+fig.savefig("notebooks/slso/results/hydrographs.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
 
 # %% [markdown]
-# ### NSE distribution across stations
+"""
+### NSE distribution across stations
+"""
 
 # %%
 fig, ax = plt.subplots(figsize=(7, 4))
@@ -692,10 +774,13 @@ ax.set_ylabel("Number of stations")
 ax.set_title(f"NSE distribution — SLSO {DATE_START} to {DATE_END}")
 ax.legend()
 fig.tight_layout()
-plt.show()
+fig.savefig("notebooks/slso/results/nse_distribution.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
 
 # %% [markdown]
-# ### Diagnostic — volume bias, peak timing, and flow components
+"""
+### Diagnostic — volume bias, peak timing, and flow components
+"""
 
 # %%
 diag_rows = []

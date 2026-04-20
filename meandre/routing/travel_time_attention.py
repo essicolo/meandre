@@ -60,6 +60,24 @@ class TravelTimeAttention(nn.Module):
         self.v_proj = nn.Linear(d_flow, d_model)
         self.out_proj = nn.Linear(d_model, 1)
 
+        # Identity-like init: v_proj and out_proj form a passthrough so that
+        # out_proj(v_proj(x)) ≈ x at initialisation.  This ensures upstream
+        # flow is propagated downstream from the very first forward pass,
+        # rather than being destroyed by random weights.
+        with torch.no_grad():
+            nn.init.zeros_(self.v_proj.weight)
+            nn.init.zeros_(self.v_proj.bias)
+            self.v_proj.weight[0, :d_flow] = 1.0   # first dim copies input
+
+            nn.init.zeros_(self.out_proj.weight)
+            nn.init.zeros_(self.out_proj.bias)
+            self.out_proj.weight[0, 0] = 1.0        # reads from first dim
+
+            # Small random init for tau_embed so travel-time bias starts near
+            # zero (uniform attention), letting the model learn to differentiate
+            # travel times gradually.
+            nn.init.normal_(self.tau_embed.weight, mean=0.0, std=0.01)
+
     def forward_edges(
         self,
         edge_queries: Tensor,

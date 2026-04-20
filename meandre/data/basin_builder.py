@@ -52,8 +52,13 @@ def build_basin(
     outlet: tuple[float, float],
     basin_db: str | Path,
     min_area_km2: float = 2.0,
+    max_subcatchments: int = 300,
+    water_occurrence_path: str | Path | None = None,
+    lai_path: str | Path | None = None,
+    nrcan_lc_path: str | Path | None = None,
     extra_stats: list[str] | None = None,
     normalise: bool = True,
+    basin_mask_gdf=None,
 ) -> BasinCache:
     """Build a complete basin DuckDB from open-data rasters.
 
@@ -92,6 +97,8 @@ def build_basin(
     print("[basin_builder] Step 2: Delineating subcatchments...")
     subcatchments = _delineate_subcatchments(
         grid_data, outlet, min_area_km2=min_area_km2,
+        max_subcatchments=max_subcatchments,
+        basin_mask_gdf=basin_mask_gdf,
     )
     n_nodes = subcatchments["n_nodes"]
     print(f"  {n_nodes} subcatchments delineated")
@@ -105,7 +112,18 @@ def build_basin(
     features, physical, columns = _compute_zonal_stats(
         subcatchments, dem_path, landcover_path, soil_dir,
         graph, extra_stats=extra_stats or [],
+        water_occurrence_path=water_occurrence_path,
+        lai_path=lai_path,
+        nrcan_lc_path=nrcan_lc_path,
     )
+
+    # Step 4b: Lake detection — flag nodes where >10 % of area is permanent water
+    if "lake_fraction" in columns:
+        lf_idx = columns.index("lake_fraction")
+        lake_frac_raw = features[:, lf_idx]          # un-normalised here
+        graph.is_lake = lake_frac_raw > 0.50
+        n_lakes = int(graph.is_lake.sum())
+        print(f"  {n_lakes} lacs détectés (lake_fraction > 50 %)", flush=True)
 
     # Step 5: Normalise features
     if normalise:
@@ -156,22 +174,45 @@ def build_basin(
 
 
 def _condition_dem(dem_path: Path) -> dict:
-    """Fill depressions, compute flow direction and accumulation."""
+    """Fill depressions, compute flow direction and accumulation.
+
+    Results are cached as compact .npy arrays next to the DEM so subsequent
+    calls skip the expensive priority-flood + numba compilation (~3–5 min).
+    fdir is stored as uint8 (~150 MB) and acc as float32 (~600 MB) instead
+    of uncompressed GeoTIFFs (~1.2 GB each).
+    """
     from pysheds.grid import Grid
+    from pysheds.sview import Raster, ViewFinder
+
+    cache_dir  = dem_path.parent
+    fdir_cache = cache_dir / "fdir.npy"
+    acc_cache  = cache_dir  / "acc.npy"
 
     grid = Grid.from_raster(str(dem_path))
-    dem = grid.read_raster(str(dem_path))
+    dem  = grid.read_raster(str(dem_path))
 
-    # Fill depressions
+    if fdir_cache.exists() and acc_cache.exists():
+        print("[basin_builder] DEM conditioning cached — loading fdir/acc...", flush=True)
+        vf   = ViewFinder(affine=grid.affine, shape=grid.shape, crs=grid.crs)
+        fdir = Raster(np.load(fdir_cache).astype(np.int32), viewfinder=vf)
+        acc  = Raster(np.load(acc_cache).astype(np.float64), viewfinder=vf)
+        return {"grid": grid, "dem": dem, "fdir": fdir, "acc": acc,
+                "conditioned_dem": dem}
+
+    print("[basin_builder] DEM conditioning (first run, may take several minutes)...",
+          flush=True)
     pit_filled = grid.fill_pits(dem)
-    flooded = grid.fill_depressions(pit_filled)
-    inflated = grid.resolve_flats(flooded)
+    flooded    = grid.fill_depressions(pit_filled)
+    inflated   = grid.resolve_flats(flooded)
+    fdir       = grid.flowdir(inflated)
+    acc        = grid.accumulation(fdir)
 
-    # D8 flow direction
-    fdir = grid.flowdir(inflated)
-
-    # Flow accumulation
-    acc = grid.accumulation(fdir)
+    np.save(fdir_cache, np.asarray(fdir).astype(np.uint8))
+    np.save(acc_cache,  np.asarray(acc).astype(np.float32))
+    # Remove old .tif caches if they exist
+    for old in (cache_dir / "fdir.tif", cache_dir / "acc.tif"):
+        old.unlink(missing_ok=True)
+    print(f"[basin_builder] Cached fdir/acc -> {cache_dir}", flush=True)
 
     return {
         "grid": grid,
@@ -189,6 +230,8 @@ def _delineate_subcatchments(
     grid_data: dict,
     outlet: tuple[float, float],
     min_area_km2: float = 2.0,
+    max_subcatchments: int = 300,
+    basin_mask_gdf=None,
 ) -> dict:
     """Delineate subcatchments from flow accumulation threshold."""
     grid = grid_data["grid"]
@@ -201,22 +244,40 @@ def _delineate_subcatchments(
     res_m = abs(grid.affine.a) * 111_000  # degrees to meters (approximate)
     pixel_area_km2 = (res_m ** 2) / 1e6
     min_pixels = max(int(min_area_km2 / pixel_area_km2), 100)
+    print(f"  résolution={res_m:.1f} m  min_pixels={min_pixels}  "
+          f"raster={grid.shape[0]}×{grid.shape[1]} px")
 
-    # Snap outlet to nearest high-accumulation cell
+    # Snap outlet to nearest high-accumulation cell (used for reference even with mask).
+    snap_pixels = max(min_pixels, int(25.0 / pixel_area_km2))
     lon, lat = outlet
-    x_snap, y_snap = grid.snap_to_mask(acc > min_pixels, (lon, lat))
+    print(f"  snap outlet ({lon}, {lat})...")
+    x_snap, y_snap = grid.snap_to_mask(acc > snap_pixels, (lon, lat))
+    print(f"  snapped -> ({x_snap:.4f}, {y_snap:.4f})")
 
-    # Delineate full basin from outlet
-    catch = grid.catchment(x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate")
+    if basin_mask_gdf is not None:
+        # Use polygon boundary directly — supports multi-basin regions
+        from rasterio.features import rasterize as _rasterize
+        import geopandas as gpd
+        _gdf = basin_mask_gdf.to_crs("EPSG:4326") if basin_mask_gdf.crs else basin_mask_gdf
+        _shapes = [(geom, 1) for geom in _gdf.geometry if geom is not None]
+        catch_arr = _rasterize(
+            _shapes, out_shape=grid.shape, transform=grid.affine, fill=0,
+            dtype="uint8", all_touched=False,
+        ).astype(bool)
+        print(f"  catchment cells (polygon mask): {catch_arr.sum()}", flush=True)
+        # Wrap as pysheds-compatible object for downstream code
+        catch = catch_arr
+    else:
+        # Delineate from outlet via D8 flow tracing
+        print("  catchment delineation...")
+        catch = grid.catchment(x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate")
+        catch_arr = np.asarray(catch).astype(bool)
+        print(f"  catchment cells: {int(catch_arr.sum())}", flush=True)
 
-    # Extract stream network at threshold
-    branches = grid.extract_river_network(
-        fdir, acc > min_pixels,
-    )
-
-    # Build subcatchments by labeling pour points along the stream network
-    # Use stream junction/confluence points as pour points
-    pour_points = _find_pour_points(branches, grid, acc, min_pixels)
+    # Find pour points as D8 confluences within the catchment (guaranteed inside)
+    pour_points = _find_pour_points(grid, fdir, acc, catch, min_pixels,
+                                    max_points=max_subcatchments)
+    print(f"  pour points retenus: {len(pour_points)}")
 
     if len(pour_points) == 0:
         # Fallback: single catchment
@@ -240,35 +301,63 @@ def _delineate_subcatchments(
         "n_nodes": n_nodes,
         "pour_points": pour_points,
         "catch_mask": catch,
-        "branches": branches,
         "pixel_area_km2": pixel_area_km2,
     }
 
 
-def _find_pour_points(branches, grid, acc, min_pixels: int) -> list[tuple[float, float]]:
-    """Extract stream junction / confluence points from the river network."""
-    if not branches or "features" not in branches:
+def _find_pour_points(
+    grid,
+    fdir,
+    acc,
+    catch_mask,
+    min_pixels: int,
+    max_points: int = 300,
+) -> list[tuple[float, float]]:
+    """Find D8 confluence pixels inside the catchment mask.
+
+    A confluence is a catchment cell that receives flow from ≥2 other catchment
+    cells.  All returned points are guaranteed to lie within catch_mask, so
+    the BFS in _label_subcatchments can always find them.
+    """
+    fdir_arr = np.asarray(fdir)
+    acc_arr  = np.asarray(acc)
+    catch_arr = np.asarray(catch_mask).astype(bool)
+    nrows, ncols = fdir_arr.shape
+    affine = grid.affine
+
+    # pysheds D8: N=64 NE=128 E=1 SE=2 S=4 SW=8 W=16 NW=32
+    d8 = {64: (-1, 0), 128: (-1, 1), 1: (0, 1), 2: (1, 1),
+           4: (1, 0),   8: (1, -1), 16: (0, -1), 32: (-1, -1)}
+
+    # Count how many catchment cells flow into each catchment cell
+    incoming = np.zeros((nrows, ncols), dtype=np.int16)
+    rows_c, cols_c = np.where(catch_arr)
+    for r, c in zip(rows_c.tolist(), cols_c.tolist()):
+        d = int(fdir_arr[r, c])
+        if d not in d8:
+            continue
+        dr, dc = d8[d]
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < nrows and 0 <= nc < ncols and catch_arr[nr, nc]:
+            incoming[nr, nc] += 1
+
+    # Confluences: ≥2 incoming flows AND above the stream threshold
+    conf_mask = catch_arr & (incoming >= 2) & (acc_arr >= min_pixels)
+    conf_rows, conf_cols = np.where(conf_mask)
+
+    if len(conf_rows) == 0:
         return []
 
-    # Collect all coordinate endpoints
-    endpoints = []
-    for feature in branches["features"]:
-        coords = feature["geometry"]["coordinates"]
-        if coords:
-            endpoints.append(coords[0])   # start
-            endpoints.append(coords[-1])   # end
+    # Sort by accumulation descending, keep top max_points
+    conf_acc = acc_arr[conf_rows, conf_cols]
+    order = np.argsort(-conf_acc)[:max_points]
 
-    # Count occurrences — junctions appear multiple times
-    from collections import Counter
-    point_counts = Counter()
-    for pt in endpoints:
-        # Round to grid resolution to handle floating-point noise
-        key = (round(pt[0], 6), round(pt[1], 6))
-        point_counts[key] += 1
-
-    # Junctions: points that appear more than once (confluences)
-    # Plus all endpoints (to ensure coverage)
-    pour_points = list(point_counts.keys())
+    pour_points = []
+    for idx in order:
+        r, c = int(conf_rows[idx]), int(conf_cols[idx])
+        lon = affine.c + (c + 0.5) * affine.a
+        lat = affine.f + (r + 0.5) * affine.e
+        pour_points.append((lon, lat))
 
     return pour_points
 
@@ -276,64 +365,112 @@ def _find_pour_points(branches, grid, acc, min_pixels: int) -> list[tuple[float,
 def _label_subcatchments(
     grid, fdir, acc, catch_mask, pour_points, pixel_area_km2,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Label each cell with the nearest downstream pour point.
+    """Label each basin cell with the ID of its nearest downstream pour point.
 
-    Simple approach: compute individual catchments for each pour point,
-    then assign cells to the smallest catchment they belong to (most local).
+    Uses BFS backwards along the reverse-flow graph.  Pour points are processed
+    from most-downstream (highest accumulation) to most-upstream so each BFS
+    flood-fill stops naturally when it hits cells already claimed by a more
+    upstream pour point.  No calls to grid.catchment() are needed.
     """
-    n_pour = len(pour_points)
+    from collections import deque
 
-    # Compute catchment for each pour point
-    catchments = []
-    valid_points = []
-    for i, (px, py) in enumerate(pour_points):
-        try:
-            c = grid.catchment(x=px, y=py, fdir=fdir, xytype="coordinate")
-            c_arr = c.astype(bool) & catch_mask.astype(bool)
-            area = c_arr.sum()
-            if area > 0:
-                catchments.append(c_arr)
-                valid_points.append(i)
-        except Exception:
+    affine   = grid.affine
+    fdir_arr = np.asarray(fdir)
+    acc_arr  = np.asarray(acc)
+    catch_arr = np.asarray(catch_mask).astype(bool)
+    nrows, ncols = fdir_arr.shape
+
+    # pysheds default dirmap: N=64 NE=128 E=1 SE=2 S=4 SW=8 W=16 NW=32
+    d8 = {64: (-1,  0), 128: (-1,  1), 1: (0,  1), 2: (1,  1),
+           4: ( 1,  0),   8: ( 1, -1), 16: (0, -1), 32: (-1, -1)}
+
+    # Build reverse-flow map within the catchment: cell → upstream neighbours
+    rev_map: dict[tuple[int,int], list[tuple[int,int]]] = {}
+    rows_c, cols_c = np.where(catch_arr)
+    for r, c in zip(rows_c.tolist(), cols_c.tolist()):
+        d = int(fdir_arr[r, c])
+        if d not in d8:
             continue
+        dr, dc = d8[d]
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < nrows and 0 <= nc < ncols and catch_arr[nr, nc]:
+            rev_map.setdefault((nr, nc), []).append((r, c))
 
-    if not catchments:
-        # Fallback: single catchment
-        labels = catch_mask.astype(np.int32)
-        labels[labels > 0] = 1
-        centroid = np.array(pour_points[0:1]) if pour_points else np.array([[0.0, 0.0]])
-        area = np.array([catch_mask.sum() * pixel_area_km2])
+    # Convert pour points to pixel coords; keep only those inside the catchment
+    def _to_pixel(px: float, py: float) -> tuple[int, int]:
+        col = int((px - affine.c) / affine.a)
+        row = int((py - affine.f) / affine.e)
+        return max(0, min(row, nrows - 1)), max(0, min(col, ncols - 1))
+
+    seen: set[tuple[int,int]] = set()
+    pp_list: list[tuple[int, int, float]] = []   # (row, col, acc_value)
+    for px, py in pour_points:
+        r, c = _to_pixel(px, py)
+        if catch_arr[r, c] and (r, c) not in seen:
+            seen.add((r, c))
+            pp_list.append((r, c, float(acc_arr[r, c])))
+
+    # Always include the true outlet (max-acc cell) so downstream cells are covered
+    max_idx = int(np.argmax(acc_arr * catch_arr.astype(np.float32)))
+    outlet_r, outlet_c = np.unravel_index(max_idx, acc_arr.shape)
+    if (outlet_r, outlet_c) not in seen:
+        pp_list.append((outlet_r, outlet_c, float(acc_arr[outlet_r, outlet_c])))
+        seen.add((outlet_r, outlet_c))
+
+    if not pp_list:
+        labels = catch_arr.astype(np.int32)
+        centroid = np.array(pour_points[0:1]) if pour_points else np.zeros((1, 2))
+        area = np.array([catch_arr.sum() * pixel_area_km2])
         return labels, centroid, area
 
-    # Assign each cell to the smallest containing catchment (most local)
-    # Sort catchments by area (smallest first)
-    areas = [c.sum() for c in catchments]
-    order = np.argsort(areas)
+    # Sort descending by accumulation (most downstream = highest acc first)
+    pp_list.sort(key=lambda x: -x[2])
 
-    # Labels array: 0 = no catchment, 1..N = subcatchment ID
-    labels = np.zeros(catchments[0].shape, dtype=np.int32)
-    for rank, idx in enumerate(order):
-        mask = catchments[idx]
-        labels[mask] = rank + 1  # 1-indexed
+    labels = np.zeros((nrows, ncols), dtype=np.int32)
+    # Pre-mark all pour-point pixels so BFS stops at them
+    for label_id, (pr, pc, _) in enumerate(pp_list, start=1):
+        labels[pr, pc] = label_id
 
-    n_nodes = len(catchments)
+    # BFS from each pour point going upstream; stop at already-labeled cells
+    for label_id, (pr, pc, _) in enumerate(pp_list, start=1):
+        queue = deque([(pr, pc)])
+        while queue:
+            r, c = queue.popleft()
+            for nr, nc in rev_map.get((r, c), []):
+                if catch_arr[nr, nc] and labels[nr, nc] == 0:
+                    labels[nr, nc] = label_id
+                    queue.append((nr, nc))
 
-    # Compute centroids and areas
-    # Get affine transform for coordinate conversion
-    affine = grid.affine
-    centroids = np.zeros((n_nodes, 2))  # [lon, lat]
+    # Any residual unlabeled cells → assign to most-downstream node (label 1)
+    labels[catch_arr & (labels == 0)] = 1
+
+    n_nodes = len(pp_list)
+    centroids = np.zeros((n_nodes, 2))
     areas_km2 = np.zeros(n_nodes)
 
-    for rank, idx in enumerate(order):
-        node_mask = labels == (rank + 1)
-        rows, cols = np.where(node_mask)
-        if len(rows) == 0:
-            continue
-        # Convert pixel coords to geographic coords
-        lons = affine.c + (cols + 0.5) * affine.a
-        lats = affine.f + (rows + 0.5) * affine.e
-        centroids[rank] = [lons.mean(), lats.mean()]
-        areas_km2[rank] = len(rows) * pixel_area_km2
+    # Vectorised centroid computation — one pass over catchment pixels only
+    catch_rows, catch_cols = np.where(catch_arr)
+    lbl_flat = labels[catch_rows, catch_cols]          # label for each catchment pixel
+    valid    = lbl_flat > 0
+    lbl0     = lbl_flat[valid] - 1                     # 0-indexed
+    r_valid  = catch_rows[valid].astype(np.float64)
+    c_valid  = catch_cols[valid].astype(np.float64)
+
+    counts   = np.bincount(lbl0, minlength=n_nodes).astype(np.float64)
+    sum_r    = np.bincount(lbl0, weights=r_valid, minlength=n_nodes)
+    sum_c    = np.bincount(lbl0, weights=c_valid, minlength=n_nodes)
+
+    for label_id, (pr, pc, _) in enumerate(pp_list, start=1):
+        i = label_id - 1
+        if counts[i] > 0:
+            mean_c = sum_c[i] / counts[i]
+            mean_r = sum_r[i] / counts[i]
+            centroids[i, 0] = affine.c + (mean_c + 0.5) * affine.a   # lon
+            centroids[i, 1] = affine.f + (mean_r + 0.5) * affine.e   # lat
+        else:
+            centroids[i] = [affine.c + (pc + 0.5) * affine.a,
+                            affine.f + (pr + 0.5) * affine.e]
+        areas_km2[i] = counts[i] * pixel_area_km2
 
     return labels, centroids, areas_km2
 
@@ -454,6 +591,47 @@ def _topological_sort(edge_index: Tensor, n_nodes: int) -> Tensor:
 # ── Step 4: Zonal statistics ────────────────────────────────────────────────
 
 
+def _read_resampled(
+    path: Path,
+    target_shape: tuple[int, int],
+    target_transform,
+    target_crs,
+    resampling_method=None,
+) -> np.ndarray:
+    """Read a raster and resample it to *target_shape* / *target_transform*.
+
+    Uses nearest-neighbour for integer/uint8 data (categorical),
+    bilinear for float data.
+    """
+    import rasterio
+    from rasterio.warp import reproject, Resampling
+
+    with rasterio.open(str(path)) as src:
+        data = src.read(1)
+        src_transform = src.transform
+        src_crs = src.crs or target_crs
+
+    if data.shape == target_shape:
+        return data   # already aligned
+
+    if resampling_method is None:
+        resampling_method = (
+            Resampling.nearest if data.dtype.kind in ("u", "i") else Resampling.bilinear
+        )
+
+    dst = np.empty(target_shape, dtype=data.dtype)
+    reproject(
+        source=data,
+        destination=dst,
+        src_transform=src_transform,
+        src_crs=src_crs,
+        dst_transform=target_transform,
+        dst_crs=target_crs,
+        resampling=resampling_method,
+    )
+    return dst
+
+
 def _compute_zonal_stats(
     subcatchments: dict,
     dem_path: Path,
@@ -461,6 +639,9 @@ def _compute_zonal_stats(
     soil_dir: Path,
     graph: RiverGraph,
     extra_stats: list[str] | None = None,
+    water_occurrence_path: Path | None = None,
+    lai_path: Path | None = None,
+    nrcan_lc_path: Path | None = None,
 ) -> tuple[Tensor, dict[str, Tensor], list[str]]:
     """Compute per-subcatchment zonal statistics from rasters."""
     from rasterstats import zonal_stats
@@ -479,67 +660,107 @@ def _compute_zonal_stats(
     with rasterio.open(dem_path) as src:
         dem_data = src.read(1)
         dem_affine = src.transform
+        dem_crs    = src.crs
+
+    # Reference grid for resampling all other rasters
+    _grid_shape = labels.shape
+    _grid_tf    = dem_affine
+    _grid_crs   = dem_crs
 
     # Compute slope from DEM
     slope_pct = _compute_slope(dem_data, dem_affine)
 
+    # Build label index ONCE — all zonal helpers reuse it (O(catchment) per stat)
+    _idx = _LabelIndex(labels, n_nodes)
+
     # Per-zone DEM stats
-    elev_stats = _zonal_mean_per_label(labels, dem_data, n_nodes)
-    slope_stats = _zonal_mean_per_label(labels, slope_pct, n_nodes)
+    elev_stats = _zonal_mean_per_label(labels, dem_data, n_nodes, _idx=_idx)
+    slope_stats = _zonal_mean_per_label(labels, slope_pct, n_nodes, _idx=_idx)
 
     # Aspect (sin/cos for circular mean)
     aspect_rad = _compute_aspect(dem_data)
-    sin_asp = _zonal_mean_per_label(labels, np.sin(aspect_rad), n_nodes)
-    cos_asp = _zonal_mean_per_label(labels, np.cos(aspect_rad), n_nodes)
+    sin_asp = _zonal_mean_per_label(labels, np.sin(aspect_rad), n_nodes, _idx=_idx)
+    cos_asp = _zonal_mean_per_label(labels, np.cos(aspect_rad), n_nodes, _idx=_idx)
 
-    # ── Land cover fractions ──
-    with rasterio.open(landcover_path) as src:
-        lc_data = src.read(1)
+    # ── Land cover fractions (ESA WorldCover) ────────────────────────────────
+    lc_data = _read_resampled(landcover_path, _grid_shape, _grid_tf, _grid_crs)
+    lc_fracs = _landcover_fractions(labels, lc_data, n_nodes, _idx=_idx)
 
-    # ESA WorldCover classes → fractions
-    lc_fracs = _landcover_fractions(labels, lc_data, n_nodes)
+    # ── NRCan land cover (forest type + tourbières) ───────────────────────────
+    nrcan_fracs: dict[str, np.ndarray] = {}
+    if nrcan_lc_path is not None and Path(nrcan_lc_path).exists():
+        print("  NRCan land cover...", flush=True)
+        nrcan_data = _read_resampled(nrcan_lc_path, _grid_shape, _grid_tf, _grid_crs)
+        nrcan_fracs = _landcover_fractions_nrcan(labels, nrcan_data, n_nodes, _idx=_idx)
 
-    # ── Soil fractions ──
-    soil_fracs = _soil_fractions(labels, soil_dir, n_nodes)
+    # ── Soil fractions ────────────────────────────────────────────────────────
+    soil_fracs = _soil_fractions(labels, soil_dir, n_nodes, _idx=_idx)
 
-    # ── Network statistics ──
+    # ── JRC Global Surface Water → lake_fraction ──────────────────────────────
+    if water_occurrence_path is not None and Path(water_occurrence_path).exists():
+        print("  JRC surface water...", flush=True)
+        water_occ = _read_resampled(
+            water_occurrence_path, _grid_shape, _grid_tf, _grid_crs
+        ).astype(np.float32)
+        lake_frac = _zonal_fraction_threshold(labels, water_occ, n_nodes, threshold=75.0, _idx=_idx)
+    else:
+        lake_frac = np.zeros(n_nodes, dtype=np.float32)
+
+    # ── MODIS LAI → mean_lai ──────────────────────────────────────────────────
+    if lai_path is not None and Path(lai_path).exists():
+        print("  MODIS LAI...", flush=True)
+        from rasterio.warp import Resampling as _RS
+        lai_data = _read_resampled(
+            lai_path, _grid_shape, _grid_tf, _grid_crs,
+            resampling_method=_RS.bilinear,
+        ).astype(np.float32)
+        mean_lai = _zonal_mean_per_label(labels, lai_data, n_nodes, _idx=_idx)
+    else:
+        mean_lai = np.zeros(n_nodes, dtype=np.float32)
+
+    # ── Network statistics ────────────────────────────────────────────────────
     cum_area = _cumulative_area(graph, areas_km2, n_nodes)
     strahler = _compute_strahler(graph, n_nodes)
-    dist_km = _dist_to_outlet(graph, centroids, n_nodes)
-    lake_frac = np.zeros(n_nodes)  # no lake detection from DEM alone
+    dist_km  = _dist_to_outlet(graph, centroids, n_nodes)
 
-    # ── Build feature arrays ──
+    # ── Build feature arrays ──────────────────────────────────────────────────
     feature_dict = collections.OrderedDict()
-    feature_dict["drainage_area_km2"] = cum_area
-    feature_dict["strahler_order"] = strahler.astype(np.float32)
-    feature_dict["mean_slope_pct"] = slope_stats
-    feature_dict["mean_elevation_m"] = elev_stats
-    feature_dict["sin_aspect"] = sin_asp
-    feature_dict["cos_aspect"] = cos_asp
-    feature_dict["f_forest"] = lc_fracs["forest"]
-    feature_dict["f_agriculture"] = lc_fracs["agriculture"]
-    feature_dict["f_urban"] = lc_fracs["urban"]
-    feature_dict["f_wetland"] = lc_fracs["wetland"]
-    feature_dict["f_water"] = lc_fracs["water"]
-    feature_dict["f_sand"] = soil_fracs["sand"]
-    feature_dict["f_silt"] = soil_fracs["silt"]
-    feature_dict["f_clay"] = soil_fracs["clay"]
-    feature_dict["depth_to_bedrock_m"] = np.zeros(n_nodes, dtype=np.float32)
-    feature_dict["dist_to_outlet_km"] = dist_km
-    feature_dict["lake_fraction"] = lake_frac.astype(np.float32)
+    feature_dict["drainage_area_km2"]   = cum_area
+    feature_dict["strahler_order"]      = strahler.astype(np.float32)
+    feature_dict["mean_slope_pct"]      = slope_stats
+    feature_dict["mean_elevation_m"]    = elev_stats
+    feature_dict["sin_aspect"]          = sin_asp
+    feature_dict["cos_aspect"]          = cos_asp
+    # Forest: NRCan if available (distinguishes conifer/deciduous), else ESA aggregate
+    feature_dict["f_forest"]            = nrcan_fracs.get("forest",     lc_fracs["forest"])
+    feature_dict["f_forest_conifer"]    = nrcan_fracs.get("conifer",    np.zeros(n_nodes, np.float32))
+    feature_dict["f_forest_deciduous"]  = nrcan_fracs.get("deciduous",  np.zeros(n_nodes, np.float32))
+    feature_dict["f_forest_mixed"]      = nrcan_fracs.get("mixed",      np.zeros(n_nodes, np.float32))
+    feature_dict["f_agriculture"]       = nrcan_fracs.get("cropland",   lc_fracs["agriculture"])
+    feature_dict["f_urban"]             = nrcan_fracs.get("urban",      lc_fracs["urban"])
+    feature_dict["f_wetland"]           = nrcan_fracs.get("wetland",    lc_fracs["wetland"])
+    feature_dict["f_peatland"]          = nrcan_fracs.get("peatland",   np.zeros(n_nodes, np.float32))
+    feature_dict["f_water"]             = nrcan_fracs.get("water",      lc_fracs["water"])
+    feature_dict["f_sand"]              = soil_fracs["sand"]
+    feature_dict["f_silt"]              = soil_fracs["silt"]
+    feature_dict["f_clay"]              = soil_fracs["clay"]
+    feature_dict["depth_to_bedrock_m"]  = np.zeros(n_nodes, dtype=np.float32)
+    feature_dict["dist_to_outlet_km"]   = dist_km
+    feature_dict["mean_lai"]            = mean_lai
+    feature_dict["lake_fraction"]       = lake_frac
 
     # Extra stats
     if "elevation_std" in extra_stats:
         feature_dict["elevation_std"] = _zonal_std_per_label(
-            labels, dem_data, n_nodes,
+            labels, dem_data, n_nodes, _idx=_idx,
         )
     if "slope_p10" in extra_stats:
         feature_dict["slope_p10"] = _zonal_percentile_per_label(
-            labels, slope_pct, n_nodes, 10,
+            labels, slope_pct, n_nodes, 10, _idx=_idx,
         )
     if "slope_p90" in extra_stats:
         feature_dict["slope_p90"] = _zonal_percentile_per_label(
-            labels, slope_pct, n_nodes, 90,
+            labels, slope_pct, n_nodes, 90, _idx=_idx,
         )
 
     columns = list(feature_dict.keys())
@@ -565,50 +786,87 @@ def _compute_zonal_stats(
 
 
 # ── Zonal helpers ────────────────────────────────────────────────────────────
+#
+# All helpers receive a _LabelIndex built ONCE in _compute_zonal_stats and
+# operate only on the ~456k catchment pixels (not the full 158M raster).
+# np.bincount replaces the O(n_nodes × raster_size) per-label loops.
+
+
+class _LabelIndex:
+    """Sparse index of catchment pixels sorted by label.
+
+    Build once; reuse for every zonal stat so the cost is O(catchment_size)
+    per stat instead of O(n_nodes × raster_size).
+    """
+
+    def __init__(self, labels: np.ndarray, n_nodes: int) -> None:
+        flat = labels.ravel()
+        valid = flat > 0                               # catchment pixels only
+        self.flat_idx = np.where(valid)[0]             # flat indices into ravel()
+        lbl = flat[valid]                              # labels of those pixels
+        order = np.argsort(lbl, kind="stable")
+        self.flat_idx = self.flat_idx[order]
+        self.lbl0 = lbl[order] - 1                     # 0-indexed sorted labels
+        self.boundaries = np.searchsorted(
+            self.lbl0, np.arange(0, n_nodes + 1)
+        )                                              # boundaries[i]:boundaries[i+1] → label i
+        self.n_nodes = n_nodes
+        self.counts = np.bincount(self.lbl0, minlength=n_nodes).astype(np.float64)
+
+    def extract(self, arr: np.ndarray) -> np.ndarray:
+        """Return catchment pixels sorted by label as a 1-D float64 array."""
+        return arr.ravel()[self.flat_idx].astype(np.float64)
 
 
 def _zonal_mean_per_label(
     labels: np.ndarray, values: np.ndarray, n_nodes: int,
+    _idx: "_LabelIndex | None" = None,
 ) -> np.ndarray:
-    """Mean of *values* per subcatchment label (1-indexed)."""
-    result = np.zeros(n_nodes, dtype=np.float32)
-    for i in range(n_nodes):
-        mask = labels == (i + 1)
-        if mask.any():
-            vals = values[mask]
-            valid = np.isfinite(vals)
-            if valid.any():
-                result[i] = vals[valid].mean()
-    return result
+    """Mean of *values* per subcatchment label — vectorised via np.bincount."""
+    if _idx is None:
+        _idx = _LabelIndex(labels, n_nodes)
+    v = _idx.extract(values)
+    fin = np.isfinite(v)
+    sums = np.bincount(_idx.lbl0, weights=np.where(fin, v, 0.0), minlength=n_nodes)
+    cnts = np.bincount(_idx.lbl0, weights=fin.astype(np.float64), minlength=n_nodes)
+    return np.where(cnts > 0, sums / cnts, 0.0).astype(np.float32)
 
 
 def _zonal_std_per_label(
     labels: np.ndarray, values: np.ndarray, n_nodes: int,
+    _idx: "_LabelIndex | None" = None,
 ) -> np.ndarray:
-    """Standard deviation of *values* per subcatchment label."""
-    result = np.zeros(n_nodes, dtype=np.float32)
-    for i in range(n_nodes):
-        mask = labels == (i + 1)
-        if mask.any():
-            vals = values[mask]
-            valid = np.isfinite(vals)
-            if valid.sum() > 1:
-                result[i] = vals[valid].std()
-    return result
+    if _idx is None:
+        _idx = _LabelIndex(labels, n_nodes)
+    v = _idx.extract(values)
+    fin = np.isfinite(v)
+    v_fin = np.where(fin, v, 0.0)
+    cnts  = np.bincount(_idx.lbl0, weights=fin.astype(np.float64), minlength=n_nodes)
+    means = np.where(cnts > 0,
+                     np.bincount(_idx.lbl0, weights=v_fin, minlength=n_nodes) / np.maximum(cnts, 1),
+                     0.0)
+    dev2  = np.where(fin, (v - means[_idx.lbl0]) ** 2, 0.0)
+    var   = np.where(cnts > 1,
+                     np.bincount(_idx.lbl0, weights=dev2, minlength=n_nodes) / np.maximum(cnts - 1, 1),
+                     0.0)
+    return np.sqrt(var).astype(np.float32)
 
 
 def _zonal_percentile_per_label(
     labels: np.ndarray, values: np.ndarray, n_nodes: int, pct: int,
+    _idx: "_LabelIndex | None" = None,
 ) -> np.ndarray:
-    """Percentile of *values* per subcatchment label."""
+    if _idx is None:
+        _idx = _LabelIndex(labels, n_nodes)
+    v = _idx.extract(values)
     result = np.zeros(n_nodes, dtype=np.float32)
     for i in range(n_nodes):
-        mask = labels == (i + 1)
-        if mask.any():
-            vals = values[mask]
-            valid = np.isfinite(vals)
-            if valid.any():
-                result[i] = np.percentile(vals[valid], pct)
+        s, e = int(_idx.boundaries[i]), int(_idx.boundaries[i + 1])
+        if e > s:
+            chunk = v[s:e]
+            fin = chunk[np.isfinite(chunk)]
+            if len(fin):
+                result[i] = np.percentile(fin, pct)
     return result
 
 
@@ -633,34 +891,77 @@ def _compute_aspect(dem: np.ndarray) -> np.ndarray:
 
 def _landcover_fractions(
     labels: np.ndarray, lc: np.ndarray, n_nodes: int,
+    _idx: "_LabelIndex | None" = None,
 ) -> dict[str, np.ndarray]:
-    """ESA WorldCover class fractions per subcatchment."""
-    # ESA WorldCover classes
+    """ESA WorldCover class fractions per subcatchment — vectorised via np.bincount."""
+    if _idx is None:
+        _idx = _LabelIndex(labels, n_nodes)
     class_map = {
-        "forest": [10],         # Tree cover
-        "agriculture": [40],    # Cropland
-        "urban": [50],          # Built-up
-        "wetland": [90, 95],    # Herbaceous wetland + Mangroves
-        "water": [80],          # Permanent water
+        "forest": [10],
+        "agriculture": [40],
+        "urban": [50],
+        "wetland": [90, 95],
+        "water": [80],
     }
-
-    fracs = {name: np.zeros(n_nodes, dtype=np.float32) for name in class_map}
-
-    for i in range(n_nodes):
-        mask = labels == (i + 1)
-        total = mask.sum()
-        if total == 0:
-            continue
-        lc_zone = lc[mask]
-        for name, classes in class_map.items():
-            count = sum((lc_zone == c).sum() for c in classes)
-            fracs[name][i] = count / total
-
+    lc_flat = _idx.extract(lc.astype(np.int32))
+    fracs: dict[str, np.ndarray] = {}
+    for name, classes in class_map.items():
+        hits = np.isin(lc_flat, classes).astype(np.float64)
+        counts = np.bincount(_idx.lbl0, weights=hits, minlength=n_nodes)
+        fracs[name] = np.where(_idx.counts > 0, counts / _idx.counts, 0.0).astype(np.float32)
     return fracs
+
+
+def _landcover_fractions_nrcan(
+    labels: np.ndarray, lc: np.ndarray, n_nodes: int,
+    _idx: "_LabelIndex | None" = None,
+) -> dict[str, np.ndarray]:
+    """NRCan Annual Land Cover class fractions per subcatchment — vectorised via np.bincount."""
+    if _idx is None:
+        _idx = _LabelIndex(labels, n_nodes)
+    class_map = {
+        "conifer":   [1, 2],
+        "deciduous": [5],
+        "mixed":     [6],
+        "shrubland": [8],
+        "wetland":   [14],
+        "peatland":  [14],
+        "cropland":  [15],
+        "urban":     [17],
+        "water":     [18],
+    }
+    forest_classes = [1, 2, 5, 6]
+    lc_flat = _idx.extract(lc.astype(np.int32))
+    fracs: dict[str, np.ndarray] = {}
+    for name, classes in class_map.items():
+        hits = np.isin(lc_flat, classes).astype(np.float64)
+        counts = np.bincount(_idx.lbl0, weights=hits, minlength=n_nodes)
+        fracs[name] = np.where(_idx.counts > 0, counts / _idx.counts, 0.0).astype(np.float32)
+    hits_f = np.isin(lc_flat, forest_classes).astype(np.float64)
+    counts_f = np.bincount(_idx.lbl0, weights=hits_f, minlength=n_nodes)
+    fracs["forest"] = np.where(_idx.counts > 0, counts_f / _idx.counts, 0.0).astype(np.float32)
+    return fracs
+
+
+def _zonal_fraction_threshold(
+    labels: np.ndarray,
+    values: np.ndarray,
+    n_nodes: int,
+    threshold: float,
+    _idx: "_LabelIndex | None" = None,
+) -> np.ndarray:
+    """Fraction of pixels in each zone where *values* >= *threshold* — vectorised."""
+    if _idx is None:
+        _idx = _LabelIndex(labels, n_nodes)
+    v = _idx.extract(values)
+    hits = (v >= threshold).astype(np.float64)
+    counts = np.bincount(_idx.lbl0, weights=hits, minlength=n_nodes)
+    return np.where(_idx.counts > 0, counts / _idx.counts, 0.0).astype(np.float32)
 
 
 def _soil_fractions(
     labels: np.ndarray, soil_dir: Path, n_nodes: int,
+    _idx: "_LabelIndex | None" = None,
 ) -> dict[str, np.ndarray]:
     """Sand/silt/clay fractions from SoilGrids GeoTIFFs."""
     fracs = {}
@@ -669,7 +970,7 @@ def _soil_fractions(
         if path.exists():
             with rasterio.open(path) as src:
                 data = src.read(1).astype(np.float32)
-                # SoilGrids values are in g/kg → convert to fraction
+                # SoilGrids values are in g/kg -> convert to fraction
                 data = data / 1000.0
                 # Resample to label grid if needed (simple nearest-neighbor)
                 if data.shape != labels.shape:
@@ -679,7 +980,7 @@ def _soil_fractions(
                         labels.shape[1] / data.shape[1],
                     )
                     data = zoom(data, zoom_factors, order=0)
-                fracs[name] = _zonal_mean_per_label(labels, data, n_nodes)
+                fracs[name] = _zonal_mean_per_label(labels, data, n_nodes, _idx=_idx)
         else:
             fracs[name] = np.zeros(n_nodes, dtype=np.float32)
     return fracs
