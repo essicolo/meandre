@@ -16,7 +16,7 @@ def test_cold_day_accumulates_snow():
     T_melt = torch.zeros(n)
     T_snow = torch.zeros(n)
 
-    P_eff, SWE_new = snow(P, T_air, SWE, C_f, T_melt, T_snow)
+    P_eff, SWE_new, _ = snow(P, T_air, SWE, C_f, T_melt, T_snow)
 
     assert (SWE_new > 4.9).all(), "SWE should increase on cold day"
     assert (P_eff < 0.1).all(), "Effective precip should be ~0 on cold day"
@@ -33,7 +33,7 @@ def test_warm_day_melts_snow():
     T_melt = torch.zeros(n)
     T_snow = torch.zeros(n)
 
-    P_eff, SWE_new = snow(P, T_air, SWE, C_f, T_melt, T_snow)
+    P_eff, SWE_new, _ = snow(P, T_air, SWE, C_f, T_melt, T_snow)
 
     assert (SWE_new < SWE).all(), "SWE should decrease on warm day"
     assert (P_eff > 0).all(), "Meltwater should become effective precip"
@@ -49,5 +49,5 @@ def test_mass_conservation():
     T_melt = torch.zeros(n)
     T_snow = torch.zeros(n)
 
-    P_eff, SWE_new = snow(P, T_air, SWE, C_f, T_melt, T_snow)
+    P_eff, SWE_new, _ = snow(P, T_air, SWE, C_f, T_melt, T_snow)
     assert torch.allclose(P + SWE, P_eff + SWE_new, atol=1e-4)

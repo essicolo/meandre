@@ -13,6 +13,7 @@ Architecture: MLP with SiLU activations and skip connections.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -93,12 +94,22 @@ class SpatialParams:
     # Frost thermal lag
     alpha_T: Tensor         # soil thermal damping (1/day) [0.01, 0.05]
     # --- New params (E, F, G) ---
-    vg_n: Tensor            # van Genuchten n shape parameter [1.1, 2.7]
+    vg_n: Tensor            # van Genuchten n shape parameter [1.3, 2.7]
     k_interflow: Tensor     # interflow recession rate (1/day) [0.005, 0.1]
     K_musk_hours: Tensor    # Muskingum travel time (hours) [4, 48]
     x_musk: Tensor          # Muskingum weighting factor [0.01, 0.49]
+    # ETP scaling — équivalent au "coefficient multiplicatif" d'Hydrotel
+    # (cf .par files SLSO MG24HS_2020 = 0.85 sur McGuinness, autres 0.5-1.0).
+    K_c: Tensor             # ETP crop/calibration coefficient [0.3, 1.5]
+    # Sub-daily storm duration (hours) for Eagleson infiltration excess.
+    # Plus court = pluies intenses → plus de runoff. Borne configurable.
+    rain_hours: Tensor      # default range [3, 24] h
+    # Soil layer thicknesses (m). Z1 fixe (root zone), Z2 et Z3 learnables.
+    # Permet adaptation au bouclier (sol mince) vs alluvions (sol profond).
+    Z2: Tensor              # default range [0.30, 1.50] m
+    Z3: Tensor              # default range [0.50, 4.00] m
 
-    N_PARAMS: ClassVar[int] = 32
+    N_PARAMS: ClassVar[int] = 36
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -142,10 +153,24 @@ class SpatialFieldNetwork(nn.Module):
         concrete_init_p: float = 0.1,
         n_data: int = 2889,
         param_mode: str = "nerf",
+        soil_bounds: dict | None = None,
+        param_noise: bool = False,
+        param_noise_init_sigma: float = 0.05,
     ) -> None:
         super().__init__()
         self.n_territorial = n_territorial
         self.param_mode = param_mode
+        # Soil bounds (configurable via toml [soil] section).
+        # Z1 is fixed (passed to SoilModule directly), Z2/Z3 are learnable
+        # within these bounds. rain_hours bounds also configurable.
+        defaults = dict(
+            z2_min=0.30, z2_max=1.50,
+            z3_min=0.50, z3_max=4.00,
+            rain_hours_min=3.0, rain_hours_max=24.0,
+        )
+        if soil_bounds:
+            defaults.update(soil_bounds)
+        self.soil_bounds = defaults
 
         if param_mode == "static":
             self.static_params = nn.Parameter(torch.randn(SpatialParams.N_PARAMS) * 0.1)
@@ -167,74 +192,120 @@ class SpatialFieldNetwork(nn.Module):
                 self.drop1 = nn.Dropout(p=dropout)
                 self.drop2 = nn.Dropout(p=dropout)
 
-    def init_from_hydrotel(self, targets: dict[str, float] | None = None) -> None:
-        """Initialise fc_out bias so _apply_constraints produces Hydrotel-like values.
+            # ParamNoise: σ apprenable par paramètre dans l'espace logit.
+            # Injecté APRÈS fc_out, AVANT _apply_constraints — préserve la
+            # conservation de masse car les constraints garantissent les
+            # bornes physiques.  Plus expressif que ConcreteDropout pour
+            # générer un ensemble : chaque membre = un set de params bornés
+            # cohérent (analogue à un calage Hydrotel alternatif).
+            self.param_noise = param_noise
+            if param_noise:
+                self.param_log_sigma = nn.Parameter(
+                    torch.full(
+                        (SpatialParams.N_PARAMS,),
+                        math.log(max(param_noise_init_sigma, 1e-6)),
+                    )
+                )
+
+    def init_from_literature(self, targets: dict[str, float] | None = None) -> None:
+        """Initialise fc_out bias so _apply_constraints produces literature defaults.
 
         Shrinks fc_out.weight so all nodes start with ~identical parameters,
         then the MLP learns spatial variation from there.  This avoids the
         cold-start problem where random init puts K_sat 50x too high.
 
+        References for default values
+        -----------------------------
+        - Soil hydraulics (K_sat, porosity, theta_fc, theta_wp):
+            Rawls et al. (1982). Estimation of soil water properties.
+            Trans. ASAE 25(5):1316-1320.  Beven (2001) scale factor for
+            sub-daily intensity → daily timestep.
+        - Snow degree-day (C_f, T_melt, T_snow):
+            Hock (2003). Temperature index melt modelling. J. Hydrol. 282.
+        - Manning's n: Chow (1959) Open-Channel Hydraulics, table 5-6.
+        - Reference ET (Penman-Monteith): Allen et al. (1998) FAO-56.
+        - Muskingum (K, x): Chow et al. (1988) Applied Hydrology, ch. 9.
+
         Parameters
         ----------
         targets : dict, optional
             Mapping of parameter names to target physical values.
-            Missing keys fall back to defaults derived from Hydrotel SLSO
-            (loam/silt_loam averages).
+            Missing keys fall back to literature averages for temperate
+            forested loam/silt_loam catchments.
         """
         import math
 
         if self.param_mode == "static":
             # For static mode, set raw params directly
-            bias = self._hydrotel_raw_vector(targets)
+            bias = self._literature_raw_vector(targets)
             self.static_params.data.copy_(bias)
             return
 
         # Shrink output weights so initial output ≈ bias only
         with torch.no_grad():
             self.fc_out.weight.mul_(0.01)
-            bias = self._hydrotel_raw_vector(targets)
+            bias = self._literature_raw_vector(targets)
             self.fc_out.bias.data.copy_(bias)
 
-    def _hydrotel_raw_vector(self, targets: dict[str, float] | None = None) -> Tensor:
-        """Compute raw (pre-constraint) values that produce Hydrotel targets."""
+    # Backward compatibility alias (deprecated — use init_from_literature)
+    init_from_hydrotel = init_from_literature
+
+    def _literature_raw_vector(self, targets: dict[str, float] | None = None) -> Tensor:
+        """Compute raw (pre-constraint) values that produce literature targets."""
         import math
 
-        # Defaults: Hydrotel SLSO loam/silt_loam averages
+        # Defaults: literature averages for temperate forested loam/silt_loam
+        # K_sat: Rawls 1982 (cm/h × 24 = m/day), Beven 2001 sub-daily scale ×0.3
+        #   loam:      0.0132 m/h × 24 = 0.317 m/day
+        #   silt_loam: 0.0068 m/h × 24 = 0.163 m/day → moyenne ~0.24 m/day
+        #   ×0.3 (Beven) → 0.080 m/day couche 1, décroissant avec profondeur
         d = {
-            # K_sat (m/day) — Hydrotel loam=0.013, silt_loam=0.007
-            "K_sat_1": 0.010, "K_sat_2": 0.005, "K_sat_3": 0.002,
-            # Porosity — loam=0.434, silt_loam=0.486
+            # K_sat effectif (m/day) — Rawls 1982 × Beven 2001 sub-daily factor
+            "K_sat_1": 0.080, "K_sat_2": 0.040, "K_sat_3": 0.015,
+            # Porosity — Rawls 1982: loam=0.434, silt_loam=0.486
             "porosity_1": 0.46, "porosity_2": 0.44, "porosity_3": 0.42,
-            # theta_fc — loam=0.270, silt_loam=0.330
+            # theta_fc — Rawls 1982: loam=0.270, silt_loam=0.330
             "theta_fc_1": 0.30, "theta_fc_2": 0.30, "theta_fc_3": 0.28,
-            # theta_wp — loam=0.117, silt_loam=0.133
+            # theta_wp — Rawls 1982: loam=0.117, silt_loam=0.133
             "theta_wp_1": 0.125, "theta_wp_2": 0.125, "theta_wp_3": 0.12,
-            # Root fractions (Hydrotel: shallow dominant)
+            # Root fractions — typical temperate forest (shallow dominant)
             "f_root_1": 0.50, "f_root_2": 0.30, "f_root_3": 0.20,
-            # Snow — Hydrotel: melt rate 4-5 mm/°C/day, thresholds -2.5 to 0.5°C
+            # Snow degree-day — Hock 2003, typical 4-5 mm/°C/day boreal
             "C_f": 4.5, "T_melt": -0.5, "T_snow": 1.0,
-            # Canopy
+            # Canopy interception capacity (mm) — typical mixed forest
             "interception_capacity": 1.5,
-            # Manning's n — Hydrotel: 0.10 (autres), 0.30 (forêts)
+            # Manning's n — Chow 1959, table 5-6, mixed natural channel
             "manning_n": 0.10,
             # Frost
             "frost_alpha": 0.50,
             # Wetland
             "f_wetland": 0.02,
-            # Slope/recession — Hydrotel BV3C recession = 1e-5 m/h ≈ 2.4e-4 m/day
-            "slope_factor": 0.10, "krec": 0.0005,
-            # Groundwater
-            "k_gw": 0.005,
+            # Slope/recession — slope_factor et krec laissés aux centres de
+            # contrainte (sigmoid midpoint).  Ce sont des paramètres effectifs
+            # du modèle, pas des mesures physiques — le NeRF les apprend.
+            "slope_factor": 0.30, "krec": 0.005,
+            # Groundwater — recession ~50 jours (k_gw=0.02), réaliste pour
+            # aquifères peu profonds tempérés. Auparavant 0.005 (140 jours).
+            "k_gw": 0.02,
             # Stream temperature
             "T_gw": 6.0, "K_atm": 0.20,
             # Frost thermal lag
             "alpha_T": 0.03,
             # van Genuchten n — loam ~1.5
             "vg_n": 1.5,
-            # Interflow
-            "k_interflow": 0.01,
+            # Interflow — centre de contrainte log-normal (exp(log(0.03)) = 0.03).
+            # Paramètre effectif du modèle, pas une mesure physique.
+            "k_interflow": 0.03,
             # Muskingum
             "K_musk_hours": 24.0, "x_musk": 0.20,
+            # ETP scaling — défaut 1.0 (FAO-56 reference comme Hydrotel PM).
+            "K_c": 1.0,
+            # Sub-daily storm duration — 12h par défaut (vs 6h hardcodé avant).
+            # Plus réaliste pour pluies frontales QC (vs orages convectifs courts).
+            "rain_hours": 12.0,
+            # Soil layer thicknesses — Hydrotel BV3C standard
+            "Z2": 0.70,
+            "Z3": 1.00,
         }
         if targets:
             d.update(targets)
@@ -291,10 +362,10 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["f_wetland"], 0.0, 0.10); i += 1
         # slope_factor: bounded [0.01, 0.59]
         raw[i] = inv_bounded(d["slope_factor"], 0.01, 0.59); i += 1
-        # krec: exp(clamp(raw*0.3 + log(0.003)))
-        raw[i] = (math.log(d["krec"]) - math.log(0.003)) / 0.3; i += 1
-        # k_gw: exp(clamp(raw*0.3 + log(0.005)))
-        raw[i] = (math.log(d["k_gw"]) - math.log(0.005)) / 0.3; i += 1
+        # krec: exp(clamp(raw*0.3 + log(0.005)))
+        raw[i] = (math.log(d["krec"]) - math.log(0.005)) / 0.3; i += 1
+        # k_gw: exp(clamp(raw*0.3 + log(0.02)))
+        raw[i] = (math.log(d["k_gw"]) - math.log(0.02)) / 0.3; i += 1
         # T_gw: bounded [3, 13]
         raw[i] = inv_bounded(d["T_gw"], 3.0, 13.0); i += 1
         # K_atm: bounded [0.05, 0.55]
@@ -309,14 +380,41 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["K_musk_hours"], 4.0, 48.0); i += 1
         # x_musk: bounded [0.01, 0.49]
         raw[i] = inv_bounded(d["x_musk"], 0.01, 0.49); i += 1
+        # K_c: bounded [0.3, 1.5]
+        raw[i] = inv_bounded(d["K_c"], 0.3, 1.5); i += 1
+        # rain_hours: bounded [rh_min, rh_max] from soil_bounds
+        rh_min = self.soil_bounds["rain_hours_min"]
+        rh_max = self.soil_bounds["rain_hours_max"]
+        raw[i] = inv_bounded(d["rain_hours"], rh_min, rh_max); i += 1
+        # Z2, Z3: bounded from soil_bounds
+        raw[i] = inv_bounded(d["Z2"], self.soil_bounds["z2_min"], self.soil_bounds["z2_max"]); i += 1
+        raw[i] = inv_bounded(d["Z3"], self.soil_bounds["z3_min"], self.soil_bounds["z3_max"]); i += 1
 
         return raw
 
-    def forward(self, coords: Tensor, territorial: Tensor) -> SpatialParams:
+    # Backward compatibility alias (deprecated — use _literature_raw_vector)
+    _hydrotel_raw_vector = _literature_raw_vector
+
+    def forward(
+        self,
+        coords: Tensor,
+        territorial: Tensor,
+        perturb_params: bool = False,
+        param_noise_eps: Tensor | None = None,
+    ) -> SpatialParams:
         """
         Args:
             coords: (n_nodes, 2)  [lon, lat] in degrees, normalised.
             territorial: (n_nodes, n_territorial)
+            perturb_params: If True and self.param_noise is enabled, add
+                Gaussian noise to fc_out logits (BEFORE constraints).
+                Generates one ensemble member.  Mass conservation is
+                preserved because constraints map perturbed logits back
+                into physical bounds before they reach the physics.
+            param_noise_eps: Optional pre-sampled (N_PARAMS,) or
+                (n_nodes, N_PARAMS) noise tensor.  Use to freeze a noise
+                realisation across a trajectory (ensemble member).  When
+                None and ``perturb_params=True``, samples fresh ε each call.
         Returns:
             SpatialParams with one value per node per parameter.
         """
@@ -333,6 +431,19 @@ class SpatialFieldNetwork(nn.Module):
             h = torch.cat([h, x0], dim=-1)       # skip connection
             h = self.drop2(self.act(self.fc2(h)))
             raw = self.fc_out(h)                  # (n_nodes, N_PARAMS)
+
+        # Inject ParamNoise BEFORE constraints (preserves mass conservation).
+        if perturb_params and getattr(self, "param_noise", False):
+            sigma = self.param_log_sigma.exp().clamp(min=1e-4, max=1.0)
+            if param_noise_eps is None:
+                eps = torch.randn_like(raw)
+            else:
+                # Broadcast a (N_PARAMS,) eps across nodes for a frozen-mask member
+                if param_noise_eps.dim() == 1:
+                    eps = param_noise_eps.unsqueeze(0).expand_as(raw)
+                else:
+                    eps = param_noise_eps
+            raw = raw + sigma * eps
 
         return self._apply_constraints(raw)
 
@@ -408,11 +519,14 @@ class SpatialFieldNetwork(nn.Module):
         constrained.append(bounded(cols[i], 0.0, 0.10)); i += 1
         # slope_factor: [0.01, 0.59]
         constrained.append(bounded(cols[i], 0.01, 0.59)); i += 1
-        # krec: baseflow recession (1/day), log-normal.
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.003), min=-8.0, max=-3.0)
+        # krec: soil L3 → aquifer drainage (1/day), log-normal.
+        # Recentré sur 0.005 (vs 0.003) — Hydrotel typique pour bassin tempéré.
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.005), min=-8.0, max=-3.0)
         constrained.append(torch.exp(exponent)); i += 1
         # k_gw: aquifer recession (1/day), log-normal.
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.005), min=-8.0, max=-2.0)
+        # Recentré sur 0.02 (vs 0.005) — recession ~50 jours réaliste pour
+        # aquifères peu profonds Beauce/Lévis (auparavant ~140 jours, trop lent).
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.02), min=-8.0, max=-2.0)
         constrained.append(torch.exp(exponent)); i += 1
         # T_gw: groundwater temperature (C): [3, 13]
         constrained.append(bounded(cols[i], 3.0, 13.0)); i += 1
@@ -428,10 +542,28 @@ class SpatialFieldNetwork(nn.Module):
         # Log-normal for better gradient scaling
         exponent = torch.clamp(cols[i] * 0.3 + math.log(0.03), min=math.log(0.005), max=math.log(0.1))
         constrained.append(torch.exp(exponent)); i += 1
-        # K_musk_hours: Muskingum travel time [4, 48] hours
+        # K_musk_hours: Muskingum travel time [4, 48] hours.
+        # Stabilité numérique avec n_substeps=2 (sub_dt=12h) requiert K ≥ ~6h;
+        # bound 4 conservé comme défaut. Bornes étendues à 0.5 nécessitent
+        # n_substeps ≥ 24 (cf message_passing.py) — pas activé par défaut.
         constrained.append(bounded(cols[i], 4.0, 48.0)); i += 1
         # x_musk: Muskingum weighting factor [0.01, 0.49]
         constrained.append(bounded(cols[i], 0.01, 0.49)); i += 1
+        # K_c: ETP scaling [0.3, 1.5]. Default ~1.0 (FAO-56 reference).
+        constrained.append(bounded(cols[i], 0.3, 1.5)); i += 1
+        # rain_hours: storm duration for Eagleson sub-daily intensity.
+        # Configurable bounds (default [3, 24] h) — moins = pluies plus intenses.
+        rh_min = self.soil_bounds["rain_hours_min"]
+        rh_max = self.soil_bounds["rain_hours_max"]
+        constrained.append(bounded(cols[i], rh_min, rh_max)); i += 1
+        # Z2: layer 2 thickness (m). Default [0.30, 1.50] — root zone profonde.
+        z2_min = self.soil_bounds["z2_min"]
+        z2_max = self.soil_bounds["z2_max"]
+        constrained.append(bounded(cols[i], z2_min, z2_max)); i += 1
+        # Z3: layer 3 thickness (m). Default [0.50, 4.00] — sol profond.
+        z3_min = self.soil_bounds["z3_min"]
+        z3_max = self.soil_bounds["z3_max"]
+        constrained.append(bounded(cols[i], z3_min, z3_max)); i += 1
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
@@ -444,6 +576,22 @@ class SpatialFieldNetwork(nn.Module):
         if isinstance(getattr(self, "drop2", None), ConcreteDropout):
             total = total + self.drop2.regularization(self.fc2.weight)
         return total
+
+    def param_noise_kl(self, target_sigma: float = 0.05) -> Tensor:
+        """L2 regulariser pulling param_log_sigma toward log(target_sigma).
+
+        Without this, the data loss collapses sigma → 0 (deterministic ensemble)
+        because noise hurts fit.  With it, sigma is pulled toward a calibrated
+        target — typical hydrological parameter uncertainty in logit space.
+
+        The target ≈ 0.05 corresponds to ~5% perturbation of constrained
+        parameters (sigmoid output near the centre).  Tune empirically based
+        on Talagrand histogram flatness post-training.
+        """
+        if not getattr(self, "param_noise", False):
+            return torch.tensor(0.0, device=next(self.parameters()).device)
+        log_target = math.log(target_sigma)
+        return ((self.param_log_sigma - log_target) ** 2).mean()
 
     def boundary_regularization(self, coords: Tensor, territorial: Tensor) -> Tensor:
         """Penalize raw network outputs that push constrained params toward extremes.
@@ -484,7 +632,8 @@ class SpatialFieldNetwork(nn.Module):
         loss = torch.tensor(0.0, device=device)
 
         # K_sat in log-space
-        for k, target in [(params.K_sat_1, 0.5), (params.K_sat_2, 0.1), (params.K_sat_3, 0.02)]:
+        # Targets cohérents avec init_from_literature (m/day, effectif journalier)
+        for k, target in [(params.K_sat_1, 0.08), (params.K_sat_2, 0.04), (params.K_sat_3, 0.015)]:
             loss = loss + ((torch.log(k + 1e-8) - math.log(target)) ** 2).mean() * 0.3
 
         # Porosity
@@ -505,5 +654,18 @@ class SpatialFieldNetwork(nn.Module):
 
         # vg_n: typical 1.5 for loam
         loss = loss + ((params.vg_n - 1.5) ** 2).mean() * 0.3
+
+        # k_gw aquifer recession (1/day): target ~0.02 (recession ~50d).
+        # Empêche la dérive vers k_gw trop bas (= aquifère qui sur-stocke
+        # et libère l'eau avec des années de retard).
+        loss = loss + ((torch.log(params.k_gw + 1e-8) - math.log(0.02)) ** 2).mean() * 0.3
+
+        # krec drainage soil L3 → aquifer (1/day): target ~0.005.
+        # Évite saturation contre la borne max si elle existe.
+        loss = loss + ((torch.log(params.krec + 1e-8) - math.log(0.005)) ** 2).mean() * 0.2
+
+        # K_c: target ~0.85 (Hydrotel SLSO McGuinness coefficient typical)
+        if hasattr(params, 'K_c'):
+            loss = loss + ((params.K_c - 0.85) ** 2).mean() * 0.2
 
         return loss

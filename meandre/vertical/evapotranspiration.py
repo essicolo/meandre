@@ -102,13 +102,20 @@ class ETModule(nn.Module):
         f_root_2: Tensor,
         f_root_3: Tensor,
         E_canopy: Tensor,
+        K_c: Tensor | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """
+        Args:
+            K_c: optional crop/calibration coefficient applied to ETP.
+                 Hydrotel's "coefficient multiplicatif d'optimisation".
+                 Defaults to 1.0 (FAO-56 reference, no scaling).
         Returns:
             ET1, ET2, ET3: actual ET per layer (mm/day)
-            ETP:           potential ET (mm/day)
+            ETP:           potential ET (mm/day) — already K_c-scaled
         """
         ETP = self.penman_monteith(T_min, T_max, R_n, u2, e_a)
+        if K_c is not None:
+            ETP = ETP * K_c
 
         # Remaining ETP after canopy evaporation
         ETP_residual = torch.clamp(ETP - E_canopy, min=0.0)

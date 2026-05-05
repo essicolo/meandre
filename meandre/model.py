@@ -83,6 +83,10 @@ class HydroModel(nn.Module):
         param_mode: str = "nerf",
         clamp_min: float = -50.0,
         clamp_max: float = 500.0,
+        soil_z1: float = 0.30,
+        soil_bounds: dict | None = None,
+        param_noise: bool = False,
+        param_noise_init_sigma: float = 0.05,
     ) -> None:
         super().__init__()
         self.n_nodes = n_nodes
@@ -101,7 +105,12 @@ class HydroModel(nn.Module):
             concrete_init_p=concrete_init_p,
             n_data=n_nodes,
             param_mode=param_mode,
+            soil_bounds=soil_bounds,
+            param_noise=param_noise,
+            param_noise_init_sigma=param_noise_init_sigma,
         )
+        # Store for SoilModule init via VerticalColumn
+        self._soil_z1 = soil_z1
 
         n_context = 16 if use_temporal else 0
         self.temporal_encoder = TemporalContextEncoder(
@@ -113,7 +122,7 @@ class HydroModel(nn.Module):
             n_data=n_nodes,
         ) if use_temporal else None
 
-        self.vertical_column = VerticalColumn()
+        self.vertical_column = VerticalColumn(soil_z1=soil_z1)
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
         self.residual_corrector = StateResidualCorrector(
@@ -154,6 +163,8 @@ class HydroModel(nn.Module):
         h_context: Tensor | None = None,
         tbptt_steps: int = 0,
         return_diagnostics: bool = False,
+        perturb_params: bool = False,
+        param_noise_eps: Tensor | None = None,
     ) -> tuple[Tensor, HydroState] | tuple[Tensor, HydroState, SimDiagnostics]:
         """Full forward pass: scan over timesteps.
 
@@ -191,9 +202,14 @@ class HydroModel(nn.Module):
         n_timesteps = forcing.shape[0]
         state = initial_state
 
-        # Static spatial params (computed once)
+        # Static spatial params (computed once per simulate call).
+        # When perturb_params=True, fc_out logits get Gaussian noise BEFORE
+        # _apply_constraints — preserves mass conservation (constraints map
+        # back to physical bounds) while generating an ensemble member.
         spatial_params = self.spatial_encoder(
-            node_coords, territorial.to_tensor()
+            node_coords, territorial.to_tensor(),
+            perturb_params=perturb_params,
+            param_noise_eps=param_noise_eps,
         )
         K_musk = spatial_params.K_musk_hours * 3600.0  # hours → seconds
         x_musk = spatial_params.x_musk
@@ -281,6 +297,7 @@ class HydroModel(nn.Module):
                 enriched, state, spatial_params,
                 return_diagnostics=return_diagnostics,
                 gw_withdrawal_mm=gw_w_mm,
+                doy=day_of_year[t] if day_of_year is not None else None,
             )
             physics_state = vc_out.state
 
@@ -415,14 +432,29 @@ class HydroModel(nn.Module):
         )
         return Q_sim, state, diagnostics
 
-    # ---- Concrete Dropout regularisation ----
+    # ---- Uncertainty regularisation ----
 
     def concrete_kl(self) -> torch.Tensor:
-        """Aggregate KL from all Concrete Dropout layers (0 if not used)."""
+        """Aggregate KL from all Concrete Dropout layers (0 if not used).
+
+        Position B design: Concrete Dropout is intended for the temporal
+        encoder (epistemic uncertainty about meteorological context
+        interpretation).  The spatial encoder uses ParamNoise instead
+        for parameter uncertainty (preserves mass conservation).  This
+        method still aggregates both for backward compat.
+        """
         kl = self.spatial_encoder.concrete_kl()
         if self.temporal_encoder is not None:
             kl = kl + self.temporal_encoder.concrete_kl()
         return kl
+
+    def param_noise_kl(self, target_sigma: float = 0.05) -> torch.Tensor:
+        """L2 regulariser pulling spatial param_log_sigma toward log(target).
+
+        Without this, the data loss collapses sigma → 0.  Tune target
+        empirically based on Talagrand histogram flatness.
+        """
+        return self.spatial_encoder.param_noise_kl(target_sigma=target_sigma)
 
     # ---- Persistence ----
 
@@ -515,6 +547,20 @@ class HydroModel(nn.Module):
             for legacy_key in ("log_K_musk", "logit_x_musk",
                                "vertical_column.soil.log_k_interflow"):
                 sd.pop(legacy_key, None)
+
+            # Backward compatibility: pad residual_corrector state dict if
+            # n_state_vars grew (e.g. when cold_content was added: 9 → 10).
+            # Drop incompatible-shaped corrector weights — they'll re-init.
+            current_n_vars = HydroState.N_VARS
+            corrector_keys = [k for k in sd if k.startswith("residual_corrector.")]
+            for k in corrector_keys:
+                w = sd[k]
+                # Check if any dim equals an old N_VARS value (7, 8, 9) and
+                # mismatches current
+                if w.dim() >= 1 and w.shape[0] in (7, 8, 9) and w.shape[0] != current_n_vars:
+                    sd.pop(k)
+                elif w.dim() >= 2 and w.shape[1] in (7, 8, 9) and w.shape[1] != current_n_vars:
+                    sd.pop(k)
 
             self.load_state_dict(sd, strict=False)
             self.use_temporal = checkpoint.get("use_temporal", False)

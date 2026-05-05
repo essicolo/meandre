@@ -65,7 +65,7 @@ def test_snow_module_gradients():
     T_melt = torch.zeros(n)
     T_snow = torch.zeros(n)
 
-    P_eff, SWE_new = snow(P, T_air, SWE, C_f, T_melt, T_snow)
+    P_eff, SWE_new, _ = snow(P, T_air, SWE, C_f, T_melt, T_snow)
     (P_eff.sum() + SWE_new.sum()).backward()
 
     assert P.grad is not None

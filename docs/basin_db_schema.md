@@ -136,3 +136,32 @@ Saved hidden states for the temporal encoder.
 | `data` | BLOB | Pickled numpy array `(1, N, d_hidden)` |
 
 Primary key: `(state_date, run_id)`.
+
+### withdrawals
+
+Net surface and groundwater pumping / return flow per node and day.
+Imported via `BasinCache.import_withdrawals(...)` which snaps each site
+(by lon/lat) to the nearest model node, then aggregates by (date, node).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `date` | DATE | Day (monthly source data is disaggregated to daily) |
+| `node_idx` | INTEGER | Snapped reach index |
+| `net_surface` | FLOAT | Net **surface** withdrawal (m³/s) — applied to stream Q |
+| `net_gw` | FLOAT | Net **groundwater** withdrawal (m³/s) — applied to S_gw aquifer reservoir |
+
+Primary key: `(date, node_idx)`.
+
+**Sign convention** (matches `routing/withdrawals.py:WithdrawalData`):
+
+* **Positive** = water *added* (effluent, return flow, artificial recharge)
+* **Negative** = water *removed* (pumping, irrigation)
+
+Surface intakes/rejects are routed directly into the stream discharge at
+the snapped reach.  Groundwater pumping depletes `S_gw` and reduces
+baseflow naturally through the aquifer recession `k_gw` — there is no
+instantaneous effect on river Q.
+
+Source: `io-eau-meandre.parquet` (site-level monthly records,
+positive = withdrawal *as recorded by ETL* — sign is preserved on import,
+so positive in the parquet must mean "water added" for correct physics).

@@ -48,9 +48,8 @@ class RoutingLayer(nn.Module):
             # 0.0 = pure simple sum (Σ Q_actuels), 1.0 = pure TTA.
             # Set by Trainer._apply_curriculum during TTA warmup.
             self.register_buffer("tta_warmup_factor", torch.tensor(0.0))
-        # n_substeps=2 (12h) au lieu de 4 (6h) — divise le coût routing par 2.
-        # Condition de Courant respectée pour K_musk ≥ 4h (borne sigmoid min)
-        # et x_musk ≤ 0.49.  Si instabilité observée, remettre à 4.
+        # n_substeps=2 (12h) — compromis vitesse/précision.
+        # Limite : K < 6h sera instable; les bornes K_musk_hours doivent rester ≥ 4h.
         self.muskingum = MuskingumCunge(n_substeps=2)
         self.lake = LakeModule()
 

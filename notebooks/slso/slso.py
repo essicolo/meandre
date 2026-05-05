@@ -45,6 +45,8 @@ TRAIN_START = cfg["temporal"]["train_start"]
 TRAIN_END   = cfg["temporal"]["train_end"]
 VAL_START   = cfg["temporal"]["val_start"]
 VAL_END     = cfg["temporal"]["val_end"]
+TEST_START  = cfg["temporal"].get("test_start")  # optional: held-out test
+TEST_END    = cfg["temporal"].get("test_end")
 DATE_END    = cfg["temporal"]["date_end"]
 
 # Model
@@ -70,7 +72,9 @@ TTA_WARMUP_EPOCHS      = cfg["training"].get("tta_warmup_epochs", 10)
 
 print(f"Config loaded from {CFG_PATH}")
 print(f"  Train: {TRAIN_START} – {TRAIN_END}")
-print(f"  Val:   {VAL_START} – {VAL_END}")
+print(f"  Val (dev): {VAL_START} – {VAL_END}")
+if TEST_START and TEST_END:
+    print(f"  Test (held-out): {TEST_START} – {TEST_END}")
 
 # %% [markdown]
 """
@@ -314,6 +318,18 @@ from meandre.model import HydroModel
 
 DROPOUT = cfg["model"].get("dropout", 0.0)
 
+# Read [soil] config: Z1 fixed, Z2/Z3 bounds + rain_hours bounds
+soil_cfg = cfg.get("soil", {})
+soil_z1 = soil_cfg.get("z1", 0.30)
+soil_bounds = {
+    "z2_min":           soil_cfg.get("z2_min",          0.30),
+    "z2_max":           soil_cfg.get("z2_max",          1.50),
+    "z3_min":           soil_cfg.get("z3_min",          0.50),
+    "z3_max":           soil_cfg.get("z3_max",          4.00),
+    "rain_hours_min":   soil_cfg.get("rain_hours_min",  3.0),
+    "rain_hours_max":   soil_cfg.get("rain_hours_max", 24.0),
+}
+
 model = HydroModel(
     n_nodes = n_nodes,
     n_territorial = territorial.n_features,
@@ -326,7 +342,13 @@ model = HydroModel(
     use_travel_time_attn = True,
     use_temperature = True,
     dropout = DROPOUT,
+    concrete_dropout = cfg["model"].get("concrete_dropout", False),
+    concrete_init_p = cfg["model"].get("concrete_init_p", 0.1),
     param_mode = cfg["model"].get("param_mode", "nerf"),
+    soil_z1 = soil_z1,
+    soil_bounds = soil_bounds,
+    param_noise = cfg["model"].get("param_noise", False),
+    param_noise_init_sigma = cfg["model"].get("param_noise_init_sigma", 0.05),
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
@@ -337,14 +359,26 @@ if WARM_START and CHECKPOINT.exists():
     model.load(str(CHECKPOINT))
     LR = LR_FINETUNE
     print(f"Warm-start from {CHECKPOINT} (lr={LR:.1e})")
+    # NeRF anti-collapse: init_from_literature shrinks fc_out.weight 100× so
+    # all nodes start with the same params.  If training never grew it back
+    # (observed: std < 1% of range for all params), kick it up once so the
+    # optimizer has gradient amplitude to work with.
+    with torch.no_grad():
+        w = model.spatial_encoder.fc_out.weight
+        fro = w.norm().item()
+        if fro < 0.3:
+            w.mul_(5.0)
+            print(f"  fc_out.weight collapsed (Frobenius={fro:.3f}) — "
+                  f"rescaled 5× → {w.norm().item():.3f}")
 else:
-    # Initialise spatial parameters from Hydrotel physical constants.
+    # Initialise spatial parameters from public literature defaults
+    # (Rawls 1982 soil hydraulics, FAO-56 ET, Chow 1959 Manning, etc.).
     # Without this, K_sat starts ~50x too high (0.5 vs 0.01 m/day for
     # loam/silt_loam) and the optimizer wastes dozens of epochs just
     # bringing soil hydraulics into a physically plausible range.
-    hydrotel_targets = cfg.get("hydrotel_prior", None)
-    model.spatial_encoder.init_from_hydrotel(hydrotel_targets)
-    print("Training from scratch (Hydrotel-initialised spatial params)")
+    literature_targets = cfg.get("literature_prior", cfg.get("hydrotel_prior"))
+    model.spatial_encoder.init_from_literature(literature_targets)
+    print("Training from scratch (literature-initialised spatial params)")
 
 # %% [markdown]
 """
@@ -458,8 +492,14 @@ train_cfg = TrainingConfig(
     warmup_epochs = 0 if WARM_START else 5,
     lr_new_features_mult = LR_NEW_MULT if WARM_START else None,
     compile_modules = tcfg.get("compile_modules", False),
+    w_prior = tcfg.get("w_prior", 0.0),
+    w_param_noise_kl = tcfg.get("w_param_noise_kl", 0.0),
+    param_noise_target_sigma = tcfg.get("param_noise_target_sigma", 0.05),
+    train_with_param_noise = tcfg.get("train_with_param_noise", False),
+    w_concrete_kl = tcfg.get("w_concrete_kl", 1.0),
     # Autopilot
     autopilot = tcfg.get("autopilot", False),
+    autopilot_grace_epochs = tcfg.get("autopilot_grace_epochs", 0),
     autopilot_beta_threshold = tcfg.get("autopilot_beta_threshold", 0.15),
     autopilot_beta_penalty = tcfg.get("autopilot_beta_penalty", 0.005),
     autopilot_gamma_threshold = tcfg.get("autopilot_gamma_threshold", 0.20),
@@ -474,9 +514,10 @@ train_cfg = TrainingConfig(
 )
 
 if train_cfg.autopilot:
-    print(f"  Autopilot ON — β_thr={train_cfg.autopilot_beta_threshold}, "
-          f"γ_thr={train_cfg.autopilot_gamma_threshold}, "
-          f"LR_patience={train_cfg.autopilot_lr_patience}")
+    print(f"  Autopilot ON -- beta_thr={train_cfg.autopilot_beta_threshold}, "
+          f"gamma_thr={train_cfg.autopilot_gamma_threshold}, "
+          f"LR_patience={train_cfg.autopilot_lr_patience}, "
+          f"grace={train_cfg.autopilot_grace_epochs}")
 
 CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
 
@@ -493,6 +534,51 @@ trainer = Trainer(
     checkpoint_path = str(CHECKPOINT),
 )
 trainer.fit()
+
+# %% [markdown]
+"""
+## Held-out TEST evaluation (truly unseen)
+Charge le best.pt sélectionné sur la période dev, l'évalue sur le test
+(jamais vu pendant training). Métrique honnête de performance.
+"""
+
+# %%
+if TEST_START and TEST_END:
+    model.load(str(CHECKPOINT))
+    model.eval()
+    test_sl = dates_to_slice(all_dates, TEST_START, TEST_END)
+    print(f"\n{'='*72}")
+    print(f"  HELD-OUT TEST : {TEST_START} → {TEST_END}  (steps {test_sl.start}:{test_sl.stop})")
+    print(f"{'='*72}")
+    # Simulate full forcing, then slice test period
+    with torch.no_grad():
+        Q_test_full, _ = model.simulate(
+            forcing=forcing, initial_state=HydroState.zeros(n_nodes, device=device),
+            graph=graph, node_coords=node_coords, territorial=territorial,
+            withdrawals=withdrawals, day_of_year=doy,
+        )
+    Q_test = Q_test_full[test_sl.start:test_sl.stop, station_mask].cpu()
+    q_obs_test = q_obs_tensor[test_sl.start:test_sl.stop].cpu()
+    n_test = min(Q_test.shape[0], q_obs_test.shape[0])
+    Q_test = Q_test[:n_test]; q_obs_test = q_obs_test[:n_test]
+    from meandre.utils.metrics import kge as _kge_fn, kge_components as _kgec, nse as _nse
+    test_kges = []
+    for s in range(Q_test.shape[1]):
+        v = ~torch.isnan(q_obs_test[:, s]) & ~torch.isnan(Q_test[:, s])
+        if v.sum() < 30:
+            continue
+        test_kges.append(float(_kge_fn(q_obs_test[v, s], Q_test[v, s])))
+    import numpy as _np
+    test_kges = _np.array(test_kges)
+    # Pooled
+    qo_flat = q_obs_test.reshape(-1); qs_flat = Q_test.reshape(-1)
+    v = ~torch.isnan(qo_flat) & ~torch.isnan(qs_flat)
+    pooled_kge = float(_kge_fn(qo_flat[v], qs_flat[v]))
+    print(f"  Test KGE pooled        : {pooled_kge:.4f}")
+    print(f"  Test KGE per-station median : {_np.median(test_kges):.4f}")
+    print(f"  Test KGE per-station mean   : {test_kges.mean():.4f}")
+    print(f"  Stations with KGE > 0.5: {(test_kges > 0.5).sum()}/{len(test_kges)}")
+    print(f"  Stations with KGE < 0  : {(test_kges < 0).sum()}/{len(test_kges)}")
 
 # %% [markdown]
 """
@@ -739,6 +825,8 @@ Top stations by drainage area
 # %%
 top_sids = sorted(sids, key=lambda s: -areas[sids.index(s)])[:6]
 fig, axes = plt.subplots(len(top_sids), 1, figsize=(12, 3 * len(top_sids)), sharex=True)
+if len(top_sids) == 1:
+    axes = [axes]
 
 for ax, sid in zip(axes, top_sids):
     ni   = station_node_map[sid]

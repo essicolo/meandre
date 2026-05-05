@@ -21,11 +21,11 @@ The codebase is in English. Comments, config, and conversation with the develope
 - **Residual corrector**: 2-layer GRU that learns systematic physics errors. Gate initialized to ~5% (physics-first). Zero-sum projection on soil layers.
 - **Curriculum training**: Temporal context enabled first, residual corrector at epoch 10, travel-time attention disabled by default.
 
-## Hydrotel prior initialization
+## Literature-based parameter initialization
 
-`SpatialFieldNetwork.init_from_hydrotel()` biases `fc_out` so parameters start at Hydrotel SLSO loam/silt_loam values instead of random.
+`SpatialFieldNetwork.init_from_literature()` biases `fc_out` so parameters start at public literature defaults (Rawls 1982 soil hydraulics, Hock 2003 snow, Chow 1959 Manning, FAO-56 ET) for temperate forested loam/silt_loam.
 Without this, K_sat starts ~50x too high (0.5 vs 0.01 m/day), making convergence slow.
-Reference model: `Z:\Atlas_hydro\SRH\PLATEFORMES\MG24HS\SLSO_MG24HS_2020`
+The previous name `init_from_hydrotel` is kept as a deprecated alias.
 
 ## Running
 
@@ -63,7 +63,7 @@ TOML config files in `notebooks/slso/config/`. Key sections:
 - `[model]`: param_mode ("nerf" or "static"), context_window, dropout
 - `[training]`: lr, epochs, curriculum epochs, chunk_steps, tbptt_steps
 - `[loss]`: weights for MSE, log-MSE, PBIAS, physics closure, residual reg
-- `[hydrotel_prior]`: optional overrides for init_from_hydrotel() targets
+- `[literature_prior]`: optional overrides for init_from_literature() targets
 
 ## Training safeguards
 
@@ -84,4 +84,4 @@ TOML config files in `notebooks/slso/config/`. Key sections:
 
 - Don't use chunk_steps > 0 with NSE/KGE loss (they need full-sequence stats). Use MSE + log-MSE + PBIAS for chunk-safe training.
 - Warm-start changes LR to lr_finetune and skips warmup. Set `warm_start = false` and delete checkpoint to retrain from scratch.
-- The `physical_prior_loss` targets should be consistent with `init_from_hydrotel()` defaults.
+- The `physical_prior_loss` targets should be consistent with `init_from_literature()` defaults.

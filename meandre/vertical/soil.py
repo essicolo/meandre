@@ -36,15 +36,23 @@ class SoilModule(nn.Module):
     def __init__(
         self,
         z1: float = Z1,
-        z2: float = Z2,
-        z3: float = Z3,
+        z2_default: float = Z2,
+        z3_default: float = Z3,
         sharpness: float = 50.0,
         vg_alpha: float = 1.0,
+        use_infiltration_excess: bool = True,
+        default_rain_hours: float = 6.0,
     ) -> None:
         super().__init__()
-        self.z = torch.tensor([z1, z2, z3])  # (3,) layer thicknesses
+        # Z1 (root zone surface) reste fixe — sémantique stable (~30cm).
+        # Z2, Z3 deviennent per-node via forward() args; defaults pour fallback.
+        self.z1 = float(z1)
+        self.z2_default = float(z2_default)
+        self.z3_default = float(z3_default)
         self.sharpness = sharpness
         self.vg_alpha = vg_alpha
+        self.use_infiltration_excess = use_infiltration_excess
+        self.default_rain_hours = default_rain_hours
 
     def _effective_saturation(
         self, theta: Tensor, theta_r: Tensor, porosity: Tensor
@@ -89,7 +97,7 @@ class SoilModule(nn.Module):
         theta: Tensor,
         theta_fc: Tensor,
         porosity: Tensor,
-        z_layer: float,
+        z_layer: Tensor | float,
         slope_factor: Tensor | None = None,
         k_interflow: Tensor | None = None,
     ) -> Tensor:
@@ -122,7 +130,7 @@ class SoilModule(nn.Module):
         porosity_up: Tensor,
         theta_r_dn: Tensor,
         porosity_dn: Tensor,
-        dz: float,
+        dz: Tensor | float,
         vg_n: Tensor | None = None,
     ) -> Tensor:
         """Gravity + matric potential Darcy flux from upper to lower layer (m/day)."""
@@ -160,77 +168,97 @@ class SoilModule(nn.Module):
         krec: Tensor | None = None,
         vg_n: Tensor | None = None,
         k_interflow: Tensor | None = None,
+        z2: Tensor | None = None,
+        z3: Tensor | None = None,
+        rain_hours: Tensor | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """One-day soil water balance update.
 
+        Args:
+            z2, z3: per-node layer thicknesses (m). If None, falls back to
+                    self.z2_default / self.z3_default scalars.
+            rain_hours: per-node assumed storm duration (hours) for sub-daily
+                    intensity estimation. If None, falls back to scalar default.
         Returns:
             theta1_new, theta2_new, theta3_new: updated moisture content
             R_surface: (n_nodes,) saturation-excess runoff (mm/day)
             interflow: (n_nodes,) lateral subsurface flow from layers 1+2 (mm/day)
             baseflow: (n_nodes,) deep drainage from layer 3 (mm/day)
         """
+        # Z1 fixed (root zone surface), Z2/Z3 per-node if provided
+        z1 = self.z1
+        if z2 is None:
+            z2 = torch.full_like(theta1, self.z2_default)
+        if z3 is None:
+            z3 = torch.full_like(theta1, self.z3_default)
+        if rain_hours is None:
+            rain_hours = torch.full_like(theta1, self.default_rain_hours)
+
         # Convert mm/day to m/day for consistency with z (m)
         P_m = P_eff * 1e-3
         ET1_m = ET1 * 1e-3
         ET2_m = ET2 * 1e-3
         ET3_m = ET3 * 1e-3
 
+        # ── Infiltration-excess runoff (Eagleson 1978) ──────────────────
+        R_infilt_excess = torch.zeros_like(P_m)
+        if self.use_infiltration_excess:
+            P_mm = P_eff  # mm/day
+            K_sat_mmh = K_sat_1 * 1000.0 / 24.0  # m/day → mm/h
+            mean_intensity = P_mm / torch.clamp(rain_hours, min=0.5)  # mm/h
+            ratio = K_sat_mmh / (mean_intensity + 1e-3)
+            frac_excess = torch.exp(-ratio)
+            R_infilt_excess = P_mm * frac_excess * 1e-3  # m/day
+            R_infilt_excess = torch.where(
+                P_mm > 1.0, R_infilt_excess, torch.zeros_like(R_infilt_excess)
+            )
+            P_m = P_m - R_infilt_excess
+
         # Saturation-excess runoff from layer 1 (smooth)
         excess_1 = soft_relu(
-            theta1 + P_m / Z1 - porosity_1, self.sharpness
-        ) * Z1
+            theta1 + P_m / z1 - porosity_1, self.sharpness
+        ) * z1
         P_infiltrated = P_m - excess_1
 
         # Inter-layer Darcy fluxes
         q12 = self._darcy_flux(
             theta1, theta2, K_sat_1, theta_wp_1, porosity_1,
-            theta_wp_2, porosity_2, dz=(Z1 + Z2) / 2, vg_n=vg_n,
+            theta_wp_2, porosity_2, dz=(z1 + z2) / 2, vg_n=vg_n,
         )
         q23 = self._darcy_flux(
             theta2, theta3, K_sat_2, theta_wp_2, porosity_2,
-            theta_wp_3, porosity_3, dz=(Z2 + Z3) / 2, vg_n=vg_n,
+            theta_wp_3, porosity_3, dz=(z2 + z3) / 2, vg_n=vg_n,
         )
-        # Baseflow: Hydrotel-style linear reservoir recession if krec provided,
-        # otherwise free-drainage (Darcy K(theta3)).
         if krec is not None:
-            # q_recharge = krec * z3 * (theta3 - theta_wp3) — only drainable water.
-            # Water below wilting point is bound and cannot drain.
             drainable_3 = soft_relu(theta3 - theta_wp_3, self.sharpness)
-            q_recharge = krec * Z3 * drainable_3
+            q_recharge = krec * z3 * drainable_3
         else:
-            # Free-drainage bottom BC: unit hydraulic gradient (gravity only).
             q_recharge = self._K(theta3, K_sat_3, theta_wp_3, porosity_3, vg_n=vg_n)
 
-        # Interflow: lateral subsurface drainage when moisture exceeds field
-        # capacity.  Learnable recession rate on drainable water storage.
-        # Slope amplification (Hydrotel-style): steeper → more interflow.
-        q_inter_1 = self._interflow(theta1, theta_fc_1, porosity_1, Z1, slope_factor, k_interflow=k_interflow)
-        q_inter_2 = self._interflow(theta2, theta_fc_2, porosity_2, Z2, slope_factor, k_interflow=k_interflow)
+        q_inter_1 = self._interflow(theta1, theta_fc_1, porosity_1, z1, slope_factor, k_interflow=k_interflow)
+        q_inter_2 = self._interflow(theta2, theta_fc_2, porosity_2, z2, slope_factor, k_interflow=k_interflow)
 
         # ── Water-balance-safe mass balance ──────────────────────────────
-        # Cap extractions per layer so theta stays in [0, porosity].
-        # Overflow beyond porosity → surface runoff (no water lost).
-
-        # Layer 1
-        # Only positive extractions need scaling; negative demand means net
-        # inflow (capillary rise > ET+interflow) — no scaling needed.
-        avail_1 = theta1 * Z1 + P_infiltrated
+        # avail = water that can be EXTRACTED (above theta_wp).  Eau sous wp
+        # est "bound water" — chimiquement liée au sol, non-extractible.
+        # Cohérent avec q_recharge qui utilise déjà drainable_3 = (theta-wp)*z.
+        drainable_1 = soft_relu(theta1 - theta_wp_1, self.sharpness) * z1
+        avail_1 = drainable_1 + P_infiltrated
         pos_demand_1 = torch.clamp(ET1_m, min=0.0) + torch.clamp(q12, min=0.0) + torch.clamp(q_inter_1, min=0.0)
         sf1 = torch.where(
             pos_demand_1 > 1e-10,
             torch.clamp(avail_1 / pos_demand_1, min=0.0, max=1.0),
             torch.ones_like(avail_1),
         )
-        # Scale only positive fluxes; negative fluxes (inflows) pass through
         q12_s = torch.where(q12 > 0, q12 * sf1, q12)
         q_inter_1_s = q_inter_1 * sf1
 
-        theta1_raw = theta1 + (P_infiltrated - ET1_m * sf1 - q12_s - q_inter_1_s) / Z1
-        ov1 = soft_relu(theta1_raw - porosity_1, self.sharpness) * Z1
-        theta1_new = torch.clamp(theta1_raw - ov1 / Z1, min=0.0, max=1.0)
+        theta1_raw = theta1 + (P_infiltrated - ET1_m * sf1 - q12_s - q_inter_1_s) / z1
+        ov1 = soft_relu(theta1_raw - porosity_1, self.sharpness) * z1
+        theta1_new = torch.clamp(theta1_raw - ov1 / z1, min=0.0, max=1.0)
 
-        # Layer 2
-        avail_2 = theta2 * Z2 + torch.clamp(q12_s, min=0.0)
+        drainable_2 = soft_relu(theta2 - theta_wp_2, self.sharpness) * z2
+        avail_2 = drainable_2 + torch.clamp(q12_s, min=0.0)
         pos_demand_2 = torch.clamp(ET2_m, min=0.0) + torch.clamp(q23, min=0.0) + torch.clamp(q_inter_2, min=0.0)
         sf2 = torch.where(
             pos_demand_2 > 1e-10,
@@ -240,12 +268,12 @@ class SoilModule(nn.Module):
         q23_s = torch.where(q23 > 0, q23 * sf2, q23)
         q_inter_2_s = q_inter_2 * sf2
 
-        theta2_raw = theta2 + (q12_s - ET2_m * sf2 - q23_s - q_inter_2_s) / Z2
-        ov2 = soft_relu(theta2_raw - porosity_2, self.sharpness) * Z2
-        theta2_new = torch.clamp(theta2_raw - ov2 / Z2, min=0.0, max=1.0)
+        theta2_raw = theta2 + (q12_s - ET2_m * sf2 - q23_s - q_inter_2_s) / z2
+        ov2 = soft_relu(theta2_raw - porosity_2, self.sharpness) * z2
+        theta2_new = torch.clamp(theta2_raw - ov2 / z2, min=0.0, max=1.0)
 
-        # Layer 3 — cascade ov2 from layer 2
-        avail_3 = theta3 * Z3 + torch.clamp(q23_s, min=0.0) + torch.clamp(ov2, min=0.0)
+        drainable_3_avail = soft_relu(theta3 - theta_wp_3, self.sharpness) * z3
+        avail_3 = drainable_3_avail + torch.clamp(q23_s, min=0.0) + torch.clamp(ov2, min=0.0)
         pos_demand_3 = torch.clamp(ET3_m, min=0.0) + torch.clamp(q_recharge, min=0.0)
         sf3 = torch.where(
             pos_demand_3 > 1e-10,
@@ -254,12 +282,12 @@ class SoilModule(nn.Module):
         )
         q_recharge_s = torch.where(q_recharge > 0, q_recharge * sf3, q_recharge)
 
-        theta3_raw = theta3 + (q23_s + ov2 - ET3_m * sf3 - q_recharge_s) / Z3
-        ov3 = soft_relu(theta3_raw - porosity_3, self.sharpness) * Z3
-        theta3_new = torch.clamp(theta3_raw - ov3 / Z3, min=0.0, max=1.0)
+        theta3_raw = theta3 + (q23_s + ov2 - ET3_m * sf3 - q_recharge_s) / z3
+        ov3 = soft_relu(theta3_raw - porosity_3, self.sharpness) * z3
+        theta3_new = torch.clamp(theta3_raw - ov3 / z3, min=0.0, max=1.0)
 
         # Overflow cascade: ov2 → L3 (above), ov3 → recharge
-        R_surface = (excess_1 + ov1) * 1e3                    # mm/day
+        R_surface = (excess_1 + ov1 + R_infilt_excess) * 1e3   # mm/day
         interflow = (q_inter_1_s + q_inter_2_s) * 1e3         # mm/day
         baseflow = (q_recharge_s + ov3) * 1e3                  # mm/day
 

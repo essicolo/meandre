@@ -22,7 +22,7 @@
         <mxCell id="Q5qnW7m1aItI5H8EuW-W-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-6" target="Q5qnW7m1aItI5H8EuW-W-10" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="Q5qnW7m1aItI5H8EuW-W-6" value="&lt;b&gt;Encodeur spatial&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NeRF : coordonnées + paysage&lt;br&gt;→ 28 paramètres / tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=0;" parent="1" vertex="1">
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-6" value="&lt;b&gt;Encodeur spatial&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NeRF (Fourier) + Concrete Dropout&lt;br&gt;→ 36 paramètres / tronçon&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=0;" parent="1" vertex="1">
           <mxGeometry x="200" y="120" width="200" height="60" as="geometry" />
         </mxCell>
         <mxCell id="Q5qnW7m1aItI5H8EuW-W-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="Q5qnW7m1aItI5H8EuW-W-7" target="Q5qnW7m1aItI5H8EuW-W-10" edge="1">
@@ -75,7 +75,7 @@
             <mxPoint x="680" y="245" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="Q5qnW7m1aItI5H8EuW-W-39" value="&lt;b&gt;Fonction de perte&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;NSE + KGE + bilan hydrique&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;shadow=0;" parent="1" vertex="1">
+        <mxCell id="Q5qnW7m1aItI5H8EuW-W-39" value="&lt;b&gt;Fonction de perte&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;KGE + log-MSE + PBIAS&lt;br&gt;+ bilan hydrique + KL Concrete&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;shadow=0;" parent="1" vertex="1">
           <mxGeometry x="920" y="280" width="120" height="60" as="geometry" />
         </mxCell>
         <mxCell id="oqBWQ3klt4Fjc4Ra4FTu-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="oqBWQ3klt4Fjc4Ra4FTu-4" target="oqBWQ3klt4Fjc4Ra4FTu-8">

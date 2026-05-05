@@ -43,6 +43,14 @@ class HydroState:
     wetland_storage: Tensor
     S_gw: Tensor
     T_water: Tensor
+    # Optional: cold content (mm équivalent eau). Énergie nécessaire pour
+    # réchauffer le pack à 0°C avant fonte. Empêche les redoux mid-winter
+    # de fondre toute la neige. Défaut zeros pour rétrocompatibilité.
+    cold_content: Tensor | None = None
+
+    def __post_init__(self) -> None:
+        if self.cold_content is None:
+            self.cold_content = torch.zeros_like(self.swe)
 
     @property
     def n_nodes(self) -> int:
@@ -61,16 +69,18 @@ class HydroState:
                 self.wetland_storage,
                 self.S_gw,
                 self.T_water,
+                self.cold_content,
             ],
             dim=-1,
         )
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "HydroState":
-        """Reconstruct HydroState from a (n_nodes, 7/8/9) tensor.
+        """Reconstruct HydroState from a (n_nodes, 7/8/9/10) tensor.
 
         Handles backward compatibility: old 7-column tensors get S_gw=0
-        and T_water=10; 8-column tensors get T_water=10.
+        and T_water=10; 8-column tensors get T_water=10; 9-column tensors
+        get cold_content=0.
         """
         n = x.shape[0]
         device = x.device
@@ -79,8 +89,10 @@ class HydroState:
         if x.shape[1] == 7:
             x = torch.cat([x, torch.zeros(n, 2, device=device)], dim=1)
             x[:, 8] = 10.0  # T_water default
-        elif x.shape[1] == 8:
+        if x.shape[1] == 8:
             x = torch.cat([x, torch.full((n, 1), 10.0, device=device)], dim=1)
+        if x.shape[1] == 9:
+            x = torch.cat([x, torch.zeros(n, 1, device=device)], dim=1)
 
         return cls(
             theta1=x[:, 0],
@@ -92,6 +104,7 @@ class HydroState:
             wetland_storage=x[:, 6],
             S_gw=x[:, 7],
             T_water=x[:, 8],
+            cold_content=x[:, 9],
         )
 
     @classmethod
@@ -108,6 +121,7 @@ class HydroState:
             wetland_storage=z.clone(),
             S_gw=z.clone(),
             T_water=torch.full((n_nodes,), 10.0, device=device),
+            cold_content=z.clone(),
         )
 
     @classmethod
@@ -125,6 +139,7 @@ class HydroState:
             wetland_storage=torch.zeros(n_nodes, device=device),
             S_gw=torch.full((n_nodes,), 10.0, device=device),
             T_water=torch.full((n_nodes,), 8.0, device=device),
+            cold_content=torch.zeros(n_nodes, device=device),
         )
 
     # ---- Persistence ----
@@ -153,7 +168,8 @@ class HydroState:
             wetland_storage=self.wetland_storage.detach(),
             S_gw=self.S_gw.detach(),
             T_water=self.T_water.detach(),
+            cold_content=self.cold_content.detach(),
         )
 
     # Number of state variables (used by residual corrector)
-    N_VARS: int = 9
+    N_VARS: int = 10

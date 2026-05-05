@@ -40,8 +40,12 @@ class ConcreteDropout(nn.Module):
         n_data: int,
         init_p: float = 0.1,
         temperature: float = 0.1,
-        length_scale: float = 1e-2,
+        length_scale: float = 1.0,
     ) -> None:
+        # length_scale=1.0 (vs naïf 1e-2) renforce le weight_regularizer ×10⁴.
+        # Sans ça, le data loss domine et p collapse vers 0 — l'ensemble
+        # devient quasi-déterministe (PICP ~7% au lieu de 80%).
+        # Cf. Gal et al. 2017 §4 : la calibration dropout exige un prior W fort.
         super().__init__()
         init_p = max(1e-4, min(init_p, 1.0 - 1e-4))
         self.logit_p = nn.Parameter(

@@ -43,13 +43,13 @@
         <mxCell id="sp_concat" value="concat([enc, territorial]) → &lt;b&gt;x0&lt;/b&gt; (26+17 = 43D)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="grp_spatial" vertex="1">
           <mxGeometry x="10" y="140" width="280" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="sp_output" value="&lt;b&gt;SpatialParams (N, 28)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;K_sat×3, porosity×3, FC×3, WP×3, f_root×3&lt;br&gt;C_f, T_melt, T_snow, intercept_cap, manning_n, frost_α&lt;br&gt;f_wetland, slope_factor, krec, k_gw, T_gw, K_atm, alpha_T&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" parent="grp_spatial" vertex="1">
+        <mxCell id="sp_output" value="&lt;b&gt;SpatialParams (N, 36)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;K_sat×3, porosity×3, FC×3, WP×3, f_root×3, vg_n×3&lt;br&gt;C_f, T_melt, T_snow, intercept_cap, manning_n, frost_α&lt;br&gt;f_wetland, slope_factor, krec, k_gw, T_gw, K_atm, alpha_T&lt;br&gt;K_musk, x_musk, K_c, rain_hours, z2, z3&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" parent="grp_spatial" vertex="1">
           <mxGeometry x="10" y="440" width="280" height="70" as="geometry" />
         </mxCell>
         <mxCell id="sp_constraints" value="&lt;b&gt;_apply_constraints()&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;scaled-tanh: center + range × tanh(raw × 0.3)&lt;br&gt;log-normal for K_sat/krec, softmax for f_root&lt;br&gt;chained fractions: porosity → FC → WP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
           <mxGeometry x="10" y="340" width="280" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="sp_mlp" value="&lt;b&gt;fc1&lt;/b&gt;(43→256) → SiLU → cat(h, x0) →&lt;br&gt;&lt;b&gt;fc2&lt;/b&gt;(299→256) → SiLU → &lt;b&gt;fc_out&lt;/b&gt;(256→27)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;skip connection, MC Dropout (self.drop)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
+        <mxCell id="sp_mlp" value="&lt;b&gt;fc1&lt;/b&gt;(43→256) → SiLU → cat(h, x0) →&lt;br&gt;&lt;b&gt;fc2&lt;/b&gt;(299→256) → SiLU → &lt;b&gt;fc_out&lt;/b&gt;(256→36)&lt;br&gt;&lt;font size=&quot;1&quot;&gt;skip connection, Concrete Dropout (drop1, drop2)&lt;br&gt;learned per-layer dropout rate (Gal et al. 2017)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_spatial" vertex="1">
           <mxGeometry x="10" y="240" width="280" height="70" as="geometry" />
         </mxCell>
         <mxCell id="spa1" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" parent="grp_spatial" source="sp_fourier" target="sp_concat" edge="1">
@@ -313,7 +313,7 @@
         <mxCell id="grp_loss" value="Loss Function" style="swimlane;startSize=25;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;fontSize=13;" parent="1" vertex="1">
           <mxGeometry x="570" y="1740" width="590" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="loss_skill" value="&lt;b&gt;Skill Scores&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;w_nse × (1-NSE) + w_kge × (1-KGE)&lt;br&gt;+ w_pbias × |PBIAS| + w_mse × MSE&lt;br&gt;+ w_log_nse × (1-logNSE)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_loss" vertex="1">
+        <mxCell id="loss_skill" value="&lt;b&gt;Skill Scores + Régularisation&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;w_kge × (1-KGE) + w_log_mse × log-MSE&lt;br&gt;+ w_pbias × |PBIAS| + w_mse × MSE&lt;br&gt;+ w_physics × |bilan d'eau|&lt;br&gt;+ w_prior × ‖params - prior‖² (log-space)&lt;br&gt;+ KL_concrete (Gal 2017)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_loss" vertex="1">
           <mxGeometry x="10" y="30" width="200" height="90" as="geometry" />
         </mxCell>
         <mxCell id="loss_phys" value="&lt;b&gt;Physics&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;w_physics × water_balance²&lt;br&gt;w_residual × gate²&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="grp_loss" vertex="1">
@@ -357,7 +357,7 @@
         <mxCell id="grp_params" value="Learned Parameters" style="swimlane;startSize=20;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;fontSize=11;" parent="1" vertex="1">
           <mxGeometry x="380" y="-490" width="300" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="params_list" value="&lt;font size=&quot;1&quot;&gt;&lt;b&gt;SpatialFieldNetwork MLP weights&lt;/b&gt; → 27 params/node&lt;br&gt;&lt;b&gt;log_K_musk&lt;/b&gt; (N,) — Muskingum travel time&lt;br&gt;&lt;b&gt;logit_x_musk&lt;/b&gt; (N,) — Muskingum weighting&lt;br&gt;&lt;b&gt;TemporalContextEncoder&lt;/b&gt; — GRU + projections&lt;br&gt;&lt;b&gt;StateResidualCorrector&lt;/b&gt; — GRU + gate logits&lt;br&gt;&lt;b&gt;TravelTimeAttention&lt;/b&gt; — Q/K/V projections&lt;br&gt;&lt;b&gt;CorrelatedStateNoise&lt;/b&gt; — ρ, σ per variable&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontSize=10;" parent="grp_params" vertex="1">
+        <mxCell id="params_list" value="&lt;font size=&quot;1&quot;&gt;&lt;b&gt;SpatialFieldNetwork MLP weights&lt;/b&gt; → 36 params/node&lt;br&gt;(K_musk, x_musk maintenant inclus dans SpatialParams)&lt;br&gt;&lt;b&gt;ConcreteDropout&lt;/b&gt; — logit_p appris par layer (drop1, drop2)&lt;br&gt;&lt;b&gt;TemporalContextEncoder&lt;/b&gt; — GRU + projections + ConcreteDropout&lt;br&gt;&lt;b&gt;StateResidualCorrector&lt;/b&gt; — GRU + gate logits (désactivé)&lt;br&gt;&lt;b&gt;TravelTimeAttention&lt;/b&gt; — Q/K/V projections (désactivé)&lt;br&gt;&lt;b&gt;CorrelatedStateNoise&lt;/b&gt; — ρ, σ per variable&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontSize=10;" parent="grp_params" vertex="1">
           <mxGeometry x="5" y="25" width="290" height="90" as="geometry" />
         </mxCell>
         <mxCell id="HCEVgp1oZP0yzxFW_nFa-8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;curved=0;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" source="in_forcing" target="grp_tce" edge="1">

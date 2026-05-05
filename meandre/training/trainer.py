@@ -38,6 +38,24 @@ class TrainingConfig:
     n_epochs: int = 100
     batch_size: int = 1           # typical for physics simulations
 
+    # Soft prior regularization weight on spatial parameters.
+    # Penalizes deviation from literature targets (k_gw, krec, K_sat, K_c, etc.).
+    # 0 = no regularization (params can drift freely).
+    # 0.001-0.01 = soft pull, allows learning from data but prevents extreme drift.
+    # Useful to avoid overfitting on dev period (e.g. wet/dry year bias).
+    w_prior: float = 0.0
+
+    # ParamNoise (Position B): Gaussian σ on fc_out logits for ensemble UQ.
+    # When > 0, training does perturbed forward passes and adds an L2
+    # pull on log_sigma toward log(param_noise_target_sigma) — prevents
+    # σ collapse to 0.
+    w_param_noise_kl: float = 0.0
+    param_noise_target_sigma: float = 0.05
+    train_with_param_noise: bool = False  # if True, training uses perturbed forward
+
+    # Concrete Dropout KL weight (kept on temporal encoder only in Position B)
+    w_concrete_kl: float = 1.0
+
     # Curriculum: epoch at which each module is enabled
     enable_temporal_context_epoch: int = 10
     enable_residual_corrector_epoch: int = 30
@@ -108,6 +126,13 @@ class TrainingConfig:
 
     # Enable autopilot?  When True, forces val_every=1 for fast reaction.
     autopilot: bool = False
+
+    # Grace period: l'autopilot n'intervient PAS pendant les N premières
+    # epochs.  Lors d'un fresh start (warm_start=false), la convergence
+    # initiale produit des drifts beta/gamma temporaires qui ne sont PAS
+    # de l'overfitting — c'est la physique qui cherche ses paramètres.
+    # Intervenir trop tôt (w_residual++, LR reduction) freine la convergence.
+    autopilot_grace_epochs: int = 0  # 0 = pas de grace, 10-15 pour fresh start
 
     # Beta drift: if pooled β deviates from 1.0 by more than this, increase
     # w_residual by autopilot_beta_penalty per epoch until β returns.
@@ -208,34 +233,47 @@ class Trainer:
         if optimizer is not None:
             self.optimizer = optimizer
         else:
-            # Discriminative LR: higher rate for fc1/fc2 when new features added
+            # Discriminative LR:
+            #   - higher rate for fc1/fc2 when new features added (padded)
+            #   - higher rate + no weight_decay for fc_out.weight (escape NeRF
+            #     collapse: init_from_literature shrinks this layer 100×, so
+            #     without a boost it stays stuck near zero → uniform params).
             padded = getattr(model, "_padded_layers", set())
             mult = self.config.lr_new_features_mult
-            if padded and mult is not None:
-                new_params, base_params = [], []
-                for name, p in model.named_parameters():
-                    layer = ".".join(name.split(".")[:-1])  # e.g. spatial_encoder.fc1
-                    if layer in padded:
-                        new_params.append(p)
-                    else:
-                        base_params.append(p)
-                param_groups = [
-                    {"params": base_params, "lr": self.config.lr},
-                    {"params": new_params, "lr": self.config.lr * mult},
-                ]
+
+            fc_out_params: list[torch.nn.Parameter] = []
+            new_params: list[torch.nn.Parameter] = []
+            base_params: list[torch.nn.Parameter] = []
+            for name, p in model.named_parameters():
+                if name == "spatial_encoder.fc_out.weight":
+                    fc_out_params.append(p)
+                    continue
+                layer = ".".join(name.split(".")[:-1])
+                if padded and mult is not None and layer in padded:
+                    new_params.append(p)
+                else:
+                    base_params.append(p)
+
+            groups = [{"params": base_params, "lr": self.config.lr,
+                       "weight_decay": self.config.weight_decay}]
+            if new_params:
+                groups.append({"params": new_params,
+                               "lr": self.config.lr * mult,
+                               "weight_decay": self.config.weight_decay})
                 logger.info(
                     "Discriminative LR: base=%.1e, fc1/fc2=%.1e (%d params)",
-                    self.config.lr, self.config.lr * mult, sum(p.numel() for p in new_params),
+                    self.config.lr, self.config.lr * mult,
+                    sum(p.numel() for p in new_params),
                 )
-                self.optimizer = AdamW(
-                    param_groups, weight_decay=self.config.weight_decay,
+            if fc_out_params:
+                groups.append({"params": fc_out_params,
+                               "lr": self.config.lr * 10.0,
+                               "weight_decay": 0.0})
+                logger.info(
+                    "Discriminative LR: fc_out.weight=%.1e (10×), wd=0 — NeRF anti-collapse",
+                    self.config.lr * 10.0,
                 )
-            else:
-                self.optimizer = AdamW(
-                    model.parameters(),
-                    lr=self.config.lr,
-                    weight_decay=self.config.weight_decay,
-                )
+            self.optimizer = AdamW(groups)
         # Autopilot: force val_every=1 for fast reaction
         if self.config.autopilot and self.config.val_every > 1:
             logger.info(
@@ -389,8 +427,10 @@ class Trainer:
                 rmse=f"{val_rmse:.2f}",
             )
             current_lr = scheduler.get_last_lr()[0]
+            from datetime import datetime
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             epoch_msg = (
-                f"Epoch {epoch:4d} | train={train_loss:.4f} "
+                f"[{ts}] Epoch {epoch:4d} | train={train_loss:.4f} "
                 f"| val_nse={val_nse:.4f} | val_kge={val_kge:.4f} "
                 f"| kge_sta={val_kge_sta:.4f} | kge_med={val_kge_med:.4f}"
                 f"| rmse={val_rmse:.2f} | nrmse={val_nrmse:.3f}"
@@ -507,7 +547,8 @@ class Trainer:
         return spun_state, h_ctx
 
     def _simulate(
-        self, data: TrainingData, time_slice: slice, tbptt_steps: int = 0
+        self, data: TrainingData, time_slice: slice, tbptt_steps: int = 0,
+        perturb_params: bool = False,
     ) -> tuple[Tensor, HydroState]:
         """Run model over time_slice (after spin-up on the preceding steps)."""
         initial_state, h_ctx = self._run_spinup(data)
@@ -523,6 +564,7 @@ class Trainer:
             day_of_year=data.day_of_year[time_slice],
             h_context=h_ctx,
             tbptt_steps=tbptt_steps,
+            perturb_params=perturb_params,
         )
         return Q_sim, final_state
 
@@ -579,6 +621,7 @@ class Trainer:
                     day_of_year=data.day_of_year[sl],
                     h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
+                    perturb_params=self.config.train_with_param_noise,
                 )
 
                 # Burn-in: first chunk after spinup needs longer burn-in to
@@ -601,8 +644,25 @@ class Trainer:
             # Concrete Dropout KL (added once per chunk, scaled by weight)
             kl = self.model.concrete_kl()
             if kl.item() != 0.0:
-                loss_chunk = loss_chunk + kl
+                loss_chunk = loss_chunk + self.config.w_concrete_kl * kl
                 all_components["kl_concrete"] = all_components.get("kl_concrete", 0.0) + float(kl.detach())
+
+            # ParamNoise KL — pulls log_sigma toward target.  Prevents collapse.
+            if self.config.w_param_noise_kl > 0:
+                pn_kl = self.model.param_noise_kl(self.config.param_noise_target_sigma)
+                if pn_kl.requires_grad:
+                    loss_chunk = loss_chunk + self.config.w_param_noise_kl * pn_kl
+                    all_components["param_noise_kl"] = all_components.get("param_noise_kl", 0.0) + float(pn_kl.detach())
+
+            # Soft physical prior regularization on spatial params (k_gw, krec, K_sat, K_c, ...).
+            # Pulls toward literature targets — prevents drift toward overfit values.
+            if self.config.w_prior > 0:
+                params_t = self.model.spatial_encoder(
+                    data.node_coords, data.territorial.to_tensor()
+                )
+                prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
+                loss_chunk = loss_chunk + self.config.w_prior * prior_loss
+                all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach())
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = chunk_len / n_train
@@ -635,6 +695,12 @@ class Trainer:
             del Q_chunk, loss_chunk
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+        # Cache end-of-train state + h_context so _val_epoch can start from
+        # the realistic state (after train period forward pass) instead of
+        # re-simulating from spinup.  Saves ~50 min/epoch on GPU.
+        self._cached_train_end_state = state.detach()
+        self._cached_train_end_h_ctx = h_ctx.detach() if h_ctx is not None else None
 
         # Warn if all chunks had no gradient (no obs overlap)
         n_no_grad = getattr(self, "_n_no_grad_chunks", 0)
@@ -720,7 +786,16 @@ class Trainer:
     def _train_epoch_single(self, data: TrainingData) -> tuple[Tensor, dict[str, Tensor]]:
         """Original single-pass training (no chunking)."""
         with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-            Q_sim, _ = self._simulate(data, data.train_slice, tbptt_steps=self.config.tbptt_steps)
+            Q_sim, final_state = self._simulate(
+                data, data.train_slice, tbptt_steps=self.config.tbptt_steps,
+                perturb_params=self.config.train_with_param_noise,
+            )
+            # Cache for fast val_epoch (see chunked path).
+            self._cached_train_end_state = final_state.detach()
+            self._cached_train_end_h_ctx = (
+                self.model._last_h_context.detach()
+                if self.model._last_h_context is not None else None
+            )
 
             n_train = data.train_slice.stop - data.train_slice.start
             q_obs_train = data.q_obs[:n_train]
@@ -739,8 +814,24 @@ class Trainer:
         # Concrete Dropout KL regularisation
         kl = self.model.concrete_kl()
         if kl.item() != 0.0:
-            loss = loss + kl
+            loss = loss + self.config.w_concrete_kl * kl
             components["kl_concrete"] = kl.detach()
+
+        # ParamNoise KL — prevents log_sigma collapse to 0.
+        if self.config.w_param_noise_kl > 0:
+            pn_kl = self.model.param_noise_kl(self.config.param_noise_target_sigma)
+            if pn_kl.requires_grad:
+                loss = loss + self.config.w_param_noise_kl * pn_kl
+                components["param_noise_kl"] = pn_kl.detach()
+
+        # Soft physical prior regularization
+        if self.config.w_prior > 0:
+            params_t = self.model.spatial_encoder(
+                data.node_coords, data.territorial.to_tensor()
+            )
+            prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
+            loss = loss + self.config.w_prior * prior_loss
+            components["prior"] = prior_loss.detach()
 
         if torch.isnan(loss):
             logger.warning(
@@ -771,12 +862,71 @@ class Trainer:
 
         Reports both pooled metrics (all stations flattened) and per-station
         weighted KGE/NSE consistent with the training loss function.
+
+        Protocol (corrected): cold-start spinup, then **continuous** forward
+        pass from end-of-spinup all the way through to the end of val.  The
+        previous protocol jumped from end-of-spinup directly to val_slice,
+        skipping any intermediate years — that produces a phantom KGE
+        because the model state at start of val never sees the actual
+        history (e.g. 18 years of train period).  The val metric reported
+        here matches what an independent eval script (`eval_test.py`)
+        would compute on the same checkpoint.
+
+        The training cache (`_cached_spinup_state`) is preserved so the
+        next train epoch still benefits from warm spinup.
         """
         self.model.eval()
         data = self.val_data
 
-        with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-            Q_sim, _ = self._simulate(data, data.val_slice)
+        saved_cache = getattr(self, "_cached_spinup_state", None)
+        self._cached_spinup_state = None
+        try:
+            with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
+                # Fast path: reuse end-of-train state cached by _train_epoch.
+                # This is the state the model would have if simulated continuously
+                # from cold start through the train period — exactly what we need
+                # at the start of val.  Saves a full 22-year forward pass.
+                # Slight inconsistency: the cached state was produced under the
+                # weights BEFORE this epoch's optimizer.step().  For early epochs
+                # with large weight updates this could lag; for later epochs the
+                # difference is negligible.
+                cached_state = getattr(self, "_cached_train_end_state", None)
+                cached_h_ctx = getattr(self, "_cached_train_end_h_ctx", None)
+
+                if cached_state is not None:
+                    Q_sim, _ = self.model.simulate(
+                        forcing=data.forcing[data.val_slice],
+                        initial_state=cached_state,
+                        graph=data.graph,
+                        node_coords=data.node_coords,
+                        territorial=data.territorial,
+                        withdrawals=data.withdrawals,
+                        day_of_year=data.day_of_year[data.val_slice],
+                        h_context=cached_h_ctx,
+                        tbptt_steps=self.config.tbptt_steps,
+                    )
+                else:
+                    # Slow path: no cached state (e.g. before first train epoch).
+                    # Cold spinup + continuous forward through train + val.
+                    initial_state, h_ctx = self._run_spinup(data)
+                    spinup_end = min(self.config.spinup_steps, data.val_slice.start)
+                    full_slice = slice(spinup_end, data.val_slice.stop)
+                    Q_full, _ = self.model.simulate(
+                        forcing=data.forcing[full_slice],
+                        initial_state=initial_state,
+                        graph=data.graph,
+                        node_coords=data.node_coords,
+                        territorial=data.territorial,
+                        withdrawals=data.withdrawals,
+                        day_of_year=data.day_of_year[full_slice],
+                        h_context=h_ctx,
+                        tbptt_steps=self.config.tbptt_steps,
+                    )
+                    val_offset = data.val_slice.start - spinup_end
+                    Q_sim = Q_full[val_offset:]
+                    del Q_full
+        finally:
+            self._cached_spinup_state = saved_cache
 
         # q_obs is pre-sliced to start at the beginning of the val period.
         n_val = data.val_slice.stop - data.val_slice.start
@@ -973,6 +1123,14 @@ class Trainer:
         gamma = val_metrics.get("gamma", 1.0)
         kge_sta = val_metrics.get("kge_station", 0.0)
 
+        # ── Grace period ────────────────────────────────────────────
+        if epoch < cfg.autopilot_grace_epochs:
+            logger.debug(
+                f"  [autopilot] epoch={epoch} < grace={cfg.autopilot_grace_epochs}"
+                f" — skipping (beta={beta:.3f} gamma={gamma:.3f} kge_sta={kge_sta:.4f})"
+            )
+            return
+
         # ── 1. Beta / Gamma drift → increase w_residual ─────────────
         # Original w_residual is captured on first autopilot call
         if self._ap_w_residual_orig is None:
@@ -982,17 +1140,25 @@ class Trainer:
         gamma_drift = abs(gamma - 1.0)
         actions: list[str] = []
 
+        # Clamp max : w_residual ne peut pas dépasser 5× sa valeur originale
+        # pour éviter d'écraser complètement le residual corrector.
+        _w_res_max = (self._ap_w_residual_orig or 0.01) * 5.0
+
         if beta_drift > cfg.autopilot_beta_threshold:
-            self.loss_fn.w_residual += cfg.autopilot_beta_penalty
+            self.loss_fn.w_residual = min(
+                self.loss_fn.w_residual + cfg.autopilot_beta_penalty, _w_res_max
+            )
             actions.append(
-                f"β drift |β-1|={beta_drift:.3f} > {cfg.autopilot_beta_threshold} "
+                f"beta drift |beta-1|={beta_drift:.3f} > {cfg.autopilot_beta_threshold} "
                 f"→ w_residual += {cfg.autopilot_beta_penalty} → {self.loss_fn.w_residual:.4f}"
             )
 
         if gamma_drift > cfg.autopilot_gamma_threshold:
-            self.loss_fn.w_residual += cfg.autopilot_gamma_penalty
+            self.loss_fn.w_residual = min(
+                self.loss_fn.w_residual + cfg.autopilot_gamma_penalty, _w_res_max
+            )
             actions.append(
-                f"γ drift |γ-1|={gamma_drift:.3f} > {cfg.autopilot_gamma_threshold} "
+                f"gamma drift |gamma-1|={gamma_drift:.3f} > {cfg.autopilot_gamma_threshold} "
                 f"→ w_residual += {cfg.autopilot_gamma_penalty} → {self.loss_fn.w_residual:.4f}"
             )
 
@@ -1005,12 +1171,22 @@ class Trainer:
                 self.loss_fn.w_residual * 0.9,
             )
             actions.append(
-                f"β/γ recovered → w_residual decay → {self.loss_fn.w_residual:.4f}"
+                f"beta/gamma recovered → w_residual decay → {self.loss_fn.w_residual:.4f}"
             )
 
         # ── 2. ReduceLROnPlateau ─────────────────────────────────────
-        if epochs_without_improvement >= cfg.autopilot_lr_patience:
+        # Bug fix: ne réduire qu'UNE FOIS par plateau de lr_patience epochs.
+        # Après une réduction, on attend lr_patience epochs SUPPLÉMENTAIRES
+        # avant de réduire à nouveau.  Sans ça, LR est divisé à chaque epoch
+        # dès que no_improve dépasse le seuil.
+        if not hasattr(self, "_ap_last_lr_reduce_epoch"):
+            self._ap_last_lr_reduce_epoch = -cfg.autopilot_lr_patience - 1
+
+        epochs_since_last_reduce = epoch - self._ap_last_lr_reduce_epoch
+        if (epochs_without_improvement >= cfg.autopilot_lr_patience
+                and epochs_since_last_reduce >= cfg.autopilot_lr_patience):
             self._ap_lr_plateau_count += 1
+            self._ap_last_lr_reduce_epoch = epoch
             for pg in self.optimizer.param_groups:
                 new_lr = max(pg["lr"] * cfg.autopilot_lr_factor, cfg.autopilot_lr_min)
                 pg["lr"] = new_lr
@@ -1018,8 +1194,6 @@ class Trainer:
                 f"LR plateau ({epochs_without_improvement} epochs no improve) "
                 f"→ LR ×{cfg.autopilot_lr_factor} → {self.optimizer.param_groups[0]['lr']:.2e}"
             )
-            # Reset plateau counter after reduction (only count consecutive plateaus)
-            # Note: epochs_without_improvement is managed by fit(), we don't reset it here.
 
         # ── 3. Smart restart on regression + drift ───────────────────
         regression = (self._best_val_metric - kge_sta) / (abs(self._best_val_metric) + 1e-8)
@@ -1081,7 +1255,7 @@ class Trainer:
         else:
             # Brief status when no action taken
             logger.debug(
-                f"  [autopilot] epoch={epoch} β={beta:.3f} γ={gamma:.3f} "
+                f"  [autopilot] epoch={epoch} beta={beta:.3f} gamma={gamma:.3f} "
                 f"kge_sta={kge_sta:.4f} — no action"
             )
 

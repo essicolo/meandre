@@ -59,6 +59,12 @@ with open(CONFIG, "rb") as f:
 paths = cfg["paths"]
 temporal = cfg["temporal"]
 mcfg = cfg["model"]
+sc = cfg.get("soil", {})
+
+soil_bounds = {k: sc[k] for k in (
+    "z2_min","z2_max","z3_min","z3_max","rain_hours_min","rain_hours_max"
+) if k in sc}
+soil_z1 = sc.get("z1", 0.30)
 ```
 
 ```{python}
@@ -82,8 +88,8 @@ print(f"Tronçons (ex.) : {node_ids[:5]}")
 #| label: load-forcing
 # Période diagnostique : on utilise 2 ans de validation pour éviter les OOM
 # (return_diagnostics=True conserve tous les champs en mémoire)
-DIAG_START = "2010-01-01"
-DIAG_END   = "2024-12-31"
+DIAG_START = "2019-01-01"
+DIAG_END   = "2021-12-31"
 DIAG_YEARS = f"{DIAG_START[:4]}–{DIAG_END[:4]}"
 
 forcing = extract_forcing(
@@ -124,16 +130,41 @@ model = HydroModel(
     use_travel_time_attn=True,
     use_temperature=True,
     dropout=mcfg.get("dropout", 0.0),
+    concrete_dropout=mcfg.get("concrete_dropout", False),
+    concrete_init_p=mcfg.get("concrete_init_p", 0.1),
     param_mode=mcfg.get("param_mode", "nerf"),
+    soil_z1=soil_z1,
+    soil_bounds=soil_bounds,
 ).to(device)
 
 ckpt_path = Path(paths["checkpoint"])
 model.load(str(ckpt_path))
 model.eval()
 
+# IMPORTANT : aligner les flags runtime sur la config training.
+# Le checkpoint sauvegarde l'EXISTENCE du module (toujours True quand construit),
+# pas le flag runtime que le trainer met à False quand enable_*_epoch=9999.
+# Sans ça, le diag utilise des modules avec poids random-init → β explose.
+tcfg = cfg.get("training", {})
+n_epochs = tcfg.get("n_epochs", 0)
+res_epoch = tcfg.get("enable_residual_epoch", 0)
+tta_epoch = tcfg.get("enable_travel_epoch", 0)
+
+# Activer le résiduel et TTA seulement si le training les a réellement activés
+res_active = n_epochs >= res_epoch
+tta_active = n_epochs >= tta_epoch
+
+model.use_residual = res_active
+if hasattr(model.routing, "use_tta"):
+    model.routing.use_tta = tta_active
+if hasattr(model.routing, "tta_warmup_factor"):
+    model.routing.tta_warmup_factor.fill_(1.0 if tta_active else 0.0)
+
 n_params = sum(p.numel() for p in model.parameters())
 print(f"Checkpoint : {ckpt_path}")
 print(f"Paramètres : {n_params:,}")
+print(f"  use_residual runtime : {model.use_residual}  (config enable_epoch={res_epoch})")
+print(f"  use_tta runtime      : {getattr(model.routing, 'use_tta', 'n/a')}  (config enable_epoch={tta_epoch})")
 ```
 
 ## 2. Simulation diagnostique
@@ -150,8 +181,30 @@ diag_end_idx = int(np.searchsorted(days, np.datetime64(DIAG_END, "D"), side="rig
 print(f"Période diagnostique : {DIAG_START} à {DIAG_END}")
 print(f"  indices [{diag_start_idx}:{diag_end_idx}] sur {len(days)} jours total")
 
-# Phase 1 : spinup (sans diagnostics) pour initialiser l'état
-print("Spinup en cours...")
+# Charger les prélèvements/rejets réels sur toute la période de forçage.
+# Le spinup et la simulation diagnostique utilisent la MÊME donnée que
+# l'entraînement, sinon les KGE/β rapportés ne reflètent pas la réalité.
+print("Chargement des prélèvements réels...")
+withdrawals_full = cache.load_withdrawals(
+    date_start=temporal["date_start"],
+    date_end=temporal["date_end"],
+    device=device,
+)
+print(f"  net.shape={tuple(withdrawals_full.net.shape)}, "
+      f"|net|.mean={withdrawals_full.net.abs().mean().item():.4f} m³/s")
+
+# Slicer pour le spinup et le diagnostic
+wd_spinup = WithdrawalData(
+    net=withdrawals_full.net[:diag_start_idx],
+    net_gw=withdrawals_full.net_gw[:diag_start_idx],
+)
+wd_diag = WithdrawalData(
+    net=withdrawals_full.net[diag_start_idx:diag_end_idx],
+    net_gw=withdrawals_full.net_gw[diag_start_idx:diag_end_idx],
+)
+
+# Phase 1 : spinup AVEC prélèvements réels (cohérent avec le training)
+print("Spinup en cours (avec prélèvements réels)...")
 with torch.no_grad():
     Q_spinup, spinup_state = model.simulate(
         forcing=forcing[:diag_start_idx],
@@ -159,15 +212,39 @@ with torch.no_grad():
         graph=graph,
         node_coords=node_coords,
         territorial=territorial,
-        withdrawals=WithdrawalData.zeros(diag_start_idx, n_nodes, device=device),
+        withdrawals=wd_spinup,
         day_of_year=doy[:diag_start_idx],
         return_diagnostics=False,
     )
+# CRITICAL: capture h_context AT END of spinup before it gets overwritten by
+# subsequent simulate() calls.  Without this, the temporal_encoder GRU restarts
+# from zero in each new simulate() call, causing the vertical column to receive
+# a wrong "context" → sim diverges from a continuous-pass reference.
+h_ctx_after_spinup = model._last_h_context
+if h_ctx_after_spinup is not None:
+    h_ctx_after_spinup = h_ctx_after_spinup.detach()
 del Q_spinup
 torch.cuda.empty_cache() if device.type == "cuda" else None
 
-# Phase 2 : simulation diagnostique
-print("Simulation diagnostique en cours...")
+# Phase 2a : simulation MANAGED (avec prélèvements) — c'est la "vraie" sim
+# directement comparable à ce que le trainer rapporte.
+print("Simulation MANAGED (avec prélèvements) — référence réalité...")
+with torch.no_grad():
+    Q_managed, _state_managed, diag_managed = model.simulate(
+        forcing=forcing[diag_start_idx:diag_end_idx],
+        initial_state=spinup_state,
+        graph=graph,
+        node_coords=node_coords,
+        territorial=territorial,
+        withdrawals=wd_diag,
+        day_of_year=doy[diag_start_idx:diag_end_idx],
+        h_context=h_ctx_after_spinup,
+        return_diagnostics=True,
+    )
+
+# Phase 2b : simulation NATURALISÉE (zéro prélèvement) à partir du MÊME état
+# de spinup — pour quantifier l'impact anthropique sur le débit.
+print("Simulation NATURALISÉE (zéro prélèvement) pour analyse d'impact...")
 with torch.no_grad():
     Q_sim, final_state, diag = model.simulate(
         forcing=forcing[diag_start_idx:diag_end_idx],
@@ -177,6 +254,7 @@ with torch.no_grad():
         territorial=territorial,
         withdrawals=WithdrawalData.zeros(diag_end_idx - diag_start_idx, n_nodes, device=device),
         day_of_year=doy[diag_start_idx:diag_end_idx],
+        h_context=h_ctx_after_spinup,
         return_diagnostics=True,
     )
 
@@ -364,33 +442,17 @@ identifier les tronçons les plus et les moins affectés.
 
 ```{python}
 #| label: simulate-managed
-# Charger les prélèvements/rejets réels depuis le DuckDB
-withdrawals_real = cache.load_withdrawals(
-    date_start=DIAG_START,
-    date_end=DIAG_END,
-    device=device,
-)
+# Q_managed déjà calculé plus haut avec les mêmes prélèvements réels
+# que ceux utilisés à l'entraînement (cohérence des KGE rapportés).
+withdrawals_real = wd_diag
 
 w_total = withdrawals_real.net.abs().sum().item()
 print(f"Signal prélèvements/rejets : {w_total:.1f} m³/s·jour cumulé")
 if w_total == 0:
     print("⚠ Aucun prélèvement/rejet dans la DB — les deux simulations seront identiques.")
 
-print("Simulation gérée en cours...")
-with torch.no_grad():
-    Q_managed, *_ = model.simulate(
-        forcing=forcing[diag_start_idx:diag_end_idx],
-        initial_state=spinup_state,
-        graph=graph,
-        node_coords=node_coords,
-        territorial=territorial,
-        withdrawals=withdrawals_real,
-        day_of_year=doy[diag_start_idx:diag_end_idx],
-        return_diagnostics=False,
-    )
-
-q_nat     = Q_sim.cpu().numpy()           # (T, N)
-q_managed = Q_managed.cpu().numpy()       # (T, N)
+q_nat     = Q_sim.cpu().numpy()           # (T, N) naturalisé (zéro prélèvement)
+q_managed = Q_managed.cpu().numpy()       # (T, N) avec prélèvements réels
 delta     = q_managed - q_nat             # positif = rejet net, négatif = prélèvement net
 ```
 
@@ -753,6 +815,24 @@ plt.tight_layout()
 plt.show()
 ```
 
+
+```{python}
+w_surf = withdrawals_real.net.cpu().numpy()   # (T, N)
+w_gw   = withdrawals_real.net_gw.cpu().numpy()  # (T, N)
+delta  = q_managed - q_nat                     # (T, N)
+
+corrs = []
+for n in range(delta.shape[1]):
+    x = w_surf[:, n] + w_gw[:, n]
+    y = delta[:, n]
+    if np.std(x) > 0 and np.std(y) > 0:
+        corrs.append(np.corrcoef(x, y)[0, 1])
+    else:
+        corrs.append(np.nan)
+
+pd.Series(corrs, index=node_ids).describe()
+```
+
 ## 7. Performance aux stations (KGE / NSE)
 
 Chargement des observations de débit aux stations de jaugeage et calcul du KGE par station sur la période diagnostique, en comparant le débit naturalisé et le débit géré.
@@ -820,7 +900,8 @@ for i, sid in enumerate(sids):
         continue
     q_o_v, q_s_v, q_m_v = q_o[valid], q_s[valid], q_m[valid]
     from meandre.utils.metrics import kge_components as _kgec
-    _kc = _kgec(q_o_v, q_s_v)
+    _kc_nat     = _kgec(q_o_v, q_s_v)  # naturalisé
+    _kc_managed = _kgec(q_o_v, q_m_v)  # géré (avec prélèvements) — référence réalité
     kge_results.append({
         "station": sid,
         "node": ni,
@@ -828,14 +909,16 @@ for i, sid in enumerate(sids):
         "lat": sta_lats[i],
         "area_km2": sta_areas[i],
         "mean_obs": float(q_o_v.mean()),
-        "mean_sim": float(q_s_v.mean()),
-        "r": float(_kc["r"]),
-        "beta": float(_kc["beta"]),
-        "gamma": float(_kc["gamma"]),
-        "KGE_nat": float(kge(q_o_v, q_s_v)),
-        "NSE_nat": float(nse(q_o_v, q_s_v)),
+        "mean_sim_managed": float(q_m_v.mean()),
+        "mean_sim_nat":     float(q_s_v.mean()),
+        # Composantes KGE de la sim MANAGED (= ce que voit l'entraînement)
+        "r":     float(_kc_managed["r"]),
+        "beta":  float(_kc_managed["beta"]),
+        "gamma": float(_kc_managed["gamma"]),
         "KGE_managed": float(kge(q_o_v, q_m_v)),
         "NSE_managed": float(nse(q_o_v, q_m_v)),
+        "KGE_nat":     float(kge(q_o_v, q_s_v)),
+        "NSE_nat":     float(nse(q_o_v, q_s_v)),
         "n_days": int(valid.sum()),
     })
 
@@ -846,18 +929,22 @@ if len(df_kge) > 0:
     w = np.sqrt(df_kge["area_km2"].clip(lower=50, upper=500).values)
     w = w / w.sum()
 
-    print(f"\n── Débit naturalisé ──")
-    print(f"KGE médian  : {df_kge['KGE_nat'].median():.3f}")
-    print(f"KGE moyen   : {df_kge['KGE_nat'].mean():.3f}")
-    print(f"KGE pondéré (√aire) : {(df_kge['KGE_nat'].values * w).sum():.3f}")
-
-    print(f"\n── Débit géré (avec prélèvements) ──")
+    print(f"\n── Débit GÉRÉ (avec prélèvements) — comparable au training ──")
     print(f"KGE médian  : {df_kge['KGE_managed'].median():.3f}")
     print(f"KGE moyen   : {df_kge['KGE_managed'].mean():.3f}")
     print(f"KGE pondéré (√aire) : {(df_kge['KGE_managed'].values * w).sum():.3f}")
+    print(f"  Stations KGE > 0.5 : {(df_kge['KGE_managed'] > 0.5).sum()}/{len(df_kge)}")
+    print(f"  Stations KGE > 0.7 : {(df_kge['KGE_managed'] > 0.7).sum()}/{len(df_kge)}")
 
-    print(f"\n── Diagnostic : mean_obs vs mean_sim + KGE components ──")
-    print(df_kge[["station", "area_km2", "node", "mean_obs", "mean_sim", "r", "beta", "gamma", "KGE_nat", "NSE_nat", "n_days"]]
+    print(f"\n── Débit naturalisé (zéro prélèvement, contrefactuel) ──")
+    print(f"KGE médian  : {df_kge['KGE_nat'].median():.3f}")
+    print(f"KGE moyen   : {df_kge['KGE_nat'].mean():.3f}")
+    print(f"  Note: comparer ce KGE au training est trompeur (training utilise les prélèvements).")
+
+    print(f"\n── Détail par station (composantes KGE = sim managed) ──")
+    print(df_kge[["station", "area_km2", "node", "mean_obs", "mean_sim_managed",
+                  "r", "beta", "gamma", "KGE_managed", "NSE_managed",
+                  "KGE_nat", "n_days"]]
           .sort_values("area_km2", ascending=False)
           .to_string(index=False, float_format="{:.3f}".format))
 else:
@@ -910,7 +997,244 @@ plt.tight_layout()
 plt.show()
 ```
 
-## 8. Export NetCDF
+## 8. Incertitude probabiliste — MC Concrete Dropout
+
+Le modèle a été calibré avec **Concrete Dropout** (Gal, Hron & Kendall 2017) :
+le taux de dropout `p` est appris par layer via une régularisation KL
+qui balance (a) ‖W‖² et (b) l'entropie de `p`. À l'inférence, on génère
+N membres en gelant un masque différent par trajectoire (`frozen_dropout`),
+ce qui remplace l'ensemble multi-modèle classique (Hydrotel + Raven + ...).
+
+Validation de la calibration via **diagramme de Talagrand** (rank histogram)
+et **indice de planéité** (chi² par rapport à une distribution uniforme) :
+
+* Histogramme plat → ensemble bien calibré
+* En U → ensemble sous-dispersé (obs souvent hors enveloppe)
+* En cloche → ensemble sur-dispersé
+* En pente → biais systématique
+
+```{python}
+#| label: mc-ensemble
+from meandre.training.uncertainty import frozen_dropout, frozen_param_noise
+from meandre.spatial.concrete_dropout import ConcreteDropout
+
+N_MEMBERS = 30  # 30-50 suffit; au-delà gain marginal pour CRPS
+
+import math
+# Probe Position B uncertainty stack
+has_pn = getattr(model.spatial_encoder, "param_noise", False)
+if has_pn:
+    sigmas = model.spatial_encoder.param_log_sigma.exp().detach().cpu().numpy()
+    print(f"ParamNoise σ (par paramètre) :")
+    print(f"  min={sigmas.min():.4f}  median={np.median(sigmas):.4f}  max={sigmas.max():.4f}")
+    print(f"  → si σ ≈ 0 partout, l'ensemble sera dégénéré (collapse)")
+else:
+    print("ParamNoise : disabled (model.spatial_encoder.param_noise=False)")
+    print("  → re-train avec [model] param_noise=true")
+
+ps = []
+for _, m in model.named_modules():
+    if isinstance(m, ConcreteDropout):
+        ps.append(float(m.p.item()))
+if ps:
+    print(f"\nConcreteDropout layers : {len(ps)}")
+    print(f"  p appris : min={min(ps):.4f}  median={np.median(ps):.4f}  max={max(ps):.4f}")
+
+if not has_pn and not ps:
+    print("\n⚠ Aucune source d'incertitude active — l'ensemble sera dégénéré.")
+
+# Génération N trajectoires sur la période diagnostique, en partant du même
+# état de spinup déterministe (l'aléatoire vient uniquement des masques de
+# dropout sur les paramètres physiques NeRF + le contexte temporel).
+print(f"\nGénération {N_MEMBERS} trajectoires MC...")
+import time as _time
+_t0 = _time.time()
+
+ensemble = torch.empty(N_MEMBERS, n_diag_days, n_nodes,
+                        dtype=torch.float32, device="cpu")
+for m_i in range(N_MEMBERS):
+    with frozen_param_noise(model, seed=1000 + m_i), frozen_dropout(model, seed=1000 + m_i):
+        with torch.no_grad():
+            Q_m, _ = model.simulate(
+                forcing=forcing[diag_start_idx:diag_end_idx],
+                initial_state=spinup_state,
+                graph=graph, node_coords=node_coords, territorial=territorial,
+                withdrawals=wd_diag,
+                day_of_year=doy[diag_start_idx:diag_end_idx],
+                h_context=h_ctx_after_spinup,
+            )
+    ensemble[m_i] = Q_m.detach().float().cpu()
+    if (m_i + 1) % 10 == 0:
+        print(f"  [{m_i+1}/{N_MEMBERS}]  {(_time.time()-_t0):.0f}s")
+print(f"Ensemble shape : {tuple(ensemble.shape)}  ({_time.time()-_t0:.0f}s)")
+```
+
+### 8.1 Diagramme de Talagrand (rank histogram)
+
+Pour chaque paire (station, jour) où une observation existe :
+on calcule le **rang** de l'observation parmi les N membres triés.
+Avec N membres, le rang prend des valeurs entre 0 (obs < tous les membres)
+et N (obs > tous les membres) — soit N+1 bins.
+
+```{python}
+#| label: fig-talagrand
+#| fig-cap: "Diagramme de Talagrand — distribution des rangs de l'observation dans l'ensemble"
+
+# Extraire les sims aux stations gauges
+ens_stations = ensemble[:, :, station_indices]  # (N, T, n_stations)
+n_stations_diag = q_obs_aligned.shape[1]
+
+# Compute rank: nombre de membres < obs (entre 0 et N)
+# Egalité tranchée aléatoirement pour éviter pic artificiel
+ranks = []
+rng = np.random.default_rng(42)
+for s in range(n_stations_diag):
+    qo = q_obs_aligned[:, s].numpy()
+    qe = ens_stations[:, :, s].numpy()  # (N, T)
+    valid = ~np.isnan(qo)
+    qo_v = qo[valid]
+    qe_v = qe[:, valid]
+    for t in range(qo_v.shape[0]):
+        below = (qe_v[:, t] < qo_v[t]).sum()
+        equal = (qe_v[:, t] == qo_v[t]).sum()
+        # Tie-breaking: tirer un rang uniforme parmi les positions possibles
+        rank = below + (rng.integers(0, equal + 1) if equal > 0 else 0)
+        ranks.append(rank)
+
+ranks = np.array(ranks)
+n_obs = len(ranks)
+print(f"Total (station × jour) observations utilisés : {n_obs:,}")
+
+# Histogramme normalisé
+bin_edges = np.arange(N_MEMBERS + 2) - 0.5  # bins centrés sur 0..N
+counts, _ = np.histogram(ranks, bins=bin_edges)
+freq = counts / n_obs
+expected = 1.0 / (N_MEMBERS + 1)
+
+# Indice de planéité : chi² discrepancy from uniform
+# (renommé `chi2_flat` pour ne pas écraser `delta = q_managed - q_nat` plus haut)
+chi2_flat = float(np.sum((counts - n_obs * expected) ** 2 / (n_obs * expected)))
+chi2_flat_norm = chi2_flat / N_MEMBERS  # normalise: ≈1 si parfaitement plat (Jolliffe & Primo 2008)
+
+print(f"\nIndice de planéité δ      : {chi2_flat:.2f}")
+print(f"  normalisé δ/N           : {chi2_flat_norm:.3f}  (≈1 si parfaitement plat)")
+print(f"  attendu sous H₀ uniforme : N+1 = {N_MEMBERS+1} (chi²(N) ≈ N)")
+
+# Forme de la distribution: U / hump / pente
+left  = freq[: (N_MEMBERS + 1) // 4].mean()
+mid   = freq[(N_MEMBERS + 1) // 4 : 3 * (N_MEMBERS + 1) // 4].mean()
+right = freq[3 * (N_MEMBERS + 1) // 4 :].mean()
+slope_idx = (right - left) / max(left + right, 1e-9)
+u_idx     = (left + right) / max(2 * mid, 1e-9)
+print(f"\n  ratio (gauche+droite)/(2·milieu) : {u_idx:.2f}")
+print(f"     >1.2 → en U (sous-dispersé) ; <0.8 → en cloche (sur-dispersé)")
+print(f"  pente (droite-gauche)/(g+d)      : {slope_idx:+.2f}")
+print(f"     >0 → bin droit chargé : obs > ensemble → modèle SOUS-prévoit (β<1)")
+print(f"     <0 → bin gauche chargé : obs < ensemble → modèle SUR-prévoit (β>1)")
+
+# Plot
+import lets_plot as lp
+df_rank = pd.DataFrame({"rank": np.arange(N_MEMBERS + 1),
+                         "freq": freq, "expected": expected})
+(lp.ggplot(df_rank, lp.aes("rank", "freq"))
+ + lp.geom_bar(stat="identity", color="steelblue", fill="steelblue", alpha=0.7)
+ + lp.geom_hline(yintercept=expected, color="red", linetype="dashed", size=0.8)
+ + lp.labs(x=f"Rang de l'observation parmi {N_MEMBERS} membres",
+           y="Fréquence",
+           title=f"Diagramme de Talagrand — δ/N = {chi2_flat_norm:.2f}",
+           subtitle=f"Ligne rouge : 1/(N+1) = {expected:.4f} (uniforme idéal)")
+ + lp.theme_bw()
+ + lp.ggsize(900, 380))
+```
+
+### 8.2 PICP / PINAW — qualité de l'intervalle [p10, p90]
+
+* **PICP** (Coverage) : fraction d'observations dans l'intervalle prédit.
+  Cible **80 %** pour un intervalle [p10, p90] bien calibré.
+* **PINAW** (Width) : largeur moyenne de l'intervalle, normalisée par
+  l'amplitude observée. Plus petit = plus précis (mais à PICP constant).
+
+```{python}
+#| label: tbl-picp-pinaw
+#| tbl-cap: "PICP/PINAW par station (intervalle [p10, p90], cible PICP=0.80)"
+
+p10 = np.quantile(ens_stations.numpy(), 0.10, axis=0)  # (T, n_stations)
+p90 = np.quantile(ens_stations.numpy(), 0.90, axis=0)
+p50 = np.quantile(ens_stations.numpy(), 0.50, axis=0)
+
+picp_rows = []
+for i, sid in enumerate(sids):
+    qo = q_obs_aligned[:, i].numpy()
+    valid = ~np.isnan(qo)
+    if valid.sum() < 30:
+        continue
+    qo_v = qo[valid]
+    p10_v, p50_v, p90_v = p10[valid, i], p50[valid, i], p90[valid, i]
+    inside = (qo_v >= p10_v) & (qo_v <= p90_v)
+    range_obs = qo_v.max() - qo_v.min()
+    width = (p90_v - p10_v).mean()
+    picp = float(inside.mean())
+    pinaw = float(width / max(range_obs, 1e-6))
+    picp_rows.append({
+        "station": sid, "area_km2": sta_areas[i],
+        "PICP": picp, "PINAW": pinaw,
+        "median_p50": float(p50_v.mean()),
+    })
+
+df_picp = pd.DataFrame(picp_rows).sort_values("area_km2", ascending=False)
+print(df_picp.to_string(index=False, float_format="{:.3f}".format))
+
+print(f"\n  Médiane PICP  : {df_picp['PICP'].median():.3f}  (cible 0.80)")
+print(f"  Moyenne PICP : {df_picp['PICP'].mean():.3f}")
+print(f"  Médiane PINAW : {df_picp['PINAW'].median():.3f}")
+if df_picp['PICP'].median() < 0.65:
+    print("  → Sous-dispersé : augmenter le `length_scale` du Concrete Dropout")
+elif df_picp['PICP'].median() > 0.92:
+    print("  → Sur-dispersé : diminuer le `length_scale` ou allonger le training")
+else:
+    print("  → Calibration raisonnable.")
+```
+
+### 8.3 Hydrogramme avec enveloppe d'incertitude
+
+Vérification visuelle aux stations les plus drainantes — vérifie que
+l'enveloppe [p10, p90] enrobe les obs sans trop d'overshoot.
+
+```{python}
+#| label: fig-uncertainty-hydrograph
+#| fig-cap: "Hydrogrammes avec enveloppe d'incertitude [p10, p90] aux 4 plus grandes stations"
+
+big_4 = df_picp.head(4)["station"].tolist()
+rows_h = []
+for sid in big_4:
+    i = sids.index(sid)
+    qo = q_obs_aligned[:, i].numpy()
+    p10v, p50v, p90v = p10[:, i], p50[:, i], p90[:, i]
+    for t, d in enumerate(diag_dates[:n_diag_days]):
+        rows_h.append({"date": d, "Q": qo[t], "type": "obs",      "station": sid})
+        rows_h.append({"date": d, "Q": p50v[t], "type": "p50",    "station": sid})
+        rows_h.append({"date": d, "Q": p10v[t], "type": "p10",    "station": sid})
+        rows_h.append({"date": d, "Q": p90v[t], "type": "p90",    "station": sid})
+df_h = pd.DataFrame(rows_h)
+df_p10 = df_h[df_h["type"]=="p10"].rename(columns={"Q":"p10"})[["date","station","p10"]]
+df_p90 = df_h[df_h["type"]=="p90"].rename(columns={"Q":"p90"})[["date","station","p90"]]
+df_band = df_p10.merge(df_p90, on=["date","station"])
+
+(lp.ggplot()
+ + lp.geom_ribbon(lp.aes(x="date", ymin="p10", ymax="p90"),
+                   data=df_band, fill="steelblue", alpha=0.25)
+ + lp.geom_line(lp.aes("date", "Q", color="type"),
+                 data=df_h[df_h["type"].isin(["obs","p50"])], size=0.5)
+ + lp.scale_color_manual(values=["black", "red"], name="")
+ + lp.facet_wrap("station", ncol=2, scales="free_y")
+ + lp.labs(x="Date", y="Débit (m³/s)",
+           title=f"Enveloppe d'incertitude [p10, p90] — {DIAG_YEARS}",
+           subtitle=f"Bleu : ensemble Concrete Dropout (N={N_MEMBERS}), rouge : médiane, noir : observation")
+ + lp.theme_bw()
+ + lp.ggsize(1300, 700))
+```
+
+## 9. Export NetCDF
 
 Sauvegarde de tous les champs diagnostiques dans un fichier NetCDF pour
 analyses ultérieures (SIG, comparaison inter-modèles, etc.).

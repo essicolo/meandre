@@ -22,8 +22,11 @@ class SimDiagnostics:
     etr        Actual evapotranspiration: canopy + soil layers 1-3.
     snowmelt   Snow melt flux (mm/day).  Zero when no snow.
     lateral_mm Effective lateral runoff reaching the river network (mm/day).
-               = surface runoff + wetland drainage.  Same signal as Q_sim
-               but before the Muskingum routing delay, in mm/day units.
+               = R_direct + Q_wetland + interflow + Q_baseflow.
+               Same signal as Q_sim but before the Muskingum routing delay,
+               in mm/day units.  NOTE: q_baseflow below is already INCLUDED
+               in lateral_mm — do not add them when computing total local
+               outflow (this would double-count the aquifer contribution).
 
     Groundwater (mm/day)
     --------------------

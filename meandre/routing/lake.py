@@ -79,20 +79,40 @@ class LakeModule(nn.Module):
 
         if Q_release_forced is not None:
             Q_out = Q_release_forced
+            S_new = S + (Q_in + Q_surface - Q_out) * dt
+            S_new = torch.clamp(S_new, min=0.0)
         else:
-            # Normalize storage to mean depth (m) before the power law.
-            # Raw S is in m³ and can reach 1e9+ m³ for large lakes; computing
-            # S**beta directly produces gradients O(S^beta * log S) ≈ 10^13 per
-            # timestep, which accumulate across all lake nodes and TBPTT steps to
-            # overflow float32 → NaN.  Using depth = S/area keeps the argument
-            # in [0, O(100)] m and gradients numerically bounded.
-            # clamp(min=1e-6): prevents NaN gradient from depth^beta * log(depth)
-            # when depth → 0 (i.e. 0 * log(0) = NaN in autograd).
-            depth = (S_available / area_m2.clamp(min=1.0)).clamp(min=1e-6)  # mean depth (m)
-            Q_out = self.k_lake * depth**self.beta * area_m2  # (m/s-ish) * m² → m³/s
+            # Implicit Euler with Newton-Raphson iteration.
+            # Solve: S_new = S + dt × (Q_in + Q_surface - Q_out(S_new))
+            # where Q_out(S) = k × ((S - S_dead)/A)^β × A
+            #
+            # Explicit Euler (S_new = S + dt × (Q_in - Q_out(S))) is unstable
+            # when Q_out(S) × dt > S — the lake can drain to negative,
+            # creating mass conservation violations and Q_out oscillations.
+            # NR converges in 3-5 iterations and is unconditionally stable
+            # for monotone Q_out(S).
+            A_safe = area_m2.clamp(min=1.0)
+            beta = self.beta
+            k = self.k_lake
 
-        # Mass balance
-        S_new = S + (Q_in + Q_surface - Q_out) * dt
-        S_new = torch.clamp(S_new, min=0.0)
+            # Initial guess: explicit Euler (good when stable)
+            depth0 = (S_available / A_safe).clamp(min=1e-6)
+            Q_out0 = k * depth0**beta * A_safe
+            S_new = S + (Q_in + Q_surface - Q_out0) * dt
+            S_new = torch.clamp(S_new, min=0.0)
+
+            # Newton iterations
+            for _ in range(5):
+                depth_n = ((S_new - S_dead).clamp(min=0.0) / A_safe).clamp(min=1e-6)
+                Q_out_n = k * depth_n**beta * A_safe
+                f = S_new - S - dt * (Q_in + Q_surface - Q_out_n)
+                # df/dS = 1 + dt × dQ_out/dS = 1 + dt × k × β × depth^(β-1)
+                df = 1.0 + dt * k * beta * depth_n**(beta - 1.0)
+                S_new = S_new - f / df
+                S_new = torch.clamp(S_new, min=0.0)
+
+            # Final Q_out from converged storage
+            depth_final = ((S_new - S_dead).clamp(min=0.0) / A_safe).clamp(min=1e-6)
+            Q_out = k * depth_final**beta * A_safe
 
         return Q_out, S_new

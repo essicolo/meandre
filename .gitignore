@@ -15,6 +15,7 @@ fdc_training.log
 *.duckdb
 *.duckdb.wal
 *.nc
+*.nc.bak*
 *.tif
 *.npy
 notebooks/slso/data/geo_cache/

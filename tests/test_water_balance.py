@@ -69,7 +69,7 @@ def test_snow_mass_conservation():
     T_melt = torch.zeros(n)
     T_snow = torch.zeros(n)
 
-    P_eff, SWE_new = snow(P, T_air, SWE, C_f, T_melt, T_snow)
+    P_eff, SWE_new, _ = snow(P, T_air, SWE, C_f, T_melt, T_snow)
 
     # Total water = SWE + P must equal SWE_new + P_eff
     total_before = SWE + P

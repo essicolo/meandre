@@ -112,6 +112,68 @@ def frozen_dropout(
 
 
 # ---------------------------------------------------------------------------
+# Frozen ParamNoise — Position B (recommended)
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def frozen_param_noise(
+    model: nn.Module,
+    seed: int,
+) -> Generator[nn.Module, None, None]:
+    """Freeze a single ParamNoise realisation across an entire trajectory.
+
+    Each ensemble member draws ONE ε ~ N(0, I) at entry, then uses the
+    SAME ε for every simulate() call inside the with-block.  This produces
+    a temporally-coherent member analogous to running the physics with one
+    specific (deterministic) parameter set.
+
+    Mass conservation is preserved because the noise is injected on raw
+    fc_out logits and then `_apply_constraints` maps them into physical
+    bounds before the vertical column sees them.
+
+    Usage::
+
+        with frozen_param_noise(model, seed=k):
+            Q_k, _ = model.simulate(forcing, initial_state, ..., perturb_params=True)
+
+    Different seeds → different members.
+
+    Notes
+    -----
+    * The model must have been constructed with ``param_noise=True`` and
+      have a ``spatial_encoder.param_log_sigma`` Parameter.  If absent,
+      this context manager is a no-op.
+    """
+    spatial = getattr(model, "spatial_encoder", None)
+    if spatial is None or not getattr(spatial, "param_noise", False):
+        yield model
+        return
+
+    device = next(model.parameters()).device
+    n_params = spatial.param_log_sigma.shape[0]
+    gen = torch.Generator(device=device)
+    gen.manual_seed(seed)
+    eps = torch.randn(n_params, device=device, generator=gen)
+
+    # Monkey-patch forward to lock in this ε
+    original_forward = spatial.forward
+
+    def frozen_forward(coords, territorial, perturb_params=False, param_noise_eps=None):
+        # Force perturb_params=True with our frozen ε regardless of caller
+        return original_forward(
+            coords, territorial,
+            perturb_params=True,
+            param_noise_eps=eps,
+        )
+
+    spatial.forward = frozen_forward  # type: ignore[method-assign]
+    try:
+        yield model
+    finally:
+        spatial.forward = original_forward  # type: ignore[method-assign]
+
+
+# ---------------------------------------------------------------------------
 # MC Dropout ensemble generator
 # ---------------------------------------------------------------------------
 
