@@ -20,7 +20,8 @@ NeRF spatial encoder   →  Temporal context (GRU)  →  Vertical column (physic
                                                                 ↓
                                                   Loss: KGE + log-MSE + PBIAS
                                                         + physics closure
-                                                        + Concrete Dropout KL
+                                                        + KL ParamNoise
+                                                        + KL Concrete Dropout
                                                         + soft prior on params
 ```
 
@@ -30,7 +31,56 @@ node coordinates and territorial features (soil texture, land cover, slope,
 …), so the model **generalises geographically**: a single trained model
 covers any basin in the domain.
 
-![](docs/model_architecture.png)
+```mermaid
+flowchart LR
+    Met["<b>Météo</b><br/>P, T, radiation,<br/>vent, humidité"]:::input
+    Pay["<b>Paysage</b><br/>occupation du sol,<br/>pentes, aires"]:::input
+    Net["<b>Réseau</b><br/>topologie, lacs"]:::input
+    Pre["<b>Prélèvements</b><br/>m³/s par tronçon"]:::input
+    Qobs["<b>Q_obs</b><br/>débits observés"]:::input
+
+    Pay --> SE["<b>Encodeur spatial</b><br/>NeRF Fourier + ParamNoise<br/>→ 36 params / tronçon"]:::neural
+    Met --> TE["<b>Encodeur temporel</b><br/>GRU + Concrete Dropout<br/>→ contexte (16D)"]:::neural
+
+    subgraph VC["Colonne verticale (physique)"]
+        direction TB
+        Snow["<b>Neige</b>"]:::physics
+        ETm["<b>ET</b><br/>Penman-Monteith"]:::physics
+        Sol["<b>Sol</b> (3 couches)<br/>van Genuchten"]:::physics
+        Aqu["<b>Wetland + Aquifère</b>"]:::physics
+        Snow --> ETm --> Sol --> Aqu
+    end
+
+    SE --> VC
+    TE --> VC
+    VC --> Lat["<b>Apport latéral</b>"]:::flow
+
+    Net --> Topo["<b>Balayage topologique</b>"]:::routing
+    Pre --> Wd["<b>Prélèvements/rejets</b>"]:::routing
+    Lat --> Topo
+    Wd --> Topo
+
+    Topo --> Musk["<b>Muskingum-Cunge</b>"]:::routing
+    Topo --> Lake["<b>Module lac</b>"]:::routing
+    Topo --> Therm["<b>Thermie</b>"]:::routing
+
+    Musk --> Qsim["<b>Q_sim</b>"]:::output
+    Lake --> Qsim
+    Therm --> Teau["<b>T_eau</b>"]:::output
+
+    Qsim --> Loss["<b>Loss</b><br/>KGE + log-MSE + PBIAS<br/>+ bilan + KL terms"]:::loss
+    Qobs --> Loss
+
+    classDef input fill:#d5e8d4,stroke:#82b366
+    classDef neural fill:#e1d5e7,stroke:#9673a6
+    classDef physics fill:#b3d9ff,stroke:#6c8ebf
+    classDef flow fill:#dae8fc,stroke:#6c8ebf
+    classDef routing fill:#ffe6cc,stroke:#d79b00
+    classDef output fill:#fff2cc,stroke:#d6b656
+    classDef loss fill:#f8cecc,stroke:#b85450
+```
+
+→ See [`docs/architecture.md`](docs/architecture.md) for the detailed module-level breakdown.
 
 ## Why
 
@@ -42,10 +92,12 @@ manual calibration per basin and produce point estimates.  meandre:
 * **Generalises across basins** through the NeRF spatial encoder — one
   trained model for the whole Province de Québec instead of one calibration
   per watershed.
-* **Quantifies uncertainty** via *Concrete Dropout* (Gal, Hron & Kendall
-  2017) — the per-layer dropout rate is learned to calibrate the ensemble
-  spread, replacing classical multi-model approaches (Hydrotel + Raven +
-  GR4J) by N forward passes through the same model.
+* **Quantifies uncertainty** via a two-component stack ("Position B"):
+  *ParamNoise* — learnable Gaussian σ on NeRF logits before constraints
+  (mass-conserving parametric uncertainty) — and *Concrete Dropout* (Gal,
+  Hron & Kendall 2017) on the temporal encoder (epistemic uncertainty over
+  the meteorological context). Replaces classical multi-model ensembles
+  (Hydrotel + Raven + GR4J) by N forward passes through the same model.
 * **Is differentiable end-to-end**, so gradients flow from observed Q back
   to soil hydraulics, snow physics, ET, and routing parameters.
 
@@ -70,8 +122,8 @@ Test on held-out 2022-2024 evaluated separately by `eval_test.py`.
 ```
 meandre/
   data/         Basin cache (DuckDB), forcing extraction, withdrawals loader
-  spatial/      NeRF field network, Fourier positional encoding, Concrete Dropout
-  temporal/     GRU context encoder, residual corrector
+  spatial/      NeRF field network, Fourier positional encoding, ParamNoise
+  temporal/     GRU context encoder + Concrete Dropout, residual corrector
   vertical/     Snow, frost, interception, ET, soil (3-layer van Genuchten),
                 wetland, aquifer
   routing/      RiverGraph, Muskingum-Cunge kinematic wave, message passing,
@@ -95,14 +147,14 @@ uv sync
 python notebooks/slso/slso.py
 
 # Held-out test evaluation on best.pt (CPU, no GPU conflict)
-python eval_test.py
+python scripts/eval_test.py
 
 # Full diagnostics (water balance, hydrographs, KGE maps,
 #                  MC uncertainty ensemble with Talagrand + PICP)
 quarto render notebooks/slso/diagnostics.qmd
 
-# Generate MC Dropout uncertainty ensemble (NetCDF)
-python mc_uncertainty.py
+# Generate MC uncertainty ensemble (ParamNoise + Concrete Dropout, NetCDF)
+python scripts/mc_uncertainty.py
 ```
 
 ## Configuration
@@ -111,7 +163,7 @@ Per-basin TOML at `notebooks/slso/config/slso.toml`:
 
 * `[paths]` — basin DuckDB, forcing zarr/nc, checkpoint
 * `[temporal]` — train / dev / test split (rigorous, no leakage)
-* `[model]` — NeRF settings, Concrete Dropout, residual history
+* `[model]` — NeRF settings, ParamNoise (spatial) + Concrete Dropout (temporal), residual history
 * `[soil]` — z1 (fixed) + per-node bounds for z2, z3, rain_hours
 * `[training]` — lr, epochs, chunk_steps (for gradient accumulation),
                  best_metric, prior weight `w_prior`, curriculum epochs
@@ -120,9 +172,7 @@ Per-basin TOML at `notebooks/slso/config/slso.toml`:
 ## Documentation
 
 * [Basin DB schema](docs/basin_db_schema.md) — DuckDB tables
-* [Architecture diagram](docs/model_architecture.png) — full pipeline
-* [Workflow](docs/workflow.drawio) — data flow PHYSITEL → bassin.duckdb → training
-* [HESS reference](docs/hess-29-2811-2025.pdf) — published context
+* [Architecture](docs/architecture.md) — Mermaid diagrams (overview + detailed) and module status
 
 ## Key design choices
 
@@ -146,7 +196,7 @@ Per-basin TOML at `notebooks/slso/config/slso.toml`:
 ## Training safeguards
 
 * Truncated BPTT every 365 days
-* Chunked gradient accumulation every 180 days (fits 8 GB VRAM)
+* Chunked gradient accumulation every 365 days (capped by `tbptt_steps`, fits 8 GB VRAM)
 * Divergence rollback if loss > 3× EMA (max 3 rollbacks)
 * Cached end-of-train state for fast `_val_epoch` (saves ≈ 50 min/epoch)
 * `_val_epoch` does continuous spinup → train → val forward pass for
@@ -154,17 +204,18 @@ Per-basin TOML at `notebooks/slso/config/slso.toml`:
 
 ## Known limitations
 
-* Concrete Dropout `length_scale` default of `1.0` (was `1e-2` and led to
-  `p → 0` collapse).  After re-training the dispersion should be
-  calibrated to PICP ≈ 80 %.
+* UQ calibration (PICP ≈ 80 %, Talagrand δ/N ∈ [1, 5]) not yet validated
+  on the current Position B stack — to be checked after the fine-tune
+  reaches its KGE plateau.
 * Residual corrector currently disabled (`enable_residual_epoch = 9999`)
   pending redesign — gate initialization and noise injection at
   activation cause loss spikes.
 * Travel-time attention disabled (`enable_travel_epoch = 9999`) for the
   same warm-start instability reason.
+* AR(1) state noise is legacy (breaks mass conservation) — superseded by
+  ParamNoise and not recommended for new runs.
 
 ## Citation / context
 
 Builds on Hydrotel (Fortin et al., INRS-ETE) and recent neural-physics
-hybrid literature.  See `docs/hess-29-2811-2025.pdf` for the published
-reference informing the approach.
+hybrid literature.
