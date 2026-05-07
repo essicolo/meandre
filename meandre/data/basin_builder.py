@@ -49,13 +49,14 @@ def build_basin(
     dem_path: str | Path,
     landcover_path: str | Path,
     soil_dir: str | Path,
-    outlet: tuple[float, float],
+    outlet: tuple[float, float] | None,
     basin_db: str | Path,
     min_area_km2: float = 2.0,
     max_subcatchments: int = 300,
     water_occurrence_path: str | Path | None = None,
     lai_path: str | Path | None = None,
     nrcan_lc_path: str | Path | None = None,
+    water_polygons_path: str | Path | None = None,
     extra_stats: list[str] | None = None,
     normalise: bool = True,
     basin_mask_gdf=None,
@@ -71,7 +72,9 @@ def build_basin(
     soil_dir :
         Directory with SoilGrids GeoTIFFs (sand.tif, silt.tif, clay.tif).
     outlet :
-        (lon, lat) of the basin outlet in EPSG:4326.
+        (lon, lat) of the basin outlet in EPSG:4326. Pass ``None`` to
+        auto-detect: the highest-accumulation cell on the raster edge is
+        used (where water leaves the bbox).
     basin_db :
         Output DuckDB file path.
     min_area_km2 :
@@ -115,6 +118,7 @@ def build_basin(
         water_occurrence_path=water_occurrence_path,
         lai_path=lai_path,
         nrcan_lc_path=nrcan_lc_path,
+        water_polygons_path=water_polygons_path,
     )
 
     # Step 4b: Lake detection — flag nodes where >10 % of area is permanent water
@@ -228,12 +232,16 @@ def _condition_dem(dem_path: Path) -> dict:
 
 def _delineate_subcatchments(
     grid_data: dict,
-    outlet: tuple[float, float],
+    outlet: tuple[float, float] | None,
     min_area_km2: float = 2.0,
     max_subcatchments: int = 300,
     basin_mask_gdf=None,
 ) -> dict:
-    """Delineate subcatchments from flow accumulation threshold."""
+    """Delineate subcatchments from flow accumulation threshold.
+
+    If ``outlet`` is None, automatically pick the highest-accumulation cell
+    on the raster edge — this is where the basin drains out of the bbox.
+    """
     grid = grid_data["grid"]
     fdir = grid_data["fdir"]
     acc = grid_data["acc"]
@@ -246,6 +254,22 @@ def _delineate_subcatchments(
     min_pixels = max(int(min_area_km2 / pixel_area_km2), 100)
     print(f"  résolution={res_m:.1f} m  min_pixels={min_pixels}  "
           f"raster={grid.shape[0]}×{grid.shape[1]} px")
+
+    # Auto-detect outlet if not given: max-accumulation cell on raster edge.
+    # The edge is where water leaves the bbox, so the highest-accumulation
+    # cell on the edge is the basin outlet.
+    if outlet is None:
+        acc_arr = np.asarray(acc)
+        edge_mask = np.zeros_like(acc_arr, dtype=bool)
+        edge_mask[0, :] = edge_mask[-1, :] = True
+        edge_mask[:, 0] = edge_mask[:, -1] = True
+        er, ec = np.unravel_index(
+            np.argmax(np.where(edge_mask, acc_arr, 0.0)), acc_arr.shape
+        )
+        olon, olat = grid.affine * (ec + 0.5, er + 0.5)
+        outlet = (float(olon), float(olat))
+        print(f"  auto-detected outlet (max-acc on edge): "
+              f"({outlet[0]:.4f}, {outlet[1]:.4f})  acc={acc_arr[er, ec]:.0f} px")
 
     # Snap outlet to nearest high-accumulation cell (used for reference even with mask).
     snap_pixels = max(min_pixels, int(25.0 / pixel_area_km2))
@@ -642,6 +666,7 @@ def _compute_zonal_stats(
     water_occurrence_path: Path | None = None,
     lai_path: Path | None = None,
     nrcan_lc_path: Path | None = None,
+    water_polygons_path: Path | None = None,
 ) -> tuple[Tensor, dict[str, Tensor], list[str]]:
     """Compute per-subcatchment zonal statistics from rasters."""
     from rasterstats import zonal_stats
@@ -696,13 +721,53 @@ def _compute_zonal_stats(
     # ── Soil fractions ────────────────────────────────────────────────────────
     soil_fracs = _soil_fractions(labels, soil_dir, n_nodes, _idx=_idx)
 
-    # ── JRC Global Surface Water → lake_fraction ──────────────────────────────
+    # ── Lake fraction: JRC permanent water (>75% occurrence) ∪ OSM polygons ──
+    # JRC catches large permanent lakes/rivers but misses small ponds at 30 m.
+    # OSM water polygons fill in small lakes, reservoirs, retention basins.
+    jrc_mask = None
     if water_occurrence_path is not None and Path(water_occurrence_path).exists():
         print("  JRC surface water...", flush=True)
         water_occ = _read_resampled(
             water_occurrence_path, _grid_shape, _grid_tf, _grid_crs
         ).astype(np.float32)
-        lake_frac = _zonal_fraction_threshold(labels, water_occ, n_nodes, threshold=75.0, _idx=_idx)
+        jrc_mask = water_occ > 75.0
+
+    osm_mask = None
+    if water_polygons_path is not None and Path(water_polygons_path).exists():
+        try:
+            import geopandas as gpd
+            from rasterio.features import rasterize as _rasterize
+            print("  OSM water polygons...", flush=True)
+            wpoly = gpd.read_parquet(str(water_polygons_path))
+            if wpoly.crs is None:
+                wpoly = wpoly.set_crs("EPSG:4326")
+            elif wpoly.crs.to_epsg() != 4326:
+                wpoly = wpoly.to_crs("EPSG:4326")
+            shapes = [(g, 1) for g in wpoly.geometry if g is not None and not g.is_empty]
+            if shapes:
+                osm_mask = _rasterize(
+                    shapes, out_shape=_grid_shape, transform=_grid_tf,
+                    fill=0, dtype="uint8", all_touched=False,
+                ).astype(bool)
+        except Exception as e:
+            print(f"  OSM water polygons skipped ({e})")
+
+    if jrc_mask is not None and osm_mask is not None:
+        combined = jrc_mask | osm_mask
+        lake_frac = _zonal_mean_per_label(
+            labels, combined.astype(np.float32), n_nodes, _idx=_idx,
+        )
+        n_jrc_only = int((jrc_mask & ~osm_mask).sum())
+        n_osm_only = int((osm_mask & ~jrc_mask).sum())
+        print(f"  lake mask: JRC-only={n_jrc_only:,} OSM-only={n_osm_only:,} px")
+    elif jrc_mask is not None:
+        lake_frac = _zonal_mean_per_label(
+            labels, jrc_mask.astype(np.float32), n_nodes, _idx=_idx,
+        )
+    elif osm_mask is not None:
+        lake_frac = _zonal_mean_per_label(
+            labels, osm_mask.astype(np.float32), n_nodes, _idx=_idx,
+        )
     else:
         lake_frac = np.zeros(n_nodes, dtype=np.float32)
 
@@ -744,6 +809,16 @@ def _compute_zonal_stats(
     feature_dict["f_sand"]              = soil_fracs["sand"]
     feature_dict["f_silt"]              = soil_fracs["silt"]
     feature_dict["f_clay"]              = soil_fracs["clay"]
+
+    # ── PTF (Saxton-Rawls 2006): texture → hydraulic parameters ──
+    # Provides physically-grounded init for the NeRF spatial encoder
+    # (porosity, FC, WP, Ksat). The NeRF can refine these from data.
+    ptf = _saxton_rawls_2006(soil_fracs["sand"], soil_fracs["clay"])
+    feature_dict["porosity"]            = ptf["porosity"]
+    feature_dict["theta_fc"]            = ptf["theta_fc"]
+    feature_dict["theta_wp"]            = ptf["theta_wp"]
+    feature_dict["Ksat_m_day"]          = ptf["Ksat_m_day"]
+
     feature_dict["depth_to_bedrock_m"]  = np.zeros(n_nodes, dtype=np.float32)
     feature_dict["dist_to_outlet_km"]   = dist_km
     feature_dict["mean_lai"]            = mean_lai
@@ -957,6 +1032,84 @@ def _zonal_fraction_threshold(
     hits = (v >= threshold).astype(np.float64)
     counts = np.bincount(_idx.lbl0, weights=hits, minlength=n_nodes)
     return np.where(_idx.counts > 0, counts / _idx.counts, 0.0).astype(np.float32)
+
+
+def _saxton_rawls_2006(
+    sand: np.ndarray,
+    clay: np.ndarray,
+    om_pct: float = 2.5,
+) -> dict[str, np.ndarray]:
+    """Pedotransfer functions of Saxton & Rawls (2006).
+
+    Converts soil texture (sand/clay fractions) into hydraulic parameters
+    used by van Genuchten and meandre's vertical column.
+
+    Parameters
+    ----------
+    sand, clay :
+        Sand and clay fractions by mass (0–1).
+    om_pct :
+        Organic matter content in % by mass (default 2.5 % — typical for
+        temperate forested mineral soils).
+
+    Returns
+    -------
+    Dict with keys ``porosity`` (m³/m³), ``theta_fc`` (m³/m³),
+    ``theta_wp`` (m³/m³), and ``Ksat_m_day`` (m/day).
+
+    Notes
+    -----
+    Reference: Saxton, K.E. & Rawls, W.J. (2006), "Soil water
+    characteristic estimates by texture and organic matter for hydrologic
+    solutions", *Soil Sci. Soc. Am. J.* 70(5):1569–1578.
+    """
+    S = sand.astype(np.float32)
+    C = clay.astype(np.float32)
+    OM = np.float32(om_pct)
+
+    # Wilting point (-1500 kPa)
+    theta_1500t = (-0.024 * S + 0.487 * C + 0.006 * OM
+                   + 0.005 * S * OM - 0.013 * C * OM
+                   + 0.068 * S * C + 0.031)
+    theta_wp = theta_1500t + (0.14 * theta_1500t - 0.02)
+    theta_wp = np.clip(theta_wp, 0.02, 0.40)
+
+    # Field capacity (-33 kPa)
+    theta_33t = (-0.251 * S + 0.195 * C + 0.011 * OM
+                 + 0.006 * S * OM - 0.027 * C * OM
+                 + 0.452 * S * C + 0.299)
+    theta_33 = theta_33t + (1.283 * theta_33t ** 2 - 0.374 * theta_33t - 0.015)
+    theta_fc = np.clip(theta_33, theta_wp + 0.02, 0.55)
+
+    # Saturated water content = porosity
+    theta_S33t = (0.278 * S + 0.034 * C + 0.022 * OM
+                  - 0.018 * S * OM - 0.027 * C * OM
+                  - 0.584 * S * C + 0.078)
+    theta_S33 = theta_S33t + (0.636 * theta_S33t - 0.107)
+    theta_S = theta_fc + theta_S33 - 0.097 * S + 0.043
+    porosity = np.clip(theta_S, theta_fc + 0.01, 0.65)
+
+    # Saturated K via Brooks-Corey lambda fitted on (theta_wp, theta_fc)
+    log_ratio_kpa = np.float32(np.log(1500.0) - np.log(33.0))
+    log_theta_diff = (
+        np.log(np.maximum(theta_fc, 1e-3))
+        - np.log(np.maximum(theta_wp, 1e-3))
+    )
+    log_theta_diff = np.where(np.abs(log_theta_diff) > 1e-3,
+                              log_theta_diff,
+                              np.float32(1e-3))
+    B = log_ratio_kpa / log_theta_diff          # Brooks-Corey b
+    lam = 1.0 / B                                # pore size index
+    Ksat_mm_h = 1930.0 * np.maximum(porosity - theta_fc, 1e-4) ** (3.0 - lam)
+    Ksat_m_day = Ksat_mm_h * 24.0 * 1e-3
+    Ksat_m_day = np.clip(Ksat_m_day, 1e-5, 50.0)  # bound to physical range
+
+    return {
+        "porosity":   porosity.astype(np.float32),
+        "theta_fc":   theta_fc.astype(np.float32),
+        "theta_wp":   theta_wp.astype(np.float32),
+        "Ksat_m_day": Ksat_m_day.astype(np.float32),
+    }
 
 
 def _soil_fractions(

@@ -157,6 +157,61 @@ quarto render notebooks/slso/diagnostics.qmd
 python scripts/mc_uncertainty.py
 ```
 
+## Build a basin from a bounding box
+
+`scripts/bbox_to_basin.py` produces a `basin.duckdb` and (optionally) a
+`forcing.nc` directly from open data — **no manual GIS pipeline**.
+
+```powershell
+# Basin only (auto-detected outlet on the bbox edge, max-accumulation cell)
+python scripts/bbox_to_basin.py `
+    --bbox=-71.5,46.55,-71.3,46.75 `
+    --output=notebooks/test/basin.duckdb
+
+# Basin + daily forcing (Open-Meteo ERA5 archive, 2000–2024)
+python scripts/bbox_to_basin.py `
+    --bbox=-73.0,44.5,-69.6,47.7 `
+    --output=notebooks/slso/data/slso-od.duckdb `
+    --with-forcing --start=2000-01-01 --end=2024-12-31
+```
+
+NOTE on PowerShell: values starting with `-` (negative coords) require
+the `--bbox=...` syntax (with `=`) to avoid being parsed as new flags.
+
+### Data sources used
+
+| Layer | Source | Resolution | API |
+|-------|--------|-----------|-----|
+| DEM | Copernicus DEM 30m | 30 m | Planetary Computer (STAC) |
+| Land cover | ESA WorldCover 2021 | 10 m | Planetary Computer (STAC) |
+| Forest type / wetland | NRCan Annual LC | 30 m | Planetary Computer (STAC) |
+| Sand / silt / clay | ISRIC SoilGrids 2.0 | 250 m | SoilGrids REST |
+| Permanent water | JRC Global Surface Water | 30 m | Planetary Computer (STAC) |
+| LAI | MODIS MOD15A2H | 500 m | Planetary Computer (STAC) |
+| Lake polygons (small) | OpenStreetMap | vector | Overpass API |
+| River geometry (viz) | OpenStreetMap | vector | Overpass API |
+| Daily forcing (P, T) | Open-Meteo ERA5 archive | 0.1° | Open-Meteo HTTP |
+
+### What the pipeline computes
+
+1. **Hydrological conditioning** — pit fill + depression fill + flat resolution (pysheds), D8 flow direction and accumulation
+2. **Auto outlet detection** — highest-accumulation cell on the bbox edge (or pass `--outlet=lon,lat` to override)
+3. **Sub-catchment delineation** — confluence detection at min_area_km2 threshold (default 1.5 km²)
+4. **Topology** — directed edges between sub-catchments + Kahn topological order
+5. **Zonal statistics per node** — drainage area, slope, elevation, aspect, land cover fractions, soil texture, LAI
+6. **Pedotransfer functions (Saxton-Rawls 2006)** — porosity, theta_fc, theta_wp, Ksat from sand/clay (physical init for NeRF)
+7. **Lake detection** — JRC permanent water (>75% occurrence) ∪ OSM water polygons (small lakes/reservoirs)
+8. **Forcing** (optional) — daily pr/tasmin/tasmax/sfcWind via Open-Meteo, gridded netCDF compatible with `extract_forcing()`
+
+### Known limitations
+
+* **Discharge observations are not auto-fetched.** `bbox_to_basin` produces the physical model only (basin + forcing). To train, you still need to populate `stations` and `observations` tables in the DuckDB from your hydrometric source (e.g. ECCC HYDAT, Quebec MELCC). See `meandre/data/basin_cache.py` for the schema.
+* **Outlet auto-detection** picks the max-acc cell on the bbox *edge* — works for "natural" basins where one large outlet dominates. For composite regions (multiple non-overlapping basins), pass `--outlet` explicitly or supply `basin_mask_gdf` programmatically.
+* **Travel time** is hardcoded to 1 day per edge (Muskingum K, x are learned by the NeRF anyway).
+* **Open-Meteo ERA5** has known biases over Quebec (orographic precip on Appalachians); meandre's GRU + NeRF are designed to learn around these systematic biases.
+* **Daymet not used** — calibrating on Daymet would create a training-vs-inference dataset shift since no real-time Daymet equivalent exists. Open-Meteo ERA5 chosen for consistency with operational use.
+* **OSM Overpass instability** — small water polygons and river LineStrings may be unavailable when Overpass mirrors are down. The pipeline degrades gracefully (skips that layer; basin still builds from JRC water + DEM topology).
+
 ## Configuration
 
 Per-basin TOML at `notebooks/slso/config/slso.toml`:
@@ -173,6 +228,7 @@ Per-basin TOML at `notebooks/slso/config/slso.toml`:
 
 * [Basin DB schema](docs/basin_db_schema.md) — DuckDB tables
 * [Architecture](docs/architecture.md) — Mermaid diagrams (overview + detailed) and module status
+* [`scripts/bbox_to_basin.py`](scripts/bbox_to_basin.py) — automated bbox → basin.duckdb + forcing.nc pipeline
 
 ## Key design choices
 
@@ -196,7 +252,7 @@ Per-basin TOML at `notebooks/slso/config/slso.toml`:
 ## Training safeguards
 
 * Truncated BPTT every 365 days
-* Chunked gradient accumulation every 365 days (capped by `tbptt_steps`, fits 8 GB VRAM)
+* Chunked gradient accumulation every 180 days (empirical sweet spot, fits 8 GB VRAM)
 * Divergence rollback if loss > 3× EMA (max 3 rollbacks)
 * Cached end-of-train state for fast `_val_epoch` (saves ≈ 50 min/epoch)
 * `_val_epoch` does continuous spinup → train → val forward pass for

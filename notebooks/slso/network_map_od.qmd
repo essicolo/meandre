@@ -11,8 +11,8 @@ execute:
   echo: true
 ---
 
-Carte interactive du réseau dérivé automatiquement (Copernicus DEM 30m + GRHQ/OSM).
-Couches : tronçons GRHQ, arêtes du réseau, noeuds, lacs, stations.
+Carte interactive du réseau dérivé automatiquement (Copernicus DEM 30m + OSM rivers).
+Couches : tronçons OSM, arêtes du réseau, noeuds, lacs, stations.
 
 ```{python}
 #| label: setup
@@ -108,13 +108,13 @@ m = folium.Map(
     prefer_canvas=False,
 )
 
-fg_reaches  = folium.FeatureGroup(name="Troncons GRHQ/OSM", show=True)
+fg_reaches  = folium.FeatureGroup(name="Troncons OSM", show=True)
 fg_edges    = folium.FeatureGroup(name="Reseau (aretes)", show=False)
 fg_nodes    = folium.FeatureGroup(name="Noeuds", show=False)
 fg_lakes    = folium.FeatureGroup(name="Lacs / reservoirs", show=True)
 fg_stations = folium.FeatureGroup(name="Stations hydrometriques", show=True)
 
-# ── 1. Tronçons GRHQ/OSM ─────────────────────────────────────────────────
+# ── 1. Tronçons OSM ──────────────────────────────────────────────────────
 _topo_lookup = nodes_df.set_index("node_idx")["topo_order"].to_dict()
 
 reach_features = []

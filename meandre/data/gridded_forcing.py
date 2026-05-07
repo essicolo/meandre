@@ -132,6 +132,12 @@ def extract_forcing(
     pr_raw   = ds_slice.pr.sel(latitude=sub_lats, longitude=sub_lons).values.astype(np.float32)
     tmax_raw = ds_slice.tasmax.sel(latitude=sub_lats, longitude=sub_lons).values.astype(np.float32)
     tmin_raw = ds_slice.tasmin.sel(latitude=sub_lats, longitude=sub_lons).values.astype(np.float32)
+    # Optional 10 m wind speed — converted to u2 below if present
+    has_wind = "sfcWind" in ds_slice.data_vars
+    wind_raw = (
+        ds_slice.sfcWind.sel(latitude=sub_lats, longitude=sub_lons).values.astype(np.float32)
+        if has_wind else None
+    )
     ds.close()
 
     lat_idx = np.argmin(np.abs(sub_lats[:, None] - coords_np[:, 1][None, :]), axis=0)
@@ -140,6 +146,7 @@ def extract_forcing(
     pr   = pr_raw[:, lat_idx, lon_idx]
     tmax = tmax_raw[:, lat_idx, lon_idx]
     tmin = tmin_raw[:, lat_idx, lon_idx]
+    wind10 = wind_raw[:, lat_idx, lon_idx] if has_wind else None
 
     pr = np.maximum(pr, 0.0)
     swap = tmin > tmax
@@ -168,7 +175,12 @@ def extract_forcing(
             (1.35 * ratio - 0.35))
     R_n  = (R_ns - R_nl).astype(np.float32)
     e_a  = e_a.astype(np.float32)
-    u2   = np.full((n_time, n_nodes), u2_default, dtype=np.float32)
+    if has_wind:
+        # FAO-56 eq. 47: u2 = u_z * 4.87 / ln(67.8 * z - 5.42), z=10 m -> ratio 0.748
+        u2 = (np.nan_to_num(wind10, nan=u2_default) * 0.748).astype(np.float32)
+        print(f"[gridded_forcing] Using sfcWind from forcing (mean u2 = {u2.mean():.2f} m/s)")
+    else:
+        u2 = np.full((n_time, n_nodes), u2_default, dtype=np.float32)
 
     forcing = np.stack(
         [pr, tmin.astype(np.float32), tmax.astype(np.float32), R_n, u2, e_a],

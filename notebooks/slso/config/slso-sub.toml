@@ -29,8 +29,9 @@ context_window   = 30
 residual_history = 14
 max_travel_days  = 20
 dropout          = 0.0
-concrete_dropout = true
+concrete_dropout = false  # Phase A déterministe — réactiver pour Phase C UQ calibration
 concrete_init_p  = 0.1
+param_noise      = false  # Phase A déterministe
 param_mode = "nerf"
 
 [training]

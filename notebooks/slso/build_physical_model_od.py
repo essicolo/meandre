@@ -76,12 +76,12 @@ soil_dir       = rasters["soil_dir"]
 water_occ_path = rasters["water_occurrence"]          # JRC surface water
 lai_path       = rasters["lai"]                       # MODIS LAI
 nrcan_lc_path  = rasters["nrcan_lc"]                  # NRCan land cover (None si indisponible)
-grhq_path      = rasters["grhq"]                      # Géobase RHQ (None si indisponible)
+rivers_path    = rasters["rivers"]                    # OSM rivers (None si indisponible)
 
 print(f"\nDEM        : {dem_path}")
 print(f"Land cover : {landcover_path}")
 print(f"Sol        : {soil_dir}")
-print(f"GRHQ       : {grhq_path}")
+print(f"Rivers     : {rivers_path}")
 
 # %% [markdown]
 # ## 2. Construction du bassin
@@ -117,14 +117,14 @@ cache = build_basin(
 print(f"\nCache créé: {PC_DB}")
 
 # %% [markdown]
-# ## 3. Géométrie des tronçons (GRHQ)
+# ## 3. Géométrie des tronçons (OSM rivers)
 
 # %%
 import pandas as pd
 
 REACH_PARQUET = PC_DB.parent / "reaches_od.parquet"
 
-if grhq_path is not None:
+if rivers_path is not None:
     from meandre.data.open_data import build_reach_parquet as _build_reach
 
     # Charger les nœuds depuis le DuckDB
@@ -137,13 +137,13 @@ if grhq_path is not None:
 
     _build_reach(
         nodes_df     = _nodes_df,
-        grhq_path    = grhq_path,
+        rivers_path  = rivers_path,
         out_path     = REACH_PARQUET,
         max_dist_deg = 0.05,          # ~5.5 km — augmenter si tronçons trop larges
     )
     print(f"Géométrie des tronçons : {REACH_PARQUET}")
 else:
-    print("[!] GRHQ non disponible — reaches_od.parquet non créé.")
+    print("[!] OSM rivers non disponibles — reaches_od.parquet non créé.")
 
 # %% [markdown]
 # ## 4. Vérification du réseau hydrographique

@@ -44,14 +44,14 @@ dropout          = 0.0    # Standard MC Dropout (0 = disabled when using concret
 # the interpretation of the meteorological context). The spatial encoder
 # uses ParamNoise below (mass-conserving parametric uncertainty).
 # To fully disable Concrete Dropout, set to false.
-concrete_dropout       = true
+concrete_dropout       = false  # Phase B (déterministe) — réactiver pour Phase 2 UQ calibration
 concrete_init_p        = 0.1
 # ParamNoise: learnable Gaussian σ injected on fc_out logits of the NeRF
 # (before constraints). Preserves the water balance because constraints
 # bound the perturbed params within their physical ranges. Each ensemble
 # member = a coherent bounded param set (analogous to an alternative
 # Hydrotel calibration). See README for details.
-param_noise            = true
+param_noise            = false  # Phase B (déterministe) — réactiver pour Phase 2 UQ calibration
 param_noise_init_sigma = 0.01   # logit-space perturbation (0.01 = gentle for fine-tune)
 
 # Spatial parameter mode: "nerf" or "static"
@@ -79,17 +79,17 @@ rain_hours_max   = 24.0      # h (long frontal rains)
 
 [training]
 n_epochs      = 200 # weekend run — autopilot manages the phases
-lr            = 1e-4
+lr            = 5e-4
 lr_finetune   = 1e-4
 lr_new_features_mult = 10.0   # fc1/fc2 get 10x the base LR when fine-tuning with new features
 weight_decay  = 2e-4
 grad_clip     = 1.0
 tbptt_steps   = 365
-chunk_steps   = 365            # gradient-accumulation chunks (memory ∝ min(chunk, tbptt)) — 365 OK with residual disabled and tbptt=365 capping VRAM peak
+chunk_steps   = 180            # gradient-accumulation chunks (memory ∝ chunk_steps) — 180 is the empirical sweet spot; 365 caused allocator pressure (~12GB RAM) and slowed epoch 0 to >2h
 val_every     = 1              # validation every epoch (required by autopilot)
 patience      = 50             # long — autopilot manages LR and restarts
 best_metric   = "kge" # Checkpoint on pooled KGE (published hydro convention). Options: "nse", "kge", "kge_station", "kge_median"
-warm_start    = true  # Resume from best.pt
+warm_start    = false  # Resume from best.pt?
 compile_modules = false  # Triton missing on Windows → torch.compile crashes on first forward
 
 # Soft prior regularization on spatial NeRF parameters (k_gw, krec, K_c).
@@ -106,10 +106,10 @@ w_prior       = 0.005
 #   regularisation). Recommended for true UQ calibration.
 # w_concrete_kl: weight of the Concrete Dropout KL. Kept low to avoid
 #   dominating the data loss (cf. previous collapse).
-w_param_noise_kl       = 0.1
+w_param_noise_kl       = 0.0   # Phase B (déterministe) — KL inactive when param_noise=false
 param_noise_target_sigma = 0.05
-train_with_param_noise = true
-w_concrete_kl          = 0.1
+train_with_param_noise = false # Phase B (déterministe)
+w_concrete_kl          = 0.0   # Phase B (déterministe) — KL inactive when concrete_dropout=false
 
 # Curriculum: epoch at which each module is activated
 enable_temporal_epoch  = 0
@@ -129,7 +129,7 @@ tta_warmup_epochs = 10
 # Autonomous calibration — adjusts hyperparameters based on validation
 # metrics. Designed for long unsupervised runs.
 autopilot                         = true
-autopilot_grace_epochs            = 5     # warm-start: react fast to a collapse
+autopilot_grace_epochs            = 15     # warm-start: react fast to a collapse
 autopilot_beta_threshold          = 1.00  # disabled (unreachable threshold) — beta drift is structural, not overfitting
 autopilot_beta_penalty            = 0.005 # w_residual increment per epoch
 autopilot_gamma_threshold         = 0.20  # |γ-1| > 0.20 → bump w_residual

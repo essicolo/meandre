@@ -304,26 +304,31 @@ Cartes des champs moyens annuels sur le bassin SLSO.
 
 ```{python}
 #| label: fig-spatial-maps
-#| fig-cap: "Champs hydrologiques moyens annuels (mm/an) — SLSO"
+#| fig-cap: "Champs hydrologiques moyens annuels — SLSO"
 
 lon = node_coords[:, 0].cpu().numpy()
 lat = node_coords[:, 1].cpu().numpy()
 
-# Calcul des moyennes annuelles par noeud (mm/jour → mm/an)
+# Flux verticaux : moyennes annuelles par noeud (mm/jour → mm/an)
 etr_annual = diag.etr.cpu().numpy().sum(axis=0) / n_years
+etp_annual = diag.etp.cpu().numpy().sum(axis=0) / n_years
+deficit_annual = etp_annual - etr_annual
 recharge_annual = diag.recharge.cpu().numpy().sum(axis=0) / n_years
 lateral_annual = diag.lateral_mm.cpu().numpy().sum(axis=0) / n_years
 snowmelt_annual = diag.snowmelt.cpu().numpy().sum(axis=0) / n_years
 baseflow_annual = diag.q_baseflow.cpu().numpy().sum(axis=0) / n_years
-etp_annual = diag.etp.cpu().numpy().sum(axis=0) / n_years
+
+# Thermie : température moyenne annuelle de l'eau (°C)
+twater_mean = (diag.T_water.cpu().numpy().mean(axis=0)
+               if diag.T_water is not None else np.full(n_nodes, np.nan))
 
 fields = [
-    ("ETR (mm/an)", etr_annual, "YlGn"),
-    ("ETP (mm/an)", etp_annual, "YlOrRd"),
+    ("Déficit ETP − ETR (mm/an)", deficit_annual, "RdYlBu_r"),
     ("Recharge (mm/an)", recharge_annual, "Blues"),
     ("Ruissellement latéral (mm/an)", lateral_annual, "PuBu"),
     ("Fonte de neige (mm/an)", snowmelt_annual, "cool"),
     ("Débit de base (mm/an)", baseflow_annual, "GnBu"),
+    ("Thermie — T eau moyenne (°C)", twater_mean, "RdBu_r"),
 ]
 
 fig, axes = plt.subplots(2, 3, figsize=(18, 11))
@@ -366,6 +371,45 @@ axes[1].set_ylabel("Latitude")
 axes[1].set_aspect("equal")
 plt.colorbar(sc2, ax=axes[1], shrink=0.7)
 
+plt.tight_layout()
+plt.show()
+```
+
+### Paramètres physiques appris par le NeRF
+
+Six paramètres clés du modèle vertical, échantillonnés directement depuis
+`SpatialFieldNetwork` aux coordonnées des noeuds. Les paramètres en log-normal
+(K_sat, k_interflow, k_gw) sont affichés en échelle log.
+
+```{python}
+#| label: fig-spatial-params
+#| fig-cap: "Paramètres physiques spatialisés — sortie du NeRF aux noeuds SLSO"
+
+from matplotlib.colors import LogNorm
+
+with torch.no_grad():
+    params = model.spatial_encoder(node_coords, territorial.to_tensor())
+
+param_fields = [
+    ("K_sat couche 1 (m/jour)",            params.K_sat_1.cpu().numpy(),     "viridis", LogNorm()),
+    ("slope_factor — interflow (–)",       params.slope_factor.cpu().numpy(),"viridis", None),
+    ("k_interflow — récession (1/jour)",   params.k_interflow.cpu().numpy(), "viridis", LogNorm()),
+    ("C_f — fonte degré-jour (mm/°C/j)",   params.C_f.cpu().numpy(),         "viridis", None),
+    ("K_c — coefficient ETP (–)",          params.K_c.cpu().numpy(),         "viridis", None),
+    ("k_gw — récession aquifère (1/jour)", params.k_gw.cpu().numpy(),        "viridis", LogNorm()),
+]
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+for ax, (title, values, cmap, norm) in zip(axes.flat, param_fields):
+    sc = ax.scatter(lon, lat, c=values, s=3, cmap=cmap, norm=norm,
+                     edgecolors="none")
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    ax.set_aspect("equal")
+    plt.colorbar(sc, ax=ax, shrink=0.7)
+
+fig.suptitle("Paramètres NeRF appris — SLSO", fontsize=14, fontweight="bold")
 plt.tight_layout()
 plt.show()
 ```
@@ -482,29 +526,63 @@ df_cmp = pd.concat([
 #| label: fig-withdrawal-impact-map
 #| fig-cap: "Influence des prélèvements/rejets par tronçon"
 
-# Métrique d'impact
+from matplotlib.collections import LineCollection
+from matplotlib.colors import LogNorm
+
+# Métrique d'impact par nœud
 delta_amp   = np.abs(delta).mean(axis=0)                              # (N,) amplitude moyenne (m³/s)
 q_nat_mean  = np.maximum(q_nat.mean(axis=0), 1e-6)                    # (N,) débit naturalisé moyen
 proportion  = np.clip(delta_amp / q_nat_mean, 0, None)                # (N,) proportion sans borne sup
 
+def _segments_par_valeur_aval(values: np.ndarray) -> tuple[list, list, np.ndarray]:
+    """Découpe les arêtes en (background, actives, valeurs_actives).
+    Le segment (s, d) reçoit la valeur du nœud aval `d` ; un segment est
+    `actif` si cette valeur est > 0, sinon il va dans le background gris."""
+    segs_bg, segs_act, vals_act = [], [], []
+    for s, d in zip(edge_src, edge_dst):
+        si, di = int(s), int(d)
+        if di == outlet_idx:
+            continue
+        seg = [(lon[si], lat[si]), (lon[di], lat[di])]
+        v = float(values[di])
+        if v > 0:
+            segs_act.append(seg)
+            vals_act.append(v)
+        else:
+            segs_bg.append(seg)
+    return segs_bg, segs_act, np.array(vals_act)
+
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-amp_min = delta_amp[delta_amp > 0].min() if (delta_amp > 0).any() else 1e-6
-sc1 = axes[0].scatter(lon, lat, c=delta_amp, s=4,
-                       cmap="OrRd", edgecolors="none",
-                       norm=plt.matplotlib.colors.LogNorm(vmin=amp_min, vmax=delta_amp.max()))
+# Panel gauche — amplitude moyenne |ΔQ|
+segs_bg, segs_act, vals = _segments_par_valeur_aval(delta_amp)
+amp_min = vals.min() if vals.size else 1e-6
+axes[0].add_collection(LineCollection(segs_bg, colors="whitesmoke",
+                                       linewidths=0.3, zorder=1))
+lc1 = LineCollection(segs_act, cmap="OrRd",
+                      norm=LogNorm(vmin=amp_min, vmax=delta_amp.max()),
+                      linewidths=1.0, zorder=2)
+lc1.set_array(vals)
+axes[0].add_collection(lc1)
 axes[0].set_title("Amplitude moyenne |ΔQ| (m³/s)\n(échelle log)")
 axes[0].set_aspect("equal")
-plt.colorbar(sc1, ax=axes[0], shrink=0.7)
+axes[0].autoscale_view()
+plt.colorbar(lc1, ax=axes[0], shrink=0.7)
 
-prop_max = np.percentile(proportion[proportion > 0], 99) if (proportion > 0).any() else 1.0
-from matplotlib.colors import LogNorm
-sc2 = axes[1].scatter(lon, lat, c=proportion.clip(1e-6), s=4,
-                       cmap="YlOrRd", edgecolors="none",
-                       norm=LogNorm(vmin=1e-4, vmax=max(prop_max, 1e-2)))
+# Panel droit — proportion |ΔQ| / Q_nat
+segs_bg, segs_act, vals = _segments_par_valeur_aval(proportion)
+prop_max = np.percentile(vals, 99) if vals.size else 1.0
+axes[1].add_collection(LineCollection(segs_bg, colors="whitesmoke",
+                                       linewidths=0.3, zorder=1))
+lc2 = LineCollection(segs_act, cmap="YlOrRd",
+                      norm=LogNorm(vmin=1e-4, vmax=max(prop_max, 1e-2)),
+                      linewidths=1.0, zorder=2)
+lc2.set_array(np.clip(vals, 1e-6, None))
+axes[1].add_collection(lc2)
 axes[1].set_title("Proportion d'influence annuelle |ΔQ| / Q_nat\n(impact anthropique / débit naturalisé)")
 axes[1].set_aspect("equal")
-plt.colorbar(sc2, ax=axes[1], shrink=0.7)
+axes[1].autoscale_view()
+plt.colorbar(lc2, ax=axes[1], shrink=0.7)
 
 fig.suptitle(f"Influence des prélèvements/rejets — SLSO {DIAG_YEARS}",
              fontsize=13, fontweight="bold")

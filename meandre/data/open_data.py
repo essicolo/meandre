@@ -3,10 +3,17 @@
 Planetary Computer (STAC):
     - Copernicus DEM 30m (``cop-dem-glo-30``)
     - ESA WorldCover 10m (``esa-worldcover``, 2021)
+    - JRC Global Surface Water
+    - MODIS LAI (MOD15A2H)
+    - NRCan annual land cover (Canada)
 
 SoilGrids (ISRIC REST API):
     - Sand / silt / clay content (%)
-    - Depth to bedrock (cm)
+    - Bulk density (depth-to-bedrock proxy)
+
+OpenStreetMap Overpass API:
+    - River LineStrings (``waterway=river``) — cosmetic, used for the
+      reach parquet viz layer; topology comes from DEM/D8 in basin_builder.
 
 All downloads are cached in ``cache_dir`` so repeated calls are free.
 
@@ -604,227 +611,105 @@ def download_nrcan_landcover(
     return out_path
 
 
-# ── GRHQ — Géobase du Réseau Hydrographique du Québec ───────────────────────
+# ── River-network lines via OpenStreetMap Overpass API ──────────────────────
 
 
-def download_grhq(
+def download_river_lines(
     bbox: tuple[float, float, float, float],
     cache_dir: str | Path,
-    wfs_url: str | None = None,
 ) -> Path | None:
-    """Download GRHQ river-network lines clipped to *bbox*.
+    """Download river LineStrings clipped to *bbox* from OpenStreetMap Overpass.
 
-    Tries three sources in order:
+    Returns path to ``rivers.parquet`` (LineString geometries, EPSG:4326),
+    or ``None`` if the Overpass mirrors are unreachable.
 
-    1. **WFS** — clips to bbox server-side (pass a custom *wfs_url* if you know
-       the correct endpoint for your layer).  Typical Quebec WFS pattern::
-
-           "https://geoegl.msp.gouv.qc.ca/apis/wfs?SERVICE=WFS&VERSION=2.0.0"
-           "&REQUEST=GetFeature&TYPENAMES=<layer>&BBOX=..."
-
-    2. **données.gouv.qc.ca CKAN API** — fetches the GRHQ package metadata,
-       downloads the first GeoPackage or ZIP resource found, then clips.
-       The full dataset can be several hundred MB; it is cached locally.
-
-    3. **NRCan National Hydrographic Network (NHN)** via CKAN — same approach
-       for ``nhn-rhn`` if GRHQ is unavailable.
-
-    Returns path to ``grhq_rivers.parquet`` (LineString geometries, EPSG:4326),
-    or ``None`` if all sources fail.
+    Only ``waterway=river`` is queried (streams/creeks would cause 504
+    timeouts on larger bboxes). The geometries are cosmetic for the
+    `reach_parquet` viz layer — the model topology comes from the DEM/D8
+    flow routing in `basin_builder.py`, not from these lines.
 
     Requires **geopandas** (``pip install meandre[geo]``).
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    out_path = cache_dir / "grhq_rivers.parquet"
+    out_path = cache_dir / "rivers.parquet"
     if out_path.exists():
-        print(f"[open_data] GRHQ cached: {out_path}")
+        print(f"[open_data] Rivers cached: {out_path}")
         return out_path
 
     try:
         import geopandas as gpd
         from shapely.geometry import box as shapely_box
     except ImportError:
-        print("[open_data] geopandas not installed — skipping GRHQ download. "
+        print("[open_data] geopandas not installed — skipping rivers download. "
               "Install with: pip install geopandas")
         return None
+
+    import urllib.request
+    import urllib.parse
+    import json
 
     west, south, east, north = bbox
     aoi = shapely_box(west, south, east, north)
 
-    gdf = None
+    print("[open_data] Querying OSM Overpass for river lines...")
+    query = (
+        f"[out:json][timeout:120];"
+        f'(way["waterway"="river"]({south},{west},{north},{east}););'
+        f"out geom;"
+    )
+    data = urllib.parse.urlencode({"data": query}).encode()
 
-    # ── 1. WFS (server-side clip) ─────────────────────────────────────────────
-    if wfs_url:
+    response = None
+    for mirror in [
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+    ]:
         try:
-            print(f"[open_data] Querying WFS: {wfs_url[:80]}...")
-            gdf = gpd.read_file(wfs_url)
-            if len(gdf) == 0:
-                gdf = None
-            else:
-                print(f"[open_data] WFS returned {len(gdf)} features")
+            with urllib.request.urlopen(mirror, data=data, timeout=180) as r:
+                response = r.read()
+            break
         except Exception as e:
-            print(f"[open_data] WFS failed ({e})")
-            gdf = None
+            print(f"[open_data]   {mirror} failed ({e})")
+            continue
 
-    # ── 2. CKAN sources ───────────────────────────────────────────────────────
-    ckan_sources = [
-        ("GRHQ",  "https://www.donneesquebec.ca/recherche/api/3/action/package_show?id=grhq"),
-    ]
-
-    if gdf is None:
-        import json, urllib.request, zipfile
-
-        for src_name, ckan_url in ckan_sources:
-            print(f"[open_data] Querying {src_name} via CKAN API...")
-            try:
-                with urllib.request.urlopen(ckan_url, timeout=30) as resp:
-                    pkg = json.loads(resp.read())
-            except Exception as e:
-                print(f"[open_data]   {src_name} CKAN failed ({e})")
-                continue
-
-            resources = (pkg.get("result") or {}).get("resources", [])
-
-            # Prefer GeoPackage, then Shapefile ZIP
-            dl_url = None
-            for res in resources:
-                url = res.get("url", "")
-                if url.lower().endswith(".gpkg"):
-                    dl_url = url
-                    break
-            if dl_url is None:
-                for res in resources:
-                    url = res.get("url", "")
-                    if url.lower().endswith(".zip"):
-                        dl_url = url
-                        break
-
-            if dl_url is None:
-                print(f"[open_data]   No GeoPackage/ZIP found in {src_name} CKAN package.")
-                continue
-
-            ext = ".gpkg" if dl_url.lower().endswith(".gpkg") else ".zip"
-            raw_dir = cache_dir / f"{src_name.lower()}_raw"
-            raw_dir.mkdir(exist_ok=True)
-            dl_path = raw_dir / f"download{ext}"
-
-            if not dl_path.exists():
-                print(f"[open_data]   Downloading {src_name} ({dl_url[:80]}...)  "
-                      "This may take several minutes.")
-                try:
-                    urllib.request.urlretrieve(dl_url, str(dl_path))
-                except Exception as e:
-                    print(f"[open_data]   Download failed ({e})")
-                    continue
-
-            read_path = str(dl_path)
-            if ext == ".zip":
-                with zipfile.ZipFile(dl_path) as zf:
-                    zf.extractall(str(raw_dir))
-                # For NHN: prefer shapefiles whose name suggests flow paths
-                _flow_keywords = ("flow", "cours", "hydrograph", "watercourse", "stream", "river")
-                read_path = None
-                candidates = sorted(raw_dir.rglob("*.shp")) + sorted(raw_dir.rglob("*.gpkg"))
-                # First pass: prefer files with flow/river keywords
-                for p in candidates:
-                    if any(kw in p.stem.lower() for kw in _flow_keywords):
-                        read_path = str(p)
-                        break
-                # Second pass: take first file found
-                if read_path is None and candidates:
-                    read_path = str(candidates[0])
-
-            if read_path is None:
-                print(f"[open_data]   Could not find spatial file in {src_name} archive.")
-                continue
-
-            print(f"[open_data]   Reading {src_name} (bbox clip)...")
-            try:
-                gdf = gpd.read_file(read_path, bbox=bbox)
-                if len(gdf) == 0:
-                    gdf = None
-                    print(f"[open_data]   No features in bbox from {src_name}.")
-                    continue
-                print(f"[open_data]   {src_name}: {len(gdf)} features in bbox.")
-                break
-            except Exception as e:
-                print(f"[open_data]   Read failed ({e})")
-                gdf = None
-
-    # ── 3. OpenStreetMap via Overpass API (always available) ──────────────────
-    if gdf is None or len(gdf) == 0 or not any(
-        t in ["LineString", "MultiLineString"]
-        for t in gdf.geometry.geom_type.unique()
-    ):
-        print("[open_data] Trying OSM Overpass for river lines...")
-        try:
-            import urllib.request as _ur
-            import urllib.parse as _up
-            import json as _json
-            # Only waterway=river — streams too numerous, cause 504 timeouts
-            _query = (
-                f"[out:json][timeout:120];"
-                f'(way["waterway"="river"]({south},{west},{north},{east}););'
-                f"out geom;"
-            )
-            _data = _up.urlencode({"data": _query}).encode()
-            _r_data = None
-            for _mirror in [
-                "https://overpass.kumi.systems/api/interpreter",
-                "https://overpass-api.de/api/interpreter",
-            ]:
-                try:
-                    with _ur.urlopen(_mirror, data=_data, timeout=180) as _r:
-                        _r_data = _r.read()
-                    break
-                except Exception:
-                    continue
-            if _r_data is None:
-                raise RuntimeError("All Overpass mirrors failed")
-            _result = _json.loads(_r_data)
-            _feats = []
-            for _el in _result.get("elements", []):
-                if _el.get("type") == "way" and "geometry" in _el:
-                    _coords = [(_n["lon"], _n["lat"]) for _n in _el["geometry"]]
-                    if len(_coords) >= 2:
-                        _tags = _el.get("tags", {})
-                        _feats.append({
-                            "geometry": {"type": "LineString", "coordinates": _coords},
-                            "properties": {
-                                "name":     _tags.get("name", ""),
-                                "waterway": _tags.get("waterway", ""),
-                            },
-                        })
-            gdf = gpd.GeoDataFrame.from_features(_feats, crs="EPSG:4326") if _feats else None
-            if gdf is not None:
-                print(f"[open_data] OSM: {len(gdf)} river lines")
-        except Exception as _e:
-            print(f"[open_data] OSM Overpass failed ({_e})")
-            gdf = None
-
-    if gdf is None or len(gdf) == 0:
-        print("[open_data] GRHQ: all sources failed — skipping.")
+    if response is None:
+        print("[open_data] All Overpass mirrors failed — skipping rivers.")
         return None
 
-    # ── Post-process ──────────────────────────────────────────────────────────
+    feats = []
+    for el in json.loads(response).get("elements", []):
+        if el.get("type") != "way" or "geometry" not in el:
+            continue
+        coords = [(n["lon"], n["lat"]) for n in el["geometry"]]
+        if len(coords) < 2:
+            continue
+        tags = el.get("tags", {})
+        feats.append({
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": {
+                "name":     tags.get("name", ""),
+                "waterway": tags.get("waterway", ""),
+            },
+        })
+
+    if not feats:
+        print("[open_data] OSM: no river lines in bbox.")
+        return None
+
+    gdf = gpd.GeoDataFrame.from_features(feats, crs="EPSG:4326")
     gdf = gdf[gdf.geometry.notna()]
     gdf = gdf[gdf.geometry.geom_type.isin(["LineString", "MultiLineString"])]
-    if gdf.crs is None:
-        gdf = gdf.set_crs("EPSG:4326")
-    elif gdf.crs.to_epsg() != 4326:
-        gdf = gdf.to_crs("EPSG:4326")
-
     gdf = gdf.clip(aoi)
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
 
     if len(gdf) == 0:
-        print("[open_data] GRHQ: no river lines in bbox after clip.")
+        print("[open_data] OSM: no river lines in bbox after clip.")
         return None
 
     gdf = gdf.reset_index(drop=True)
     gdf.to_parquet(str(out_path))
-    print(f"[open_data] GRHQ saved: {out_path} ({len(gdf)} segments)")
+    print(f"[open_data] Rivers saved: {out_path} ({len(gdf)} segments)")
     return out_path
 
 
@@ -833,13 +718,13 @@ def download_grhq(
 
 def build_reach_parquet(
     nodes_df: "pd.DataFrame",
-    grhq_path: str | Path,
+    rivers_path: str | Path,
     out_path: str | Path,
     max_dist_deg: float = 0.05,
 ) -> Path:
-    """Match model nodes to GRHQ river segments and save as parquet.
+    """Match model nodes to OSM river segments and save as parquet.
 
-    For each node ``(lon, lat)`` in *nodes_df*, finds the nearest GRHQ river
+    For each node ``(lon, lat)`` in *nodes_df*, finds the nearest river
     segment within *max_dist_deg* degrees (~5 km at Quebec latitudes).
     Saves a GeoDataFrame with columns::
 
@@ -851,8 +736,8 @@ def build_reach_parquet(
     ----------
     nodes_df :
         DataFrame with columns ``node_idx``, ``node_id``, ``lon``, ``lat``.
-    grhq_path :
-        Path to ``grhq_rivers.parquet`` produced by :func:`download_grhq`.
+    rivers_path :
+        Path to ``rivers.parquet`` produced by :func:`download_river_lines`.
     out_path :
         Output parquet path, e.g. ``data/reaches.parquet``.
     max_dist_deg :
@@ -865,7 +750,7 @@ def build_reach_parquet(
     import geopandas as gpd
     import pandas as pd
 
-    rivers = gpd.read_parquet(str(grhq_path))
+    rivers = gpd.read_parquet(str(rivers_path))
     if rivers.crs is None:
         rivers = rivers.set_crs("EPSG:4326")
     elif rivers.crs.to_epsg() != 4326:
@@ -895,7 +780,7 @@ def build_reach_parquet(
     if len(matched) == 0:
         raise RuntimeError(
             f"No nodes matched within {max_dist_deg}° — "
-            "check that GRHQ bbox covers the model domain."
+            "check that the rivers parquet covers the model domain."
         )
 
     # Replace point geometries with the matched river LineStrings
@@ -922,6 +807,280 @@ def build_reach_parquet(
     return out_path
 
 
+# ── Water polygons via OpenStreetMap Overpass API ───────────────────────────
+
+
+def download_water_polygons(
+    bbox: tuple[float, float, float, float],
+    cache_dir: str | Path,
+) -> Path | None:
+    """Download water polygons (lakes, reservoirs, basins) from OSM Overpass.
+
+    Captures small lakes and reservoirs that JRC Global Surface Water (30 m)
+    may miss. Combined with JRC at the basin_builder level for fine lake
+    detection.
+
+    Tags queried:
+        - ``natural=water`` (lakes, ponds)
+        - ``landuse=reservoir``
+        - ``landuse=basin`` (retention basins)
+
+    Returns path to ``water_polygons.parquet`` (Polygon geometries, EPSG:4326),
+    or ``None`` if Overpass mirrors fail.
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cache_dir / "water_polygons.parquet"
+    if out_path.exists():
+        print(f"[open_data] Water polygons cached: {out_path}")
+        return out_path
+
+    try:
+        import geopandas as gpd
+        from shapely.geometry import box as shapely_box
+    except ImportError:
+        print("[open_data] geopandas not installed — skipping water polygons.")
+        return None
+
+    import json
+    import urllib.parse
+    import urllib.request
+
+    west, south, east, north = bbox
+    aoi = shapely_box(west, south, east, north)
+
+    print("[open_data] Querying OSM Overpass for water polygons...")
+    query = (
+        f"[out:json][timeout:120];"
+        f"("
+        f'way["natural"="water"]({south},{west},{north},{east});'
+        f'way["landuse"="reservoir"]({south},{west},{north},{east});'
+        f'way["landuse"="basin"]({south},{west},{north},{east});'
+        f");"
+        f"out geom;"
+    )
+    data = urllib.parse.urlencode({"data": query}).encode()
+
+    response = None
+    for mirror in [
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+    ]:
+        try:
+            with urllib.request.urlopen(mirror, data=data, timeout=180) as r:
+                response = r.read()
+            break
+        except Exception as e:
+            print(f"[open_data]   {mirror} failed ({e})")
+            continue
+
+    if response is None:
+        print("[open_data] All Overpass mirrors failed — skipping water polygons.")
+        return None
+
+    feats = []
+    for el in json.loads(response).get("elements", []):
+        if el.get("type") != "way" or "geometry" not in el:
+            continue
+        coords = [(n["lon"], n["lat"]) for n in el["geometry"]]
+        # Polygon needs at least 4 points and must be closed
+        if len(coords) < 4 or coords[0] != coords[-1]:
+            continue
+        tags = el.get("tags", {})
+        feats.append({
+            "geometry": {"type": "Polygon", "coordinates": [coords]},
+            "properties": {
+                "name": tags.get("name", ""),
+                "type": tags.get("natural") or tags.get("landuse", ""),
+            },
+        })
+
+    if not feats:
+        print("[open_data] OSM: no water polygons in bbox.")
+        return None
+
+    gdf = gpd.GeoDataFrame.from_features(feats, crs="EPSG:4326")
+    gdf = gdf[gdf.geometry.notna() & gdf.geometry.is_valid]
+    gdf = gdf.clip(aoi)
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
+
+    if len(gdf) == 0:
+        print("[open_data] OSM: no water polygons after clip.")
+        return None
+
+    gdf = gdf.reset_index(drop=True)
+    gdf.to_parquet(str(out_path))
+    print(f"[open_data] Water polygons saved: {out_path} ({len(gdf)} polygons)")
+    return out_path
+
+
+# ── Daily forcing via Open-Meteo ERA5 archive ───────────────────────────────
+
+
+def download_forcing_open_meteo(
+    bbox: tuple[float, float, float, float],
+    start_date: str,
+    end_date: str,
+    cache_dir: str | Path,
+    resolution_deg: float = 0.1,
+    batch_size: int = 200,
+) -> Path | None:
+    """Download daily ``pr``/``tasmin``/``tasmax`` from Open-Meteo ERA5 archive.
+
+    Builds a regular lat/lon grid over *bbox* at *resolution_deg* spacing and
+    queries the Open-Meteo bulk endpoint (multi-location). Output is a
+    netCDF compatible with :func:`meandre.data.gridded_forcing.extract_forcing`
+    (which derives ``R_n``, ``u2``, ``e_a`` internally via FAO-56).
+
+    Parameters
+    ----------
+    bbox :
+        ``(west, south, east, north)`` in EPSG:4326.
+    start_date, end_date :
+        ISO 8601 dates (``YYYY-MM-DD``), inclusive.
+    cache_dir :
+        Output directory (``forcing_open_meteo.nc`` is cached here).
+    resolution_deg :
+        Grid spacing in degrees. 0.1 ≈ 11 km. Lower = more queries but more
+        spatial detail. ERA5 native is 0.25° (~28 km) so going below 0.1°
+        re-samples without adding information.
+    batch_size :
+        Locations per HTTP request. Open-Meteo accepts ~200 safely; raise
+        for fewer requests but longer per-request payloads.
+
+    Returns
+    -------
+    Path to ``forcing_open_meteo.nc`` or ``None`` if all queries fail.
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cache_dir / "forcing_open_meteo.nc"
+    if out_path.exists():
+        print(f"[open_data] Forcing cached: {out_path}")
+        return out_path
+
+    import json
+    import urllib.parse
+    import urllib.request
+
+    import pandas as pd
+    import xarray as xr
+
+    west, south, east, north = bbox
+
+    # Snap grid to multiples of resolution_deg so repeated calls reuse cells
+    lat0 = np.floor(south / resolution_deg) * resolution_deg
+    lat1 = np.ceil(north / resolution_deg) * resolution_deg
+    lon0 = np.floor(west / resolution_deg) * resolution_deg
+    lon1 = np.ceil(east / resolution_deg) * resolution_deg
+    lats_grid = np.round(np.arange(lat0, lat1 + 1e-6, resolution_deg), 6)
+    lons_grid = np.round(np.arange(lon0, lon1 + 1e-6, resolution_deg), 6)
+    n_lat, n_lon = len(lats_grid), len(lons_grid)
+
+    dates = pd.date_range(start_date, end_date, freq="D")
+    n_days = len(dates)
+
+    # Pre-allocate (may be ~100s of MB for full SLSO over 25 years)
+    pr       = np.full((n_days, n_lat, n_lon), np.nan, dtype=np.float32)
+    tasmin   = np.full((n_days, n_lat, n_lon), np.nan, dtype=np.float32)
+    tasmax   = np.full((n_days, n_lat, n_lon), np.nan, dtype=np.float32)
+    sfcWind  = np.full((n_days, n_lat, n_lon), np.nan, dtype=np.float32)
+
+    flat_pts = [(i, j, lats_grid[i], lons_grid[j])
+                for i in range(n_lat) for j in range(n_lon)]
+    n_pts = len(flat_pts)
+    n_batches = (n_pts + batch_size - 1) // batch_size
+
+    print(f"[open_data] Open-Meteo grid: {n_lat}×{n_lon} = {n_pts} points  "
+          f"× {n_days} days  ({n_batches} batches)")
+
+    URL = "https://archive-api.open-meteo.com/v1/era5"
+    DAILY = (
+        "precipitation_sum,temperature_2m_min,temperature_2m_max,"
+        "wind_speed_10m_max"
+    )
+
+    failed = 0
+    for b in range(n_batches):
+        batch = flat_pts[b * batch_size:(b + 1) * batch_size]
+        lats_q = ",".join(f"{p[2]:.4f}" for p in batch)
+        lons_q = ",".join(f"{p[3]:.4f}" for p in batch)
+        params = {
+            "latitude":        lats_q,
+            "longitude":       lons_q,
+            "start_date":      start_date,
+            "end_date":        end_date,
+            "daily":           DAILY,
+            "timezone":        "GMT",
+            "wind_speed_unit": "ms",   # m/s instead of default km/h
+        }
+        full_url = URL + "?" + urllib.parse.urlencode(params)
+
+        try:
+            with urllib.request.urlopen(full_url, timeout=300) as r:
+                data = json.loads(r.read())
+        except Exception as e:
+            print(f"[open_data]   batch {b+1}/{n_batches} failed ({e})")
+            failed += len(batch)
+            continue
+
+        # Single location -> dict, multiple -> list of dicts
+        if not isinstance(data, list):
+            data = [data]
+
+        for loc, (i, j, _, _) in zip(data, batch):
+            d = loc.get("daily") or {}
+            try:
+                pr[:, i, j]      = d["precipitation_sum"]
+                tasmin[:, i, j]  = d["temperature_2m_min"]
+                tasmax[:, i, j]  = d["temperature_2m_max"]
+                sfcWind[:, i, j] = d["wind_speed_10m_max"]
+            except (KeyError, ValueError) as e:
+                print(f"[open_data]   pt ({lats_grid[i]}, {lons_grid[j]}): {e}")
+                failed += 1
+
+        if (b + 1) % 5 == 0 or b + 1 == n_batches:
+            print(f"  batch {b+1}/{n_batches} done", flush=True)
+
+    if failed > 0:
+        print(f"[open_data] {failed}/{n_pts} grid points failed (NaN-filled)")
+
+    if np.all(np.isnan(pr)):
+        print("[open_data] All Open-Meteo queries failed.")
+        return None
+
+    ds = xr.Dataset(
+        {
+            "pr":      (("time", "latitude", "longitude"), pr),
+            "tasmin":  (("time", "latitude", "longitude"), tasmin),
+            "tasmax":  (("time", "latitude", "longitude"), tasmax),
+            "sfcWind": (("time", "latitude", "longitude"), sfcWind),
+        },
+        coords={
+            "time":      dates,
+            "latitude":  lats_grid,
+            "longitude": lons_grid,
+        },
+        attrs={
+            "source":         "Open-Meteo ERA5 archive",
+            "url":            URL,
+            "resolution_deg": resolution_deg,
+            "bbox":           f"{west},{south},{east},{north}",
+        },
+    )
+    ds["pr"].attrs.update(units="mm/day", standard_name="precipitation_amount")
+    ds["tasmin"].attrs.update(units="degC", standard_name="air_temperature")
+    ds["tasmax"].attrs.update(units="degC", standard_name="air_temperature")
+    ds["sfcWind"].attrs.update(
+        units="m/s",
+        standard_name="wind_speed",
+        long_name="Daily max wind speed at 10 m (FAO-56 conversion to u2 done at extract)",
+    )
+    ds.to_netcdf(out_path)
+    print(f"[open_data] Forcing saved: {out_path}  ({n_days} days × {n_lat}×{n_lon})")
+    return out_path
+
+
 # ── Convenience: download all ────────────────────────────────────────────────
 
 
@@ -929,11 +1088,11 @@ def download_all(
     bbox: tuple[float, float, float, float],
     cache_dir: str | Path,
 ) -> dict[str, Path]:
-    """Download DEM, land cover, soil, JRC water, MODIS LAI, NRCan LC and GRHQ.
+    """Download DEM, land cover, soil, JRC water, MODIS LAI, NRCan LC, OSM rivers.
 
     Returns dict with keys:
         ``"dem"``, ``"landcover"``, ``"soil_dir"``,
-        ``"water_occurrence"``, ``"lai"``, ``"nrcan_lc"``, ``"grhq"``
+        ``"water_occurrence"``, ``"lai"``, ``"nrcan_lc"``, ``"rivers"``
         (values are ``None`` when a source is unavailable).
     """
     cache_dir = Path(cache_dir)
@@ -944,5 +1103,6 @@ def download_all(
         "water_occurrence": download_jrc_surface_water(bbox, cache_dir),
         "lai":              download_modis_lai(bbox, cache_dir),
         "nrcan_lc":         download_nrcan_landcover(bbox, cache_dir),
-        "grhq":             download_grhq(bbox, cache_dir),
+        "rivers":           download_river_lines(bbox, cache_dir),
+        "water_polygons":   download_water_polygons(bbox, cache_dir),
     }
