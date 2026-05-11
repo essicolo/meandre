@@ -1227,6 +1227,184 @@ def download_forcing_open_meteo(
     return out_path
 
 
+# ── Daily forcing via DestinE Earth Data Hub (ERA5-LAND) ────────────────────
+
+
+def _read_destine_token() -> str | None:
+    """Read DestinE personal access token from ~/.netrc (or _netrc on Windows).
+
+    Expected entry::
+
+        machine data.earthdatahub.destine.eu
+        password edh_pat_...
+    """
+    import netrc as _netrc
+    try:
+        nrc = _netrc.netrc()
+        auth = nrc.authenticators("data.earthdatahub.destine.eu")
+    except Exception:
+        return None
+    if auth is None:
+        return None
+    _, _, password = auth
+    return password
+
+
+def download_forcing_era5_land_destine(
+    bbox: tuple[float, float, float, float],
+    start_date: str,
+    end_date: str,
+    cache_dir: str | Path,
+) -> Path | None:
+    """Download daily forcing from ERA5-LAND via DestinE Earth Data Hub.
+
+    Uses the public zarr at ``data.earthdatahub.destine.eu`` (auth via .netrc).
+    The hourly raw data is aggregated to daily server-side-ish: lazy zarr
+    chunks pull only the bbox subset, then a per-year chunk file is saved
+    locally for resumability.
+
+    Output netCDF schema matches :func:`download_forcing_open_meteo`:
+    ``pr`` (mm/day), ``tasmin``/``tasmax`` (°C), ``sfcWind`` (m/s),
+    dimensions ``(time, latitude, longitude)``.
+    """
+    import zarr
+    import xarray as xr
+    import pandas as pd
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cache_dir / "forcing_era5_land.nc"
+    chunks_dir = cache_dir / "forcing_chunks_destine"
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+
+    if out_path.exists():
+        try:
+            ds_chk = xr.open_dataset(out_path)
+            nan_frac = float(ds_chk.pr.isnull().sum() / ds_chk.pr.size)
+            ds_chk.close()
+        except Exception:
+            nan_frac = 1.0
+        if nan_frac < 0.01:
+            print(f"[destine] Forcing cached: {out_path}")
+            return out_path
+        out_path.unlink()
+
+    token = _read_destine_token()
+    if token is None:
+        print("[destine] No DestinE token in .netrc — skipping ERA5-LAND")
+        return None
+
+    url = (
+        f"https://edh:{token}@data.earthdatahub.destine.eu/"
+        "era5/reanalysis-era5-land-no-antartica-v0.zarr"
+    )
+
+    print(f"[destine] Opening ERA5-LAND zarr...")
+    store = zarr.storage.FsspecStore.from_url(url)
+    root = zarr.open(store, mode="r")
+
+    lats_full = np.asarray(root["latitude"][:])     # decreasing 90 to -57
+    lons_full = np.asarray(root["longitude"][:])    # 0..360
+    valid_time_hours = np.asarray(root["valid_time"][:])
+    base = pd.Timestamp("1950-01-01")
+    dates_all = base + pd.to_timedelta(valid_time_hours, unit="h")
+
+    west, south, east, north = bbox
+    lon_lo, lon_hi = west % 360, east % 360
+    lat_north_idx = int(np.argmin(np.abs(lats_full - north)))
+    lat_south_idx = int(np.argmin(np.abs(lats_full - south)))
+    lat_lo = min(lat_north_idx, lat_south_idx)
+    lat_hi = max(lat_north_idx, lat_south_idx)
+    lon_west_idx = int(np.argmin(np.abs(lons_full - lon_lo)))
+    lon_east_idx = int(np.argmin(np.abs(lons_full - lon_hi)))
+    sub_lats = lats_full[lat_lo:lat_hi + 1]
+    sub_lons_360 = lons_full[lon_west_idx:lon_east_idx + 1]
+    # Express longitudes in -180..180 in the output (consistent with the rest)
+    sub_lons = np.where(sub_lons_360 > 180, sub_lons_360 - 360, sub_lons_360)
+    n_lat = len(sub_lats)
+    n_lon = len(sub_lons)
+    print(f"[destine] grid: {n_lat}x{n_lon}  bbox=({west},{south},{east},{north})")
+
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date)
+    years = list(range(start_ts.year, end_ts.year + 1))
+
+    chunks_loaded = 0
+    chunks_downloaded = 0
+    for year in years:
+        chunk_path = chunks_dir / f"chunk_{year}.nc"
+        if chunk_path.exists():
+            chunks_loaded += 1
+            continue
+
+        y_start = max(pd.Timestamp(f"{year}-01-01"), start_ts)
+        y_end_inclusive = min(pd.Timestamp(f"{year}-12-31") + pd.Timedelta("23h"),
+                              end_ts + pd.Timedelta("23h"))
+        t_lo = int(np.searchsorted(dates_all, y_start))
+        t_hi = int(np.searchsorted(dates_all, y_end_inclusive)) + 1
+        if t_lo >= t_hi:
+            continue
+
+        print(f"[destine] year {year}: hours [{t_lo}:{t_hi}] "
+              f"= {t_hi - t_lo}h  x {n_lat}x{n_lon}", flush=True)
+
+        tp_h  = np.asarray(root["tp"][t_lo:t_hi, lat_lo:lat_hi+1, lon_west_idx:lon_east_idx+1])
+        t2m_h = np.asarray(root["t2m"][t_lo:t_hi, lat_lo:lat_hi+1, lon_west_idx:lon_east_idx+1])
+        u10_h = np.asarray(root["u10"][t_lo:t_hi, lat_lo:lat_hi+1, lon_west_idx:lon_east_idx+1])
+        v10_h = np.asarray(root["v10"][t_lo:t_hi, lat_lo:lat_hi+1, lon_west_idx:lon_east_idx+1])
+        hourly_times = dates_all[t_lo:t_hi]
+
+        ds_hourly = xr.Dataset(
+            {
+                "tp":  (("time", "latitude", "longitude"), tp_h),
+                "t2m": (("time", "latitude", "longitude"), t2m_h),
+                "u10": (("time", "latitude", "longitude"), u10_h),
+                "v10": (("time", "latitude", "longitude"), v10_h),
+            },
+            coords={"time": hourly_times, "latitude": sub_lats, "longitude": sub_lons},
+        )
+
+        # Daily aggregation. ERA5-LAND `tp` is cumulated through a forecast
+        # cycle (resets every ~12h), so we recover the per-hour increment by
+        # diff, clamp negatives (cycle boundaries) to 0, then sum daily.
+        tp_inc = ds_hourly.tp.diff(dim="time", label="upper")
+        tp_inc = tp_inc.where(tp_inc >= 0, 0)
+        # Drop the first hour (no previous step) — its loss is bounded by
+        # the typical 1h precip (<1 mm) and acceptable on 25-y averaging.
+        pr      = (tp_inc.resample(time="1D").sum() * 1000.0).astype(np.float32)
+        tasmin  = (ds_hourly.t2m.resample(time="1D").min() - 273.15).astype(np.float32)
+        tasmax  = (ds_hourly.t2m.resample(time="1D").max() - 273.15).astype(np.float32)
+        wind    = np.sqrt(ds_hourly.u10 ** 2 + ds_hourly.v10 ** 2)
+        sfcWind = wind.resample(time="1D").mean().astype(np.float32)
+
+        ds_daily = xr.Dataset(
+            {"pr": pr, "tasmin": tasmin, "tasmax": tasmax, "sfcWind": sfcWind}
+        )
+        ds_daily["pr"].attrs.update(units="mm/day", standard_name="precipitation_amount")
+        ds_daily["tasmin"].attrs.update(units="degC", standard_name="air_temperature")
+        ds_daily["tasmax"].attrs.update(units="degC", standard_name="air_temperature")
+        ds_daily["sfcWind"].attrs.update(units="m/s", standard_name="wind_speed",
+                                         long_name="Daily mean wind speed at 10 m")
+        ds_daily.to_netcdf(chunk_path)
+        chunks_downloaded += 1
+
+    print(f"[destine] Chunks: {chunks_loaded} from cache, "
+          f"{chunks_downloaded} downloaded ({len(years)} years total)")
+
+    chunk_files = sorted(chunks_dir.glob("chunk_*.nc"))
+    if not chunk_files:
+        return None
+    full = xr.open_mfdataset(chunk_files, combine="by_coords")
+    # Clip to exact requested period
+    full = full.sel(time=slice(start_date, end_date))
+    full.attrs.update(source="ERA5-LAND via DestinE Earth Data Hub",
+                      url="https://data.earthdatahub.destine.eu/era5/reanalysis-era5-land-no-antartica-v0.zarr",
+                      resolution_deg=0.1)
+    full.to_netcdf(out_path)
+    print(f"[destine] Forcing saved: {out_path}")
+    return out_path
+
+
 # ── Hydrometric observations via HYDAT (ECCC) ───────────────────────────────
 
 
@@ -1485,6 +1663,68 @@ def populate_basin_observations(
 
 
 # ── Convenience: download all ────────────────────────────────────────────────
+
+
+def download_modis_et(
+    bbox: tuple[float, float, float, float],
+    start_date: str,
+    end_date: str,
+    cache_dir: str | Path,
+    node_coords: "Tensor | None" = None,
+) -> "Path | None":
+    """STUB — downloads MODIS MOD16A2 8-day ETR and aggregates to node × day.
+
+    Pending implementation. Expected workflow:
+      1. STAC query Planetary Computer for ``modis-16A2-061`` over bbox/period.
+      2. Read the ``PET_500m`` / ``ET_500m`` bands (kg/m²/8day → mm/day).
+      3. Zonal mean per node (using subcatchment masks from the basin DB).
+      4. Linear interpolation to daily timestep (8-day composites carry mid-period
+         values; observations should fall on the right calendar day).
+      5. Save as NetCDF with dims (time, node) and ``etr`` variable.
+
+    Returns the cached NetCDF path so ``meandre.data.basin_cache`` can load it
+    into ``TrainingData.et_obs`` (NaN for unobserved days). Triggers the
+    ``w_nll_et`` term in HydroLoss when populated.
+
+    Reference: Mu, Q., Zhao, M., Running, S. W. (2011). Improvements to a MODIS
+    global terrestrial evapotranspiration algorithm. Remote Sens. Environ.
+    """
+    raise NotImplementedError(
+        "MODIS MOD16A2 ET loader is not yet implemented. "
+        "See meandre/data/open_data.py for the expected interface."
+    )
+
+
+def download_modis_swe(
+    bbox: tuple[float, float, float, float],
+    start_date: str,
+    end_date: str,
+    cache_dir: str | Path,
+    node_coords: "Tensor | None" = None,
+) -> "Path | None":
+    """STUB — downloads MODIS NDSI snow cover (MOD10A1) → SWE proxy per node.
+
+    Pending implementation. Expected workflow:
+      1. STAC query for ``modis-10A1-061`` (daily snow cover fraction).
+      2. Either:
+         (a) Use NDSI fraction directly as a snow-presence indicator (less
+             informative, no depth), or
+         (b) Pair with SNODAS (CONUS only) for true SWE in mm.
+      3. Zonal mean per node.
+      4. Mask cloudy days (NaN — Gaussian NLL skips them automatically).
+      5. Save as NetCDF with dims (time, node) and ``swe`` variable.
+
+    Returns the cached NetCDF path. Triggers the ``w_nll_swe`` term in
+    HydroLoss when populated — identifies C_f (degree-day melt factor) which
+    is collapsed under KGE-on-Q alone.
+
+    Reference: Hall, D. K., Riggs, G. A. (2007). Accuracy assessment of MODIS
+    snow products. Hydrological Processes 21(12).
+    """
+    raise NotImplementedError(
+        "MODIS NDSI snow loader is not yet implemented. "
+        "See meandre/data/open_data.py for the expected interface."
+    )
 
 
 def download_all(

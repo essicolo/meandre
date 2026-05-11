@@ -130,15 +130,13 @@ model = HydroModel(
     use_travel_time_attn=True,
     use_temperature=True,
     dropout=mcfg.get("dropout", 0.0),
-    concrete_dropout=mcfg.get("concrete_dropout", False),
-    concrete_init_p=mcfg.get("concrete_init_p", 0.1),
     param_mode=mcfg.get("param_mode", "nerf"),
     soil_z1=soil_z1,
     soil_bounds=soil_bounds,
 ).to(device)
 
 ckpt_path = Path(paths["checkpoint"])
-model.load(str(ckpt_path))
+model.load(str(ckpt_path)) # notebooks\slso\checkpoints\best_phaseB_kge0904_epoch50.pt
 model.eval()
 
 # IMPORTANT : aligner les flags runtime sur la config training.
@@ -300,7 +298,118 @@ print(df_balance)
 
 ## 4. Cartes spatiales
 
-Cartes des champs moyens annuels sur le bassin SLSO.
+Cartes des champs moyens annuels sur le bassin SLSO. Géométries chargées
+depuis `data/troncons.parquet` (généré par `build_troncons_parquet.py` à
+partir de `physitel/rivieres.shp` + `physitel/lacs.shp`) et mappées sur
+les nœuds via `node_id`. Pas de segments fantômes vers un exutoire
+théorique — chaque rivière a sa géométrie réelle.
+
+```{python}
+#| label: setup-reaches
+
+import geopandas as gpd
+from matplotlib.collections import LineCollection
+
+_troncons = gpd.read_parquet("notebooks/slso/data/troncons.parquet")
+# Garde uniquement les rivières — les lacs (notamment node_id=2 qui est
+# l'enveloppe polygonale du St-Laurent) rendent les cartes illisibles
+# quand on trace leur outline.
+_rivers_only = _troncons[~_troncons["is_lake"]]
+_geom_by_node_id = dict(zip(_rivers_only["node_id"], _rivers_only.geometry))
+
+_reach_segments = []
+_segment_node_idx = []
+for ni, nid in enumerate(node_ids):
+    g = _geom_by_node_id.get(int(nid))
+    if g is None:
+        continue
+    _reach_segments.append(list(g.coords))
+    _segment_node_idx.append(ni)
+_reach_node_idx = np.array(_segment_node_idx)
+print(f"Tronçons (rivières) chargés : {len(_reach_segments)} / {n_nodes} nœuds")
+
+
+def _plot_reaches(
+    ax,
+    values,
+    *,
+    cmap="cividis_r",
+    norm=None,
+    vmin=None,
+    vmax=None,
+    linewidth=0.8,
+    bg_threshold=None,
+    bg_color="whitesmoke",
+    bg_linewidth=0.3,
+):
+    """Colore chaque tronçon (LineString) par sa valeur node_idx.
+
+    Si bg_threshold est défini, les tronçons avec valeur <= bg_threshold
+    vont dans un fond gris ; sinon tous les tronçons sont colorés.
+    """
+    vals = values[_reach_node_idx]
+    if bg_threshold is not None:
+        active = vals > bg_threshold
+        bg_segs = [_reach_segments[i] for i in np.where(~active)[0]]
+        if bg_segs:
+            ax.add_collection(LineCollection(
+                bg_segs, colors=bg_color, linewidths=bg_linewidth, zorder=1,
+            ))
+        act_segs = [_reach_segments[i] for i in np.where(active)[0]]
+        lc = LineCollection(act_segs, cmap=cmap, norm=norm,
+                            linewidths=linewidth, zorder=2)
+        lc.set_array(vals[active])
+    else:
+        lc = LineCollection(_reach_segments, cmap=cmap, norm=norm,
+                            linewidths=linewidth)
+        lc.set_array(vals)
+    if norm is None and (vmin is not None or vmax is not None):
+        lc.set_clim(vmin=vmin, vmax=vmax)
+    ax.add_collection(lc)
+    ax.autoscale_view()
+    ax.set_aspect("equal")
+    return lc
+```
+
+
+### Paramètres physiques appris par le NeRF
+
+Six paramètres clés du modèle vertical, échantillonnés directement depuis `SpatialFieldNetwork` aux coordonnées des noeuds. Les paramètres en log-normal (K_sat, k_interflow, k_gw) sont affichés en échelle log.
+
+```{python}
+#| label: fig-spatial-params
+#| fig-cap: "Paramètres physiques spatialisés — sortie du NeRF aux noeuds SLSO"
+
+from matplotlib.colors import LogNorm
+
+with torch.no_grad():
+    params = model.spatial_encoder(node_coords, territorial.to_tensor())
+
+param_fields = [
+    ("K_sat couche 1 (m/jour)", params.K_sat_1.cpu().numpy(), "cividis_r", LogNorm()),
+    ("slope_factor — interflow (–)", params.slope_factor.cpu().numpy(), "cividis_r", None),
+    ("k_interflow — récession (1/jour)", params.k_interflow.cpu().numpy(), "cividis_r", LogNorm()),
+    ("C_f — fonte degré-jour (mm/°C/j)", params.C_f.cpu().numpy(), "cividis_r", None),
+    ("K_c — coefficient ETP (–)", params.K_c.cpu().numpy(), "cividis_r", None),
+    ("k_gw — récession aquifère (1/jour)", params.k_gw.cpu().numpy(), "cividis_r", LogNorm()),
+]
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+for ax, (title, values, cmap, norm) in zip(axes.flat, param_fields):
+    lc = _plot_reaches(ax, values, cmap=cmap, norm=norm)
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    plt.colorbar(lc, ax=ax, shrink=0.7)
+
+fig.suptitle("Paramètres NeRF appris — SLSO", fontsize=14, fontweight="bold")
+plt.tight_layout()
+plt.show()
+```
+
+### Champs hydrologiques moyens annuels
+
+Six champs hydrologiques moyens annuels, calculés à partir des diagnostics de la simulation naturalisée. Les flux verticaux (ETP, ETR, neige, etc.) sont convertis de mm/jour à mm/an pour une interprétation plus intuitive. La température de l'eau est affichée en °C.
 
 ```{python}
 #| label: fig-spatial-maps
@@ -326,19 +435,18 @@ fields = [
     ("Déficit ETP − ETR (mm/an)", deficit_annual, "RdYlBu_r"),
     ("Recharge (mm/an)", recharge_annual, "Blues"),
     ("Ruissellement latéral (mm/an)", lateral_annual, "PuBu"),
-    ("Fonte de neige (mm/an)", snowmelt_annual, "cool"),
+    ("Fonte de neige (mm/an)", snowmelt_annual, "PuBuGn"),
     ("Débit de base (mm/an)", baseflow_annual, "GnBu"),
     ("Thermie — T eau moyenne (°C)", twater_mean, "RdBu_r"),
 ]
 
 fig, axes = plt.subplots(2, 3, figsize=(18, 11))
 for ax, (title, values, cmap) in zip(axes.flat, fields):
-    sc = ax.scatter(lon, lat, c=values, s=3, cmap=cmap, edgecolors="none")
+    lc = _plot_reaches(ax, values, cmap=cmap)
     ax.set_title(title, fontsize=12)
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
-    ax.set_aspect("equal")
-    plt.colorbar(sc, ax=ax, shrink=0.7)
+    plt.colorbar(lc, ax=ax, shrink=0.7)
 
 fig.suptitle(f"Bassin SLSO — Moyennes annuelles {DIAG_YEARS}",
              fontsize=14, fontweight="bold")
@@ -346,73 +454,7 @@ plt.tight_layout()
 plt.show()
 ```
 
-```{python}
-#| label: fig-deficit-map
-#| fig-cap: "Déficit hydrique (ETP - ETR) et ratio ETR/ETP"
 
-fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
-
-# Déficit
-deficit = etp_annual - etr_annual
-sc1 = axes[0].scatter(lon, lat, c=deficit, s=3, cmap="RdYlBu_r", edgecolors="none")
-axes[0].set_title("Déficit hydrique ETP − ETR (mm/an)")
-axes[0].set_xlabel("Longitude")
-axes[0].set_ylabel("Latitude")
-axes[0].set_aspect("equal")
-plt.colorbar(sc1, ax=axes[0], shrink=0.7)
-
-# Ratio ETR/ETP
-ratio = np.where(etp_annual > 0, etr_annual / etp_annual, 0)
-sc2 = axes[1].scatter(lon, lat, c=ratio, s=3, cmap="RdYlGn", vmin=0, vmax=1,
-                       edgecolors="none")
-axes[1].set_title("Ratio ETR / ETP (–)")
-axes[1].set_xlabel("Longitude")
-axes[1].set_ylabel("Latitude")
-axes[1].set_aspect("equal")
-plt.colorbar(sc2, ax=axes[1], shrink=0.7)
-
-plt.tight_layout()
-plt.show()
-```
-
-### Paramètres physiques appris par le NeRF
-
-Six paramètres clés du modèle vertical, échantillonnés directement depuis
-`SpatialFieldNetwork` aux coordonnées des noeuds. Les paramètres en log-normal
-(K_sat, k_interflow, k_gw) sont affichés en échelle log.
-
-```{python}
-#| label: fig-spatial-params
-#| fig-cap: "Paramètres physiques spatialisés — sortie du NeRF aux noeuds SLSO"
-
-from matplotlib.colors import LogNorm
-
-with torch.no_grad():
-    params = model.spatial_encoder(node_coords, territorial.to_tensor())
-
-param_fields = [
-    ("K_sat couche 1 (m/jour)",            params.K_sat_1.cpu().numpy(),     "viridis", LogNorm()),
-    ("slope_factor — interflow (–)",       params.slope_factor.cpu().numpy(),"viridis", None),
-    ("k_interflow — récession (1/jour)",   params.k_interflow.cpu().numpy(), "viridis", LogNorm()),
-    ("C_f — fonte degré-jour (mm/°C/j)",   params.C_f.cpu().numpy(),         "viridis", None),
-    ("K_c — coefficient ETP (–)",          params.K_c.cpu().numpy(),         "viridis", None),
-    ("k_gw — récession aquifère (1/jour)", params.k_gw.cpu().numpy(),        "viridis", LogNorm()),
-]
-
-fig, axes = plt.subplots(2, 3, figsize=(18, 11))
-for ax, (title, values, cmap, norm) in zip(axes.flat, param_fields):
-    sc = ax.scatter(lon, lat, c=values, s=3, cmap=cmap, norm=norm,
-                     edgecolors="none")
-    ax.set_title(title, fontsize=12)
-    ax.set_xlabel("Longitude")
-    ax.set_ylabel("Latitude")
-    ax.set_aspect("equal")
-    plt.colorbar(sc, ax=ax, shrink=0.7)
-
-fig.suptitle("Paramètres NeRF appris — SLSO", fontsize=14, fontweight="bold")
-plt.tight_layout()
-plt.show()
-```
 
 ## 5. Séries temporelles
 
@@ -448,35 +490,55 @@ df_outlet = pd.DataFrame({
 _dates = diag_dates[:n_diag_days]
 _d = diag
 
-# Palette et ordre des panneaux (flux en mm/jour + température en °C)
+# Forçage climatique sur la fenêtre diagnostique (P, T_min, T_max, R_n
+# sont les colonnes 0-3 — cf. meandre/data/gridded_forcing.py FORCING_VARS).
+_forcing_diag = forcing[diag_start_idx:diag_end_idx].cpu().numpy()
+_precip = _forcing_diag[:, :, 0].mean(axis=1)
+_tair = ((_forcing_diag[:, :, 1] + _forcing_diag[:, :, 2]) / 2).mean(axis=1)
+_rn = _forcing_diag[:, :, 3].mean(axis=1)
+
+# Bilan complet : forçage → ET → neige/sol → nappe → routing → T eau
 _panels = [
-    ("ETP (mm/jour)",              _d.etp.cpu().numpy().mean(axis=1)),
-    ("ETR (mm/jour)",              _d.etr.cpu().numpy().mean(axis=1)),
-    ("Fonte de neige (mm/jour)",   _d.snowmelt.cpu().numpy().mean(axis=1)),
-    ("Ruissellement (mm/jour)",    _d.lateral_mm.cpu().numpy().mean(axis=1)),
-    ("Recharge (mm/jour)",         _d.recharge.cpu().numpy().mean(axis=1)),
-    ("Débit de base (mm/jour)",    _d.q_baseflow.cpu().numpy().mean(axis=1)),
+    ("météo", "Précipitation (mm/jour)", _precip),
+    ("météo", "T air moyenne (°C)", _tair),
+    ("météo", "Rayonnement net (MJ/m²/jour)", _rn),
+    ("météo", "ETP (mm/jour)", _d.etp.cpu().numpy().mean(axis=1)),
+    ("flux", "ETR (mm/jour)", _d.etr.cpu().numpy().mean(axis=1)),
+    ("flux", "Fonte de neige (mm/jour)", _d.snowmelt.cpu().numpy().mean(axis=1)),
+    ("flux", "Ruissellement (mm/jour)", _d.lateral_mm.cpu().numpy().mean(axis=1)),
+    ("flux", "Recharge (mm/jour)", _d.recharge.cpu().numpy().mean(axis=1)),
+    ("flux", "Débit de base (mm/jour)", _d.q_baseflow.cpu().numpy().mean(axis=1)),
+    ("routage", "Apport latéral (m³/s)", _d.q_lateral.cpu().numpy().mean(axis=1)),
+    ("routage", "Apport amont (m³/s)", _d.q_upstream.cpu().numpy().mean(axis=1)),
 ]
 if _d.T_water is not None:
-    _panels.append(
-        ("T eau (°C)", _d.T_water.cpu().numpy().mean(axis=1)),
-    )
+    _panels.append(("thermie", "T eau (°C)", _d.T_water.cpu().numpy().mean(axis=1)))
 
+# Préfixe numérique zéro-paddé : `facet_wrap` de lets_plot trie alphabétiquement,
+# donc on encode l'ordre voulu dans le label lui-même.
 _rows = []
-for label, values in _panels:
+for i, (cat, label, values) in enumerate(_panels, start=1):
+    pfx = f"{i:02d}. {label}"
     for d, v in zip(_dates, values):
-        _rows.append({"date": d, "valeur": v, "variable": label})
+        _rows.append({"date": d, "valeur": v, "variable": pfx, "catégorie": cat})
 df_fluxes = pd.DataFrame(_rows)
-
-(lp.ggplot(df_fluxes, lp.aes("date", "valeur"))
- + lp.geom_line(size=0.5, color="black")
- + lp.facet_wrap("variable", ncol=3, scales="free_y")
- + lp.labs(x="Date", y="",
-           title="Flux verticaux et température — moyenne spatiale sur le bassin SLSO")
- + lp.theme_bw()
- + lp.theme(strip_text=lp.element_text(size=10))
- + lp.ggsize(2000, 1400)
+df_fluxes["catégorie"] = pd.Categorical(
+    df_fluxes["catégorie"],
+    categories=["météo", "flux", "routage", "thermie"],
+    ordered=True,
 )
+
+plot_ts_mean = (lp.ggplot(df_fluxes, lp.aes("date", "valeur", color="catégorie"))
+ + lp.geom_line(size=0.5)
+ + lp.facet_wrap("variable", ncol=4, scales="free_y")
+ + lp.labs(x="Date", y="",
+           title="Bilan hydrique vertical — moyenne spatiale sur le bassin SLSO")
+ + lp.theme_bw()
+ + lp.theme(strip_text=lp.element_text(size=10), legend_position="top")
+ + lp.ggsize(1000, 600)
+)
+lp.ggsave(plot_ts_mean, "diagnostics_fluxes_timeseries.png")
+plot_ts_mean
 ```
 
 ## 6. Influence des prélèvements et rejets
@@ -498,6 +560,12 @@ if w_total == 0:
 q_nat     = Q_sim.cpu().numpy()           # (T, N) naturalisé (zéro prélèvement)
 q_managed = Q_managed.cpu().numpy()       # (T, N) avec prélèvements réels
 delta     = q_managed - q_nat             # positif = rejet net, négatif = prélèvement net
+
+# Arêtes du graphe — utilisées dès la première carte d'impact (et plus loin
+# dans l'analyse SNR). Définies ici pour que les cellules suivantes y aient
+# accès sans dépendre d'un ordre d'exécution particulier.
+edge_src = graph.edge_index[0].numpy() if graph.n_edges > 0 else np.array([], dtype=int)
+edge_dst = graph.edge_index[1].numpy() if graph.n_edges > 0 else np.array([], dtype=int)
 ```
 
 ### Comparaison naturalisé vs géré à l'exutoire
@@ -526,62 +594,36 @@ df_cmp = pd.concat([
 #| label: fig-withdrawal-impact-map
 #| fig-cap: "Influence des prélèvements/rejets par tronçon"
 
-from matplotlib.collections import LineCollection
 from matplotlib.colors import LogNorm
 
 # Métrique d'impact par nœud
-delta_amp   = np.abs(delta).mean(axis=0)                              # (N,) amplitude moyenne (m³/s)
-q_nat_mean  = np.maximum(q_nat.mean(axis=0), 1e-6)                    # (N,) débit naturalisé moyen
-proportion  = np.clip(delta_amp / q_nat_mean, 0, None)                # (N,) proportion sans borne sup
-
-def _segments_par_valeur_aval(values: np.ndarray) -> tuple[list, list, np.ndarray]:
-    """Découpe les arêtes en (background, actives, valeurs_actives).
-    Le segment (s, d) reçoit la valeur du nœud aval `d` ; un segment est
-    `actif` si cette valeur est > 0, sinon il va dans le background gris."""
-    segs_bg, segs_act, vals_act = [], [], []
-    for s, d in zip(edge_src, edge_dst):
-        si, di = int(s), int(d)
-        if di == outlet_idx:
-            continue
-        seg = [(lon[si], lat[si]), (lon[di], lat[di])]
-        v = float(values[di])
-        if v > 0:
-            segs_act.append(seg)
-            vals_act.append(v)
-        else:
-            segs_bg.append(seg)
-    return segs_bg, segs_act, np.array(vals_act)
+delta_amp = np.abs(delta).mean(axis=0)                       # (N,) amplitude moyenne (m³/s)
+q_nat_mean = np.maximum(q_nat.mean(axis=0), 1e-6)            # (N,) débit naturalisé moyen
+proportion = np.clip(delta_amp / q_nat_mean, 0, None)        # (N,) proportion sans borne sup
 
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
 # Panel gauche — amplitude moyenne |ΔQ|
-segs_bg, segs_act, vals = _segments_par_valeur_aval(delta_amp)
-amp_min = vals.min() if vals.size else 1e-6
-axes[0].add_collection(LineCollection(segs_bg, colors="whitesmoke",
-                                       linewidths=0.3, zorder=1))
-lc1 = LineCollection(segs_act, cmap="OrRd",
-                      norm=LogNorm(vmin=amp_min, vmax=delta_amp.max()),
-                      linewidths=1.0, zorder=2)
-lc1.set_array(vals)
-axes[0].add_collection(lc1)
+amp_min = float(delta_amp[delta_amp > 0].min()) if (delta_amp > 0).any() else 1e-6
+lc1 = _plot_reaches(
+    axes[0], delta_amp, cmap="OrRd",
+    norm=LogNorm(vmin=amp_min, vmax=float(delta_amp.max())),
+    linewidth=1.0, bg_threshold=0.0,
+)
 axes[0].set_title("Amplitude moyenne |ΔQ| (m³/s)\n(échelle log)")
-axes[0].set_aspect("equal")
-axes[0].autoscale_view()
+axes[0].set_xlabel("Longitude"); axes[0].set_ylabel("Latitude")
 plt.colorbar(lc1, ax=axes[0], shrink=0.7)
 
 # Panel droit — proportion |ΔQ| / Q_nat
-segs_bg, segs_act, vals = _segments_par_valeur_aval(proportion)
-prop_max = np.percentile(vals, 99) if vals.size else 1.0
-axes[1].add_collection(LineCollection(segs_bg, colors="whitesmoke",
-                                       linewidths=0.3, zorder=1))
-lc2 = LineCollection(segs_act, cmap="YlOrRd",
-                      norm=LogNorm(vmin=1e-4, vmax=max(prop_max, 1e-2)),
-                      linewidths=1.0, zorder=2)
-lc2.set_array(np.clip(vals, 1e-6, None))
-axes[1].add_collection(lc2)
+prop_pos = proportion[proportion > 0]
+prop_max = float(np.percentile(prop_pos, 99)) if prop_pos.size else 1.0
+lc2 = _plot_reaches(
+    axes[1], proportion, cmap="YlOrRd",
+    norm=LogNorm(vmin=1e-4, vmax=max(prop_max, 1e-2)),
+    linewidth=1.0, bg_threshold=0.0,
+)
 axes[1].set_title("Proportion d'influence annuelle |ΔQ| / Q_nat\n(impact anthropique / débit naturalisé)")
-axes[1].set_aspect("equal")
-axes[1].autoscale_view()
+axes[1].set_xlabel("Longitude"); axes[1].set_ylabel("Latitude")
 plt.colorbar(lc2, ax=axes[1], shrink=0.7)
 
 fig.suptitle(f"Influence des prélèvements/rejets — SLSO {DIAG_YEARS}",
@@ -627,10 +669,12 @@ def _plot_reach_lp(nodes, title, q_nat, q_managed, dates, lon, lat, node_ids):
         + lp.facet_wrap("troncon", ncol=4, scales="free_y")
         + lp.labs(x="Date", y="m³/s", title=title)
         + lp.theme_bw()
-        + lp.theme(legend_position="top",
-                   strip_text=lp.element_text(size=8),
-                   axis_text_x=lp.element_text(size=7))
-        + lp.ggsize(1500, 1000)
+        + lp.theme(
+            legend_position="top",
+            #strip_text=lp.element_text(size=8),
+            #axis_text_x=lp.element_text(size=7)
+        )
+        #+ lp.ggsize(1000, 600)
     )
 ```
 
@@ -640,7 +684,32 @@ def _plot_reach_lp(nodes, title, q_nat, q_managed, dates, lon, lat, node_ids):
 
 _plot_reach_lp(
     top_nodes,
-    f"{N_TOP} tronçons les PLUS affectés par les prélèvements/rejets",
+    f"{N_TOP} tronçons les PLUS affectés par les prélèvements/rejets, ΔQ",
+    q_nat, q_managed, diag_dates[:n_diag_days], lon, lat, node_ids,
+)
+```
+
+```{python}
+#| label: fig-most-impacted-relative
+#| fig-cap: "12 tronçons les plus affectés en RELATIF — naturalisé vs géré"
+
+# Ranking par impact relatif |ΔQ|/Q_nat plutôt qu'absolu. Le ranking absolu
+# (cellule précédente) sélectionne mécaniquement les gros tronçons du main
+# stem ; le ranking relatif fait remonter les petits affluents directement
+# prélevés où le ratio peut atteindre 10-100%.
+#
+# Filtre min-flow : on exclut les tronçons avec débit naturel moyen < 0.01
+# m³/s pour éviter les divisions par flux numériquement nul (qui gonflent
+# le ratio à l'infini sans signification physique).
+Q_MIN = 0.01  # m³/s
+_valid = q_nat.mean(axis=0) > Q_MIN
+_proportion_valid = np.where(_valid, proportion, -np.inf)
+rank_rel = np.argsort(_proportion_valid)[::-1]
+top_nodes_rel = rank_rel[:N_TOP]
+
+_plot_reach_lp(
+    top_nodes_rel,
+    f"{N_TOP} tronçons les plus affectés EN RELATIF (|ΔQ|/Q_nat)",
     q_nat, q_managed, diag_dates[:n_diag_days], lon, lat, node_ids,
 )
 ```
@@ -685,8 +754,7 @@ wd_nodes = set(_con.execute("SELECT DISTINCT node_idx FROM withdrawals").df()["n
 _con.close()
 
 # Remonter le graphe: trouver les nœuds en aval des prélèvements
-edge_src = graph.edge_index[0].numpy() if graph.n_edges > 0 else np.array([], dtype=int)
-edge_dst = graph.edge_index[1].numpy() if graph.n_edges > 0 else np.array([], dtype=int)
+# (edge_src/edge_dst définis plus haut dans simulate-managed)
 
 # Construire l'adjacence aval (src → dst)
 from collections import defaultdict, deque
@@ -754,53 +822,6 @@ df_snr = pd.DataFrame({
 )
 ```
 
-```{python}
-#| label: fig-snr-map
-#| fig-cap: "Carte spatiale du SNR par tronçon affecté"
-
-from matplotlib.colors import LogNorm
-
-# SNR pour tous les nœuds (0 pour les non-affectés)
-snr_all = np.zeros(len(node_ids))
-for node, val in snr.items():
-    snr_all[node] = val * 100  # en %
-
-fig, ax = plt.subplots(figsize=(12, 8))
-
-# Arêtes du réseau complet en gris très pâle (structure hydrographique)
-from matplotlib.collections import LineCollection
-segments = [[(lon[s], lat[s]), (lon[d], lat[d])]
-            for s, d in zip(edge_src, edge_dst)
-            if int(d) != outlet_idx]
-lc_bg = LineCollection(segments, colors="whitesmoke", linewidths=0.3, zorder=1)
-ax.add_collection(lc_bg)
-
-# Arêtes affectées colorées par SNR aval
-affected_set = set(snr.keys())
-aff_segs, aff_colors = [], []
-for s, d in zip(edge_src, edge_dst):
-    si, di = int(s), int(d)
-    if di in affected_set and di != outlet_idx:
-        aff_segs.append([(lon[si], lat[si]), (lon[di], lat[di])])
-        aff_colors.append(snr_all[di])
-
-aff_colors = np.array(aff_colors).clip(1e-3)
-lc = LineCollection(aff_segs, cmap="YlOrRd",
-                    norm=LogNorm(vmin=0.01, vmax=max(snr_all.max(), 10)),
-                    linewidths=0.8, zorder=2)
-lc.set_array(aff_colors)
-ax.add_collection(lc)
-
-cb = plt.colorbar(lc, ax=ax, shrink=0.7)
-cb.set_label("SNR (%)")
-ax.set_xlabel("Longitude")
-ax.set_ylabel("Latitude")
-ax.set_title(f"Propagation aval des prélèvements — {n_affected} tronçons affectés sur {len(node_ids)}")
-ax.set_aspect("equal")
-ax.autoscale_view()
-fig.tight_layout()
-plt.show()
-```
 
 ### Signal anthropique vs variabilité naturelle
 
@@ -841,7 +862,7 @@ ax1 = axes[0]
 sc1 = ax1.scatter(
     sigma_aff[pos_mask], sig_aff[pos_mask],
     c=snr_aff[pos_mask], s=8,
-    cmap="magma", norm=LogNorm(vmin=1e-4, vmax=1e2),
+    cmap="YlOrRd", norm=LogNorm(vmin=1e-4, vmax=1e2),
     edgecolors="none", alpha=0.7,
 )
 # Lignes de référence
@@ -872,18 +893,13 @@ ax2.legend(fontsize=8)
 
 # ── Panneau 3 : Carte spatiale SNR ──
 ax3 = axes[2]
-# Fond : tous les tronçons en gris clair
-ax3.scatter(lon, lat, c="lightgrey", s=2, edgecolors="none", zorder=1)
-# Tronçons affectés colorés par SNR
-sc3 = ax3.scatter(
-    lon_aff[pos_mask], lat_aff[pos_mask],
-    c=snr_aff[pos_mask], s=6,
-    cmap="magma", norm=LogNorm(vmin=1e-4, vmax=1e2),
-    edgecolors="none", alpha=0.8, zorder=2,
+sc3 = _plot_reaches(
+    ax3, snr_sigma, cmap="YlOrRd",
+    norm=LogNorm(vmin=1e-4, vmax=1e2),
+    linewidth=0.8, bg_threshold=0.0,
 )
 ax3.set_xlabel("Longitude"); ax3.set_ylabel("Latitude")
 ax3.set_title(f"SNR spatial — {pos_mask.sum()} tronçons affectés")
-ax3.set_aspect("equal")
 cb3 = plt.colorbar(sc3, ax=ax3, shrink=0.8)
 cb3.set_label("SNR (–)")
 
@@ -1046,7 +1062,7 @@ sc1 = axes[0].scatter(
     cmap="RdYlGn", vmin=-0.5, vmax=1.0,
     edgecolors="black", linewidths=0.5, zorder=3,
 )
-axes[0].scatter(lon, lat, c="lightgrey", s=1, edgecolors="none", zorder=1)
+axes[0].add_collection(LineCollection(_reach_segments, colors="lightgrey", linewidths=0.3, zorder=1))
 axes[0].set_title(f"KGE (débit géré) — {DIAG_YEARS}")
 axes[0].set_xlabel("Longitude")
 axes[0].set_ylabel("Latitude")
@@ -1061,7 +1077,7 @@ sc2 = axes[1].scatter(
     cmap="RdYlGn", vmin=-0.5, vmax=1.0,
     edgecolors="black", linewidths=0.5, zorder=3,
 )
-axes[1].scatter(lon, lat, c="lightgrey", s=1, edgecolors="none", zorder=1)
+axes[1].add_collection(LineCollection(_reach_segments, colors="lightgrey", linewidths=0.3, zorder=1))
 axes[1].set_title(f"KGE (débit naturalisé) — {DIAG_YEARS}")
 axes[1].set_xlabel("Longitude")
 axes[1].set_ylabel("Latitude")
@@ -1075,242 +1091,16 @@ plt.tight_layout()
 plt.show()
 ```
 
-## 8. Incertitude probabiliste — MC Concrete Dropout
 
-Le modèle a été calibré avec **Concrete Dropout** (Gal, Hron & Kendall 2017) :
-le taux de dropout `p` est appris par layer via une régularisation KL
-qui balance (a) ‖W‖² et (b) l'entropie de `p`. À l'inférence, on génère
-N membres en gelant un masque différent par trajectoire (`frozen_dropout`),
-ce qui remplace l'ensemble multi-modèle classique (Hydrotel + Raven + ...).
+## 8. Incertitude probabiliste
 
-Validation de la calibration via **diagramme de Talagrand** (rank histogram)
-et **indice de planéité** (chi² par rapport à une distribution uniforme) :
-
-* Histogramme plat → ensemble bien calibré
-* En U → ensemble sous-dispersé (obs souvent hors enveloppe)
-* En cloche → ensemble sur-dispersé
-* En pente → biais systématique
-
-```{python}
-#| label: mc-ensemble
-from meandre.training.uncertainty import frozen_dropout, frozen_param_noise
-from meandre.spatial.concrete_dropout import ConcreteDropout
-
-N_MEMBERS = 30  # 30-50 suffit; au-delà gain marginal pour CRPS
-
-import math
-# Probe Position B uncertainty stack
-has_pn = getattr(model.spatial_encoder, "param_noise", False)
-if has_pn:
-    sigmas = model.spatial_encoder.param_log_sigma.exp().detach().cpu().numpy()
-    print(f"ParamNoise σ (par paramètre) :")
-    print(f"  min={sigmas.min():.4f}  median={np.median(sigmas):.4f}  max={sigmas.max():.4f}")
-    print(f"  → si σ ≈ 0 partout, l'ensemble sera dégénéré (collapse)")
-else:
-    print("ParamNoise : disabled (model.spatial_encoder.param_noise=False)")
-    print("  → re-train avec [model] param_noise=true")
-
-ps = []
-for _, m in model.named_modules():
-    if isinstance(m, ConcreteDropout):
-        ps.append(float(m.p.item()))
-if ps:
-    print(f"\nConcreteDropout layers : {len(ps)}")
-    print(f"  p appris : min={min(ps):.4f}  median={np.median(ps):.4f}  max={max(ps):.4f}")
-
-if not has_pn and not ps:
-    print("\n⚠ Aucune source d'incertitude active — l'ensemble sera dégénéré.")
-
-# Génération N trajectoires sur la période diagnostique, en partant du même
-# état de spinup déterministe (l'aléatoire vient uniquement des masques de
-# dropout sur les paramètres physiques NeRF + le contexte temporel).
-print(f"\nGénération {N_MEMBERS} trajectoires MC...")
-import time as _time
-_t0 = _time.time()
-
-ensemble = torch.empty(N_MEMBERS, n_diag_days, n_nodes,
-                        dtype=torch.float32, device="cpu")
-for m_i in range(N_MEMBERS):
-    with frozen_param_noise(model, seed=1000 + m_i), frozen_dropout(model, seed=1000 + m_i):
-        with torch.no_grad():
-            Q_m, _ = model.simulate(
-                forcing=forcing[diag_start_idx:diag_end_idx],
-                initial_state=spinup_state,
-                graph=graph, node_coords=node_coords, territorial=territorial,
-                withdrawals=wd_diag,
-                day_of_year=doy[diag_start_idx:diag_end_idx],
-                h_context=h_ctx_after_spinup,
-            )
-    ensemble[m_i] = Q_m.detach().float().cpu()
-    if (m_i + 1) % 10 == 0:
-        print(f"  [{m_i+1}/{N_MEMBERS}]  {(_time.time()-_t0):.0f}s")
-print(f"Ensemble shape : {tuple(ensemble.shape)}  ({_time.time()-_t0:.0f}s)")
-```
-
-### 8.1 Diagramme de Talagrand (rank histogram)
-
-Pour chaque paire (station, jour) où une observation existe :
-on calcule le **rang** de l'observation parmi les N membres triés.
-Avec N membres, le rang prend des valeurs entre 0 (obs < tous les membres)
-et N (obs > tous les membres) — soit N+1 bins.
-
-```{python}
-#| label: fig-talagrand
-#| fig-cap: "Diagramme de Talagrand — distribution des rangs de l'observation dans l'ensemble"
-
-# Extraire les sims aux stations gauges
-ens_stations = ensemble[:, :, station_indices]  # (N, T, n_stations)
-n_stations_diag = q_obs_aligned.shape[1]
-
-# Compute rank: nombre de membres < obs (entre 0 et N)
-# Egalité tranchée aléatoirement pour éviter pic artificiel
-ranks = []
-rng = np.random.default_rng(42)
-for s in range(n_stations_diag):
-    qo = q_obs_aligned[:, s].numpy()
-    qe = ens_stations[:, :, s].numpy()  # (N, T)
-    valid = ~np.isnan(qo)
-    qo_v = qo[valid]
-    qe_v = qe[:, valid]
-    for t in range(qo_v.shape[0]):
-        below = (qe_v[:, t] < qo_v[t]).sum()
-        equal = (qe_v[:, t] == qo_v[t]).sum()
-        # Tie-breaking: tirer un rang uniforme parmi les positions possibles
-        rank = below + (rng.integers(0, equal + 1) if equal > 0 else 0)
-        ranks.append(rank)
-
-ranks = np.array(ranks)
-n_obs = len(ranks)
-print(f"Total (station × jour) observations utilisés : {n_obs:,}")
-
-# Histogramme normalisé
-bin_edges = np.arange(N_MEMBERS + 2) - 0.5  # bins centrés sur 0..N
-counts, _ = np.histogram(ranks, bins=bin_edges)
-freq = counts / n_obs
-expected = 1.0 / (N_MEMBERS + 1)
-
-# Indice de planéité : chi² discrepancy from uniform
-# (renommé `chi2_flat` pour ne pas écraser `delta = q_managed - q_nat` plus haut)
-chi2_flat = float(np.sum((counts - n_obs * expected) ** 2 / (n_obs * expected)))
-chi2_flat_norm = chi2_flat / N_MEMBERS  # normalise: ≈1 si parfaitement plat (Jolliffe & Primo 2008)
-
-print(f"\nIndice de planéité δ      : {chi2_flat:.2f}")
-print(f"  normalisé δ/N           : {chi2_flat_norm:.3f}  (≈1 si parfaitement plat)")
-print(f"  attendu sous H₀ uniforme : N+1 = {N_MEMBERS+1} (chi²(N) ≈ N)")
-
-# Forme de la distribution: U / hump / pente
-left  = freq[: (N_MEMBERS + 1) // 4].mean()
-mid   = freq[(N_MEMBERS + 1) // 4 : 3 * (N_MEMBERS + 1) // 4].mean()
-right = freq[3 * (N_MEMBERS + 1) // 4 :].mean()
-slope_idx = (right - left) / max(left + right, 1e-9)
-u_idx     = (left + right) / max(2 * mid, 1e-9)
-print(f"\n  ratio (gauche+droite)/(2·milieu) : {u_idx:.2f}")
-print(f"     >1.2 → en U (sous-dispersé) ; <0.8 → en cloche (sur-dispersé)")
-print(f"  pente (droite-gauche)/(g+d)      : {slope_idx:+.2f}")
-print(f"     >0 → bin droit chargé : obs > ensemble → modèle SOUS-prévoit (β<1)")
-print(f"     <0 → bin gauche chargé : obs < ensemble → modèle SUR-prévoit (β>1)")
-
-# Plot
-import lets_plot as lp
-df_rank = pd.DataFrame({"rank": np.arange(N_MEMBERS + 1),
-                         "freq": freq, "expected": expected})
-(lp.ggplot(df_rank, lp.aes("rank", "freq"))
- + lp.geom_bar(stat="identity", color="steelblue", fill="steelblue", alpha=0.7)
- + lp.geom_hline(yintercept=expected, color="red", linetype="dashed", size=0.8)
- + lp.labs(x=f"Rang de l'observation parmi {N_MEMBERS} membres",
-           y="Fréquence",
-           title=f"Diagramme de Talagrand — δ/N = {chi2_flat_norm:.2f}",
-           subtitle=f"Ligne rouge : 1/(N+1) = {expected:.4f} (uniforme idéal)")
- + lp.theme_bw()
- + lp.ggsize(900, 380))
-```
-
-### 8.2 PICP / PINAW — qualité de l'intervalle [p10, p90]
-
-* **PICP** (Coverage) : fraction d'observations dans l'intervalle prédit.
-  Cible **80 %** pour un intervalle [p10, p90] bien calibré.
-* **PINAW** (Width) : largeur moyenne de l'intervalle, normalisée par
-  l'amplitude observée. Plus petit = plus précis (mais à PICP constant).
-
-```{python}
-#| label: tbl-picp-pinaw
-#| tbl-cap: "PICP/PINAW par station (intervalle [p10, p90], cible PICP=0.80)"
-
-p10 = np.quantile(ens_stations.numpy(), 0.10, axis=0)  # (T, n_stations)
-p90 = np.quantile(ens_stations.numpy(), 0.90, axis=0)
-p50 = np.quantile(ens_stations.numpy(), 0.50, axis=0)
-
-picp_rows = []
-for i, sid in enumerate(sids):
-    qo = q_obs_aligned[:, i].numpy()
-    valid = ~np.isnan(qo)
-    if valid.sum() < 30:
-        continue
-    qo_v = qo[valid]
-    p10_v, p50_v, p90_v = p10[valid, i], p50[valid, i], p90[valid, i]
-    inside = (qo_v >= p10_v) & (qo_v <= p90_v)
-    range_obs = qo_v.max() - qo_v.min()
-    width = (p90_v - p10_v).mean()
-    picp = float(inside.mean())
-    pinaw = float(width / max(range_obs, 1e-6))
-    picp_rows.append({
-        "station": sid, "area_km2": sta_areas[i],
-        "PICP": picp, "PINAW": pinaw,
-        "median_p50": float(p50_v.mean()),
-    })
-
-df_picp = pd.DataFrame(picp_rows).sort_values("area_km2", ascending=False)
-print(df_picp.to_string(index=False, float_format="{:.3f}".format))
-
-print(f"\n  Médiane PICP  : {df_picp['PICP'].median():.3f}  (cible 0.80)")
-print(f"  Moyenne PICP : {df_picp['PICP'].mean():.3f}")
-print(f"  Médiane PINAW : {df_picp['PINAW'].median():.3f}")
-if df_picp['PICP'].median() < 0.65:
-    print("  → Sous-dispersé : augmenter le `length_scale` du Concrete Dropout")
-elif df_picp['PICP'].median() > 0.92:
-    print("  → Sur-dispersé : diminuer le `length_scale` ou allonger le training")
-else:
-    print("  → Calibration raisonnable.")
-```
-
-### 8.3 Hydrogramme avec enveloppe d'incertitude
-
-Vérification visuelle aux stations les plus drainantes — vérifie que
-l'enveloppe [p10, p90] enrobe les obs sans trop d'overshoot.
-
-```{python}
-#| label: fig-uncertainty-hydrograph
-#| fig-cap: "Hydrogrammes avec enveloppe d'incertitude [p10, p90] aux 4 plus grandes stations"
-
-big_4 = df_picp.head(4)["station"].tolist()
-rows_h = []
-for sid in big_4:
-    i = sids.index(sid)
-    qo = q_obs_aligned[:, i].numpy()
-    p10v, p50v, p90v = p10[:, i], p50[:, i], p90[:, i]
-    for t, d in enumerate(diag_dates[:n_diag_days]):
-        rows_h.append({"date": d, "Q": qo[t], "type": "obs",      "station": sid})
-        rows_h.append({"date": d, "Q": p50v[t], "type": "p50",    "station": sid})
-        rows_h.append({"date": d, "Q": p10v[t], "type": "p10",    "station": sid})
-        rows_h.append({"date": d, "Q": p90v[t], "type": "p90",    "station": sid})
-df_h = pd.DataFrame(rows_h)
-df_p10 = df_h[df_h["type"]=="p10"].rename(columns={"Q":"p10"})[["date","station","p10"]]
-df_p90 = df_h[df_h["type"]=="p90"].rename(columns={"Q":"p90"})[["date","station","p90"]]
-df_band = df_p10.merge(df_p90, on=["date","station"])
-
-(lp.ggplot()
- + lp.geom_ribbon(lp.aes(x="date", ymin="p10", ymax="p90"),
-                   data=df_band, fill="steelblue", alpha=0.25)
- + lp.geom_line(lp.aes("date", "Q", color="type"),
-                 data=df_h[df_h["type"].isin(["obs","p50"])], size=0.5)
- + lp.scale_color_manual(values=["black", "red"], name="")
- + lp.facet_wrap("station", ncol=2, scales="free_y")
- + lp.labs(x="Date", y="Débit (m³/s)",
-           title=f"Enveloppe d'incertitude [p10, p90] — {DIAG_YEARS}",
-           subtitle=f"Bleu : ensemble Concrete Dropout (N={N_MEMBERS}), rouge : médiane, noir : observation")
- + lp.theme_bw()
- + lp.ggsize(1300, 700))
-```
+::: {.callout-note}
+Section retirée le 2026-05-11 — la stack ensembliste (Concrete Dropout +
+ParamNoise) est abandonnée au profit d'une approche probabiliste prédictive
+(Gaussian NLL hétéroscédastique). À reconstruire autour du nouveau head
+`log_sigma_Q` du routing une fois le pivot architectural complété.
+Voir `memory/project_meandre_architectural_pivot_2026-05.md`.
+:::
 
 ## 9. Export NetCDF
 

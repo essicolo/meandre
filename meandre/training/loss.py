@@ -89,6 +89,28 @@ def differentiable_pbias_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return pbias.abs()
 
 
+def gaussian_nll_loss(
+    q_obs: Tensor, q_sim: Tensor, log_sigma: Tensor,
+) -> Tensor:
+    """Heteroscedastic Gaussian NLL on streamflow.
+
+        NLL = 0.5 * ((q_obs - q_sim) / σ)² + log σ    (+ const omitted)
+
+    With ``log_sigma`` produced by a noise head (e.g. σ = a·|Q|^b). The
+    quadratic term pushes the mean toward the obs, the log σ term prevents
+    σ → ∞ as a trivial fit. Together they enforce calibrated uncertainty —
+    no need for an ensemble.
+
+    Empty inputs (no valid obs) return 0 with requires_grad=False so the
+    chunked training loop can skip the backward pass.
+    """
+    if q_obs.numel() == 0:
+        return torch.zeros((), device=q_sim.device)
+    sigma2 = (2.0 * log_sigma).exp()
+    nll = 0.5 * (q_obs - q_sim).pow(2) / sigma2 + log_sigma
+    return nll.mean()
+
+
 def differentiable_mse_loss(
     q_obs: Tensor, q_sim: Tensor, var: Tensor | None = None
 ) -> Tensor:
@@ -332,6 +354,9 @@ class HydroLoss(nn.Module):
         w_nrmse: float = 0.0,
         w_log_nse: float = 0.0,
         w_log_mse: float = 0.0,
+        w_nll: float = 0.0,
+        w_nll_et: float = 0.0,
+        w_nll_swe: float = 0.0,
         w_snow: float = 0.0,
         w_et: float = 0.0,
         w_physics: float = 0.01,
@@ -348,6 +373,9 @@ class HydroLoss(nn.Module):
         self.w_nrmse = w_nrmse
         self.w_log_nse = w_log_nse
         self.w_log_mse = w_log_mse
+        self.w_nll = w_nll
+        self.w_nll_et = w_nll_et
+        self.w_nll_swe = w_nll_swe
         self.w_snow = w_snow
         self.w_et = w_et
         self.w_physics = w_physics
@@ -367,10 +395,13 @@ class HydroLoss(nn.Module):
         q_obs: Tensor,
         q_sim: Tensor,
         station_mask: Tensor,
+        log_sigma_sim: Tensor | None = None,
         swe_obs: Tensor | None = None,
         swe_sim: Tensor | None = None,
+        log_sigma_swe_sim: Tensor | None = None,
         et_obs: Tensor | None = None,
         et_sim: Tensor | None = None,
+        log_sigma_et_sim: Tensor | None = None,
         water_balance_residual: Tensor | None = None,
         residual_gate_logits: Tensor | None = None,
     ) -> tuple[Tensor, dict[str, Tensor]]:
@@ -379,6 +410,11 @@ class HydroLoss(nn.Module):
             q_obs:  (n_timesteps, n_stations) observed streamflow
             q_sim:  (n_timesteps, n_nodes) simulated; masked via station_mask
             station_mask: (n_stations,) bool — which nodes have observations
+            log_sigma_sim: (n_timesteps, n_nodes) log σ per timestep/node, used
+                by the heteroscedastic Gaussian NLL term when ``w_nll > 0``.
+            log_sigma_et_sim, log_sigma_swe_sim: idem pour ET et SWE — utilisés
+                par les NLL multi-objectif (MOD16 ETR, NDSI snow) quand les
+                weights ``w_nll_et`` / ``w_nll_swe`` sont > 0.
             ... optional auxiliary observations
 
         Returns:
@@ -496,16 +532,32 @@ class HydroLoss(nn.Module):
             L_log_nse = differentiable_log_nse_loss(q_o, q_s) if self.w_log_nse > 0 else _zero
             L_log_mse = differentiable_log_mse_loss(q_o, q_s) if self.w_log_mse > 0 else _zero
 
+        # Heteroscedastic Gaussian NLL (probabilistic loss replacing the
+        # ensemble UQ stack). Aligns log_sigma to q_sim at station nodes.
+        if self.w_nll > 0 and log_sigma_sim is not None:
+            log_sigma_at_stations = log_sigma_sim[:, station_mask]
+            ls_pool = log_sigma_at_stations.reshape(-1)
+            qs_pool = q_sim_at_stations.reshape(-1)
+            qo_pool = q_obs.reshape(-1)
+            valid_pool = ~torch.isnan(qo_pool) & ~torch.isnan(qs_pool)
+            L_nll = gaussian_nll_loss(
+                qo_pool[valid_pool], qs_pool[valid_pool], ls_pool[valid_pool],
+            )
+        else:
+            L_nll = torch.tensor(0.0, device=q_sim.device)
+
         loss = (self.w_nse * L_nse + self.w_pbias * L_pbias
                 + self.w_kge * L_kge + self.w_mse * L_mse
                 + self.w_nrmse * L_nrmse
                 + self.w_log_nse * L_log_nse
-                + self.w_log_mse * L_log_mse)
+                + self.w_log_mse * L_log_mse
+                + self.w_nll * L_nll)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
-                      "log_mse_loss": L_log_mse}
+                      "log_mse_loss": L_log_mse,
+                      "nll_loss": L_nll}
 
         if self.w_snow > 0 and swe_obs is not None and swe_sim is not None:
             valid = ~torch.isnan(swe_obs) & ~torch.isnan(swe_sim)
@@ -520,6 +572,28 @@ class HydroLoss(nn.Module):
                 L_et = ((et_obs[valid] - et_sim[valid]) ** 2).mean()
                 loss = loss + self.w_et * L_et
                 components["et_loss"] = L_et
+
+        # Heteroscedastic NLL on ET (vs MODIS MOD16 par ex.). Identifie K_c.
+        if (self.w_nll_et > 0 and et_obs is not None and et_sim is not None
+                and log_sigma_et_sim is not None):
+            v = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
+            if v.any():
+                L_nll_et = gaussian_nll_loss(
+                    et_obs[v], et_sim[v], log_sigma_et_sim[v],
+                )
+                loss = loss + self.w_nll_et * L_nll_et
+                components["nll_et_loss"] = L_nll_et
+
+        # Heteroscedastic NLL on SWE (vs MODIS NDSI / SNODAS). Identifie C_f.
+        if (self.w_nll_swe > 0 and swe_obs is not None and swe_sim is not None
+                and log_sigma_swe_sim is not None):
+            v = ~torch.isnan(swe_obs) & ~torch.isnan(swe_sim)
+            if v.any():
+                L_nll_swe = gaussian_nll_loss(
+                    swe_obs[v], swe_sim[v], log_sigma_swe_sim[v],
+                )
+                loss = loss + self.w_nll_swe * L_nll_swe
+                components["nll_swe_loss"] = L_nll_swe
 
         if self.w_physics > 0 and water_balance_residual is not None:
             valid = ~torch.isnan(water_balance_residual)

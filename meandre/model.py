@@ -26,6 +26,7 @@ from meandre.temporal.residual_corrector import StateResidualCorrector
 from meandre.temporal.ring_buffer import OutflowRingBuffer
 from meandre.temporal.state_noise import CorrelatedStateNoise
 from meandre.utils.diagnostics import SimDiagnostics
+from meandre.utils.noise_head import HeteroscedasticNoiseHead
 from meandre.utils.state import HydroState
 from meandre.vertical.column import VerticalColumn
 
@@ -78,15 +79,11 @@ class HydroModel(nn.Module):
         n_territorial: int = 17,
         n_state_vars: int | None = None,
         dropout: float = 0.0,
-        concrete_dropout: bool = False,
-        concrete_init_p: float = 0.1,
         param_mode: str = "nerf",
         clamp_min: float = -50.0,
         clamp_max: float = 500.0,
         soil_z1: float = 0.30,
         soil_bounds: dict | None = None,
-        param_noise: bool = False,
-        param_noise_init_sigma: float = 0.05,
     ) -> None:
         super().__init__()
         self.n_nodes = n_nodes
@@ -101,13 +98,8 @@ class HydroModel(nn.Module):
         self.spatial_encoder = SpatialFieldNetwork(
             n_territorial=n_territorial,
             dropout=dropout,
-            concrete_dropout=concrete_dropout,
-            concrete_init_p=concrete_init_p,
-            n_data=n_nodes,
             param_mode=param_mode,
             soil_bounds=soil_bounds,
-            param_noise=param_noise,
-            param_noise_init_sigma=param_noise_init_sigma,
         )
         # Store for SoilModule init via VerticalColumn
         self._soil_z1 = soil_z1
@@ -117,9 +109,6 @@ class HydroModel(nn.Module):
             n_forcing=n_forcing,
             window=context_window,
             n_context_out=n_context,
-            concrete_dropout=concrete_dropout,
-            concrete_init_p=concrete_init_p * 0.5,  # lower rate for temporal
-            n_data=n_nodes,
         ) if use_temporal else None
 
         self.vertical_column = VerticalColumn(soil_z1=soil_z1)
@@ -146,6 +135,15 @@ class HydroModel(nn.Module):
             StreamTemperatureModule() if use_temperature else None
         )
 
+        # Heteroscedastic noise heads: predict log σ from each observable
+        # magnitude for the probabilistic (Gaussian NLL) training loss.
+        # Replaces the old ensemble UQ stack. Cost: 2 scalars per head.
+        # ET / SWE heads enable multi-objective NLL (cf. MODIS MOD16/NDSI)
+        # to identify K_c, C_f beyond what Q-only can constrain.
+        self.noise_head = HeteroscedasticNoiseHead()       # Q (m³/s)
+        self.noise_head_et = HeteroscedasticNoiseHead()    # ET (mm/jour)
+        self.noise_head_swe = HeteroscedasticNoiseHead()   # SWE (mm)
+
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
 
@@ -163,8 +161,6 @@ class HydroModel(nn.Module):
         h_context: Tensor | None = None,
         tbptt_steps: int = 0,
         return_diagnostics: bool = False,
-        perturb_params: bool = False,
-        param_noise_eps: Tensor | None = None,
     ) -> tuple[Tensor, HydroState] | tuple[Tensor, HydroState, SimDiagnostics]:
         """Full forward pass: scan over timesteps.
 
@@ -203,13 +199,8 @@ class HydroModel(nn.Module):
         state = initial_state
 
         # Static spatial params (computed once per simulate call).
-        # When perturb_params=True, fc_out logits get Gaussian noise BEFORE
-        # _apply_constraints — preserves mass conservation (constraints map
-        # back to physical bounds) while generating an ensemble member.
         spatial_params = self.spatial_encoder(
             node_coords, territorial.to_tensor(),
-            perturb_params=perturb_params,
-            param_noise_eps=param_noise_eps,
         )
         K_musk = spatial_params.K_musk_hours * 3600.0  # hours → seconds
         x_musk = spatial_params.x_musk
@@ -222,7 +213,7 @@ class HydroModel(nn.Module):
         diag_lists: dict[str, list[Tensor]] = (
             {k: [] for k in ("etp", "etr", "snowmelt", "lateral_mm",
                              "q_lateral", "q_upstream", "recharge",
-                             "q_baseflow", "T_water")}
+                             "q_baseflow", "T_water", "swe")}
             if return_diagnostics else {}
         )
         outflow_buffer = OutflowRingBuffer(
@@ -393,6 +384,7 @@ class HydroModel(nn.Module):
                     )
                 diag_lists["q_lateral"].append(q_lat_m3s)
                 diag_lists["q_upstream"].append(q_up)
+                diag_lists["swe"].append(state.swe)
                 diag_lists["T_water"].append(
                     T_water_t if T_water_t is not None
                     else torch.full((self.n_nodes,), float('nan'), device=forcing.device)
@@ -428,33 +420,12 @@ class HydroModel(nn.Module):
             q_upstream=torch.stack(diag_lists["q_upstream"], dim=0),
             recharge=torch.stack(diag_lists["recharge"], dim=0),
             q_baseflow=torch.stack(diag_lists["q_baseflow"], dim=0),
+            swe=torch.stack(diag_lists["swe"], dim=0),
             T_water=torch.stack(diag_lists["T_water"], dim=0),
         )
         return Q_sim, state, diagnostics
 
     # ---- Uncertainty regularisation ----
-
-    def concrete_kl(self) -> torch.Tensor:
-        """Aggregate KL from all Concrete Dropout layers (0 if not used).
-
-        Position B design: Concrete Dropout is intended for the temporal
-        encoder (epistemic uncertainty about meteorological context
-        interpretation).  The spatial encoder uses ParamNoise instead
-        for parameter uncertainty (preserves mass conservation).  This
-        method still aggregates both for backward compat.
-        """
-        kl = self.spatial_encoder.concrete_kl()
-        if self.temporal_encoder is not None:
-            kl = kl + self.temporal_encoder.concrete_kl()
-        return kl
-
-    def param_noise_kl(self, target_sigma: float = 0.05) -> torch.Tensor:
-        """L2 regulariser pulling spatial param_log_sigma toward log(target).
-
-        Without this, the data loss collapses sigma → 0.  Tune target
-        empirically based on Talagrand histogram flatness.
-        """
-        return self.spatial_encoder.param_noise_kl(target_sigma=target_sigma)
 
     # ---- Persistence ----
 

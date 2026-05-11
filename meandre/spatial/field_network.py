@@ -62,7 +62,11 @@ class SpatialParams:
     Soil physics
     ------------
     vg_n            van Genuchten n shape parameter [1.1, 2.7].
-    k_interflow     Interflow recession rate (1/day) [0.005, 0.1].
+    f_vert_{1,2,3}  Per-layer drainage partition (0, 1): fraction of excess
+                    drainage going DOWN (to next layer; aquifer for L3).
+                    1 - f_vert goes LATERALLY to the stream (interflow).
+                    Replaces the legacy slope_factor + k_interflow + krec
+                    triplet to break their equifinality coupling.
     """
 
     # Soil per layer (9 params x 3 layers)
@@ -83,9 +87,13 @@ class SpatialParams:
     frost_alpha: Tensor
     # Wetland
     f_wetland: Tensor
-    # Hydrotel-inspired: slope-dependent interflow and baseflow recession
-    slope_factor: Tensor    # interflow amplification from topographic slope [0.01, 0.59]
-    krec: Tensor            # baseflow recession coefficient (1/day) [0.001, 0.05]
+    # Drainage partition (replaces slope_factor + k_interflow + krec
+    # competing for the same water budget — see softmax-partition design,
+    # 2026-05-11). Each f_vert_i is the fraction of the layer's excess
+    # drainage that goes *down* to the next layer (or aquifer for L3);
+    # 1 - f_vert_i goes laterally to the stream as interflow.
+    f_vert_1: Tensor        # partition layer 1: vertical fraction (0, 1)
+    f_vert_3: Tensor        # partition layer 3: recharge fraction (0, 1)
     # Groundwater
     k_gw: Tensor            # aquifer recession coefficient (1/day) [0.001, 0.14]
     # Stream temperature
@@ -95,7 +103,7 @@ class SpatialParams:
     alpha_T: Tensor         # soil thermal damping (1/day) [0.01, 0.05]
     # --- New params (E, F, G) ---
     vg_n: Tensor            # van Genuchten n shape parameter [1.3, 2.7]
-    k_interflow: Tensor     # interflow recession rate (1/day) [0.005, 0.1]
+    f_vert_2: Tensor        # partition layer 2: vertical fraction (0, 1)
     K_musk_hours: Tensor    # Muskingum travel time (hours) [4, 48]
     x_musk: Tensor          # Muskingum weighting factor [0.01, 0.49]
     # ETP scaling — équivalent au "coefficient multiplicatif" d'Hydrotel
@@ -130,14 +138,7 @@ class SpatialFieldNetwork(nn.Module):
     hidden : int
         Width of hidden layers.
     dropout : float
-        MC Dropout rate for epistemic uncertainty (set > 0 to enable).
-        Ignored when ``concrete_dropout=True``.
-    concrete_dropout : bool
-        Use Concrete Dropout (Gal et al., 2017) with learnable rates.
-    concrete_init_p : float
-        Initial dropout probability for Concrete Dropout layers.
-    n_data : int
-        Number of data points for Concrete Dropout regularisation scaling.
+        MC Dropout rate (set > 0 to enable standard nn.Dropout).
     param_mode : str
         "nerf" for spatially-varying parameters (~13k params)
         "static" for global parameters like Hydrotel (32 params)
@@ -149,13 +150,8 @@ class SpatialFieldNetwork(nn.Module):
         n_coord_freqs: int = 6,
         hidden: int = 256,
         dropout: float = 0.0,
-        concrete_dropout: bool = False,
-        concrete_init_p: float = 0.1,
-        n_data: int = 2889,
         param_mode: str = "nerf",
         soil_bounds: dict | None = None,
-        param_noise: bool = False,
-        param_noise_init_sigma: float = 0.05,
     ) -> None:
         super().__init__()
         self.n_territorial = n_territorial
@@ -184,28 +180,8 @@ class SpatialFieldNetwork(nn.Module):
             self.fc2 = nn.Linear(hidden + in_dim, hidden)  # skip connection
             self.fc_out = nn.Linear(hidden, SpatialParams.N_PARAMS)
             self.act = nn.SiLU()
-            if concrete_dropout:
-                from meandre.spatial.concrete_dropout import ConcreteDropout
-                self.drop1 = ConcreteDropout(n_data=n_data, init_p=concrete_init_p)
-                self.drop2 = ConcreteDropout(n_data=n_data, init_p=concrete_init_p)
-            else:
-                self.drop1 = nn.Dropout(p=dropout)
-                self.drop2 = nn.Dropout(p=dropout)
-
-            # ParamNoise: σ apprenable par paramètre dans l'espace logit.
-            # Injecté APRÈS fc_out, AVANT _apply_constraints — préserve la
-            # conservation de masse car les constraints garantissent les
-            # bornes physiques.  Plus expressif que ConcreteDropout pour
-            # générer un ensemble : chaque membre = un set de params bornés
-            # cohérent (analogue à un calage Hydrotel alternatif).
-            self.param_noise = param_noise
-            if param_noise:
-                self.param_log_sigma = nn.Parameter(
-                    torch.full(
-                        (SpatialParams.N_PARAMS,),
-                        math.log(max(param_noise_init_sigma, 1e-6)),
-                    )
-                )
+            self.drop1 = nn.Dropout(p=dropout)
+            self.drop2 = nn.Dropout(p=dropout)
 
     def init_from_literature(self, targets: dict[str, float] | None = None) -> None:
         """Initialise fc_out bias so _apply_constraints produces literature defaults.
@@ -280,10 +256,11 @@ class SpatialFieldNetwork(nn.Module):
             "frost_alpha": 0.50,
             # Wetland
             "f_wetland": 0.02,
-            # Slope/recession — slope_factor et krec laissés aux centres de
-            # contrainte (sigmoid midpoint).  Ce sont des paramètres effectifs
-            # du modèle, pas des mesures physiques — le NeRF les apprend.
-            "slope_factor": 0.30, "krec": 0.005,
+            # Drainage partition per layer (softmax binary = sigmoid).
+            # L1 root zone : moitié-moitié — interflow dominant si pente.
+            # L2 transition : un peu plus vertical (percolation).
+            # L3 deep : majoritairement recharge aquifère.
+            "f_vert_1": 0.50, "f_vert_2": 0.60, "f_vert_3": 0.70,
             # Groundwater — recession ~50 jours (k_gw=0.02), réaliste pour
             # aquifères peu profonds tempérés. Auparavant 0.005 (140 jours).
             "k_gw": 0.02,
@@ -293,9 +270,6 @@ class SpatialFieldNetwork(nn.Module):
             "alpha_T": 0.03,
             # van Genuchten n — loam ~1.5
             "vg_n": 1.5,
-            # Interflow — centre de contrainte log-normal (exp(log(0.03)) = 0.03).
-            # Paramètre effectif du modèle, pas une mesure physique.
-            "k_interflow": 0.03,
             # Muskingum
             "K_musk_hours": 24.0, "x_musk": 0.20,
             # ETP scaling — défaut 1.0 (FAO-56 reference comme Hydrotel PM).
@@ -360,10 +334,10 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["frost_alpha"], 0.0, 1.0); i += 1
         # f_wetland: bounded [0.0, 0.10]
         raw[i] = inv_bounded(d["f_wetland"], 0.0, 0.10); i += 1
-        # slope_factor: bounded [0.01, 0.59]
-        raw[i] = inv_bounded(d["slope_factor"], 0.01, 0.59); i += 1
-        # krec: exp(clamp(raw*0.3 + log(0.005)))
-        raw[i] = (math.log(d["krec"]) - math.log(0.005)) / 0.3; i += 1
+        # f_vert_1: bounded [0, 1]
+        raw[i] = inv_bounded(d["f_vert_1"], 0.0, 1.0); i += 1
+        # f_vert_3: bounded [0, 1]
+        raw[i] = inv_bounded(d["f_vert_3"], 0.0, 1.0); i += 1
         # k_gw: exp(clamp(raw*0.3 + log(0.02)))
         raw[i] = (math.log(d["k_gw"]) - math.log(0.02)) / 0.3; i += 1
         # T_gw: bounded [3, 13]
@@ -374,8 +348,8 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["alpha_T"], 0.01, 0.05); i += 1
         # vg_n: bounded [1.3, 2.7]
         raw[i] = inv_bounded(d["vg_n"], 1.3, 2.7); i += 1
-        # k_interflow: exp(clamp(raw*0.3 + log(0.03)))
-        raw[i] = (math.log(d["k_interflow"]) - math.log(0.03)) / 0.3; i += 1
+        # f_vert_2: bounded [0, 1]
+        raw[i] = inv_bounded(d["f_vert_2"], 0.0, 1.0); i += 1
         # K_musk_hours: bounded [4, 48]
         raw[i] = inv_bounded(d["K_musk_hours"], 4.0, 48.0); i += 1
         # x_musk: bounded [0.01, 0.49]
@@ -399,22 +373,11 @@ class SpatialFieldNetwork(nn.Module):
         self,
         coords: Tensor,
         territorial: Tensor,
-        perturb_params: bool = False,
-        param_noise_eps: Tensor | None = None,
     ) -> SpatialParams:
         """
         Args:
             coords: (n_nodes, 2)  [lon, lat] in degrees, normalised.
             territorial: (n_nodes, n_territorial)
-            perturb_params: If True and self.param_noise is enabled, add
-                Gaussian noise to fc_out logits (BEFORE constraints).
-                Generates one ensemble member.  Mass conservation is
-                preserved because constraints map perturbed logits back
-                into physical bounds before they reach the physics.
-            param_noise_eps: Optional pre-sampled (N_PARAMS,) or
-                (n_nodes, N_PARAMS) noise tensor.  Use to freeze a noise
-                realisation across a trajectory (ensemble member).  When
-                None and ``perturb_params=True``, samples fresh ε each call.
         Returns:
             SpatialParams with one value per node per parameter.
         """
@@ -431,19 +394,6 @@ class SpatialFieldNetwork(nn.Module):
             h = torch.cat([h, x0], dim=-1)       # skip connection
             h = self.drop2(self.act(self.fc2(h)))
             raw = self.fc_out(h)                  # (n_nodes, N_PARAMS)
-
-        # Inject ParamNoise BEFORE constraints (preserves mass conservation).
-        if perturb_params and getattr(self, "param_noise", False):
-            sigma = self.param_log_sigma.exp().clamp(min=1e-4, max=1.0)
-            if param_noise_eps is None:
-                eps = torch.randn_like(raw)
-            else:
-                # Broadcast a (N_PARAMS,) eps across nodes for a frozen-mask member
-                if param_noise_eps.dim() == 1:
-                    eps = param_noise_eps.unsqueeze(0).expand_as(raw)
-                else:
-                    eps = param_noise_eps
-            raw = raw + sigma * eps
 
         return self._apply_constraints(raw)
 
@@ -517,12 +467,12 @@ class SpatialFieldNetwork(nn.Module):
         constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
         # f_wetland: [0.0, 0.10]
         constrained.append(bounded(cols[i], 0.0, 0.10)); i += 1
-        # slope_factor: [0.01, 0.59]
-        constrained.append(bounded(cols[i], 0.01, 0.59)); i += 1
-        # krec: soil L3 → aquifer drainage (1/day), log-normal.
-        # Recentré sur 0.005 (vs 0.003) — Hydrotel typique pour bassin tempéré.
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.005), min=-8.0, max=-3.0)
-        constrained.append(torch.exp(exponent)); i += 1
+        # f_vert_1: partition layer 1 vertical/lateral, (0, 1)
+        # Binary softmax = sigmoid. Init centred at 0.5 (no prior on direction).
+        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
+        # f_vert_3: partition layer 3 recharge/lateral, (0, 1)
+        # Init biased toward recharge (~0.7) for deep layer.
+        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
         # k_gw: aquifer recession (1/day), log-normal.
         # Recentré sur 0.02 (vs 0.005) — recession ~50 jours réaliste pour
         # aquifères peu profonds Beauce/Lévis (auparavant ~140 jours, trop lent).
@@ -538,10 +488,8 @@ class SpatialFieldNetwork(nn.Module):
         # vg_n: van Genuchten n shape parameter [1.1, 2.7]
         # Clay ~1.1, loam ~1.5, sand ~2.7
         constrained.append(bounded(cols[i], 1.3, 2.7)); i += 1
-        # k_interflow: interflow recession rate (1/day) [0.005, 0.1]
-        # Log-normal for better gradient scaling
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.03), min=math.log(0.005), max=math.log(0.1))
-        constrained.append(torch.exp(exponent)); i += 1
+        # f_vert_2: partition layer 2 vertical/lateral, (0, 1)
+        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
         # K_musk_hours: Muskingum travel time [4, 48] hours.
         # Stabilité numérique avec n_substeps=2 (sub_dt=12h) requiert K ≥ ~6h;
         # bound 4 conservé comme défaut. Bornes étendues à 0.5 nécessitent
@@ -567,31 +515,6 @@ class SpatialFieldNetwork(nn.Module):
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
-    def concrete_kl(self) -> Tensor:
-        """Sum of Concrete Dropout KL terms (0 if using standard dropout)."""
-        from meandre.spatial.concrete_dropout import ConcreteDropout
-        total = torch.tensor(0.0, device=next(self.parameters()).device)
-        if isinstance(getattr(self, "drop1", None), ConcreteDropout):
-            total = total + self.drop1.regularization(self.fc1.weight)
-        if isinstance(getattr(self, "drop2", None), ConcreteDropout):
-            total = total + self.drop2.regularization(self.fc2.weight)
-        return total
-
-    def param_noise_kl(self, target_sigma: float = 0.05) -> Tensor:
-        """L2 regulariser pulling param_log_sigma toward log(target_sigma).
-
-        Without this, the data loss collapses sigma → 0 (deterministic ensemble)
-        because noise hurts fit.  With it, sigma is pulled toward a calibrated
-        target — typical hydrological parameter uncertainty in logit space.
-
-        The target ≈ 0.05 corresponds to ~5% perturbation of constrained
-        parameters (sigmoid output near the centre).  Tune empirically based
-        on Talagrand histogram flatness post-training.
-        """
-        if not getattr(self, "param_noise", False):
-            return torch.tensor(0.0, device=next(self.parameters()).device)
-        log_target = math.log(target_sigma)
-        return ((self.param_log_sigma - log_target) ** 2).mean()
 
     def boundary_regularization(self, coords: Tensor, territorial: Tensor) -> Tensor:
         """Penalize raw network outputs that push constrained params toward extremes.
@@ -607,15 +530,16 @@ class SpatialFieldNetwork(nn.Module):
         h = torch.nn.functional.silu(self.fc2(h))
         raw = self.fc_out(h)  # (n_nodes, N_PARAMS)
 
-        # Exp-constrained params: L2 on raw → pulls toward center
-        # K_sat (0-2), krec (23), k_gw (24), k_interflow (29)
-        unbounded_cols = [0, 1, 2, 23, 24, 29]
+        # Exp-constrained params: L2 on raw → pulls toward center.
+        # Only K_sat (0-2) and k_gw (24) remain log-normal; f_vert_{1,3} (22, 23)
+        # and f_vert_2 (29) are now sigmoid-bounded (softmax partition).
+        unbounded_cols = [0, 1, 2, 24]
         unbounded_penalty = (raw[:, unbounded_cols] ** 2).mean()
 
-        # Sigmoid-constrained columns: penalize saturation
-        # Skip K_sat (0-2), f_root (12-14), krec (23), k_gw (24), k_interflow (29)
-        sig_cols = (list(range(3, 12)) + list(range(15, 23))
-                    + [25, 26, 27, 28, 30, 31])
+        # Sigmoid-constrained columns: penalize saturation.
+        # Skip K_sat (0-2), f_root (12-14), k_gw (24). f_vert_{1,2,3} included.
+        sig_cols = (list(range(3, 12)) + list(range(15, 24))
+                    + [25, 26, 27, 28, 29, 30, 31])
         raw_sig = raw[:, sig_cols]
         sig = torch.sigmoid(raw_sig)
         sig_penalty = ((2.0 * sig - 1.0) ** 4).mean()
@@ -659,10 +583,6 @@ class SpatialFieldNetwork(nn.Module):
         # Empêche la dérive vers k_gw trop bas (= aquifère qui sur-stocke
         # et libère l'eau avec des années de retard).
         loss = loss + ((torch.log(params.k_gw + 1e-8) - math.log(0.02)) ** 2).mean() * 0.3
-
-        # krec drainage soil L3 → aquifer (1/day): target ~0.005.
-        # Évite saturation contre la borne max si elle existe.
-        loss = loss + ((torch.log(params.krec + 1e-8) - math.log(0.005)) ** 2).mean() * 0.2
 
         # K_c: target ~0.85 (Hydrotel SLSO McGuinness coefficient typical)
         if hasattr(params, 'K_c'):

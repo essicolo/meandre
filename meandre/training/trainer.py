@@ -45,16 +45,13 @@ class TrainingConfig:
     # Useful to avoid overfitting on dev period (e.g. wet/dry year bias).
     w_prior: float = 0.0
 
-    # ParamNoise (Position B): Gaussian σ on fc_out logits for ensemble UQ.
-    # When > 0, training does perturbed forward passes and adds an L2
-    # pull on log_sigma toward log(param_noise_target_sigma) — prevents
-    # σ collapse to 0.
-    w_param_noise_kl: float = 0.0
-    param_noise_target_sigma: float = 0.05
-    train_with_param_noise: bool = False  # if True, training uses perturbed forward
-
-    # Concrete Dropout KL weight (kept on temporal encoder only in Position B)
-    w_concrete_kl: float = 1.0
+    # Anchor on the noise head's log_sigma_a (and optionally log_sigma_b).
+    # Counters the Gaussian NLL degeneracy where σ inflates to fit any μ.
+    # Apply to noise_head (Q), noise_head_et, noise_head_swe symmetrically.
+    # 0 = no regularization. Typical w_sigma_anchor ≈ 0.1-1.0.
+    w_sigma_anchor: float = 0.0
+    sigma_anchor_target_a: float = -3.0   # log σ baseline (5% when b=1 at Q=100)
+    sigma_anchor_target_b: float | None = None   # None = let b float free
 
     # Curriculum: epoch at which each module is enabled
     enable_temporal_context_epoch: int = 10
@@ -204,6 +201,12 @@ class TrainingData:
     day_of_year: Tensor
     train_slice: slice
     val_slice: slice
+    # Multi-objective observations (optional, None when not loaded).
+    # Shapes: (n_timesteps, n_nodes) ; NaN = missing (most cells are NaN
+    # because MODIS revisit is irregular). Used by gaussian_nll_loss
+    # against the corresponding sim fields when w_nll_et / w_nll_swe > 0.
+    et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
+    swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
 
 
 class Trainer:
@@ -451,14 +454,6 @@ class Trainer:
                 f" | kge_log={val_kge_log:.4f}"
                 f" | lr={current_lr:.2e}"
             )
-            # Log learned Concrete Dropout rates
-            from meandre.spatial.concrete_dropout import ConcreteDropout
-            cd_rates = []
-            for name, mod in self.model.named_modules():
-                if isinstance(mod, ConcreteDropout):
-                    cd_rates.append(f"{name}={mod.p.item():.3f}")
-            if cd_rates:
-                epoch_msg += f" | p=[{', '.join(cd_rates)}]"
             logger.info(epoch_msg)
             print(epoch_msg, flush=True)
 
@@ -581,7 +576,6 @@ class Trainer:
 
     def _simulate(
         self, data: TrainingData, time_slice: slice, tbptt_steps: int = 0,
-        perturb_params: bool = False,
     ) -> tuple[Tensor, HydroState]:
         """Run model over time_slice (after spin-up on the preceding steps)."""
         initial_state, h_ctx = self._run_spinup(data)
@@ -597,7 +591,6 @@ class Trainer:
             day_of_year=data.day_of_year[time_slice],
             h_context=h_ctx,
             tbptt_steps=tbptt_steps,
-            perturb_params=perturb_params,
         )
         return Q_sim, final_state
 
@@ -654,7 +647,6 @@ class Trainer:
                     day_of_year=data.day_of_year[sl],
                     h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
-                    perturb_params=self.config.train_with_param_noise,
                 )
 
                 # Burn-in: first chunk after spinup needs longer burn-in to
@@ -663,29 +655,21 @@ class Trainer:
                 burnin = min(60, chunk_len // 4) if n_chunks > 0 else min(90, chunk_len // 4)
                 q_obs_chunk = data.q_obs[obs_offset + burnin:obs_offset + chunk_len]
                 Q_chunk_loss = Q_chunk[burnin:]
+                log_sigma_chunk = (
+                    self.model.noise_head(Q_chunk_loss)
+                    if self.loss_fn.w_nll > 0 else None
+                )
                 loss_chunk, comps = self.loss_fn(
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,
                     station_mask=data.station_mask,
+                    log_sigma_sim=log_sigma_chunk,
                     residual_gate_logits=(
                         self.model.residual_corrector.gate_logit
                         if self.model.use_residual and self.model.residual_corrector is not None
                         else None
                     ),
                 )
-
-            # Concrete Dropout KL (added once per chunk, scaled by weight)
-            kl = self.model.concrete_kl()
-            if kl.item() != 0.0:
-                loss_chunk = loss_chunk + self.config.w_concrete_kl * kl
-                all_components["kl_concrete"] = all_components.get("kl_concrete", 0.0) + float(kl.detach())
-
-            # ParamNoise KL — pulls log_sigma toward target.  Prevents collapse.
-            if self.config.w_param_noise_kl > 0:
-                pn_kl = self.model.param_noise_kl(self.config.param_noise_target_sigma)
-                if pn_kl.requires_grad:
-                    loss_chunk = loss_chunk + self.config.w_param_noise_kl * pn_kl
-                    all_components["param_noise_kl"] = all_components.get("param_noise_kl", 0.0) + float(pn_kl.detach())
 
             # Soft physical prior regularization on spatial params (k_gw, krec, K_sat, K_c, ...).
             # Pulls toward literature targets — prevents drift toward overfit values.
@@ -696,6 +680,28 @@ class Trainer:
                 prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
                 loss_chunk = loss_chunk + self.config.w_prior * prior_loss
                 all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach())
+
+            # Noise head σ anchor — counters NLL degeneracy (σ inflates to
+            # mask a bad μ). Applied symmetrically to Q / ET / SWE heads.
+            if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
+                anchor = self.model.noise_head.anchor_loss(
+                    self.config.sigma_anchor_target_a,
+                    self.config.sigma_anchor_target_b,
+                )
+                if self.loss_fn.w_nll_et > 0:
+                    anchor = anchor + self.model.noise_head_et.anchor_loss(
+                        self.config.sigma_anchor_target_a,
+                        self.config.sigma_anchor_target_b,
+                    )
+                if self.loss_fn.w_nll_swe > 0:
+                    anchor = anchor + self.model.noise_head_swe.anchor_loss(
+                        self.config.sigma_anchor_target_a,
+                        self.config.sigma_anchor_target_b,
+                    )
+                loss_chunk = loss_chunk + self.config.w_sigma_anchor * anchor
+                all_components["sigma_anchor"] = (
+                    all_components.get("sigma_anchor", 0.0) + float(anchor.detach())
+                )
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = chunk_len / n_train
@@ -821,7 +827,6 @@ class Trainer:
         with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
             Q_sim, final_state = self._simulate(
                 data, data.train_slice, tbptt_steps=self.config.tbptt_steps,
-                perturb_params=self.config.train_with_param_noise,
             )
             # Cache for fast val_epoch (see chunked path).
             self._cached_train_end_state = final_state.detach()
@@ -833,29 +838,28 @@ class Trainer:
             n_train = data.train_slice.stop - data.train_slice.start
             q_obs_train = data.q_obs[:n_train]
 
+            log_sigma_sim = (
+                self.model.noise_head(Q_sim) if self.loss_fn.w_nll > 0 else None
+            )
+            # TODO multi-obj wiring (NLL ET / SWE) :
+            # Quand data.et_obs ou data.swe_obs sont fournis et w_nll_et/_swe > 0,
+            # appeler self.model.simulate(..., return_diagnostics=True) au lieu de
+            # _simulate() ; extraire et_sim=diag.etr et swe_sim=diag.swe ; appliquer
+            # self.model.noise_head_et / _swe pour les log_sigma respectifs ;
+            # passer à loss_fn. La même logique s'applique au chemin chunké
+            # ci-dessus. Bloqué par l'absence de loader MODIS (cf.
+            # meandre/data/open_data.py download_modis_et / download_modis_swe).
             loss, components = self.loss_fn(
                 q_obs=q_obs_train,
                 q_sim=Q_sim,
                 station_mask=data.station_mask,
+                log_sigma_sim=log_sigma_sim,
                 residual_gate_logits=(
                     self.model.residual_corrector.gate_logit
                     if self.model.use_residual and self.model.residual_corrector is not None
                     else None
                 ),
             )
-
-        # Concrete Dropout KL regularisation
-        kl = self.model.concrete_kl()
-        if kl.item() != 0.0:
-            loss = loss + self.config.w_concrete_kl * kl
-            components["kl_concrete"] = kl.detach()
-
-        # ParamNoise KL — prevents log_sigma collapse to 0.
-        if self.config.w_param_noise_kl > 0:
-            pn_kl = self.model.param_noise_kl(self.config.param_noise_target_sigma)
-            if pn_kl.requires_grad:
-                loss = loss + self.config.w_param_noise_kl * pn_kl
-                components["param_noise_kl"] = pn_kl.detach()
 
         # Soft physical prior regularization
         if self.config.w_prior > 0:
@@ -865,6 +869,25 @@ class Trainer:
             prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
             loss = loss + self.config.w_prior * prior_loss
             components["prior"] = prior_loss.detach()
+
+        # Noise head σ anchor (single-pass path) — same logic as chunked.
+        if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
+            anchor = self.model.noise_head.anchor_loss(
+                self.config.sigma_anchor_target_a,
+                self.config.sigma_anchor_target_b,
+            )
+            if self.loss_fn.w_nll_et > 0:
+                anchor = anchor + self.model.noise_head_et.anchor_loss(
+                    self.config.sigma_anchor_target_a,
+                    self.config.sigma_anchor_target_b,
+                )
+            if self.loss_fn.w_nll_swe > 0:
+                anchor = anchor + self.model.noise_head_swe.anchor_loss(
+                    self.config.sigma_anchor_target_a,
+                    self.config.sigma_anchor_target_b,
+                )
+            loss = loss + self.config.w_sigma_anchor * anchor
+            components["sigma_anchor"] = anchor.detach()
 
         if torch.isnan(loss):
             logger.warning(

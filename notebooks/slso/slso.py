@@ -342,13 +342,9 @@ model = HydroModel(
     use_travel_time_attn = cfg["training"].get("enable_travel_epoch", 9999) < 9999,
     use_temperature = True,
     dropout = DROPOUT,
-    concrete_dropout = cfg["model"].get("concrete_dropout", False),
-    concrete_init_p = cfg["model"].get("concrete_init_p", 0.1),
     param_mode = cfg["model"].get("param_mode", "nerf"),
     soil_z1 = soil_z1,
     soil_bounds = soil_bounds,
-    param_noise = cfg["model"].get("param_noise", False),
-    param_noise_init_sigma = cfg["model"].get("param_noise_init_sigma", 0.05),
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
@@ -465,6 +461,9 @@ loss_fn = HydroLoss(
     w_nse=lcfg["w_nse"], w_kge=lcfg["w_kge"], w_pbias=lcfg["w_pbias"],
     w_mse=lcfg["w_mse"], w_nrmse=lcfg["w_nrmse"],
     w_log_nse=lcfg["w_log_nse"], w_log_mse=lcfg["w_log_mse"],
+    w_nll=lcfg.get("w_nll", 0.0),
+    w_nll_et=lcfg.get("w_nll_et", 0.0),
+    w_nll_swe=lcfg.get("w_nll_swe", 0.0),
     w_physics=lcfg["w_physics"], w_residual=lcfg["w_residual"],
     per_station=True, station_weights=station_areas,
     station_var=station_var,
@@ -490,14 +489,13 @@ train_cfg = TrainingConfig(
     patience = tcfg["patience"],
     best_metric = tcfg.get("best_metric", "nse"),
     best_metric_tolerance = tcfg.get("best_metric_tolerance", 0.005),
-    warmup_epochs = 0 if WARM_START else 5,
+    warmup_epochs = cfg["training"].get("warmup_epochs", 0 if WARM_START else 5),
     lr_new_features_mult = LR_NEW_MULT if WARM_START else None,
     compile_modules = tcfg.get("compile_modules", False),
     w_prior = tcfg.get("w_prior", 0.0),
-    w_param_noise_kl = tcfg.get("w_param_noise_kl", 0.0),
-    param_noise_target_sigma = tcfg.get("param_noise_target_sigma", 0.05),
-    train_with_param_noise = tcfg.get("train_with_param_noise", False),
-    w_concrete_kl = tcfg.get("w_concrete_kl", 1.0),
+    w_sigma_anchor = tcfg.get("w_sigma_anchor", 0.0),
+    sigma_anchor_target_a = tcfg.get("sigma_anchor_target_a", -3.0),
+    sigma_anchor_target_b = tcfg.get("sigma_anchor_target_b", None),
     # Autopilot
     autopilot = tcfg.get("autopilot", False),
     autopilot_grace_epochs = tcfg.get("autopilot_grace_epochs", 0),
@@ -650,7 +648,7 @@ print(f"  K_atm:      {sp.K_atm.median():.3f} /day")
 print(f"\n  K_musk: {sp.K_musk_hours.min():.1f}-{sp.K_musk_hours.median():.1f}-{sp.K_musk_hours.max():.1f} hours")
 print(f"  x_musk: {sp.x_musk.median():.3f}")
 print(f"  vg_n: {sp.vg_n.median():.3f}")
-print(f"  k_interflow: {sp.k_interflow.median():.4f} /day")
+print(f"  f_vert: L1={sp.f_vert_1.median():.3f}  L2={sp.f_vert_2.median():.3f}  L3={sp.f_vert_3.median():.3f}")
 
 print("\n" + "=" * 60)
 print("WATER BALANCE (basin-mean mm/day)")

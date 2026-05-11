@@ -12,6 +12,10 @@ All operations are vectorised over n_nodes (river reaches/troncons).
 
 The codebase is in English. Comments, config, and conversation with the developer are in French.
 
+## Code style
+
+- **Pas d'alignement multi-espaces** sur les colonnes (listes de tuples, dicts, assignations, arguments). Un seul espace après la virgule ou le `=`. L'alignement visuel rend chaque édition pénible (il faut reformater toutes les autres lignes pour garder l'alignement) et casse les diffs. Préférer toujours `("a", 1), ("bb", 22)` à `("a",  1), ("bb", 22)`.
+
 ## Key architecture decisions
 
 - **NeRF spatial params**: `meandre/spatial/field_network.py` maps (lon, lat, territorial_features) -> 32 hydrological parameters per node via an MLP with Fourier positional encoding. Constraints via sigmoid/softplus ensure physical plausibility.

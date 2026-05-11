@@ -29,6 +29,9 @@ notebooks/slso/results/
 # .models/_shared/ holds caches reusable across cases (HYDAT SQLite, etc.)
 .models/
 
+# --- Science papers ---
+.papers/
+
 # --- CONFIG ET SAUVEGARDES ---
 gitignore_bak
 .vscode/

@@ -92,34 +92,40 @@ class SoilModule(nn.Module):
         # plants can't extract water and drainage is negligible.
         return torch.clamp(psi, min=-100.0)
 
-    def _interflow(
+    def _partition_drainage(
         self,
         theta: Tensor,
         theta_fc: Tensor,
         porosity: Tensor,
+        K_sat: Tensor,
         z_layer: Tensor | float,
-        slope_factor: Tensor | None = None,
-        k_interflow: Tensor | None = None,
-    ) -> Tensor:
-        """Lateral subsurface drainage when moisture > field capacity (m/day).
+        f_vert: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        """Excess-water drainage above field capacity, partitioned vert/lat.
 
-        Hydrotel-inspired: q = k_interflow * slope_factor * excess_water * (1 + excess_frac).
-        slope_factor acts like sin(atan(slope)) in Hydrotel's BV3C1 — steeper
-        catchments produce more interflow.  Learned per-node from spatial network.
+        Replaces the legacy ``_interflow`` + ``krec`` competition (2026-05-11).
+        The total drainage rate uses K_sat as the single rate driver and the
+        Hydrotel nonlinearity ``(1 + excess_frac)`` for faster drainage near
+        saturation. The NeRF-learned ``f_vert ∈ (0, 1)`` splits it between:
+
+            q_vert = total × f_vert         (down to next layer / aquifer)
+            q_lat  = total × (1 - f_vert)   (lateral to stream)
+
+        f_vert + (1-f_vert) = 1 (mass conservation), so the model cannot
+        cheat by inflating one direction while shrinking the other — the
+        equifinality of slope_factor × k_interflow ↔ K_sat is broken.
+
+        All quantities in m/day.
         """
-        # Drainable water in layer (m)
-        excess_water = soft_relu(theta - theta_fc, self.sharpness) * z_layer
-        # Nonlinear recession: faster drainage at higher saturation
-        excess_frac = soft_relu(theta - theta_fc, self.sharpness) / (
-            porosity - theta_fc + 1e-6
-        )
+        excess = soft_relu(theta - theta_fc, self.sharpness)
+        excess_frac = excess / (porosity - theta_fc + 1e-6)
         excess_frac = torch.clamp(excess_frac, max=1.0)
-        k = k_interflow if k_interflow is not None else 0.03
-        q = k * excess_water * (1.0 + excess_frac)
-        # Slope amplification (Hydrotel-style)
-        if slope_factor is not None:
-            q = q * slope_factor
-        return q
+        # Rate per unit depth: K_sat × (theta - theta_fc) × (1 + excess_frac).
+        # Hydrotel-style nonlinearity: faster drainage near saturation.
+        total_drainage = K_sat * excess * (1.0 + excess_frac)
+        q_vert = total_drainage * f_vert
+        q_lat = total_drainage * (1.0 - f_vert)
+        return q_vert, q_lat
 
     def _darcy_flux(
         self,
@@ -164,10 +170,10 @@ class SoilModule(nn.Module):
         theta_wp_1: Tensor,
         theta_wp_2: Tensor,
         theta_wp_3: Tensor,
-        slope_factor: Tensor | None = None,
-        krec: Tensor | None = None,
+        f_vert_1: Tensor,
+        f_vert_2: Tensor,
+        f_vert_3: Tensor,
         vg_n: Tensor | None = None,
-        k_interflow: Tensor | None = None,
         z2: Tensor | None = None,
         z3: Tensor | None = None,
         rain_hours: Tensor | None = None,
@@ -229,14 +235,25 @@ class SoilModule(nn.Module):
             theta2, theta3, K_sat_2, theta_wp_2, porosity_2,
             theta_wp_3, porosity_3, dz=(z2 + z3) / 2, vg_n=vg_n,
         )
-        if krec is not None:
-            drainable_3 = soft_relu(theta3 - theta_wp_3, self.sharpness)
-            q_recharge = krec * z3 * drainable_3
-        else:
-            q_recharge = self._K(theta3, K_sat_3, theta_wp_3, porosity_3, vg_n=vg_n)
+        # Softmax-partition drainage above field capacity (replaces legacy
+        # _interflow + krec triplet, 2026-05-11). One rate driver per layer
+        # (K_sat × excess), one partition fraction per layer (f_vert ∈ (0,1)).
+        # Mass-conserving: vertical + lateral = 1, no equifinality cheat.
+        q_vert_1, q_inter_1 = self._partition_drainage(
+            theta1, theta_fc_1, porosity_1, K_sat_1, z1, f_vert_1,
+        )
+        q_vert_2, q_inter_2 = self._partition_drainage(
+            theta2, theta_fc_2, porosity_2, K_sat_2, z2, f_vert_2,
+        )
+        q_recharge, q_inter_3 = self._partition_drainage(
+            theta3, theta_fc_3, porosity_3, K_sat_3, z3, f_vert_3,
+        )
 
-        q_inter_1 = self._interflow(theta1, theta_fc_1, porosity_1, z1, slope_factor, k_interflow=k_interflow)
-        q_inter_2 = self._interflow(theta2, theta_fc_2, porosity_2, z2, slope_factor, k_interflow=k_interflow)
+        # Add the partition's vertical component to Darcy flux (different
+        # mechanisms — Darcy is gradient-driven, partition is gravity-fast
+        # above FC). Total downward flux from a layer is their sum.
+        q12 = q12 + q_vert_1
+        q23 = q23 + q_vert_2
 
         # ── Water-balance-safe mass balance ──────────────────────────────
         # avail = water that can be EXTRACTED (above theta_wp).  Eau sous wp
@@ -274,21 +291,24 @@ class SoilModule(nn.Module):
 
         drainable_3_avail = soft_relu(theta3 - theta_wp_3, self.sharpness) * z3
         avail_3 = drainable_3_avail + torch.clamp(q23_s, min=0.0) + torch.clamp(ov2, min=0.0)
-        pos_demand_3 = torch.clamp(ET3_m, min=0.0) + torch.clamp(q_recharge, min=0.0)
+        pos_demand_3 = (torch.clamp(ET3_m, min=0.0)
+                        + torch.clamp(q_recharge, min=0.0)
+                        + torch.clamp(q_inter_3, min=0.0))
         sf3 = torch.where(
             pos_demand_3 > 1e-10,
             torch.clamp(avail_3 / pos_demand_3, min=0.0, max=1.0),
             torch.ones_like(avail_3),
         )
         q_recharge_s = torch.where(q_recharge > 0, q_recharge * sf3, q_recharge)
+        q_inter_3_s = q_inter_3 * sf3
 
-        theta3_raw = theta3 + (q23_s + ov2 - ET3_m * sf3 - q_recharge_s) / z3
+        theta3_raw = theta3 + (q23_s + ov2 - ET3_m * sf3 - q_recharge_s - q_inter_3_s) / z3
         ov3 = soft_relu(theta3_raw - porosity_3, self.sharpness) * z3
         theta3_new = torch.clamp(theta3_raw - ov3 / z3, min=0.0, max=1.0)
 
         # Overflow cascade: ov2 → L3 (above), ov3 → recharge
         R_surface = (excess_1 + ov1 + R_infilt_excess) * 1e3   # mm/day
-        interflow = (q_inter_1_s + q_inter_2_s) * 1e3         # mm/day
-        baseflow = (q_recharge_s + ov3) * 1e3                  # mm/day
+        interflow = (q_inter_1_s + q_inter_2_s + q_inter_3_s) * 1e3  # mm/day
+        baseflow = (q_recharge_s + ov3) * 1e3   # mm/day
 
         return theta1_new, theta2_new, theta3_new, R_surface, interflow, baseflow

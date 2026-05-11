@@ -156,7 +156,7 @@ def test_to_dict_keys():
     core = {"etp", "etr", "snowmelt", "lateral_mm", "recharge", "q_baseflow", "q_lateral", "q_upstream"}
     keys = set(diag.to_dict().keys())
     assert core.issubset(keys), f"Missing keys: {core - keys}"
-    assert keys - core <= {"T_water"}, f"Unexpected keys: {keys - core - {'T_water'}}"
+    assert keys - core <= {"T_water", "swe"}, f"Unexpected keys: {keys - core - {'T_water', 'swe'}}"
 
 
 def test_units_dict():

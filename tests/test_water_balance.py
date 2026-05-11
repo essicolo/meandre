@@ -28,6 +28,7 @@ def test_soil_mass_conservation():
     fc = torch.ones(n) * 0.35
     wp = torch.ones(n) * 0.15
 
+    f_vert = torch.full((n,), 0.5)
     t1, t2, t3, R_surface, interflow, baseflow = soil(
         P_eff, ET1, ET2, ET3,
         theta1, theta2, theta3,
@@ -35,6 +36,7 @@ def test_soil_mass_conservation():
         por, por, por,
         fc, fc, fc,
         wp, wp, wp,
+        f_vert, f_vert, f_vert,
     )
 
     # Total water in column before and after (m3/m3 * m thickness -> m, then *1e3 -> mm)

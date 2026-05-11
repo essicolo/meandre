@@ -85,8 +85,6 @@ model = HydroModel(
     use_temporal=True, use_residual=True,
     use_travel_time_attn=True, use_temperature=True,
     dropout=mcfg.get("dropout", 0.0),
-    concrete_dropout=mcfg.get("concrete_dropout", False),
-    concrete_init_p=mcfg.get("concrete_init_p", 0.1),
     param_mode=mcfg.get("param_mode", "nerf"),
     soil_z1=sc.get("z1", 0.30),
     soil_bounds=soil_bounds,

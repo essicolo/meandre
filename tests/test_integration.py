@@ -122,8 +122,14 @@ def test_loss_is_differentiable():
     assert loss.isfinite(), f"Loss is not finite: {loss}"
     loss.backward()
 
-    # Params that are legitimately gradient-free (submodules not activated by this graph)
-    expected_no_grad = {"routing.lake.log_k_lake", "routing.lake.log_beta"}
+    # Params that are legitimately gradient-free (submodules not activated by this graph).
+    # noise_head{,_et,_swe} see no gradient when their w_nll{,_et,_swe} = 0 — by design.
+    expected_no_grad = {
+        "routing.lake.log_k_lake", "routing.lake.log_beta",
+        "noise_head.log_sigma_a", "noise_head.log_sigma_b",
+        "noise_head_et.log_sigma_a", "noise_head_et.log_sigma_b",
+        "noise_head_swe.log_sigma_a", "noise_head_swe.log_sigma_b",
+    }
 
     no_grad_params = []
     zero_grad_params = []

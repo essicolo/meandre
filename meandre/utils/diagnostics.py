@@ -64,6 +64,10 @@ class SimDiagnostics:
     q_lateral: Tensor  # (T, N) m³/s
     q_upstream: Tensor # (T, N) m³/s
 
+    # State snapshots (per timestep, captured after the vertical update).
+    # Used by multi-objective NLL against remote-sensed observations.
+    swe: Tensor | None = None      # (T, N) mm — snow water equivalent
+
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled
 
@@ -78,15 +82,17 @@ class SimDiagnostics:
     def to_dict(self) -> dict[str, Tensor]:
         """Return {name: tensor} for easy NetCDF export."""
         d = {
-            "etp":        self.etp,
-            "etr":        self.etr,
-            "snowmelt":   self.snowmelt,
+            "etp": self.etp,
+            "etr": self.etr,
+            "snowmelt": self.snowmelt,
             "lateral_mm": self.lateral_mm,
-            "recharge":   self.recharge,
+            "recharge": self.recharge,
             "q_baseflow": self.q_baseflow,
-            "q_lateral":  self.q_lateral,
+            "q_lateral": self.q_lateral,
             "q_upstream": self.q_upstream,
         }
+        if self.swe is not None:
+            d["swe"] = self.swe
         if self.T_water is not None:
             d["T_water"] = self.T_water
         return d
@@ -94,15 +100,17 @@ class SimDiagnostics:
     @property
     def units(self) -> dict[str, str]:
         d = {
-            "etp":        "mm/day",
-            "etr":        "mm/day",
-            "snowmelt":   "mm/day",
+            "etp": "mm/day",
+            "etr": "mm/day",
+            "snowmelt": "mm/day",
             "lateral_mm": "mm/day",
-            "recharge":   "mm/day",
+            "recharge": "mm/day",
             "q_baseflow": "mm/day",
-            "q_lateral":  "m3/s",
+            "q_lateral": "m3/s",
             "q_upstream": "m3/s",
         }
+        if self.swe is not None:
+            d["swe"] = "mm"
         if self.T_water is not None:
             d["T_water"] = "degC"
         return d
