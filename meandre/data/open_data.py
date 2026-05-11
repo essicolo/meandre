@@ -956,10 +956,26 @@ def download_forcing_open_meteo(
     cache_dir.mkdir(parents=True, exist_ok=True)
     out_path = cache_dir / "forcing_open_meteo.nc"
     if out_path.exists():
-        print(f"[open_data] Forcing cached: {out_path}")
-        return out_path
+        # Validate: only return cached if reasonably complete (NaN < 1%).
+        # An incomplete download (e.g. abandoned after rate-limit) leaves a
+        # mostly-NaN file behind; we want the resumable cache to take over.
+        try:
+            import xarray as _xr
+            _ds = _xr.open_dataset(out_path)
+            nan_frac = float(_ds.pr.isnull().sum() / _ds.pr.size)
+            _ds.close()
+        except Exception:
+            nan_frac = 1.0
+        if nan_frac < 0.01:
+            print(f"[open_data] Forcing cached: {out_path}")
+            return out_path
+        print(f"[open_data] Cached forcing has {nan_frac*100:.1f}% NaN — "
+              f"resuming from chunk cache to fill gaps")
+        out_path.unlink()  # remove so we rebuild after chunk merge
 
     import json
+    import time
+    import urllib.error
     import urllib.parse
     import urllib.request
 
@@ -989,10 +1005,32 @@ def download_forcing_open_meteo(
     flat_pts = [(i, j, lats_grid[i], lons_grid[j])
                 for i in range(n_lat) for j in range(n_lon)]
     n_pts = len(flat_pts)
-    n_batches = (n_pts + batch_size - 1) // batch_size
 
-    print(f"[open_data] Open-Meteo grid: {n_lat}×{n_lon} = {n_pts} points  "
-          f"× {n_days} days  ({n_batches} batches)")
+    # Open-Meteo limits the response payload — split temporally if the request
+    # would exceed ~200k daily values (4 vars × N days × M points).
+    # Strategy: chunk the period into 1-year windows, loop over location batches.
+    MAX_VALUES_PER_REQUEST = 200_000
+    N_VARS = 4
+    days_per_chunk = max(1, MAX_VALUES_PER_REQUEST // (N_VARS * batch_size))
+    if days_per_chunk >= n_days:
+        # Single time chunk covering the whole period
+        chunks = [(dates[0], dates[-1])]
+    else:
+        # Year-by-year chunking is the simplest stable strategy
+        chunks = []
+        chunk_start = dates[0]
+        while chunk_start <= dates[-1]:
+            chunk_end = min(
+                chunk_start + pd.DateOffset(years=1) - pd.Timedelta(days=1),
+                dates[-1],
+            )
+            chunks.append((chunk_start, chunk_end))
+            chunk_start = chunk_end + pd.Timedelta(days=1)
+
+    n_batches = (n_pts + batch_size - 1) // batch_size
+    n_chunks = len(chunks)
+    print(f"[open_data] Open-Meteo grid: {n_lat}x{n_lon} = {n_pts} points  "
+          f"x {n_days} days  ({n_batches} loc batches x {n_chunks} time chunks)")
 
     URL = "https://archive-api.open-meteo.com/v1/era5"
     DAILY = (
@@ -1000,47 +1038,155 @@ def download_forcing_open_meteo(
         "wind_speed_10m_max"
     )
 
+    # Resumable cache: 1 file per chunk (year). Lets a run survive Open-Meteo
+    # rate-limit hits — the next run picks up where this one left off.
+    chunks_dir = cache_dir / "forcing_chunks"
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+
+    def _chunk_path(start: pd.Timestamp, end: pd.Timestamp) -> Path:
+        return (chunks_dir
+                / f"chunk_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.nc")
+
+    # Map each global date to its index in the (T, lat, lon) arrays
+    date_idx = {d: i for i, d in enumerate(dates)}
     failed = 0
-    for b in range(n_batches):
-        batch = flat_pts[b * batch_size:(b + 1) * batch_size]
-        lats_q = ",".join(f"{p[2]:.4f}" for p in batch)
-        lons_q = ",".join(f"{p[3]:.4f}" for p in batch)
-        params = {
-            "latitude":        lats_q,
-            "longitude":       lons_q,
-            "start_date":      start_date,
-            "end_date":        end_date,
-            "daily":           DAILY,
-            "timezone":        "GMT",
-            "wind_speed_unit": "ms",   # m/s instead of default km/h
-        }
-        full_url = URL + "?" + urllib.parse.urlencode(params)
+    total_calls = n_batches * n_chunks
+    call_idx = 0
+    chunks_loaded_from_cache = 0
+    chunks_just_downloaded = 0
 
-        try:
-            with urllib.request.urlopen(full_url, timeout=300) as r:
-                data = json.loads(r.read())
-        except Exception as e:
-            print(f"[open_data]   batch {b+1}/{n_batches} failed ({e})")
-            failed += len(batch)
-            continue
+    for chunk_start, chunk_end in chunks:
+        chunk_file = _chunk_path(chunk_start, chunk_end)
+        chunk_dates = pd.date_range(chunk_start, chunk_end, freq="D")
+        chunk_t_idx = np.array([date_idx[d] for d in chunk_dates])
 
-        # Single location -> dict, multiple -> list of dicts
-        if not isinstance(data, list):
-            data = [data]
-
-        for loc, (i, j, _, _) in zip(data, batch):
-            d = loc.get("daily") or {}
+        # ── Resume from cached chunk if available ──
+        if chunk_file.exists():
             try:
-                pr[:, i, j]      = d["precipitation_sum"]
-                tasmin[:, i, j]  = d["temperature_2m_min"]
-                tasmax[:, i, j]  = d["temperature_2m_max"]
-                sfcWind[:, i, j] = d["wind_speed_10m_max"]
-            except (KeyError, ValueError) as e:
-                print(f"[open_data]   pt ({lats_grid[i]}, {lons_grid[j]}): {e}")
-                failed += 1
+                cds = xr.open_dataset(chunk_file)
+                pr[chunk_t_idx, :, :]      = cds["pr"].values
+                tasmin[chunk_t_idx, :, :]  = cds["tasmin"].values
+                tasmax[chunk_t_idx, :, :]  = cds["tasmax"].values
+                sfcWind[chunk_t_idx, :, :] = cds["sfcWind"].values
+                cds.close()
+                call_idx += n_batches  # advance counter
+                chunks_loaded_from_cache += 1
+                if chunks_loaded_from_cache % 5 == 0:
+                    print(f"  resumed {chunks_loaded_from_cache} chunks from cache",
+                          flush=True)
+                continue
+            except Exception as e:
+                print(f"  cache file {chunk_file.name} unreadable ({e}); re-downloading")
 
-        if (b + 1) % 5 == 0 or b + 1 == n_batches:
-            print(f"  batch {b+1}/{n_batches} done", flush=True)
+        cstart_str = chunk_start.strftime("%Y-%m-%d")
+        cend_str = chunk_end.strftime("%Y-%m-%d")
+        chunk_failed_any = False
+
+        # Allocate per-chunk arrays so we can persist on success
+        chunk_pr      = np.full((len(chunk_dates), n_lat, n_lon), np.nan, dtype=np.float32)
+        chunk_tasmin  = np.full_like(chunk_pr, np.nan)
+        chunk_tasmax  = np.full_like(chunk_pr, np.nan)
+        chunk_sfcWind = np.full_like(chunk_pr, np.nan)
+
+        for b in range(n_batches):
+            call_idx += 1
+            batch = flat_pts[b * batch_size:(b + 1) * batch_size]
+            lats_q = ",".join(f"{p[2]:.4f}" for p in batch)
+            lons_q = ",".join(f"{p[3]:.4f}" for p in batch)
+            params = {
+                "latitude":        lats_q,
+                "longitude":       lons_q,
+                "start_date":      cstart_str,
+                "end_date":        cend_str,
+                "daily":           DAILY,
+                "timezone":        "GMT",
+                "wind_speed_unit": "ms",
+            }
+            full_url = URL + "?" + urllib.parse.urlencode(params)
+
+            data = None
+            for attempt in range(4):
+                try:
+                    with urllib.request.urlopen(full_url, timeout=300) as r:
+                        data = json.loads(r.read())
+                    break
+                except urllib.error.HTTPError as e:
+                    if e.code == 429 and attempt < 3:
+                        # Rate limit — exponential backoff
+                        wait = 30 * (2 ** attempt)  # 30, 60, 120, 240 s
+                        print(f"  call {call_idx}/{total_calls}: HTTP 429, "
+                              f"waiting {wait}s (attempt {attempt+1}/4)...",
+                              flush=True)
+                        time.sleep(wait)
+                        continue
+                    print(f"[open_data]   call {call_idx}/{total_calls} "
+                          f"({cstart_str}..{cend_str}, batch {b+1}/{n_batches}) "
+                          f"failed (HTTP {e.code})")
+                    break
+                except Exception as e:
+                    print(f"[open_data]   call {call_idx}/{total_calls} "
+                          f"({cstart_str}..{cend_str}, batch {b+1}/{n_batches}) "
+                          f"failed ({e})")
+                    break
+
+            if data is None:
+                failed += len(batch)
+                chunk_failed_any = True
+                # Pace ourselves to avoid further 429s
+                time.sleep(1.0)
+                continue
+
+            # Pacing: ~120 calls/min keeps us comfortably under Open-Meteo's
+            # 600/min free-tier limit even with parallel users on the same IP.
+            time.sleep(0.5)
+
+            if not isinstance(data, list):
+                data = [data]
+
+            for loc, (i, j, _, _) in zip(data, batch):
+                d = loc.get("daily") or {}
+                try:
+                    chunk_pr[:, i, j]      = d["precipitation_sum"]
+                    chunk_tasmin[:, i, j]  = d["temperature_2m_min"]
+                    chunk_tasmax[:, i, j]  = d["temperature_2m_max"]
+                    chunk_sfcWind[:, i, j] = d["wind_speed_10m_max"]
+                except (KeyError, ValueError) as e:
+                    print(f"[open_data]   pt ({lats_grid[i]}, {lons_grid[j]}): {e}")
+                    failed += 1
+                    chunk_failed_any = True
+
+            if call_idx % 10 == 0 or call_idx == total_calls:
+                print(f"  call {call_idx}/{total_calls} done", flush=True)
+
+        # ── Persist this chunk if it succeeded fully ──
+        if not chunk_failed_any:
+            chunk_ds = xr.Dataset(
+                {
+                    "pr":      (("time", "latitude", "longitude"), chunk_pr),
+                    "tasmin":  (("time", "latitude", "longitude"), chunk_tasmin),
+                    "tasmax":  (("time", "latitude", "longitude"), chunk_tasmax),
+                    "sfcWind": (("time", "latitude", "longitude"), chunk_sfcWind),
+                },
+                coords={
+                    "time": chunk_dates,
+                    "latitude": lats_grid,
+                    "longitude": lons_grid,
+                },
+            )
+            chunk_ds.to_netcdf(chunk_file)
+            chunks_just_downloaded += 1
+
+        # Copy chunk arrays into the global ones (regardless of full success,
+        # we keep what we got — but only chunks fully OK are cached)
+        pr[chunk_t_idx, :, :]      = chunk_pr
+        tasmin[chunk_t_idx, :, :]  = chunk_tasmin
+        tasmax[chunk_t_idx, :, :]  = chunk_tasmax
+        sfcWind[chunk_t_idx, :, :] = chunk_sfcWind
+
+    if chunks_loaded_from_cache or chunks_just_downloaded:
+        print(f"[open_data] Chunks: {chunks_loaded_from_cache} from cache, "
+              f"{chunks_just_downloaded} downloaded this run "
+              f"(of {n_chunks} total)", flush=True)
 
     if failed > 0:
         print(f"[open_data] {failed}/{n_pts} grid points failed (NaN-filled)")
@@ -1079,6 +1225,263 @@ def download_forcing_open_meteo(
     ds.to_netcdf(out_path)
     print(f"[open_data] Forcing saved: {out_path}  ({n_days} days × {n_lat}×{n_lon})")
     return out_path
+
+
+# ── Hydrometric observations via HYDAT (ECCC) ───────────────────────────────
+
+
+def download_observations_hydat(
+    bbox: tuple[float, float, float, float],
+    cache_dir: str | Path,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> tuple[Path, Path] | None:
+    """Download daily streamflow observations from HYDAT (ECCC) within bbox.
+
+    HYDAT is the official Canadian hydrometric archive maintained by
+    Environment and Climate Change Canada. The full SQLite snapshot is
+    cached locally (~140 MB) on first call.
+
+    Parameters
+    ----------
+    bbox :
+        ``(west, south, east, north)`` in EPSG:4326.
+    cache_dir :
+        Directory where HYDAT SQLite and the parquet outputs are cached.
+    start_date, end_date :
+        ISO dates (``YYYY-MM-DD``) to filter observations. ``None`` keeps
+        all available data.
+
+    Returns
+    -------
+    Tuple ``(stations_parquet, observations_parquet)`` or ``None``.
+
+    The parquet outputs are ready to ingest into ``basin.duckdb``:
+
+    - **stations**: ``station_id, station_name, lon, lat,
+      drainage_area_km2, regulated``
+    - **observations**: ``station_id, date, Q_m3s``
+    """
+    import re
+    import sqlite3
+    import urllib.request
+    import zipfile
+
+    import pandas as pd
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sqlite_path = cache_dir / "Hydat.sqlite3"
+
+    if not sqlite_path.exists():
+        # Discover latest snapshot URL
+        base_url = "https://collaboration.cmc.ec.gc.ca/cmc/hydrometrics/www/"
+        print("[hydat] Querying HYDAT snapshot index...")
+        try:
+            with urllib.request.urlopen(base_url, timeout=60) as r:
+                html = r.read().decode("utf-8", errors="ignore")
+            snapshots = sorted(
+                set(re.findall(r"Hydat_sqlite3_\d{8}\.zip", html, re.I)),
+                reverse=True,
+            )
+            if not snapshots:
+                print("[hydat] No HYDAT snapshots found at " + base_url)
+                return None
+            zip_name = snapshots[0]
+        except Exception as e:
+            print(f"[hydat] Snapshot index query failed ({e})")
+            return None
+
+        snapshot_url = base_url + zip_name
+        zip_path = cache_dir / zip_name
+        if not zip_path.exists():
+            print(f"[hydat] Downloading {snapshot_url} (~140 MB)...")
+            try:
+                urllib.request.urlretrieve(snapshot_url, str(zip_path))
+            except Exception as e:
+                print(f"[hydat] Download failed ({e})")
+                return None
+
+        print("[hydat] Extracting SQLite from zip...")
+        with zipfile.ZipFile(zip_path) as zf:
+            extracted = False
+            for name in zf.namelist():
+                if name.lower().endswith(".sqlite3"):
+                    with zf.open(name) as src, open(sqlite_path, "wb") as dst:
+                        dst.write(src.read())
+                    extracted = True
+                    break
+            if not extracted:
+                print("[hydat] No .sqlite3 found inside zip")
+                return None
+        # Free the zip (~283 MB) — sqlite3 is what we need from now on
+        zip_path.unlink(missing_ok=True)
+
+    # ── Query stations within bbox ────────────────────────────────────
+    # REGULATED lives in STN_REGULATION (year_from/year_to ranges per station);
+    # we take MAX so a station ever-regulated is flagged 1.
+    west, south, east, north = bbox
+    con = sqlite3.connect(str(sqlite_path))
+    stations = pd.read_sql(
+        "SELECT s.STATION_NUMBER as station_id, "
+        "s.STATION_NAME as station_name, "
+        "s.LATITUDE as lat, s.LONGITUDE as lon, "
+        "s.DRAINAGE_AREA_GROSS as drainage_area_km2, "
+        "s.HYD_STATUS as hyd_status, "
+        "s.REAL_TIME as real_time, "
+        "COALESCE(MAX(r.REGULATED), 0) as regulated "
+        "FROM STATIONS s "
+        "LEFT JOIN STN_REGULATION r ON s.STATION_NUMBER = r.STATION_NUMBER "
+        "WHERE s.LONGITUDE BETWEEN ? AND ? "
+        "AND s.LATITUDE BETWEEN ? AND ? "
+        "GROUP BY s.STATION_NUMBER",
+        con,
+        params=(west, east, south, north),
+    )
+
+    if len(stations) == 0:
+        print(f"[hydat] No HYDAT stations in bbox {bbox}")
+        con.close()
+        return None
+    print(f"[hydat] {len(stations)} stations in bbox")
+
+    # ── Query daily flows (DLY_FLOWS is wide: FLOW1..FLOW31 per month) ──
+    placeholders = ",".join("?" for _ in stations["station_id"])
+    flows_wide = pd.read_sql(
+        f"SELECT * FROM DLY_FLOWS WHERE STATION_NUMBER IN ({placeholders})",
+        con,
+        params=tuple(stations["station_id"]),
+    )
+    con.close()
+
+    if len(flows_wide) == 0:
+        print("[hydat] No DLY_FLOWS rows for these stations")
+        return None
+
+    # Unpivot FLOW1..FLOW31 → long format
+    flow_cols = [c for c in flows_wide.columns if re.fullmatch(r"FLOW\d+", c)]
+    long = flows_wide.melt(
+        id_vars=["STATION_NUMBER", "YEAR", "MONTH"],
+        value_vars=flow_cols,
+        var_name="_day_col",
+        value_name="Q_m3s",
+    )
+    long["day"] = long["_day_col"].str.extract(r"FLOW(\d+)").astype(int)
+    long = long.dropna(subset=["Q_m3s"])
+    long["date"] = pd.to_datetime(
+        long.rename(columns={"YEAR": "year", "MONTH": "month"})
+            [["year", "month", "day"]],
+        errors="coerce",
+    )
+    long = long.dropna(subset=["date"])
+    long = (
+        long[["STATION_NUMBER", "date", "Q_m3s"]]
+        .rename(columns={"STATION_NUMBER": "station_id"})
+        .sort_values(["station_id", "date"])
+        .reset_index(drop=True)
+    )
+
+    if start_date:
+        long = long[long["date"] >= pd.Timestamp(start_date)]
+    if end_date:
+        long = long[long["date"] <= pd.Timestamp(end_date)]
+
+    if len(long) == 0:
+        print(f"[hydat] No observations in date range")
+        return None
+
+    # ── Save parquets ─────────────────────────────────────────────────
+    stations_path = cache_dir / "hydat_stations.parquet"
+    obs_path = cache_dir / "hydat_observations.parquet"
+    stations.to_parquet(stations_path)
+    long.to_parquet(obs_path)
+    print(f"[hydat] Saved {len(stations)} stations, {len(long):,} obs to "
+          f"{stations_path.name}, {obs_path.name}")
+    return stations_path, obs_path
+
+
+def populate_basin_observations(
+    basin_db: str | Path,
+    stations_parquet: str | Path,
+    observations_parquet: str | Path,
+    max_snap_km: float = 5.0,
+) -> int:
+    """Insert HYDAT stations and observations into a basin DuckDB.
+
+    Each station is snapped to the nearest node in the basin's ``nodes``
+    table by approximate Euclidean distance. Stations farther than
+    *max_snap_km* from any node are dropped with a warning.
+
+    The ``stations`` and ``observations`` tables are fully replaced
+    (DELETE + INSERT) — call once per basin.
+
+    Returns
+    -------
+    Number of observations inserted.
+    """
+    import duckdb
+    import numpy as np
+    import pandas as pd
+
+    stations = pd.read_parquet(stations_parquet)
+    obs = pd.read_parquet(observations_parquet)
+
+    con = duckdb.connect(str(basin_db))
+    nodes = con.execute("SELECT node_idx, lon, lat FROM nodes").df()
+    if len(nodes) == 0:
+        print("[basin] basin DuckDB has no nodes — aborting observation insert")
+        con.close()
+        return 0
+
+    # Snap each station to nearest node (equirectangular approx — good enough
+    # for the local-scale snap, and ~10× faster than haversine).
+    node_lons = nodes["lon"].to_numpy()
+    node_lats = nodes["lat"].to_numpy()
+    cos_lat = float(np.cos(np.radians(stations["lat"].mean())))
+
+    snapped_idx, snapped_dist = [], []
+    for _, s in stations.iterrows():
+        dx = (node_lons - s["lon"]) * 111.0 * cos_lat
+        dy = (node_lats - s["lat"]) * 111.0
+        d = np.hypot(dx, dy)
+        i = int(np.argmin(d))
+        snapped_idx.append(int(nodes["node_idx"].iloc[i]))
+        snapped_dist.append(float(d[i]))
+
+    stations = stations.assign(node_idx=snapped_idx, snap_dist_km=snapped_dist)
+
+    far_mask = stations["snap_dist_km"] > max_snap_km
+    if far_mask.any():
+        skipped = stations.loc[far_mask, ["station_id", "snap_dist_km"]]
+        print(f"[basin] Skipping {len(skipped)} stations > {max_snap_km} km "
+              f"from any node:")
+        for _, r in skipped.iterrows():
+            print(f"  {r['station_id']}: {r['snap_dist_km']:.1f} km away")
+    stations = stations[~far_mask]
+
+    if len(stations) == 0:
+        print(f"[basin] No HYDAT stations within {max_snap_km} km of any node")
+        con.close()
+        return 0
+
+    obs = obs[obs["station_id"].isin(stations["station_id"])].copy()
+    obs = obs.rename(columns={"Q_m3s": "discharge"})
+
+    s_db = stations[["station_id", "node_idx", "lon", "lat",
+                     "drainage_area_km2"]].copy()
+    o_db = obs[["station_id", "date", "discharge"]].copy()
+
+    con.execute("DELETE FROM stations")
+    con.execute("DELETE FROM observations")
+    con.register("s_df", s_db)
+    con.register("o_df", o_db)
+    con.execute("INSERT INTO stations SELECT * FROM s_df")
+    con.execute("INSERT INTO observations SELECT * FROM o_df")
+    con.close()
+
+    print(f"[basin] Inserted {len(stations)} stations, {len(obs):,} obs into "
+          f"{basin_db}")
+    return len(obs)
 
 
 # ── Convenience: download all ────────────────────────────────────────────────

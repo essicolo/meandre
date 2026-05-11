@@ -102,9 +102,18 @@ class TrainingConfig:
     patience: int = 0
 
     # Metric used for best-checkpoint selection and early stopping.
-    # Must match a key in the validation metrics dict (e.g. "nse", "kge",
-    # "kge_sta", "kge_med").
+    # - validation metric keys ("nse", "kge", "kge_station", "kge_median"):
+    #   higher is better, no_improve counted on bare comparisons.
+    # - "loss" (train loss): lower is better, requires
+    #   ``best_metric_tolerance`` since train_loss is monotone-decreasing.
+    #   With tolerance, no_improve counts epochs where the relative
+    #   improvement is less than `best_metric_tolerance` (0.5% by default).
     best_metric: str = "nse"
+
+    # Relative improvement threshold for ``best_metric`` updates. Only used
+    # when best_metric is loss-like (lower-is-better and monotone). For
+    # higher-is-better metrics like KGE that oscillate, set to 0.0.
+    best_metric_tolerance: float = 0.005
 
     # Number of warmup epochs for the LR scheduler.  Set to 0 for warm-start
     # fine-tuning where pre-trained weights don't need a ramp-up from ~zero LR.
@@ -282,7 +291,11 @@ class Trainer:
             )
             self.config.val_every = 1
 
-        self._best_val_metric = -float("inf")
+        # Best-metric init depends on direction (lower-is-better for loss-like)
+        self._best_metric_lower_is_better = self.config.best_metric in ("loss", "val_loss")
+        self._best_val_metric = (
+            float("inf") if self._best_metric_lower_is_better else -float("inf")
+        )
 
         # Autopilot state
         self._ap_w_residual_orig: float | None = None  # original w_residual
@@ -458,20 +471,40 @@ class Trainer:
                     step=epoch,
                 )
 
-            # Save best checkpoint (only when val was actually computed)
+            # Save best checkpoint (only when val was actually computed).
+            # Two regimes depending on best_metric direction:
+            #   - higher-is-better (kge, nse, ...): improvement = strictly larger
+            #   - lower-is-better (loss): improvement = relative drop > tolerance
+            #     (train_loss is monotone-decreasing, so a strict comparison
+            #     would never count no-improve and disable autopilot LR-plateau)
             _bm = self.config.best_metric
-            _cur = last_val_metrics.get(_bm, -999) if run_val else -999
-            if run_val and _cur > self._best_val_metric:
-                self._best_val_metric = _cur
-                epochs_without_improvement = 0
-                if self.checkpoint_path:
-                    self.model.save(self.checkpoint_path)
-                    print(f"  -> best checkpoint saved ({_bm}={self._best_val_metric:.4f})")
-                    logger.info(f"  -> best checkpoint saved ({_bm}={self._best_val_metric:.4f})")
-            elif run_val:
-                epochs_without_improvement += 1
-                print(f"  [no save] val_{_bm}={_cur}, "
-                      f"best={self._best_val_metric}, no_improve={epochs_without_improvement}/{self.config.patience}")
+            _tol = self.config.best_metric_tolerance
+            if _bm == "loss":
+                _cur = float(train_loss)
+            elif _bm == "val_loss":
+                _cur = last_val_metrics.get("loss", float("inf")) if run_val else float("inf")
+            else:
+                _cur = last_val_metrics.get(_bm, -float("inf")) if run_val else -float("inf")
+
+            tracked_now = run_val or (_bm == "loss")
+            if tracked_now:
+                if self._best_metric_lower_is_better:
+                    is_improvement = _cur < self._best_val_metric * (1 - _tol)
+                else:
+                    is_improvement = _cur > self._best_val_metric * (1 + _tol)
+
+                if is_improvement:
+                    self._best_val_metric = _cur
+                    epochs_without_improvement = 0
+                    if self.checkpoint_path:
+                        self.model.save(self.checkpoint_path)
+                        print(f"  -> best checkpoint saved ({_bm}={self._best_val_metric:.4f})")
+                        logger.info(f"  -> best checkpoint saved ({_bm}={self._best_val_metric:.4f})")
+                else:
+                    epochs_without_improvement += 1
+                    print(f"  [no save] {_bm}={_cur:.4f}, "
+                          f"best={self._best_val_metric:.4f}, "
+                          f"no_improve={epochs_without_improvement}/{self.config.patience}")
 
             # ── Autopilot ──────────────────────────────────────────────
             if self.config.autopilot and run_val:
@@ -1196,7 +1229,14 @@ class Trainer:
             )
 
         # ── 3. Smart restart on regression + drift ───────────────────
-        regression = (self._best_val_metric - kge_sta) / (abs(self._best_val_metric) + 1e-8)
+        # Note: regression is meaningful only for higher-is-better metrics.
+        # When best_metric is loss-like (lower-is-better) the formula is
+        # inverted; we just disable smart restart in that case and rely on
+        # LR plateau detection above.
+        if self._best_metric_lower_is_better:
+            regression = -1.0  # never triggers
+        else:
+            regression = (self._best_val_metric - kge_sta) / (abs(self._best_val_metric) + 1e-8)
         drift_detected = (beta_drift > cfg.autopilot_beta_threshold
                           or gamma_drift > cfg.autopilot_gamma_threshold)
 

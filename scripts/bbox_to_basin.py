@@ -9,6 +9,18 @@ Pipeline:
           ->  download_forcing_open_meteo (Open-Meteo ERA5 archive)
           ->  forcing.nc (consumable by gridded_forcing.extract_forcing())
 
+    Optionally, with --with-observations:
+          ->  download_observations_hydat (ECCC HYDAT, ~140 MB cached)
+          ->  populate stations + observations tables in basin.duckdb
+
+Cache root (HYDAT shared cache):
+    Defaults to ``$MEANDRE_DATA_DIR`` if set, otherwise ``<repo>/.models/_shared``
+    (gitignored). Override with ``--cache-dir``.
+
+Per-case geo cache:
+    Defaults to ``<output>.parent/geo_cache/`` so each case keeps its own
+    rasters next to its basin.duckdb (e.g. ``.models/slso-od/data/geo_cache/``).
+
 Usage
 -----
 ::
@@ -34,8 +46,23 @@ only the first call hits the network.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+
+def _default_cache_root() -> Path:
+    """Resolve the shared data cache root (used for HYDAT and other shared blobs).
+
+    Priority: ``$MEANDRE_DATA_DIR`` env var, then ``<repo_root>/.models/_shared``
+    (relative to where this script lives, gitignored).
+    """
+    env = os.environ.get("MEANDRE_DATA_DIR")
+    if env:
+        return Path(env)
+    # scripts/ is a sibling of .models/ at repo root
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / ".models" / "_shared"
 
 
 def _parse_bbox(s: str) -> tuple[float, float, float, float]:
@@ -77,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--cache-dir", default=None,
-        help="Geo raster cache (default: <output_parent>/geo_cache)",
+        help="Per-case geo raster cache directory. "
+             "Default: <output>.parent/geo_cache/ (next to the basin.duckdb).",
     )
     parser.add_argument(
         "--min-area-km2", type=float, default=1.5,
@@ -86,6 +114,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-subcatchments", type=int, default=3500,
         help="Maximum number of subcatchments (default: 3500)",
+    )
+    parser.add_argument(
+        "--max-dem-pixels", type=int, default=4_000_000,
+        help="If the DEM has more pixels than this, it is bilinear-downsampled "
+             "before pysheds (depression-fill segfaults past ~5 MP on Windows). "
+             "Default: 4_000_000 (~150 m on a 3.4 deg bbox).",
     )
     parser.add_argument(
         "--with-forcing", action="store_true",
@@ -100,8 +134,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Forcing end date (YYYY-MM-DD), required with --with-forcing",
     )
     parser.add_argument(
-        "--forcing-resolution-deg", type=float, default=0.1,
-        help="Open-Meteo grid spacing in degrees (default: 0.1 ≈ 11 km)",
+        "--forcing-resolution-deg", type=float, default=0.25,
+        help="Open-Meteo grid spacing in degrees (default: 0.25, ERA5 native "
+             "resolution ~28 km — going below this oversamples without "
+             "adding info, and increases the chance of HTTP 429 rate-limits).",
+    )
+    parser.add_argument(
+        "--with-observations", action="store_true",
+        help="Auto-fetch HYDAT (ECCC) discharge stations within bbox and "
+             "populate the basin.duckdb stations + observations tables. "
+             "Caches the HYDAT SQLite (~1.3 GB) in <cache-root>/hydat/.",
+    )
+    parser.add_argument(
+        "--max-snap-km", type=float, default=10.0,
+        help="Max distance (km) to snap a HYDAT station to a basin node "
+             "(default: 10). Stations farther are skipped.",
     )
     args = parser.parse_args(argv)
 
@@ -113,19 +160,36 @@ def main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    cache_dir = (
-        Path(args.cache_dir) if args.cache_dir
-        else output.parent / "geo_cache"
-    )
+    shared_cache = _default_cache_root()
+    # Identify the case from the output path. By convention the output lives at
+    # ``.models/<case-name>/data/basin.duckdb`` so the case-name is two levels
+    # up — falls back to the file stem (``basin``) for ad-hoc layouts.
+    if len(output.parents) >= 2 and output.parent.name == "data":
+        case_name = output.parent.parent.name
+    else:
+        case_name = output.stem
+    if args.cache_dir:
+        cache_dir = Path(args.cache_dir)
+    elif os.environ.get("MEANDRE_DATA_DIR"):
+        # If MEANDRE_DATA_DIR is set (e.g. D:/meandre_data), put the geo cache
+        # there too — keeps heavy rasters and forcing chunks off the SSD.
+        cache_dir = Path(os.environ["MEANDRE_DATA_DIR"]) / "geo_cache" / case_name
+    else:
+        cache_dir = output.parent / "geo_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
+    hydat_cache = shared_cache / "hydat"
+    hydat_cache.mkdir(parents=True, exist_ok=True)
 
     print(f"BBOX               : {bbox}")
     print(f"Outlet             : {outlet if outlet else 'AUTO (max-acc on edge)'}")
     print(f"Output DB          : {output}")
     print(f"Geo cache          : {cache_dir}")
+    print(f"Shared cache       : {shared_cache}")
+    if args.with_observations:
+        print(f"HYDAT cache        : {hydat_cache}")
     print(f"min_area_km2       : {args.min_area_km2}")
     print(f"max_subcatchments  : {args.max_subcatchments}")
-    print(f"Surface estimée    : ~{(bbox[2]-bbox[0])*111:.0f} × {(bbox[3]-bbox[1])*111:.0f} km")
+    print(f"Surface estimee    : ~{(bbox[2]-bbox[0])*111:.0f} x {(bbox[3]-bbox[1])*111:.0f} km")
     print()
 
     from meandre.data.open_data import download_all
@@ -158,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         lai_path              = rasters["lai"],
         nrcan_lc_path         = rasters["nrcan_lc"],
         water_polygons_path   = rasters["water_polygons"],
+        max_dem_pixels        = args.max_dem_pixels,
     )
 
     if args.with_forcing:
@@ -176,6 +241,30 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         print(f"  forcing.nc: {forcing_path}")
         print(f"  use with slso.py via [paths] forcing_cache={forcing_path}")
+
+    if args.with_observations:
+        print()
+        print("=== Step 4: Download HYDAT observations ===")
+        from meandre.data.open_data import (
+            download_observations_hydat,
+            populate_basin_observations,
+        )
+        result = download_observations_hydat(
+            bbox       = bbox,
+            cache_dir  = hydat_cache,
+            start_date = args.start,
+            end_date   = args.end,
+        )
+        if result is None:
+            print("[!] HYDAT fetch failed (no stations / API down)", file=sys.stderr)
+        else:
+            stations_path, obs_path = result
+            populate_basin_observations(
+                basin_db             = output,
+                stations_parquet     = stations_path,
+                observations_parquet = obs_path,
+                max_snap_km          = args.max_snap_km,
+            )
 
     print()
     print(f"=== Done: {output} ===")

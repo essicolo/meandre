@@ -304,7 +304,7 @@ Cartes des champs moyens annuels sur le bassin SLSO.
 
 ```{python}
 #| label: fig-spatial-maps
-#| fig-cap: "Champs hydrologiques moyens annuels — SLSO"
+#| fig-cap: "Champs hydrologiques moyens annuels - SLSO"
 
 lon = node_coords[:, 0].cpu().numpy()
 lat = node_coords[:, 1].cpu().numpy()

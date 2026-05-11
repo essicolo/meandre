@@ -166,17 +166,50 @@ python scripts/mc_uncertainty.py
 # Basin only (auto-detected outlet on the bbox edge, max-accumulation cell)
 python scripts/bbox_to_basin.py `
     --bbox=-71.5,46.55,-71.3,46.75 `
-    --output=notebooks/test/basin.duckdb
+    --output=.models/test/data/basin.duckdb
 
-# Basin + daily forcing (Open-Meteo ERA5 archive, 2000–2024)
+# Full pipeline: basin + daily forcing + HYDAT discharge observations
 python scripts/bbox_to_basin.py `
     --bbox=-73.0,44.5,-69.6,47.7 `
-    --output=notebooks/slso/data/slso-od.duckdb `
-    --with-forcing --start=2000-01-01 --end=2024-12-31
+    --output=.models/slso-od/data/basin.duckdb `
+    --with-forcing --start=2000-01-01 --end=2024-12-31 `
+    --with-observations
 ```
 
 NOTE on PowerShell: values starting with `-` (negative coords) require
 the `--bbox=...` syntax (with `=`) to avoid being parsed as new flags.
+
+### Cases layout (`.models/`)
+
+Every modelling case lives under `.models/<case-name>/` (gitignored).
+Each case is self-contained: config, data, checkpoints, results.
+
+```
+.models/                       # gitignored
+  _shared/
+    hydat/
+      Hydat.sqlite3            # ~1.3 GB, shared across all Canada cases
+  slso-od/
+    config/
+      slso-od.toml             # training config
+    data/
+      basin.duckdb             # built by bbox_to_basin
+      forcing.nc               # built by bbox_to_basin
+      geo_cache/               # rasters (re-creatable)
+    checkpoints/
+      best.pt
+    results/
+    runs.duckdb
+  <other-case>/
+    ...
+```
+
+**Override the shared cache root** via `$MEANDRE_DATA_DIR` env var (default:
+`<repo>/.models/_shared/`).
+
+**Per-case geo cache** defaults to `<output>.parent/geo_cache/`, so passing
+`--output=.models/slso-od/data/basin.duckdb` puts rasters in
+`.models/slso-od/data/geo_cache/` automatically.
 
 ### Data sources used
 
@@ -190,7 +223,8 @@ the `--bbox=...` syntax (with `=`) to avoid being parsed as new flags.
 | LAI | MODIS MOD15A2H | 500 m | Planetary Computer (STAC) |
 | Lake polygons (small) | OpenStreetMap | vector | Overpass API |
 | River geometry (viz) | OpenStreetMap | vector | Overpass API |
-| Daily forcing (P, T) | Open-Meteo ERA5 archive | 0.1° | Open-Meteo HTTP |
+| Daily forcing (P, T_min, T_max, sfcWind) | Open-Meteo ERA5 archive | 0.1° | Open-Meteo HTTP |
+| Discharge observations (CA) | HYDAT (ECCC) | per-station | direct SQLite snapshot |
 
 ### What the pipeline computes
 
@@ -201,11 +235,14 @@ the `--bbox=...` syntax (with `=`) to avoid being parsed as new flags.
 5. **Zonal statistics per node** — drainage area, slope, elevation, aspect, land cover fractions, soil texture, LAI
 6. **Pedotransfer functions (Saxton-Rawls 2006)** — porosity, theta_fc, theta_wp, Ksat from sand/clay (physical init for NeRF)
 7. **Lake detection** — JRC permanent water (>75% occurrence) ∪ OSM water polygons (small lakes/reservoirs)
-8. **Forcing** (optional) — daily pr/tasmin/tasmax/sfcWind via Open-Meteo, gridded netCDF compatible with `extract_forcing()`
+8. **Forcing** (optional `--with-forcing`) — daily `pr/tasmin/tasmax/sfcWind` via Open-Meteo, gridded netCDF compatible with `extract_forcing()`
+9. **Discharge observations** (optional `--with-observations`, Canada only) — HYDAT (ECCC) stations within bbox snapped to basin nodes (`--max-snap-km`, default 10 km), with `regulated`/`hyd_status`/`real_time` flags preserved
 
 ### Known limitations
 
-* **Discharge observations are not auto-fetched.** `bbox_to_basin` produces the physical model only (basin + forcing). To train, you still need to populate `stations` and `observations` tables in the DuckDB from your hydrometric source (e.g. ECCC HYDAT, Quebec MELCC). See `meandre/data/basin_cache.py` for the schema.
+* **Withdrawals/water uses are not auto-fetched.** Quebec auto-declarations are unstructured Excel files with no public CKAN equivalent — keep using `scripts/ingest_withdrawals.py` to import a manually curated parquet (e.g. `io-eau-meandre.parquet`).
+* **Reservoir operations are private.** Only dam/reservoir locations are public (OSM, GRanD); the operations of Hydro-Québec reservoirs are commercial. The model can still flag downstream nodes as "regulated" via the HYDAT `regulated` column, but it must learn the regulated pattern from `Q_obs` alone.
+* **HYDAT auto-fetch is Canada-only.** For US bbox use USGS NWIS, for Europe use EWA, etc. — not yet wired.
 * **Outlet auto-detection** picks the max-acc cell on the bbox *edge* — works for "natural" basins where one large outlet dominates. For composite regions (multiple non-overlapping basins), pass `--outlet` explicitly or supply `basin_mask_gdf` programmatically.
 * **Travel time** is hardcoded to 1 day per edge (Muskingum K, x are learned by the NeRF anyway).
 * **Open-Meteo ERA5** has known biases over Quebec (orographic precip on Appalachians); meandre's GRU + NeRF are designed to learn around these systematic biases.

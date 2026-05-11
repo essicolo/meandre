@@ -17,9 +17,17 @@ fdc_training.log
 *.nc
 *.nc.bak*
 *.tif
+*.sqlite3
+Hydat_sqlite3_*.zip
 *.npy
 notebooks/slso/data/geo_cache/
 notebooks/slso/results/
+
+# --- ALL EXPERIMENTS / CASES ---
+# Each case has its own folder under .models/<case-name>/ with config,
+# data (basin.duckdb, forcing.nc, geo_cache/), checkpoints, results.
+# .models/_shared/ holds caches reusable across cases (HYDAT SQLite, etc.)
+.models/
 
 # --- CONFIG ET SAUVEGARDES ---
 gitignore_bak

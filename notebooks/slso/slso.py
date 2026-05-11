@@ -489,6 +489,7 @@ train_cfg = TrainingConfig(
     tta_warmup_epochs = TTA_WARMUP_EPOCHS,
     patience = tcfg["patience"],
     best_metric = tcfg.get("best_metric", "nse"),
+    best_metric_tolerance = tcfg.get("best_metric_tolerance", 0.005),
     warmup_epochs = 0 if WARM_START else 5,
     lr_new_features_mult = LR_NEW_MULT if WARM_START else None,
     compile_modules = tcfg.get("compile_modules", False),

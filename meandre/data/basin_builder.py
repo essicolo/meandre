@@ -60,6 +60,7 @@ def build_basin(
     extra_stats: list[str] | None = None,
     normalise: bool = True,
     basin_mask_gdf=None,
+    max_dem_pixels: int = 4_000_000,
 ) -> BasinCache:
     """Build a complete basin DuckDB from open-data rasters.
 
@@ -94,7 +95,7 @@ def build_basin(
 
     # Step 1: Hydrological conditioning and flow routing
     print("[basin_builder] Step 1: DEM conditioning and flow routing...")
-    grid_data = _condition_dem(dem_path)
+    grid_data = _condition_dem(dem_path, max_dem_pixels=max_dem_pixels)
 
     # Step 2: Delineate subcatchments
     print("[basin_builder] Step 2: Delineating subcatchments...")
@@ -177,14 +178,25 @@ def build_basin(
 # ── Step 1: DEM conditioning ────────────────────────────────────────────────
 
 
-def _condition_dem(dem_path: Path) -> dict:
+def _condition_dem(dem_path: Path, max_dem_pixels: int = 4_000_000) -> dict:
     """Fill depressions, compute flow direction and accumulation.
 
     Results are cached as compact .npy arrays next to the DEM so subsequent
     calls skip the expensive priority-flood + numba compilation (~3–5 min).
     fdir is stored as uint8 (~150 MB) and acc as float32 (~600 MB) instead
     of uncompressed GeoTIFFs (~1.2 GB each).
+
+    Parameters
+    ----------
+    max_dem_pixels :
+        If the DEM has more pixels than this, it is bilinear-downsampled
+        before pysheds runs. Pysheds priority-flood depression filling
+        recurses deeply on large rasters and segfaults on Windows past
+        ~5 MP. 4 MP default is a safe cap (~150 m resolution on a
+        3.4 deg x 3.2 deg bbox like SLSO).
     """
+    import rasterio
+    from rasterio.enums import Resampling
     from pysheds.grid import Grid
     from pysheds.sview import Raster, ViewFinder
 
@@ -192,8 +204,43 @@ def _condition_dem(dem_path: Path) -> dict:
     fdir_cache = cache_dir / "fdir.npy"
     acc_cache  = cache_dir  / "acc.npy"
 
-    grid = Grid.from_raster(str(dem_path))
-    dem  = grid.read_raster(str(dem_path))
+    # Downsample if too large for pysheds in-memory routing.
+    with rasterio.open(dem_path) as _src:
+        n_pixels = _src.height * _src.width
+        src_h, src_w = _src.height, _src.width
+
+    routing_dem_path = dem_path
+    if n_pixels > max_dem_pixels:
+        routing_dem_path = cache_dir / "dem_routing.tif"
+        if not routing_dem_path.exists():
+            factor = float(np.sqrt(n_pixels / max_dem_pixels))
+            new_h = int(src_h / factor)
+            new_w = int(src_w / factor)
+            print(f"[basin_builder] DEM = {n_pixels/1e6:.2f} MP > "
+                  f"{max_dem_pixels/1e6:.2f} MP cap; "
+                  f"downsampling by {factor:.2f} -> {new_w}x{new_h} = "
+                  f"{new_h*new_w/1e6:.2f} MP", flush=True)
+            with rasterio.open(dem_path) as src:
+                data = src.read(
+                    1, out_shape=(new_h, new_w),
+                    resampling=Resampling.bilinear,
+                )
+                new_transform = src.transform * src.transform.scale(
+                    src_w / new_w, src_h / new_h,
+                )
+                profile = src.profile.copy()
+                profile.update(height=new_h, width=new_w,
+                               transform=new_transform)
+            with rasterio.open(routing_dem_path, "w", **profile) as dst:
+                dst.write(data, 1)
+            print(f"[basin_builder] Downsampled DEM -> {routing_dem_path}",
+                  flush=True)
+        else:
+            print(f"[basin_builder] Using cached downsampled DEM: "
+                  f"{routing_dem_path}", flush=True)
+
+    grid = Grid.from_raster(str(routing_dem_path))
+    dem  = grid.read_raster(str(routing_dem_path))
 
     if fdir_cache.exists() and acc_cache.exists():
         print("[basin_builder] DEM conditioning cached — loading fdir/acc...", flush=True)
