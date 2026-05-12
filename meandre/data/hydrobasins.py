@@ -31,7 +31,7 @@ import geopandas as gpd
 # "lake" variant includes lake polygons as separate basins.
 _URL_HYBAS_NA_L12 = (
     "https://data.hydrosheds.org/file/HydroBASINS/standard/"
-    "hybas_lake_na_lev12_v1c.zip"
+    "hybas_na_lev12_v1c.zip"
 )
 
 
@@ -41,11 +41,11 @@ def _download_hydrobasins_na(cache_dir: Path) -> Path:
     Idempotent: skips download and extraction if already present.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
-    shp_path = cache_dir / "hybas_lake_na_lev12_v1c.shp"
+    shp_path = cache_dir / "hybas_na_lev12_v1c.shp"
     if shp_path.exists():
         return shp_path
 
-    zip_path = cache_dir / "hybas_lake_na_lev12_v1c.zip"
+    zip_path = cache_dir / "hybas_na_lev12_v1c.zip"
     if not zip_path.exists():
         print(f"[hydrobasins] Downloading {_URL_HYBAS_NA_L12} (~80 MB)...")
         req = Request(_URL_HYBAS_NA_L12, headers={"User-Agent": "meandre/1.0"})
@@ -69,7 +69,7 @@ def load_hydrobasins_na(cache_dir: Path) -> gpd.GeoDataFrame:
     The first call downloads + extracts + reads the shapefile (~1 min, ~600 MB
     on disk after extraction). Subsequent calls hit a parquet cache (~5 s).
     """
-    parquet_cache = cache_dir / "hybas_lake_na_lev12_v1c.parquet"
+    parquet_cache = cache_dir / "hybas_na_lev12_v1c.parquet"
     if parquet_cache.exists():
         return gpd.read_parquet(parquet_cache)
 

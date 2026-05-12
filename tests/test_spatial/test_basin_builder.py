@@ -106,11 +106,23 @@ def test_find_pour_points_all_inside_catchment():
         )
 
 
-def test_find_pour_points_respects_max_points():
+def test_find_pour_points_keeps_all_natural_confluences():
+    """All natural confluences ≥ min_pixels are returned, regardless of
+    ``max_points`` (which is now only an advisory warning threshold).
+
+    Capping at max_points biased selection to main-stem confluences and
+    produced degenerate chain graphs (cf. fix 2026-05-12)."""
+    import warnings
     from meandre.data.basin_builder import _find_pour_points
     grid, fdir, acc, catch = _v_valley()
-    pps = _find_pour_points(grid, fdir, acc, catch, min_pixels=5, max_points=7)
-    assert len(pps) <= 7
+    # Pass a small max_points but expect a warning, not truncation.
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        pps_capped = _find_pour_points(grid, fdir, acc, catch, min_pixels=5, max_points=7)
+    pps_uncapped = _find_pour_points(grid, fdir, acc, catch, min_pixels=5, max_points=100000)
+    assert len(pps_capped) == len(pps_uncapped), (
+        "Pour points must NOT be truncated by max_points (preserves tree topology)"
+    )
 
 
 def test_find_pour_points_sorted_by_acc_descending():

@@ -61,6 +61,8 @@ def build_basin(
     normalise: bool = True,
     basin_mask_gdf=None,
     max_dem_pixels: int = 4_000_000,
+    max_segment_area_km2: float = 50.0,
+    min_lake_area_km2: float = 1.0,
 ) -> BasinCache:
     """Build a complete basin DuckDB from open-data rasters.
 
@@ -122,13 +124,37 @@ def build_basin(
         water_polygons_path=water_polygons_path,
     )
 
-    # Step 4b: Lake detection — flag nodes where >10 % of area is permanent water
+    # Step 4b: Lake detection — flag nodes where >50 % of area is permanent
+    # water AND the subcatchment is at least ``min_lake_area_km2`` (avoids
+    # promoting tiny ponds to lake nodes, which inflate node count without
+    # adding hydrological meaning).
     if "lake_fraction" in columns:
         lf_idx = columns.index("lake_fraction")
         lake_frac_raw = features[:, lf_idx]          # un-normalised here
-        graph.is_lake = lake_frac_raw > 0.50
+        areas_t = torch.from_numpy(np.asarray(subcatchments["areas_km2"])).float()
+        graph.is_lake = (lake_frac_raw > 0.50) & (areas_t >= min_lake_area_km2)
         n_lakes = int(graph.is_lake.sum())
-        print(f"  {n_lakes} lacs détectés (lake_fraction > 50 %)", flush=True)
+        n_dropped = int(((lake_frac_raw > 0.50) & (areas_t < min_lake_area_km2)).sum())
+        print(f"  {n_lakes} lacs détectés (lake_fraction > 50 %, "
+              f"area ≥ {min_lake_area_km2} km²) ; {n_dropped} petits lacs "
+              f"absorbés dans segments", flush=True)
+
+    # Step 4c: Chain-merging post-process — fusionne les nœuds linéaires
+    # (in_deg=1, out_deg=1, non-lac) en segments tronçon-niveau. Sans ça,
+    # le pour-point detection à fine résolution DEM produit des chaînes de
+    # micro-sous-bassins (jusqu'à 16k sur Saint-François) qui ont la même
+    # hydrologie et ralentissent énormément le training. Cf. fix 2026-05-12.
+    if max_segment_area_km2 > 0 and n_nodes > 100:
+        print(f"[basin_builder] Step 4c: Merging linear chains "
+              f"(max_segment_area={max_segment_area_km2} km²)...", flush=True)
+        n_nodes, subcatchments, graph, features, physical, columns = _merge_linear_chains(
+            n_nodes, subcatchments, graph, features, physical, columns,
+            max_segment_area_km2=max_segment_area_km2,
+        )
+        node_ids = list(range(1, n_nodes + 1))  # renumber after merging
+        n_lakes = int(graph.is_lake.sum())
+        print(f"  → {n_nodes} nodes, {graph.n_edges} edges, {n_lakes} lakes "
+              f"after merging", flush=True)
 
     # Step 5: Normalise features
     if normalise:
@@ -419,9 +445,22 @@ def _find_pour_points(
     if len(conf_rows) == 0:
         return []
 
-    # Sort by accumulation descending, keep top max_points
+    # KEEP ALL confluences above min_pixels. Previous behavior (top-K by acc)
+    # selected only main-stem confluences, absorbing tributaries into
+    # main-stem segments and producing a degenerate chain graph
+    # (bug 2026-05-12). max_points is now an advisory cap : we still take all
+    # natural confluences ; if n > max_points, log a warning so the caller can
+    # raise min_area_km2 to reduce node count.
     conf_acc = acc_arr[conf_rows, conf_cols]
-    order = np.argsort(-conf_acc)[:max_points]
+    order = np.argsort(-conf_acc)
+    if len(order) > max_points:
+        import warnings
+        warnings.warn(
+            f"{len(order)} natural confluences found, max_points={max_points} "
+            "ignored to preserve tree topology. Raise --min-area-km2 to reduce "
+            "n_nodes if too many.",
+            stacklevel=2,
+        )
 
     pour_points = []
     for idx in order:
@@ -622,6 +661,184 @@ def _build_network(subcatchments: dict) -> tuple[RiverGraph, list[int], Tensor]:
     )
 
     return graph, node_ids, is_lake
+
+
+def _merge_linear_chains(
+    n_nodes: int,
+    subcatchments: dict,
+    graph: "RiverGraph",
+    features: Tensor,
+    physical: dict,
+    columns: list[str],
+    max_segment_area_km2: float = 50.0,
+) -> tuple[int, dict, "RiverGraph", Tensor, dict, list[str]]:
+    """Merge linear chain nodes (in_deg=1, out_deg=1, not lake) into segments.
+
+    A pure D8 confluence detector produces a confluence at every minor stream
+    join, creating long chains of micro-subcatchments between real junctions.
+    This post-process collapses those chains into single "reach segments" of
+    length capped by ``max_segment_area_km2``. The result matches what
+    hydrological packages (PHYSITEL, HydroSHEDS Strahler) do natively.
+
+    Conservatively preserves:
+      - headwaters (in_deg=0)
+      - junctions  (in_deg≥2)
+      - outlets    (out_deg=0)
+      - lakes      (is_lake=True)
+    Linear nodes between two preserved anchors are merged downstream until the
+    cumulative area exceeds ``max_segment_area_km2``.
+
+    Returns updated (n_nodes, subcatchments, graph, features, physical, columns).
+    """
+    import numpy as np
+    centroids = np.asarray(subcatchments["centroids"])
+    areas = np.asarray(subcatchments["areas_km2"])
+    src = graph.edge_index[0].numpy()
+    dst = graph.edge_index[1].numpy()
+    is_lake_np = graph.is_lake.numpy().astype(bool)
+
+    # Build parent (downstream) array and children (upstream) lists
+    parent = np.full(n_nodes, -1, dtype=np.int64)
+    children: list[list[int]] = [[] for _ in range(n_nodes)]
+    for s, d in zip(src.tolist(), dst.tolist()):
+        parent[s] = d
+        children[d].append(s)
+    in_deg = np.array([len(c) for c in children], dtype=np.int64)
+    out_deg = (parent >= 0).astype(np.int64)
+
+    # "Must-keep" = anchor nodes that cannot be merged into a downstream segment
+    must_keep = (in_deg >= 2) | (in_deg == 0) | (out_deg == 0) | is_lake_np
+
+    # Assign each node to a segment anchor by walking downstream until the
+    # first must-keep node ; split off a new anchor if cum area exceeds limit.
+    target = np.full(n_nodes, -1, dtype=np.int64)
+    seg_area: dict[int, float] = {}
+    for i in range(n_nodes):
+        if must_keep[i]:
+            target[i] = i
+            seg_area[i] = float(areas[i])
+
+    # Walk downstream from each unassigned node, collect the path, then assign
+    # path nodes to the segment closest to the anchor downstream, splitting
+    # when the cumulative area would exceed max_segment_area_km2.
+    for i in range(n_nodes):
+        if target[i] >= 0:
+            continue
+        path = []
+        cur = int(i)
+        while target[cur] < 0 and not must_keep[cur]:
+            path.append(cur)
+            if parent[cur] < 0:
+                break
+            cur = int(parent[cur])
+        anchor = int(target[cur]) if target[cur] >= 0 else cur
+        # Process path closest-to-anchor first (reverse), so cum area grows
+        # downstream-to-upstream and splits create new anchors moving upstream.
+        cur_anchor = anchor
+        for n in reversed(path):
+            if seg_area[cur_anchor] + float(areas[n]) <= max_segment_area_km2:
+                target[n] = cur_anchor
+                seg_area[cur_anchor] += float(areas[n])
+            else:
+                target[n] = n
+                seg_area[n] = float(areas[n])
+                cur_anchor = n
+
+    # Build new compact node indexing
+    anchors = sorted(set(target.tolist()))
+    old_to_new = {a: i for i, a in enumerate(anchors)}
+    new_n = len(anchors)
+
+    # Aggregate per-segment: weighted mean for features/centroids, sum for area,
+    # OR for is_lake (any lake pixel ⇒ segment is a lake).
+    new_centroids = np.zeros((new_n, 2))
+    new_areas = np.zeros(new_n)
+    new_is_lake = np.zeros(new_n, dtype=bool)
+    for i in range(n_nodes):
+        j = old_to_new[int(target[i])]
+        new_centroids[j] += centroids[i] * areas[i]
+        new_areas[j] += areas[i]
+        new_is_lake[j] = new_is_lake[j] or is_lake_np[i]
+    new_centroids /= new_areas.reshape(-1, 1) + 1e-9
+
+    # Aggregate features (n_nodes, n_feat) tensor : weighted mean by area.
+    weights = torch.from_numpy(areas).float()
+    n_feat = features.shape[1]
+    new_features = torch.zeros(new_n, n_feat)
+    target_t = torch.from_numpy(np.array([old_to_new[int(t)] for t in target.tolist()]))
+    new_features.index_add_(0, target_t, features * weights.unsqueeze(1))
+    new_weights = torch.from_numpy(new_areas).float()
+    new_features /= new_weights.unsqueeze(1) + 1e-9
+
+    # Override area columns by direct sum (these aren't means).
+    if "area_km2_local" in columns:
+        ci = columns.index("area_km2_local")
+        new_features[:, ci] = new_weights
+
+    # Aggregate physical dict — each value is a (n_nodes,) tensor.
+    # Most physical fields are weighted means ; area fields are direct sums.
+    new_physical: dict = {}
+    for key, val in physical.items():
+        if key == "area_km2_local":
+            # Local area sums to the segment area.
+            agg = torch.zeros(new_n)
+            agg.index_add_(0, target_t, val)
+            new_physical[key] = agg
+        elif key == "area_km2_physical":
+            # Cumulative drainage area : for a merged segment, take the max
+            # (i.e. value at the most-downstream node = the segment outlet).
+            agg = torch.full((new_n,), -float("inf"))
+            for i in range(n_nodes):
+                j = int(target_t[i])
+                if val[i] > agg[j]:
+                    agg[j] = val[i]
+            new_physical[key] = agg
+        else:
+            # Default : weighted mean by local area.
+            agg = torch.zeros(new_n)
+            agg.index_add_(0, target_t, val * weights)
+            agg /= new_weights + 1e-9
+            new_physical[key] = agg
+
+    # Build new edges from old edges via the mapping
+    new_edges_set: set[tuple[int, int]] = set()
+    for s_old, d_old in zip(src.tolist(), dst.tolist()):
+        s_new = old_to_new[int(target[s_old])]
+        d_new = old_to_new[int(target[d_old])]
+        if s_new != d_new:
+            new_edges_set.add((s_new, d_new))
+
+    if new_edges_set:
+        new_edge_list = sorted(new_edges_set)
+        new_src = [e[0] for e in new_edge_list]
+        new_dst = [e[1] for e in new_edge_list]
+        new_edge_index = torch.tensor([new_src, new_dst], dtype=torch.long)
+    else:
+        new_edge_index = torch.zeros((2, 0), dtype=torch.long)
+
+    n_new_edges = new_edge_index.shape[1]
+    new_edge_attr = torch.ones((n_new_edges, 3), dtype=torch.float32)
+    new_travel_time = torch.ones(n_new_edges, dtype=torch.long)
+    new_topo_order = _topological_sort(new_edge_index, new_n)
+    new_is_lake_t = torch.from_numpy(new_is_lake)
+
+    new_graph = RiverGraph(
+        edge_index=new_edge_index,
+        edge_attr=new_edge_attr,
+        topo_order=new_topo_order,
+        is_lake=new_is_lake_t,
+        travel_time_days=new_travel_time,
+    )
+
+    new_subcatchments = dict(subcatchments)
+    new_subcatchments["centroids"] = new_centroids
+    new_subcatchments["areas_km2"] = new_areas
+    new_subcatchments["n_nodes"] = new_n
+    # Note : `labels` array kept unchanged ; downstream code only uses
+    # centroids/areas/features. Re-labeling pixels would be expensive and
+    # serves no purpose here.
+
+    return new_n, new_subcatchments, new_graph, new_features, new_physical, columns
 
 
 def _topological_sort(edge_index: Tensor, n_nodes: int) -> Tensor:

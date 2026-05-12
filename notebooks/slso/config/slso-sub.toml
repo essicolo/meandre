@@ -32,17 +32,19 @@ dropout = 0.0
 param_mode = "nerf"
 
 [training]
-n_epochs = 5             # smoke test pivot probabiliste — tuning v3
+n_epochs = 30            # tuning v4 : run plus long pour vraie convergence
 # v1 : lr=5e-4 + warmup → diverge (β=2.33)
 # v2 : lr=1e-4 constant → stable mais β=1.3 (σ encore gonflée)
-# v3 : v2 + w_sigma_anchor sur noise_head.log_sigma_a (pull vers -3 = 5% noise)
+# v3 : v2 + w_sigma_anchor=0.5 → identique v2 (anchor 1000× trop faible)
+# v4 : w_sigma_anchor=200 (math-justified) + 30 epochs pour vraie convergence
 lr = 1e-4
 lr_finetune = 1e-4
 warmup_epochs = 0
 weight_decay = 2e-4
-# Régularisation σ : empêche la NLL de gonfler σ pour masquer un mauvais μ.
-# target_a = -3 → σ baseline ≈ 5% × |Q| (au lieu de 10% par défaut).
-w_sigma_anchor = 0.5
+# Régularisation σ : poids math-justifié pour compétitionner le gradient NLL.
+# Gradient NLL sur log_sigma_a ≈ N_obs (365 ici). Gradient anchor = 2(δ)*w.
+# Pour qu'anchor batte NLL : w ≈ N_obs / (2δ) ≈ 200 pour δ ≈ 1.
+w_sigma_anchor = 200.0
 sigma_anchor_target_a = -3.0
 grad_clip = 1.0
 tbptt_steps = 365

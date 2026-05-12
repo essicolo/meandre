@@ -128,7 +128,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--max-subcatchments", type=int, default=3500,
-        help="Maximum number of subcatchments (default: 3500)",
+        help="Advisory cap on natural confluences (default: 3500). All natural "
+             "confluences ≥ min-area-km2 are kept ; raise min-area-km2 to "
+             "reduce node count.",
+    )
+    parser.add_argument(
+        "--max-segment-area-km2", type=float, default=50.0,
+        help="Chain-merging upper bound : linear nodes (in_deg=1, out_deg=1, "
+             "non-lake) are merged downstream until their cumulative area "
+             "exceeds this. Set to 0 to disable merging. Default: 50 km².",
+    )
+    parser.add_argument(
+        "--min-lake-area-km2", type=float, default=1.0,
+        help="Minimum subcatchment area (km²) for a >50%% water cell to be "
+             "promoted to a separate lake node. Smaller water bodies are "
+             "absorbed into the surrounding reach segment. Default: 1.0.",
     )
     parser.add_argument(
         "--max-dem-pixels", type=int, default=4_000_000,
@@ -263,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
         nrcan_lc_path=rasters["nrcan_lc"],
         water_polygons_path=rasters["water_polygons"],
         max_dem_pixels=args.max_dem_pixels,
+        max_segment_area_km2=args.max_segment_area_km2,
+        min_lake_area_km2=args.min_lake_area_km2,
         basin_mask_gdf=basin_mask_gdf,
     )
 

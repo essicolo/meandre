@@ -401,6 +401,7 @@ La boucle d'entraînement est configurée pour activer progressivement les diff�
 from meandre.training.loss import HydroLoss
 from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
 from meandre.training.run_logger import RunLogger
+from meandre.utils.state import HydroState
 
 # Build TrainingData — q_obs sliced so that [:n_period] covers the right rows
 def make_data(period_sl: slice) -> TrainingData:
