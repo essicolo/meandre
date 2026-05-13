@@ -665,8 +665,13 @@ class Trainer:
                 burnin = min(60, chunk_len // 4) if n_chunks > 0 else min(90, chunk_len // 4)
                 q_obs_chunk = data.q_obs[obs_offset + burnin:obs_offset + chunk_len]
                 Q_chunk_loss = Q_chunk[burnin:]
+                # Detach Q_sim before noise_head : σ adapts to current
+                # prediction magnitude (heteroscedastic) but gradient doesn't
+                # back-propagate through Q_sim via σ. Prevents the NLL
+                # degeneracy where model inflates μ_Q to gonfler σ and reduce
+                # ((q_obs - q_sim) / σ)² (Kendall & Gal 2017 §2.3).
                 log_sigma_chunk = (
-                    self.model.noise_head(Q_chunk_loss)
+                    self.model.noise_head(Q_chunk_loss.detach())
                     if self.loss_fn.w_nll > 0 else None
                 )
                 loss_chunk, comps = self.loss_fn(
@@ -848,8 +853,9 @@ class Trainer:
             n_train = data.train_slice.stop - data.train_slice.start
             q_obs_train = data.q_obs[:n_train]
 
+            # Detach Q_sim before noise_head (cf. chunked path above).
             log_sigma_sim = (
-                self.model.noise_head(Q_sim) if self.loss_fn.w_nll > 0 else None
+                self.model.noise_head(Q_sim.detach()) if self.loss_fn.w_nll > 0 else None
             )
             # TODO multi-obj wiring (NLL ET / SWE) :
             # Quand data.et_obs ou data.swe_obs sont fournis et w_nll_et/_swe > 0,
