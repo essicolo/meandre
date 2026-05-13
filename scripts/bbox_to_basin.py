@@ -185,6 +185,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Max distance (km) to snap a HYDAT station to a basin node "
              "(default: 10). Stations farther are skipped.",
     )
+    parser.add_argument(
+        "--max-drainage-ratio", type=float, default=2.0,
+        help="Max factor by which a node's simulated drainage area can differ "
+             "from a station's HYDAT-published value (default: 2.0). Stations "
+             "with no node matching within this factor are rejected. Topology-"
+             "aware filter — replaces pure Euclidean snap (cf. 2026-05-13 fix).",
+    )
+    parser.add_argument(
+        "--drainage-weight-km", type=float, default=50.0,
+        help="Weight (km equivalent) of a 1-log-unit drainage ratio mismatch "
+             "in the snap cost function. Higher = strongly prefer drainage "
+             "match over distance. Default: 50 km per log-unit.",
+    )
     args = parser.parse_args(argv)
 
     if args.with_forcing and (args.start is None or args.end is None):
@@ -335,10 +348,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             stations_path, obs_path = result
             populate_basin_observations(
-                basin_db             = output,
-                stations_parquet     = stations_path,
-                observations_parquet = obs_path,
-                max_snap_km          = args.max_snap_km,
+                basin_db=output,
+                stations_parquet=stations_path,
+                observations_parquet=obs_path,
+                max_snap_km=args.max_snap_km,
+                max_drainage_ratio=args.max_drainage_ratio,
+                drainage_weight_km=args.drainage_weight_km,
             )
 
     print()

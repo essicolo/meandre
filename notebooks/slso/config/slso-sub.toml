@@ -32,26 +32,28 @@ dropout = 0.0
 param_mode = "nerf"
 
 [training]
-n_epochs = 30            # tuning v4 : run plus long pour vraie convergence
-# v1 : lr=5e-4 + warmup → diverge (β=2.33)
-# v2 : lr=1e-4 constant → stable mais β=1.3 (σ encore gonflée)
-# v3 : v2 + w_sigma_anchor=0.5 → identique v2 (anchor 1000× trop faible)
-# v4 : w_sigma_anchor=200 (math-justified) + 30 epochs pour vraie convergence
-lr = 1e-4
-lr_finetune = 1e-4
+# Test diagnostique 2026-05-13 : pivot probabiliste sur legacy slso-sub
+# pour validation (data prouvée vs stfran open-data biaisé). Config :
+# - freeze_spatial = true : préserve cold-start init_from_literature
+# - lr constant ultra-bas : anti-overshoot Adam epoch 1
+# - w_pbias massif : ancre β=1
+# - w_sigma_anchor + target_b : empêche σ inflation via b drift
+n_epochs = 10                   # phase 2 : unfreeze NeRF, warm-start
+lr = 1e-6                       # 20× plus bas — fine-tuning spatial doux
+lr_finetune = 1e-6
 warmup_epochs = 0
+eta_min_factor = 1.0           # constant LR
 weight_decay = 2e-4
-# Régularisation σ : poids math-justifié pour compétitionner le gradient NLL.
-# Gradient NLL sur log_sigma_a ≈ N_obs (365 ici). Gradient anchor = 2(δ)*w.
-# Pour qu'anchor batte NLL : w ≈ N_obs / (2δ) ≈ 200 pour δ ≈ 1.
-w_sigma_anchor = 200.0
+freeze_spatial = false          # phase 2 : NeRF apprend du spatial
+warm_start = true               # reprendre best.pt de phase 1 (val_kge=0.49)
+w_sigma_anchor = 4000.0
 sigma_anchor_target_a = -3.0
+sigma_anchor_target_b = 1.0
 grad_clip = 1.0
 tbptt_steps = 365
 chunk_steps = 365            # 1 an = 1 chunk, NSE/KGE utilisable
 val_every = 1
 patience = 20
-warm_start = false  # cold start: bornes K_musk élargies → ancien checkpoint plus valide
 compile_modules = false
 best_metric = "kge_station"
 
@@ -79,15 +81,15 @@ autopilot_activate_residual_at_kge = 0.55
 # Problème v1 : NLL non-régularisée → degeneracy σ→large, β explose.
 # Fix : w_kge fortement augmenté pour ancrer μ_Q contre la dérive,
 # w_log_mse activé pour préserver l'amplitude (anti-aplatissement).
-w_nll = 0.5
-w_nll_et = 0.0   # multi-obj bloqué sur data layer MODIS (cf. pivot étape 4)
+w_nll = 1.0
+w_nll_et = 0.0
 w_nll_swe = 0.0
 w_nse = 0.0
-w_kge = 2.0       # ancre forte sur la qualité du fit moyen
-w_pbias = 0.0
+w_kge = 0.5
+w_pbias = 500.0   # ancre forte β=1 (sinon β drift)
 w_mse = 0.0
 w_log_nse = 0.0
-w_log_mse = 0.5   # garde la peakiness, contre-balance le tirage NLL pro-platitude
+w_log_mse = 0.5   # anti-aplatissement (anti γ collapse)
 w_nrmse = 0.0
 w_physics = 0.01
 w_residual = 0.01

@@ -1583,12 +1583,31 @@ def populate_basin_observations(
     stations_parquet: str | Path,
     observations_parquet: str | Path,
     max_snap_km: float = 5.0,
+    max_drainage_ratio: float = 2.0,
+    drainage_weight_km: float = 50.0,
 ) -> int:
     """Insert HYDAT stations and observations into a basin DuckDB.
 
-    Each station is snapped to the nearest node in the basin's ``nodes``
-    table by approximate Euclidean distance. Stations farther than
-    *max_snap_km* from any node are dropped with a warning.
+    Each station is snapped to the node whose simulated cumulative drainage
+    area best matches the HYDAT-published gauge drainage area, with proximity
+    as a secondary criterion. This is topologically meaningful (the station
+    measures Q at a known drainage point ; we map it to the segment whose
+    outflow corresponds to that area) and avoids the failure mode of pure
+    Euclidean snap where a small-tributary gauge gets attached to the much
+    larger main-stem node next door.
+
+    Cost function ::
+
+        cost = distance_km + drainage_weight_km × |log(sim_area / hydat_area)|
+
+    With default ``drainage_weight_km=50``, a 2.7× drainage mismatch costs
+    the equivalent of 50 km. A station can accept a node 50 km further if it
+    has a perfect drainage match. Hard filter : drainage ratio must lie in
+    ``[1/max_drainage_ratio, max_drainage_ratio]`` (default ⇒ within 2×),
+    AND distance ≤ ``max_snap_km``.
+
+    Stations without a published HYDAT drainage_area_km2 fall back to pure
+    Euclidean nearest-node (legacy behavior).
 
     The ``stations`` and ``observations`` tables are fully replaced
     (DELETE + INSERT) — call once per basin.
@@ -1605,37 +1624,86 @@ def populate_basin_observations(
     obs = pd.read_parquet(observations_parquet)
 
     con = duckdb.connect(str(basin_db))
-    nodes = con.execute("SELECT node_idx, lon, lat FROM nodes").df()
-    if len(nodes) == 0:
+    nodes_with_area = con.execute(
+        "SELECT n.node_idx, n.lon, n.lat, t.area_km2_physical AS sim_area "
+        "FROM nodes n LEFT JOIN territorial t ON n.node_idx = t.node_idx"
+    ).df()
+    if len(nodes_with_area) == 0:
         print("[basin] basin DuckDB has no nodes — aborting observation insert")
         con.close()
         return 0
 
-    # Snap each station to nearest node (equirectangular approx — good enough
-    # for the local-scale snap, and ~10× faster than haversine).
-    node_lons = nodes["lon"].to_numpy()
-    node_lats = nodes["lat"].to_numpy()
+    node_lons = nodes_with_area["lon"].to_numpy()
+    node_lats = nodes_with_area["lat"].to_numpy()
+    node_areas = nodes_with_area["sim_area"].fillna(1e-3).to_numpy()
+    node_idxs = nodes_with_area["node_idx"].to_numpy()
     cos_lat = float(np.cos(np.radians(stations["lat"].mean())))
 
-    snapped_idx, snapped_dist = [], []
-    for _, s in stations.iterrows():
+    # Per-station results : aligned with original stations index ; NaN/None
+    # for rejected stations (filtered out at the end).
+    accepted_mask = np.zeros(len(stations), dtype=bool)
+    snapped_idx_arr = np.zeros(len(stations), dtype=np.int64)
+    snapped_dist_arr = np.full(len(stations), np.nan)
+    snapped_ratio_arr = np.full(len(stations), np.nan)
+    rejected: list[tuple[str, str]] = []  # (station_id, reason)
+
+    for row_i, (_, s) in enumerate(stations.iterrows()):
         dx = (node_lons - s["lon"]) * 111.0 * cos_lat
         dy = (node_lats - s["lat"]) * 111.0
-        d = np.hypot(dx, dy)
-        i = int(np.argmin(d))
-        snapped_idx.append(int(nodes["node_idx"].iloc[i]))
-        snapped_dist.append(float(d[i]))
+        dist = np.hypot(dx, dy)
 
-    stations = stations.assign(node_idx=snapped_idx, snap_dist_km=snapped_dist)
+        hydat_area = s.get("drainage_area_km2")
+        if hydat_area is None or pd.isna(hydat_area) or hydat_area <= 0:
+            # No HYDAT area : fall back to pure Euclidean (legacy behavior)
+            i = int(np.argmin(dist))
+            if dist[i] > max_snap_km:
+                rejected.append((s["station_id"], f"{dist[i]:.1f} km, no area"))
+                continue
+            accepted_mask[row_i] = True
+            snapped_idx_arr[row_i] = int(node_idxs[i])
+            snapped_dist_arr[row_i] = float(dist[i])
+            continue
 
-    far_mask = stations["snap_dist_km"] > max_snap_km
-    if far_mask.any():
-        skipped = stations.loc[far_mask, ["station_id", "snap_dist_km"]]
-        print(f"[basin] Skipping {len(skipped)} stations > {max_snap_km} km "
-              f"from any node:")
-        for _, r in skipped.iterrows():
-            print(f"  {r['station_id']}: {r['snap_dist_km']:.1f} km away")
-    stations = stations[~far_mask]
+        ratio = node_areas / max(float(hydat_area), 1e-3)
+        log_ratio_abs = np.abs(np.log(np.clip(ratio, 1e-6, 1e6)))
+        cost = dist + drainage_weight_km * log_ratio_abs
+
+        # Hard filters : drainage within factor, distance within max
+        valid = (
+            (ratio < max_drainage_ratio)
+            & (ratio > 1.0 / max_drainage_ratio)
+            & (dist <= max_snap_km)
+        )
+        if not valid.any():
+            # Diagnose : closest by distance, closest by drainage
+            i_close = int(np.argmin(dist))
+            i_match = int(np.argmin(log_ratio_abs))
+            rejected.append((
+                s["station_id"],
+                f"hydat={hydat_area:.0f} km², closest sim={node_areas[i_close]:.0f}"
+                f" ({dist[i_close]:.1f} km), best match sim={node_areas[i_match]:.0f}"
+                f" ({dist[i_match]:.1f} km)",
+            ))
+            continue
+
+        cost_valid = np.where(valid, cost, np.inf)
+        i = int(np.argmin(cost_valid))
+        accepted_mask[row_i] = True
+        snapped_idx_arr[row_i] = int(node_idxs[i])
+        snapped_dist_arr[row_i] = float(dist[i])
+        snapped_ratio_arr[row_i] = float(ratio[i])
+
+    if rejected:
+        print(f"[basin] Rejected {len(rejected)} stations (no compatible node):")
+        for sid, reason in rejected[:20]:
+            print(f"  {sid}: {reason}")
+        if len(rejected) > 20:
+            print(f"  ... and {len(rejected) - 20} more")
+
+    stations = stations.loc[accepted_mask].copy()
+    stations["node_idx"] = snapped_idx_arr[accepted_mask]
+    stations["snap_dist_km"] = snapped_dist_arr[accepted_mask]
+    stations["snap_drainage_ratio"] = snapped_ratio_arr[accepted_mask]
 
     if len(stations) == 0:
         print(f"[basin] No HYDAT stations within {max_snap_km} km of any node")
