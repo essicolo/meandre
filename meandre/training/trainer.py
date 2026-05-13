@@ -53,6 +53,12 @@ class TrainingConfig:
     sigma_anchor_target_a: float = -3.0   # log σ baseline (5% when b=1 at Q=100)
     sigma_anchor_target_b: float | None = None   # None = let b float free
 
+    # LR scheduler shape. Cosine annealing from `lr` to `lr * eta_min_factor`
+    # over n_epochs. Set to 1.0 for CONSTANT lr (cosine becomes flat) —
+    # useful for short tuning runs where the default 0.01 collapses lr by
+    # epoch 2-3 and stalls learning.
+    eta_min_factor: float = 0.01
+
     # Curriculum: epoch at which each module is enabled
     enable_temporal_context_epoch: int = 10
     enable_residual_corrector_epoch: int = 30
@@ -367,6 +373,7 @@ class Trainer:
         scheduler = build_scheduler(
             self.optimizer, self.config.n_epochs,
             warmup_epochs=self.config.warmup_epochs,
+            eta_min_factor=self.config.eta_min_factor,
         )
 
         pbar = tqdm(range(self.config.n_epochs), desc="Training", unit="epoch")
@@ -402,7 +409,10 @@ class Trainer:
                 _loss_ema = None  # reset EMA after rollback
                 # Rebuild scheduler with reduced LR
                 remaining = self.config.n_epochs - epoch
-                scheduler = build_scheduler(self.optimizer, remaining, warmup_epochs=0)
+                scheduler = build_scheduler(
+                    self.optimizer, remaining, warmup_epochs=0,
+                    eta_min_factor=self.config.eta_min_factor,
+                )
                 continue
 
             # Release fragmented CUDA memory between epochs

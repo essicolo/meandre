@@ -376,6 +376,15 @@ else:
     model.spatial_encoder.init_from_literature(literature_targets)
     print("Training from scratch (literature-initialised spatial params)")
 
+# Optional : freeze spatial encoder. Useful to isolate noise_head + temporal
+# encoder training when the literature init is already good (cf. stfran case
+# 2026-05-13 where cold-start gives val_kge=0.17 / β=0.98 and Adam overshoots).
+if cfg["training"].get("freeze_spatial", False):
+    for p in model.spatial_encoder.parameters():
+        p.requires_grad = False
+    n_frozen = sum(p.numel() for p in model.spatial_encoder.parameters())
+    print(f"Spatial encoder FROZEN ({n_frozen:,} params)")
+
 # %% [markdown]
 """
 ## Prélèvements et rejets
@@ -497,6 +506,7 @@ train_cfg = TrainingConfig(
     w_sigma_anchor = tcfg.get("w_sigma_anchor", 0.0),
     sigma_anchor_target_a = tcfg.get("sigma_anchor_target_a", -3.0),
     sigma_anchor_target_b = tcfg.get("sigma_anchor_target_b", None),
+    eta_min_factor = tcfg.get("eta_min_factor", 0.01),
     # Autopilot
     autopilot = tcfg.get("autopilot", False),
     autopilot_grace_epochs = tcfg.get("autopilot_grace_epochs", 0),
