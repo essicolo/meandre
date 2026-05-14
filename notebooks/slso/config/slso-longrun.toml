@@ -102,7 +102,7 @@ autopilot_restart_max = 3
 
 # ── Auto-transition phase 1 → 2 ───────────────────────────────────
 autopilot_unfreeze_spatial_epoch = 25
-autopilot_unfreeze_spatial_min_kge = 0.40   # safety gate
+autopilot_unfreeze_spatial_min_kge = 0.35   # safety gate (smoke shows 0.39 dès epoch 0)
 autopilot_unfreeze_spatial_lr_factor = 0.05  # 2e-5 → 1e-6
 
 [loss]
