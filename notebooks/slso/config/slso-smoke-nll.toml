@@ -1,0 +1,98 @@
+# ─── slso PHYSITEL — smoke 5-epoch validation NLL stack ──────────────
+# Valide sur slso complet (2889 nodes × 38 stations, quebec.zarr) le
+# pipeline : init_from_literature shrink=0.1, soft-hinge w_boundary=0.005,
+# Muskingum cached, flat topo tensors. Cible epoch ~30-35 min.
+
+[paths]
+basin_db = "notebooks/slso/data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "notebooks/slso/data/forcing.nc"
+checkpoint = "notebooks/slso/checkpoints/best-smoke-nll.pt"
+fields_nc = "notebooks/slso/results/fields-smoke-nll.nc"
+reach_parquet = "notebooks/slso/results/reach-smoke-nll.parquet"
+runs_db = "notebooks/slso/runs-smoke-nll.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+# Période réduite pour smoke (sinon 18 ans × 5 epochs ~ 8h). Train 3 ans
+# couvre cycle humide/sec (2010-2012), val 1 an. Pour validation stack
+# uniquement — un vrai long run reprendra 2001-2018.
+date_start = "2009-01-01"
+spinup_end = "2009-12-31"
+train_start = "2010-01-01"
+train_end = "2012-12-31"
+val_start = "2013-01-01"
+val_end = "2013-12-31"
+test_start = "2014-01-01"
+test_end = "2014-12-31"
+date_end = "2014-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = false
+param_noise = false
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+n_epochs = 5
+lr = 2e-5
+lr_finetune = 2e-5
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 2e-4
+freeze_spatial = false
+warm_start = false
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 365
+val_every = 1
+patience = 50
+compile_modules = false
+best_metric = "kge_station"
+
+w_prior = 0.005
+w_boundary = 0.005
+w_sigma_anchor = 4000.0
+sigma_anchor_target_a = -3.0
+sigma_anchor_target_b = 1.0
+w_param_noise_kl = 0.0
+param_noise_target_sigma = 0.05
+train_with_param_noise = false
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = false
+
+[loss]
+w_nll = 1.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 0.5
+w_pbias = 500.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.5
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

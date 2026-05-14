@@ -184,6 +184,18 @@ class TrainingConfig:
     autopilot_activate_residual_at_kge: float | None = None  # e.g. 0.55
     autopilot_activate_tta_at_kge: float | None = None       # e.g. 0.65
 
+    # Phase-1 → phase-2 transition (Kendall-Gal recipe).  When the spatial
+    # encoder is frozen at startup (``freeze_spatial=true``), the autopilot
+    # can flip it to trainable mid-run once the NLL stack has stabilised.
+    # Trigger conditions are AND-combined: both ``epoch >= unfreeze_epoch``
+    # AND (if set) ``kge_station >= unfreeze_min_kge`` must hold.
+    # The transition divides the base LR by ``unfreeze_lr_factor`` (default
+    # 20× lower) to mimic the manual two-config recipe and avoid disturbing
+    # the converged σ/μ ratio.  One-shot.
+    autopilot_unfreeze_spatial_epoch: int | None = None     # e.g. 25
+    autopilot_unfreeze_spatial_min_kge: float | None = None # e.g. 0.40
+    autopilot_unfreeze_spatial_lr_factor: float = 0.05      # lr → lr × 0.05
+
 
 @dataclass
 class TrainingData:
@@ -1345,6 +1357,35 @@ class Trainer:
                 actions.append(
                     f"Metric curriculum: kge_sta={kge_sta:.4f} ≥ {threshold} "
                     f"→ activate TTA"
+                )
+
+        # ── 5. Phase 1 → phase 2 : auto-unfreeze spatial encoder ──────
+        # One-shot. After the NLL stack converged on a frozen NeRF (phase 1),
+        # unfreeze and reduce LR (phase 2 fine-tune). Replaces the manual
+        # two-config Kendall-Gal recipe.
+        if (cfg.autopilot_unfreeze_spatial_epoch is not None
+                and not getattr(self, "_ap_unfroze_spatial", False)
+                and epoch >= cfg.autopilot_unfreeze_spatial_epoch):
+            min_kge = cfg.autopilot_unfreeze_spatial_min_kge
+            if min_kge is None or kge_sta >= min_kge:
+                spatial = self.model.spatial_encoder
+                n_unfrozen = 0
+                for p in spatial.parameters():
+                    if not p.requires_grad:
+                        p.requires_grad = True
+                        n_unfrozen += p.numel()
+                # Scale LR for phase 2 fine-tuning
+                lr_factor = cfg.autopilot_unfreeze_spatial_lr_factor
+                for pg in self.optimizer.param_groups:
+                    pg["lr"] = max(pg["lr"] * lr_factor, cfg.autopilot_lr_min)
+                # Reset plateau counters so phase 2 gets fresh patience
+                self._ap_last_lr_reduce_epoch = epoch
+                self._ap_unfroze_spatial = True
+                actions.append(
+                    f"PHASE 2: unfreeze spatial encoder ({n_unfrozen} params) "
+                    f"at epoch={epoch} (kge_sta={kge_sta:.4f}"
+                    + (f" ≥ {min_kge}" if min_kge is not None else "")
+                    + f"), LR × {lr_factor} → {self.optimizer.param_groups[0]['lr']:.2e}"
                 )
 
         # ── Log autopilot actions ─────────────────────────────────────

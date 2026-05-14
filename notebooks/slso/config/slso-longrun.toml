@@ -1,0 +1,120 @@
+# ─── slso PHYSITEL long-run weekend — Kendall-Gal auto phase 1 → 2 ──
+# Un seul config, l'autopilot bascule freeze→unfreeze à epoch 25 si
+# kge_station a atteint 0.40. Pas de wrapper bash, pas de 2 runs séparés.
+#
+# Estimation : ~33 min/epoch × 80 epochs = ~44h (long weekend). Avec
+# autopilot LR plateau et restart on regression, devrait converger plus
+# tôt.
+#
+# Pour lancer :
+#   python notebooks/slso/slso.py notebooks/slso/config/slso-longrun.toml
+
+[paths]
+basin_db = "notebooks/slso/data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "notebooks/slso/data/forcing.nc"
+checkpoint = "notebooks/slso/checkpoints/best-longrun.pt"
+fields_nc = "notebooks/slso/results/fields-longrun.nc"
+reach_parquet = "notebooks/slso/results/reach-longrun.parquet"
+runs_db = "notebooks/slso/runs-longrun.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = false
+param_noise = false
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+# ── Phase 1 (epoch 0-24) : NeRF frozen, NLL stack converge ────────
+# ── Phase 2 (epoch 25+) : auto-unfreeze, lr × 0.05 ────────────────
+n_epochs = 80
+lr = 2e-5                       # phase 1 base lr ; phase 2 → 1e-6
+lr_finetune = 1e-6              # unused (warm_start=false)
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 2e-4
+freeze_spatial = true           # phase 1 start frozen
+warm_start = false              # cold-start
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 365
+val_every = 1
+patience = 50
+compile_modules = false
+best_metric = "kge_station"
+best_metric_tolerance = 0.005
+
+w_prior = 0.005
+w_boundary = 0.005
+w_sigma_anchor = 4000.0
+sigma_anchor_target_a = -3.0
+sigma_anchor_target_b = 1.0
+w_param_noise_kl = 0.0
+param_noise_target_sigma = 0.05
+train_with_param_noise = false
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ─────────────────────────────────────────────────────
+autopilot = true
+autopilot_grace_epochs = 10     # phase 1 needs to settle
+autopilot_beta_threshold = 0.15
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 8
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-7
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+
+# ── Auto-transition phase 1 → 2 ───────────────────────────────────
+autopilot_unfreeze_spatial_epoch = 25
+autopilot_unfreeze_spatial_min_kge = 0.40   # safety gate
+autopilot_unfreeze_spatial_lr_factor = 0.05  # 2e-5 → 1e-6
+
+[loss]
+w_nll = 1.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 0.5
+w_pbias = 500.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.5
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

@@ -522,6 +522,9 @@ train_cfg = TrainingConfig(
     autopilot_restart_max = tcfg.get("autopilot_restart_max", 3),
     autopilot_activate_residual_at_kge = tcfg.get("autopilot_activate_residual_at_kge", None),
     autopilot_activate_tta_at_kge = tcfg.get("autopilot_activate_tta_at_kge", None),
+    autopilot_unfreeze_spatial_epoch = tcfg.get("autopilot_unfreeze_spatial_epoch", None),
+    autopilot_unfreeze_spatial_min_kge = tcfg.get("autopilot_unfreeze_spatial_min_kge", None),
+    autopilot_unfreeze_spatial_lr_factor = tcfg.get("autopilot_unfreeze_spatial_lr_factor", 0.05),
 )
 
 if train_cfg.autopilot:
