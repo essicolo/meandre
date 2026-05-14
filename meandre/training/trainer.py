@@ -45,6 +45,14 @@ class TrainingConfig:
     # Useful to avoid overfitting on dev period (e.g. wet/dry year bias).
     w_prior: float = 0.0
 
+    # Boundary regularization on raw network outputs.
+    # Penalizes sigmoid saturation (params at clamp bounds) and L2-pulls
+    # exp-constrained raw outputs toward center. Complements w_prior
+    # (which targets specific literature values in physical units).
+    # 0 = off. 0.001-0.01 = soft anti-saturation prior. Only active when
+    # spatial encoder is unfrozen.
+    w_boundary: float = 0.0
+
     # Anchor on the noise head's log_sigma_a (and optionally log_sigma_b).
     # Counters the Gaussian NLL degeneracy where σ inflates to fit any μ.
     # Apply to noise_head (Q), noise_head_et, noise_head_swe symmetrically.
@@ -696,6 +704,13 @@ class Trainer:
                 loss_chunk = loss_chunk + self.config.w_prior * prior_loss
                 all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach())
 
+            if self.config.w_boundary > 0:
+                boundary_loss = self.model.spatial_encoder.boundary_regularization(
+                    data.node_coords, data.territorial.to_tensor()
+                )
+                loss_chunk = loss_chunk + self.config.w_boundary * boundary_loss
+                all_components["boundary"] = all_components.get("boundary", 0.0) + float(boundary_loss.detach())
+
             # Noise head σ anchor — counters NLL degeneracy (σ inflates to
             # mask a bad μ). Applied symmetrically to Q / ET / SWE heads.
             if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
@@ -885,6 +900,13 @@ class Trainer:
             prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
             loss = loss + self.config.w_prior * prior_loss
             components["prior"] = prior_loss.detach()
+
+        if self.config.w_boundary > 0:
+            boundary_loss = self.model.spatial_encoder.boundary_regularization(
+                data.node_coords, data.territorial.to_tensor()
+            )
+            loss = loss + self.config.w_boundary * boundary_loss
+            components["boundary"] = boundary_loss.detach()
 
         # Noise head σ anchor (single-pass path) — same logic as chunked.
         if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:

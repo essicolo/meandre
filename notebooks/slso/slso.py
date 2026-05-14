@@ -503,6 +503,7 @@ train_cfg = TrainingConfig(
     lr_new_features_mult = LR_NEW_MULT if WARM_START else None,
     compile_modules = tcfg.get("compile_modules", False),
     w_prior = tcfg.get("w_prior", 0.0),
+    w_boundary = tcfg.get("w_boundary", 0.0),
     w_sigma_anchor = tcfg.get("w_sigma_anchor", 0.0),
     sigma_anchor_target_a = tcfg.get("sigma_anchor_target_a", -3.0),
     sigma_anchor_target_b = tcfg.get("sigma_anchor_target_b", None),

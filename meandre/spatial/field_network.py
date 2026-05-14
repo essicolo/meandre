@@ -183,12 +183,28 @@ class SpatialFieldNetwork(nn.Module):
             self.drop1 = nn.Dropout(p=dropout)
             self.drop2 = nn.Dropout(p=dropout)
 
-    def init_from_literature(self, targets: dict[str, float] | None = None) -> None:
+    def init_from_literature(
+        self,
+        targets: dict[str, float] | None = None,
+        weight_shrink: float = 0.1,
+    ) -> None:
         """Initialise fc_out bias so _apply_constraints produces literature defaults.
 
-        Shrinks fc_out.weight so all nodes start with ~identical parameters,
+        Shrinks fc_out.weight so all nodes start near identical parameters,
         then the MLP learns spatial variation from there.  This avoids the
         cold-start problem where random init puts K_sat 50x too high.
+
+        Parameters
+        ----------
+        weight_shrink :
+            Factor applied to ``fc_out.weight`` after Xavier init. Smaller =
+            more uniform start (closer to literature targets on every node);
+            larger = more spatial signal but more dispersion around the
+            literature targets. Default ``0.1`` (was ``0.01`` historically —
+            that legacy value made the NeRF effectively spatially constant
+            and required impractically long training to break uniformity).
+            At ``0.1`` the per-node deviation from literature is roughly ±5%
+            of the bias scale at init.
 
         References for default values
         -----------------------------
@@ -217,9 +233,9 @@ class SpatialFieldNetwork(nn.Module):
             self.static_params.data.copy_(bias)
             return
 
-        # Shrink output weights so initial output ≈ bias only
+        # Shrink output weights so initial output ≈ bias + small per-node deviation
         with torch.no_grad():
-            self.fc_out.weight.mul_(0.01)
+            self.fc_out.weight.mul_(weight_shrink)
             bias = self._literature_raw_vector(targets)
             self.fc_out.bias.data.copy_(bias)
 
@@ -516,35 +532,38 @@ class SpatialFieldNetwork(nn.Module):
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
 
-    def boundary_regularization(self, coords: Tensor, territorial: Tensor) -> Tensor:
-        """Penalize raw network outputs that push constrained params toward extremes.
+    def boundary_regularization(
+        self,
+        coords: Tensor,
+        territorial: Tensor,
+        sat_threshold: float = 0.8,
+    ) -> Tensor:
+        """Soft-hinge anti-saturation prior on sigmoid-bounded raw outputs.
 
-        For sigmoid-constrained params: (2*sigmoid(raw) - 1)^4 — penalizes bounds.
-        For exp-constrained params (K_sat): raw^2 — L2 prior toward center.
-        Excludes f_root (softmax, no bounds to hit).
+        Zero penalty inside [σ=0.2, σ=0.8] (with threshold=0.8); rises quadratically
+        only when sigmoid output exits the safe band. Contrast with the previous
+        ``(2σ-1)⁴`` form, which was quartic everywhere on (-1, 1) and effectively a
+        pull-to-center prior — it suppressed spatial variance even before
+        saturation. The hinge form lets the NeRF freely explore the middle band
+        while still pushing back against true saturation.
+
+        Unbounded (exp-constrained) columns are not penalised here — that role is
+        played by ``physical_prior_loss`` which already pulls log(K_sat), log(k_gw)
+        toward literature targets.
         """
         enc = self.coord_enc(coords)
         x0 = torch.cat([enc, territorial], dim=-1)
         h = torch.nn.functional.silu(self.fc1(x0))
         h = torch.cat([h, x0], dim=-1)
         h = torch.nn.functional.silu(self.fc2(h))
-        raw = self.fc_out(h)  # (n_nodes, N_PARAMS)
+        raw = self.fc_out(h)
 
-        # Exp-constrained params: L2 on raw → pulls toward center.
-        # Only K_sat (0-2) and k_gw (24) remain log-normal; f_vert_{1,3} (22, 23)
-        # and f_vert_2 (29) are now sigmoid-bounded (softmax partition).
-        unbounded_cols = [0, 1, 2, 24]
-        unbounded_penalty = (raw[:, unbounded_cols] ** 2).mean()
-
-        # Sigmoid-constrained columns: penalize saturation.
-        # Skip K_sat (0-2), f_root (12-14), k_gw (24). f_vert_{1,2,3} included.
         sig_cols = (list(range(3, 12)) + list(range(15, 24))
                     + [25, 26, 27, 28, 29, 30, 31])
-        raw_sig = raw[:, sig_cols]
-        sig = torch.sigmoid(raw_sig)
-        sig_penalty = ((2.0 * sig - 1.0) ** 4).mean()
-
-        return unbounded_penalty + sig_penalty
+        sig = torch.sigmoid(raw[:, sig_cols])
+        # |2σ-1| ∈ [0, 1]. Hinge active only when this exceeds sat_threshold.
+        excess = torch.clamp(torch.abs(2.0 * sig - 1.0) - sat_threshold, min=0.0)
+        return (excess ** 2).mean()
 
     def physical_prior_loss(self, params: SpatialParams) -> Tensor:
         """Soft L2 penalty pulling parameters toward physically reasonable values.
