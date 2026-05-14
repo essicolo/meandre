@@ -33,8 +33,8 @@ from meandre.routing.withdrawals import WithdrawalData
 from meandre.utils.state import HydroState
 
 
-CONFIG = Path(".models/stfran/config/stfran.toml")
-N_DAYS = 30
+CONFIG = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".models/stfran/config/stfran.toml")
+N_DAYS = int(sys.argv[2]) if len(sys.argv) > 2 else 30
 
 
 def main() -> None:

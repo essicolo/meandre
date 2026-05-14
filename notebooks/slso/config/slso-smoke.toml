@@ -1,0 +1,87 @@
+# ─── slso smoke test 1-epoch — vitesse routing post chain-merge ────────
+# Copie minimaliste de slso.toml : 1 epoch, autopilot off, outputs séparés.
+# Mesure realistic time/epoch sans corrompre les artefacts productifs.
+
+[paths]
+basin_db = "notebooks/slso/data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "notebooks/slso/data/forcing.nc"
+checkpoint = "notebooks/slso/checkpoints/best-smoke.pt"
+fields_nc = "notebooks/slso/results/fields-smoke.nc"
+reach_parquet = "notebooks/slso/results/reach-smoke.parquet"
+runs_db = "notebooks/slso/runs-smoke.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = false
+param_noise = false
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+n_epochs = 1
+lr = 5e-4
+lr_finetune = 1e-4
+lr_new_features_mult = 10.0
+weight_decay = 2e-4
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 50
+best_metric = "kge"
+warm_start = false
+compile_modules = false
+freeze_spatial = false
+
+w_prior = 0.005
+w_boundary = 0.0
+w_param_noise_kl = 0.0
+param_noise_target_sigma = 0.05
+train_with_param_noise = false
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = false
+
+[loss]
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.1
+w_mse = 0.1
+w_log_nse = 0.0
+w_log_mse = 0.3
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

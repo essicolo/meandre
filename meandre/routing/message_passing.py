@@ -19,9 +19,30 @@ Two execution paths
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import torch
 import torch.nn as nn
 from torch import Tensor
+
+
+class TopoLevelData(NamedTuple):
+    """Pre-built flat tensors for level-by-level routing.
+
+    Each per-level slice is obtained by indexing ``river_idx[
+    river_offsets[L]:river_offsets[L+1]]`` (same for lake, edge). Slicing is
+    O(1) (creates a view), avoiding the per-iteration overhead of unpacking
+    Python list-of-tuples and computing river/lake masks on every level.
+    """
+    n_levels: int
+    n_nodes: int
+    river_idx: Tensor          # (sum_L n_river_L,) global indices, in level order
+    river_offsets: Tensor      # (n_levels+1,) prefix sums into river_idx
+    lake_idx: Tensor           # (sum_L n_lake_L,) global indices, in level order
+    lake_offsets: Tensor       # (n_levels+1,) prefix sums into lake_idx
+    edge_src: Tensor           # (n_edges,) src nodes, grouped by destination level
+    edge_dst_global: Tensor    # (n_edges,) GLOBAL dst node indices — same buffer reuse across levels
+    edge_offsets: Tensor       # (n_levels+1,) prefix sums into edge_src/edge_dst_global
 
 from meandre.routing.dam import DamData
 from meandre.routing.graph import RiverGraph
@@ -122,6 +143,12 @@ class RoutingLayer(nn.Module):
                 "K_atm": K_atm,
             }
 
+        # Precompute Muskingum coefficients once per routing step. They depend
+        # only on K, x, dt — invariant across the topological level loop. Saves
+        # ~5 ops per node per level (denom/c0/c1/c2/clamp/scale) which on slso
+        # (109 levels × 2 substeps) is the dominant per-timestep cost.
+        c01, c2 = self.muskingum.precompute_coefficients(K_musk, x_musk)
+
         # TTA vectorized path: all edges computed in a single batched call.
         # The sequential path (Python loop) is removed; it was unnecessary because
         # TTA reads only from the ring buffer (past timesteps), so there is no
@@ -129,7 +156,7 @@ class RoutingLayer(nn.Module):
         if self.use_tta and len(outflow_buffer) > 0:
             Q_out, lake_storage_new, _ = self._route_vectorized_tta(
                 q_lat_m3s, graph, outflow_buffer, net_W,
-                K_musk, x_musk, lake_storage_new, area_km2, dam_data, t,
+                c01, c2, lake_storage_new, area_km2, dam_data, t,
             )
             T_water = (
                 self._temperature_sweep(Q_out, q_lat_m3s, graph, temp_kwargs)
@@ -139,7 +166,7 @@ class RoutingLayer(nn.Module):
 
         return self._route_vectorized(
             q_lat_m3s, graph, Q_out_prev, net_W,
-            K_musk, x_musk, lake_storage_new, area_km2, dam_data, t,
+            c01, c2, lake_storage_new, area_km2, dam_data, t,
             Q_in_prev=Q_in_prev,
             temp_kwargs=temp_kwargs,
         )
@@ -154,8 +181,8 @@ class RoutingLayer(nn.Module):
         graph: RiverGraph,
         outflow_buffer: OutflowRingBuffer,
         net_W: Tensor,
-        K_musk: Tensor,
-        x_musk: Tensor,
+        c01: Tensor,
+        c2: Tensor,
         lake_storage_new: Tensor | None,
         area_km2: Tensor | None,
         dam_data: DamData | None,
@@ -221,18 +248,18 @@ class RoutingLayer(nn.Module):
         # Total inflow for lake mass balance (lakes don't use Muskingum)
         Q_in_total = Q_agg + q_lat_m3s + net_W
 
-        # River nodes: Muskingum
+        # River nodes: Muskingum (cached coefficients path)
         Q_out = torch.zeros(n_nodes, device=device, dtype=Q_agg.dtype)
         # Use Q_agg as implicit Q_out_prev proxy — reuse last pushed buffer value
         Q_out_proxy = outflow_buffer._buf[(outflow_buffer._ptr - 1) % outflow_buffer.depth]
         river_mask = ~graph.is_lake
         if river_mask.any():
-            Q_out[river_mask] = self.muskingum(
+            Q_out[river_mask] = self.muskingum.forward_cached(
                 Q_in_upstream[river_mask],
                 Q_out_proxy[river_mask],
                 q_lat_m3s[river_mask],
-                K_musk[river_mask],
-                x_musk[river_mask],
+                c01[river_mask],
+                c2[river_mask],
             )
 
         # Lake nodes
@@ -280,8 +307,8 @@ class RoutingLayer(nn.Module):
         graph: RiverGraph,
         Q_out_prev: Tensor,
         net_W: Tensor,
-        K_musk: Tensor,
-        x_musk: Tensor,
+        c01: Tensor,
+        c2: Tensor,
         lake_storage_new: Tensor | None,
         area_km2: Tensor | None,
         dam_data: DamData | None,
@@ -301,70 +328,64 @@ class RoutingLayer(nn.Module):
         """
         device = q_lat_m3s.device
         n_nodes = graph.n_nodes
-        Q_out = torch.zeros(n_nodes, device=device)
 
-        # Temperature tracking
+        # Pre-compute topological levels (cached on the graph)
+        if not hasattr(graph, '_topo_level_data') or graph._topo_level_data is None:
+            graph._topo_level_data = self._build_topo_level_data(graph)
+        topo: TopoLevelData = graph._topo_level_data
+
+        # Single global buffers reused across levels (no per-level zeros() alloc).
+        Q_out = torch.zeros(n_nodes, device=device)
+        Q_agg = torch.zeros(n_nodes, device=device)
+
         do_temp = temp_kwargs is not None
         if do_temp:
-            H_out = torch.zeros(n_nodes, device=device)  # heat load per node
+            H_out = torch.zeros(n_nodes, device=device)
+            H_agg = torch.zeros(n_nodes, device=device)
             H_lateral = temp_kwargs["H_lateral"]
             T_air = temp_kwargs["T_air"]
             R_n = temp_kwargs["R_n"]
             K_atm = temp_kwargs["K_atm"]
             _eps = 1e-6
 
-        # Pre-compute topological levels with per-level edge info (cached)
-        if not hasattr(graph, '_topo_level_data') or graph._topo_level_data is None:
-            graph._topo_level_data = self._build_topo_level_data(graph)
+        # Cache CPU-side offsets (Python ints) for the loop — avoids GPU→CPU sync
+        # on every slice operation.
+        riv_off = topo.river_offsets.tolist()
+        lak_off = topo.lake_offsets.tolist()
+        edg_off = topo.edge_offsets.tolist()
 
-        level_data = graph._topo_level_data
+        for L in range(topo.n_levels):
+            e_lo, e_hi = edg_off[L], edg_off[L + 1]
+            if e_hi > e_lo:
+                e_src = topo.edge_src[e_lo:e_hi]
+                e_dst = topo.edge_dst_global[e_lo:e_hi]
+                Q_agg.scatter_add_(0, e_dst, Q_out[e_src])
+                if do_temp:
+                    H_agg.scatter_add_(0, e_dst, H_out[e_src])
 
-        for level_nodes, edge_src, edge_dst_local in level_data:
-            n_level = len(level_nodes)
+            # River nodes at this level (cached Muskingum, inlined)
+            r_lo, r_hi = riv_off[L], riv_off[L + 1]
+            if r_hi > r_lo:
+                ri = topo.river_idx[r_lo:r_hi]
+                Q_in = Q_agg[ri] + net_W[ri]
+                q_lat_sub = q_lat_m3s[ri] / self.muskingum.n_substeps
+                Q = Q_out_prev[ri]
+                for _ in range(self.muskingum.n_substeps):
+                    Q = torch.clamp(c01[ri] * Q_in + c2[ri] * Q + q_lat_sub, min=0.0)
+                Q_out[ri] = Q
 
-            # Vectorized upstream aggregation via scatter_add
-            Q_agg = torch.zeros(n_level, device=device)
-            if edge_src is not None:
-                Q_agg.scatter_add_(0, edge_dst_local, Q_out[edge_src])
-
-            # Heat load aggregation (same scatter pattern)
-            if do_temp:
-                H_agg = torch.zeros(n_level, device=device)
-                if edge_src is not None:
-                    H_agg.scatter_add_(0, edge_dst_local, H_out[edge_src])
-
-            Q_in_upstream = Q_agg + net_W[level_nodes]  # allow deficit
-            q_lat_level = q_lat_m3s[level_nodes]
-
-            # Separate river and lake nodes within this level
-            is_lake_level = graph.is_lake[level_nodes]
-            river_in_level = ~is_lake_level
-            lake_in_level = is_lake_level
-
-            # River nodes: Muskingum
-            if river_in_level.any():
-                river_idx = level_nodes[river_in_level]
-                Q_out[river_idx] = self.muskingum(
-                    Q_in_upstream[river_in_level],
-                    Q_out_prev[river_idx],
-                    q_lat_level[river_in_level],
-                    K_musk[river_idx],
-                    x_musk[river_idx],
-                )
-
-            # Lake nodes: storage-discharge
-            if lake_in_level.any() and lake_storage_new is not None:
-                lake_idx = level_nodes[lake_in_level]
-                n_l = int(lake_in_level.sum())
+            # Lake nodes at this level
+            l_lo, l_hi = lak_off[L], lak_off[L + 1]
+            if l_hi > l_lo and lake_storage_new is not None:
+                li = topo.lake_idx[l_lo:l_hi]
+                n_l = l_hi - l_lo
                 zeros_l = torch.zeros(n_l, device=device)
-                area_l = area_km2[lake_idx] if area_km2 is not None else torch.ones(n_l, device=device)
-                Q_in_total = (
-                    Q_agg[lake_in_level] + q_lat_level[lake_in_level] + net_W[lake_idx]
-                )
+                area_l = area_km2[li] if area_km2 is not None else torch.ones(n_l, device=device)
+                Q_in_total = Q_agg[li] + q_lat_m3s[li] + net_W[li]
 
                 Q_lake, S_lake = self.lake(
                     Q_in_total,
-                    lake_storage_new[lake_idx],
+                    lake_storage_new[li],
                     area_l,
                     E_lake=zeros_l,
                     P_lake=zeros_l,
@@ -372,34 +393,32 @@ class RoutingLayer(nn.Module):
                 )
 
                 if dam_data is not None:
-                    forced = dam_data.releases[t][lake_idx]
+                    forced = dam_data.releases[t][li]
                     regulated = ~torch.isnan(forced)
                     if regulated.any():
                         Q_lake = torch.where(regulated, forced, Q_lake)
                         S_reg_new = torch.clamp(
-                            lake_storage_new[lake_idx] + (Q_in_total - forced) * 86400.0,
+                            lake_storage_new[li] + (Q_in_total - forced) * 86400.0,
                             min=0.0,
                         )
                         S_lake = torch.where(regulated, S_reg_new, S_lake)
 
-                Q_out[lake_idx] = Q_lake
-                lake_storage_new[lake_idx] = S_lake.detach()
+                Q_out[li] = torch.clamp(Q_lake, min=0.0)
+                lake_storage_new[li] = S_lake.detach()
 
-            # Clamp after routing: withdrawals can reduce Q to 0 but not below
-            Q_out[level_nodes] = torch.clamp(Q_out[level_nodes], min=0.0)
-
-            # Temperature: mix upstream + lateral heat, then atmospheric exchange
+            # Temperature: per-level downstream propagation
             if do_temp:
-                H_total = H_agg + H_lateral[level_nodes]
-                Q_total = Q_agg + q_lat_level
-                # Mixed temperature from advection
-                T_mix = H_total / (Q_total + _eps)
-                # Atmospheric exchange: relax toward equilibrium
-                T_eq = T_air[level_nodes] + R_n[level_nodes] * 0.3
-                T_node = T_mix + K_atm[level_nodes] * (T_eq - T_mix)
-                T_node = torch.clamp(T_node, min=0.0, max=40.0)
-                # Outgoing heat load = Q_out * T_node
-                H_out[level_nodes] = Q_out[level_nodes] * T_node
+                # Combine river+lake indices for this level for the temp update
+                # (cheap concat — usually one is empty)
+                all_idx_L = torch.cat([topo.river_idx[r_lo:r_hi], topo.lake_idx[l_lo:l_hi]])
+                if all_idx_L.numel() > 0:
+                    H_total = H_agg[all_idx_L] + H_lateral[all_idx_L]
+                    Q_total = Q_agg[all_idx_L] + q_lat_m3s[all_idx_L]
+                    T_mix = H_total / (Q_total + _eps)
+                    T_eq = T_air[all_idx_L] + R_n[all_idx_L] * 0.3
+                    T_node = T_mix + K_atm[all_idx_L] * (T_eq - T_mix)
+                    T_node = torch.clamp(T_node, min=0.0, max=40.0)
+                    H_out[all_idx_L] = Q_out[all_idx_L] * T_node
 
         T_water = None
         if do_temp:
@@ -434,26 +453,34 @@ class RoutingLayer(nn.Module):
 
         if not hasattr(graph, '_topo_level_data') or graph._topo_level_data is None:
             graph._topo_level_data = self._build_topo_level_data(graph)
+        topo: TopoLevelData = graph._topo_level_data
 
-        for level_nodes, edge_src, edge_dst_local in graph._topo_level_data:
-            n_level = len(level_nodes)
+        H_agg = torch.zeros(n_nodes, device=device)
+        Q_agg = torch.zeros(n_nodes, device=device)
 
-            H_agg = torch.zeros(n_level, device=device)
-            Q_agg = torch.zeros(n_level, device=device)
-            if edge_src is not None:
-                H_agg.scatter_add_(0, edge_dst_local, H_out[edge_src])
-                Q_agg.scatter_add_(0, edge_dst_local, Q_out[edge_src])
+        riv_off = topo.river_offsets.tolist()
+        lak_off = topo.lake_offsets.tolist()
+        edg_off = topo.edge_offsets.tolist()
 
-            q_lat_level = q_lat_m3s[level_nodes]
-            H_total = H_agg + H_lateral[level_nodes]
-            Q_total = Q_agg + q_lat_level
-            T_mix = H_total / (Q_total + _eps)
+        for L in range(topo.n_levels):
+            e_lo, e_hi = edg_off[L], edg_off[L + 1]
+            if e_hi > e_lo:
+                e_src = topo.edge_src[e_lo:e_hi]
+                e_dst = topo.edge_dst_global[e_lo:e_hi]
+                H_agg.scatter_add_(0, e_dst, H_out[e_src])
+                Q_agg.scatter_add_(0, e_dst, Q_out[e_src])
 
-            T_eq  = T_air[level_nodes] + R_n[level_nodes] * 0.3
-            T_node = T_mix + K_atm[level_nodes] * (T_eq - T_mix)
-            T_node = torch.clamp(T_node, min=0.0, max=40.0)
-
-            H_out[level_nodes] = Q_out[level_nodes] * T_node
+            r_lo, r_hi = riv_off[L], riv_off[L + 1]
+            l_lo, l_hi = lak_off[L], lak_off[L + 1]
+            all_idx_L = torch.cat([topo.river_idx[r_lo:r_hi], topo.lake_idx[l_lo:l_hi]])
+            if all_idx_L.numel() > 0:
+                H_total = H_agg[all_idx_L] + H_lateral[all_idx_L]
+                Q_total = Q_agg[all_idx_L] + q_lat_m3s[all_idx_L]
+                T_mix = H_total / (Q_total + _eps)
+                T_eq = T_air[all_idx_L] + R_n[all_idx_L] * 0.3
+                T_node = T_mix + K_atm[all_idx_L] * (T_eq - T_mix)
+                T_node = torch.clamp(T_node, min=0.0, max=40.0)
+                H_out[all_idx_L] = Q_out[all_idx_L] * T_node
 
         T_water = H_out / (Q_out + _eps)
         return torch.clamp(T_water, min=0.0, max=40.0)
@@ -461,19 +488,21 @@ class RoutingLayer(nn.Module):
     @staticmethod
     def _build_topo_level_data(
         graph: RiverGraph,
-    ) -> list[tuple[Tensor, Tensor | None, Tensor | None]]:
-        """Build topological levels with per-level edge info for vectorized scatter.
+    ) -> "TopoLevelData":
+        """Build topological levels for level-by-level routing (Kahn's algorithm).
 
-        Returns list of (level_nodes, edge_src, edge_dst_local) tuples.
-        - level_nodes: (n_level,) global node indices
-        - edge_src: (n_edges_into_level,) global source node indices
-        - edge_dst_local: (n_edges_into_level,) LOCAL index within level_nodes
-        Both edge tensors are None if no edges feed into this level.
+        Returns a ``TopoLevelData`` namedtuple of flat tensors with offsets per
+        level. River vs lake separation is precomputed once. Edge destinations
+        are stored as GLOBAL node indices (not per-level local indices) so the
+        accumulation can share a single global Q_agg buffer across all levels —
+        eliminates ``torch.zeros(n_level)`` allocations on every iteration.
         """
+        import numpy as np
+
         n = graph.n_nodes
         device = graph.edge_index.device if graph.n_edges > 0 else torch.device('cpu')
+        is_lake_cpu = graph.is_lake.cpu().numpy().astype(bool)
 
-        # Build adjacency and incoming edges on CPU
         in_degree = [0] * n
         children: list[list[int]] = [[] for _ in range(n)]
         dst_to_src: dict[int, list[int]] = {}
@@ -485,32 +514,11 @@ class RoutingLayer(nn.Module):
                 children[s].append(d)
                 dst_to_src.setdefault(d, []).append(s)
 
-        # Kahn's algorithm
-        result: list[tuple[Tensor, Tensor | None, Tensor | None]] = []
+        # Kahn's algorithm to produce per-level node lists
+        per_level_nodes: list[list[int]] = []
         queue = [i for i in range(n) if in_degree[i] == 0]
-
         while queue:
-            level_nodes = torch.tensor(queue, dtype=torch.long, device=device)
-
-            # Build per-level edge lists for scatter_add
-            edge_srcs: list[int] = []
-            edge_dst_locals: list[int] = []
-            for local_idx, node in enumerate(queue):
-                srcs = dst_to_src.get(node)
-                if srcs:
-                    for s in srcs:
-                        edge_srcs.append(s)
-                        edge_dst_locals.append(local_idx)
-
-            if edge_srcs:
-                e_src = torch.tensor(edge_srcs, dtype=torch.long, device=device)
-                e_dst = torch.tensor(edge_dst_locals, dtype=torch.long, device=device)
-            else:
-                e_src = None
-                e_dst = None
-
-            result.append((level_nodes, e_src, e_dst))
-
+            per_level_nodes.append(queue)
             next_queue: list[int] = []
             for node in queue:
                 for child in children[node]:
@@ -519,5 +527,50 @@ class RoutingLayer(nn.Module):
                         next_queue.append(child)
             queue = next_queue
 
-        return result
+        n_levels = len(per_level_nodes)
+
+        # Flat node lists (global indices), separated river/lake per level.
+        river_per_level: list[list[int]] = []
+        lake_per_level: list[list[int]] = []
+        for nodes_L in per_level_nodes:
+            riv = [i for i in nodes_L if not is_lake_cpu[i]]
+            lak = [i for i in nodes_L if is_lake_cpu[i]]
+            river_per_level.append(riv)
+            lake_per_level.append(lak)
+
+        # Concatenate per-level node lists into flat tensors with offsets.
+        river_flat: list[int] = []
+        river_offsets = [0]
+        for riv in river_per_level:
+            river_flat.extend(riv)
+            river_offsets.append(len(river_flat))
+
+        lake_flat: list[int] = []
+        lake_offsets = [0]
+        for lak in lake_per_level:
+            lake_flat.extend(lak)
+            lake_offsets.append(len(lake_flat))
+
+        # Flat edges: src and GLOBAL dst, one block per level.
+        edge_src_flat: list[int] = []
+        edge_dst_flat: list[int] = []
+        edge_offsets = [0]
+        for nodes_L in per_level_nodes:
+            for node in nodes_L:
+                for s in dst_to_src.get(node, ()):
+                    edge_src_flat.append(s)
+                    edge_dst_flat.append(node)  # GLOBAL dst index
+            edge_offsets.append(len(edge_src_flat))
+
+        return TopoLevelData(
+            n_levels=n_levels,
+            n_nodes=n,
+            river_idx=torch.tensor(river_flat, dtype=torch.long, device=device),
+            river_offsets=torch.tensor(river_offsets, dtype=torch.long, device=device),
+            lake_idx=torch.tensor(lake_flat, dtype=torch.long, device=device),
+            lake_offsets=torch.tensor(lake_offsets, dtype=torch.long, device=device),
+            edge_src=torch.tensor(edge_src_flat, dtype=torch.long, device=device),
+            edge_dst_global=torch.tensor(edge_dst_flat, dtype=torch.long, device=device),
+            edge_offsets=torch.tensor(edge_offsets, dtype=torch.long, device=device),
+        )
 

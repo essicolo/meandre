@@ -39,6 +39,31 @@ class MuskingumCunge(nn.Module):
         self.dt = dt
         self.n_substeps = n_substeps
 
+    def precompute_coefficients(self, K: Tensor, x: Tensor) -> tuple[Tensor, Tensor]:
+        """Precompute (c01, c2) once per simulate() call.
+
+        The Muskingum coefficients depend only on K, x, dt — all constant over
+        one simulate() pass. Caching them eliminates ~5 PyTorch ops per
+        ``_muskingum_step`` call (denom, c0, c1, c2 raw, clamp, scale, c0*scale,
+        c1*scale, c0+c1) and replaces them with two cheap lookups. With 109
+        topo levels × 2 substeps × 7000 timesteps, this saves ~10⁷ ops/epoch.
+
+        Returns
+        -------
+        c01 : (n,) effective c0+c1 (after the dispersive-regime rescale)
+        c2  : (n,) effective c2 (clamped ≥ 0)
+        """
+        dt_sub = self.dt / self.n_substeps
+        denom = 2.0 * K * (1.0 - x) + dt_sub + 1e-6
+        c0 = (dt_sub - 2.0 * K * x) / denom
+        c1 = (dt_sub + 2.0 * K * x) / denom
+        c2 = (2.0 * K * (1.0 - x) - dt_sub) / denom
+        c2 = torch.clamp(c2, min=0.0)
+        c01_sum = c0 + c1
+        scale = (1.0 - c2) / (c01_sum + 1e-8)
+        c01 = c01_sum * scale
+        return c01, c2
+
     def _muskingum_step(
         self,
         Q_in: Tensor,
@@ -63,6 +88,32 @@ class MuskingumCunge(nn.Module):
 
         Q_out = (c0 + c1) * Q_in + c2 * Q_out_prev + q_lateral
         return torch.clamp(Q_out, min=0.0)
+
+    @staticmethod
+    def _step_cached(
+        Q_in: Tensor,
+        Q_out_prev: Tensor,
+        q_lateral_sub: Tensor,
+        c01: Tensor,
+        c2: Tensor,
+    ) -> Tensor:
+        """Muskingum step with precomputed coefficients (3 ops vs 12)."""
+        return torch.clamp(c01 * Q_in + c2 * Q_out_prev + q_lateral_sub, min=0.0)
+
+    def forward_cached(
+        self,
+        Q_in: Tensor,
+        Q_out_prev: Tensor,
+        q_lateral: Tensor,
+        c01: Tensor,
+        c2: Tensor,
+    ) -> Tensor:
+        """Routing step using precomputed coefficients (fast path)."""
+        q_lat_sub = q_lateral / self.n_substeps
+        Q_out = Q_out_prev
+        for _ in range(self.n_substeps):
+            Q_out = self._step_cached(Q_in, Q_out, q_lat_sub, c01, c2)
+        return Q_out
 
     def forward(
         self,
