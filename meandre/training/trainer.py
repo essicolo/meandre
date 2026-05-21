@@ -10,6 +10,7 @@ Implements the four-phase curriculum from README section 6.6:
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -60,6 +61,11 @@ class TrainingConfig:
     w_sigma_anchor: float = 0.0
     sigma_anchor_target_a: float = -3.0   # log σ baseline (5% when b=1 at Q=100)
     sigma_anchor_target_b: float | None = None   # None = let b float free
+
+    # Concrete Dropout KL regularisation weight for the temporal encoder.
+    # Penalises dropout rate deviation from the prior. 0 = disabled (standard
+    # training). Typical: 0.01-0.1 for moderate epistemic uncertainty.
+    w_concrete_kl: float = 0.0
 
     # LR scheduler shape. Cosine annealing from `lr` to `lr * eta_min_factor`
     # over n_epochs. Set to 1.0 for CONSTANT lr (cosine becomes flat) —
@@ -178,6 +184,17 @@ class TrainingConfig:
     autopilot_restart_regression: float = 0.05  # 5% regression from best
     autopilot_restart_max: int = 3               # max restarts
 
+    # ── NLL autopilot (Kendall & Gal phase 2) ──────────────────────
+    # Automatically adjust w_nll based on KGE degradation from the
+    # deterministic baseline.  Prevents the NLL from destroying the
+    # mean prediction while still allowing gradual uncertainty learning.
+    autopilot_nll: bool = False
+    autopilot_nll_initial_kge: float | None = None  # set automatically if None
+    autopilot_nll_max_regression: float = 0.05  # max tolerable KGE drop (5%)
+    autopilot_nll_ramp_rate: float = 1.5        # multiply w_nll by this on ramp
+    autopilot_nll_max: float = 0.5             # cap for w_nll
+    autopilot_nll_min: float = 0.001          # floor for w_nll
+
     # Metric-driven curriculum: instead of fixed epoch numbers, activate
     # modules when kge_station reaches a threshold.  Overrides the fixed
     # epoch settings when autopilot is enabled and these are > 0.
@@ -195,6 +212,29 @@ class TrainingConfig:
     autopilot_unfreeze_spatial_epoch: int | None = None     # e.g. 25
     autopilot_unfreeze_spatial_min_kge: float | None = None # e.g. 0.40
     autopilot_unfreeze_spatial_lr_factor: float = 0.05      # lr → lr × 0.05
+
+    # ── Kendall-Gal auto phase 1 → phase 2 transition ──────────────
+    # When enabled, the trainer starts in phase 1 (deterministic, backbone
+    # trainable, w_nll=0) and automatically switches to phase 2 (probabilistic,
+    # backbone frozen, w_nll ramped) when kge_station crosses a threshold OR
+    # the kge_station plateau patience is exhausted.  Reproduces the two-config
+    # warm-start recipe (deterministic.toml → probabilistic.toml) in a single
+    # run.  One-shot transition.
+    kendall_gal_auto: bool = False
+    kga_phase1_kge_threshold: float = 0.85       # transition if kge_sta >= this
+    kga_phase1_plateau_patience: int = 15        # or N epochs without kge_sta improvement
+    kga_phase1_min_epochs: int = 5               # safeguard: never transition before this epoch
+    kga_phase2_freeze_spatial: bool = True
+    kga_phase2_freeze_temporal: bool = True       # keeps ConcreteDropout trainable
+    kga_phase2_freeze_backbone: bool = True       # vertical column + routing
+    kga_phase2_best_metric: str = "nll"
+    kga_phase2_lr: float | None = None            # None = keep current LR
+    kga_phase2_reset_no_improve: bool = True      # reset early-stopping counter
+    # Loss-weight overrides applied at transition. Any key matching a HydroLoss
+    # attribute (w_nll, w_kge, w_mse, w_log_mse, w_pbias, w_nrmse, w_nse,
+    # w_log_nse, w_physics, w_residual, w_nll_et, w_nll_swe) will be setattr'd.
+    # Example: {"w_nll": 0.1, "w_kge": 1.0, "w_mse": 0.0}
+    kga_phase2_loss_weights: dict | None = None
 
 
 @dataclass
@@ -311,6 +351,23 @@ class Trainer:
                     "Discriminative LR: fc_out.weight=%.1e (10×), wd=0 — NeRF anti-collapse",
                     self.config.lr * 10.0,
                 )
+            # Noise head learns at 10× base LR — sigma needs to adapt fast
+            # while spatial_encoder learns slowly from the combined KGE+NLL signal.
+            noise_params: list[torch.nn.Parameter] = []
+            for name, p in model.named_parameters():
+                if "noise_head" in name:
+                    noise_params.append(p)
+            if noise_params:
+                # Remove noise_params from base_params to avoid double-counting
+                base_params_set = set(id(p) for p in base_params)
+                base_params[:] = [p for p in base_params if id(p) not in set(id(p) for p in noise_params)]
+                groups.append({"params": noise_params,
+                               "lr": self.config.lr * 10.0,
+                               "weight_decay": 0.0})
+                logger.info(
+                    "Discriminative LR: noise_head=%.1e (10×), wd=0 — fast sigma adaptation",
+                    self.config.lr * 10.0,
+                )
             self.optimizer = AdamW(groups)
         # Autopilot: force val_every=1 for fast reaction
         if self.config.autopilot and self.config.val_every > 1:
@@ -321,7 +378,9 @@ class Trainer:
             self.config.val_every = 1
 
         # Best-metric init depends on direction (lower-is-better for loss-like)
-        self._best_metric_lower_is_better = self.config.best_metric in ("loss", "val_loss")
+        self._best_metric_lower_is_better = self.config.best_metric in (
+            "loss", "val_loss", "nll", "val_nll", "rmse", "nrmse", "mae", "pbias",
+        )
         self._best_val_metric = (
             float("inf") if self._best_metric_lower_is_better else -float("inf")
         )
@@ -331,6 +390,12 @@ class Trainer:
         self._ap_lr_plateau_count: int = 0
         self._ap_restart_count: int = 0
         self._ap_prev_kge_sta: float | None = None
+
+        # Kendall-Gal auto state (None = feature disabled)
+        self._kga_phase: int | None = 1 if self.config.kendall_gal_auto else None
+        self._kga_best_kge: float = -float("inf")
+        self._kga_plateau_counter: int = 0
+        self._kga_phase1_start_epoch: int = 0
 
         # Mixed precision (AMP) with bfloat16 — même plage d'exposant que
         # float32 (pas d'overflow dans exp/log de l'hydrologie), mais
@@ -466,6 +531,8 @@ class Trainer:
             val_kge_log = last_val_metrics.get("kge_log", float("nan"))
             val_kge_sta = last_val_metrics.get("kge_station", float("nan"))
             val_kge_med = last_val_metrics.get("kge_median", float("nan"))
+            val_cov90 = last_val_metrics.get("cov_90", float("nan"))
+            val_cov50 = last_val_metrics.get("cov_50", float("nan"))
             pbar.set_postfix(
                 loss=f"{float(train_loss):.4f}",
                 kge_sta=f"{val_kge_sta:.4f}",
@@ -482,8 +549,10 @@ class Trainer:
                 f"| rmse={val_rmse:.2f} | nrmse={val_nrmse:.3f}"
                 f" | r={val_r:.3f} | beta={val_beta:.3f} | gamma={val_gamma:.3f}"
                 f" | kge_log={val_kge_log:.4f}"
-                f" | lr={current_lr:.2e}"
             )
+            if not math.isnan(val_cov90):
+                epoch_msg += f" | cov90={val_cov90:.3f} | cov50={val_cov50:.3f}"
+            epoch_msg += f" | lr={current_lr:.2e}"
             logger.info(epoch_msg)
             print(epoch_msg, flush=True)
 
@@ -504,19 +573,28 @@ class Trainer:
             #     would never count no-improve and disable autopilot LR-plateau)
             _bm = self.config.best_metric
             _tol = self.config.best_metric_tolerance
+            # Alias: "nll" in calibration dict is keyed as "val_nll"
+            _bm_key = "val_nll" if _bm == "nll" else _bm
+            _default = float("inf") if self._best_metric_lower_is_better else -float("inf")
             if _bm == "loss":
                 _cur = float(train_loss)
             elif _bm == "val_loss":
                 _cur = last_val_metrics.get("loss", float("inf")) if run_val else float("inf")
             else:
-                _cur = last_val_metrics.get(_bm, -float("inf")) if run_val else -float("inf")
+                _cur = last_val_metrics.get(_bm_key, _default) if run_val else _default
 
             tracked_now = run_val or (_bm == "loss")
             if tracked_now:
+                # Use absolute tolerance scaled by |best| so we handle negative
+                # metrics correctly (NLL can be negative — a relative-tolerance
+                # comparison flips sign and asks for a worse score).
+                _margin = _tol * abs(self._best_val_metric)
+                if not math.isfinite(_margin):
+                    _margin = 0.0
                 if self._best_metric_lower_is_better:
-                    is_improvement = _cur < self._best_val_metric * (1 - _tol)
+                    is_improvement = _cur < self._best_val_metric - _margin
                 else:
-                    is_improvement = _cur > self._best_val_metric * (1 + _tol)
+                    is_improvement = _cur > self._best_val_metric + _margin
 
                 if is_improvement:
                     self._best_val_metric = _cur
@@ -530,6 +608,14 @@ class Trainer:
                     print(f"  [no save] {_bm}={_cur:.4f}, "
                           f"best={self._best_val_metric:.4f}, "
                           f"no_improve={epochs_without_improvement}/{self.config.patience}")
+
+            # ── Kendall-Gal phase 1→2 transition (one-shot) ────────────
+            # Checked BEFORE regular autopilot so we don't trigger LR plateau
+            # actions on a metric we're about to swap away from.
+            if self.config.kendall_gal_auto and run_val and self._kga_phase == 1:
+                transitioned = self._maybe_transition_kga(epoch, last_val_metrics)
+                if transitioned and self.config.kga_phase2_reset_no_improve:
+                    epochs_without_improvement = 0
 
             # ── Autopilot ──────────────────────────────────────────────
             if self.config.autopilot and run_val:
@@ -656,6 +742,7 @@ class Trainer:
         total_loss = torch.tensor(0.0, device=data.forcing.device)
         all_components: dict[str, float] = {}
         n_chunks = 0
+        sp_tensor: Tensor | None = None  # cached spatial params for SpatialNoiseHead
 
         while t_start < data.train_slice.stop:
             t_end = min(t_start + chunk, data.train_slice.stop)
@@ -690,10 +777,20 @@ class Trainer:
                 # back-propagate through Q_sim via σ. Prevents the NLL
                 # degeneracy where model inflates μ_Q to gonfler σ and reduce
                 # ((q_obs - q_sim) / σ)² (Kendall & Gal 2017 §2.3).
-                log_sigma_chunk = (
-                    self.model.noise_head(Q_chunk_loss.detach())
-                    if self.loss_fn.w_nll > 0 else None
-                )
+                log_sigma_chunk = None
+                if self.loss_fn.w_nll > 0:
+                    Q_det = Q_chunk_loss.detach()
+                    from meandre.utils.noise_head import SpatialNoiseHead
+                    if isinstance(self.model.noise_head, SpatialNoiseHead):
+                        # Per-node noise head conditions on spatial params so
+                        # different catchments get different uncertainty profiles.
+                        sp = self.model.spatial_encoder(
+                            data.node_coords, data.territorial.to_tensor()
+                        )
+                        sp_tensor = sp.to_tensor()
+                        log_sigma_chunk = self.model.noise_head(sp_tensor, Q_det)
+                    else:
+                        log_sigma_chunk = self.model.noise_head(Q_det)
                 loss_chunk, comps = self.loss_fn(
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,
@@ -726,10 +823,23 @@ class Trainer:
             # Noise head σ anchor — counters NLL degeneracy (σ inflates to
             # mask a bad μ). Applied symmetrically to Q / ET / SWE heads.
             if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
-                anchor = self.model.noise_head.anchor_loss(
-                    self.config.sigma_anchor_target_a,
-                    self.config.sigma_anchor_target_b,
-                )
+                from meandre.utils.noise_head import SpatialNoiseHead
+                if isinstance(self.model.noise_head, SpatialNoiseHead):
+                    if sp_tensor is None:
+                        sp = self.model.spatial_encoder(
+                            data.node_coords, data.territorial.to_tensor()
+                        )
+                        sp_tensor = sp.to_tensor()
+                    anchor = self.model.noise_head.anchor_loss(
+                        sp_tensor,
+                        self.config.sigma_anchor_target_a,
+                        self.config.sigma_anchor_target_b,
+                    )
+                else:
+                    anchor = self.model.noise_head.anchor_loss(
+                        self.config.sigma_anchor_target_a,
+                        self.config.sigma_anchor_target_b,
+                    )
                 if self.loss_fn.w_nll_et > 0:
                     anchor = anchor + self.model.noise_head_et.anchor_loss(
                         self.config.sigma_anchor_target_a,
@@ -743,6 +853,15 @@ class Trainer:
                 loss_chunk = loss_chunk + self.config.w_sigma_anchor * anchor
                 all_components["sigma_anchor"] = (
                     all_components.get("sigma_anchor", 0.0) + float(anchor.detach())
+                )
+
+            # Concrete Dropout KL regularisation (epistemic uncertainty).
+            # Only active when concrete_dropout is enabled in the temporal encoder.
+            if self.config.w_concrete_kl > 0 and self.model.temporal_encoder is not None:
+                concrete_kl = self.model.temporal_encoder.concrete_kl()
+                loss_chunk = loss_chunk + self.config.w_concrete_kl * concrete_kl
+                all_components["concrete_kl"] = (
+                    all_components.get("concrete_kl", 0.0) + float(concrete_kl.detach())
                 )
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
@@ -795,17 +914,24 @@ class Trainer:
         self._n_no_grad_chunks = 0  # reset for next epoch
 
         # Clip and step (once, on accumulated gradients)
+        # First, surgically replace NaN/Inf gradients with zeros so valid
+        # gradients from other parameters still contribute to the update.
+        nan_params = []
+        for name, p in self.model.named_parameters():
+            if p.grad is not None and (p.grad.isnan().any() or p.grad.isinf().any()):
+                n_nan = p.grad.isnan().sum().item()
+                n_inf = p.grad.isinf().sum().item()
+                nan_params.append(f"{name}({n_nan}nan,{n_inf}inf)")
+                p.grad = torch.nan_to_num(p.grad, nan=0.0, posinf=0.0, neginf=0.0)
+        if nan_params:
+            logger.warning(
+                f"NaN/Inf gradients in {len(nan_params)} params — "
+                f"zeroed: {nan_params[:5]}"
+            )
         total_norm = torch.nn.utils.clip_grad_norm_(
             self.model.parameters(), self.config.grad_clip
         )
-        if torch.isnan(total_norm) or torch.isinf(total_norm):
-            logger.warning(
-                f"NaN/Inf gradient norm ({float(total_norm):.2f}) — "
-                "zeroing gradients to protect weights."
-            )
-            self.optimizer.zero_grad()
-        else:
-            self.optimizer.step()
+        self.optimizer.step()
 
         comp_tensors = {k: torch.tensor(v) for k, v in all_components.items()}
         return total_loss, comp_tensors
@@ -881,9 +1007,17 @@ class Trainer:
             q_obs_train = data.q_obs[:n_train]
 
             # Detach Q_sim before noise_head (cf. chunked path above).
-            log_sigma_sim = (
-                self.model.noise_head(Q_sim.detach()) if self.loss_fn.w_nll > 0 else None
-            )
+            log_sigma_sim = None
+            if self.loss_fn.w_nll > 0:
+                Q_det = Q_sim.detach()
+                from meandre.utils.noise_head import SpatialNoiseHead
+                if isinstance(self.model.noise_head, SpatialNoiseHead):
+                    sp = self.model.spatial_encoder(
+                        data.node_coords, data.territorial.to_tensor()
+                    )
+                    log_sigma_sim = self.model.noise_head(sp.to_tensor(), Q_det)
+                else:
+                    log_sigma_sim = self.model.noise_head(Q_det)
             # TODO multi-obj wiring (NLL ET / SWE) :
             # Quand data.et_obs ou data.swe_obs sont fournis et w_nll_et/_swe > 0,
             # appeler self.model.simulate(..., return_diagnostics=True) au lieu de
@@ -922,10 +1056,21 @@ class Trainer:
 
         # Noise head σ anchor (single-pass path) — same logic as chunked.
         if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
-            anchor = self.model.noise_head.anchor_loss(
-                self.config.sigma_anchor_target_a,
-                self.config.sigma_anchor_target_b,
-            )
+            from meandre.utils.noise_head import SpatialNoiseHead
+            if isinstance(self.model.noise_head, SpatialNoiseHead):
+                sp = self.model.spatial_encoder(
+                    data.node_coords, data.territorial.to_tensor()
+                )
+                anchor = self.model.noise_head.anchor_loss(
+                    sp.to_tensor(),
+                    self.config.sigma_anchor_target_a,
+                    self.config.sigma_anchor_target_b,
+                )
+            else:
+                anchor = self.model.noise_head.anchor_loss(
+                    self.config.sigma_anchor_target_a,
+                    self.config.sigma_anchor_target_b,
+                )
             if self.loss_fn.w_nll_et > 0:
                 anchor = anchor + self.model.noise_head_et.anchor_loss(
                     self.config.sigma_anchor_target_a,
@@ -939,6 +1084,12 @@ class Trainer:
             loss = loss + self.config.w_sigma_anchor * anchor
             components["sigma_anchor"] = anchor.detach()
 
+        # Concrete Dropout KL (single-pass path)
+        if self.config.w_concrete_kl > 0 and self.model.temporal_encoder is not None:
+            concrete_kl = self.model.temporal_encoder.concrete_kl()
+            loss = loss + self.config.w_concrete_kl * concrete_kl
+            components["concrete_kl"] = concrete_kl.detach()
+
         if torch.isnan(loss):
             logger.warning(
                 "NaN loss detected — skipping backward. "
@@ -949,17 +1100,24 @@ class Trainer:
 
         loss.backward()
 
+        # Surgical NaN cleanup: zero only affected params, keep valid gradients
+        nan_params = []
+        for name, p in self.model.named_parameters():
+            if p.grad is not None and (p.grad.isnan().any() or p.grad.isinf().any()):
+                n_nan = p.grad.isnan().sum().item()
+                n_inf = p.grad.isinf().sum().item()
+                nan_params.append(f"{name}({n_nan}nan,{n_inf}inf)")
+                p.grad = torch.nan_to_num(p.grad, nan=0.0, posinf=0.0, neginf=0.0)
+        if nan_params:
+            logger.warning(
+                f"NaN/Inf gradients in {len(nan_params)} params — "
+                f"zeroed: {nan_params[:5]}"
+            )
+
         total_norm = torch.nn.utils.clip_grad_norm_(
             self.model.parameters(), self.config.grad_clip
         )
-        if torch.isnan(total_norm) or torch.isinf(total_norm):
-            logger.warning(
-                f"NaN/Inf gradient norm ({float(total_norm):.2f}) — "
-                "zeroing gradients to protect weights."
-            )
-            self.optimizer.zero_grad()
-        else:
-            self.optimizer.step()
+        self.optimizer.step()
 
         return loss.detach(), {k: v.detach() for k, v in components.items()}
 
@@ -1090,6 +1248,43 @@ class Trainer:
                     "kge_median": kge_median}
 
         kge_info = kge_components(q_o, q_s)
+
+        # ── Probabilistic calibration metrics ──────────────────────
+        # Coverage: fraction of obs within [Q_sim ± z*sigma].
+        # Well-calibrated model: cov_90 ≈ 0.90, cov_50 ≈ 0.50.
+        calibration = {}
+        if (self.loss_fn.w_nll > 0
+                and hasattr(self.model, 'noise_head')
+                and Q_sim is not None):
+            from meandre.utils.noise_head import SpatialNoiseHead
+            with torch.no_grad():
+                Q_det = Q_sim.detach()
+                if isinstance(self.model.noise_head, SpatialNoiseHead):
+                    sp = self.model.spatial_encoder(
+                        data.node_coords, data.territorial.to_tensor()
+                    )
+                    log_sigma = self.model.noise_head(sp.to_tensor(), Q_det)
+                else:
+                    log_sigma = self.model.noise_head(Q_det)
+            sigma = log_sigma[:, data.station_mask].exp()  # (T, n_stations)
+            q_obs_v = q_obs_val  # (T, n_stations)
+            valid_cov = ~torch.isnan(q_obs_v) & ~torch.isnan(Q_sim[:, data.station_mask])
+            for level, z in [(50, 0.674), (90, 1.645)]:
+                lo = q_sim_at_stations - z * sigma
+                hi = q_sim_at_stations + z * sigma
+                in_interval = (q_obs_v >= lo) & (q_obs_v <= hi)
+                cov = (in_interval & valid_cov).sum().float() / valid_cov.sum().float()
+                calibration[f"cov_{level}"] = float(cov)
+            # Mean sigma statistics
+            calibration["sigma_mean"] = float(sigma[valid_cov].mean())
+            calibration["sigma_median"] = float(sigma[valid_cov].median())
+            # NLL on validation set
+            from meandre.training.loss import gaussian_nll_loss
+            qo_p = q_obs_v[valid_cov]
+            qs_p = q_sim_at_stations[valid_cov]
+            ls_p = log_sigma[:, data.station_mask][valid_cov]
+            calibration["val_nll"] = float(gaussian_nll_loss(qo_p, qs_p, ls_p))
+
         return {
             "nse": float(nse(q_o, q_s)),
             "kge": float(kge_info["kge"]),
@@ -1108,6 +1303,7 @@ class Trainer:
             "kge_station": kge_weighted,
             "nse_station": nse_weighted,
             "kge_median": kge_median,
+            **calibration,
         }
 
     def _water_balance_check(self, data: TrainingData, period: str = "train") -> None:
@@ -1211,6 +1407,115 @@ class Trainer:
                 tta_factor = 1.0 if enabled else 0.0
             if hasattr(self.model.routing, "tta_warmup_factor"):
                 self.model.routing.tta_warmup_factor.fill_(tta_factor)
+
+    def _apply_phase2_config(self, epoch: int, kge_at_transition: float) -> None:
+        """Apply Kendall-Gal phase 2 configuration (one-shot).
+
+        Freezes the requested modules, swaps loss weights and best_metric,
+        and resets the early-stopping counter / best metric tracking.
+        """
+        cfg = self.config
+
+        # ── Freeze modules ──────────────────────────────────────────
+        n_frozen_total = 0
+        if cfg.kga_phase2_freeze_spatial and hasattr(self.model, "spatial_encoder"):
+            for p in self.model.spatial_encoder.parameters():
+                p.requires_grad = False
+            n_frozen_total += sum(p.numel() for p in self.model.spatial_encoder.parameters())
+
+        if cfg.kga_phase2_freeze_temporal and hasattr(self.model, "temporal_encoder"):
+            # Keep ConcreteDropout layers trainable (epistemic uncertainty)
+            for name, p in self.model.temporal_encoder.named_parameters():
+                if "drop." not in name:
+                    p.requires_grad = False
+                    n_frozen_total += p.numel()
+
+        if cfg.kga_phase2_freeze_backbone:
+            if hasattr(self.model, "vertical_column"):
+                for p in self.model.vertical_column.parameters():
+                    p.requires_grad = False
+                    n_frozen_total += p.numel()
+            if hasattr(self.model, "routing"):
+                for p in self.model.routing.parameters():
+                    p.requires_grad = False
+                    n_frozen_total += p.numel()
+
+        # ── Swap loss weights ───────────────────────────────────────
+        applied_weights = {}
+        if cfg.kga_phase2_loss_weights:
+            for key, val in cfg.kga_phase2_loss_weights.items():
+                if hasattr(self.loss_fn, key):
+                    setattr(self.loss_fn, key, float(val))
+                    applied_weights[key] = float(val)
+                else:
+                    logger.warning(
+                        f"  [kga] phase2 loss weight '{key}' not found on loss_fn, skipped"
+                    )
+
+        # ── Swap best_metric tracking ───────────────────────────────
+        old_best_metric = cfg.best_metric
+        cfg.best_metric = cfg.kga_phase2_best_metric
+        self._best_metric_lower_is_better = cfg.best_metric in (
+            "loss", "val_loss", "nll", "val_nll", "rmse", "nrmse", "mae", "pbias",
+        )
+        self._best_val_metric = (
+            float("inf") if self._best_metric_lower_is_better else -float("inf")
+        )
+
+        # ── Optionally adjust LR ────────────────────────────────────
+        if cfg.kga_phase2_lr is not None:
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = float(cfg.kga_phase2_lr)
+
+        # ── Flip phase flag ─────────────────────────────────────────
+        self._kga_phase = 2
+
+        msg = (
+            f"  [kga] PHASE 1→2 transition at epoch {epoch} "
+            f"(kge_sta={kge_at_transition:.4f}) | "
+            f"frozen={n_frozen_total:,} params | "
+            f"best_metric: {old_best_metric}→{cfg.best_metric} | "
+            f"loss_weights: {applied_weights}"
+        )
+        print(msg)
+        logger.info(msg)
+
+    def _maybe_transition_kga(
+        self, epoch: int, val_metrics: dict[str, float],
+    ) -> bool:
+        """Check phase 1→2 transition condition. Returns True if reset needed.
+
+        Updates plateau counter and triggers _apply_phase2_config when:
+          - epoch - phase1_start >= kga_phase1_min_epochs (safeguard), AND
+          - (kge_station >= kga_phase1_kge_threshold) OR
+            (plateau_counter >= kga_phase1_plateau_patience)
+        """
+        if self._kga_phase != 1:
+            return False
+        cfg = self.config
+        kge_sta = val_metrics.get("kge_station", float("nan"))
+        if not math.isfinite(kge_sta):
+            return False
+
+        # Update plateau counter (improvement = strict gain on kge_sta)
+        if kge_sta > self._kga_best_kge:
+            self._kga_best_kge = kge_sta
+            self._kga_plateau_counter = 0
+        else:
+            self._kga_plateau_counter += 1
+
+        epochs_in_phase = epoch - self._kga_phase1_start_epoch
+        if epochs_in_phase < cfg.kga_phase1_min_epochs:
+            return False
+
+        should_transition = (
+            kge_sta >= cfg.kga_phase1_kge_threshold
+            or self._kga_plateau_counter >= cfg.kga_phase1_plateau_patience
+        )
+        if should_transition:
+            self._apply_phase2_config(epoch, kge_sta)
+            return True
+        return False
 
     def _run_autopilot(
         self,
@@ -1386,6 +1691,48 @@ class Trainer:
                     f"at epoch={epoch} (kge_sta={kge_sta:.4f}"
                     + (f" ≥ {min_kge}" if min_kge is not None else "")
                     + f"), LR × {lr_factor} → {self.optimizer.param_groups[0]['lr']:.2e}"
+                )
+
+        # ── 6. NLL autopilot (Kendall & Gal phase 2) ────────────────
+        # Adjust w_nll based on KGE regression from deterministic baseline.
+        # If val_kge drops too much, reduce w_nll to preserve mean prediction.
+        # If val_kge is stable, gradually ramp w_nll to learn more uncertainty.
+        if cfg.autopilot_nll and self.loss_fn.w_nll > 0:
+            if not hasattr(self, "_ap_nll_initial_kge"):
+                # Capture baseline KGE on first autopilot call
+                baseline = cfg.autopilot_nll_initial_kge
+                if baseline is None:
+                    baseline = val_metrics.get("kge", 0.0)
+                self._ap_nll_initial_kge = baseline
+                self._ap_nll_original = float(self.loss_fn.w_nll)
+
+            baseline = self._ap_nll_initial_kge
+            current_kge = val_metrics.get("kge", 0.0)
+            regression = (baseline - current_kge) / (abs(baseline) + 1e-8)
+            w_nll = self.loss_fn.w_nll
+
+            if regression > cfg.autopilot_nll_max_regression:
+                # KGE dropped too much — halve w_nll to protect mean prediction
+                new_w = max(w_nll * 0.5, cfg.autopilot_nll_min)
+                self.loss_fn.w_nll = new_w
+                actions.append(
+                    f"KGE regression {regression:.1%} > {cfg.autopilot_nll_max_regression:.0%} "
+                    f"(kge={current_kge:.4f} vs baseline={baseline:.4f}) "
+                    f"→ w_nll ×0.5 → {new_w:.4f}"
+                )
+            elif regression < 0.01 and w_nll < self._ap_nll_original:
+                # KGE stable and w_nll was previously reduced — ramp back up
+                new_w = min(w_nll * cfg.autopilot_nll_ramp_rate, self._ap_nll_original)
+                self.loss_fn.w_nll = new_w
+                actions.append(
+                    f"KGE stable (kge={current_kge:.4f}) → w_nll ramp ×{cfg.autopilot_nll_ramp_rate} → {new_w:.4f}"
+                )
+            elif regression < 0.01 and w_nll < cfg.autopilot_nll_max:
+                # KGE stable — cautiously increase w_nll to learn more uncertainty
+                new_w = min(w_nll * cfg.autopilot_nll_ramp_rate, cfg.autopilot_nll_max)
+                self.loss_fn.w_nll = new_w
+                actions.append(
+                    f"KGE stable (kge={current_kge:.4f}) → w_nll ramp ×{cfg.autopilot_nll_ramp_rate} → {new_w:.4f}"
                 )
 
         # ── Log autopilot actions ─────────────────────────────────────

@@ -1,0 +1,96 @@
+# ─── stfran test du fix NeRF collapse — multi-stations (7 stations) ─
+# Vise à confirmer que le shrink=0.1 + hinge boundary améliore non
+# seulement le val_kge mais surtout la diversité spatiale post-training
+# quand la loss a un signal multi-stations.
+
+[build]
+from_point = [-72.83, 46.02]
+min_area_km2 = 20.0
+max_segment_area_km2 = 50.0
+min_lake_area_km2 = 2.0
+
+[paths]
+basin_db = ".models/stfran/data/basin.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = ".models/stfran/data/geo_cache/forcing_qc_extracted.nc"
+checkpoint = ".models/stfran/checkpoints/best-boundary-qc.pt"
+fields_nc = ".models/stfran/results/fields-boundary-qc.nc"
+reach_parquet = ".models/stfran/results/reach-boundary-qc.parquet"
+runs_db = ".models/stfran/runs-boundary-qc.duckdb"
+
+[basin]
+prefix = "STFRAN"
+
+[temporal]
+date_start = "2020-01-01"
+spinup_end = "2020-03-31"
+train_start = "2020-04-01"
+train_end = "2021-03-31"
+val_start = "2021-04-01"
+val_end = "2021-09-30"
+test_start = "2021-10-01"
+test_end = "2021-12-31"
+date_end = "2023-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+n_epochs = 8
+lr = 2e-5
+lr_finetune = 2e-5
+warmup_epochs = 0
+eta_min_factor = 1.0
+freeze_spatial = false     # ← NeRF unfrozen pour tester collapse fix
+warm_start = false
+weight_decay = 2e-4
+grad_clip = 1.0
+tbptt_steps = 90
+chunk_steps = 90
+val_every = 1
+patience = 50
+best_metric = "kge_station"
+best_metric_tolerance = 0.005
+compile_modules = false
+
+w_prior = 0.005
+w_boundary = 0.005          # ← treatment
+w_sigma_anchor = 4000.0
+sigma_anchor_target_a = -3.0
+sigma_anchor_target_b = 1.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = false
+
+[loss]
+w_nll = 1.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 0.5
+w_pbias = 500.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.5
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

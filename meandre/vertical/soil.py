@@ -57,10 +57,13 @@ class SoilModule(nn.Module):
     def _effective_saturation(
         self, theta: Tensor, theta_r: Tensor, porosity: Tensor
     ) -> Tensor:
-        """S_e in [0, 1] — differentiable via soft_threshold on boundaries."""
+        """S_e in [0, 1] — clamped to avoid gradient singularities in vG."""
         denom = porosity - theta_r + 1e-6
         Se = (theta - theta_r) / denom
-        return torch.clamp(Se, 1e-4, 1.0 - 1e-6)
+        # Wider bounds prevent Se.pow(-1/m) from producing 10^17 gradients
+        # (at Se=1e-4, m=0.23, gradient ~ 10^21). At Se=0.01, gradient is
+        # bounded to ~10^8 — still large but within float32 range.
+        return torch.clamp(Se, 0.01, 0.99)
 
     def _K(
         self, theta: Tensor, K_sat: Tensor, theta_r: Tensor, porosity: Tensor,
@@ -70,26 +73,43 @@ class SoilModule(nn.Module):
         Se = self._effective_saturation(theta, theta_r, porosity)
         n = vg_n if vg_n is not None else 1.5
         m = 1.0 - 1.0 / n
-        K = K_sat * Se**0.5 * (1.0 - (1.0 - Se ** (1.0 / m)) ** m) ** 2
+        # Clamp inner term to prevent (small)^(negative) gradient divergence
+        # near Se=1 where (1-Se^(1/m))→0 and m-1<0 makes gradient explode.
+        Se_pow = torch.clamp(Se.pow(1.0 / m), max=1.0 - 1e-6)
+        inner = 1.0 - Se_pow
+        K = K_sat * Se**0.5 * (1.0 - inner ** m) ** 2
         return K
 
     def _psi(
         self, theta: Tensor, theta_r: Tensor, porosity: Tensor,
         vg_n: Tensor | None = None,
     ) -> Tensor:
-        """van Genuchten matric potential psi(theta) in m (negative = tension)."""
+        """van Genuchten matric potential psi(theta) in m (negative = tension).
+
+        Computed in log-space to prevent gradient explosion from Se.pow(-1/m).
+        Direct computation: gradient of Se.pow(-1/m) is (-1/m)*Se^(-1/m-1)
+        which reaches 10^21 at Se=1e-4, m=0.23 — float32 overflow → NaN.
+        Log-space: log(Se^(-1/m)) = (-1/m)*log(Se), gradient is (-1/m)*(1/Se)
+        which stays bounded (max ~433 at Se=0.01, m=0.23).
+        """
         Se = self._effective_saturation(theta, theta_r, porosity)
         n = vg_n if vg_n is not None else 1.5
         m = 1.0 - 1.0 / n
-        # Clamp the intermediate Se^(-1/m) to prevent float32 overflow
-        # when m is small (vg_n near lower bound).  1e8 is well below
-        # float32 max and already far beyond the psi=-100 m clamp below.
-        Se_inv_m = torch.clamp(Se.pow(-1.0 / m), max=1e8)
-        psi = -(1.0 / self.vg_alpha) * (Se_inv_m - 1.0).pow(1.0 / n)
-        # Clamp to ~1 MPa (~100 m head) — prevents gradient explosion through
-        # d(psi)/d(Se) ∝ Se^(-1/m - 1) which diverges as Se → 0.
-        # -100 m is the permanent wilting point (~-1.5 MPa); beyond this,
-        # plants can't extract water and drainage is negligible.
+        import math
+        # Log-space computation: Se^(-1/m) = exp((-1/m) * log(Se))
+        # This avoids the catastrophic gradient of pow with negative exponent.
+        log_Se = torch.log(torch.clamp(Se, min=1e-6))
+        log_Se_inv_m = (-1.0 / m) * log_Se
+        # Clamp before exp to prevent overflow (exp(40) ≈ 2.4e17 < float32 max)
+        log_Se_inv_m = torch.clamp(log_Se_inv_m, max=math.log(1e8))
+        Se_inv_m = torch.exp(log_Se_inv_m)
+        # (Se_inv_m - 1) is always > 0 for Se < 1. Compute pow in log-space:
+        # psi = -(1/alpha) * (Se_inv_m - 1)^(1/n)
+        # log|psi| = -log(alpha) + (1/n)*log(Se_inv_m - 1)
+        arg = Se_inv_m - 1.0  # > 0 since Se < 1
+        log_arg = torch.log(torch.clamp(arg, min=1e-20))
+        log_psi = -math.log(self.vg_alpha) + (1.0 / n) * log_arg
+        psi = -torch.exp(torch.clamp(log_psi, max=math.log(100.0)))
         return torch.clamp(psi, min=-100.0)
 
     def _partition_drainage(
@@ -262,11 +282,8 @@ class SoilModule(nn.Module):
         drainable_1 = soft_relu(theta1 - theta_wp_1, self.sharpness) * z1
         avail_1 = drainable_1 + P_infiltrated
         pos_demand_1 = torch.clamp(ET1_m, min=0.0) + torch.clamp(q12, min=0.0) + torch.clamp(q_inter_1, min=0.0)
-        sf1 = torch.where(
-            pos_demand_1 > 1e-10,
-            torch.clamp(avail_1 / pos_demand_1, min=0.0, max=1.0),
-            torch.ones_like(avail_1),
-        )
+        safe_demand_1 = torch.clamp(pos_demand_1, min=1e-10)
+        sf1 = torch.clamp(avail_1 / safe_demand_1, min=0.0, max=1.0)
         q12_s = torch.where(q12 > 0, q12 * sf1, q12)
         q_inter_1_s = q_inter_1 * sf1
 
@@ -277,11 +294,8 @@ class SoilModule(nn.Module):
         drainable_2 = soft_relu(theta2 - theta_wp_2, self.sharpness) * z2
         avail_2 = drainable_2 + torch.clamp(q12_s, min=0.0)
         pos_demand_2 = torch.clamp(ET2_m, min=0.0) + torch.clamp(q23, min=0.0) + torch.clamp(q_inter_2, min=0.0)
-        sf2 = torch.where(
-            pos_demand_2 > 1e-10,
-            torch.clamp(avail_2 / pos_demand_2, min=0.0, max=1.0),
-            torch.ones_like(avail_2),
-        )
+        safe_demand_2 = torch.clamp(pos_demand_2, min=1e-10)
+        sf2 = torch.clamp(avail_2 / safe_demand_2, min=0.0, max=1.0)
         q23_s = torch.where(q23 > 0, q23 * sf2, q23)
         q_inter_2_s = q_inter_2 * sf2
 
@@ -294,11 +308,8 @@ class SoilModule(nn.Module):
         pos_demand_3 = (torch.clamp(ET3_m, min=0.0)
                         + torch.clamp(q_recharge, min=0.0)
                         + torch.clamp(q_inter_3, min=0.0))
-        sf3 = torch.where(
-            pos_demand_3 > 1e-10,
-            torch.clamp(avail_3 / pos_demand_3, min=0.0, max=1.0),
-            torch.ones_like(avail_3),
-        )
+        safe_demand_3 = torch.clamp(pos_demand_3, min=1e-10)
+        sf3 = torch.clamp(avail_3 / safe_demand_3, min=0.0, max=1.0)
         q_recharge_s = torch.where(q_recharge > 0, q_recharge * sf3, q_recharge)
         q_inter_3_s = q_inter_3 * sf3
 

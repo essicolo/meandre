@@ -37,6 +37,7 @@ dependencies = [
     "dask>=2026.3.0",
     "xgboost>=3.2.0",
     "scikit-learn>=1.8.0",
+    "folium>=0.20.0",
 ]
 
 [project.optional-dependencies]

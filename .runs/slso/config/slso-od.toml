@@ -1,0 +1,119 @@
+# slso-od.toml
+# SLSO open-data : bassin construit entièrement à partir de données ouvertes
+# (Copernicus DEM, ESA WorldCover, ISRIC SoilGrids, HYDAT, OSM rivers).
+# Forcing : quebec.zarr (conservé — voir note ci-dessous).
+#
+# Différences vs slso-deterministic.toml :
+#   - basin_db = slso-od.duckdb (données ouvertes, pas PHYSITEL)
+#   - n_territorial peut différer (plus de features open-data)
+#   - Même architecture, même loss, même autopilot
+#
+# Note : quebec.zarr n'est pas open data (RQI internal), mais c'est le
+# meilleur forçage disponible pour le Québec. Remplacement futur :
+# ERA5-Land via Open-Meteo + bias correction.
+#
+# Pour construire le DuckDB open-data :
+#   python scripts/data_prep/build_physical_model_od.py
+#
+# Pour lancer :
+#   python .runs/slso/slso.py .runs/slso/config/slso-od.toml
+
+[paths]
+basin_db = "data/slso-od.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing-od.nc"
+checkpoint = "checkpoints/best-od.pt"
+fields_nc = "results/fields-od.nc"
+reach_parquet = "results/reach-od.parquet"
+runs_db = "runs-od.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+n_epochs = 50
+lr = 5e-4
+lr_finetune = 1e-4
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 2e-4
+freeze_spatial = false
+warm_start = false
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 365
+val_every = 1
+patience = 50
+compile_modules = false
+best_metric = "loss"
+best_metric_tolerance = 0.005
+
+w_prior = 0.005
+w_boundary = 0.005
+w_sigma_anchor = 0.0
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ─────────────────────────────────────────────────────
+autopilot = true
+autopilot_grace_epochs = 10
+autopilot_beta_threshold = 0.15
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 8
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+[loss]
+w_nll = 0.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.1
+w_mse = 0.1
+w_log_nse = 0.0
+w_log_mse = 0.3
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

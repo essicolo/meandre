@@ -19,14 +19,14 @@ from meandre.routing.graph import RiverGraph
 from meandre.routing.message_passing import RoutingLayer
 from meandre.routing.temperature import StreamTemperatureModule
 from meandre.routing.withdrawals import WithdrawalData
-from meandre.spatial.field_network import SpatialFieldNetwork
+from meandre.spatial.field_network import SpatialFieldNetwork, SpatialParams
 from meandre.spatial.territorial import TerritorialFeatures
 from meandre.temporal.context_encoder import TemporalContextEncoder
 from meandre.temporal.residual_corrector import StateResidualCorrector
 from meandre.temporal.ring_buffer import OutflowRingBuffer
 from meandre.temporal.state_noise import CorrelatedStateNoise
 from meandre.utils.diagnostics import SimDiagnostics
-from meandre.utils.noise_head import HeteroscedasticNoiseHead
+from meandre.utils.noise_head import HeteroscedasticNoiseHead, SpatialNoiseHead
 from meandre.utils.state import HydroState
 from meandre.vertical.column import VerticalColumn
 
@@ -79,6 +79,8 @@ class HydroModel(nn.Module):
         n_territorial: int = 17,
         n_state_vars: int | None = None,
         dropout: float = 0.0,
+        concrete_dropout: bool = False,
+        concrete_init_p: float = 0.05,
         param_mode: str = "nerf",
         clamp_min: float = -50.0,
         clamp_max: float = 500.0,
@@ -109,6 +111,8 @@ class HydroModel(nn.Module):
             n_forcing=n_forcing,
             window=context_window,
             n_context_out=n_context,
+            concrete_dropout=concrete_dropout,
+            concrete_init_p=concrete_init_p,
         ) if use_temporal else None
 
         self.vertical_column = VerticalColumn(soil_z1=soil_z1)
@@ -137,10 +141,11 @@ class HydroModel(nn.Module):
 
         # Heteroscedastic noise heads: predict log σ from each observable
         # magnitude for the probabilistic (Gaussian NLL) training loss.
-        # Replaces the old ensemble UQ stack. Cost: 2 scalars per head.
-        # ET / SWE heads enable multi-objective NLL (cf. MODIS MOD16/NDSI)
-        # to identify K_c, C_f beyond what Q-only can constrain.
-        self.noise_head = HeteroscedasticNoiseHead()       # Q (m³/s)
+        # SpatialNoiseHead conditions on NeRF spatial params for per-node
+        # uncertainty; HeteroscedasticNoiseHead is the 2-scalar global fallback.
+        self.noise_head: SpatialNoiseHead | HeteroscedasticNoiseHead = (
+            SpatialNoiseHead(n_spatial_params=SpatialParams.N_PARAMS)
+        )
         self.noise_head_et = HeteroscedasticNoiseHead()    # ET (mm/jour)
         self.noise_head_swe = HeteroscedasticNoiseHead()   # SWE (mm)
 
@@ -454,6 +459,16 @@ class HydroModel(nn.Module):
                 "n_state_vars": self.residual_corrector.gru.input_size if self.residual_corrector is not None else HydroState.N_VARS,
                 "clamp_min": self.residual_corrector.clamp_min if self.residual_corrector is not None else -50.0,
                 "clamp_max": self.residual_corrector.clamp_max if self.residual_corrector is not None else 500.0,
+                "concrete_dropout": (
+                    self.temporal_encoder.drop.__class__.__name__ == "ConcreteDropout"
+                    if self.temporal_encoder is not None else False
+                ),
+                "concrete_init_p": (
+                    self.temporal_encoder.drop.p.detach().item()
+                    if self.temporal_encoder is not None
+                    and hasattr(self.temporal_encoder.drop, "p")
+                    else 0.05
+                ),
             },
         }, path)
 

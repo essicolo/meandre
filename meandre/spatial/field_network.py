@@ -125,6 +125,17 @@ class SpatialParams:
         fields = [x[:, i] for i in range(cls.N_PARAMS)]
         return cls(*fields)
 
+    def to_tensor(self) -> Tensor:
+        """Stack all parameter fields into (n_nodes, N_PARAMS) tensor.
+
+        Inverse of ``from_tensor``: column i corresponds to field i.
+        """
+        import dataclasses
+        return torch.stack(
+            [getattr(self, f.name) for f in dataclasses.fields(self)],
+            dim=-1,
+        )
+
 
 class SpatialFieldNetwork(nn.Module):
     """NeRF-style MLP: (coords + territorial features) -> hydrological params.

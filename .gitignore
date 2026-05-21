@@ -1,43 +1,73 @@
-﻿# --- RÈGLES CRITIQUES (Tes dossiers gpkg) ---
-.gpkg/
-*.qgz
-*.gpkg
-
-# --- PYTHON ---
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
+.venv-wsl/
 .pytest_cache/
-fdc_training.log
 
-# --- DONNÉES ET RÉSULTATS (Pour éviter l'erreur Permission Denied) ---
+# --- Logs ---
+fdc_training.log
+training_*.log
+
+# --- Editor / OS ---
+.vscode/
+.claude/
+gitignore_bak
+
+# --- Binary artefacts (apply everywhere) ---
+# Model checkpoints
+*.pt
+*.pth
+# Databases
 *.duckdb
 *.duckdb.wal
+*.sqlite3
+# Scientific data formats
 *.nc
 *.nc.bak*
 *.tif
-*.sqlite3
-Hydat_sqlite3_*.zip
 *.npy
-notebooks/slso/data/geo_cache/
-notebooks/slso/results/
+*.pkl
+# Tabular outputs (run results); small inputs in data/ are opted-in below
+*.parquet
+# Plot outputs
+*.png
+*.jpg
+*.jpeg
+# GeoSpatial proprietary
+*.gpkg
+*.qgz
+.gpkg/
+# Shapefile cluster (rare to want tracked)
+*.shp
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+*.cpg
 
-# --- ALL EXPERIMENTS / CASES ---
-# Each case has its own folder under .models/<case-name>/ with config,
-# data (basin.duckdb, forcing.nc, geo_cache/), checkpoints, results.
-# .models/_shared/ holds caches reusable across cases (HYDAT SQLite, etc.)
-.models/
-scripts/forcing_correction_models/
+# --- HYDAT specific ---
+Hydat_sqlite3_*.zip
 
-# --- Science papers ---
+# --- Runs workspaces ---
+# Local artefacts ignored, code + configs tracked.
+# Pattern: (a) ignore everything under .runs/ recursively, (b) re-include
+# directories so git can descend, (c) re-include .py and .toml at any depth.
+/.runs/**/*
+!/.runs/**/
+!/.runs/**/*.py
+!/.runs/**/*.toml
+!/.runs/**/README*
+
+# --- Shared data inputs ---
+# data/ contains large parquet/shapefile inputs. Specific files re-included below.
+/data/**/*
+!/data/**/
+!/data/station_info.csv
+
+# --- Other modeling applications (workspace local, hors git) ---
+# Conventions : dot-préfixe = workspace local, non partagé via git.
 .papers/
-
-# --- CONFIG ET SAUVEGARDES ---
-gitignore_bak
-.vscode/
-.claude/
-
-*.pt
-*.pth
-*.duckdb
+.reports/

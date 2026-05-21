@@ -1,0 +1,128 @@
+# ─── SLSO open-data case ─────────────────────────────────────────────────
+# Same SLSO bbox as the legacy `notebooks/slso/` case, but built entirely
+# from open data (Copernicus DEM + ESA WorldCover + SoilGrids + JRC water +
+# OSM rivers/lakes + Open-Meteo ERA5 forcing + HYDAT observations).
+#
+# Use:
+#   1. Build the basin + forcing + observations:
+#      python scripts/bbox_to_basin.py \
+#          --bbox=-73.0,44.5,-69.6,47.7 \
+#          --output=.models/slso-od/data/basin.duckdb \
+#          --min-area-km2=1.5 --max-subcatchments=3500 \
+#          --with-forcing --start=2000-01-01 --end=2024-12-31 \
+#          --with-observations
+#   2. Train:
+#      python .models/slso-od/slso-od.py
+
+[paths]
+basin_db = ".models/slso-od/data/basin.duckdb"
+# Two distinct forcing files:
+#   - weather_grid  : INPUT gridded (T, lat, lon) with pr/tasmin/tasmax/sfcWind
+#                     (produced by bbox_to_basin --with-forcing)
+#   - forcing_cache : OUTPUT mapped (T, N, 6) with single "forcing" variable
+#                     (produced by gridded_forcing.extract_forcing on first run,
+#                      reused on subsequent runs)
+weather_grid = "D:/meandre_data/geo_cache/slso-od/forcing_era5_land.nc"
+forcing_cache = "D:/meandre_data/geo_cache/slso-od/forcing_extracted.nc"
+checkpoint = ".models/slso-od/checkpoints/best.pt"
+fields_nc = ".models/slso-od/results/fields.nc"
+reach_parquet = ".models/slso-od/results/reach.parquet"
+runs_db = ".models/slso-od/runs.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+# Same split as the legacy SLSO case for direct comparison.
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+n_epochs = 200
+lr = 5e-4
+lr_finetune = 1e-4
+lr_new_features_mult = 10.0
+weight_decay = 2e-4
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 50
+# Best-checkpoint selection on the train loss (the actual optimisation
+# objective) for coherence: cherry-picking on val_kge while minimising
+# a composite loss creates a misalignment. With best_metric_tolerance
+# the autopilot LR-plateau detection still works (it counts epochs whose
+# relative improvement is below the tolerance).
+best_metric = "loss"
+best_metric_tolerance = 0.005
+warm_start = false  # cold start from literature defaults
+compile_modules = false
+
+w_prior = 0.005
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ──
+autopilot = true
+autopilot_grace_epochs = 15
+autopilot_beta_threshold = 1.00
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 8
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+# autopilot_activate_residual_at_kge = 0.55  # disabled: residual pending redesign
+
+[loss]
+# Heteroscedastic Gaussian NLL on Q (primary). Quadratic term pulls μ_Q
+# toward obs ; log σ term enforces calibrated σ. Replaces ensemble UQ.
+w_nll = 1.0
+# Multi-objective NLL — actifs uniquement si TrainingData.et_obs /
+# .swe_obs sont peuplés (MODIS MOD16, MODIS NDSI). Identifient K_c / C_f
+# qui restent collapsés sous KGE-on-Q seul (cf. project_meandre_*).
+# TODO data layer : voir meandre/data/open_data.py (download_modis_et,
+# download_modis_swe — actuellement non implémentés).
+w_nll_et = 0.0
+w_nll_swe = 0.0
+# Keep KGE as a secondary anchor (helps mean fit, partly monitor).
+w_nse = 0.0
+w_kge = 0.5
+w_pbias = 0.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.0
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

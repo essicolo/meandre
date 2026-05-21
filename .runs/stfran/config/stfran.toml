@@ -1,0 +1,118 @@
+# ─── Bassin Saint-François (≈ 1/3 SLSO, 1500 nodes, 38 stations) ─────────
+# Banc de test pour le pivot probabiliste : signal stations-riche pour
+# itérer le tuning sans le coût d'un run full SLSO (10h).
+#
+# Build:
+#   python scripts/bbox_to_basin.py \
+#       --from-point=-72.83,46.02 \
+#       --output=.models/stfran/data/basin.duckdb \
+#       --with-forcing --start=2015-01-01 --end=2024-12-31 \
+#       --with-observations \
+#       --min-area-km2=20.0 \
+#       --max-segment-area-km2=50.0 \
+#       --min-lake-area-km2=2.0
+#
+# Train:
+#   python notebooks/slso/slso.py .models/stfran/config/stfran.toml
+
+# Basin build parameters reference (passés en CLI à bbox_to_basin.py).
+# Documenté ici pour reproductibilité ; pas lu par le training.
+[build]
+from_point = [-72.83, 46.02]   # outlet of Saint-François at St-Lawrence
+min_area_km2 = 20.0             # stream-threshold for confluence detection
+max_segment_area_km2 = 50.0     # chain-merging cap (upstream→downstream)
+min_lake_area_km2 = 2.0         # absorb small ponds into segments
+
+[paths]
+basin_db = ".models/stfran/data/basin.duckdb"
+weather_grid = ".models/stfran/data/geo_cache/forcing_era5_land.nc"
+forcing_cache = ".models/stfran/data/geo_cache/forcing_extracted.nc"
+checkpoint = ".models/stfran/checkpoints/best.pt"
+fields_nc = ".models/stfran/results/fields.nc"
+reach_parquet = ".models/stfran/results/reach.parquet"
+runs_db = ".models/stfran/runs.duckdb"
+
+[basin]
+prefix = "STFRAN"
+
+[temporal]
+# Ultra-lean : spinup 3 mois, train 1 an, val 6 mois — itération <5 min.
+date_start = "2020-01-01"
+spinup_end = "2020-03-31"
+train_start = "2020-04-01"
+train_end = "2021-03-31"
+val_start = "2021-04-01"
+val_end = "2021-09-30"
+test_start = "2021-10-01"
+test_end = "2021-12-31"
+date_end = "2023-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+# Smoke test : 5 epochs pour valider pipeline + mesurer vitesse d'itération
+n_epochs = 5   # quick test du snap fix — target ~10 min
+lr = 1e-6      # ultra-doux : tester si Adam-first-step overshoot est la cause du β drift
+lr_finetune = 1e-6
+warmup_epochs = 0
+eta_min_factor = 1.0
+freeze_spatial = true   # phase 1 cold-start preserve init from literature
+warm_start = false      # rebuild propre du basin (snap topo-aware), repart de zéro
+weight_decay = 2e-4
+grad_clip = 1.0
+# v2 : chunks plus petits pour éviter OOM (1500 nodes × 180 chunk = trop mémoire)
+tbptt_steps = 90
+chunk_steps = 90
+val_every = 1
+patience = 50
+best_metric = "kge_station"
+best_metric_tolerance = 0.005
+compile_modules = false
+
+w_prior = 0.005
+
+# Régularisation σ : poids math-justifié pour compétitionner gradient NLL.
+# w ≈ N_obs/(2δ). Train 2 ans × ~10 stations valides ≈ 7 300 obs.
+# Anchor BOTH a (intercept) and b (heteroscedastic slope) — sinon la
+# dégénérescence NLL peut gonfler σ via b même si a est ancré.
+w_sigma_anchor = 4000.0
+sigma_anchor_target_a = -3.0
+sigma_anchor_target_b = 1.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = false   # désactivé pour smoke test, à réactiver pour run long
+
+[loss]
+# NLL hétéroscédastique (probabiliste) + KGE secondaire pour ancrer le mean
+w_nll = 1.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 0.5
+w_pbias = 500.0   # poids massif : NLL ≈ 2000-5000, |β-1| ≈ 1.2 — il faut w_pbias × 1.2 ≈ NLL
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.5   # contre-balance la compression de variance (γ collapse)
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01

@@ -124,9 +124,12 @@ def test_loss_is_differentiable():
 
     # Params that are legitimately gradient-free (submodules not activated by this graph).
     # noise_head{,_et,_swe} see no gradient when their w_nll{,_et,_swe} = 0 — by design.
+    # SpatialNoiseHead MLP params also have no gradient when w_nll=0.
     expected_no_grad = {
         "routing.lake.log_k_lake", "routing.lake.log_beta",
         "noise_head.log_sigma_a", "noise_head.log_sigma_b",
+        "noise_head.net.0.weight", "noise_head.net.0.bias",
+        "noise_head.net.2.weight", "noise_head.net.2.bias",
         "noise_head_et.log_sigma_a", "noise_head_et.log_sigma_b",
         "noise_head_swe.log_sigma_a", "noise_head_swe.log_sigma_b",
     }
