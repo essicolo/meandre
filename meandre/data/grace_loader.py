@@ -177,12 +177,45 @@ def fetch_grace_tws(
                     t.values[0] if t is not None else "1970-01-01"
                 ).to_period("M").to_timestamp()
 
-                rows.append({
-                    "date": date,
-                    "tws_mm": tws_mm,
-                    "uncertainty": uncert,
-                    "quality_ok": np.isfinite(tws_mm),
-                })
+                # GRACE mascon RL06.3 is distributed as one file with all
+                # time steps along the 'time' dimension. Loop over them.
+                t_coord = None
+                for tc in ("time", "TIME", "month"):
+                    if tc in ds.coords:
+                        t_coord = tc
+                        break
+
+                if t_coord is not None and ds[t_coord].size > 1:
+                    # Multi-time file: extract one row per time step
+                    for ti in range(ds[t_coord].size):
+                        lwe_t = lwe.isel({t_coord: ti}) if t_coord in lwe.dims else lwe
+                        val_cm = float(np.nanmean(lwe_t.values))
+                        val_mm = val_cm * CM_TO_MM
+                        dt = pd.Timestamp(ds[t_coord].values[ti]).to_period("M").to_timestamp()
+
+                        uncert_t = np.nan
+                        for uvar in ("uncertainty", "lwe_uncertainty", "LWE_uncertainty"):
+                            if uvar in ds:
+                                u_t = ds[uvar].isel({t_coord: ti}) if t_coord in ds[uvar].dims else ds[uvar]
+                                u_sub = u_t.sel(
+                                    {lat_dim: slice(lat_min, lat_max),
+                                     lon_dim: slice(lon_min_360 if lon_vals.max() > 180
+                                                    else bbox[0],
+                                                    lon_max_360 if lon_vals.max() > 180
+                                                    else bbox[2])}
+                                )
+                                uncert_t = float(np.nanmean(u_sub.values)) * CM_TO_MM
+                                break
+
+                        rows.append({"date": dt, "tws_mm": val_mm,
+                                     "uncertainty": uncert_t,
+                                     "quality_ok": np.isfinite(val_mm)})
+                else:
+                    # Single time step
+                    rows.append({"date": date, "tws_mm": tws_mm,
+                                 "uncertainty": uncert,
+                                 "quality_ok": np.isfinite(tws_mm)})
+
                 ds.close()
                 ds.close()
             except Exception as exc:
