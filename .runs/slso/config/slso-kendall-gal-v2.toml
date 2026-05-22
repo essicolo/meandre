@@ -1,14 +1,17 @@
 # slso-kendall-gal-v2.toml
-# Run safe avec les corrections issues du diagnostic 2026-05-21 :
-#   - log_nse remplace log_mse (anti peak-shaving, voir
-#     project_meandre_peak_shaving_loss_balance)
-#   - w_mse abaissé de 0.5 à 0.2 (moins de pression sur la moyenne brute)
-#   - station_weight_mode = "uniform" (anti petits-bassins-poubelle, voir
-#     project_meandre_probabilistic_results_2026-05-20)
-#   - w_sigma_anchor = 1.0 (anti plateau cov90 confirmé par diagnostic)
-#   - NE PAS activer w_nll_et (MODIS pas branché dans la pipeline)
-#   - NE PAS activer residual corrector (besoin de redesign, voir
-#     project_meandre_corrector_redesign_todo)
+# Run safe avec corrections issues des diagnostics 2026-05-21 / 22 :
+#   - log_nse remplace log_mse (anti peak-shaving)
+#   - w_mse abaissé de 0.5 à 0.2 (moins de pression moyenne brute)
+#   - station_weight_mode = "uniform" (anti petits-bassins-poubelle)
+#   - w_sigma_anchor = 1.0 (anti plateau cov90)
+#   - lr baissé 1e-3 → 3e-4 (paysage log_nse + uniform plus raide)
+#   - autopilote calibré pour cold-start :
+#       * grace_epochs 3 → 15 (laisse les premiers epochs converger)
+#       * restart_regression 0.05 → 0.20 (toléré oscillation initiale ±20%)
+#       * beta_thr 0.15 → 0.30, gamma_thr 0.20 → 0.35
+#       * restart_min_no_improve = 3 (NEW — exige régression PERSISTANTE)
+#   - NE PAS activer w_nll_et (MODIS pas branché)
+#   - NE PAS activer residual corrector (redesign TODO)
 #
 # Pour lancer :
 #   python .runs/slso/slso.py .runs/slso/config/slso-kendall-gal-v2.toml
@@ -57,10 +60,10 @@ rain_hours_max = 24.0
 
 [training]
 n_epochs = 60
-lr = 1e-3
+lr = 3e-4                          # ← baissé de 1e-3 (paysage log_nse + uniform plus raide)
 lr_finetune = 1e-4
 warmup_epochs = 5
-eta_min_factor = 1.0
+eta_min_factor = 0.3               # ← cosine descend moins bas (était 1.0)
 weight_decay = 1e-4
 freeze_spatial = false
 freeze_temporal = false
@@ -91,16 +94,17 @@ enable_travel_epoch = 9999
 residual_warmup_epochs = 5
 tta_warmup_epochs = 10
 
-# ── Autopilot standard ──────────────────────────────────────────
+# ── Autopilot standard — calibré cold-start (2026-05-22) ────────
 autopilot = true
-autopilot_grace_epochs = 3
-autopilot_beta_threshold = 0.15
-autopilot_gamma_threshold = 0.20
+autopilot_grace_epochs = 15          # ← 3 → 15 : laisse premiers epochs converger
+autopilot_beta_threshold = 0.30      # ← 0.15 → 0.30 : β bouge naturellement en cold-start
+autopilot_gamma_threshold = 0.35     # ← 0.20 → 0.35
 autopilot_lr_patience = 10
 autopilot_lr_factor = 0.5
 autopilot_lr_min = 1e-6
-autopilot_restart_regression = 0.05
+autopilot_restart_regression = 0.20  # ← 0.05 → 0.20 : tolère ±20% oscillation
 autopilot_restart_max = 3
+autopilot_restart_min_no_improve = 3 # ← NEW : exige régression PERSISTANTE 3+ epochs
 
 autopilot_unfreeze_spatial_epoch = 9999
 autopilot_unfreeze_spatial_min_kge = 1.0

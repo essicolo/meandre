@@ -568,6 +568,7 @@ train_cfg = TrainingConfig(
     autopilot_lr_min = tcfg.get("autopilot_lr_min", 1e-6),
     autopilot_restart_regression = tcfg.get("autopilot_restart_regression", 0.05),
     autopilot_restart_max = tcfg.get("autopilot_restart_max", 3),
+    autopilot_restart_min_no_improve = tcfg.get("autopilot_restart_min_no_improve", 3),
     autopilot_activate_residual_at_kge = tcfg.get("autopilot_activate_residual_at_kge", None),
     autopilot_activate_tta_at_kge = tcfg.get("autopilot_activate_tta_at_kge", None),
     autopilot_unfreeze_spatial_epoch = tcfg.get("autopilot_unfreeze_spatial_epoch", None),

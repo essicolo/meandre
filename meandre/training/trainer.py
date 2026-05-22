@@ -178,11 +178,15 @@ class TrainingConfig:
     autopilot_lr_min: float = 1e-6
 
     # Smart restart: if val metric regresses by more than this fraction from
-    # best AND beta/gamma drift is detected, reload best checkpoint and
-    # reduce LR.  More targeted than the existing divergence guard (which
-    # only checks train loss spikes).
+    # best AND beta/gamma drift is detected AND the regression persists for
+    # at least ``autopilot_restart_min_no_improve`` epochs, reload best
+    # checkpoint and reduce LR.  The min_no_improve guard prevents firing
+    # on a single transient oscillation during cold-start, which would
+    # otherwise consume the restart budget before the model has had a
+    # chance to converge.
     autopilot_restart_regression: float = 0.05  # 5% regression from best
     autopilot_restart_max: int = 3               # max restarts
+    autopilot_restart_min_no_improve: int = 3    # consecutive bad epochs required
 
     # ── NLL autopilot (Kendall & Gal phase 2) ──────────────────────
     # Automatically adjust w_nll based on KGE degradation from the
@@ -1555,35 +1559,55 @@ class Trainer:
         # pour éviter d'écraser complètement le residual corrector.
         _w_res_max = (self._ap_w_residual_orig or 0.01) * 5.0
 
-        if beta_drift > cfg.autopilot_beta_threshold:
-            self.loss_fn.w_residual = min(
-                self.loss_fn.w_residual + cfg.autopilot_beta_penalty, _w_res_max
-            )
-            actions.append(
-                f"beta drift |beta-1|={beta_drift:.3f} > {cfg.autopilot_beta_threshold} "
-                f"→ w_residual += {cfg.autopilot_beta_penalty} → {self.loss_fn.w_residual:.4f}"
-            )
+        # Skip drift→w_residual handler when the residual corrector is
+        # disabled — incrementing w_residual has no effect (no gradient
+        # flows through a disabled module) and just pollutes the log.
+        residual_active = (
+            epoch >= cfg.enable_residual_corrector_epoch
+            and hasattr(self.model, "residual_corrector")
+            and getattr(self.model, "residual_corrector", None) is not None
+        )
 
-        if gamma_drift > cfg.autopilot_gamma_threshold:
-            self.loss_fn.w_residual = min(
-                self.loss_fn.w_residual + cfg.autopilot_gamma_penalty, _w_res_max
-            )
-            actions.append(
-                f"gamma drift |gamma-1|={gamma_drift:.3f} > {cfg.autopilot_gamma_threshold} "
-                f"→ w_residual += {cfg.autopilot_gamma_penalty} → {self.loss_fn.w_residual:.4f}"
-            )
+        if not residual_active:
+            beta_drift_logged = beta_drift > cfg.autopilot_beta_threshold
+            gamma_drift_logged = gamma_drift > cfg.autopilot_gamma_threshold
+            if beta_drift_logged or gamma_drift_logged:
+                logger.debug(
+                    f"  [autopilot] β/γ drift detected (β-drift={beta_drift:.3f}, "
+                    f"γ-drift={gamma_drift:.3f}) but residual corrector inactive "
+                    f"(enable_residual_corrector_epoch={cfg.enable_residual_corrector_epoch}) "
+                    f"— skipping w_residual update"
+                )
+        else:
+            if beta_drift > cfg.autopilot_beta_threshold:
+                self.loss_fn.w_residual = min(
+                    self.loss_fn.w_residual + cfg.autopilot_beta_penalty, _w_res_max
+                )
+                actions.append(
+                    f"beta drift |beta-1|={beta_drift:.3f} > {cfg.autopilot_beta_threshold} "
+                    f"→ w_residual += {cfg.autopilot_beta_penalty} → {self.loss_fn.w_residual:.4f}"
+                )
 
-        # Reset w_residual toward original when drift subsides
-        if (beta_drift < cfg.autopilot_beta_threshold * 0.5
-                and gamma_drift < cfg.autopilot_gamma_threshold * 0.5
-                and self.loss_fn.w_residual > self._ap_w_residual_orig * 1.1):
-            self.loss_fn.w_residual = max(
-                self._ap_w_residual_orig,
-                self.loss_fn.w_residual * 0.9,
-            )
-            actions.append(
-                f"beta/gamma recovered → w_residual decay → {self.loss_fn.w_residual:.4f}"
-            )
+            if gamma_drift > cfg.autopilot_gamma_threshold:
+                self.loss_fn.w_residual = min(
+                    self.loss_fn.w_residual + cfg.autopilot_gamma_penalty, _w_res_max
+                )
+                actions.append(
+                    f"gamma drift |gamma-1|={gamma_drift:.3f} > {cfg.autopilot_gamma_threshold} "
+                    f"→ w_residual += {cfg.autopilot_gamma_penalty} → {self.loss_fn.w_residual:.4f}"
+                )
+
+            # Reset w_residual toward original when drift subsides
+            if (beta_drift < cfg.autopilot_beta_threshold * 0.5
+                    and gamma_drift < cfg.autopilot_gamma_threshold * 0.5
+                    and self.loss_fn.w_residual > self._ap_w_residual_orig * 1.1):
+                self.loss_fn.w_residual = max(
+                    self._ap_w_residual_orig,
+                    self.loss_fn.w_residual * 0.9,
+                )
+                actions.append(
+                    f"beta/gamma recovered → w_residual decay → {self.loss_fn.w_residual:.4f}"
+                )
 
         # ── 2. ReduceLROnPlateau ─────────────────────────────────────
         # Bug fix: ne réduire qu'UNE FOIS par plateau de lr_patience epochs.
@@ -1620,6 +1644,7 @@ class Trainer:
 
         if (regression > cfg.autopilot_restart_regression
                 and drift_detected
+                and epochs_without_improvement >= cfg.autopilot_restart_min_no_improve
                 and self._ap_restart_count < cfg.autopilot_restart_max
                 and self.checkpoint_path):
             self._ap_restart_count += 1
