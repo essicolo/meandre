@@ -1022,19 +1022,53 @@ class Trainer:
                     log_sigma_sim = self.model.noise_head(sp.to_tensor(), Q_det)
                 else:
                     log_sigma_sim = self.model.noise_head(Q_det)
-            # TODO multi-obj wiring (NLL ET / SWE) :
-            # Quand data.et_obs ou data.swe_obs sont fournis et w_nll_et/_swe > 0,
-            # appeler self.model.simulate(..., return_diagnostics=True) au lieu de
-            # _simulate() ; extraire et_sim=diag.etr et swe_sim=diag.swe ; appliquer
-            # self.model.noise_head_et / _swe pour les log_sigma respectifs ;
-            # passer à loss_fn. La même logique s'applique au chemin chunké
-            # ci-dessus. Bloqué par l'absence de loader MODIS (cf.
-            # meandre/data/open_data.py download_modis_et / download_modis_swe).
+            # ── Multi-objective ETR wiring (MOD16A2) ─────────────────
+            # When data.et_obs is populated (MODIS loader ran) and w_nll_et > 0,
+            # we need et_sim from the model diagnostics. We re-run simulate with
+            # return_diagnostics=True only if the extra loss weight justifies it.
+            et_sim = None
+            log_sigma_et_sim = None
+            need_et = (self.loss_fn.w_nll_et > 0 or self.loss_fn.w_et > 0) \
+                      and data.et_obs is not None
+            if need_et:
+                # Re-run the train forward with diagnostics. Uses the cached
+                # spinup state so only the train period is re-simulated.
+                cached_state_for_et = getattr(self, "_cached_train_end_state", None)
+                # Use the spinup state (beginning of train) if not cached yet
+                if not hasattr(self, "_cached_spinup_state_for_et"):
+                    self._cached_spinup_state_for_et = getattr(
+                        self, "_cached_spinup_state", None
+                    )
+                with torch.no_grad():
+                    _initial = (self._cached_spinup_state_for_et
+                                if self._cached_spinup_state_for_et is not None
+                                else None)
+                    if _initial is not None:
+                        _result = self.model.simulate(
+                            forcing=data.forcing[data.train_slice],
+                            initial_state=_initial,
+                            graph=data.graph,
+                            node_coords=data.node_coords,
+                            territorial=data.territorial,
+                            withdrawals=data.withdrawals,
+                            day_of_year=data.day_of_year[data.train_slice],
+                            return_diagnostics=True,
+                            tbptt_steps=self.config.tbptt_steps,
+                        )
+                        if isinstance(_result, tuple) and len(_result) == 3:
+                            _, _, _diag = _result
+                            et_sim = _diag.etr  # (T, n_nodes) mm/day
+                if et_sim is not None and hasattr(self.model, "noise_head_et"):
+                    log_sigma_et_sim = self.model.noise_head_et(et_sim.detach())
+
             loss, components = self.loss_fn(
                 q_obs=q_obs_train,
                 q_sim=Q_sim,
                 station_mask=data.station_mask,
                 log_sigma_sim=log_sigma_sim,
+                et_obs=data.et_obs[:n_train] if data.et_obs is not None else None,
+                et_sim=et_sim,
+                log_sigma_et_sim=log_sigma_et_sim,
                 residual_gate_logits=(
                     self.model.residual_corrector.gate_logit
                     if self.model.use_residual and self.model.residual_corrector is not None

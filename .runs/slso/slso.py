@@ -439,6 +439,41 @@ print(f"Withdrawals: {n_wd_active} active nodes")
 print(f"Net mean: {withdrawals.net.mean():.4f} m³/s")
 print(f"Range: [{withdrawals.net.min():.3f}, {withdrawals.net.max():.3f}] m³/s")
 
+# ── MODIS ETR (conditionnel — auto-fetch si absent) ────────────────────────
+# Activé si w_nll_et > 0 dans le TOML. Si la table modis_et n'est pas
+# dans le DuckDB, fetch automatique depuis Planetary Computer.
+et_obs_tensor = None
+_use_modis = lcfg.get("w_nll_et", 0.0) > 0 or lcfg.get("w_et", 0.0) > 0
+if _use_modis:
+    if not cache.has_modis_et():
+        print("\n[MODIS] modis_et absent — téléchargement depuis Planetary Computer…")
+        from meandre.data.modis_loader import fetch_modis_et
+        import numpy as _np
+        _nc = node_coords.cpu().numpy()
+        _bbox = (float(_nc[:, 0].min()) - 0.1, float(_nc[:, 1].min()) - 0.1,
+                 float(_nc[:, 0].max()) + 0.1, float(_nc[:, 1].max()) + 0.1)
+        _df = fetch_modis_et(
+            bbox=_bbox,
+            date_start=DATE_START,
+            date_end=DATE_END,
+            node_coords=_nc,
+            node_indices=_np.arange(len(_nc)),
+        )
+        if _df.empty:
+            print("[MODIS] Avertissement : aucune donnée récupérée, w_nll_et ignoré")
+            _use_modis = False
+        else:
+            cache.import_modis_et(_df)
+            print(f"[MODIS] {len(_df):,} lignes ingérées")
+
+    if _use_modis:
+        et_obs_tensor = cache.load_modis_et(DATE_START, DATE_END, device=device)
+        _n_valid = (~torch.isnan(et_obs_tensor)).sum().item() if et_obs_tensor is not None else 0
+        print(f"[MODIS] et_obs chargé : {_n_valid:,} observations valides / "
+              f"{et_obs_tensor.numel():,} total")
+else:
+    print("[MODIS] w_nll_et = 0 — MODIS ETR non utilisé")
+
 # %% [markdown]
 """
 ## Entraînement
@@ -467,7 +502,23 @@ def make_data(period_sl: slice) -> TrainingData:
         val_slice = period_sl,
     )
 
-train_data = make_data(train_sl)
+# Slice et_obs to align with the q_obs start offset used in make_data
+_et_train = et_obs_tensor[train_sl.start:] if et_obs_tensor is not None else None
+_et_val = et_obs_tensor[val_sl.start:] if et_obs_tensor is not None else None
+train_data = TrainingData(
+    forcing = forcing,
+    q_obs = q_obs_tensor[train_sl.start:],
+    station_mask = station_mask,
+    station_idx = torch.tensor(station_indices, device=device),
+    graph = graph,
+    node_coords = node_coords,
+    territorial = territorial,
+    withdrawals = withdrawals,
+    day_of_year = doy,
+    train_slice = train_sl,
+    val_slice = train_sl,
+    et_obs = _et_train,
+)
 val_data = TrainingData(
     forcing = forcing,
     q_obs = q_obs_tensor[val_sl.start:],
@@ -480,6 +531,7 @@ val_data = TrainingData(
     day_of_year = doy,
     train_slice = val_sl,
     val_slice = val_sl,
+    et_obs = _et_val,
 )
 
 # Station weights : two modes, switched by config `[training].station_weight_mode`.

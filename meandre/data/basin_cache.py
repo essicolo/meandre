@@ -827,6 +827,309 @@ class BasinCache:
             net_gw=torch.tensor(net_gw, device=device),
         )
 
+    def import_modis_et(self, df: "pd.DataFrame") -> int:
+        """Import MODIS MOD16A2 ETR rows into the ``modis_et`` DuckDB table.
+
+        Parameters
+        ----------
+        df : DataFrame with columns (date, node_idx, etr_mm_day, quality_ok).
+             Produced by :func:`meandre.data.modis_loader.fetch_modis_et`.
+
+        Returns
+        -------
+        int : number of rows inserted.
+        """
+        import duckdb
+        import pandas as pd
+
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+
+        con = duckdb.connect(str(self.path))
+        try:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS modis_et (
+                    date        DATE    NOT NULL,
+                    node_idx    INTEGER NOT NULL,
+                    etr_mm_day  FLOAT,
+                    quality_ok  BOOLEAN,
+                    PRIMARY KEY (date, node_idx)
+                )
+            """)
+            con.execute(
+                "INSERT OR REPLACE INTO modis_et SELECT * FROM df"
+            )
+            n = len(df)
+        finally:
+            con.close()
+
+        print(f"[import_modis_et] {n:,} rows upserted into modis_et")
+        return n
+
+    def load_modis_et(
+        self,
+        date_start: str,
+        date_end: str,
+        device: "torch.device | None" = None,
+    ) -> "torch.Tensor | None":
+        """Load MODIS MOD16A2 ETR from DuckDB as a dense (T, n_nodes) tensor.
+
+        Returns ``None`` if the ``modis_et`` table does not exist (enables
+        graceful fallback to w_nll_et=0 with no code change in slso.py).
+
+        NaN encodes:
+          - Days between 8-day composites (no observation).
+          - Pixels flagged as cloudy or fill.
+        The Gaussian NLL loss skips NaN entries automatically.
+        """
+        import duckdb
+        import pandas as pd
+
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            if "modis_et" not in tables:
+                return None
+
+            n_nodes = int(con.execute(
+                "SELECT value FROM metadata WHERE key = 'n_nodes'"
+            ).fetchone()[0])
+
+            dates = pd.date_range(date_start, date_end, freq="D")
+            n_time = len(dates)
+            date_idx = {d: i for i, d in enumerate(dates.normalize())}
+
+            df = con.execute(
+                "SELECT date, node_idx, etr_mm_day, quality_ok "
+                "FROM modis_et "
+                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
+                "  AND quality_ok = TRUE "
+                "ORDER BY date, node_idx",
+                [date_start, date_end],
+            ).df()
+        finally:
+            con.close()
+
+        et_arr = np.full((n_time, n_nodes), np.nan, dtype=np.float32)
+
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+            for _, row in df.iterrows():
+                t = date_idx.get(row["date"])
+                n = int(row["node_idx"])
+                if t is not None and n < n_nodes:
+                    et_arr[t, n] = float(row["etr_mm_day"])
+
+        import torch
+        return torch.from_numpy(et_arr).to(device)
+
+    def has_modis_et(self) -> bool:
+        """Return True if the modis_et table exists and has at least one row."""
+        import duckdb
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            if "modis_et" not in tables:
+                return False
+            count = con.execute("SELECT COUNT(*) FROM modis_et").fetchone()[0]
+            return int(count) > 0
+        finally:
+            con.close()
+
+    def import_modis_snow(self, df: "pd.DataFrame") -> int:
+        """Import MOD10A1 snow cover fraction into ``modis_snow`` table."""
+        import duckdb, pandas as pd
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+        con = duckdb.connect(str(self.path))
+        try:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS modis_snow (
+                    date        DATE    NOT NULL,
+                    node_idx    INTEGER NOT NULL,
+                    snow_frac   FLOAT,
+                    quality_ok  BOOLEAN,
+                    PRIMARY KEY (date, node_idx)
+                )
+            """)
+            con.execute("INSERT OR REPLACE INTO modis_snow SELECT * FROM df")
+            n = len(df)
+        finally:
+            con.close()
+        print(f"[import_modis_snow] {n:,} rows upserted")
+        return n
+
+    def load_modis_snow(
+        self, date_start: str, date_end: str,
+        device: "torch.device | None" = None,
+    ) -> "torch.Tensor | None":
+        """Load MOD10A1 snow cover as (T, n_nodes) tensor. None if absent."""
+        import duckdb, pandas as pd
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            if "modis_snow" not in tables:
+                return None
+            n_nodes = int(con.execute(
+                "SELECT value FROM metadata WHERE key = 'n_nodes'"
+            ).fetchone()[0])
+            dates = pd.date_range(date_start, date_end, freq="D")
+            date_idx = {d: i for i, d in enumerate(dates.normalize())}
+            df = con.execute(
+                "SELECT date, node_idx, snow_frac FROM modis_snow "
+                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
+                "  AND quality_ok = TRUE ORDER BY date, node_idx",
+                [date_start, date_end],
+            ).df()
+        finally:
+            con.close()
+        arr = np.full((len(dates), n_nodes), np.nan, dtype=np.float32)
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+            for _, row in df.iterrows():
+                t = date_idx.get(row["date"])
+                n = int(row["node_idx"])
+                if t is not None and n < n_nodes:
+                    arr[t, n] = float(row["snow_frac"])
+        import torch
+        return torch.from_numpy(arr).to(device)
+
+    def has_modis_snow(self) -> bool:
+        import duckdb
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            return "modis_snow" in tables and \
+                int(con.execute("SELECT COUNT(*) FROM modis_snow").fetchone()[0]) > 0
+        finally:
+            con.close()
+
+    def import_modis_ndvi(self, df: "pd.DataFrame") -> int:
+        """Import MOD13A2 NDVI into ``modis_ndvi`` table."""
+        import duckdb, pandas as pd
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+        con = duckdb.connect(str(self.path))
+        try:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS modis_ndvi (
+                    date        DATE    NOT NULL,
+                    node_idx    INTEGER NOT NULL,
+                    ndvi        FLOAT,
+                    quality_ok  BOOLEAN,
+                    PRIMARY KEY (date, node_idx)
+                )
+            """)
+            con.execute("INSERT OR REPLACE INTO modis_ndvi SELECT * FROM df")
+            n = len(df)
+        finally:
+            con.close()
+        print(f"[import_modis_ndvi] {n:,} rows upserted")
+        return n
+
+    def load_modis_ndvi(
+        self, date_start: str, date_end: str,
+        device: "torch.device | None" = None,
+    ) -> "torch.Tensor | None":
+        """Load MOD13A2 NDVI as (T, n_nodes) tensor. None if absent."""
+        import duckdb, pandas as pd
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            if "modis_ndvi" not in tables:
+                return None
+            n_nodes = int(con.execute(
+                "SELECT value FROM metadata WHERE key = 'n_nodes'"
+            ).fetchone()[0])
+            dates = pd.date_range(date_start, date_end, freq="D")
+            date_idx = {d: i for i, d in enumerate(dates.normalize())}
+            df = con.execute(
+                "SELECT date, node_idx, ndvi FROM modis_ndvi "
+                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
+                "  AND quality_ok = TRUE ORDER BY date, node_idx",
+                [date_start, date_end],
+            ).df()
+        finally:
+            con.close()
+        arr = np.full((len(dates), n_nodes), np.nan, dtype=np.float32)
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+            for _, row in df.iterrows():
+                t = date_idx.get(row["date"])
+                n = int(row["node_idx"])
+                if t is not None and n < n_nodes:
+                    arr[t, n] = float(row["ndvi"])
+        import torch
+        return torch.from_numpy(arr).to(device)
+
+    def has_modis_ndvi(self) -> bool:
+        import duckdb
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            return "modis_ndvi" in tables and \
+                int(con.execute("SELECT COUNT(*) FROM modis_ndvi").fetchone()[0]) > 0
+        finally:
+            con.close()
+
+    def import_grace_tws(self, df: "pd.DataFrame") -> int:
+        """Import GRACE/GRACE-FO TWS anomaly into ``grace_tws`` table.
+
+        df columns: (date, tws_mm, uncertainty, quality_ok).
+        """
+        import duckdb, pandas as pd
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+        con = duckdb.connect(str(self.path))
+        try:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS grace_tws (
+                    date        DATE  NOT NULL PRIMARY KEY,
+                    tws_mm      FLOAT,
+                    uncertainty FLOAT,
+                    quality_ok  BOOLEAN
+                )
+            """)
+            con.execute("INSERT OR REPLACE INTO grace_tws SELECT * FROM df")
+            n = len(df)
+        finally:
+            con.close()
+        print(f"[import_grace_tws] {n:,} rows upserted")
+        return n
+
+    def load_grace_tws(
+        self, date_start: str, date_end: str,
+    ) -> "pd.DataFrame | None":
+        """Load GRACE TWS as DataFrame(date, tws_mm, uncertainty). None if absent."""
+        import duckdb, pandas as pd
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            if "grace_tws" not in tables:
+                return None
+            df = con.execute(
+                "SELECT date, tws_mm, uncertainty FROM grace_tws "
+                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
+                "  AND quality_ok = TRUE ORDER BY date",
+                [date_start, date_end],
+            ).df()
+        finally:
+            con.close()
+        if df.empty:
+            return None
+        df["date"] = pd.to_datetime(df["date"])
+        return df
+
+    def has_grace_tws(self) -> bool:
+        import duckdb
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            return "grace_tws" in tables and \
+                int(con.execute("SELECT COUNT(*) FROM grace_tws").fetchone()[0]) > 0
+        finally:
+            con.close()
+
     def list_stations(self) -> list[dict]:
         """List stations with their metadata and observation date ranges."""
         import duckdb
