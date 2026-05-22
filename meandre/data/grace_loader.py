@@ -89,20 +89,26 @@ def fetch_grace_tws(
         except Exception:
             _auth = earthaccess.login(strategy="guest")
 
+    # GRACE data is global — bounding_box filter in search is not reliable.
+    # We download all granules for the period and filter spatially after.
     results = earthaccess.search_data(
         short_name=GRACE_SHORTNAME,
         temporal=(date_start, date_end),
-        bounding_box=bbox,
     )
     if not results:
         logger.warning(
-            f"[GRACE] No data found for bbox={bbox}, period={date_start}/{date_end}"
+            f"[GRACE] No data found for period={date_start}/{date_end}"
         )
         return pd.DataFrame(columns=["date", "tws_mm", "uncertainty", "quality_ok"])
 
-    logger.info(f"[GRACE] Downloading {len(results)} monthly granules…")
+    print(f"  [GRACE] {len(results)} granules trouvés — téléchargement en cours…")
 
     import tempfile, xarray as xr, os
+
+    # Convert bbox to 0-360 longitude convention used by JPL GRACE mascons
+    lon_min_360 = bbox[0] % 360  # e.g. -73 → 287
+    lon_max_360 = bbox[2] % 360  # e.g. -69.6 → 290.4
+    lat_min, lat_max = bbox[1], bbox[3]
 
     rows = []
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -110,25 +116,60 @@ def fetch_grace_tws(
         for fpath in sorted(files):
             try:
                 ds = xr.open_dataset(fpath)
-                lwe = ds[GRACE_VAR].sel(
-                    lat=slice(bbox[1], bbox[3]),
-                    lon=slice(bbox[0], bbox[2]),
-                )
-                basin_mean_cm = float(lwe.mean().values)
+
+                # Detect variable name — varies by version
+                var = None
+                for candidate in ("lwe_thickness", "LWE_thickness", "lwe",
+                                  "land_water_equivalent_thickness"):
+                    if candidate in ds:
+                        var = candidate
+                        break
+                if var is None:
+                    logger.warning(f"  [GRACE] {Path(fpath).name}: variable inconnue "
+                                   f"({list(ds.data_vars)[:5]})")
+                    ds.close()
+                    continue
+
+                # Spatial subset — handle both lon conventions
+                lat_dim = [d for d in ds[var].dims if "lat" in d.lower()][0]
+                lon_dim = [d for d in ds[var].dims if "lon" in d.lower()][0]
+                lon_vals = ds[lon_dim].values
+
+                # Detect 0-360 vs -180-180
+                if lon_vals.max() > 180:
+                    lwe = ds[var].sel(
+                        {lat_dim: slice(lat_min, lat_max),
+                         lon_dim: slice(lon_min_360, lon_max_360)}
+                    )
+                else:
+                    lwe = ds[var].sel(
+                        {lat_dim: slice(lat_min, lat_max),
+                         lon_dim: slice(bbox[0], bbox[2])}
+                    )
+
+                if lwe.size == 0:
+                    logger.warning(f"  [GRACE] {Path(fpath).name}: aucun pixel dans bbox")
+                    ds.close()
+                    continue
+
+                basin_mean_cm = float(np.nanmean(lwe.values))
                 tws_mm = basin_mean_cm * CM_TO_MM
 
-                # Uncertainty (not in all versions — optional)
-                uncert = None
-                for uvar in ("uncertainty", "lwe_uncertainty"):
+                # Uncertainty (optional)
+                uncert = np.nan
+                for uvar in ("uncertainty", "lwe_uncertainty", "LWE_uncertainty"):
                     if uvar in ds:
                         u = ds[uvar].sel(
-                            lat=slice(bbox[1], bbox[3]),
-                            lon=slice(bbox[0], bbox[2]),
+                            {lat_dim: slice(lat_min, lat_max),
+                             lon_dim: slice(lon_min_360 if lon_vals.max() > 180
+                                            else bbox[0],
+                                            lon_max_360 if lon_vals.max() > 180
+                                            else bbox[2])}
                         )
-                        uncert = float(u.mean().values) * CM_TO_MM
+                        uncert = float(np.nanmean(u.values)) * CM_TO_MM
                         break
 
-                # Date: first day of the monthly composite
+                # Date
                 t = ds.coords.get("time", ds.coords.get("TIME"))
                 date = pd.Timestamp(
                     t.values[0] if t is not None else "1970-01-01"
@@ -137,9 +178,10 @@ def fetch_grace_tws(
                 rows.append({
                     "date": date,
                     "tws_mm": tws_mm,
-                    "uncertainty": uncert if uncert is not None else np.nan,
+                    "uncertainty": uncert,
                     "quality_ok": np.isfinite(tws_mm),
                 })
+                ds.close()
                 ds.close()
             except Exception as exc:
                 logger.warning(f"[GRACE] Skipped {fpath}: {exc}")

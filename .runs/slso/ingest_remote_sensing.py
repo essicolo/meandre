@@ -145,6 +145,61 @@ if "ndvi" in args.products and _confirm_overwrite("modis_ndvi", cache.has_modis_
 # ── GRACE-FO TWS ──────────────────────────────────────────────────────────────
 if "grace" in args.products and _confirm_overwrite("grace_tws", cache.has_grace_tws):
     print("\n── GRACE/GRACE-FO TWS ──────────────────────────────────────────────")
+
+    # ── Avertissement : enregistrer le token de façon permanente ─────────────
+    import os as _os, sys as _sys
+
+    def _token_is_permanent() -> bool:
+        """Return True if EARTHDATA_TOKEN is already saved permanently."""
+        if _sys.platform == "win32":
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
+                winreg.QueryValueEx(key, "EARTHDATA_TOKEN")
+                winreg.CloseKey(key)
+                return True
+            except (FileNotFoundError, OSError):
+                return False
+        else:
+            import subprocess, pathlib
+            rc_files = [
+                pathlib.Path.home() / ".zshrc",
+                pathlib.Path.home() / ".bashrc",
+                pathlib.Path.home() / ".profile",
+                pathlib.Path.home() / ".bash_profile",
+            ]
+            for f in rc_files:
+                if f.exists() and "EARTHDATA_TOKEN" in f.read_text(errors="ignore"):
+                    return True
+            netrc = pathlib.Path.home() / ".netrc"
+            if netrc.exists() and "urs.earthdata.nasa.gov" in netrc.read_text(errors="ignore"):
+                return True
+            return False
+
+    if _os.environ.get("EARTHDATA_TOKEN") and not _token_is_permanent():
+        _token = _os.environ["EARTHDATA_TOKEN"]
+        print(f"""
+  ⚠  Votre EARTHDATA_TOKEN est défini uniquement pour cette session.
+     Pour ne pas avoir à le redéfinir à chaque fois, enregistrez-le
+     de façon permanente selon votre OS :
+
+     Windows (PowerShell — permanent pour l'utilisateur courant) :
+       [System.Environment]::SetEnvironmentVariable(
+           "EARTHDATA_TOKEN", "{_token}",
+           "User")
+
+     Windows (invite de commandes) :
+       setx EARTHDATA_TOKEN "{_token}"
+
+     macOS / Linux (ajouter à ~/.zshrc ou ~/.bashrc) :
+       echo 'export EARTHDATA_TOKEN="{_token}"' >> ~/.zshrc
+       source ~/.zshrc
+
+     Alternativement, créez ~/.netrc :
+       machine urs.earthdata.nasa.gov
+       login    votre-username-earthdata
+       password votre-mot-de-passe
+""")
     try:
         from meandre.data.grace_loader import fetch_grace_tws
         df_grace = fetch_grace_tws(bbox, DATE_START, DATE_END)
