@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 # JPL Mascon short name on PO.DAAC / Earthdata
-GRACE_SHORTNAME = "TELLUS_GRAC-GRFO_MASCON_CRI_GRID_RL06V3_V4"
+GRACE_SHORTNAME = "TELLUS_GRAC-GRFO_MASCON_CRI_GRID_RL06.3_V4"
 GRACE_VAR = "lwe_thickness"   # cm water equivalent anomaly
 CM_TO_MM = 10.0
 
@@ -70,12 +70,24 @@ def fetch_grace_tws(
     """
     try:
         import earthaccess
-        _auth = earthaccess.login(strategy="environment")  # reads EARTHDATA_LOGIN env var
     except ImportError:
         raise ImportError(
             "GRACE loader requires the earthaccess library. "
-            "Install with: pip install earthaccess"
+            "Install with: uv add earthaccess"
         )
+
+    import os
+    # Try token first (EARTHDATA_TOKEN env var), then netrc, then guest.
+    # GRACE mascons are public (no auth required to download), so guest works.
+    # Interactive mode is explicitly disabled — fails in non-interactive runs.
+    token = os.environ.get("EARTHDATA_TOKEN")
+    if token:
+        _auth = earthaccess.login(strategy="environment")
+    else:
+        try:
+            _auth = earthaccess.login(strategy="netrc")
+        except Exception:
+            _auth = earthaccess.login(strategy="guest")
 
     results = earthaccess.search_data(
         short_name=GRACE_SHORTNAME,
