@@ -91,9 +91,11 @@ def fetch_grace_tws(
 
     # GRACE data is global — bounding_box filter in search is not reliable.
     # We download all granules for the period and filter spatially after.
+    # count=-1 lifts the default limit (which may be 1 or 10).
     results = earthaccess.search_data(
         short_name=GRACE_SHORTNAME,
         temporal=(date_start, date_end),
+        count=-1,
     )
     if not results:
         logger.warning(

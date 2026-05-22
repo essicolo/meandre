@@ -177,25 +177,23 @@ if "grace" in args.products and _confirm_overwrite("grace_tws", cache.has_grace_
             return False
 
     if _os.environ.get("EARTHDATA_TOKEN") and not _token_is_permanent():
-        _token = _os.environ["EARTHDATA_TOKEN"]
-        print(f"""
-  ⚠  Votre EARTHDATA_TOKEN est défini uniquement pour cette session.
+        print("""
+  ⚠  EARTHDATA_TOKEN est défini pour cette session seulement.
      Pour ne pas avoir à le redéfinir à chaque fois, enregistrez-le
-     de façon permanente selon votre OS :
+     de façon permanente (remplacez <token> par votre valeur) :
 
-     Windows (PowerShell — permanent pour l'utilisateur courant) :
+     Windows — PowerShell (permanent pour l'utilisateur courant) :
        [System.Environment]::SetEnvironmentVariable(
-           "EARTHDATA_TOKEN", "{_token}",
-           "User")
+           "EARTHDATA_TOKEN", "<token>", "User")
 
-     Windows (invite de commandes) :
-       setx EARTHDATA_TOKEN "{_token}"
+     Windows — invite de commandes :
+       setx EARTHDATA_TOKEN "<token>"
 
-     macOS / Linux (ajouter à ~/.zshrc ou ~/.bashrc) :
-       echo 'export EARTHDATA_TOKEN="{_token}"' >> ~/.zshrc
+     macOS / Linux (~/.zshrc ou ~/.bashrc) :
+       echo 'export EARTHDATA_TOKEN="<token>"' >> ~/.zshrc
        source ~/.zshrc
 
-     Alternativement, créez ~/.netrc :
+     Alternative — ~/.netrc (username/password) :
        machine urs.earthdata.nasa.gov
        login    votre-username-earthdata
        password votre-mot-de-passe
