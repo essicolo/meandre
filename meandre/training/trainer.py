@@ -1523,21 +1523,32 @@ class Trainer:
     ) -> bool:
         """Check phase 1→2 transition condition. Returns True if reset needed.
 
+        Uses the SAME metric as ``best_metric`` (set in the config) to evaluate
+        the threshold — so the user sees a consistent number in the log and in
+        the threshold comparison. For example: if best_metric='kge' (pooled),
+        the threshold is compared against val_metrics['kge'] (pooled), not
+        kge_station (per-station weighted).
+
         Updates plateau counter and triggers _apply_phase2_config when:
           - epoch - phase1_start >= kga_phase1_min_epochs (safeguard), AND
-          - (kge_station >= kga_phase1_kge_threshold) OR
+          - (best_metric_value >= kga_phase1_kge_threshold) OR
             (plateau_counter >= kga_phase1_plateau_patience)
         """
         if self._kga_phase != 1:
             return False
         cfg = self.config
-        kge_sta = val_metrics.get("kge_station", float("nan"))
-        if not math.isfinite(kge_sta):
+
+        # Read the SAME metric the user is tracking via best_metric.
+        # Falls back to kge_station for backward compatibility.
+        bm = cfg.best_metric
+        bm_key = "val_nll" if bm == "nll" else bm
+        kge_val = val_metrics.get(bm_key, val_metrics.get("kge_station", float("nan")))
+        if not math.isfinite(kge_val):
             return False
 
-        # Update plateau counter (improvement = strict gain on kge_sta)
-        if kge_sta > self._kga_best_kge:
-            self._kga_best_kge = kge_sta
+        # Update plateau counter (improvement = strict gain on the tracked metric)
+        if kge_val > self._kga_best_kge:
+            self._kga_best_kge = kge_val
             self._kga_plateau_counter = 0
         else:
             self._kga_plateau_counter += 1
@@ -1547,11 +1558,11 @@ class Trainer:
             return False
 
         should_transition = (
-            kge_sta >= cfg.kga_phase1_kge_threshold
+            kge_val >= cfg.kga_phase1_kge_threshold
             or self._kga_plateau_counter >= cfg.kga_phase1_plateau_patience
         )
         if should_transition:
-            self._apply_phase2_config(epoch, kge_sta)
+            self._apply_phase2_config(epoch, kge_val)
             return True
         return False
 
