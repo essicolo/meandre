@@ -443,7 +443,8 @@ print(f"Range: [{withdrawals.net.min():.3f}, {withdrawals.net.max():.3f}] m³/s"
 # Activé si w_nll_et > 0 dans le TOML. Si la table modis_et n'est pas
 # dans le DuckDB, fetch automatique depuis Planetary Computer.
 et_obs_tensor = None
-_use_modis = lcfg.get("w_nll_et", 0.0) > 0 or lcfg.get("w_et", 0.0) > 0
+_lcfg_early = cfg.get("loss", {})
+_use_modis = _lcfg_early.get("w_nll_et", 0.0) > 0 or _lcfg_early.get("w_et", 0.0) > 0
 if _use_modis:
     if not cache.has_modis_et():
         print("\n[MODIS] modis_et absent — téléchargement depuis Planetary Computer…")
