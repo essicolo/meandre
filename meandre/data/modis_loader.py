@@ -2,12 +2,17 @@
 
 Products and sources
 --------------------
-MOD16A2 ETR  500 m  8-day   → NASA Earthdata (earthaccess, token required)
-MOD10A1 snow 500 m  daily   → Planetary Computer STAC (no auth)
-MOD13A1 NDVI 500 m  16-day  → Planetary Computer STAC (no auth)
+MOD16A3GF ETR  500 m  annual  → Planetary Computer STAC (no auth)
+MOD10A1   snow 500 m  daily   → Planetary Computer STAC (no auth)
+MOD13A1   NDVI 500 m  16-day  → Planetary Computer STAC (no auth)
 
-MOD16A2 is not available on Planetary Computer (only MOD16A3GF annual is).
-It is fetched via earthaccess using the same token as GRACE.
+NOTE on ETR product choice: MOD16A2 (8-day) is HDF4 on NASA Earthdata, and
+GDAL builds shipped with rasterio on Windows lack the HDF4 driver. We use
+MOD16A3GF (annual, gap-filled) which is available as cloud-optimised GeoTIFF
+on Planetary Computer. Trade-off: loses 8-day seasonality, keeps 25 annual
+ETR observations per node — sufficient for spatial identifiability of K_c
+and the gradient diagnostic. For 8-day resolution, install HDF4-enabled
+GDAL or use AppEEARS pre-processing.
 
 What each product constrains in meandre
 -----------------------------------------
@@ -33,14 +38,15 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-# ─── MOD16A2 ETR (NASA Earthdata) ───────────────────────────────────────────
+# ─── MOD16A3GF ETR (Planetary Computer, annual) ────────────────────────────
 
-ET_SHORTNAME = "MOD16A2"           # NASA Earthdata short name
-ET_VAR = "ET_500m"
-ET_SCALE = 0.1                     # raw integer → mm/8day
-ET_FILL = 32761
-ET_MAX_MM_8DAY = 3000
-ET_DAYS = 8.0
+ET_COLLECTION = "modis-16A3GF-061"
+ET_ASSET = "ET_500m"
+ET_FILL = 32761                    # MODIS native fill
+ET_MAX_MM_YEAR = 30000             # cap raw before scaling
+# PC COG ET_500m units are mm/year directly (no scale_factor application
+# needed — verified empirically on Quebec forest: 565 mm/year typical).
+ET_DAYS_PER_YEAR = 365.0
 
 # ─── MOD10A1 snow (Planetary Computer) ──────────────────────────────────────
 
@@ -114,15 +120,12 @@ def fetch_modis_et(
     node_coords: "np.ndarray",
     node_indices: "np.ndarray | None" = None,
 ) -> pd.DataFrame:
-    """Fetch MOD16A2 8-day ETR via NASA Earthdata (earthaccess).
+    """Fetch MOD16A3GF annual ETR via Planetary Computer (no auth).
 
-    Requires EARTHDATA_TOKEN env var (same token used for GRACE).
     Returns DataFrame(date, node_idx, etr_mm_day, quality_ok).
+    Date = first day of the year. etr_mm_day = annual ETR / 365.
     """
-    try:
-        import earthaccess, xarray as xr, rioxarray  # noqa
-    except ImportError as e:
-        raise ImportError("fetch_modis_et requires earthaccess + rioxarray") from e
+    import xarray as xr, rioxarray  # noqa
 
     node_coords = np.asarray(node_coords, dtype=np.float64)
     n = node_coords.shape[0]
@@ -130,51 +133,41 @@ def fetch_modis_et(
         node_indices = np.arange(n)
     lons, lats = node_coords[:, 0], node_coords[:, 1]
 
-    import os
-    if os.environ.get("EARTHDATA_TOKEN"):
-        earthaccess.login(strategy="environment")
-    else:
-        earthaccess.login(strategy="all")
+    catalog = _open_catalog()
+    items = list(catalog.search(
+        collections=[ET_COLLECTION], bbox=list(bbox),
+        datetime=f"{date_start}/{date_end}",
+    ).items())
+    print(f"  [MOD16A3GF] {len(items)} annual items → extraction…")
 
-    results = earthaccess.search_data(
-        short_name=ET_SHORTNAME,
-        temporal=(date_start, date_end),
-        bounding_box=bbox,
-        count=-1,
-    )
-    if not results:
-        logger.warning(f"[MOD16A2] No granules found for {date_start}/{date_end}")
-        return pd.DataFrame(columns=["date", "node_idx", "etr_mm_day", "quality_ok"])
-
-    print(f"  [MOD16A2] {len(results)} granules → téléchargement…")
     rows = []
-    with tempfile.TemporaryDirectory() as tmpdir:
-        files = earthaccess.download(results, local_path=tmpdir)
-        for fpath in sorted(files):
+    for item in items:
+        try:
+            item = _pc_sign(item)
+            href = item.assets[ET_ASSET].href
+            da = xr.open_dataarray(href, engine="rasterio").squeeze("band", drop=True)
+            if da.rio.crs is not None and da.rio.crs.to_epsg() != 4326:
+                da = da.rio.reproject("EPSG:4326")
+            # Date from RANGEBEGINNINGDATE attr (year start)
+            _rbd = da.attrs.get("RANGEBEGINNINGDATE", "")
             try:
-                da = xr.open_dataarray(fpath, engine="rasterio").squeeze("band", drop=True)
-                if da.rio.crs is not None and da.rio.crs.to_epsg() != 4326:
-                    da = da.rio.reproject("EPSG:4326")
-                # Date from filename e.g. MOD16A2.A2020153...
-                fname = Path(fpath).stem
-                try:
-                    year = int(fname.split(".A")[1][:4])
-                    doy = int(fname.split(".A")[1][4:7])
-                    composite_date = pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=doy - 1)
-                except Exception:
-                    composite_date = pd.Timestamp("1970-01-01")
+                year_date = pd.Timestamp(_rbd) if _rbd else pd.NaT
+            except Exception:
+                year_date = pd.NaT
 
-                for ni, raw in _nearest_node_lookup(da, lons, lats, node_indices):
-                    if np.isnan(raw) or raw >= ET_FILL or raw < 0:
-                        rows.append({"date": composite_date, "node_idx": ni,
-                                     "etr_mm_day": np.nan, "quality_ok": False})
-                    else:
-                        etr = min(raw * ET_SCALE, ET_MAX_MM_8DAY) / ET_DAYS
-                        rows.append({"date": composite_date, "node_idx": ni,
-                                     "etr_mm_day": etr, "quality_ok": True})
-                da.close()
-            except Exception as exc:
-                logger.warning(f"[MOD16A2] Skipped {Path(fpath).name}: {exc}")
+            for ni, raw in _nearest_node_lookup(da, lons, lats, node_indices):
+                # MOD16A3GF on PC: ET_500m direct annual mm/year, no scale needed
+                if np.isnan(raw) or raw >= ET_FILL or raw < 0:
+                    rows.append({"date": year_date, "node_idx": ni,
+                                 "etr_mm_day": np.nan, "quality_ok": False})
+                else:
+                    etr_mm_year = min(float(raw), ET_MAX_MM_YEAR)
+                    etr_mm_day = etr_mm_year / ET_DAYS_PER_YEAR
+                    rows.append({"date": year_date, "node_idx": ni,
+                                 "etr_mm_day": etr_mm_day, "quality_ok": True})
+            da.close()
+        except Exception as exc:
+            logger.warning(f"[MOD16A3GF] Skipped {item.id}: {exc}")
 
     if not rows:
         return pd.DataFrame(columns=["date", "node_idx", "etr_mm_day", "quality_ok"])
