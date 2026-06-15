@@ -47,6 +47,7 @@ class SoilModule(nn.Module):
         use_quickflow_reservoir: bool = False,
         quickflow_beta: float = 0.5,
         use_separate_infil_capacity: bool = False,
+        use_frozen_gate: bool = False,
     ) -> None:
         super().__init__()
         # Z1 (root zone surface) reste fixe — sémantique stable (~30cm).
@@ -95,6 +96,22 @@ class SoilModule(nn.Module):
         # remonte si le volume casse — sans jamais toucher la récession.
         self.use_separate_infil_capacity = bool(use_separate_infil_capacity)
         self._infil_bounds = (0.05, 1.0)
+
+        # ── Porte GEL (fidèle Hydrotel) ───────────────────────────────────
+        # Hydrotel : sur sol gelé (+ neige<10mm) l'infiltration est COUPÉE,
+        # pinf=0, toute la fonte ruisselle. Porte BINAIRE dure. Méandre ne
+        # faisait que réduire doucement K_sat, laissant infiltrer ~18% de la
+        # freshet (comparaison controlee 2026-06-15 : pic fonte 24.9 vs 36.5
+        # mm, -32%). Ici : une fraction frozen_gate de l'apport, ponderee par
+        # l'etat de gel frozen_frac (1-frost_factor, ~1 quand gele), ruisselle
+        # DIRECTEMENT avant infiltration. frozen_gate APPRENABLE (contrainte
+        # meandre : la lame d'Hydrotel s'optimise, pas figee). Init 0.85 =
+        # quasi-porte. Off => comportement actuel (equivalence).
+        self.use_frozen_gate = bool(use_frozen_gate)
+        self._frozen_gate_bounds = (0.1, 0.99)
+        if self.use_frozen_gate:
+            # Init 0.85 = quasi-porte. Apprenable (sigmoïde bornée).
+            self.frozen_gate_raw = nn.Parameter(self._inv_bounded(0.85, *self._frozen_gate_bounds))
         if self.use_separate_infil_capacity:
             # Init à 0.30 = optimum mesuré par le scan infil_ratio (2026-06-14 :
             # kge_med 0.711 + peak_ratio 0.707, +5% volume seulement). On démarre
@@ -263,6 +280,7 @@ class SoilModule(nn.Module):
         rain_hours: Tensor | None = None,
         vsa_b: Tensor | None = None,
         S_uz: Tensor | None = None,
+        frozen_frac: Tensor | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """One-day soil water balance update.
 
@@ -296,6 +314,18 @@ class SoilModule(nn.Module):
         ET1_m = ET1 * 1e-3
         ET2_m = ET2 * 1e-3
         ET3_m = ET3 * 1e-3
+
+        # ── Porte GEL (fidèle Hydrotel) ───────────────────────────────────
+        # Sur sol gelé, une fraction de l'apport ruisselle DIRECTEMENT, avant
+        # toute infiltration (Hydrotel coupe pinf à 0). R_frozen quitte P_m ;
+        # le reste suit le chemin normal. frozen_frac ∈ [0,1] (1 = gelé), passé
+        # par la colonne (= 1 − frost_factor). Conserve la masse.
+        R_frozen = torch.zeros_like(P_m)
+        if self.use_frozen_gate and frozen_frac is not None:
+            lo, hi = self._frozen_gate_bounds
+            gate = lo + (hi - lo) * torch.sigmoid(self.frozen_gate_raw)
+            R_frozen = frozen_frac * gate * torch.clamp(P_m, min=0.0)
+            P_m = P_m - R_frozen
 
         # ── Infiltration-excess runoff (Eagleson 1978) ──────────────────
         # Capacité d'infiltration de SURFACE découplée du K_sat de DRAINAGE
@@ -432,7 +462,7 @@ class SoilModule(nn.Module):
         theta3_new = torch.clamp(theta3_raw - ov3 / z3, min=0.0, max=1.0)
 
         # Overflow cascade: ov2 → L3 (above), ov3 → recharge
-        R_surface = (excess_1 + ov1 + R_infilt_excess + R_sat_vsa) * 1e3   # mm/day
+        R_surface = (excess_1 + ov1 + R_infilt_excess + R_sat_vsa + R_frozen) * 1e3   # mm/day
         interflow = (q_inter_1_s + q_inter_2_s + q_inter_3_s) * 1e3  # mm/day
         baseflow = (q_recharge_s + ov3) * 1e3   # mm/day
 

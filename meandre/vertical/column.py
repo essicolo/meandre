@@ -54,6 +54,7 @@ class VerticalColumn(nn.Module):
                  soil_quickflow_reservoir: bool = False,
                  soil_quickflow_beta: float = 0.5,
                  soil_separate_infil_capacity: bool = False,
+                 soil_frozen_gate: bool = False,
                  use_hillslope_uh: bool = False) -> None:
         super().__init__()
         self.snow = SnowModule()
@@ -63,7 +64,8 @@ class VerticalColumn(nn.Module):
         self.soil = SoilModule(z1=soil_z1, vsa_b=soil_vsa_b,
                                use_quickflow_reservoir=soil_quickflow_reservoir,
                                quickflow_beta=soil_quickflow_beta,
-                               use_separate_infil_capacity=soil_separate_infil_capacity)
+                               use_separate_infil_capacity=soil_separate_infil_capacity,
+                               use_frozen_gate=soil_frozen_gate)
         self.wetland = WetlandModule()
         self.aquifer = AquiferModule()
         # Hydrogramme unitaire de VERSANT (cascade de Nash à 2 réservoirs).
@@ -146,6 +148,10 @@ class VerticalColumn(nn.Module):
         frost_factor = K_sat_1_eff / (params.K_sat_1 + 1e-8)
         K_sat_2_eff = params.K_sat_2 * frost_factor
         K_sat_3_eff = params.K_sat_3 * frost_factor
+        # État de gel pour la porte gel du sol : ~1 quand K_sat effondré (gelé),
+        # ~0 dégelé. Atténué par la neige au sol (la fonte sur sol gelé ruisselle,
+        # mais un manteau épais découple le sol de l'air → moins gelé en surface).
+        frozen_frac = torch.clamp(1.0 - frost_factor, 0.0, 1.0)
 
         # 3. Interception: compute ETP first for canopy evap.
         # Apply crop/calibration coefficient K_c (Hydrotel-style multiplier),
@@ -205,6 +211,7 @@ class VerticalColumn(nn.Module):
             rain_hours=rain_hours_eff,
             vsa_b=getattr(params, 'vsa_b', None),
             S_uz=getattr(state, 'S_uz', None),
+            frozen_frac=frozen_frac,
         )
 
         # 6. Wetland

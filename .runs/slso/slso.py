@@ -359,6 +359,7 @@ soil_vsa_b = soil_cfg.get("vsa_b", 2.5)
 soil_quickflow_reservoir = soil_cfg.get("quickflow_reservoir", False)
 soil_quickflow_beta = soil_cfg.get("quickflow_beta", 0.5)
 soil_separate_infil_capacity = soil_cfg.get("separate_infil_capacity", False)
+soil_frozen_gate = soil_cfg.get("frozen_gate", False)
 soil_bounds = {
     "z2_min":           soil_cfg.get("z2_min",          0.30),
     "z2_max":           soil_cfg.get("z2_max",          1.50),
@@ -388,6 +389,7 @@ model = HydroModel(
     soil_quickflow_reservoir = soil_quickflow_reservoir,
     soil_quickflow_beta = soil_quickflow_beta,
     soil_separate_infil_capacity = soil_separate_infil_capacity,
+    soil_frozen_gate = soil_frozen_gate,
     use_hillslope_uh = cfg.get("model", {}).get("use_hillslope_uh", False),
     soil_bounds = soil_bounds,
     use_quantile_head = cfg.get("loss", {}).get("nll_distribution", "").lower() == "quantile",

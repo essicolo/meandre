@@ -89,6 +89,7 @@ class HydroModel(nn.Module):
         soil_quickflow_reservoir: bool = False,
         soil_quickflow_beta: float = 0.5,
         soil_separate_infil_capacity: bool = False,
+        soil_frozen_gate: bool = False,
         use_hillslope_uh: bool = False,
         soil_bounds: dict | None = None,
         use_quantile_head: bool = False,
@@ -164,6 +165,7 @@ class HydroModel(nn.Module):
             soil_quickflow_reservoir=soil_quickflow_reservoir,
             soil_quickflow_beta=soil_quickflow_beta,
             soil_separate_infil_capacity=soil_separate_infil_capacity,
+            soil_frozen_gate=soil_frozen_gate,
             use_hillslope_uh=use_hillslope_uh,
         )
 
@@ -644,6 +646,7 @@ class HydroModel(nn.Module):
                 "soil_quickflow_reservoir": getattr(self.vertical_column.soil, "use_quickflow_reservoir", False),
                 "soil_quickflow_beta": getattr(self.vertical_column.soil, "quickflow_beta", 0.5),
                 "soil_separate_infil_capacity": getattr(self.vertical_column.soil, "use_separate_infil_capacity", False),
+                "soil_frozen_gate": getattr(self.vertical_column.soil, "use_frozen_gate", False),
                 "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
             },
         }, path)
