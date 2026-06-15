@@ -733,6 +733,18 @@ class HydroModel(nn.Module):
                 elif w.dim() >= 2 and w.shape[1] in (7, 8, 9) and w.shape[1] != current_n_vars:
                     sd.pop(k)
 
+            # Drop any key whose shape mismatches the current model (e.g. when
+            # N_PARAMS grew 36→37 with vsa_b: noise_head/quantile heads change
+            # input dim). strict=False ignores missing/unexpected keys but NOT
+            # size mismatches → filter them so cross-architecture warm-start works.
+            own = self.state_dict()
+            mism = [k for k, v in sd.items() if k in own and own[k].shape != v.shape]
+            if mism:
+                print(f"[load] {len(mism)} clés de forme incompatible ignorées "
+                      f"(warm-start cross-archi) : {mism[:4]}{'...' if len(mism) > 4 else ''}", flush=True)
+                for k in mism:
+                    sd.pop(k)
+
             self.load_state_dict(sd, strict=False)
             self.use_temporal = checkpoint.get("use_temporal", False)
             self.use_residual = checkpoint.get("use_residual", False)
