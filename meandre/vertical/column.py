@@ -56,6 +56,7 @@ class VerticalColumn(nn.Module):
                  soil_separate_infil_capacity: bool = False,
                  soil_frozen_gate: bool = False,
                  soil_mode: str = "meandre",
+                 use_overland_uh: bool = False,
                  use_hillslope_uh: bool = False) -> None:
         super().__init__()
         self.snow = SnowModule()
@@ -100,6 +101,20 @@ class VerticalColumn(nn.Module):
                 setattr(self, f"bv_b{i}_raw", nn.Parameter(inv(1.0 / t["lam"], *self._bv_b_bounds)))
                 setattr(self, f"bv_psis{i}_raw", nn.Parameter(inv(t["psis"], *self._bv_psis_bounds)))
             self.bv_krec_raw = nn.Parameter(inv(KREC_DEFAULT, *self._bv_krec_bounds))
+
+        # ── Hydrogramme géomorphologique de VERSANT (fidèle Hydrotel) ──────
+        # Hydrotel convolue le ruissellement par UN hydrogramme unitaire large
+        # (onde cinématique versant, .hgm, jusqu'à 10 jours) qui fabrique la
+        # récession. Sans lui, le sol fidèle flashy donne pr≈0.95 mais kge
+        # s'effondre (preuve 2026-06-15). Cascade de Nash à 3 réservoirs (forme
+        # gamma asymétrique, montée rapide longue traîne) appliquée aux
+        # composantes RAPIDES (surface + interflow) ; baseflow direct. Une SEULE
+        # échelle apprenable k (jours), init 2.0 (time-to-peak ~4j, traîne ~10j),
+        # comme la lame d'Hydrotel doit s'optimiser. États uh_s1, uh_s2, uh_s3.
+        self.use_overland_uh = bool(use_overland_uh)
+        if self.use_overland_uh:
+            import math as _mo
+            self.log_overland_k = nn.Parameter(torch.tensor(_mo.log(2.0)))
         self.wetland = WetlandModule()
         self.aquifer = AquiferModule()
         # Hydrogramme unitaire de VERSANT (cascade de Nash à 2 réservoirs).
@@ -299,7 +314,26 @@ class VerticalColumn(nn.Module):
         # (préserve le pic), interflow LARGE (douceur jour-à-jour pour le kge).
         # Le lissage vient de l'étalement des temps de parcours, PAS d'une
         # atténuation → les pics sont préservés. Baseflow direct (aquifère lisse).
-        if self.use_hillslope_uh:
+        if self.use_overland_uh:
+            # Hydrogramme géomorphologique de versant FIDÈLE Hydrotel : UN seul
+            # noyau large (cascade Nash 3 réservoirs, forme gamma) appliqué aux
+            # composantes RAPIDES (surface + interflow). Étale le ruissellement
+            # flashy du sol fidèle sur plusieurs jours → récession. Baseflow
+            # direct. k apprenable unique (jours).
+            s1 = getattr(state, "uh_s1", None); s2 = getattr(state, "uh_s2", None)
+            s3 = getattr(state, "uh_s3", None)
+            fast_in = R_direct + Q_wetland + interflow
+            if s1 is None: s1 = torch.zeros_like(fast_in)
+            if s2 is None: s2 = torch.zeros_like(fast_in)
+            if s3 is None: s3 = torch.zeros_like(fast_in)
+            k = torch.nn.functional.softplus(self.log_overland_k) + 0.05   # jours
+            a = 1.0 - torch.exp(-1.0 / k)
+            s1n = s1 + fast_in; o1 = s1n * a; uh_s1_new = s1n - o1
+            s2n = s2 + o1;      o2 = s2n * a; uh_s2_new = s2n - o2
+            s3n = s3 + o2;      o3 = s3n * a; uh_s3_new = s3n - o3
+            uh_s4_new = getattr(state, "uh_s4", None)
+            lateral_inflow = o3 + Q_baseflow
+        elif self.use_hillslope_uh:
             def nash(inflow, s1, s2, log_k):
                 if s1 is None: s1 = torch.zeros_like(inflow)
                 if s2 is None: s2 = torch.zeros_like(inflow)

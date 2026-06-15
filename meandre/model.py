@@ -91,6 +91,7 @@ class HydroModel(nn.Module):
         soil_separate_infil_capacity: bool = False,
         soil_frozen_gate: bool = False,
         soil_mode: str = "meandre",
+        use_overland_uh: bool = False,
         use_hillslope_uh: bool = False,
         soil_bounds: dict | None = None,
         use_quantile_head: bool = False,
@@ -168,6 +169,7 @@ class HydroModel(nn.Module):
             soil_separate_infil_capacity=soil_separate_infil_capacity,
             soil_frozen_gate=soil_frozen_gate,
             soil_mode=soil_mode,
+            use_overland_uh=use_overland_uh,
             use_hillslope_uh=use_hillslope_uh,
         )
 
@@ -650,6 +652,7 @@ class HydroModel(nn.Module):
                 "soil_separate_infil_capacity": getattr(self.vertical_column.soil, "use_separate_infil_capacity", False),
                 "soil_frozen_gate": getattr(self.vertical_column.soil, "use_frozen_gate", False),
                 "soil_mode": getattr(self.vertical_column, "soil_mode", "meandre"),
+                "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),
                 "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
             },
         }, path)
