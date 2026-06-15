@@ -50,15 +50,36 @@ class VerticalColumn(nn.Module):
     # Pas K_c (déjà phenology hardcodée), pas f_root (contrainte softmax).
     MODULATED = ("rain_hours", "interception_capacity", "C_f")
 
-    def __init__(self, soil_z1: float = 0.30) -> None:
+    def __init__(self, soil_z1: float = 0.30, soil_vsa_b: float = 2.5,
+                 soil_quickflow_reservoir: bool = False,
+                 soil_quickflow_beta: float = 0.5,
+                 soil_separate_infil_capacity: bool = False,
+                 use_hillslope_uh: bool = False) -> None:
         super().__init__()
         self.snow = SnowModule()
         self.frost = FrostModule()
         self.interception = InterceptionModule()
         self.et = ETModule()
-        self.soil = SoilModule(z1=soil_z1)
+        self.soil = SoilModule(z1=soil_z1, vsa_b=soil_vsa_b,
+                               use_quickflow_reservoir=soil_quickflow_reservoir,
+                               quickflow_beta=soil_quickflow_beta,
+                               use_separate_infil_capacity=soil_separate_infil_capacity)
         self.wetland = WetlandModule()
         self.aquifer = AquiferModule()
+        # Hydrogramme unitaire de VERSANT (cascade de Nash à 2 réservoirs).
+        # Lisse le ruissellement RAPIDE par étalement des temps de parcours de
+        # versant, AVANT le canal. C'est le lissage d'Hydrotel (onde cinématique
+        # de versant) qui préserve les pics, contrairement à l'atténuation du
+        # Muskingum qui les rabote. Diagnostic 2026-06-15 : le lissage doit être
+        # sur le versant, pas sur le canal. k apprenable (jours), init ~1 jour
+        # (optimum offline). État : uh_s1, uh_s2 par nœud.
+        self.use_hillslope_uh = bool(use_hillslope_uh)
+        if self.use_hillslope_uh:
+            import math as _m
+            # DEUX hydrogrammes séparés (fidèle à Hydrotel) : surface POINTUE
+            # (k court → pic préservé), interflow LARGE (k long → douceur kge).
+            self.log_uh_k_surf = nn.Parameter(torch.tensor(_m.log(0.3)))   # ~0.3 j
+            self.log_uh_k_inter = nn.Parameter(torch.tensor(_m.log(2.5)))  # ~2.5 j
         self.temporal_modulator = TemporalModulator(n_modulated=len(self.MODULATED))
 
     def forward(
@@ -69,6 +90,7 @@ class VerticalColumn(nn.Module):
         return_diagnostics: bool = False,
         gw_withdrawal_mm: Tensor | None = None,
         doy: Tensor | int | None = None,
+        phenology_modulator: "PhenologyModulator | None" = None,
     ) -> ColumnOutput:
         """
         Args:
@@ -131,16 +153,24 @@ class VerticalColumn(nn.Module):
         # cold OR snow on ground → dormant. Prevents over-evaporation in spring
         # when the soil is saturated by snowmelt but the canopy isn't yet active.
         K_c_base = getattr(params, "K_c", None)
-        # Phenology: 0.3 (dormant) → 1.0 (full growing).
-        # T_air > 5°C is the growing-season threshold; SWE > 5-10 mm suppresses
-        # photosynthesis (snow on canopy/ground = no transpiration).
-        phenology = torch.sigmoid((T_air - 5.0) / 2.0) * torch.exp(-state.swe / 10.0)
-        season_modulator = 0.3 + 0.7 * phenology
-
-        if K_c_base is not None:
-            K_c_eff = K_c_base * season_modulator
+        # Modulation phénologique : 3 modes possibles selon disponibilité.
+        if phenology_modulator is not None and K_c_base is not None:
+            # IHI Phase B : modulateur appris sur GDD cumulé (4 params nommés)
+            # Update state.gdd_cum déjà fait dans simulate() avant cet appel.
+            K_c_eff = phenology_modulator(state.gdd_cum, K_c_base)
+            # Multiplier par "snow suppression" : pas de transpiration sous neige
+            # (préservation du garde-fou physique de la version hardcodée)
+            snow_suppression = torch.exp(-state.swe / 10.0)
+            K_c_eff = K_c_eff * snow_suppression
         else:
-            K_c_eff = season_modulator  # bare phenology when no K_c
+            # Fallback hardcoded (rétrocompat) : 0.3 (dormant) → 1.0 (full growing).
+            # T_air > 5°C threshold ; SWE > 5-10 mm supprime la transpiration.
+            phenology = torch.sigmoid((T_air - 5.0) / 2.0) * torch.exp(-state.swe / 10.0)
+            season_modulator = 0.3 + 0.7 * phenology
+            if K_c_base is not None:
+                K_c_eff = K_c_base * season_modulator
+            else:
+                K_c_eff = season_modulator  # bare phenology when no K_c
 
         ETP_approx = self.et.penman_monteith(T_min, T_max, R_n, u2, e_a) * K_c_eff
         P_thru, E_canopy, canopy_new = self.interception(
@@ -159,7 +189,7 @@ class VerticalColumn(nn.Module):
         )
 
         # 5. Soil balance (frost-modified K_sat for layer 1)
-        theta1_new, theta2_new, theta3_new, R_surface, interflow, recharge = self.soil(
+        theta1_new, theta2_new, theta3_new, R_surface, interflow, recharge, S_uz_new = self.soil(
             P_thru, ET1, ET2, ET3,
             state.theta1, state.theta2, state.theta3,
             K_sat_1_eff, K_sat_2_eff, K_sat_3_eff,
@@ -173,6 +203,8 @@ class VerticalColumn(nn.Module):
             z2=getattr(params, 'Z2', None),
             z3=getattr(params, 'Z3', None),
             rain_hours=rain_hours_eff,
+            vsa_b=getattr(params, 'vsa_b', None),
+            S_uz=getattr(state, 'S_uz', None),
         )
 
         # 6. Wetland
@@ -187,7 +219,33 @@ class VerticalColumn(nn.Module):
             gw_withdrawal=gw_withdrawal_mm,
         )
 
-        lateral_inflow = R_direct + Q_wetland + interflow + Q_baseflow  # mm/day
+        # Hydrogrammes de versant SÉPARÉS (cascades de Nash) : surface POINTUE
+        # (préserve le pic), interflow LARGE (douceur jour-à-jour pour le kge).
+        # Le lissage vient de l'étalement des temps de parcours, PAS d'une
+        # atténuation → les pics sont préservés. Baseflow direct (aquifère lisse).
+        if self.use_hillslope_uh:
+            def nash(inflow, s1, s2, log_k):
+                if s1 is None: s1 = torch.zeros_like(inflow)
+                if s2 is None: s2 = torch.zeros_like(inflow)
+                k = torch.nn.functional.softplus(log_k) + 0.05      # jours
+                a = 1.0 - torch.exp(-1.0 / k)                       # relâché/jour
+                s1n = s1 + inflow; o1 = s1n * a; s1_new = s1n - o1
+                s2n = s2 + o1;     o2 = s2n * a; s2_new = s2n - o2
+                return o2, s1_new, s2_new
+            surf_in = R_direct + Q_wetland
+            surf_out, uh_s1_new, uh_s2_new = nash(
+                surf_in, getattr(state, "uh_s1", None), getattr(state, "uh_s2", None),
+                self.log_uh_k_surf)
+            inter_out, uh_s3_new, uh_s4_new = nash(
+                interflow, getattr(state, "uh_s3", None), getattr(state, "uh_s4", None),
+                self.log_uh_k_inter)
+            lateral_inflow = surf_out + inter_out + Q_baseflow
+        else:
+            uh_s1_new = getattr(state, "uh_s1", None)
+            uh_s2_new = getattr(state, "uh_s2", None)
+            uh_s3_new = getattr(state, "uh_s3", None)
+            uh_s4_new = getattr(state, "uh_s4", None)
+            lateral_inflow = R_direct + Q_wetland + interflow + Q_baseflow  # mm/day
 
         # Snowmelt (always computed — needed for temperature module)
         snowmelt = torch.clamp(state.swe - swe_new, min=0.0)
@@ -203,6 +261,12 @@ class VerticalColumn(nn.Module):
             S_gw=S_gw_new,
             T_water=state.T_water,  # updated later by routing temperature
             cold_content=cold_content_new,
+            gdd_cum=state.gdd_cum,  # préservé (mis à jour dans simulate avant cet appel)
+            S_uz=S_uz_new,
+            uh_s1=uh_s1_new,
+            uh_s2=uh_s2_new,
+            uh_s3=uh_s3_new,
+            uh_s4=uh_s4_new,
         )
 
         diag = None

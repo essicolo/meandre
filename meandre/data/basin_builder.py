@@ -62,7 +62,11 @@ def build_basin(
     basin_mask_gdf=None,
     max_dem_pixels: int = 4_000_000,
     max_segment_area_km2: float = 50.0,
+    max_segment_length_km: float = 25.0,
     min_lake_area_km2: float = 1.0,
+    anchor_coords: "np.ndarray | None" = None,
+    anchor_areas: "np.ndarray | None" = None,
+    flow_dir_path: str | Path | None = None,
 ) -> BasinCache:
     """Build a complete basin DuckDB from open-data rasters.
 
@@ -97,7 +101,10 @@ def build_basin(
 
     # Step 1: Hydrological conditioning and flow routing
     print("[basin_builder] Step 1: DEM conditioning and flow routing...")
-    grid_data = _condition_dem(dem_path, max_dem_pixels=max_dem_pixels)
+    if flow_dir_path is not None:
+        grid_data = _condition_from_flowdir(flow_dir_path, dem_path)
+    else:
+        grid_data = _condition_dem(dem_path, max_dem_pixels=max_dem_pixels)
 
     # Step 2: Delineate subcatchments
     print("[basin_builder] Step 2: Delineating subcatchments...")
@@ -105,6 +112,8 @@ def build_basin(
         grid_data, outlet, min_area_km2=min_area_km2,
         max_subcatchments=max_subcatchments,
         basin_mask_gdf=basin_mask_gdf,
+        gauge_coords=anchor_coords,
+        gauge_areas=anchor_areas,
     )
     n_nodes = subcatchments["n_nodes"]
     print(f"  {n_nodes} subcatchments delineated")
@@ -112,6 +121,12 @@ def build_basin(
     # Step 3: Build river network (graph)
     print("[basin_builder] Step 3: Building river network...")
     graph, node_ids, is_lake = _build_network(subcatchments)
+
+    # Step 3b: Reach length per subcatchment, traced along D8 flow paths.
+    # Carried as a physical (non-NeRF) per-node attribute; summed over merged
+    # chains in Step 4c, then written to edges in Step 4d.
+    print("[basin_builder] Step 3b: Tracing reach lengths (D8)...")
+    reach_len_m = _compute_reach_lengths(subcatchments)
 
     # Step 4: Zonal statistics
     print("[basin_builder] Step 4: Computing zonal statistics...")
@@ -123,6 +138,7 @@ def build_basin(
         nrcan_lc_path=nrcan_lc_path,
         water_polygons_path=water_polygons_path,
     )
+    physical["reach_length_m"] = torch.from_numpy(reach_len_m).float()
 
     # Step 4b: Lake detection — flag nodes where >50 % of area is permanent
     # water AND the subcatchment is at least ``min_lake_area_km2`` (avoids
@@ -147,17 +163,57 @@ def build_basin(
     if max_segment_area_km2 > 0 and n_nodes > 100:
         print(f"[basin_builder] Step 4c: Merging linear chains "
               f"(max_segment_area={max_segment_area_km2} km²)...", flush=True)
+        # Ancrage : jauges/sites majeurs deviennent des nœuds préservés, pour
+        # que la fusion ne traverse jamais un point de mesure (sinon biais
+        # d'aire systématique, cf diagnostic 2026-06-10).
+        extra_keep = None
+        if anchor_coords is not None and len(anchor_coords) > 0:
+            extra_keep = _snap_anchors_to_nodes(
+                subcatchments, graph, anchor_coords, anchor_areas,
+            )
+            print(f"  {len(extra_keep)} nœuds ancrés (jauges/sites) préservés "
+                  f"de la fusion", flush=True)
         n_nodes, subcatchments, graph, features, physical, columns = _merge_linear_chains(
             n_nodes, subcatchments, graph, features, physical, columns,
             max_segment_area_km2=max_segment_area_km2,
+            max_segment_length_km=max_segment_length_km,
+            extra_keep=extra_keep,
         )
         node_ids = list(range(1, n_nodes + 1))  # renumber after merging
         n_lakes = int(graph.is_lake.sum())
         print(f"  → {n_nodes} nodes, {graph.n_edges} edges, {n_lakes} lakes "
               f"after merging", flush=True)
 
+    # Step 4d: Write reach length and travel time onto edges. Edge s→d carries
+    # the reach length of its source node s; travel time assumes a nominal
+    # celerity of 1 m/s (placeholder until a physical celerity is wired in).
+    rl = physical.get("reach_length_m")
+    if rl is not None and graph.edge_index.shape[1] > 0:
+        s_idx = graph.edge_index[0].long()
+        edge_len = rl[s_idx].float()
+        ea = graph.edge_attr.clone()
+        ea[:, 0] = edge_len
+        graph.edge_attr = ea
+        meters_per_day = 1.0 * 86_400.0
+        graph.travel_time_days = torch.clamp(
+            (edge_len / meters_per_day).round().long(), min=1,
+        )
+        print(f"  reach length on edges: médiane {edge_len.median().item():.0f} m, "
+              f"max {edge_len.max().item():.0f} m", flush=True)
+
     # Step 5: Normalise features
     if normalise:
+        # L'aire drainée s'étale sur ~0,1–14000 km² (skew ~4). Un z-score
+        # linéaire naïf la rend dégénérée : 77 % des nœuds s'écrasent dans une
+        # bande de 0,1 sigma et le NeRF ne distingue plus un tronçon de 16 km²
+        # d'un de 277 km². On la log-transforme d'abord (skew 4 → 0,7), ce qui
+        # étale la feature sur les échelles. L'aire physique servant au débit
+        # vit dans `physical` et reste intacte. On repart aussi de l'aire
+        # cumulée à l'exutoire (area_km2_physical) plutôt que de la moyenne
+        # pondérée produite par la fusion de chaînes (Step 4c).
+        if "drainage_area_km2" in columns and "area_km2_physical" in physical:
+            ci = columns.index("drainage_area_km2")
+            features[:, ci] = torch.log1p(physical["area_km2_physical"].clamp(min=0.0))
         mu = features.mean(dim=0, keepdim=True)
         sig = features.std(dim=0, keepdim=True)
         sig = torch.where(sig > 0, sig, torch.ones_like(sig))
@@ -300,6 +356,63 @@ def _condition_dem(dem_path: Path, max_dem_pixels: int = 4_000_000) -> dict:
     }
 
 
+# ── Step 1bis: hydrographie conditionnée externe (HydroSHEDS / MERIT) ────────
+
+
+def _condition_from_flowdir(flow_dir_path: str | Path, dem_path: str | Path) -> dict:
+    """Charge une direction de flux D8 CONDITIONNÉE externe (HydroSHEDS/MERIT).
+
+    Au lieu de conditionner le DEM brut par pysheds (qui échoue dans les plats),
+    on prend une hydrographie déjà conditionnée et stream-burnée. pyflwdir
+    calcule l'accumulation (robuste sur l'encodage D8), puis on enveloppe fdir
+    et acc en Rasters pysheds pour le reste du pipeline. L'encodage HydroSHEDS
+    (E=1,SE=2,...,NE=128) coïncide avec le dirmap pysheds par défaut.
+    """
+    import rasterio
+    import pyflwdir
+    from pysheds.grid import Grid
+    from pysheds.sview import Raster, ViewFinder
+    from rasterio.warp import reproject, Resampling
+
+    flow_dir_path = Path(flow_dir_path)
+    print(f"[basin_builder] Flow source CONDITIONNÉE : {flow_dir_path}", flush=True)
+    with rasterio.open(flow_dir_path) as src:
+        d8 = src.read(1)
+        affine = src.transform
+        crs = src.crs
+        shape = (src.height, src.width)
+
+    # Accumulation (cellules) via pyflwdir, robuste.
+    flw = pyflwdir.from_array(d8, ftype="d8", transform=affine, latlon=True, cache=True)
+    acc_cells = np.asarray(flw.upstream_area(unit="cell")).astype(np.float64)
+
+    # fdir : codes D8 valides, nodata (255/247/0) -> 0 (terminal).
+    fdir_arr = d8.astype(np.int64).copy()
+    fdir_arr[(d8 == 255) | (d8 == 247) | (d8 == 0)] = 0
+
+    grid = Grid.from_raster(str(flow_dir_path))
+    vf_i = ViewFinder(affine=affine, shape=shape, crs=crs, nodata=np.int64(0))
+    vf_f = ViewFinder(affine=affine, shape=shape, crs=crs, nodata=np.float64(0))
+    fdir = Raster(fdir_arr, viewfinder=vf_i)
+    acc = Raster(acc_cells, viewfinder=vf_f)
+
+    # DEM aligné sur la grille flow (pour la résolution + features d'élévation
+    # éventuelles) : rééchantillonnage bilinéaire du DEM Copernicus.
+    dem_arr = np.full(shape, np.nan, dtype=np.float32)
+    with rasterio.open(dem_path) as dsrc:
+        reproject(
+            source=rasterio.band(dsrc, 1), destination=dem_arr,
+            src_transform=dsrc.transform, src_crs=dsrc.crs,
+            dst_transform=affine, dst_crs=crs, resampling=Resampling.bilinear,
+        )
+    dem = Raster(dem_arr, viewfinder=ViewFinder(affine=affine, shape=shape, crs=crs,
+                                                nodata=np.float32(np.nan)))
+
+    print(f"[basin_builder] grille flow {shape}  acc max={float(np.nanmax(acc_cells)):.0f} cellules",
+          flush=True)
+    return {"grid": grid, "dem": dem, "fdir": fdir, "acc": acc, "conditioned_dem": dem}
+
+
 # ── Step 2: Subcatchment delineation ────────────────────────────────────────
 
 
@@ -309,6 +422,9 @@ def _delineate_subcatchments(
     min_area_km2: float = 2.0,
     max_subcatchments: int = 300,
     basin_mask_gdf=None,
+    gauge_coords: "np.ndarray | None" = None,
+    gauge_areas: "np.ndarray | None" = None,
+    gauge_snap_km: float = 2.0,
 ) -> dict:
     """Delineate subcatchments from flow accumulation threshold.
 
@@ -379,6 +495,59 @@ def _delineate_subcatchments(
     if len(pour_points) == 0:
         # Fallback: single catchment
         pour_points = [(x_snap, y_snap)]
+
+    # Exutoires FORCÉS aux jauges : chaque station HYDAT est accrochée à la
+    # cellule de cours d'eau dont l'AIRE DRAINÉE (acc × aire_pixel) correspond
+    # le mieux à l'aire HYDAT publiée, dans une fenêtre autour de la jauge.
+    # Snapper au plus proche cours d'eau accroche souvent un petit tributaire ;
+    # snapper par aire trouve le chenal principal. Garantit un nœud à l'aire
+    # correcte au point de mesure (sinon biais +38 %, cf 2026-06-10).
+    if gauge_coords is not None and len(gauge_coords) > 0:
+        acc_arr = np.asarray(acc)
+        catch_b = np.asarray(catch).astype(bool)
+        nrows, ncols = acc_arr.shape
+        lat0 = float(np.median([p[1] for p in pour_points]))
+        kx = 111.320 * np.cos(np.radians(lat0)); ky = 110.574
+        cell_km = abs(grid.affine.a) * kx
+        rad_px = max(int(np.ceil(gauge_snap_km / max(cell_km, 1e-6))), 2)
+        gcoords = np.asarray(gauge_coords, dtype=float)
+        gareas = (np.asarray(gauge_areas, dtype=float)
+                  if gauge_areas is not None else np.full(len(gcoords), np.nan))
+        added = []
+        n_forced = n_far = n_outside = n_dup = 0
+        for (lon_g, lat_g), a_hydat in zip(gcoords, gareas):
+            col, row = ~grid.affine * (lon_g, lat_g)
+            gr, gc = int(round(row)), int(round(col))
+            if not (0 <= gr < nrows and 0 <= gc < ncols):
+                n_outside += 1; continue
+            r0, r1 = max(gr - rad_px, 0), min(gr + rad_px + 1, nrows)
+            c0, c1 = max(gc - rad_px, 0), min(gc + rad_px + 1, ncols)
+            sub_acc = acc_arr[r0:r1, c0:c1]
+            sub_catch = catch_b[r0:r1, c0:c1]
+            sub_area = sub_acc * pixel_area_km2
+            cand = sub_catch & (sub_acc >= min_pixels)
+            if not cand.any():
+                n_outside += 1; continue
+            if np.isfinite(a_hydat) and a_hydat > 0:
+                cost = np.where(cand, np.abs(np.log(np.maximum(sub_area, 1e-6) / a_hydat)), np.inf)
+            else:
+                cost = np.where(cand, -sub_acc, np.inf)   # défaut : max accumulation
+            li = int(np.argmin(cost))
+            rr, cc = np.unravel_index(li, sub_acc.shape)
+            fr, fc = r0 + rr, c0 + cc
+            # distance jauge → cellule retenue
+            xs, ys = grid.affine * (fc + 0.5, fr + 0.5)
+            if np.hypot((xs - lon_g) * kx, (ys - lat_g) * ky) > gauge_snap_km:
+                n_far += 1; continue
+            if added:
+                aa = np.array(added)
+                if np.hypot((aa[:, 0] - xs) * kx, (aa[:, 1] - ys) * ky).min() < 0.5 * cell_km:
+                    n_dup += 1; continue
+            pour_points.append((float(xs), float(ys)))
+            added.append((xs, ys))
+            n_forced += 1
+        print(f"  + {n_forced} exutoires forcés aux jauges (par aire ; "
+              f"hors réseau {n_far}, hors masque {n_outside}, doublons {n_dup})")
 
     # Assign each cell to nearest downstream pour point
     subcatch_labels, centroids, areas_km2 = _label_subcatchments(
@@ -663,6 +832,129 @@ def _build_network(subcatchments: dict) -> tuple[RiverGraph, list[int], Tensor]:
     return graph, node_ids, is_lake
 
 
+# D8 direction offsets (pysheds convention), shared by length tracing.
+_D8_OFFSETS = {
+    1: (0, 1), 2: (1, 1), 4: (1, 0), 8: (1, -1),
+    16: (0, -1), 32: (-1, -1), 64: (-1, 0), 128: (-1, 1),
+}
+
+
+def _pixel_metres(affine, mean_lat_deg: float) -> tuple[float, float]:
+    """Pixel size in metres (x, y) at a given latitude for an EPSG:4326 grid."""
+    lat = math.radians(mean_lat_deg)
+    px_x = abs(affine.a) * 111_320.0 * math.cos(lat)
+    px_y = abs(affine.e) * 110_540.0
+    return px_x, px_y
+
+
+def _compute_reach_lengths(subcatchments: dict) -> np.ndarray:
+    """Per-subcatchment main-channel length (m), traced along D8 flow paths.
+
+    For each subcatchment the outlet pixel is the highest-accumulation cell in
+    the label. From there we walk upstream, always following the in-label
+    contributing neighbour with the largest accumulation (the main channel),
+    summing the per-step planar distance (diagonals weighted accordingly).
+    A single-pixel reach gets one cell-width as a floor so K = L/c stays finite.
+    """
+    labels = np.asarray(subcatchments["labels"]).astype(np.int64)
+    fdir = np.asarray(subcatchments["fdir"]).astype(np.int64)
+    acc = np.asarray(subcatchments["acc"]).astype(np.float64)
+    affine = subcatchments["grid"].affine
+    n_nodes = int(subcatchments["n_nodes"])
+    H, W = labels.shape
+
+    # Mean latitude of the raster for the metres-per-pixel conversion.
+    mean_lat = (affine.f + affine.e * H / 2.0)
+    px_x, px_y = _pixel_metres(affine, mean_lat)
+    step_len = {d: math.hypot(dc * px_x, dr * px_y) for d, (dr, dc) in _D8_OFFSETS.items()}
+    cell = min(px_x, px_y)
+
+    # Outlet pixel per label = highest-accumulation cell (vectorised).
+    valid = labels > 0
+    flat_idx = np.flatnonzero(valid)
+    lab = labels.ravel()[flat_idx]
+    a = acc.ravel()[flat_idx]
+    order = np.argsort(-a, kind="stable")
+    lab_sorted = lab[order]
+    idx_sorted = flat_idx[order]
+    _, first = np.unique(lab_sorted, return_index=True)   # first = max-acc per label
+    outlet_flat = {int(lab_sorted[i]): int(idx_sorted[i]) for i in first}
+
+    lengths = np.full(n_nodes, cell, dtype=np.float64)
+    for L, start in outlet_flat.items():
+        r, c = divmod(start, W)
+        total = 0.0
+        guard = 0
+        while guard < 100_000:
+            guard += 1
+            best = None
+            best_acc = -1.0
+            for d, (dr, dc) in _D8_OFFSETS.items():
+                nr, nc = r - dr, c - dc                    # neighbour at -offset
+                if not (0 <= nr < H and 0 <= nc < W):
+                    continue
+                if labels[nr, nc] != L:
+                    continue
+                # Neighbour flows INTO (r, c) iff its D8 points back to (r, c).
+                if _D8_OFFSETS.get(int(fdir[nr, nc])) != (dr, dc):
+                    continue
+                if acc[nr, nc] > best_acc:
+                    best_acc = acc[nr, nc]
+                    best = (nr, nc, d)
+            if best is None:
+                break
+            nr, nc, d = best
+            total += step_len[d]
+            r, c = nr, nc
+        if total > 0.0:
+            lengths[L - 1] = total
+    return lengths
+
+
+def _snap_anchors_to_nodes(
+    subcatchments: dict, graph: "RiverGraph",
+    anchor_coords: np.ndarray, anchor_areas: np.ndarray | None = None,
+    area_weight_km: float = 50.0, max_snap_km: float = 10.0,
+) -> set[int]:
+    """Appariement de points d'ancrage (jauges, sites majeurs) aux nœuds
+    PRÉ-fusion les mieux assortis (aire drainée + proximité), même critère que
+    populate_basin_observations. Renvoie les indices de nœuds à préserver pour
+    que la fusion ne traverse jamais un point d'ancrage (donc un nœud avec la
+    BONNE aire existe pour l'appariement final).
+
+    coût = distance_km + area_weight_km × |log(aire_noeud / aire_ancre)|
+    Filtre dur : distance ≤ max_snap_km (et ratio d'aire ≤ 5× si aire fournie).
+    """
+    coords = np.asarray(subcatchments["centroids"], dtype=float)  # (n,2) lon,lat
+    pour = subcatchments.get("pour_points")
+    if pour is not None and len(pour) == len(coords):
+        coords = np.asarray(pour, dtype=float)
+    local = np.asarray(subcatchments["areas_km2"], dtype=float)
+    cum = _cumulative_area(graph, local, len(local))
+    lat0 = float(np.median(coords[:, 1]))
+    kx = 111.320 * np.cos(np.radians(lat0))   # km par degré lon
+    ky = 110.574                              # km par degré lat
+    keep: set[int] = set()
+    anchor_coords = np.asarray(anchor_coords, dtype=float)
+    if anchor_areas is not None:
+        anchor_areas = np.asarray(anchor_areas, dtype=float)
+    for i, (lon, lat) in enumerate(anchor_coords):
+        dx = (coords[:, 0] - lon) * kx
+        dy = (coords[:, 1] - lat) * ky
+        dist = np.sqrt(dx * dx + dy * dy)
+        cost = dist.copy()
+        a = anchor_areas[i] if anchor_areas is not None else np.nan
+        if np.isfinite(a) and a > 0:
+            ratio = np.log(np.maximum(cum, 1e-6) / a)
+            cost = cost + area_weight_km * np.abs(ratio)
+            cost[np.abs(ratio) > np.log(5.0)] = np.inf   # filtre ratio 5×
+        cost[dist > max_snap_km] = np.inf
+        j = int(np.argmin(cost))
+        if np.isfinite(cost[j]):
+            keep.add(j)
+    return keep
+
+
 def _merge_linear_chains(
     n_nodes: int,
     subcatchments: dict,
@@ -671,6 +963,8 @@ def _merge_linear_chains(
     physical: dict,
     columns: list[str],
     max_segment_area_km2: float = 50.0,
+    max_segment_length_km: float = 25.0,
+    extra_keep: set[int] | None = None,
 ) -> tuple[int, dict, "RiverGraph", Tensor, dict, list[str]]:
     """Merge linear chain nodes (in_deg=1, out_deg=1, not lake) into segments.
 
@@ -708,19 +1002,38 @@ def _merge_linear_chains(
 
     # "Must-keep" = anchor nodes that cannot be merged into a downstream segment
     must_keep = (in_deg >= 2) | (in_deg == 0) | (out_deg == 0) | is_lake_np
+    # Points d'ancrage externes (jauges HYDAT, sites de prélèvement majeurs) :
+    # la fusion ne doit jamais les traverser, sinon le nœud résultant intègre
+    # de l'aire en aval du point et fausse l'appariement (cf biais +38 %
+    # diagnostiqué 2026-06-10). Chaque ancre obtient ainsi son propre nœud.
+    if extra_keep:
+        for i in extra_keep:
+            if 0 <= i < n_nodes:
+                must_keep[i] = True
 
-    # Assign each node to a segment anchor by walking downstream until the
-    # first must-keep node ; split off a new anchor if cum area exceeds limit.
+    # Per-node reach length (m) drives the length cap; 0 if unavailable.
+    if "reach_length_m" in physical:
+        reach_len = physical["reach_length_m"].cpu().numpy().astype(float)
+    else:
+        reach_len = np.zeros(n_nodes, dtype=float)
+    max_seg_len_m = (max_segment_length_km * 1000.0
+                     if max_segment_length_km and max_segment_length_km > 0
+                     else float("inf"))
+
+    # Assign each node to a segment anchor by walking downstream until the first
+    # must-keep node ; split off a new anchor if cum area OR length exceeds limit.
     target = np.full(n_nodes, -1, dtype=np.int64)
     seg_area: dict[int, float] = {}
+    seg_len: dict[int, float] = {}
     for i in range(n_nodes):
         if must_keep[i]:
             target[i] = i
             seg_area[i] = float(areas[i])
+            seg_len[i] = float(reach_len[i])
 
     # Walk downstream from each unassigned node, collect the path, then assign
     # path nodes to the segment closest to the anchor downstream, splitting
-    # when the cumulative area would exceed max_segment_area_km2.
+    # when the cumulative area or channel length would exceed its limit.
     for i in range(n_nodes):
         if target[i] >= 0:
             continue
@@ -736,12 +1049,16 @@ def _merge_linear_chains(
         # downstream-to-upstream and splits create new anchors moving upstream.
         cur_anchor = anchor
         for n in reversed(path):
-            if seg_area[cur_anchor] + float(areas[n]) <= max_segment_area_km2:
+            fits = (seg_area[cur_anchor] + float(areas[n]) <= max_segment_area_km2
+                    and seg_len[cur_anchor] + float(reach_len[n]) <= max_seg_len_m)
+            if fits:
                 target[n] = cur_anchor
                 seg_area[cur_anchor] += float(areas[n])
+                seg_len[cur_anchor] += float(reach_len[n])
             else:
                 target[n] = n
                 seg_area[n] = float(areas[n])
+                seg_len[n] = float(reach_len[n])
                 cur_anchor = n
 
     # Build new compact node indexing
@@ -779,8 +1096,8 @@ def _merge_linear_chains(
     # Most physical fields are weighted means ; area fields are direct sums.
     new_physical: dict = {}
     for key, val in physical.items():
-        if key == "area_km2_local":
-            # Local area sums to the segment area.
+        if key in ("area_km2_local", "reach_length_m"):
+            # Local area and channel length sum along the merged chain.
             agg = torch.zeros(new_n)
             agg.index_add_(0, target_t, val)
             new_physical[key] = agg

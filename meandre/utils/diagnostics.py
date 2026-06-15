@@ -67,6 +67,12 @@ class SimDiagnostics:
     # State snapshots (per timestep, captured after the vertical update).
     # Used by multi-objective NLL against remote-sensed observations.
     swe: Tensor | None = None      # (T, N) mm — snow water equivalent
+    theta1: Tensor | None = None   # (T, N) m³/m³ — soil moisture L1 (0-30 cm)
+    theta2: Tensor | None = None   # (T, N) m³/m³ — soil moisture L2 (30-100 cm)
+    theta3: Tensor | None = None   # (T, N) m³/m³ — soil moisture L3 (100-200 cm)
+    s_gw: Tensor | None = None     # (T, N) mm — groundwater storage (aquifer)
+    canopy: Tensor | None = None   # (T, N) mm — canopy interception storage
+    wetland: Tensor | None = None  # (T, N) mm — wetland storage
 
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled
@@ -93,6 +99,9 @@ class SimDiagnostics:
         }
         if self.swe is not None:
             d["swe"] = self.swe
+        for name in ("theta1", "theta2", "theta3", "s_gw", "canopy", "wetland"):
+            if getattr(self, name) is not None:
+                d[name] = getattr(self, name)
         if self.T_water is not None:
             d["T_water"] = self.T_water
         return d
@@ -111,6 +120,12 @@ class SimDiagnostics:
         }
         if self.swe is not None:
             d["swe"] = "mm"
+        for name in ("theta1", "theta2", "theta3"):
+            if getattr(self, name) is not None:
+                d[name] = "m3/m3"
+        for name in ("s_gw", "canopy", "wetland"):
+            if getattr(self, name) is not None:
+                d[name] = "mm"
         if self.T_water is not None:
             d["T_water"] = "degC"
         return d

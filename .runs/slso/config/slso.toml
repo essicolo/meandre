@@ -59,6 +59,22 @@ param_noise_init_sigma = 0.01   # logit-space perturbation (0.01 = gentle for fi
 # static: Use global parameters like Hydrotel (28 params only!)
 param_mode = "nerf"
 
+[forcing]
+# Surcharge optionnelle des variables énergie/humidité par ERA5-Land mesuré
+# (sinon : proxies dérivés de la température — R_n via Hargreaves, e_a = es(Tmin),
+# u2 constant). Grille ERA5-Land 9 km sur le bbox, interpolée au nœud le plus
+# proche, rayonnement NET (ssr+str). Téléchargée mois par mois via l'API CDS et
+# cachée (1er run lent, runs suivants instantanés). Cache forçage distinct du
+# proxy (suffixe -era5-...), donc activer/désactiver ne corrompt rien.
+#
+# era5_vars : sous-ensemble de ["R_n", "e_a", "u2"]. Vide/absent = proxies.
+# Diagnostic 2026-05-26 (SLSO 2018) : R_n = plus gros gain (Hargreaves
+# surestime l'été ~+10 %, RMSE quotidien ~30 %) ; e_a marginal en boréal
+# humide ; u2 rate le creux estival. Requiert cdsapi + clé ~/.cdsapirc.
+era5_vars = []   # ex. ["R_n", "e_a", "u2"] pour tout surcharger
+# era5_cache = "data/era5"                 # optionnel (défaut: <forcing_cache>/era5)
+# era5_bbox  = [-73.0, 44.5, -69.6, 47.7]  # optionnel (défaut: nœuds + marge 0.2°)
+
 [soil]
 # Layer thicknesses (m), NOT depths from surface.
 # Layers stack: L1 = [0, z1], L2 = [z1, z1+z2], L3 = [z1+z2, z1+z2+z3]

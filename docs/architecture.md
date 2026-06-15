@@ -17,9 +17,10 @@ flowchart LR
     Net["<b>Réseau</b><br/>topologie, lacs,<br/>tronçons"]:::input
     Pre["<b>Prélèvements</b><br/>m³/s par tronçon"]:::input
     Qobs["<b>Q_obs</b><br/>débits observés<br/>aux stations"]:::input
+    Aux["<b>Obs. auxiliaires</b><br/>ET (MODIS)<br/>TWS (GRACE)"]:::input
 
-    Pay --> SE["<b>Encodeur spatial</b><br/>NeRF Fourier + ParamNoise<br/>→ 36 paramètres / tronçon"]:::neural
-    Met --> TE["<b>Encodeur temporel</b><br/>GRU + Concrete Dropout<br/>→ contexte (16D)"]:::neural
+    Pay --> SE["<b>Encodeur spatial</b><br/>NeRF Fourier<br/>→ 36 paramètres / tronçon"]:::neural
+    Met --> TE["<b>Encodeur temporel</b><br/>GRU<br/>→ contexte (16D)"]:::neural
 
     subgraph VC["Colonne verticale (physique)"]
         direction TB
@@ -31,7 +32,7 @@ flowchart LR
     end
 
     SE --> VC
-    TE --> VC
+    Met --> VC
     VC --> Lat["<b>Apport latéral</b><br/>ruissellement + interflow<br/>+ débit de base"]:::flow
 
     Net --> Topo["<b>Balayage topologique</b><br/>Kahn / scatter_add"]:::routing
@@ -47,8 +48,13 @@ flowchart LR
     Lake --> Qsim
     Therm --> Teau["<b>T_eau</b><br/>température (°C)"]:::output
 
-    Qsim --> Loss["<b>Fonction de perte</b><br/>KGE + log-MSE + PBIAS<br/>+ bilan hydrique<br/>+ KL Concrete + KL ParamNoise"]:::loss
+    Qsim --> PH["<b>Tête probabiliste</b> (phase 2)<br/>ContextualQuantileHead<br/>K quantiles non-paramétriques<br/>médiane libre"]:::neural
+    SE --> PH
+    TE --> PH
+
+    PH --> Loss["<b>Fonction de perte</b><br/>phase 1 : KGE + log-MSE + PBIAS<br/>+ ET (MODIS) + TWS (GRACE) + bilan<br/>phase 2 : NLL ou quantile (CRPS)"]:::loss
     Qobs --> Loss
+    Aux --> Loss
 
     classDef input fill:#d5e8d4,stroke:#82b366
     classDef neural fill:#e1d5e7,stroke:#9673a6
@@ -81,18 +87,19 @@ flowchart TB
         Fourier["Fourier encoding<br/>(lon, lat) → 26D"]:::neural
         Concat["concat(enc, territorial)<br/>→ 43D"]:::hybrid
         MLP["MLP fc1 → fc2 → fc_out<br/>43→256→256→36 (skip)"]:::neural
-        ParamNoise["<b>ParamNoise</b><br/>raw + σ·ε (logit-space)<br/>mass-conserving"]:::neural
+        ParamNoise["<b>ParamNoise</b><br/>⚠ LEGACY — replaced by the<br/>predictive probabilistic head"]:::disabled
         Constr["_apply_constraints<br/>scaled-tanh, log-normal"]:::neural
         SP["<b>SpatialParams</b><br/>(N, 36)"]:::hybrid
 
-        Fourier --> Concat --> MLP --> ParamNoise --> Constr --> SP
+        Fourier --> Concat --> MLP --> Constr --> SP
+        ParamNoise -.-> Constr
     end
 
     %% ─── Temporal encoder ───────────────────────────────────
     subgraph TE["<b>TemporalContextEncoder</b>"]
         direction TB
         TInputProj["input_proj 6→64<br/>+ DOY encoding"]:::neural
-        TGRU["GRU 64→64<br/><b>+ Concrete Dropout</b>"]:::neural
+        TGRU["GRU 64→64<br/>(Concrete Dropout — legacy)"]:::neural
         TOut["LayerNorm + 64→16<br/>→ context (T, N, 16)"]:::neural
         TInputProj --> TGRU --> TOut
     end
@@ -119,7 +126,7 @@ flowchart TB
     end
 
     SP --> VC
-    TOut --> Enrich
+    TOut -.-> Enrich
 
     %% ─── State corrections ──────────────────────────────────
     subgraph SC["<b>State Corrections</b>"]
@@ -154,8 +161,22 @@ flowchart TB
     Lake --> Qsim
     Therm --> Twater["<b>T_water</b><br/>(T, N) °C"]:::output
 
-    Qsim --> Loss["<b>Loss</b><br/>skill scores + regularizers<br/>(see table below)"]:::loss
+    %% ─── Probabilistic head (phase 2) ───────────────────────
+    subgraph PH["<b>Probabilistic Head</b> (phase 2 — frozen backbone)"]
+        direction TB
+        Noiseh["<b>SpatialNoiseHead</b> (legacy)<br/>log σ(t,n) = a(n) + b(n)·log|Q|<br/>Gaussian · Student-t · Box-Cox"]:::disabled
+        Quanth["<b>QuantileHead</b> (legacy)<br/>K monotone offsets from μ<br/>(median = μ; CRPS / pinball)"]:::disabled
+        CtxQ["<b>ContextualQuantileHead</b> ✅<br/>K=7 quantiles non-paramétriques<br/>médiane libre + features GRU<br/>δ²≤0.06, cov_90=0.90"]:::neural
+    end
+    SP --> PH
+    TOut --> PH
+    Qsim --> PH
+
+    Qsim --> Loss["<b>Loss</b><br/>skill scores + multi-obj + regularizers<br/>(see table below)"]:::loss
+    PH --> Loss
     Qobs --> Loss
+    ETobs["<b>ET_obs</b><br/>(MODIS)"]:::input --> Loss
+    TWSobs["<b>TWS_obs</b><br/>(GRACE)"]:::input --> Loss
 
     State0 --> VC
 
@@ -182,23 +203,31 @@ flowchart TB
 |---|---|---|
 | Snow / Frost / Interception / ET / Soil / Wetland / Aquifer | ✅ Active | core physics chain |
 | Routing (Muskingum-Cunge, Lake, Stream Temperature) | ✅ Active | |
-| SpatialFieldNetwork (NeRF) | ✅ Active | with ParamNoise (Position B) |
-| TemporalContextEncoder (GRU) | ✅ Active | with Concrete Dropout (Position B) |
+| SpatialFieldNetwork (NeRF) | ✅ Active | Fourier + MLP → 36 params; constrained by ET/TWS multi-obj |
+| TemporalContextEncoder (GRU) | ✅ Active | Concrete Dropout now legacy (Position B) |
+| Probabilistic head (NoiseHead / QuantileHead) | ✅ Active | phase 2, frozen backbone — heteroscedastic σ or quantiles |
+| Multi-objective (MODIS ET, GRACE TWS) | ✅ Active | phase 1 — decollapses `f_vert`, identifiability |
 | Withdrawals | ✅ Active | rebuilt 2026-05-01 from `io-eau-meandre.parquet` |
 | Residual Corrector | ⚠️ **Disabled** | pending redesign — gate never trained, noise injection at activation |
 | Travel-Time Attention | ⚠️ **Disabled** | random-init weights crash forward; needs warmup gate |
-| AR(1) State Noise | ⚠️ **Legacy** | breaks mass conservation; replaced by ParamNoise |
+| ParamNoise (Position B) | ⚠️ **Legacy** | ensemble stack abandoned 2026-05-11 → predictive probabilistic head |
+| Concrete Dropout (Position B) | ⚠️ **Legacy** | idem |
+| AR(1) State Noise | ⚠️ **Legacy** | breaks mass conservation |
 
-## Position B uncertainty stack
+## Probabilistic prediction (two-phase)
 
-Two complementary noise injections, both differentiable, combined at inference:
+The ensemble-style "Position B" stack (ParamNoise + Concrete Dropout, sampled at inference) was **abandoned on 2026-05-11** in favour of a **predictive probabilistic head** trained in two phases:
 
-- **ParamNoise** on `SpatialFieldNetwork`: Gaussian σ injected on `fc_out` logits BEFORE constraints → mass-conserving (constraints bound perturbed params within physical ranges). Each ensemble member = a coherent bounded param set, analogous to an alternative Hydrotel calibration.
-- **Concrete Dropout** on `TemporalContextEncoder`: learned dropout rate (Gal et al. 2017) over the GRU context → epistemic uncertainty on the meteorological-context interpretation.
+1. **Phase 1 — backbone (deterministic, multi-objective).** Train physics + spatial/temporal encoders against discharge **and** auxiliary observations: MODIS ET (`w_et`) and GRACE TWS (`w_tws`). The multi-objective signal lifts the equifinality that otherwise collapses the deep-soil flux `f_vert`, restoring parameter identifiability.
+2. **Phase 2 — uncertainty (frozen backbone).** Freeze the backbone and train *only* a probabilistic head on top of `μ = Q_sim`:
+   - **`SpatialNoiseHead`** — per-node `log σ(t,n) = a(n) + b(n)·log(|Q|+ε)`, fit by heteroscedastic NLL (`w_nll`). Distribution selectable: Gaussian, **Student-t** (heavy tails, learned ν), Box-Cox or log-normal.
+   - **`QuantileHead`** — per-node monotone offsets `δ_τ` from the median (`μ`), so `q_τ = μ + δ_τ`; fit by pinball / CRPS (`w_quantile`). The median stays `= μ`, preserving the phase-1 KGE.
 
-At inference, [scripts/mc_uncertainty.py](../scripts/mc_uncertainty.py) combines `frozen_param_noise(model, seed) ∘ frozen_dropout(model, seed)` to sample N coherent ensemble members.
+## Loss components
 
-## Loss components (current weights)
+Weights are config-driven (TOML `[loss]`); below are representative values from the SLSO runs.
+
+**Phase 1 — backbone (`slso.toml` + multi-obj overrides):**
 
 | Term | Weight | Chunk-safe | Purpose |
 |---|---:|:---:|---|
@@ -206,18 +235,28 @@ At inference, [scripts/mc_uncertainty.py](../scripts/mc_uncertainty.py) combines
 | `w_log_mse` | 0.3 | ✅ | baseflow emphasis |
 | `w_pbias` | 0.1 | ✅ | volumetric balance |
 | `w_mse` | 0.1 | ✅ | overall fit |
+| `w_et` | 0.1 | ✅ | MODIS ET match (multi-obj) |
+| `w_tws` | 0.3 | ✅ | GRACE TWS, z-scored (multi-obj) — drives `f_vert` |
 | `w_physics` | 0.01 | ✅ | water-balance closure (P − ET − Q − ΔS) |
-| `w_prior` | 0.005 | ✅ | log-space pull toward literature defaults |
-| `w_param_noise_kl` | 0.1 | ✅ | log_sigma → log(target=0.05) |
-| `w_concrete_kl` | 0.1 | ✅ | Gal 2017 KL |
 | `w_residual` | 0.01 | ✅ | L2 on corrector gate (kept small) |
 | `w_nse`, `w_log_nse`, `w_nrmse` | 0.0 | ❌ | NOT chunk-safe — disabled when chunk_steps > 0 |
+
+**Phase 2 — probabilistic (frozen backbone), pick one driver:**
+
+| Term | Weight | Purpose |
+|---|---:|---|
+| `w_nll` | 1.0 | heteroscedastic NLL (`nll_distribution` = normal / student-t / box-cox) |
+| `w_quantile` | 1.0 | multi-τ pinball / CRPS (alternative to NLL) |
+| `w_nll_et`, `w_nll_swe` | 0.0 | optional NLL on ET / SWE auxiliary channels |
+| `w_peak` | 0.0 | optional peak weighting (climatological Q_p75 threshold) |
 
 ## Learned parameters summary
 
 - **SpatialFieldNetwork MLP** weights → 36 params per node (soil hydraulics ×12, snow ×3, ET ×2, routing ×2, etc.)
-- **ParamNoise** `log_sigma` (per param)
-- **TemporalContextEncoder** GRU + projections + Concrete Dropout `logit_p`
+- **TemporalContextEncoder** GRU + projections (Concrete Dropout `logit_p` — legacy)
+- **SpatialNoiseHead** per-node `(a, b)` MLP + `log_df` (ν, Student-t) *(phase 2)*
+- **QuantileHead** per-node `(a_τ, b_τ)` MLP *(phase 2)*
+- **ParamNoise** `log_sigma` per param *(legacy)*
 - **StateResidualCorrector** GRU + gate logits *(disabled)*
 - **TravelTimeAttention** Q/K/V projections *(disabled)*
 - **CorrelatedStateNoise** ρ, σ per state variable *(legacy)*

@@ -1,0 +1,153 @@
+# slso-kendall-gal-v3-phase2-boxcox-nll.toml
+# Run COURT de calibration σ, piloté par la NLL Box-Cox (proper scoring).
+#
+# Contexte (débrief 2026-05-26) :
+#   - Le run -cal piloté par la flatness a fait chuter σ jusqu'à epoch 19
+#     (flatness gameable, décorrélée du proper scoring).
+#   - Le val_nll Box-Cox, lui, touchait son minimum held-out à l'epoch ~3
+#     puis remontait (overfit du noise head, ~1200 params).
+#   - La métrique cov_90/cov_50 était calculée en espace LINÉAIRE avec un σ
+#     Box-Cox → artefact. Corrigée dans trainer.py (couverture en espace σ).
+#
+# Design de ce run :
+#   - best_metric = nll (val_nll Box-Cox, proper scoring) → capture l'epoch ~3.
+#   - w_nll = 1.0 driver ; w_flatness = 0 (moniteur seul, plus de tirage σ).
+#   - anchor léger (w=1, var_weight) = simple garde-fou anti-explosion σ.
+#   - n_epochs court + patience serrée : le NLL plafonne tôt, ~21 min/epoch.
+#
+# Pour lancer (PYTHONUTF8=1 obligatoire pour le δ dans les logs) :
+#   PYTHONUTF8=1 python .runs/slso/slso.py .runs/slso/config/slso-kendall-gal-v3-phase2-boxcox-nll.toml
+
+[paths]
+basin_db = "data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing.nc"
+checkpoint = "checkpoints/best-kendall-gal-v3-phase2-boxcox-nll.pt"
+fields_nc = "results/fields-kendall-gal-v3-phase2-boxcox-nll.nc"
+reach_parquet = "results/reach-kendall-gal-v3-phase2-boxcox-nll.parquet"
+runs_db = "logs/runs-kendall-gal-v3-phase2-boxcox-nll.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = true
+concrete_init_p = 0.05
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+# ── Reprise warm-start depuis le best.pt du run boxcox crashé (epoch 11) ──
+warm_start = true
+warm_start_from = "checkpoints/best-kendall-gal-v3-phase2-boxcox.pt"
+
+n_epochs = 8
+lr = 5e-5
+lr_finetune = 5e-5
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 1e-4
+
+# ── Backbone gelé (idem phase 2) ─────────────────────────────────────────
+freeze_spatial = true
+freeze_temporal = true
+freeze_backbone = true
+
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+# best_metric = nll (lower is better) bottome tôt → patience serrée
+patience = 4
+compile_modules = false
+
+# ── Métrique trackée : NLL Box-Cox held-out (proper scoring) ────────────
+best_metric = "nll"
+best_metric_tolerance = 0.005
+
+station_weight_mode = "sqrt_area"
+
+# ── Régularisations σ : anchor léger en garde-fou ────────────────────────
+w_prior = 0.0
+w_boundary = 0.0
+w_sigma_anchor = 1.0
+sigma_anchor_target_a = -3.0
+sigma_anchor_target_b = 1.0
+sigma_anchor_var_weight = 0.5
+w_concrete_kl = 0.01
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ────────────────────────────────────────────────────────────
+autopilot = true
+autopilot_grace_epochs = 3
+autopilot_beta_threshold = 1.0
+autopilot_gamma_threshold = 1.0
+autopilot_lr_patience = 10
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.10
+autopilot_restart_max = 3
+autopilot_restart_min_no_improve = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+autopilot_nll = false
+kendall_gal_auto = false
+
+[loss]
+# ── Distribution probabiliste : Box-Cox(0.3) fixe ──────────────────────
+nll_distribution = "box-cox"
+nll_box_cox_lambda = 0.3
+
+# NLL = driver principal (proper scoring)
+w_nll = 1.0
+
+# ── Flatness : MONITEUR seul (w=0 → calculée comme métrique val, ne tire
+#    plus σ vers le bas). Évite le gaming observé au run -cal. ───────────
+w_flatness = 0.0
+flatness_n_bins = 21
+flatness_bandwidth = 0.02
+
+# Reste : monitoring seul (backbone gelé)
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0                          # monitoring (KGE doit rester ~0.91)
+w_pbias = 0.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.0
+w_nrmse = 0.0
+w_physics = 0.0
+w_residual = 0.0

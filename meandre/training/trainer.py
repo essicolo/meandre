@@ -46,6 +46,16 @@ class TrainingConfig:
     # Useful to avoid overfitting on dev period (e.g. wet/dry year bias).
     w_prior: float = 0.0
 
+    # Anti-collapse : plancher de variance spatiale sur les params NeRF clés.
+    # Combat l'effondrement vers des params uniformes (diagnostic open-data
+    # 2026-06-12). Plancher relu → ne récompense pas l'excès de variance.
+    w_diversity: float = 0.0
+    diversity_cv_target: float = 0.12
+    w_latent_reg: float = 1e-3
+    # LR dédié élevé pour les codes latents (cold-start auto-décodeur : le NeRF
+    # partagé soak le signal, les codes restent à 0 sans LR plus fort).
+    latent_lr_mult: float = 50.0
+
     # Boundary regularization on raw network outputs.
     # Penalizes sigmoid saturation (params at clamp bounds) and L2-pulls
     # exp-constrained raw outputs toward center. Complements w_prior
@@ -61,6 +71,11 @@ class TrainingConfig:
     w_sigma_anchor: float = 0.0
     sigma_anchor_target_a: float = -3.0   # log σ baseline (5% when b=1 at Q=100)
     sigma_anchor_target_b: float | None = None   # None = let b float free
+    # Pénalité variance inter-nœuds des coefficients (a, b) du SpatialNoiseHead.
+    # Mode "hybride" : tire la moyenne ET serre la dispersion spatiale, pour
+    # éviter qu'une fraction de nœuds gonfle σ massivement pendant que la
+    # moyenne reste correcte. 0 = ancien comportement.
+    sigma_anchor_var_weight: float = 0.0
 
     # Concrete Dropout KL regularisation weight for the temporal encoder.
     # Penalises dropout rate deviation from the prior. 0 = disabled (standard
@@ -277,6 +292,10 @@ class TrainingData:
     # against the corresponding sim fields when w_nll_et / w_nll_swe > 0.
     et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
     swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
+    tws_obs: Tensor | None = None   # GRACE TWS anomalie (mm), valeur mensuelle au 15, NaN ailleurs
+    # Indices hydrométéorologiques précalculés pour ContextualQuantileHead.
+    # Forme : (T, n_st, 5) — GDD, API, SPI, FN, SWE_proxy normalisés z-score.
+    indices_ihi: Tensor | None = None
 
 
 class Trainer:
@@ -372,6 +391,38 @@ class Trainer:
                     "Discriminative LR: noise_head=%.1e (10×), wd=0 — fast sigma adaptation",
                     self.config.lr * 10.0,
                 )
+            # Codes latents (effet aléatoire spatial) : LR élevé pour escaper la
+            # domination du NeRF partagé au cold-start (auto-décodeur). wd=0 :
+            # le shrinkage est déjà géré par w_latent_reg.
+            latent_params = [p for n, p in model.named_parameters()
+                             if n == "spatial_encoder.latent_codes"]
+            if latent_params:
+                _lat_ids = set(id(p) for p in latent_params)
+                base_params[:] = [p for p in base_params if id(p) not in _lat_ids]
+                groups.append({"params": latent_params,
+                               "lr": self.config.lr * self.config.latent_lr_mult,
+                               "weight_decay": 0.0})
+                logger.info("Discriminative LR: latent_codes=%.1e (%.0f×), wd=0",
+                            self.config.lr * self.config.latent_lr_mult,
+                            self.config.latent_lr_mult)
+            # PhenologyModulator (IHI) : GDD seuils ont une échelle naturelle
+            # O(100), gradients sigmoïdaux faibles loin du seuil. lr × 100 pour
+            # les seuils, lr × 1 pour les amplitudes (K_c_min, K_c_max_factor).
+            gdd_threshold_params: list[torch.nn.Parameter] = []
+            for name, p in model.named_parameters():
+                if "phenology_modulator" in name and ("gdd_emerg" in name or "gdd_mid" in name):
+                    gdd_threshold_params.append(p)
+            if gdd_threshold_params:
+                base_params[:] = [p for p in base_params
+                                  if id(p) not in set(id(g) for g in gdd_threshold_params)]
+                groups.append({"params": gdd_threshold_params,
+                               "lr": self.config.lr * 100.0,
+                               "weight_decay": 0.0})
+                logger.info(
+                    "Discriminative LR: phenology GDD thresholds=%.1e (100×), wd=0 "
+                    "— compensate for sigmoid gradient scale O(100)",
+                    self.config.lr * 100.0,
+                )
             self.optimizer = AdamW(groups)
         # Autopilot: force val_every=1 for fast reaction
         if self.config.autopilot and self.config.val_every > 1:
@@ -384,6 +435,7 @@ class Trainer:
         # Best-metric init depends on direction (lower-is-better for loss-like)
         self._best_metric_lower_is_better = self.config.best_metric in (
             "loss", "val_loss", "nll", "val_nll", "rmse", "nrmse", "mae", "pbias",
+            "val_flatness", "flatness",
         )
         self._best_val_metric = (
             float("inf") if self._best_metric_lower_is_better else -float("inf")
@@ -556,6 +608,13 @@ class Trainer:
             )
             if not math.isnan(val_cov90):
                 epoch_msg += f" | cov90={val_cov90:.3f} | cov50={val_cov50:.3f}"
+            val_nll_m = last_val_metrics.get("val_nll", float("nan"))
+            val_flat = last_val_metrics.get("val_flatness", float("nan"))
+            if not math.isnan(val_nll_m):
+                epoch_msg += f" | nll={val_nll_m:.3f}"
+            if not math.isnan(val_flat):
+                # val_flatness ~ d^2 ; d s'obtient par sqrt (ASCII pour Windows cp1252)
+                epoch_msg += f" | flat_d2={val_flat:.4f} (d={val_flat**0.5:.3f})"
             epoch_msg += f" | lr={current_lr:.2e}"
             logger.info(epoch_msg)
             print(epoch_msg, flush=True)
@@ -577,8 +636,8 @@ class Trainer:
             #     would never count no-improve and disable autopilot LR-plateau)
             _bm = self.config.best_metric
             _tol = self.config.best_metric_tolerance
-            # Alias: "nll" in calibration dict is keyed as "val_nll"
-            _bm_key = "val_nll" if _bm == "nll" else _bm
+            # Alias: "nll"/"flatness" in calibration dict are keyed as "val_*"
+            _bm_key = {"nll": "val_nll", "flatness": "val_flatness"}.get(_bm, _bm)
             _default = float("inf") if self._best_metric_lower_is_better else -float("inf")
             if _bm == "loss":
                 _cur = float(train_loss)
@@ -757,8 +816,15 @@ class Trainer:
             sl = slice(t_start, t_end)
             chunk_len = t_end - t_start
 
+            # ET multi-objectif : on récupère et_sim depuis CE forward (avec
+            # gradient) plutôt qu'un 2e forward détaché — sinon le terme ET
+            # n'entraîne que σ_ET, pas le backbone (μ).
+            _need_et = ((self.loss_fn.w_nll_et > 0 or self.loss_fn.w_et > 0)
+                        and data.et_obs is not None)
+            _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
+            _need_diag = _need_et or _need_tws
             with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-                Q_chunk, state_out = self.model.simulate(
+                _sim_out = self.model.simulate(
                     forcing=data.forcing[sl],
                     initial_state=state,
                     graph=data.graph,
@@ -768,7 +834,12 @@ class Trainer:
                     day_of_year=data.day_of_year[sl],
                     h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
+                    return_diagnostics=_need_diag,
                 )
+                if _need_diag:
+                    Q_chunk, state_out, _diag_chunk = _sim_out
+                else:
+                    Q_chunk, state_out = _sim_out
 
                 # Burn-in: first chunk after spinup needs longer burn-in to
                 # stabilize state; subsequent chunks only need a short warm-up
@@ -782,6 +853,10 @@ class Trainer:
                 # degeneracy where model inflates μ_Q to gonfler σ and reduce
                 # ((q_obs - q_sim) / σ)² (Kendall & Gal 2017 §2.3).
                 log_sigma_chunk = None
+                # sp_tensor partagé entre noise_head et quantile_head pour
+                # éviter de recalculer le NeRF spatial. None = pas encore
+                # calculé (lazy ; recalculé si une tête le requiert).
+                sp_tensor = None
                 if self.loss_fn.w_nll > 0:
                     Q_det = Q_chunk_loss.detach()
                     from meandre.utils.noise_head import SpatialNoiseHead
@@ -795,27 +870,183 @@ class Trainer:
                         log_sigma_chunk = self.model.noise_head(sp_tensor, Q_det)
                     else:
                         log_sigma_chunk = self.model.noise_head(Q_det)
+                # ET sim de ce chunk (avec gradient) + σ_ET (détaché, comme Q)
+                et_sim_chunk = et_obs_chunk = log_sigma_et_chunk = None
+                if _need_et:
+                    et_sim_chunk = _diag_chunk.etr[burnin:]
+                    et_obs_chunk = data.et_obs[obs_offset + burnin:obs_offset + chunk_len]
+                    if self.loss_fn.w_nll_et > 0 and hasattr(self.model, "noise_head_et"):
+                        log_sigma_et_chunk = self.model.noise_head_et(et_sim_chunk.detach())
+
                 loss_chunk, comps = self.loss_fn(
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,
                     station_mask=data.station_mask,
                     log_sigma_sim=log_sigma_chunk,
+                    et_obs=et_obs_chunk,
+                    et_sim=et_sim_chunk,
+                    log_sigma_et_sim=log_sigma_et_chunk,
                     residual_gate_logits=(
                         self.model.residual_corrector.gate_logit
                         if self.model.use_residual and self.model.residual_corrector is not None
                         else None
                     ),
+                    log_df=getattr(self.model.noise_head, "log_df", None),
                 )
+
+                # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
+                # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).
+                # Comparé à GRACE aux mois valides, centré intra-chunk (chunk-safe).
+                if _need_tws:
+                    from meandre.training.loss import tws_anomaly_loss
+                    _sp = self.model.spatial_encoder(
+                        data.node_coords, data.territorial.to_tensor()
+                    )
+                    _soil_mm = ((_diag_chunk.theta1 * 0.30
+                                 + _diag_chunk.theta2 * _sp.Z2
+                                 + _diag_chunk.theta3 * _sp.Z3) * 1000.0)
+                    _stor = (_soil_mm + _diag_chunk.swe + _diag_chunk.s_gw
+                             + _diag_chunk.canopy + _diag_chunk.wetland)  # (T, n_nodes) mm
+                    _stor_basin = _stor.mean(dim=1)[burnin:]  # (T-burnin,) moy-bassin
+                    _tws_chunk = data.tws_obs[obs_offset + burnin:obs_offset + chunk_len]
+                    _vt = ~torch.isnan(_tws_chunk)
+                    if int(_vt.sum()) >= 2:  # ≥2 mois pour centrer
+                        _s = _stor_basin[_vt]
+                        _g = _tws_chunk[_vt]
+                        # σ = incertitude GRACE typique (~25 mm) → z-score, L_tws~O(1)
+                        # (sinon mm² ~800 écrase Q). "fit à l'incertitude GRACE près".
+                        L_tws = tws_anomaly_loss(_s, _g, _s.mean().detach(), _g.mean(), sigma=25.0)
+                        loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
+                        all_components["tws_loss"] = (
+                            all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
+
+                # ── Régression quantile (Phase 2 v2) : q_τ = μ + δ_τ ─────
+                # δ_τ via quantile_head (avec gradient), μ détaché (la tête
+                # quantile n'entraîne PAS le backbone — médiane = μ par construction).
+                if (self.loss_fn.w_quantile > 0
+                        and getattr(self.model, "use_quantile_head", False)
+                        and hasattr(self.model, "quantile_head")):
+                    from meandre.training.loss import quantile_loss as _qloss
+                    if sp_tensor is None:
+                        sp = self.model.spatial_encoder(
+                            data.node_coords, data.territorial.to_tensor()
+                        )
+                        sp_tensor = sp.to_tensor()
+                    _Q_det = Q_chunk_loss.detach()
+                    _offsets = self.model.quantile_head(sp_tensor, _Q_det)  # (T-burnin, N, K)
+                    _q_pred = _Q_det.unsqueeze(-1) + _offsets                # (T-burnin, N, K)
+                    _q_pred_st = _q_pred[:, data.station_mask, :]            # (T-burnin, n_st, K)
+                    _valid = ~torch.isnan(q_obs_chunk) & ~torch.isnan(_q_pred_st[..., 0])
+                    if int(_valid.sum()) > 0:
+                        _y = q_obs_chunk[_valid]                             # (M,)
+                        _q = _q_pred_st[_valid]                              # (M, K)
+                        _taus = torch.tensor(
+                            self.model.quantile_head.taus,
+                            device=_q.device, dtype=_q.dtype,
+                        )
+                        L_q = _qloss(_y, _q, _taus)
+                        loss_chunk = loss_chunk + self.loss_fn.w_quantile * L_q
+                        all_components["quantile_loss"] = (
+                            all_components.get("quantile_loss", 0.0) + float(L_q.detach()))
+
+                # ── ContextualQuantileHead (IHI, Phase A) — pinball loss
+                # avec features riches : sp + Q_sim + log Q_sim + indices IHI + DOY.
+                # Médiane libre (pas ancrée à Q_sim).
+                if (self.loss_fn.w_quantile > 0
+                        and getattr(self.model, "use_contextual_quantile_head", False)
+                        and hasattr(self.model, "contextual_quantile_head")
+                        and data.indices_ihi is not None):
+                    if sp_tensor is None:
+                        sp = self.model.spatial_encoder(
+                            data.node_coords, data.territorial.to_tensor()
+                        )
+                        sp_tensor = sp.to_tensor()
+                    _Q_det = Q_chunk_loss.detach()                                  # (T_chunk, N)
+                    _sp_st = sp_tensor[data.station_mask]                           # (n_st, F_sp)
+                    _Q_st = _Q_det[:, data.station_mask]                            # (T, n_st)
+                    _y_obs = q_obs_chunk                                            # (T, n_st)
+                    T_chunk_eff = _Q_st.shape[0]
+                    # Slice des indices au chunk (déjà aux stations) + DOY sin/cos
+                    _idx_chunk = data.indices_ihi[obs_offset + burnin:obs_offset + chunk_len]
+                    # Vérifier dimension
+                    if _idx_chunk.shape[0] != T_chunk_eff:
+                        _idx_chunk = _idx_chunk[:T_chunk_eff]
+                    # DOY sin/cos (T_chunk,)
+                    import math
+                    _doy_chunk = data.day_of_year[sl.start + burnin:sl.stop][:T_chunk_eff].float()
+                    _doy_rad = 2 * math.pi * _doy_chunk / 366.0
+                    _doy_sc = torch.stack([_doy_rad.sin(), _doy_rad.cos()], dim=-1)  # (T, 2)
+                    # Build features (T, n_st, F_total)
+                    _sp_exp = _sp_st.unsqueeze(0).expand(T_chunk_eff, -1, -1)        # (T, n_st, F_sp)
+                    _Q_feat = _Q_st.unsqueeze(-1)                                    # (T, n_st, 1)
+                    _logQ_feat = torch.log(_Q_st.clamp(min=0) + 1.0).unsqueeze(-1)   # (T, n_st, 1)
+                    _doy_feat = _doy_sc.unsqueeze(1).expand(-1, _sp_st.shape[0], -1) # (T, n_st, 2)
+                    _features = torch.cat(
+                        [_sp_exp, _Q_feat, _logQ_feat, _idx_chunk, _doy_feat], dim=-1,
+                    )                                                                # (T, n_st, F_total)
+                    # Filtrer valides
+                    _v = ~torch.isnan(_y_obs) & ~torch.isnan(_Q_st)
+                    if int(_v.sum()) > 0:
+                        _y_flat = _y_obs[_v]
+                        _x_flat = _features[_v]
+                        _Q_flat = _Q_st[_v]
+                        L_cqh = self.model.contextual_quantile_head.pinball(
+                            _y_flat, _x_flat, _Q_flat,
+                        )
+                        loss_chunk = loss_chunk + self.loss_fn.w_quantile * L_cqh
+                        all_components["cqh_pinball"] = (
+                            all_components.get("cqh_pinball", 0.0) + float(L_cqh.detach()))
+
+                # ── Mixture Density Network (option 2b) — NLL non-paramétrique ──
+                # p(y | x) = Σ_k π_k · N(y | μ_k, σ_k²) ; loss = -log_prob.
+                # Q_sim détaché : la tête n'entraîne PAS le backbone, seulement le
+                # mapping features → densité (Phase 2 v3 style, comme quantile head).
+                if (self.loss_fn.w_mixture > 0
+                        and getattr(self.model, "use_mixture_head", False)
+                        and hasattr(self.model, "mixture_head")):
+                    if sp_tensor is None:
+                        sp = self.model.spatial_encoder(
+                            data.node_coords, data.territorial.to_tensor()
+                        )
+                        sp_tensor = sp.to_tensor()
+                    _Q_mdn = Q_chunk_loss.detach()                                  # (T-burnin, n_nodes)
+                    _sp_st = sp_tensor[data.station_mask]                           # (n_st, n_features)
+                    _Q_mdn_st = _Q_mdn[:, data.station_mask]                        # (T, n_st)
+                    _y_mdn = q_obs_chunk
+                    _v = ~torch.isnan(_y_mdn) & ~torch.isnan(_Q_mdn_st)
+                    if int(_v.sum()) > 0:
+                        # Broadcast features (statique) sur T
+                        T_chunk = _Q_mdn_st.shape[0]
+                        sp_exp = _sp_st.unsqueeze(0).expand(T_chunk, -1, -1)         # (T, n_st, F)
+                        y_flat = _y_mdn[_v]
+                        sp_flat = sp_exp[_v]
+                        q_flat = _Q_mdn_st[_v]
+                        L_mdn = -self.model.mixture_head.log_prob(y_flat, sp_flat, q_flat).mean()
+                        loss_chunk = loss_chunk + self.loss_fn.w_mixture * L_mdn
+                        all_components["mixture_nll"] = (
+                            all_components.get("mixture_nll", 0.0) + float(L_mdn.detach()))
+
 
             # Soft physical prior regularization on spatial params (k_gw, krec, K_sat, K_c, ...).
             # Pulls toward literature targets — prevents drift toward overfit values.
-            if self.config.w_prior > 0:
+            if self.config.w_prior > 0 or self.config.w_diversity > 0:
                 params_t = self.model.spatial_encoder(
                     data.node_coords, data.territorial.to_tensor()
                 )
-                prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
-                loss_chunk = loss_chunk + self.config.w_prior * prior_loss
-                all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach())
+                if self.config.w_prior > 0:
+                    prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
+                    loss_chunk = loss_chunk + self.config.w_prior * prior_loss
+                    all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach())
+                if self.config.w_diversity > 0:
+                    div_loss = self.model.spatial_encoder.param_diversity_loss(
+                        params_t, cv_target=self.config.diversity_cv_target)
+                    loss_chunk = loss_chunk + self.config.w_diversity * div_loss
+                    all_components["diversity"] = all_components.get("diversity", 0.0) + float(div_loss.detach())
+
+            if self.config.w_latent_reg > 0 and getattr(self.model.spatial_encoder, "use_latent_codes", False):
+                latent_loss = self.model.spatial_encoder.latent_reg()
+                loss_chunk = loss_chunk + self.config.w_latent_reg * latent_loss
+                all_components["latent_reg"] = all_components.get("latent_reg", 0.0) + float(latent_loss.detach())
 
             if self.config.w_boundary > 0:
                 boundary_loss = self.model.spatial_encoder.boundary_regularization(
@@ -838,6 +1069,7 @@ class Trainer:
                         sp_tensor,
                         self.config.sigma_anchor_target_a,
                         self.config.sigma_anchor_target_b,
+                        var_weight=self.config.sigma_anchor_var_weight,
                     )
                 else:
                     anchor = self.model.noise_head.anchor_loss(
@@ -1074,16 +1306,23 @@ class Trainer:
                     if self.model.use_residual and self.model.residual_corrector is not None
                     else None
                 ),
+                log_df=getattr(self.model.noise_head, "log_df", None),
             )
 
         # Soft physical prior regularization
-        if self.config.w_prior > 0:
+        if self.config.w_prior > 0 or self.config.w_diversity > 0:
             params_t = self.model.spatial_encoder(
                 data.node_coords, data.territorial.to_tensor()
             )
-            prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
-            loss = loss + self.config.w_prior * prior_loss
-            components["prior"] = prior_loss.detach()
+            if self.config.w_prior > 0:
+                prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
+                loss = loss + self.config.w_prior * prior_loss
+                components["prior"] = prior_loss.detach()
+            if self.config.w_diversity > 0:
+                div_loss = self.model.spatial_encoder.param_diversity_loss(
+                    params_t, cv_target=self.config.diversity_cv_target)
+                loss = loss + self.config.w_diversity * div_loss
+                components["diversity"] = div_loss.detach()
 
         if self.config.w_boundary > 0:
             boundary_loss = self.model.spatial_encoder.boundary_regularization(
@@ -1103,6 +1342,7 @@ class Trainer:
                     sp.to_tensor(),
                     self.config.sigma_anchor_target_a,
                     self.config.sigma_anchor_target_b,
+                    var_weight=self.config.sigma_anchor_var_weight,
                 )
             else:
                 anchor = self.model.noise_head.anchor_loss(
@@ -1233,6 +1473,7 @@ class Trainer:
         # q_obs is pre-sliced to start at the beginning of the val period.
         n_val = data.val_slice.stop - data.val_slice.start
         q_obs_val = data.q_obs[:n_val]  # (T_val, n_stations)
+
         q_sim_at_stations = Q_sim[:, data.station_mask]
 
         # ── Per-station KGE (consistent with per_station loss) ────────
@@ -1307,21 +1548,83 @@ class Trainer:
             sigma = log_sigma[:, data.station_mask].exp()  # (T, n_stations)
             q_obs_v = q_obs_val  # (T, n_stations)
             valid_cov = ~torch.isnan(q_obs_v) & ~torch.isnan(Q_sim[:, data.station_mask])
+            # σ vit dans l'espace de la NLL (Box-Cox si nll_lambda != 1). La
+            # couverture doit être mesurée dans CE MÊME espace, sinon un σ
+            # Box-Cox appliqué comme intervalle ± linéaire en m³/s est
+            # dimensionnellement incohérent (la couverture s'effondre quand le
+            # σ Box-Cox se resserre légitimement).
+            from meandre.training.loss import box_cox
+            _lam_cov = getattr(self.loss_fn, "nll_lambda", 1.0)
+            if _lam_cov != 1.0:
+                q_obs_cov = box_cox(q_obs_v, _lam_cov)
+                q_sim_cov = box_cox(q_sim_at_stations, _lam_cov)
+            else:
+                q_obs_cov = q_obs_v
+                q_sim_cov = q_sim_at_stations
             for level, z in [(50, 0.674), (90, 1.645)]:
-                lo = q_sim_at_stations - z * sigma
-                hi = q_sim_at_stations + z * sigma
-                in_interval = (q_obs_v >= lo) & (q_obs_v <= hi)
+                lo = q_sim_cov - z * sigma
+                hi = q_sim_cov + z * sigma
+                in_interval = (q_obs_cov >= lo) & (q_obs_cov <= hi)
                 cov = (in_interval & valid_cov).sum().float() / valid_cov.sum().float()
                 calibration[f"cov_{level}"] = float(cov)
             # Mean sigma statistics
             calibration["sigma_mean"] = float(sigma[valid_cov].mean())
             calibration["sigma_median"] = float(sigma[valid_cov].median())
-            # NLL on validation set
-            from meandre.training.loss import gaussian_nll_loss
+            # NLL et flatness sur le set de validation, dans l'espace
+            # configuré par loss_fn.nll_lambda (Box-Cox/normal/log-normal).
+            from meandre.training.loss import gaussian_nll_loss, flatness_loss, student_t_nll_loss
             qo_p = q_obs_v[valid_cov]
             qs_p = q_sim_at_stations[valid_cov]
             ls_p = log_sigma[:, data.station_mask][valid_cov]
-            calibration["val_nll"] = float(gaussian_nll_loss(qo_p, qs_p, ls_p))
+            _lam = getattr(self.loss_fn, "nll_lambda", 1.0)
+            _dist = getattr(self.loss_fn, "nll_distribution", "normal")
+            if _dist == "student-t" and hasattr(self.model.noise_head, "log_df"):
+                calibration["val_nll"] = float(
+                    student_t_nll_loss(qo_p, qs_p, ls_p, self.model.noise_head.log_df, lam=_lam)
+                )
+            else:
+                calibration["val_nll"] = float(
+                    gaussian_nll_loss(qo_p, qs_p, ls_p, lam=_lam)
+                )
+            calibration["val_flatness"] = float(
+                flatness_loss(
+                    qo_p, qs_p, ls_p,
+                    lam=_lam,
+                    n_bins=getattr(self.loss_fn, "flatness_n_bins", 21),
+                    bandwidth=getattr(self.loss_fn, "flatness_bandwidth", 0.02),
+                )
+            )
+
+        # ── Calibration mode quantile (Phase 2 v2) ──────────────────────
+        # cov_50, cov_90 par appartenance dans les intervalles inter-quantiles
+        # en m³/s ; val_nll remplacé par la pinball moyenne ; CRPS ≈ 2·pinball.
+        if (self.loss_fn.w_quantile > 0
+                and getattr(self.model, "use_quantile_head", False)
+                and hasattr(self.model, "quantile_head")
+                and Q_sim is not None):
+            from meandre.training.loss import quantile_loss as _qloss, crps_from_quantiles as _crps
+            with torch.no_grad():
+                sp_q = self.model.spatial_encoder(
+                    data.node_coords, data.territorial.to_tensor()
+                )
+                offsets_v = self.model.quantile_head(sp_q.to_tensor(), Q_sim.detach())
+            q_pred_v = Q_sim.detach().unsqueeze(-1) + offsets_v  # (T, N, K)
+            q_pred_st = q_pred_v[:, data.station_mask, :]         # (T, n_st, K)
+            taus = list(self.model.quantile_head.taus)
+            valid_q = ~torch.isnan(q_obs_val) & ~torch.isnan(q_pred_st[..., 0])
+            # Couvertures par intervalles inter-quantiles (en m³/s, sans hypothèse)
+            for level, lo_tau, hi_tau in [(50, 0.25, 0.75), (90, 0.05, 0.95)]:
+                if lo_tau in taus and hi_tau in taus:
+                    i_lo = taus.index(lo_tau); i_hi = taus.index(hi_tau)
+                    lo = q_pred_st[..., i_lo]; hi = q_pred_st[..., i_hi]
+                    in_int = (q_obs_val >= lo) & (q_obs_val <= hi)
+                    cov = (in_int & valid_q).sum().float() / valid_q.sum().clamp(min=1).float()
+                    calibration[f"cov_{level}"] = float(cov)
+            # Pinball moyenne + CRPS (en m³/s)
+            y_v = q_obs_val[valid_q]; qp_v = q_pred_st[valid_q]
+            taus_t = torch.tensor(taus, device=qp_v.device, dtype=qp_v.dtype)
+            calibration["val_nll"] = float(_qloss(y_v, qp_v, taus_t))  # = best_metric
+            calibration["val_crps"] = float(_crps(y_v, qp_v, taus_t))
 
         return {
             "nse": float(nse(q_o, q_s)),
@@ -1683,7 +1986,14 @@ class Trainer:
         if self._best_metric_lower_is_better:
             regression = -1.0  # never triggers
         else:
-            regression = (self._best_val_metric - kge_sta) / (abs(self._best_val_metric) + 1e-8)
+            # Comparer la MÊME métrique que celle suivie par best_metric (poolé
+            # par défaut). Utiliser kge_station ici était un bug : elle vit sur
+            # une autre échelle (par-station ~0.57 vs best poolé ~0.77), ce qui
+            # rapportait une « régression » spurious ~26 % à chaque epoch et
+            # déclenchait de faux restarts dès que gamma dérivait aussi.
+            bm_key = "val_nll" if cfg.best_metric == "nll" else cfg.best_metric
+            kge_current = val_metrics.get(bm_key, kge_sta)
+            regression = (self._best_val_metric - kge_current) / (abs(self._best_val_metric) + 1e-8)
         drift_detected = (beta_drift > cfg.autopilot_beta_threshold
                           or gamma_drift > cfg.autopilot_gamma_threshold)
 

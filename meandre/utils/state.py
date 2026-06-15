@@ -47,10 +47,30 @@ class HydroState:
     # réchauffer le pack à 0°C avant fonte. Empêche les redoux mid-winter
     # de fondre toute la neige. Défaut zeros pour rétrocompatibilité.
     cold_content: Tensor | None = None
+    # Growing degree days cumulés depuis le 1er janvier (°C·j). Reset chaque
+    # année. Utilisé par PhenologyModulator (IHI Phase B) pour moduler K_c
+    # selon le stade phénologique. Défaut zeros pour rétrocompatibilité.
+    gdd_cum: Tensor | None = None
+    # Optional: upper-zone fast-reservoir storage (mm) for the HBV-EC threshold
+    # quickflow (K0/UZL/K1). Réservoir rapide (vidé en quelques jours), non
+    # sérialisé dans to_tensor (reset à zéro sans effet aux allers-retours de
+    # persistance). Défaut zeros pour rétrocompatibilité.
+    S_uz: Tensor | None = None
+    # Optional: états de la cascade de Nash de l'hydrogramme de versant (2
+    # réservoirs). Non sérialisés (comme S_uz), reset à zéro sans effet aux
+    # allers-retours de persistance (réservoirs rapides).
+    uh_s1: Tensor | None = None
+    uh_s2: Tensor | None = None
+    uh_s3: Tensor | None = None
+    uh_s4: Tensor | None = None
 
     def __post_init__(self) -> None:
         if self.cold_content is None:
             self.cold_content = torch.zeros_like(self.swe)
+        if self.gdd_cum is None:
+            self.gdd_cum = torch.zeros_like(self.swe)
+        if self.S_uz is None:
+            self.S_uz = torch.zeros_like(self.swe)
 
     @property
     def n_nodes(self) -> int:
@@ -70,6 +90,7 @@ class HydroState:
                 self.S_gw,
                 self.T_water,
                 self.cold_content,
+                self.gdd_cum,
             ],
             dim=-1,
         )
@@ -93,6 +114,8 @@ class HydroState:
             x = torch.cat([x, torch.full((n, 1), 10.0, device=device)], dim=1)
         if x.shape[1] == 9:
             x = torch.cat([x, torch.zeros(n, 1, device=device)], dim=1)
+        if x.shape[1] == 10:
+            x = torch.cat([x, torch.zeros(n, 1, device=device)], dim=1)
 
         return cls(
             theta1=x[:, 0],
@@ -105,6 +128,7 @@ class HydroState:
             S_gw=x[:, 7],
             T_water=x[:, 8],
             cold_content=x[:, 9],
+            gdd_cum=x[:, 10],
         )
 
     @classmethod
@@ -122,6 +146,7 @@ class HydroState:
             S_gw=z.clone(),
             T_water=torch.full((n_nodes,), 10.0, device=device),
             cold_content=z.clone(),
+            gdd_cum=z.clone(),
         )
 
     @classmethod
@@ -140,6 +165,7 @@ class HydroState:
             S_gw=torch.full((n_nodes,), 10.0, device=device),
             T_water=torch.full((n_nodes,), 8.0, device=device),
             cold_content=torch.zeros(n_nodes, device=device),
+            gdd_cum=torch.zeros(n_nodes, device=device),
         )
 
     # ---- Persistence ----
@@ -169,7 +195,13 @@ class HydroState:
             S_gw=self.S_gw.detach(),
             T_water=self.T_water.detach(),
             cold_content=self.cold_content.detach(),
+            gdd_cum=self.gdd_cum.detach(),
+            S_uz=self.S_uz.detach(),
+            uh_s1=self.uh_s1.detach() if self.uh_s1 is not None else None,
+            uh_s2=self.uh_s2.detach() if self.uh_s2 is not None else None,
+            uh_s3=self.uh_s3.detach() if self.uh_s3 is not None else None,
+            uh_s4=self.uh_s4.detach() if self.uh_s4 is not None else None,
         )
 
     # Number of state variables (used by residual corrector)
-    N_VARS: int = 10
+    N_VARS: int = 11

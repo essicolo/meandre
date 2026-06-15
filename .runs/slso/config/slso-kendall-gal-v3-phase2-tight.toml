@@ -1,0 +1,145 @@
+# slso-kendall-gal-v3-phase2-tight.toml
+# Phase 2 « σ tight » : fine-tune court depuis le best.pt de phase 2 standard,
+# avec ancrage σ serré + pénalité variance inter-nœuds pour redescendre σ_log.
+#
+# Diagnostic 2026-05-25 sur phase 2 (best-kendall-gal-v3-phase2.pt) :
+#   - PBIAS global +4.9% (acceptable, μ déjà bien trainé)
+#   - σ_log médian 0.67  (CV implicite ≈ 95% — catastrophique probabiliste)
+#   - δ Talagrand Gaussien = 0.659, log-normal = 0.479 (vague, pas plat)
+# → la noise_head a inflaté σ pour absorber les erreurs résiduelles.
+# Pour faire descendre σ sans toucher μ :
+#   1. w_sigma_anchor ×10  (1.0 → 10.0) — l'anchor doit gagner contre w_nll
+#   2. target_a -3 → -4    (σ ciblée ≈ 1.8% de Q au lieu de 5%)
+#   3. var_weight = 0.5    (mode hybride : pénalise variance inter-nœuds)
+#   4. autopilot_nll_max 1.0 → 0.3  (cap NLL pour ne pas re-gonfler σ)
+#
+# Pour lancer :
+#   python .runs/slso/slso.py .runs/slso/config/slso-kendall-gal-v3-phase2-tight.toml
+
+[paths]
+basin_db = "data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing.nc"
+checkpoint = "checkpoints/best-kendall-gal-v3-phase2-tight.pt"
+fields_nc = "results/fields-kendall-gal-v3-phase2-tight.nc"
+reach_parquet = "results/reach-kendall-gal-v3-phase2-tight.parquet"
+runs_db = "logs/runs-kendall-gal-v3-phase2-tight.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = true
+concrete_init_p = 0.05
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+# ── Warm-start depuis le best.pt de phase 2 standard ─────────────────────
+warm_start = true
+warm_start_from = "checkpoints/best-kendall-gal-v3-phase2.pt"
+
+n_epochs = 15                       # fine-tune court : juste pour faire descendre σ
+lr = 5e-5                           # LR plus bas que phase 2 (1e-4) — réglage fin
+lr_finetune = 5e-5
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 1e-4
+
+# ── Backbone gelé (idem phase 2) ─────────────────────────────────────────
+freeze_spatial = true
+freeze_temporal = true
+freeze_backbone = true
+
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 30
+compile_modules = false
+
+# ── Métrique trackée : NLL (lower is better) ─────────────────────────────
+best_metric = "nll"
+best_metric_tolerance = 0.005
+
+station_weight_mode = "sqrt_area"
+
+# ── Régularisations σ SERRÉES (le cœur du fix) ───────────────────────────
+w_prior = 0.0
+w_boundary = 0.0
+w_sigma_anchor = 10.0                # ×10 vs phase 2 standard (1.0)
+sigma_anchor_target_a = -4.0         # σ ciblée ≈ 1.8% de Q (vs 5% à -3.0)
+sigma_anchor_target_b = 1.0
+sigma_anchor_var_weight = 0.5        # hybride : pénalise var(a) + var(b) inter-nœuds
+w_concrete_kl = 0.01
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ────────────────────────────────────────────────────────────
+autopilot = true
+autopilot_grace_epochs = 3
+autopilot_beta_threshold = 1.0
+autopilot_gamma_threshold = 1.0
+autopilot_lr_patience = 10
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+autopilot_restart_min_no_improve = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+# ── NLL autopilot : ramp w_nll mais CAPPÉ bas ───────────────────────────
+autopilot_nll = true
+autopilot_nll_initial_kge = 0.91
+autopilot_nll_max_regression = 0.05
+autopilot_nll_ramp_rate = 1.2        # plus doux que 1.5
+autopilot_nll_max = 0.3              # cap fort vs 1.0 — laisse l'anchor gagner
+autopilot_nll_min = 0.01
+
+kendall_gal_auto = false
+
+[loss]
+# Phase 2 tight : NLL démarre où phase 2 avait fini, mais cap bas
+w_nll = 0.1                          # autopilot rampera vers max=0.3 seulement
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0                          # monitoring (gelé)
+w_pbias = 0.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.0
+w_nrmse = 0.0
+w_physics = 0.0
+w_residual = 0.0

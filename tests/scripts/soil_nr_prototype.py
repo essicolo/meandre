@@ -263,7 +263,7 @@ def test_nr_vs_euler_mass_balance():
 
     # ── Explicit Euler (via SoilModule) ──────────────────────────────
     soil = SoilModule()
-    t1n_e, t2n_e, t3n_e, R_e, I_e, B_e = soil.forward(
+    t1n_e, t2n_e, t3n_e, R_e, I_e, B_e, _S_uz_e = soil.forward(
         P_eff=inp["P"] * 1e3,
         ET1=inp["ET1"] * 1e3, ET2=inp["ET2"] * 1e3, ET3=inp["ET3"] * 1e3,
         theta1=inp["theta_1"], theta2=inp["theta_2"], theta3=inp["theta_3"],

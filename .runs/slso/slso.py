@@ -21,6 +21,13 @@ Le modèle Physitel est importé pour enregistrer ses informations minimales dan
 from pathlib import Path
 import os
 import sys
+# Sortie en UTF-8 : sous Windows, stdout redirigé vers un fichier est en cp1252
+# et plante sur les caractères non-latin1 (ex. → dans les messages autopilote).
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
 # Repo root is .runs/slso/ → repo root = parents[2]
 os.chdir(Path(__file__).resolve().parents[2])
 import tomllib
@@ -166,6 +173,17 @@ from meandre.data.gridded_forcing import extract_forcing
 
 FORCING_CACHE.parent.mkdir(parents=True, exist_ok=True)
 
+# [forcing] (optionnel) : surcharge R_n / e_a / u2 par ERA5-Land mesuré.
+#   era5_vars = ["R_n", "e_a", "u2"]   # vide/absent = proxies dérivés de T
+#   era5_cache = "data/era5"           # optionnel (défaut: <forcing_cache>/era5)
+#   era5_bbox  = [-73.0, 44.5, -69.6, 47.7]  # optionnel (défaut: nœuds + marge)
+_fcfg = cfg.get("forcing", {})
+ERA5_VARS  = list(_fcfg.get("era5_vars", []))
+ERA5_CACHE = resolve_run_path(_fcfg["era5_cache"], RUN_DIR) if _fcfg.get("era5_cache") else None
+ERA5_BBOX  = tuple(_fcfg["era5_bbox"]) if _fcfg.get("era5_bbox") else None
+if ERA5_VARS:
+    print(f"[forcing] Surcharge ERA5-Land activée : {ERA5_VARS}")
+
 forcing = extract_forcing(
     zarr_path   = ZARR_PATH,
     node_coords = node_coords,
@@ -174,11 +192,16 @@ forcing = extract_forcing(
     date_end    = DATE_END,
     cache_nc    = FORCING_CACHE,
     device      = device,
+    era5_vars   = ERA5_VARS,
+    era5_cache  = ERA5_CACHE,
+    era5_bbox   = ERA5_BBOX,
 )
 # forcing: (T, N, 6)  columns = [P, T_min, T_max, R_n, u2, e_a]
 
-# Recover dates array from the local forcing cache
-ds_time = xr.open_dataset(FORCING_CACHE)
+# Recover dates array from the local forcing cache (chemin effectif = tag ERA5
+# si surcharge active, sinon cache proxy).
+from meandre.data.gridded_forcing import effective_cache_path
+ds_time = xr.open_dataset(effective_cache_path(FORCING_CACHE, ERA5_VARS))
 all_dates = ds_time.time.sel(time=slice(DATE_START, DATE_END)).values
 ds_time.close()
 
@@ -332,6 +355,10 @@ DROPOUT = cfg["model"].get("dropout", 0.0)
 # Read [soil] config: Z1 fixed, Z2/Z3 bounds + rain_hours bounds
 soil_cfg = cfg.get("soil", {})
 soil_z1 = soil_cfg.get("z1", 0.30)
+soil_vsa_b = soil_cfg.get("vsa_b", 2.5)
+soil_quickflow_reservoir = soil_cfg.get("quickflow_reservoir", False)
+soil_quickflow_beta = soil_cfg.get("quickflow_beta", 0.5)
+soil_separate_infil_capacity = soil_cfg.get("separate_infil_capacity", False)
 soil_bounds = {
     "z2_min":           soil_cfg.get("z2_min",          0.30),
     "z2_max":           soil_cfg.get("z2_max",          1.50),
@@ -351,13 +378,42 @@ model = HydroModel(
     use_temporal = cfg["training"].get("enable_temporal_epoch", 0) < 9999,
     use_residual = cfg["training"].get("enable_residual_epoch", 9999) < 9999,
     use_travel_time_attn = cfg["training"].get("enable_travel_epoch", 9999) < 9999,
-    use_temperature = True,
+    use_temperature = cfg.get("model", {}).get("use_temperature", True),
     dropout = DROPOUT,
     concrete_dropout = cfg["model"].get("concrete_dropout", False),
     concrete_init_p = cfg["model"].get("concrete_init_p", 0.05),
     param_mode = cfg["model"].get("param_mode", "nerf"),
     soil_z1 = soil_z1,
+    soil_vsa_b = soil_vsa_b,
+    soil_quickflow_reservoir = soil_quickflow_reservoir,
+    soil_quickflow_beta = soil_quickflow_beta,
+    soil_separate_infil_capacity = soil_separate_infil_capacity,
+    use_hillslope_uh = cfg.get("model", {}).get("use_hillslope_uh", False),
     soil_bounds = soil_bounds,
+    use_quantile_head = cfg.get("loss", {}).get("nll_distribution", "").lower() == "quantile",
+    quantile_taus = tuple(cfg.get("loss", {}).get("quantile_taus", [0.05, 0.10, 0.25, 0.75, 0.90, 0.95])),
+    use_mixture_head = cfg.get("loss", {}).get("nll_distribution", "").lower() == "mixture",
+    mixture_n_components = int(cfg.get("model", {}).get("mixture_n_components", 10)),
+    mixture_hidden = int(cfg.get("model", {}).get("mixture_hidden", 64)),
+    use_contextual_quantile_head = cfg.get("loss", {}).get("nll_distribution", "").lower() == "contextual-quantile",
+    cqh_n_features = int(cfg.get("model", {}).get("cqh_n_features", 45)),
+    cqh_taus = tuple(cfg.get("model", {}).get("cqh_taus", [0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95])),
+    cqh_hidden = int(cfg.get("model", {}).get("cqh_hidden", 64)),
+    use_phenology_modulator = cfg.get("model", {}).get("use_phenology_modulator", False),
+    routing_mode = cfg.get("model", {}).get("routing_mode", "level"),
+    predict_lake_params = cfg.get("model", {}).get("predict_lake_params", False),
+    n_coord_freqs = cfg.get("model", {}).get("n_coord_freqs", 6),
+    use_latent_codes = cfg.get("model", {}).get("use_latent_codes", False),
+    latent_dim = int(cfg.get("model", {}).get("latent_dim", 8)),
+    latent_mode = cfg.get("model", {}).get("latent_mode", "additive"),
+    routing_substeps = int(cfg.get("model", {}).get("routing_substeps", 2)),
+    discharge_dependent_celerity = cfg.get("model", {}).get("discharge_dependent_celerity", False),
+    dq_beta = float(cfg.get("model", {}).get("dq_beta", 0.4)),
+    dq_qref_specific = float(cfg.get("model", {}).get("dq_qref_specific", 0.01)),
+    pure_advection = cfg.get("model", {}).get("pure_advection", False),
+    dynamic_atten = cfg.get("model", {}).get("dynamic_atten", False),
+    da_beta = float(cfg.get("model", {}).get("da_beta", 2.0)),
+    da_qref_specific = float(cfg.get("model", {}).get("da_qref_specific", 0.05)),
 ).to(device)
 
 n_params = sum(p.numel() for p in model.parameters())
@@ -403,15 +459,19 @@ if cfg["training"].get("freeze_spatial", False):
 # trainable for epistemic uncertainty). KGE stays at phase-1 level since
 # the backbone is frozen — only sigma and dropout rate learn.
 if cfg["training"].get("freeze_temporal", False):
-    for name, p in model.temporal_encoder.named_parameters():
-        if "drop." not in name:  # ConcreteDropout stays trainable
-            p.requires_grad = False
-    n_frozen_t = sum(p.numel() for n, p in model.temporal_encoder.named_parameters()
-                     if "drop." not in n and not p.requires_grad)
-    n_train_drop = sum(p.numel() for n, p in model.temporal_encoder.named_parameters()
-                       if "drop." in n and p.requires_grad)
-    print(f"Temporal encoder FROZEN ({n_frozen_t:,} params), "
-          f"ConcreteDropout trainable ({n_train_drop} params)")
+    if model.temporal_encoder is None:
+        # use_temporal=False : module GRU jamais instancié, rien à geler.
+        print("Temporal encoder absent (use_temporal=False), freeze_temporal sans effet")
+    else:
+        for name, p in model.temporal_encoder.named_parameters():
+            if "drop." not in name:  # ConcreteDropout stays trainable
+                p.requires_grad = False
+        n_frozen_t = sum(p.numel() for n, p in model.temporal_encoder.named_parameters()
+                         if "drop." not in n and not p.requires_grad)
+        n_train_drop = sum(p.numel() for n, p in model.temporal_encoder.named_parameters()
+                           if "drop." in n and p.requires_grad)
+        print(f"Temporal encoder FROZEN ({n_frozen_t:,} params), "
+              f"ConcreteDropout trainable ({n_train_drop} params)")
 
 # Freeze vertical column + routing (deterministic backbone).
 if cfg["training"].get("freeze_backbone", False):
@@ -475,6 +535,30 @@ if _use_modis:
 else:
     print("[MODIS] w_nll_et = 0 — MODIS ETR non utilisé")
 
+# ── GRACE TWS (conditionnel — si w_tws > 0) ────────────────────────────────
+# Anomalie de stockage total mensuelle, placée au ~15 du mois dans une série
+# journalière (NaN ailleurs) — même pattern sparse que et_obs.
+tws_obs_tensor = None
+if _lcfg_early.get("w_tws", 0.0) > 0:
+    import duckdb as _ddb, pandas as _pd
+    _con = _ddb.connect(str(BASIN_DB), read_only=True)
+    if "grace_tws" in [t[0] for t in _con.execute("show tables").fetchall()]:
+        _g = _con.execute("select date, tws_mm from grace_tws where quality_ok = true order by date").fetchdf()
+        _con.close()
+        _adates = _pd.to_datetime(all_dates).normalize()
+        _tws = torch.full((len(_adates),), float("nan"), device=device)
+        for _dt, _val in zip(_pd.to_datetime(_g["date"]), _g["tws_mm"].values):
+            _target = _pd.Timestamp(year=_dt.year, month=_dt.month, day=15)
+            _dd = np.abs((_adates - _target).days.values)
+            _idx = int(_dd.argmin())
+            if _dd[_idx] <= 20:
+                _tws[_idx] = float(_val)
+        tws_obs_tensor = _tws
+        print(f"[GRACE] tws_obs chargé : {int((~torch.isnan(_tws)).sum())} mois valides")
+    else:
+        _con.close()
+        print("[GRACE] table grace_tws absente — w_tws ignoré")
+
 # %% [markdown]
 """
 ## Entraînement
@@ -503,9 +587,33 @@ def make_data(period_sl: slice) -> TrainingData:
         val_slice = period_sl,
     )
 
-# Slice et_obs to align with the q_obs start offset used in make_data
+# Slice et_obs / tws_obs to align with the q_obs start offset used in make_data
 _et_train = et_obs_tensor[train_sl.start:] if et_obs_tensor is not None else None
 _et_val = et_obs_tensor[val_sl.start:] if et_obs_tensor is not None else None
+_tws_train = tws_obs_tensor[train_sl.start:] if tws_obs_tensor is not None else None
+_tws_val = tws_obs_tensor[val_sl.start:] if tws_obs_tensor is not None else None
+
+# IHI : précalculer les indices une fois sur le forcing complet, normaliser
+# z-score, sliciter aux stations. Utilisés par ContextualQuantileHead.
+_ihi_full = None
+if cfg.get("loss", {}).get("nll_distribution", "").lower() == "contextual-quantile":
+    from meandre.temporal.indices import compute_all_indices
+    print("[IHI] Compute hydrométéo indices sur full forcing...")
+    with torch.no_grad():
+        _idx = compute_all_indices(forcing, doy)
+    # Empilement (T, N, 5) avec GDD, API, SPI, FN, SWE_proxy
+    _ihi_keys = ["gdd_cum", "api_30", "spi_30", "frost_number_90", "swe_proxy"]
+    _ihi_stack = torch.stack([_idx[k] for k in _ihi_keys], dim=-1)            # (T, N, 5)
+    # Slice aux stations
+    _station_idx_t = torch.tensor(station_indices, device=device)
+    _ihi_st = _ihi_stack[:, _station_idx_t, :]                                # (T, n_st, 5)
+    # Z-score normalization globale par indice (stable, comparable au fit_head)
+    _ihi_mean = _ihi_st.mean(dim=(0, 1), keepdim=True)
+    _ihi_std = _ihi_st.std(dim=(0, 1), keepdim=True) + 1e-6
+    _ihi_full = ((_ihi_st - _ihi_mean) / _ihi_std).contiguous()
+    print(f"[IHI] indices shape : {_ihi_full.shape}  (T={_ihi_full.shape[0]}, n_st={_ihi_full.shape[1]}, 5)")
+_ihi_train = _ihi_full[train_sl.start:] if _ihi_full is not None else None
+_ihi_val = _ihi_full[val_sl.start:] if _ihi_full is not None else None
 train_data = TrainingData(
     forcing = forcing,
     q_obs = q_obs_tensor[train_sl.start:],
@@ -519,6 +627,8 @@ train_data = TrainingData(
     train_slice = train_sl,
     val_slice = train_sl,
     et_obs = _et_train,
+    tws_obs = _tws_train,
+    indices_ihi = _ihi_train,
 )
 val_data = TrainingData(
     forcing = forcing,
@@ -533,6 +643,8 @@ val_data = TrainingData(
     train_slice = val_sl,
     val_slice = val_sl,
     et_obs = _et_val,
+    tws_obs = _tws_val,
+    indices_ihi = _ihi_val,
 )
 
 # Station weights : two modes, switched by config `[training].station_weight_mode`.
@@ -566,7 +678,57 @@ for i in range(n_stations):
 
 print(f"station_var range: {station_var.min():.1f} - {station_var.max():.1f}")
 
+# Seuil pics par station : Q_p75 climato sur la période d'entraînement.
+# Utilisé par peak_weighted_mse_loss si w_peak > 0. Empêche le peak-shaving
+# diagnostiqué dans le PIT val 2019-2021 (surplus u > 0.75 = pics sous-prédits).
+peak_threshold = torch.zeros(n_stations, dtype=torch.float32, device=device)
+q_train_slice = q_obs_tensor[train_sl]
+for i in range(n_stations):
+    mask = ~torch.isnan(q_train_slice[:, i])
+    if mask.sum() > 30:
+        peak_threshold[i] = torch.quantile(q_train_slice[mask, i], 0.75)
+    else:
+        peak_threshold[i] = float("inf")  # désactive si pas assez de données
+n_finite = (peak_threshold < float("inf")).sum().item()
+print(f"peak_threshold (Q_p75 train) range: {peak_threshold[peak_threshold < float('inf')].min():.2f} - "
+      f"{peak_threshold[peak_threshold < float('inf')].max():.2f}  ({n_finite}/{n_stations} stations)")
+
 lcfg = cfg["loss"]
+
+# ── Distribution probabiliste : "normal" | "log-normal" | "box-cox" ─────
+# Mappe vers lambda Box-Cox (1 = linéaire/normal, 0 = log-normal, 0.3 standard hydro)
+_dist = str(lcfg.get("nll_distribution", "normal")).lower()
+if _dist == "normal":
+    _nll_lambda = 1.0
+elif _dist == "log-normal":
+    _nll_lambda = 0.0
+elif _dist == "box-cox":
+    _nll_lambda = float(lcfg.get("nll_box_cox_lambda", 0.3))
+elif _dist == "student-t":
+    # Student-t en espace Box-Cox (queues lourdes + variance stabilisée).
+    # ν appris via noise_head.log_df. λ configurable, défaut 0.3 (standard hydro).
+    _nll_lambda = float(lcfg.get("nll_box_cox_lambda", 0.3))
+elif _dist == "quantile":
+    # Régression quantile (Phase 2 v2) : pas de NLL, pinball loss en m³/s.
+    # λ ignoré (les quantiles vivent en linéaire). w_quantile pilote.
+    _nll_lambda = 1.0
+elif _dist == "mixture":
+    # MDN (option 2b) : densité conditionnelle Σ_k π_k N(μ_k, σ_k²).
+    # En linéaire (pas de Box-Cox). w_mixture pilote.
+    _nll_lambda = 1.0
+elif _dist == "contextual-quantile":
+    # ContextualQuantileHead (IHI, Phase A) : K quantiles non-paramétriques
+    # avec features enrichies (spatial_params, Q_sim, log Q_sim, indices IHI,
+    # DOY sin/cos). Médiane libre. w_quantile pilote (pinball loss).
+    _nll_lambda = 1.0
+else:
+    raise ValueError(
+        f"nll_distribution invalide : {_dist!r} "
+        "(attendu : 'normal', 'log-normal', 'box-cox', 'student-t', 'quantile', 'mixture', "
+        "'contextual-quantile')"
+    )
+print(f"[loss] nll_distribution = {_dist}  (lambda Box-Cox = {_nll_lambda})")
+
 loss_fn = HydroLoss(
     w_nse=lcfg["w_nse"], w_kge=lcfg["w_kge"], w_pbias=lcfg["w_pbias"],
     w_mse=lcfg["w_mse"], w_nrmse=lcfg["w_nrmse"],
@@ -574,9 +736,21 @@ loss_fn = HydroLoss(
     w_nll=lcfg.get("w_nll", 0.0),
     w_nll_et=lcfg.get("w_nll_et", 0.0),
     w_nll_swe=lcfg.get("w_nll_swe", 0.0),
+    w_et=lcfg.get("w_et", 0.0),
+    w_snow=lcfg.get("w_snow", 0.0),
+    w_tws=lcfg.get("w_tws", 0.0),
+    w_quantile=lcfg.get("w_quantile", 0.0),
+    w_mixture=lcfg.get("w_mixture", 0.0),
+    w_peak=lcfg.get("w_peak", 0.0),
+    nll_distribution=_dist,
+    w_flatness=lcfg.get("w_flatness", 0.0),
+    nll_lambda=_nll_lambda,
+    flatness_n_bins=int(lcfg.get("flatness_n_bins", 21)),
+    flatness_bandwidth=float(lcfg.get("flatness_bandwidth", 0.02)),
     w_physics=lcfg["w_physics"], w_residual=lcfg["w_residual"],
     per_station=True, station_weights=station_areas,
     station_var=station_var,
+    peak_threshold=peak_threshold if lcfg.get("w_peak", 0.0) > 0 else None,
 )
 
 tcfg = cfg["training"]
@@ -603,10 +777,15 @@ train_cfg = TrainingConfig(
     lr_new_features_mult = LR_NEW_MULT if WARM_START else None,
     compile_modules = tcfg.get("compile_modules", False),
     w_prior = tcfg.get("w_prior", 0.0),
+    w_diversity = tcfg.get("w_diversity", 0.0),
+    diversity_cv_target = tcfg.get("diversity_cv_target", 0.12),
+    w_latent_reg = tcfg.get("w_latent_reg", 1e-3),
+    latent_lr_mult = tcfg.get("latent_lr_mult", 50.0),
     w_boundary = tcfg.get("w_boundary", 0.0),
     w_sigma_anchor = tcfg.get("w_sigma_anchor", 0.0),
     sigma_anchor_target_a = tcfg.get("sigma_anchor_target_a", -3.0),
     sigma_anchor_target_b = tcfg.get("sigma_anchor_target_b", None),
+    sigma_anchor_var_weight = tcfg.get("sigma_anchor_var_weight", 0.0),
     w_concrete_kl = tcfg.get("w_concrete_kl", 0.0),
     eta_min_factor = tcfg.get("eta_min_factor", 0.01),
     # Autopilot
@@ -670,7 +849,14 @@ trainer = Trainer(
     run_logger = run_logger,
     checkpoint_path = str(CHECKPOINT),
 )
-trainer.fit()
+# Mode éval seule : MEANDRE_EVAL_ONLY=1 saute l'entraînement et va directement
+# aux blocs d'évaluation (test held-out + couverture) avec le checkpoint sauvé.
+import os as _os
+EVAL_ONLY = _os.environ.get("MEANDRE_EVAL_ONLY") == "1" or cfg["training"].get("eval_only", False)
+if EVAL_ONLY:
+    print("[eval-only] entraînement sauté — évaluation du checkpoint existant")
+else:
+    trainer.fit()
 
 # %% [markdown]
 """
@@ -685,7 +871,7 @@ if TEST_START and TEST_END:
     model.eval()
     test_sl = dates_to_slice(all_dates, TEST_START, TEST_END)
     print(f"\n{'='*72}")
-    print(f"  HELD-OUT TEST : {TEST_START} → {TEST_END}  (steps {test_sl.start}:{test_sl.stop})")
+    print(f"  HELD-OUT TEST : {TEST_START} -> {TEST_END}  (steps {test_sl.start}:{test_sl.stop})")
     print(f"{'='*72}")
     # Simulate full forcing, then slice test period
     with torch.no_grad():
@@ -716,6 +902,33 @@ if TEST_START and TEST_END:
     print(f"  Test KGE per-station mean   : {test_kges.mean():.4f}")
     print(f"  Stations with KGE > 0.5: {(test_kges > 0.5).sum()}/{len(test_kges)}")
     print(f"  Stations with KGE < 0  : {(test_kges < 0).sum()}/{len(test_kges)}")
+
+    # ── Couverture probabiliste Box-Cox sur le test (noise head) ────────────
+    if hasattr(model, "noise_head") and model.noise_head is not None:
+        from meandre.utils.noise_head import SpatialNoiseHead
+        from meandre.training.loss import box_cox as _bc, gaussian_nll_loss as _gnll
+        _lam = (cfg["loss"].get("nll_box_cox_lambda", 0.3)
+                if cfg["loss"].get("nll_distribution") == "box-cox" else 1.0)
+        with torch.no_grad():
+            if isinstance(model.noise_head, SpatialNoiseHead):
+                _sp = model.spatial_encoder(node_coords, territorial.to_tensor())
+                _ls_full = model.noise_head(_sp.to_tensor(), Q_test_full.detach())
+            else:
+                _ls_full = model.noise_head(Q_test_full.detach())
+        _ls = _ls_full[test_sl.start:test_sl.stop, station_mask].cpu()[:n_test]  # (n_test, n_st)
+        _sig = _ls.exp()
+        _qo_t = _bc(q_obs_test, _lam) if _lam != 1.0 else q_obs_test
+        _qs_t = _bc(Q_test, _lam) if _lam != 1.0 else Q_test
+        _valid = ~torch.isnan(_qo_t) & ~torch.isnan(_qs_t)
+        print(f"  -- Couverture Box-Cox(lam={_lam}) sur le test --")
+        for _lvl, _z in [(50, 0.674), (90, 1.645)]:
+            _lo = _qs_t - _z * _sig
+            _hi = _qs_t + _z * _sig
+            _inint = (_qo_t >= _lo) & (_qo_t <= _hi)
+            _cov = (_inint & _valid).sum().float() / _valid.sum().float()
+            print(f"  Test cov_{_lvl}: {float(_cov):.4f}  (cible {_lvl/100:.2f})")
+        _nll = _gnll(q_obs_test[_valid], Q_test[_valid], _ls[_valid], lam=_lam)
+        print(f"  Test NLL (box-cox): {float(_nll):.4f}   σ_mean: {float(_sig[_valid].mean()):.3f}")
 
 # %% [markdown]
 """
@@ -980,7 +1193,7 @@ for ax, sid in zip(axes, top_sids):
 
 axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 fig.tight_layout()
-fig.savefig("notebooks/slso/results/hydrographs.png", dpi=150, bbox_inches="tight")
+fig.savefig(FIELDS_NC.parent / "hydrographs.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 
 # %% [markdown]
@@ -999,7 +1212,7 @@ ax.set_ylabel("Number of stations")
 ax.set_title(f"NSE distribution — SLSO {DATE_START} to {DATE_END}")
 ax.legend()
 fig.tight_layout()
-fig.savefig("notebooks/slso/results/nse_distribution.png", dpi=150, bbox_inches="tight")
+fig.savefig(FIELDS_NC.parent / "nse_distribution.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 
 # %% [markdown]

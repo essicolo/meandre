@@ -29,7 +29,7 @@ def test_soil_mass_conservation():
     wp = torch.ones(n) * 0.15
 
     f_vert = torch.full((n,), 0.5)
-    t1, t2, t3, R_surface, interflow, baseflow = soil(
+    t1, t2, t3, R_surface, interflow, baseflow, _S_uz = soil(
         P_eff, ET1, ET2, ET3,
         theta1, theta2, theta3,
         K_sat, K_sat, K_sat,

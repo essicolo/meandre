@@ -26,7 +26,7 @@ def test_output_shapes():
     P_eff, ET1, ET2, ET3, theta1, theta2, theta3, K_sat, por, fc, wp = args
     n = P_eff.shape[0]
     f_vert = torch.full((n,), 0.5)
-    t1, t2, t3, R, interflow, baseflow = soil(
+    t1, t2, t3, R, interflow, baseflow, _S_uz = soil(
         P_eff, ET1, ET2, ET3, theta1, theta2, theta3,
         K_sat, K_sat, K_sat, por, por, por, fc, fc, fc, wp, wp, wp,
         f_vert, f_vert, f_vert,
@@ -42,7 +42,7 @@ def test_theta_bounds():
     P_eff, ET1, ET2, ET3, theta1, theta2, theta3, K_sat, por, fc, wp = args
     n = P_eff.shape[0]
     f_vert = torch.full((n,), 0.5)
-    t1, t2, t3, R, interflow, baseflow = soil(
+    t1, t2, t3, R, interflow, baseflow, _S_uz = soil(
         P_eff, ET1, ET2, ET3, theta1, theta2, theta3,
         K_sat, K_sat, K_sat, por, por, por, fc, fc, fc, wp, wp, wp,
         f_vert, f_vert, f_vert,
@@ -66,7 +66,7 @@ def test_no_rainfall_dries_out():
     wp = torch.ones(n) * 0.15
     n = P_eff.shape[0]
     f_vert = torch.full((n,), 0.5)
-    t1, t2, t3, R, interflow, baseflow = soil(
+    t1, t2, t3, R, interflow, baseflow, _S_uz = soil(
         P_eff, ET1, ET2, ET3, theta1, theta2, theta3,
         K_sat, K_sat, K_sat, por, por, por, fc, fc, fc, wp, wp, wp,
         f_vert, f_vert, f_vert,

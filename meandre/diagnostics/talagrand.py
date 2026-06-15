@@ -42,9 +42,14 @@ def compute_pit_data(cfg_path: str | Path, device: str | None = None) -> dict:
     from meandre.data.basin_cache import BasinCache
     from meandre.data.gridded_forcing import extract_forcing
     from meandre.utils.state import HydroState
+    from meandre.utils.paths import run_dir_from_config, resolve_run_path
 
     with open(cfg_path, "rb") as f:
         cfg = tomllib.load(f)
+
+    run_dir = run_dir_from_config(cfg_path)
+    def _p(key: str) -> Path:
+        return resolve_run_path(cfg["paths"][key], run_dir)
 
     dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
@@ -57,7 +62,7 @@ def compute_pit_data(cfg_path: str | Path, device: str | None = None) -> dict:
     val_sl = slice(int((VAL_START - DATE_START) / np.timedelta64(1, "D")),
                    int((VAL_END - DATE_START) / np.timedelta64(1, "D")))
 
-    ckpt_path = cfg["paths"]["checkpoint"]
+    ckpt_path = _p("checkpoint")
     ckpt = torch.load(ckpt_path, map_location=dev, weights_only=False)
     init_kw = dict(ckpt["init_kwargs"])
     init_kw["concrete_dropout"] = cfg["model"].get("concrete_dropout", False)
@@ -68,16 +73,16 @@ def compute_pit_data(cfg_path: str | Path, device: str | None = None) -> dict:
     model.to(dev)
     model.eval()
 
-    cache = BasinCache(cfg["paths"]["basin_db"])
+    cache = BasinCache(_p("basin_db"))
     hydro = cache.load(device=dev)
 
     forcing_data = extract_forcing(
-        zarr_path=cfg["paths"]["weather_grid"],
+        zarr_path=_p("weather_grid"),
         node_coords=hydro["node_coords"],
         node_elev=None,
         date_start=date_start_str,
         date_end=date_end_str,
-        cache_nc=Path(cfg["paths"]["forcing_cache"]),
+        cache_nc=_p("forcing_cache"),
         device=dev,
     )
 
@@ -124,24 +129,69 @@ def compute_pit_data(cfg_path: str | Path, device: str | None = None) -> dict:
     sigma_val = sigma_full[:, station_indices].cpu().numpy()
     q_obs_np = q_obs_val.cpu().numpy()
 
-    # PIT: u = Phi((y - mu) / sigma). NaN if obs missing or sigma not finite.
-    z = (q_obs_np - q_sim_val) / np.maximum(sigma_val, 1e-9)
+    # Distribution probabiliste utilisée à l'entraînement → espace du PIT.
+    lcfg_pit = cfg.get("loss", {})
+    dist = str(lcfg_pit.get("nll_distribution", "normal")).lower()
+    if dist == "normal":
+        nll_lambda = 1.0
+    elif dist == "log-normal":
+        nll_lambda = 0.0
+    elif dist == "box-cox":
+        nll_lambda = float(lcfg_pit.get("nll_box_cox_lambda", 0.3))
+    else:
+        nll_lambda = 1.0
+
+    def _box_cox(x, lam, eps=1e-3):
+        x_safe = np.maximum(x, eps)
+        if lam == 0.0:
+            return np.log(x_safe)
+        if lam == 1.0:
+            return x_safe - 1.0
+        return (x_safe ** lam - 1.0) / lam
+
+    # PIT « training-space » : cohérent avec la NLL utilisée.
+    # σ est interprété dans l'espace transformé (sortie directe du noise_head).
+    q_obs_t = _box_cox(q_obs_np, nll_lambda)
+    q_sim_t = _box_cox(q_sim_val, nll_lambda)
+    z = (q_obs_t - q_sim_t) / np.maximum(sigma_val, 1e-9)
     pit_2d = ndtr(z)
     valid = ~np.isnan(q_obs_np) & np.isfinite(pit_2d)
     pit_2d_valid = np.where(valid, pit_2d, np.nan)
 
+    # PIT log-normal what-if (delta-method) — utile seulement si entraîné en
+    # « normal ». Sinon redondant, mais on le garde pour comparaison.
+    eps_log = 1e-3
+    mu_pos = np.maximum(q_sim_val, eps_log)
+    var_rel = (sigma_val / mu_pos) ** 2
+    sigma_log = np.sqrt(np.log1p(var_rel))
+    mu_log = np.log(mu_pos) - 0.5 * sigma_log ** 2
+    y_log = np.log(np.maximum(q_obs_np, eps_log))
+    z_log = (y_log - mu_log) / np.maximum(sigma_log, 1e-9)
+    pit_log_2d = ndtr(z_log)
+    valid_log = ~np.isnan(q_obs_np) & np.isfinite(pit_log_2d)
+    pit_log_2d_valid = np.where(valid_log, pit_log_2d, np.nan)
+
     pit_per_station = {
         sid: pit_2d_valid[:, j][~np.isnan(pit_2d_valid[:, j])]
+        for j, sid in enumerate(station_ids_sorted)
+    }
+    pit_log_per_station = {
+        sid: pit_log_2d_valid[:, j][~np.isnan(pit_log_2d_valid[:, j])]
         for j, sid in enumerate(station_ids_sorted)
     }
 
     return {
         "pit": pit_2d_valid[~np.isnan(pit_2d_valid)],
         "pit_per_station": pit_per_station,
+        "pit_lognormal": pit_log_2d_valid[~np.isnan(pit_log_2d_valid)],
+        "pit_lognormal_per_station": pit_log_per_station,
         "q_sim": q_sim_val,
         "q_obs": q_obs_np,
         "sigma": sigma_val,
+        "sigma_log": sigma_log,
         "station_ids": station_ids_sorted,
+        "nll_distribution": dist,
+        "nll_lambda": nll_lambda,
     }
 
 
@@ -153,6 +203,97 @@ def pit_histogram(pit: np.ndarray, n_bins: int = 21) -> tuple[np.ndarray, np.nda
     """
     counts, edges = np.histogram(pit, bins=n_bins, range=(0.0, 1.0))
     return counts, edges
+
+
+def candille_talagrand(
+    pit_matrix: np.ndarray,
+    n_bins: int = 20,
+    block_len: int = 30,
+    n_boot: int = 500,
+    seed: int = 0,
+) -> dict:
+    """Écart à la platitude normalisé à la Candille-Talagrand (2005).
+
+    Candille & Talagrand définissent Δ = Σ_i (n_i − N/B)² et le rapportent à
+    son espérance sous fiabilité parfaite Δ0 = N(B−1)/B ; le rapport
+    δ = Δ/Δ0 vaut 1 pour une prévision parfaitement fiable (l'écart observé
+    est alors entièrement du bruit d'échantillonnage), et δ >> 1 signale une
+    vraie déviation de l'uniformité.
+
+    L'hypothèse i.i.d. derrière Δ0 est fausse pour des débits journaliers
+    (autocorrélation temporelle + corrélation inter-stations) : Δ0 sous-estime
+    le bruit et δ_iid devient anticonservateur. Correction par bootstrap par
+    blocs : les marginales sont d'abord uniformisées par rangs PAR station
+    (impose H0 en préservant la dépendance en rangs), puis des blocs temporels
+    entiers, communs à toutes les stations (la corrélation spatiale est donc
+    conservée), sont rééchantillonnés pour estimer la distribution de δ_iid
+    sous H0 avec dépendance.
+
+    Args:
+        pit_matrix: (T, S) valeurs PIT, NaN pour les manquants. Un vecteur 1-D
+            est accepté (traité comme une seule série temporelle).
+        n_bins: nombre de classes (20 = convention pit_metrics).
+        block_len: longueur des blocs temporels (jours) ; ~30 j couvre
+            l'autocorrélation hydrologique courante.
+        n_boot: nombre de rééchantillonnages bootstrap.
+        seed: graine du générateur.
+
+    Returns:
+        dict : delta_iid (rapport C&T sous i.i.d., cible 1), delta_eff
+        (corrigé de la dépendance, cible 1), tau (facteur d'inflation de
+        variance = E[δ_iid | H0, dépendance]), p_value (bootstrap, unilatéral
+        droit), n, n_bins.
+    """
+    from scipy.stats import rankdata
+
+    pit = np.asarray(pit_matrix, dtype=float)
+    if pit.ndim == 1:
+        pit = pit[:, None]
+    T, S = pit.shape
+    valid = np.isfinite(pit)
+    pooled = pit[valid]
+    N = pooled.size
+    B = int(n_bins)
+    if N < 10 * B:
+        raise ValueError(f"trop peu de PIT valides ({N}) pour {B} classes")
+
+    counts, _ = np.histogram(pooled, bins=B, range=(0.0, 1.0))
+    delta_obs = float(((counts - N / B) ** 2).sum())
+    delta0_iid = N * (B - 1) / B
+    delta_iid = delta_obs / delta0_iid
+
+    # H0 par rangs : marginales uniformes par station, dépendance préservée.
+    U = np.full_like(pit, np.nan)
+    for s in range(S):
+        m = valid[:, s]
+        n_s = int(m.sum())
+        if n_s > 0:
+            U[m, s] = rankdata(pit[m, s]) / (n_s + 1.0)
+
+    bl = int(max(1, min(block_len, T)))
+    n_blocks = int(np.ceil(T / bl))
+    rng = np.random.default_rng(seed)
+    ratios = np.empty(n_boot, dtype=float)
+    for b in range(n_boot):
+        starts = rng.integers(0, T - bl + 1, size=n_blocks)
+        rows = np.concatenate([np.arange(s0, s0 + bl) for s0 in starts])[:T]
+        ub = U[rows]
+        ub = ub[np.isfinite(ub)]
+        Nb = ub.size
+        cb, _ = np.histogram(ub, bins=B, range=(0.0, 1.0))
+        ratios[b] = float(((cb - Nb / B) ** 2).sum()) / (Nb * (B - 1) / B)
+
+    tau = float(ratios.mean())
+    delta_eff = delta_iid / max(tau, 1e-12)
+    p_value = float((1 + int((ratios >= delta_iid).sum())) / (n_boot + 1))
+    return {
+        "delta_iid": float(delta_iid),
+        "delta_eff": float(delta_eff),
+        "tau": tau,
+        "p_value": p_value,
+        "n": int(N),
+        "n_bins": B,
+    }
 
 
 def flatness_metrics(counts: np.ndarray) -> dict:
@@ -211,6 +352,16 @@ if __name__ == "__main__":
         print("  -> Bias: obs systematically below mean forecast (Q_sim trop élevé)")
     elif data["pit"].mean() > 0.55:
         print("  -> Bias: obs systematically above mean forecast (Q_sim trop bas)")
+
+    # Diagnostic log-normal en parallèle
+    counts_log, _ = pit_histogram(data["pit_lognormal"], n_bins=21)
+    metrics_log = flatness_metrics(counts_log)
+    print(f"\n{'='*60}")
+    print(f"PIT log-normal (delta-method) — {metrics_log['n_total']} obs")
+    print(f"{'='*60}")
+    print(f"Flatness delta : {metrics_log['delta']:.4f}   (cf linéaire: {metrics['delta']:.4f})")
+    print(f"chi2           : {metrics_log['chi2']:.2f}, p = {metrics_log['p_value']:.4f}")
+    print(f"mean PIT       : {data['pit_lognormal'].mean():.4f}")
 
     print(f"\nPer-station flatness delta:")
     rows = []

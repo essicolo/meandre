@@ -55,6 +55,10 @@ class HeteroscedasticNoiseHead(nn.Module):
         super().__init__()
         self.log_sigma_a = nn.Parameter(torch.tensor(a_init, dtype=torch.float32))
         self.log_sigma_b = nn.Parameter(torch.tensor(b_init, dtype=torch.float32))
+        # ν = exp(log_df), init ν=5 (queues plus lourdes que gaussienne, ν→∞).
+        # Utilisé uniquement quand nll_distribution = "student-t".
+        import math as _math
+        self.log_df = nn.Parameter(torch.tensor(_math.log(5.0), dtype=torch.float32))
         self.eps = eps
         self.log_sigma_min = log_sigma_min
         self.log_sigma_max = log_sigma_max
@@ -131,6 +135,10 @@ class SpatialNoiseHead(nn.Module):
         with torch.no_grad():
             self.net[-1].bias[0] = -2.3  # a_init
             self.net[-1].bias[1] = 1.0    # b_init
+        # ν = exp(log_df), init ν=5 (queues plus lourdes que gaussienne).
+        # Utilisé uniquement quand nll_distribution = "student-t".
+        import math as _math
+        self.log_df = nn.Parameter(torch.tensor(_math.log(5.0), dtype=torch.float32))
 
     def forward(self, spatial_params: Tensor, Q: Tensor) -> Tensor:
         """Compute per-node log σ.
@@ -156,25 +164,30 @@ class SpatialNoiseHead(nn.Module):
         self, spatial_params: Tensor,
         target_a: float = -3.0,
         target_b: float | None = None,
+        var_weight: float = 0.0,
     ) -> Tensor:
-        """L2 pull on the *mean* (a, b) across nodes toward an anchor.
+        """L2 pull on the *mean* (a, b) across nodes + optional variance penalty.
 
-        Regularises the average uncertainty, not per-node values, so
-        individual nodes can still deviate from the target. This prevents
-        the NLL degeneracy (σ inflates to mask a bad μ) while allowing
-        spatially-varying uncertainty.
+        Mode "hybride" : empêche à la fois (i) la moyenne de σ de dériver
+        loin de la cible et (ii) la variance inter-nœuds d'exploser. Les
+        nœuds peuvent dévier modérément de la cible mais pas former une
+        queue de nœuds très sur-dispersés qui dominent la NLL totale.
 
         Parameters
         ----------
         spatial_params : Tensor, shape (n_nodes, N_PARAMS)
-            Needed to compute the forward pass through the MLP.
-        target_a : float
-            Target for the mean of a(n). Default -3.0 (≈5% relative noise).
-        target_b : float or None
-            Target for the mean of b(n). If None, b is left free.
+        target_a, target_b : float
+            Cibles pour la *moyenne* de a(n) et b(n).
+        var_weight : float
+            Coefficient multiplicateur de var(a) + var(b) ajoutée à la
+            pénalité de moyenne. 0 = ancien comportement (moyenne seule).
         """
         ab = self.net(spatial_params)  # (n_nodes, 2)
         loss = (ab[:, 0].mean() - target_a) ** 2
         if target_b is not None:
             loss = loss + (ab[:, 1].mean() - target_b) ** 2
+        if var_weight > 0:
+            loss = loss + var_weight * ab[:, 0].var(unbiased=False)
+            if target_b is not None:
+                loss = loss + var_weight * ab[:, 1].var(unbiased=False)
         return loss

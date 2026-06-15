@@ -86,6 +86,88 @@ def test_forward_pass_no_crash():
     assert isinstance(final_state, HydroState)
 
 
+def test_latent_codes_end_to_end(tmp_path):
+    """NeRF avec codes latents : forward, gradient sur z_n, shrinkage, save/load."""
+    model = HydroModel(
+        n_nodes=N_NODES, n_forcing=N_FORCING, context_window=10, residual_history=5,
+        max_travel_time=5, use_temporal=True, use_residual=False,
+        use_travel_time_attn=False, use_latent_codes=True, latent_dim=8,
+    )
+    from meandre.spatial.field_network import SpatialParams
+    enc = model.spatial_encoder
+    # Mode additif par défaut : offset par nœud PAR PARAMÈTRE (N_PARAMS).
+    assert enc.use_latent_codes and enc.latent_codes.shape == (N_NODES, SpatialParams.N_PARAMS)
+    forcing = _make_forcing()
+    graph = synthetic_linear_graph(N_NODES, tau_days=1)
+    node_coords = torch.randn(N_NODES, 2)
+    territorial = _make_territorial()
+    withdrawals = WithdrawalData.zeros(N_TIMESTEPS, N_NODES)
+    doy = torch.arange(1, N_TIMESTEPS + 1) % 365 + 1
+
+    Q, _ = model.simulate(forcing, HydroState.zeros(N_NODES), graph, node_coords,
+                          territorial, withdrawals, doy)
+    # La régularisation est nulle à l'init (codes = 0) et le gradient l'atteint.
+    assert float(enc.latent_reg()) == 0.0
+    (Q.abs().mean() + 1.0 * enc.latent_reg()).backward()
+    assert enc.latent_codes.grad is not None and torch.isfinite(enc.latent_codes.grad).all()
+
+    # Save/load reconstruit les codes.
+    ckpt = tmp_path / "lat.pt"
+    model.save(str(ckpt))
+    import torch as _t
+    ck = _t.load(str(ckpt), map_location="cpu", weights_only=False)
+    assert ck["init_kwargs"].get("use_latent_codes") is True
+    model2 = HydroModel(**ck["init_kwargs"]); model2.load(str(ckpt))
+    assert model2.spatial_encoder.use_latent_codes
+    assert _t.allclose(model2.spatial_encoder.latent_codes, enc.latent_codes)
+
+
+def test_quickflow_reservoir_end_to_end(tmp_path):
+    """HydroModel avec réservoir à seuil : forward, gradient sur K0/UZL, save/load."""
+    model = HydroModel(
+        n_nodes=N_NODES,
+        n_forcing=N_FORCING,
+        context_window=10,
+        residual_history=5,
+        max_travel_time=5,
+        use_temporal=True,
+        use_residual=False,
+        use_travel_time_attn=False,
+        soil_quickflow_reservoir=True,
+    )
+    forcing = _make_forcing()
+    initial_state = HydroState.zeros(N_NODES)
+    graph = synthetic_linear_graph(N_NODES, tau_days=1)
+    node_coords = torch.randn(N_NODES, 2)
+    territorial = _make_territorial()
+    withdrawals = WithdrawalData.zeros(N_TIMESTEPS, N_NODES)
+    doy = torch.arange(1, N_TIMESTEPS + 1) % 365 + 1
+
+    # Forward + backward : le gradient doit atteindre les 3 params du réservoir.
+    Q_sim, final_state = model.simulate(
+        forcing, initial_state, graph, node_coords, territorial, withdrawals, doy
+    )
+    assert not torch.isnan(Q_sim).any()
+    assert final_state.S_uz is not None and final_state.S_uz.shape == (N_NODES,)
+    Q_sim.abs().mean().backward()
+    soil = model.vertical_column.soil
+    for name in ("k0_uz_raw", "k1_uz_raw", "uzl_raw", "qf_frac_raw"):
+        g = getattr(soil, name).grad
+        assert g is not None and torch.isfinite(g).all(), f"pas de gradient sur {name}"
+
+    # Save/load : init_kwargs doit reconstruire le réservoir (sinon mismatch).
+    ckpt = tmp_path / "qf.pt"
+    model.save(str(ckpt))
+    import torch as _t
+    ck = _t.load(str(ckpt), map_location="cpu", weights_only=False)
+    assert ck["init_kwargs"].get("soil_quickflow_reservoir") is True
+    model2 = HydroModel(**ck["init_kwargs"])
+    model2.load(str(ckpt))  # ne doit pas lever de size mismatch
+    assert model2.vertical_column.soil.use_quickflow_reservoir is True
+    assert _t.allclose(model2.vertical_column.soil.k0_uz_raw,
+                       model.vertical_column.soil.k0_uz_raw)
+
+
 def test_loss_is_differentiable():
     """Loss.backward() must produce non-None, non-zero gradients on all params."""
     model = HydroModel(

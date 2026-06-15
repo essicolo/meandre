@@ -1,0 +1,161 @@
+# slso-kendall-gal-v3-phase2-boxcox.toml
+# Phase 2 « Box-Cox + flatness loss » : fine-tune court depuis le best.pt
+# de phase 2 standard, avec NLL gaussienne en espace Box-Cox(0.3) + loss
+# flatness directe sur le PIT.
+#
+# Justification :
+#   - Bates & Campbell 2001 : résidus hydrologiques quasi-normaux après
+#     Box-Cox λ≈0.3 (standard BATEA, Renard, Thyer).
+#   - Le diagnostic 2026-05-25 a montré que :
+#       * NLL linéaire → spike u=1, vide u=0 (queues mal modélisées)
+#       * Log-normal what-if → vague (σ trop gonflée)
+#   - Box-Cox(0.3) : compromis canonique entre les deux.
+#   - Flatness loss : cible directement δ² (déviation PIT vs uniforme),
+#     contrairement à la NLL qui tolère σ inflatée.
+#
+# Le σ du noise_head est ré-interprété en espace Box-Cox(0.3) par le training
+# (lambda=0.3 dans gaussian_nll_loss et flatness_loss). Le warm-start initialise
+# σ depuis l'espace linéaire — ATTENDRE 2-3 epochs que noise_head s'adapte
+# avant de juger la loss absolue.
+#
+# Pour lancer :
+#   python .runs/slso/slso.py .runs/slso/config/slso-kendall-gal-v3-phase2-boxcox.toml
+
+[paths]
+basin_db = "data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing.nc"
+checkpoint = "checkpoints/best-kendall-gal-v3-phase2-boxcox.pt"
+fields_nc = "results/fields-kendall-gal-v3-phase2-boxcox.nc"
+reach_parquet = "results/reach-kendall-gal-v3-phase2-boxcox.parquet"
+runs_db = "logs/runs-kendall-gal-v3-phase2-boxcox.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = true
+concrete_init_p = 0.05
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+# ── Warm-start depuis le best.pt de phase 2 standard ─────────────────────
+warm_start = true
+warm_start_from = "checkpoints/best-kendall-gal-v3-phase2.pt"
+
+n_epochs = 20                       # un peu plus long : noise_head doit s'adapter à Box-Cox
+lr = 5e-5
+lr_finetune = 5e-5
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 1e-4
+
+# ── Backbone gelé (idem phase 2) ─────────────────────────────────────────
+freeze_spatial = true
+freeze_temporal = true
+freeze_backbone = true
+
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 30
+compile_modules = false
+
+# ── Métrique trackée : NLL en espace Box-Cox (lower is better) ──────────
+best_metric = "nll"
+best_metric_tolerance = 0.005
+
+station_weight_mode = "sqrt_area"
+
+# ── Régularisations σ ────────────────────────────────────────────────────
+w_prior = 0.0
+w_boundary = 0.0
+# Anchor maintenu fort : la NLL Box-Cox + flatness loss pourraient encore
+# tolérer une σ large, surtout sur les nœuds peu observés.
+w_sigma_anchor = 10.0
+sigma_anchor_target_a = -3.0         # cible en espace Box-Cox (à re-tuner après diag)
+sigma_anchor_target_b = 1.0
+sigma_anchor_var_weight = 0.5        # pénalise variance inter-nœuds
+w_concrete_kl = 0.01
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ────────────────────────────────────────────────────────────
+autopilot = true
+autopilot_grace_epochs = 5           # plus de marge : changement d'espace de loss
+autopilot_beta_threshold = 1.0
+autopilot_gamma_threshold = 1.0
+autopilot_lr_patience = 10
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.10  # plus tolérant : la loss change d'échelle
+autopilot_restart_max = 3
+autopilot_restart_min_no_improve = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+# ── NLL autopilot DÉSACTIVÉ ──────────────────────────────────────────────
+# La flatness loss est la cible principale ; pas besoin de ramper w_nll.
+autopilot_nll = false
+
+kendall_gal_auto = false
+
+[loss]
+# ── Distribution probabiliste : Box-Cox(0.3) — standard hydro ───────────
+nll_distribution = "box-cox"
+nll_box_cox_lambda = 0.3
+
+# NLL Gaussienne dans l'espace transformé
+w_nll = 0.1
+
+# ── NOUVELLE : Flatness loss directe sur PIT histogram ──────────────────
+# δ² ≈ flatness_metrics.delta². Avec δ_target=0.3, loss-target ≈ 0.09.
+# Poids 0.5 met l'objectif au même ordre que la NLL initiale.
+w_flatness = 0.5
+flatness_n_bins = 21
+flatness_bandwidth = 0.02            # bandwidth gaussien sur PIT in [0,1]
+
+# Reste : monitoring seul (backbone gelé)
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0                          # monitoring (KGE doit rester ~0.91)
+w_pbias = 0.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.0
+w_nrmse = 0.0
+w_physics = 0.0
+w_residual = 0.0

@@ -712,7 +712,10 @@ def _build_territorial(
 
     # Build feature columns (normalised) and physical columns (raw)
     feature_arrays = {
-        "drainage_area_km2": _t(cum_area),
+        # Log avant z-score : l'aire drainée est très asymétrique (skew ~4) ;
+        # un z-score linéaire écrase la majorité des nœuds dans une bande
+        # étroite et prive le NeRF de pouvoir discriminant. log1p l'étale.
+        "drainage_area_km2": _t(np.log1p(np.maximum(cum_area, 0.0))),
         "strahler_order": _t(strahler),
         "mean_slope_pct": _t(slope),
         "mean_elevation_m": _t(alt),

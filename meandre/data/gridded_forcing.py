@@ -41,6 +41,9 @@ def extract_forcing(
     kRS: float = 0.17,
     u2_default: float = 2.0,
     device: torch.device | None = None,
+    era5_vars: list[str] | None = None,
+    era5_cache: str | Path | None = None,
+    era5_bbox: tuple[float, float, float, float] | None = None,
 ) -> Tensor:
     """Interpolate gridded climate to node centroids and derive full forcing.
 
@@ -76,7 +79,11 @@ def extract_forcing(
     import xarray as xr
     import pandas as pd
 
-    cache_nc = Path(cache_nc) if cache_nc else None
+    # Variables à surcharger depuis ERA5-Land (sous-ensemble de R_n/e_a/u2).
+    era5_vars = [v for v in (era5_vars or []) if v in ("R_n", "e_a", "u2")]
+    # Cache distinct du proxy : évite de réutiliser un cache proxy pour un run
+    # ERA5 (et vice-versa). Même logique exposée à l'appelant (slso.py).
+    cache_nc = effective_cache_path(cache_nc, era5_vars)
 
     if cache_nc is not None:
         # Support both legacy .nc and preferred .zarr
@@ -182,6 +189,38 @@ def extract_forcing(
     else:
         u2 = np.full((n_time, n_nodes), u2_default, dtype=np.float32)
 
+    # ── Surcharge ERA5-Land (config-driven) ────────────────────────────────
+    # Remplace R_n / e_a / u2 par les valeurs mesurées ERA5-Land, interpolées
+    # au nœud le plus proche. Les variables non listées gardent le proxy.
+    if era5_vars:
+        from meandre.data.era5_loader import era5_grid_daily
+        if era5_bbox is None:
+            era5_bbox = (
+                float(coords_np[:, 0].min() - 0.2), float(coords_np[:, 1].min() - 0.2),
+                float(coords_np[:, 0].max() + 0.2), float(coords_np[:, 1].max() + 0.2),
+            )
+        if era5_cache is None:
+            era5_cache = (cache_nc.parent / "era5") if cache_nc is not None else Path("era5")
+        print(f"[gridded_forcing] Surcharge ERA5-Land {era5_vars} bbox={era5_bbox}")
+        eds = era5_grid_daily(era5_bbox, date_start, date_end, era5_cache)
+        # Aligner les dates ERA5 (00:00) sur les dates du forçage (par jour)
+        e_dates = pd.to_datetime(eds["time"].values).normalize()
+        f_dates = pd.to_datetime(dates).normalize()
+        eds = eds.assign_coords(time=e_dates).reindex(time=f_dates, method="nearest")
+        # Interpolation nœud le plus proche sur la grille ERA5
+        e_lat = eds["latitude"].values
+        e_lon = eds["longitude"].values
+        e_lat_idx = np.argmin(np.abs(e_lat[:, None] - coords_np[:, 1][None, :]), axis=0)
+        e_lon_idx = np.argmin(np.abs(e_lon[:, None] - coords_np[:, 0][None, :]), axis=0)
+        override = {"R_n": R_n, "e_a": e_a, "u2": u2}
+        for v in era5_vars:
+            proxy_mean = float(np.nanmean(override[v]))
+            arr = eds[v].values[:, e_lat_idx, e_lon_idx].astype(np.float32)  # (T, N)
+            override[v] = arr
+            print(f"[gridded_forcing]   {v}: proxy mean {proxy_mean:.3f} "
+                  f"→ ERA5 mean {float(np.nanmean(arr)):.3f}")
+        R_n, e_a, u2 = override["R_n"], override["e_a"], override["u2"]
+
     forcing = np.stack(
         [pr, tmin.astype(np.float32), tmax.astype(np.float32), R_n, u2, e_a],
         axis=-1,
@@ -204,6 +243,20 @@ def extract_forcing(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def effective_cache_path(cache_nc, era5_vars) -> Path | None:
+    """Chemin de cache effectif : suffixé ``-era5-...`` si des variables ERA5
+    sont surchargées, sinon le chemin proxy inchangé. Partagé entre
+    ``extract_forcing`` et l'appelant pour rester cohérent."""
+    if cache_nc is None:
+        return None
+    cache_nc = Path(cache_nc)
+    era5_vars = [v for v in (era5_vars or []) if v in ("R_n", "e_a", "u2")]
+    if not era5_vars:
+        return cache_nc
+    tag = "era5-" + "-".join(v.replace("_", "") for v in era5_vars)
+    return cache_nc.with_name(f"{cache_nc.stem}-{tag}{cache_nc.suffix}")
+
 
 def _open_gridded(path: str | Path):
     """Open a gridded climate dataset (Zarr, NetCDF, or GRIB) as xarray."""

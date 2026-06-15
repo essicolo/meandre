@@ -1,0 +1,150 @@
+# slso-mdn.toml — Option 2b : Mixture Density Network (Klotz-style).
+#
+# Densité prédictive conditionnelle : p(Q_obs | x) = Σ_k π_k N(μ_k, σ_k²)
+# avec K=10 composantes. Conditionneur MLP sur (spatial_params, Q_sim, log Q_sim)
+# → (π_k, μ_k, σ_k). NLL closed-form, PIT analytique, CRPS Grimit 2006.
+#
+# Backbone GELÉ (Phase 2 v3 style) : on n'entraîne que le mixture head.
+# Médiane prédictive libre (pas ancrée à Q_sim), seulement initialisée près
+# (μ_k = Q_sim + offset apprenable).
+#
+# Cibles smoke :
+#   - δ² ≤ 0.05 (vs 0.31 quantile head)
+#   - frac IQR ≈ 0.50 (cloche disparaît)
+#   - frac<0.05 ≈ 0.05 (queue basse non vide)
+#
+# Lancer :
+#   uv run python .runs/slso/slso.py .runs/slso/config/slso-mdn.toml
+
+[paths]
+basin_db = "data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing.nc"
+checkpoint = "checkpoints/best-mdn.pt"
+fields_nc = "results/fields-mdn.nc"
+reach_parquet = "results/reach-mdn.parquet"
+runs_db = "logs/runs-mdn.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[forcing]
+era5_vars = []
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0                  # backbone gelé, dropout inutile
+concrete_dropout = true
+concrete_init_p = 0.05
+param_mode = "nerf"
+
+# NOUVEAU : Mixture Density Network head
+mixture_n_components = 10
+mixture_hidden = 64
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+warm_start = true
+warm_start_from = "checkpoints/best-phase1-grace.pt"
+
+n_epochs = 15
+lr = 1e-3                       # head fresh-init, doit bouger vite
+lr_finetune = 1e-3
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 1e-4
+
+# Backbone GELÉ : seul le mixture head + noise_head (inutilisé ici) apprennent
+freeze_spatial = true
+freeze_temporal = true
+freeze_backbone = true
+
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 8
+compile_modules = false
+best_metric = "loss"            # train loss = mixture NLL ici
+best_metric_tolerance = 0.005
+station_weight_mode = "sqrt_area"
+
+w_prior = 0.0
+w_boundary = 0.0
+w_sigma_anchor = 0.0
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = true
+autopilot_grace_epochs = 5
+autopilot_beta_threshold = 1.00
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 6
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.20
+autopilot_restart_max = 2
+autopilot_restart_min_no_improve = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+autopilot_nll = false
+kendall_gal_auto = false
+
+[loss]
+nll_distribution = "mixture"
+nll_lambda = 1.0
+
+w_nll = 0.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 0.0                     # backbone gelé, KGE figé — pas besoin
+w_pbias = 0.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.0
+w_nrmse = 0.0
+w_quantile = 0.0
+w_peak = 0.0
+w_physics = 0.0
+w_residual = 0.0
+w_flatness = 0.0
+
+w_et = 0.0
+w_tws = 0.0
+w_snow = 0.0
+
+# NOUVEAU : pilote mixture NLL
+w_mixture = 1.0

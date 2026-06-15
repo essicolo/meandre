@@ -85,7 +85,45 @@ class HydroModel(nn.Module):
         clamp_min: float = -50.0,
         clamp_max: float = 500.0,
         soil_z1: float = 0.30,
+        soil_vsa_b: float = 2.5,
+        soil_quickflow_reservoir: bool = False,
+        soil_quickflow_beta: float = 0.5,
+        soil_separate_infil_capacity: bool = False,
+        use_hillslope_uh: bool = False,
         soil_bounds: dict | None = None,
+        use_quantile_head: bool = False,
+        quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
+        use_mixture_head: bool = False,
+        mixture_n_components: int = 10,
+        mixture_hidden: int = 64,
+        # ContextualQuantileHead (IHI) — médiane libre + features riches
+        use_contextual_quantile_head: bool = False,
+        cqh_n_features: int = 45,
+        cqh_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95),
+        cqh_hidden: int = 64,
+        # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD
+        use_phenology_modulator: bool = False,
+        # Routage : "level" (balayage par niveau, historique), "operator"
+        # (solve triangulaire par étages de lacs, sémantique identique) ou
+        # "operator-lagged" (lacs sur stockage de la veille, un seul solve).
+        routing_mode: str = "level",
+        # Params de lac (k_lake, beta) appris spatialement par le NeRF plutôt
+        # que scalaires globaux du LakeModule. Opt-in (change l'archi NeRF).
+        predict_lake_params: bool = False,
+        # Nombre de bandes de fréquences Fourier pour l'encodage (lon,lat). Les
+        # coords sont projetées isotropes + normalisées [-1,1] (cf. _project_coords).
+        n_coord_freqs: int = 6,
+        use_latent_codes: bool = False,
+        latent_dim: int = 8,
+        latent_mode: str = "additive",
+        routing_substeps: int = 2,
+        discharge_dependent_celerity: bool = False,
+        dq_beta: float = 0.4,
+        dq_qref_specific: float = 0.01,
+        pure_advection: bool = False,
+        dynamic_atten: bool = False,
+        da_beta: float = 2.0,
+        da_qref_specific: float = 0.05,
     ) -> None:
         super().__init__()
         self.n_nodes = n_nodes
@@ -99,9 +137,15 @@ class HydroModel(nn.Module):
         # Modules
         self.spatial_encoder = SpatialFieldNetwork(
             n_territorial=n_territorial,
+            n_coord_freqs=n_coord_freqs,
             dropout=dropout,
             param_mode=param_mode,
             soil_bounds=soil_bounds,
+            predict_lake_params=predict_lake_params,
+            n_nodes=n_nodes,
+            use_latent_codes=use_latent_codes,
+            latent_dim=latent_dim,
+            latent_mode=latent_mode,
         )
         # Store for SoilModule init via VerticalColumn
         self._soil_z1 = soil_z1
@@ -115,7 +159,13 @@ class HydroModel(nn.Module):
             concrete_init_p=concrete_init_p,
         ) if use_temporal else None
 
-        self.vertical_column = VerticalColumn(soil_z1=soil_z1)
+        self.vertical_column = VerticalColumn(
+            soil_z1=soil_z1, soil_vsa_b=soil_vsa_b,
+            soil_quickflow_reservoir=soil_quickflow_reservoir,
+            soil_quickflow_beta=soil_quickflow_beta,
+            soil_separate_infil_capacity=soil_separate_infil_capacity,
+            use_hillslope_uh=use_hillslope_uh,
+        )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
         self.residual_corrector = StateResidualCorrector(
@@ -127,7 +177,17 @@ class HydroModel(nn.Module):
         self.routing = RoutingLayer(
             use_travel_time_attention=use_travel_time_attn,
             max_tau_days=max_travel_time,
+            routing_mode=routing_mode,
+            routing_substeps=routing_substeps,
         )
+        # Célérité de canal dépendante du débit (onde cinématique, cf Hydrotel).
+        self.routing.dq_celerity = bool(discharge_dependent_celerity)
+        self.routing.dq_beta = float(dq_beta)
+        self.routing.dq_qref_specific = float(dq_qref_specific)
+        self.routing.pure_advection = bool(pure_advection)
+        self.routing.dynamic_atten = bool(dynamic_atten)
+        self.routing.da_beta = float(da_beta)
+        self.routing.da_qref_specific = float(da_qref_specific)
 
         # Optional AR(1) state noise for ensemble / UQ runs (Phase 5+)
         self.state_noise: CorrelatedStateNoise | None = (
@@ -148,6 +208,42 @@ class HydroModel(nn.Module):
         )
         self.noise_head_et = HeteroscedasticNoiseHead()    # ET (mm/jour)
         self.noise_head_swe = HeteroscedasticNoiseHead()   # SWE (mm)
+        # Tête quantile optionnelle (Phase 2 v2) : offsets monotones depuis μ.
+        self.use_quantile_head = use_quantile_head
+        if use_quantile_head:
+            from meandre.utils.quantile_head import QuantileHead
+            self.quantile_head = QuantileHead(
+                n_spatial_params=SpatialParams.N_PARAMS, taus=tuple(quantile_taus),
+            )
+        # Mixture Density Network (option 2b) : densité conditionnelle non-paramétrique
+        self.use_mixture_head = use_mixture_head
+        self.mixture_n_components = mixture_n_components
+        self.mixture_hidden = mixture_hidden
+        if use_mixture_head:
+            from meandre.utils.mixture_density_head import MixtureDensityHead
+            self.mixture_head = MixtureDensityHead(
+                n_features=SpatialParams.N_PARAMS,
+                n_components=mixture_n_components,
+                hidden=mixture_hidden,
+            )
+        # ContextualQuantileHead (IHI) : K quantiles non-paramétriques + médiane libre
+        # + features {spatial_params, Q_sim, log Q_sim, indices hydrométéo, DOY}
+        self.use_contextual_quantile_head = use_contextual_quantile_head
+        self.cqh_n_features = cqh_n_features
+        self.cqh_taus = cqh_taus
+        self.cqh_hidden = cqh_hidden
+        if use_contextual_quantile_head:
+            from meandre.utils.contextual_quantile_head import ContextualQuantileHead
+            self.contextual_quantile_head = ContextualQuantileHead(
+                n_features=cqh_n_features,
+                taus=tuple(cqh_taus),
+                hidden=cqh_hidden,
+            )
+        # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD cumulé
+        self.use_phenology_modulator = use_phenology_modulator
+        if use_phenology_modulator:
+            from meandre.temporal.phenology_modulator import PhenologyModulator
+            self.phenology_modulator = PhenologyModulator()
 
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
@@ -210,6 +306,18 @@ class HydroModel(nn.Module):
         K_musk = spatial_params.K_musk_hours * 3600.0  # hours → seconds
         x_musk = spatial_params.x_musk
 
+        # Params de lac par nœud (NeRF) — constants dans le temps, posés sur la
+        # couche de routage avant la boucle. None si la tête n'est pas activée.
+        if getattr(self.spatial_encoder, "predict_lake_params", False):
+            k_lake_n, beta_lake_n = self.spatial_encoder.lake_params(
+                node_coords, territorial.to_tensor(),
+            )
+            self.routing._lake_k = k_lake_n
+            self.routing._lake_beta = beta_lake_n
+        else:
+            self.routing._lake_k = None
+            self.routing._lake_beta = None
+
         Q_all: list[Tensor] = []
         T_water_all: list[Tensor] = []
         state_buffer: list[Tensor] = []
@@ -218,7 +326,9 @@ class HydroModel(nn.Module):
         diag_lists: dict[str, list[Tensor]] = (
             {k: [] for k in ("etp", "etr", "snowmelt", "lateral_mm",
                              "q_lateral", "q_upstream", "recharge",
-                             "q_baseflow", "T_water", "swe")}
+                             "q_baseflow", "T_water", "swe",
+                             "theta1", "theta2", "theta3",
+                             "s_gw", "canopy", "wetland")}
             if return_diagnostics else {}
         )
         outflow_buffer = OutflowRingBuffer(
@@ -289,11 +399,32 @@ class HydroModel(nn.Module):
                     #       = m³/s * 86.4 / km²
                     gw_w_mm = gw_m3s * 86.4 / torch.clamp(area_km2_local, min=1e-3)
 
+            # Update GDD cumulé pour PhenologyModulator (IHI Phase B étape 1).
+            # Reset chaque 1er janvier, cumule relu(T_mean - 10°C) sinon.
+            if getattr(self, "use_phenology_modulator", False):
+                from meandre.temporal.phenology_modulator import update_gdd_cum
+                _T_mean_t = 0.5 * (forcing[t, :, 1] + forcing[t, :, 2])    # (T_min + T_max)/2
+                _doy_val = day_of_year[t] if day_of_year is not None else None
+                _doy_int = int(_doy_val.item()) if _doy_val is not None else 0
+                state = HydroState(
+                    theta1=state.theta1, theta2=state.theta2, theta3=state.theta3,
+                    swe=state.swe, t_soil=state.t_soil,
+                    canopy_storage=state.canopy_storage,
+                    wetland_storage=state.wetland_storage,
+                    S_gw=state.S_gw, T_water=state.T_water,
+                    cold_content=state.cold_content,
+                    gdd_cum=update_gdd_cum(state.gdd_cum, _T_mean_t, _doy_int),
+                )
+
             vc_out = self.vertical_column(
                 enriched, state, spatial_params,
                 return_diagnostics=return_diagnostics,
                 gw_withdrawal_mm=gw_w_mm,
                 doy=day_of_year[t] if day_of_year is not None else None,
+                phenology_modulator=(
+                    self.phenology_modulator
+                    if getattr(self, "use_phenology_modulator", False) else None
+                ),
             )
             physics_state = vc_out.state
 
@@ -390,6 +521,12 @@ class HydroModel(nn.Module):
                 diag_lists["q_lateral"].append(q_lat_m3s)
                 diag_lists["q_upstream"].append(q_up)
                 diag_lists["swe"].append(state.swe)
+                diag_lists["theta1"].append(state.theta1)
+                diag_lists["theta2"].append(state.theta2)
+                diag_lists["theta3"].append(state.theta3)
+                diag_lists["s_gw"].append(state.S_gw)
+                diag_lists["canopy"].append(state.canopy_storage)
+                diag_lists["wetland"].append(state.wetland_storage)
                 diag_lists["T_water"].append(
                     T_water_t if T_water_t is not None
                     else torch.full((self.n_nodes,), float('nan'), device=forcing.device)
@@ -426,6 +563,12 @@ class HydroModel(nn.Module):
             recharge=torch.stack(diag_lists["recharge"], dim=0),
             q_baseflow=torch.stack(diag_lists["q_baseflow"], dim=0),
             swe=torch.stack(diag_lists["swe"], dim=0),
+            theta1=torch.stack(diag_lists["theta1"], dim=0),
+            theta2=torch.stack(diag_lists["theta2"], dim=0),
+            theta3=torch.stack(diag_lists["theta3"], dim=0),
+            s_gw=torch.stack(diag_lists["s_gw"], dim=0),
+            canopy=torch.stack(diag_lists["canopy"], dim=0),
+            wetland=torch.stack(diag_lists["wetland"], dim=0),
             T_water=torch.stack(diag_lists["T_water"], dim=0),
         )
         return Q_sim, state, diagnostics
@@ -469,6 +612,39 @@ class HydroModel(nn.Module):
                     and hasattr(self.temporal_encoder.drop, "p")
                     else 0.05
                 ),
+                "use_quantile_head": getattr(self, "use_quantile_head", False),
+                "quantile_taus": (
+                    tuple(self.quantile_head.taus)
+                    if getattr(self, "use_quantile_head", False)
+                    else (0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
+                ),
+                "use_mixture_head": getattr(self, "use_mixture_head", False),
+                "mixture_n_components": getattr(self, "mixture_n_components", 10),
+                "mixture_hidden": getattr(self, "mixture_hidden", 64),
+                "use_contextual_quantile_head": getattr(self, "use_contextual_quantile_head", False),
+                "cqh_n_features": getattr(self, "cqh_n_features", 45),
+                "cqh_taus": (tuple(self.contextual_quantile_head.taus)
+                             if getattr(self, "use_contextual_quantile_head", False)
+                             else (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)),
+                "cqh_hidden": getattr(self, "cqh_hidden", 64),
+                "use_phenology_modulator": getattr(self, "use_phenology_modulator", False),
+                "routing_mode": getattr(self.routing, "routing_mode", "level"),
+                "routing_substeps": getattr(self.routing.muskingum, "n_substeps", 2),
+                "discharge_dependent_celerity": getattr(self.routing, "dq_celerity", False),
+                "dq_beta": getattr(self.routing, "dq_beta", 0.4),
+                "dq_qref_specific": getattr(self.routing, "dq_qref_specific", 0.01),
+                "pure_advection": getattr(self.routing, "pure_advection", False),
+                "dynamic_atten": getattr(self.routing, "dynamic_atten", False),
+                "da_beta": getattr(self.routing, "da_beta", 2.0),
+                "da_qref_specific": getattr(self.routing, "da_qref_specific", 0.05),
+                "predict_lake_params": getattr(self.spatial_encoder, "predict_lake_params", False),
+                "use_latent_codes": getattr(self.spatial_encoder, "use_latent_codes", False),
+                "latent_dim": getattr(self.spatial_encoder, "latent_dim", 8) or 8,
+                "latent_mode": getattr(self.spatial_encoder, "latent_mode", "additive"),
+                "soil_quickflow_reservoir": getattr(self.vertical_column.soil, "use_quickflow_reservoir", False),
+                "soil_quickflow_beta": getattr(self.vertical_column.soil, "quickflow_beta", 0.5),
+                "soil_separate_infil_capacity": getattr(self.vertical_column.soil, "use_separate_infil_capacity", False),
+                "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
             },
         }, path)
 

@@ -55,6 +55,8 @@ class LakeModule(nn.Module):
         P_lake: Tensor,
         S_dead: Tensor,
         Q_release_forced: Tensor | None = None,
+        k_lake: Tensor | None = None,
+        beta: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """
         Args:
@@ -65,6 +67,8 @@ class LakeModule(nn.Module):
             P_lake:           (n_lakes,) lake precipitation (mm/day)
             S_dead:           (n_lakes,) dead storage (m3)
             Q_release_forced: (n_lakes,) or None — if given, overrides model Q_out
+            k_lake, beta:     (n_lakes,) per-node storage-discharge params from
+                              the NeRF; None → global scalars (rétrocompat).
         Returns:
             Q_out:  (n_lakes,) outflow (m3/s)
             S_new:  (n_lakes,) updated storage (m3)
@@ -92,8 +96,8 @@ class LakeModule(nn.Module):
             # NR converges in 3-5 iterations and is unconditionally stable
             # for monotone Q_out(S).
             A_safe = area_m2.clamp(min=1.0)
-            beta = self.beta
-            k = self.k_lake
+            beta = self.beta if beta is None else beta
+            k = self.k_lake if k_lake is None else k_lake
 
             # Initial guess: explicit Euler (good when stable)
             depth0 = (S_available / A_safe).clamp(min=1e-6)

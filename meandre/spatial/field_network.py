@@ -117,7 +117,9 @@ class SpatialParams:
     Z2: Tensor              # default range [0.30, 1.50] m
     Z3: Tensor              # default range [0.50, 4.00] m
 
-    N_PARAMS: ClassVar[int] = 36
+    vsa_b: Tensor           # exposant aire-source-variable (ruissellement) [0.5, 5.0]
+
+    N_PARAMS: ClassVar[int] = 37
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -163,10 +165,43 @@ class SpatialFieldNetwork(nn.Module):
         dropout: float = 0.0,
         param_mode: str = "nerf",
         soil_bounds: dict | None = None,
+        predict_lake_params: bool = False,
+        n_nodes: int | None = None,
+        use_latent_codes: bool = False,
+        latent_dim: int = 8,
+        latent_mode: str = "additive",
     ) -> None:
         super().__init__()
         self.n_territorial = n_territorial
         self.param_mode = param_mode
+        # Codes latents par nœud (effet aléatoire spatial, type auto-décodeur).
+        # Le NeRF lie les paramètres aux features ; deux bassins aux features
+        # semblables reçoivent des params semblables → pics moyennés (déficit vs
+        # Hydrotel calibré par bassin). Un code latent z_n par nœud, concaténé
+        # aux features, laisse chaque bassin DÉVIER pour caler ses propres pics ;
+        # le shrinkage L2 (vers 0) = partial pooling : adapte aux jauges, retombe
+        # au feature-mean ailleurs. Init 0 → départ identique au NeRF sans codes.
+        # latent_mode :
+        #   "additive" (défaut) — effet aléatoire MIXTE : raw = NeRF(features) +
+        #     z_n, où z_n est un offset par nœud PAR PARAMÈTRE ajouté aux params
+        #     bruts avant contraintes. C'est la vraie structure d'effet mixte
+        #     (effet fixe = NeRF, effet aléatoire = z_n), chaque bassin dévie
+        #     DIRECTEMENT ses params sans passer par le goulot du tronc.
+        #   "input" — z_n (dim latent_dim) concaténé aux features en entrée du
+        #     tronc (auto-décodeur). Indirect : le nudge est filtré par le tronc.
+        # Shrinkage L2 (w_latent_reg) dans les deux cas = partial pooling.
+        self.use_latent_codes = bool(use_latent_codes) and param_mode != "static"
+        self.latent_mode = latent_mode
+        self.latent_dim = int(latent_dim) if self.use_latent_codes else 0
+        if self.use_latent_codes:
+            if n_nodes is None:
+                raise ValueError("use_latent_codes=True requiert n_nodes")
+            n_z = SpatialParams.N_PARAMS if latent_mode == "additive" else self.latent_dim
+            self.latent_codes = nn.Parameter(torch.zeros(n_nodes, n_z))
+        # Tête de lac optionnelle : k_lake et beta par nœud (sortie séparée de
+        # fc_out pour ne pas changer N_PARAMS=36 ni casser les checkpoints
+        # existants). Câblée au LakeModule par HydroModel quand activée.
+        self.predict_lake_params = predict_lake_params
         # Soil bounds (configurable via toml [soil] section).
         # Z1 is fixed (passed to SoilModule directly), Z2/Z3 are learnable
         # within these bounds. rain_hours bounds also configurable.
@@ -181,11 +216,15 @@ class SpatialFieldNetwork(nn.Module):
 
         if param_mode == "static":
             self.static_params = nn.Parameter(torch.randn(SpatialParams.N_PARAMS) * 0.1)
+            if predict_lake_params:
+                self.fc_lake_static = nn.Parameter(torch.zeros(2))
         else:
             # NeRF mode: MLP mapping coordinates to parameters
             self.coord_enc = FourierPositionalEncoding(n_freqs=n_coord_freqs, include_input=True)
             coord_dim = self.coord_enc.out_dim(2)  # encoded (lon, lat)
-            in_dim = coord_dim + n_territorial
+            # Les codes ne grossissent l'entrée du tronc qu'en mode "input".
+            _latent_in = self.latent_dim if (self.use_latent_codes and self.latent_mode == "input") else 0
+            in_dim = coord_dim + n_territorial + _latent_in
 
             self.fc1 = nn.Linear(in_dim, hidden)
             self.fc2 = nn.Linear(hidden + in_dim, hidden)  # skip connection
@@ -193,6 +232,15 @@ class SpatialFieldNetwork(nn.Module):
             self.act = nn.SiLU()
             self.drop1 = nn.Dropout(p=dropout)
             self.drop2 = nn.Dropout(p=dropout)
+            if predict_lake_params:
+                # 2 sorties : k_lake (log) et beta. Biais initialisé pour
+                # reproduire les défauts globaux (k=1e-4, beta=1.5) au départ.
+                self.fc_lake = nn.Linear(hidden, 2)
+                nn.init.zeros_(self.fc_lake.weight)
+                with torch.no_grad():
+                    # inverse des bornes appliquées dans lake_params()
+                    self.fc_lake.bias[0] = 0.0  # k_lake → centre log = 1e-4
+                    self.fc_lake.bias[1] = 0.0  # beta  → centre = 1.5
 
     def init_from_literature(
         self,
@@ -307,6 +355,7 @@ class SpatialFieldNetwork(nn.Module):
             # Soil layer thicknesses — Hydrotel BV3C standard
             "Z2": 0.70,
             "Z3": 1.00,
+            "vsa_b": 2.5,
         }
         if targets:
             d.update(targets)
@@ -390,6 +439,7 @@ class SpatialFieldNetwork(nn.Module):
         # Z2, Z3: bounded from soil_bounds
         raw[i] = inv_bounded(d["Z2"], self.soil_bounds["z2_min"], self.soil_bounds["z2_max"]); i += 1
         raw[i] = inv_bounded(d["Z3"], self.soil_bounds["z3_min"], self.soil_bounds["z3_max"]); i += 1
+        raw[i] = inv_bounded(d["vsa_b"], 0.5, 5.0); i += 1
 
         return raw
 
@@ -413,16 +463,75 @@ class SpatialFieldNetwork(nn.Module):
             n_nodes = coords.shape[0]
             raw = self.static_params.unsqueeze(0).expand(n_nodes, -1)
         else:
-            # NeRF mode: spatially-varying parameters
-            enc = self.coord_enc(coords)          # (n_nodes, coord_dim)
-            x0 = torch.cat([enc, territorial], dim=-1)  # (n_nodes, in_dim)
-
-            h = self.drop1(self.act(self.fc1(x0)))
-            h = torch.cat([h, x0], dim=-1)       # skip connection
-            h = self.drop2(self.act(self.fc2(h)))
-            raw = self.fc_out(h)                  # (n_nodes, N_PARAMS)
+            raw = self.fc_out(self._trunk(coords, territorial))
+            if self.use_latent_codes and self.latent_mode == "additive":
+                # Effet aléatoire : offset par nœud sur les params BRUTS (avant
+                # contraintes). raw = effet_fixe(features) + effet_aléatoire(z_n).
+                raw = raw + self.latent_codes
 
         return self._apply_constraints(raw)
+
+    def latent_reg(self) -> Tensor:
+        """Pénalité de shrinkage L2 des codes latents (partial pooling).
+
+        Tire les z_n vers 0 : chaque bassin ne dévie du feature-mean que si ses
+        données le justifient. Zéro si les codes sont désactivés.
+        """
+        if self.use_latent_codes:
+            return self.latent_codes.pow(2).mean()
+        return torch.zeros((), device=self.fc_out.weight.device)
+
+    def _project_coords(self, coords: Tensor) -> Tensor:
+        """Projette (lon, lat) en degrés vers des coordonnées ISOTROPES normalisées.
+
+        Les degrés lon/lat ne sont pas isotropes : à la latitude φ, 1° de longitude
+        ≈ cos(φ)·111 km contre ≈ 111 km pour 1° de latitude. Traiter (lon, lat)
+        comme cartésien distord l'encodage Fourier (une « fréquence » en lon n'a pas
+        la même longueur d'onde physique qu'en lat). On applique une projection
+        équirectangulaire centrée sur la latitude médiane (haversine-cohérente pour
+        un bassin régional) → km, puis on normalise par l'extent isotrope max
+        (aspect préservé) → coords ∈ ~[-1, 1]. L'encodage opère alors sur des
+        distances physiques réelles.
+        """
+        lon = coords[:, 0]
+        lat = coords[:, 1]
+        lat0 = lat.mean()
+        x = (lon - lon.mean()) * torch.cos(torch.deg2rad(lat0)) * 111.32
+        y = (lat - lat.mean()) * 110.574
+        scale = torch.maximum(x.abs().max(), y.abs().max()).clamp(min=1e-6)
+        return torch.stack([x / scale, y / scale], dim=-1)
+
+    def _trunk(self, coords: Tensor, territorial: Tensor) -> Tensor:
+        """Tronc NeRF partagé (fc1 → skip → fc2) → features cachées h."""
+        enc = self.coord_enc(self._project_coords(coords))  # (n_nodes, coord_dim)
+        feats = [enc, territorial]
+        if self.use_latent_codes and self.latent_mode == "input":
+            # z_n aligné sur l'ordre des nœuds (coords couvre tous les nœuds).
+            feats.append(self.latent_codes)
+        x0 = torch.cat(feats, dim=-1)  # (n_nodes, in_dim)
+        h = self.drop1(self.act(self.fc1(x0)))
+        h = torch.cat([h, x0], dim=-1)              # skip connection
+        return self.drop2(self.act(self.fc2(h)))
+
+    def lake_params(self, coords: Tensor, territorial: Tensor) -> tuple[Tensor, Tensor]:
+        """Paramètres de lac par nœud (k_lake, beta), bornés physiquement.
+
+        k_lake ∈ [1e-6, 1e-2] (log-uniforme, centre 1e-4), beta ∈ [1.0, 2.5]
+        (centre 1.5, tarage type seuil). Requiert predict_lake_params=True.
+        """
+        if not self.predict_lake_params:
+            raise RuntimeError("predict_lake_params=False : pas de tête de lac")
+        if self.param_mode == "static":
+            raw = self.fc_lake_static.unsqueeze(0).expand(coords.shape[0], -1)
+        else:
+            raw = self.fc_lake(self._trunk(coords, territorial))
+        # k_lake : log-uniforme centré sur 1e-4 ; raw=0 → 1e-4
+        log_k = torch.clamp(raw[:, 0] * 0.5 + math.log(1e-4), min=math.log(1e-6), max=math.log(1e-2))
+        k_lake = torch.exp(log_k)
+        # beta : [1.0, 2.5], centré à 1.5 pour raw=0. 1.0 + 1.5*s = 1.5 → s=1/3,
+        # donc décalage logit(1/3) = -log(2).
+        beta = 1.0 + 1.5 * torch.sigmoid(raw[:, 1] - math.log(2.0))
+        return k_lake, beta
 
     def _apply_constraints(self, raw: Tensor) -> SpatialParams:
         """Map raw network outputs to physically plausible ranges.
@@ -539,6 +648,8 @@ class SpatialFieldNetwork(nn.Module):
         z3_min = self.soil_bounds["z3_min"]
         z3_max = self.soil_bounds["z3_max"]
         constrained.append(bounded(cols[i], z3_min, z3_max)); i += 1
+        # vsa_b: exposant de l'aire-source-variable (ruissellement de crue).
+        constrained.append(bounded(cols[i], 0.5, 5.0)); i += 1
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
@@ -562,7 +673,7 @@ class SpatialFieldNetwork(nn.Module):
         played by ``physical_prior_loss`` which already pulls log(K_sat), log(k_gw)
         toward literature targets.
         """
-        enc = self.coord_enc(coords)
+        enc = self.coord_enc(self._project_coords(coords))
         x0 = torch.cat([enc, territorial], dim=-1)
         h = torch.nn.functional.silu(self.fc1(x0))
         h = torch.cat([h, x0], dim=-1)
@@ -619,3 +730,43 @@ class SpatialFieldNetwork(nn.Module):
             loss = loss + ((params.K_c - 0.85) ** 2).mean() * 0.2
 
         return loss
+
+    def param_diversity_loss(self, params: SpatialParams, cv_target: float = 0.12) -> Tensor:
+        """Anti-collapse : pénalise un coefficient de variation spatial INFÉRIEUR
+        à ``cv_target`` pour les paramètres clés.
+
+        Diagnostic 2026-06-12 : sur le bassin open-data le NeRF collapse vers des
+        params quasi uniformes (CV 0.006-0.09 vs 0.2-0.47 sur PHYSITEL), incapable
+        de reproduire l'hétérogénéité du ruissellement. ``physical_prior_loss``
+        aggrave en tirant chaque nœud vers une cible scalaire uniforme.
+
+        Plancher souple (relu) : la perte est nulle dès que CV ≥ cv_target — on ne
+        RÉCOMPENSE jamais la variance (pas de dérive vers du bruit / des outliers),
+        on combat seulement l'effondrement. La perte Q + les features façonnent OÙ
+        va la variance ; ce terme garantit seulement qu'elle existe. K_sat/k_gw
+        (log-distribués) sont mesurés en espace log pour ne pas laisser quelques
+        nœuds extrêmes satisfaire le plancher à bon compte.
+        """
+        eps = 1e-8
+        loss = torch.tensor(0.0, device=params.K_sat_1.device)
+        log_keys = ("K_sat_1", "K_sat_2", "K_sat_3", "k_gw")
+        lin_keys = ("f_vert_1", "f_vert_2", "f_vert_3", "K_c")
+        n = 0
+        # Charnière LINÉAIRE (pas au carré) : gradient constant fort tant que
+        # cv < cv_target, nul au-dessus. Le carré s'annulait trop vite pour des
+        # params très collapsés (cv~0.006 → perte ~0.0001/param, négligeable).
+        for k in log_keys:
+            if not hasattr(params, k):
+                continue
+            v = torch.log(torch.clamp(getattr(params, k), min=eps))
+            cv = v.std() / (v.abs().mean() + eps)
+            loss = loss + torch.clamp(cv_target - cv, min=0.0)
+            n += 1
+        for k in lin_keys:
+            if not hasattr(params, k):
+                continue
+            v = getattr(params, k)
+            cv = v.std() / (v.abs().mean() + eps)
+            loss = loss + torch.clamp(cv_target - cv, min=0.0)
+            n += 1
+        return loss / max(n, 1)

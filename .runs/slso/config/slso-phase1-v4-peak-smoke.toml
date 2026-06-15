@@ -1,0 +1,148 @@
+# slso-phase1-v4-peak-smoke.toml — Phase 1 v4 backbone : pondération des pics.
+#
+# Cible : décolapser la queue haute du PIT_val (surplus u > 0.75 diagnostiqué
+# le 31 mai, [[project_meandre_quantile_pit_diagnosis_2026-05-31]]). Ajout d'un
+# terme MSE restreint aux pas de temps où Q_obs > Q_p75 climato par station.
+#
+# Warm start depuis best-phase1-grace.pt (multi-obj ET+GRACE, val KGE=0.921),
+# qu'on essaie d'améliorer sur la queue haute sans casser l'acquis.
+#
+# SMOKE TEST 5 epochs avant long run — vérifier que :
+#  - val_kge ne crashe pas en dessous de 0.90 (acquis multi-obj préservé)
+#  - peak_loss diminue franchement (entraînement réactif)
+#  - PIT_val frac > 0.95 décroît (cible primaire)
+#
+# Lancer :
+#   uv run python .runs/slso/slso.py .runs/slso/config/slso-phase1-v4-peak-smoke.toml
+
+[paths]
+basin_db = "data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing.nc"
+checkpoint = "checkpoints/best-phase1-v4-peak-smoke.pt"
+fields_nc = "results/fields-phase1-v4-peak-smoke.nc"
+reach_parquet = "results/reach-phase1-v4-peak-smoke.parquet"
+runs_db = "logs/runs-phase1-v4-peak-smoke.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[forcing]
+era5_vars = []
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = true
+concrete_init_p = 0.05
+param_mode = "nerf"
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+warm_start = true
+warm_start_from = "checkpoints/best-phase1-grace.pt"
+
+n_epochs = 5            # smoke test
+lr = 5e-5               # ½ du baseline pour ne pas brusquer le backbone acquis
+lr_finetune = 5e-5
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 2e-4
+
+# Backbone dégelé (on veut bouger les paramètres pour cibler les pics)
+freeze_spatial = false
+freeze_temporal = false
+freeze_backbone = false
+
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 4
+compile_modules = false
+best_metric = "kge"
+best_metric_tolerance = 0.0
+station_weight_mode = "sqrt_area"
+
+w_prior = 0.005
+w_boundary = 0.0
+w_sigma_anchor = 0.0
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = true
+autopilot_grace_epochs = 5
+autopilot_beta_threshold = 1.00
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 6
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.20
+autopilot_restart_max = 2
+autopilot_restart_min_no_improve = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+autopilot_nll = false
+kendall_gal_auto = false
+
+[loss]
+nll_distribution = "normal"
+
+w_nll = 0.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.1
+w_mse = 0.1
+w_log_nse = 0.0
+w_log_mse = 0.3
+w_nrmse = 0.0
+w_quantile = 0.0
+w_physics = 0.01
+w_residual = 0.01
+
+# Multi-obj conservés (acquis Phase 1 grace)
+w_et = 0.1
+w_tws = 0.3
+w_snow = 0.0
+
+# ── NOUVEAU : pondération des pics ─────────────────────────────────────
+# MSE normalisée par station_var sur les pas où Q_obs > Q_p75 climato.
+# Magnitude post-normalisation O(0.1-0.5), comparable à (1-kge). w_peak=1.0
+# donne pression équivalente au KGE sans dominer.
+# (smoke v1 sans normalisation à w_peak=0.5 → loss dominée d'un facteur ~1000
+#  → β explose à 1.12, val_kge crash 0.92→0.81. Fix : normaliser par station_var.)
+w_peak = 1.0

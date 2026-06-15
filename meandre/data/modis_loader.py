@@ -111,6 +111,110 @@ def _nearest_node_lookup(da, lons, lats, node_indices):
     return rows
 
 
+# ─── MOD16A2GF ETR 8-jours via earthaccess + pyhdf (HDF-EOS sinusoïdal) ──────
+
+ET8_SHORT = "MOD16A2GF"
+ET8_VERSION = "061"
+ET8_SCALE = 0.1            # raw → kg/m²/8day (= mm/8day)
+ET8_VALID_MAX = 32700      # > valid_range max → fill/eau/etc.
+_SINU = ("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 "
+         "+R=6371007.181 +units=m +no_defs")
+
+
+def _parse_structmeta(sd):
+    """UL/LR (m) et dims depuis StructMetadata.0 d'un granule HDF-EOS."""
+    import re
+    sm = sd.attributes().get("StructMetadata.0", "")
+    def grab(key):
+        m = re.search(rf"{key}=\(([-0-9.,]+)\)", sm)
+        return tuple(float(v) for v in m.group(1).split(",")) if m else None
+    def grab_int(key):
+        m = re.search(rf"{key}=(\d+)", sm)
+        return int(m.group(1)) if m else None
+    ulx, uly = grab("UpperLeftPointMtrs")
+    lrx, lry = grab("LowerRightMtrs")
+    nx, ny = grab_int("XDim"), grab_int("YDim")
+    return ulx, uly, lrx, lry, nx, ny
+
+
+def fetch_modis_et_8day(
+    bbox: tuple[float, float, float, float],
+    date_start: str,
+    date_end: str,
+    node_coords: np.ndarray,
+    node_indices: np.ndarray,
+    cache_dir: str | Path = ".runs/slso/data/modis8",
+    token_path: str = "~/.edl_token",
+) -> pd.DataFrame:
+    """Fetch MOD16A2GF.061 ETR 8-jours via NASA Earthdata (token bearer) et
+    extrait aux nœuds par reprojection sinusoïdale (pyhdf + pyproj).
+
+    Retourne DataFrame(date, node_idx, etr_mm_day, quality_ok). date = début du
+    composite ; etr_mm_day = raw·0.1 / (jours du composite, 8 sauf dernier).
+    """
+    import earthaccess
+    import requests
+    from pyhdf.SD import SD, SDC
+    from pyproj import Transformer
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    token = open(Path(token_path).expanduser()).read().strip()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    lons = node_coords[:, 0].astype(float)
+    lats = node_coords[:, 1].astype(float)
+    node_indices = np.asarray(node_indices)
+    tr = Transformer.from_crs("EPSG:4326", _SINU, always_xy=True)
+    nx_sinu, ny_sinu = tr.transform(lons, lats)  # coords sinusoïdales des nœuds (m)
+
+    granules = earthaccess.search_data(
+        short_name=ET8_SHORT, version=ET8_VERSION,
+        bounding_box=tuple(bbox), temporal=(date_start, date_end),
+    )
+    logger.info(f"[MOD16A2GF] {len(granules)} granules 8-jours trouvés")
+
+    rows = []
+    for g in granules:
+        url = next((l for l in g.data_links() if l.endswith(".hdf")), None)
+        if url is None:
+            continue
+        fn = url.split("/")[-1]
+        # MOD16A2GF.A{YYYYDDD}.h..v..  → date composite + DOY
+        ayyyyddd = fn.split(".")[1]  # A2018177
+        year, doy = int(ayyyyddd[1:5]), int(ayyyyddd[5:8])
+        cdate = pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=doy - 1)
+        days_in_year = 366 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 365
+        period = min(8, days_in_year - doy + 1)  # dernier composite = 5/6 jours
+
+        local = cache_dir / fn
+        if not local.exists():
+            r = requests.get(url, headers=headers, allow_redirects=True, timeout=300)
+            r.raise_for_status()
+            local.write_bytes(r.content)
+
+        sd = SD(str(local), SDC.READ)
+        ulx, uly, lrx, lry, gnx, gny = _parse_structmeta(sd)
+        psx = (lrx - ulx) / gnx
+        psy = (uly - lry) / gny  # positif
+        et = sd.select("ET_500m").get()
+        sd.end()
+
+        # nœuds tombant dans cette tuile
+        col = np.floor((nx_sinu - ulx) / psx).astype(int)
+        row = np.floor((uly - ny_sinu) / psy).astype(int)
+        inside = (col >= 0) & (col < gnx) & (row >= 0) & (row < gny)
+        for k in np.nonzero(inside)[0]:
+            raw = float(et[row[k], col[k]])
+            ok = raw <= ET8_VALID_MAX and raw >= -32767
+            etr = (raw * ET8_SCALE / period) if ok else np.nan
+            rows.append((cdate, int(node_indices[k]), etr, bool(ok)))
+
+    if not rows:
+        return pd.DataFrame(columns=["date", "node_idx", "etr_mm_day", "quality_ok"])
+    return pd.DataFrame(rows, columns=["date", "node_idx", "etr_mm_day", "quality_ok"])
+
+
 # ─── MOD16A2 ETR via earthaccess ─────────────────────────────────────────────
 
 def fetch_modis_et(

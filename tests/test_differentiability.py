@@ -92,7 +92,7 @@ def test_soil_module_gradients():
     wp = torch.ones(n) * 0.15
 
     f_vert = torch.full((n,), 0.5, requires_grad=True)
-    t1, t2, t3, R, interflow, baseflow = soil(
+    t1, t2, t3, R, interflow, baseflow, _S_uz = soil(
         P_eff, ET1, ET2, ET3,
         theta1, theta2, theta3,
         K_sat, K_sat, K_sat,

@@ -1,0 +1,166 @@
+# ─── SLSO open-data case ─────────────────────────────────────────────────
+# Same SLSO bbox as the legacy `notebooks/slso/` case, but built entirely
+# from open data (Copernicus DEM + ESA WorldCover + SoilGrids + JRC water +
+# OSM rivers/lakes + Open-Meteo ERA5 forcing + HYDAT observations).
+#
+# Use:
+#   1. Build the basin + forcing + observations (params from [basin.build]):
+#      python .runs/slso-od/build_basin_od.py
+#   2. Train:
+#      python .runs/slso/slso.py .runs/slso-od/config/slso-od.toml
+
+# Paths relatifs au dossier du cas (.runs/slso-od/, parent de config/).
+# Les chemins absolus (D:/...) sont gardés tels quels (cache global partagé).
+[paths]
+# Réseau HydroSHEDS 3s conditionné (build_basin_hydrosheds.py). A/B réseau :
+# recette vsafull IDENTIQUE à best-vsafull.pt (D8), seul le réseau change.
+basin_db = "data/basin_hs_mini.duckdb"
+# Shared global geo cache (rasters + forcing), re-creatable, used by all runs.
+geo_cache = "D:/meandre-data/geo_cache/slso-od"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+# Cache forçage FRAIS : nœuds HydroSHEDS différents → ré-extraction auto du Zarr.
+forcing_cache = "D:/meandre-data/geo_cache/slso-od/forcing_simat_mini.nc"
+checkpoint = "checkpoints/best-mini-lat-1em4.pt"
+fields_nc = "results/fields-mini-latent.nc"
+reach_parquet = "results/reach-mini-latent.parquet"
+runs_db = "runs-mini-latent.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+# Open-data network construction (meandre.data.basin_builder.build_basin).
+[basin.build]
+bbox = [-73.0, 44.5, -69.6, 47.7]      # (west, south, east, north) EPSG:4326
+outlet = [-71.27, 46.77]               # (lon, lat), embouchure de la Chaudière
+# Réseau raffiné 2026-06-12 : le routage opérateur ayant accéléré le calcul
+# (~30×), on densifie pour mieux couvrir les prélèvements (35 % des tronçons
+# io-eau intra-domaine perdus à 15 km²/300 km² faute de nœud proche). Anciens
+# seuils grossiers conservés en commentaire (test de vitesse) : 15 / 300 / 150.
+min_area_km2 = 5.0                     # seuil de drainage minimal (stream threshold)
+max_subcatchments = 15000              # plafond de confluences (ignoré si l'arbre est plus grand)
+max_segment_area_km2 = 75.0            # plafond d'aire pour la fusion des chaînes linéaires
+max_segment_length_km = 40.0           # plafond de longueur pour la fusion des chaînes linéaires
+max_dem_pixels = 4_000_000             # plafond pysheds (fixe la résolution de routage)
+min_lake_area_km2 = 1.0                # surface minimale pour qu'un nœud soit traité en lac
+
+[temporal]
+# Same split as the legacy SLSO case for direct comparison.
+date_start = "2019-01-01"
+spinup_end = "2019-12-31"
+train_start = "2020-01-01"
+train_end = "2021-12-31"
+val_start = "2022-01-01"
+val_end = "2022-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2022-12-31"
+
+[model]
+# Routage par opérateur laggé : lacs sur stockage de la veille, un seul solve
+# triangulaire par pas. Benchmark 2026-06-10 : epoch 75 -> 4 min (19x).
+# Équivalence validée vs balayage (operator exact ; lagged -0,0014 KGE).
+routing_mode = "operator-lagged"
+# Thermie coupée à l'entraînement : T_eau n'entre pas dans la perte (et le
+# chemin opérateur ne la porte pas). Réactiver pour l'inférence thermique.
+use_temperature = false
+# Paramètres de lac (k_lake, beta) appris spatialement par le NeRF plutôt que
+# scalaires globaux. Lacs prouvés indispensables (test sensibilité 2026-06-10 :
+# -0,21 KGE si désactivés). Init reproduit les défauts globaux (k=1e-4, β=1,5).
+predict_lake_params = true
+
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+
+param_mode = "nerf"
+use_latent_codes = true
+latent_mode = "additive"
+latent_dim = 8
+n_coord_freqs = 8  # bump 6→8 (coords désormais isotropes/normalisées via _project_coords)
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+n_epochs = 20
+lr = 5e-4
+lr_finetune = 1e-4
+lr_new_features_mult = 10.0
+weight_decay = 2e-4
+grad_clip = 1.0
+w_latent_reg = 1e-4
+latent_lr_mult = 50.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 50
+# Sélection du best checkpoint sur le KGE de validation (leçon documentée :
+# best_metric=loss sélectionne des modèles dont la perte baisse pendant que
+# la validation s'effondre — cf. feedback_probabilistic_training).
+best_metric = "kge_median"
+best_metric_tolerance = 0.005
+# Rebalance 2026-06-12 : reprise warm-start depuis le best du run précédent
+# (0.7693, réseau fin + aire + w_peak=1.0). LR passe à lr_finetune (1e-4),
+# warmup sauté. But : tester si baisser w_peak (1.0→0.3) débloque le plafond
+# r=0.835 / gamma=0.83 (w_peak=1.0 mangeait ~70 % de la loss sans lever gamma).
+warm_start = false  # cold start : tester si le fix positional encoding évite le collapse seul
+compile_modules = false
+
+w_prior = 0.005
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ──
+autopilot = true
+autopilot_grace_epochs = 15
+autopilot_beta_threshold = 1.00
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 8
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+# autopilot_activate_residual_at_kge = 0.55  # disabled: residual pending redesign
+
+[loss]
+# Recette phase 1 déterministe ÉPROUVÉE (alignée sur .runs/slso/config/slso.toml,
+# celle qui reproduit le 0.904). L'ancienne config NLL-from-scratch (w_nll=1.0,
+# w_kge=0.5, datée 2026-05-11) faisait exploser beta dès l'epoch 1 (même
+# signature que le smoke raté du 11 mai : sigma gonfle, val_kge s'effondre).
+# La NLL/tête probabiliste viendra en phase 2, backbone gelé.
+w_nll = 0.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0     # per-station KGE — cible directement beta, r, gamma
+w_pbias = 0.1   # biais volumique, chunk-safe
+w_mse = 0.2     # bas pour ne pas aplatir les pics
+w_log_nse = 0.0
+w_log_mse = 0.1 # accent étiages, chunk-safe
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01
+
+# ── Pondération des pics ───────────────────────────────────────────────
+# MSE normalisée par station_var sur les pas où Q_obs > Q_p75 climato par
+# station. Cible le peak-shaving diagnostiqué 2026-06-12 : pooled gamma=0.853
+# (pics rabotés ~30 %, peak_ratio test 0.71). Magnitude O(0.1-0.5), comparable
+# à (1-kge) grâce à la normalisation par station_var. w_peak=1.0 mangeait ~70 %
+# de la loss totale sur le run complet (train ~2.5 vs ~0.67 sans) SANS lever
+# gamma (coincé 0.83), tirant contre le terme KGE → baissé à 0.3 pour libérer
+# du budget au terme KGE (qui optimise r/beta/gamma conjointement).
+w_peak = 0.5

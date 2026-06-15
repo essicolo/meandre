@@ -31,6 +31,15 @@ import os
 import sys
 from pathlib import Path
 
+# Windows : stdout redirigé vers fichier est en cp1252, qui ne sait pas encoder
+# les flèches/puces unicode des messages → forcer utf-8 (même fix que les autres
+# scripts du repo).
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, ValueError):
+    pass
+
 os.chdir(Path(__file__).resolve().parents[2])
 
 import argparse

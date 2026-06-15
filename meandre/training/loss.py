@@ -9,6 +9,8 @@ L = w1*(1-NSE) + w2*|PBIAS|/100 + w3*(1-KGE)
 """
 
 import logging
+import math
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -89,26 +91,236 @@ def differentiable_pbias_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return pbias.abs()
 
 
+def box_cox(x: Tensor, lam: float, eps: float = 1e-3) -> Tensor:
+    """Box-Cox transform sur Q. lam=1 → identité, lam=0.3 → standard hydro
+    (Bates & Campbell 2001), lam=0 → log. Clamp à eps pour éviter Q≤0.
+    """
+    x_safe = x.clamp(min=eps)
+    if lam == 0.0:
+        return torch.log(x_safe)
+    if lam == 1.0:
+        return x_safe - 1.0
+    return (x_safe.pow(lam) - 1.0) / lam
+
+
 def gaussian_nll_loss(
-    q_obs: Tensor, q_sim: Tensor, log_sigma: Tensor,
+    q_obs: Tensor, q_sim: Tensor, log_sigma: Tensor, lam: float = 1.0,
 ) -> Tensor:
-    """Heteroscedastic Gaussian NLL on streamflow.
+    """Heteroscedastic Gaussian NLL en espace Box-Cox (lam=1 = linéaire).
 
-        NLL = 0.5 * ((q_obs - q_sim) / σ)² + log σ    (+ const omitted)
+        NLL = 0.5 * ((T(q_obs) - T(q_sim)) / σ)² + log σ
 
-    With ``log_sigma`` produced by a noise head (e.g. σ = a·|Q|^b). The
-    quadratic term pushes the mean toward the obs, the log σ term prevents
-    σ → ∞ as a trivial fit. Together they enforce calibrated uncertainty —
-    no need for an ensemble.
+    σ est dans l'espace transformé (le noise_head s'adapte). lam=0.3 est
+    le standard hydro (Bates & Campbell 2001) — résidus quasi-normaux.
 
     Empty inputs (no valid obs) return 0 with requires_grad=False so the
     chunked training loop can skip the backward pass.
     """
     if q_obs.numel() == 0:
         return torch.zeros((), device=q_sim.device)
+    if lam != 1.0:
+        q_obs = box_cox(q_obs, lam)
+        q_sim = box_cox(q_sim, lam)
     sigma2 = (2.0 * log_sigma).exp()
     nll = 0.5 * (q_obs - q_sim).pow(2) / sigma2 + log_sigma
     return nll.mean()
+
+
+def student_t_nll_loss(
+    q_obs: Tensor, q_sim: Tensor, log_sigma: Tensor, log_df: Tensor,
+    lam: float = 1.0,
+) -> Tensor:
+    """Heteroscedastic Student-t NLL (queues lourdes) en espace Box-Cox.
+
+    Pour des résidus leptokurtiques (PIT gaussien = pic central, σ gonflé pour
+    couvrir les queues), la Student-t ajuste séparément l'échelle σ et la
+    lourdeur des queues via ν = exp(log_df). ν→∞ ⇒ gaussienne.
+
+        z = (T(y) − T(μ)) / σ
+        NLL = log σ + ½(ν+1)·log(1 + z²/ν)
+              − logΓ((ν+1)/2) + logΓ(ν/2) + ½·log(ν·π)
+
+    ``log_df`` peut être un scalaire global appris ou un tenseur par nœud.
+    """
+    if q_obs.numel() == 0:
+        return torch.zeros((), device=q_sim.device)
+    if lam != 1.0:
+        q_obs = box_cox(q_obs, lam)
+        q_sim = box_cox(q_sim, lam)
+    nu = log_df.exp().clamp(min=1e-2)
+    sigma = log_sigma.exp()
+    z = (q_obs - q_sim) / sigma
+    nll = (log_sigma + 0.5 * (nu + 1.0) * torch.log1p(z * z / nu)
+           - torch.lgamma((nu + 1.0) / 2.0) + torch.lgamma(nu / 2.0)
+           + 0.5 * torch.log(nu * math.pi))
+    return nll.mean()
+
+
+def flatness_loss(
+    q_obs: Tensor,
+    q_sim: Tensor,
+    log_sigma: Tensor,
+    lam: float = 0.3,
+    n_bins: int = 21,
+    bandwidth: float = 0.02,
+) -> Tensor:
+    """Loss de calibration directe : pénalise la déviation de l'histogramme
+    PIT par rapport à uniforme.
+
+    Pipeline (tout différentiable) :
+        1. T(q) via Box-Cox(lam)
+        2. PIT_i = Φ((T(y_i) − T(μ_i)) / σ_i)
+        3. Histogramme soft via kernel gaussien (bandwidth)
+        4. δ² = mean((freq_k − 1/K)²) / (1/K)²  (sans cste)
+
+    Le surrogate soft remplace le binning dur : chaque échantillon contribue
+    à chaque bin par exp(−(u−c_k)²/(2·bw²)), permettant au gradient de
+    pousser σ et μ pour aplatir l'histogramme.
+
+    Le 1/K facteur normalise pour que la loss soit comparable entre K
+    différents (δ², comme dans flatness_metrics).
+    """
+    if q_obs.numel() == 0:
+        return torch.zeros((), device=q_sim.device)
+    if lam != 1.0:
+        q_obs_t = box_cox(q_obs, lam)
+        q_sim_t = box_cox(q_sim, lam)
+    else:
+        q_obs_t = q_obs
+        q_sim_t = q_sim
+    sigma = log_sigma.exp().clamp(min=1e-9)
+    z = (q_obs_t - q_sim_t) / sigma
+    # Φ(z) via erf : Φ(z) = 0.5·(1 + erf(z/√2))
+    pit = 0.5 * (1.0 + torch.erf(z / math.sqrt(2.0)))
+    # Soft histogram : (N, K) puis somme sur N
+    centers = torch.linspace(
+        0.5 / n_bins, 1.0 - 0.5 / n_bins, n_bins, device=pit.device, dtype=pit.dtype,
+    )
+    diff = pit.unsqueeze(-1) - centers.unsqueeze(0)  # (N, K)
+    weights = torch.exp(-0.5 * (diff / bandwidth) ** 2)
+    # Normalise par échantillon pour que chaque sample contribue ~1 au total
+    weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-12)
+    soft_counts = weights.sum(dim=0)  # (K,)
+    freq = soft_counts / (soft_counts.sum() + 1e-12)
+    uniform = 1.0 / n_bins
+    # δ² normalisé : équivalent à flatness_metrics().delta**2 sans la cste
+    return ((freq - uniform) ** 2).mean() / (uniform ** 2)
+
+
+def pinball_loss(y_obs: Tensor, q_pred: Tensor, tau: float) -> Tensor:
+    """Pinball loss pour un seul quantile τ.
+
+        L_τ(y, q̂) = max(τ·(y − q̂), (τ − 1)·(y − q̂))
+
+    Sous-prédire (q̂ < y) est pénalisé en proportion τ ; sur-prédire en (1−τ).
+    """
+    if y_obs.numel() == 0:
+        return torch.zeros((), device=q_pred.device)
+    resid = y_obs - q_pred
+    return torch.maximum(tau * resid, (tau - 1.0) * resid).mean()
+
+
+def quantile_loss(y_obs: Tensor, q_pred: Tensor, taus: Tensor) -> Tensor:
+    """Loss quantile multi-τ = moyenne des pinball sur K quantiles.
+
+    Parameters
+    ----------
+    y_obs : Tensor, shape (...,) — observations en m³/s
+    q_pred : Tensor, shape (..., K) — quantiles prédits (même unités que y)
+    taus : Tensor, shape (K,) — niveaux de quantiles dans (0, 1)
+    """
+    if y_obs.numel() == 0:
+        return torch.zeros((), device=q_pred.device)
+    resid = y_obs.unsqueeze(-1) - q_pred                              # (..., K)
+    taus_b = taus.to(q_pred.device).expand_as(resid)
+    pinball = torch.maximum(taus_b * resid, (taus_b - 1.0) * resid)
+    return pinball.mean()
+
+
+def crps_from_quantiles(y_obs: Tensor, q_pred: Tensor, taus: Tensor) -> Tensor:
+    """CRPS approximé depuis K quantiles (Gneiting & Ranjan 2011) :
+    CRPS ≈ 2 · moyenne_τ(pinball_τ). Exact si τ uniforme dans (0,1) et K→∞."""
+    return 2.0 * quantile_loss(y_obs, q_pred, taus)
+
+
+def tws_anomaly_loss(
+    storage_month: Tensor, grace_month: Tensor,
+    sim_baseline: Tensor | float, grace_baseline: Tensor | float,
+    sigma: Tensor | None = None,
+) -> Tensor:
+    """MSE (pondérée par l'incertitude) entre l'anomalie de stockage simulée et
+    GRACE TWS. Centrage : on retire une baseline de chaque côté (GRACE et sim ont
+    des références absolues différentes) → on compare les VARIATIONS.
+
+        a_sim = storage_month − sim_baseline   (mm)
+        a_obs = grace_month  − grace_baseline  (mm, anomalie GRACE)
+        L = mean( (a_sim − a_obs)² [ / σ² ] )
+
+    ``sim_baseline`` = moyenne long-terme du stockage simulé (mise à jour en
+    running par époque, détachée). ``grace_baseline`` = moyenne GRACE sur les
+    mois communs (constante précalculée).
+    """
+    if storage_month.numel() == 0:
+        return torch.zeros((), device=storage_month.device)
+    a_sim = storage_month - sim_baseline
+    a_obs = grace_month - grace_baseline
+    resid = a_sim - a_obs
+    if sigma is not None:
+        return (resid.pow(2) / (sigma ** 2 + 1.0)).mean()  # sigma: float ou tenseur
+    return resid.pow(2).mean()
+
+
+def peak_weighted_mse_loss(
+    q_obs: Tensor, q_sim: Tensor, q_threshold: Tensor,
+    station_var: Tensor | None = None,
+) -> Tensor:
+    """MSE restreinte aux pas de temps où Q_obs > seuil climato par station,
+    normalisée par la variance Q par station pour échelle comparable au (1-NSE).
+
+    Cible la pathologie « peak-shaving » diagnostiquée dans le PIT val 2019-2021
+    (surplus u > 0.75) : donne du gradient explicite aux résidus en régime de
+    pic, où le backbone calibré sur MSE+log_NSE rabote systématiquement.
+
+    Parameters
+    ----------
+    q_obs : (T, S) débits observés
+    q_sim : (T, S) débits simulés
+    q_threshold : (S,) seuil par station (typiquement Q_p75 de la période d'entraînement)
+    station_var : (S,) variance Q par station. Si fourni, normalise SE/var_s pour
+                  que la magnitude finale soit O(0.1-1), comparable à (1-NSE).
+                  Sans normalisation, la loss est en m³/s² brut et domine.
+
+    Returns
+    -------
+    L_peak : MSE normalisée pooled sur les couples (t, s) tels que Q_obs[t,s] > q_threshold[s].
+             Renvoie 0 (sans gradient) si aucun pic dans le chunk.
+
+    Notes
+    -----
+    Chunk-safe : un chunk sans pic contribue 0, les chunks avec pics dominent.
+    La pondération est binaire (seuil dur) — alternative continue : Q_obs^p.
+    """
+    if q_obs.numel() == 0:
+        return torch.zeros((), device=q_sim.device)
+    # Broadcast seuil (S,) sur (T, S)
+    mask_peak = q_obs > q_threshold.unsqueeze(0)
+    valid = mask_peak & ~torch.isnan(q_obs) & ~torch.isnan(q_sim)
+    if not valid.any():
+        return torch.zeros((), device=q_sim.device)
+    # IMPORTANT : filtrer AVANT de calculer (q_obs - q_sim) ** 2. Sinon les
+    # positions NaN produisent NaN dans le forward, et même si on les masque
+    # avec [valid].mean(), le backward propage NaN × 0 = NaN à q_sim → tous
+    # les grads zéroés en aval. Same pattern que gaussian_nll_loss.
+    qo = q_obs[valid]
+    qs = q_sim[valid]
+    sq_err = (qo - qs) ** 2
+    if station_var is not None:
+        # Index station pour chaque (t,s) valide
+        S = q_obs.shape[1]
+        s_idx = torch.arange(S, device=q_obs.device).unsqueeze(0).expand_as(q_obs)
+        var_at_valid = station_var[s_idx[valid]] + 1e-8
+        sq_err = sq_err / var_at_valid
+    return sq_err.mean()
 
 
 def differentiable_mse_loss(
@@ -357,13 +569,23 @@ class HydroLoss(nn.Module):
         w_nll: float = 0.0,
         w_nll_et: float = 0.0,
         w_nll_swe: float = 0.0,
+        w_flatness: float = 0.0,
         w_snow: float = 0.0,
         w_et: float = 0.0,
+        w_tws: float = 0.0,
+        w_quantile: float = 0.0,
+        w_mixture: float = 0.0,
+        w_peak: float = 0.0,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
         station_weights: Tensor | None = None,
         station_var: Tensor | None = None,
+        peak_threshold: Tensor | None = None,
+        nll_lambda: float = 1.0,
+        nll_distribution: str = "normal",   # "normal" | "box-cox" | "log-normal" | "student-t"
+        flatness_n_bins: int = 21,
+        flatness_bandwidth: float = 0.02,
     ) -> None:
         super().__init__()
         self.w_nse = w_nse
@@ -376,8 +598,17 @@ class HydroLoss(nn.Module):
         self.w_nll = w_nll
         self.w_nll_et = w_nll_et
         self.w_nll_swe = w_nll_swe
+        self.w_flatness = w_flatness
+        self.nll_lambda = nll_lambda
+        self.nll_distribution = nll_distribution.lower()
+        self.flatness_n_bins = flatness_n_bins
+        self.flatness_bandwidth = flatness_bandwidth
         self.w_snow = w_snow
         self.w_et = w_et
+        self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
+        self.w_quantile = w_quantile  # Régression quantile (calculée dans le trainer)
+        self.w_mixture = w_mixture    # MDN (option 2b — calculée dans le trainer)
+        self.w_peak = w_peak  # Pondération pics (seuil climato Q_p75 par station)
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -389,6 +620,10 @@ class HydroLoss(nn.Module):
             self.register_buffer("station_var", station_var)
         else:
             self.station_var: Tensor | None = None
+        if peak_threshold is not None:
+            self.register_buffer("peak_threshold", peak_threshold)
+        else:
+            self.peak_threshold: Tensor | None = None
 
     def forward(
         self,
@@ -404,6 +639,7 @@ class HydroLoss(nn.Module):
         log_sigma_et_sim: Tensor | None = None,
         water_balance_residual: Tensor | None = None,
         residual_gate_logits: Tensor | None = None,
+        log_df: Tensor | None = None,   # ν Student-t (lu depuis noise_head.log_df par le trainer)
     ) -> tuple[Tensor, dict[str, Tensor]]:
         """
         Args:
@@ -540,24 +776,65 @@ class HydroLoss(nn.Module):
             qs_pool = q_sim_at_stations.reshape(-1)
             qo_pool = q_obs.reshape(-1)
             valid_pool = ~torch.isnan(qo_pool) & ~torch.isnan(qs_pool)
-            L_nll = gaussian_nll_loss(
-                qo_pool[valid_pool], qs_pool[valid_pool], ls_pool[valid_pool],
-            )
+            if self.nll_distribution == "student-t" and log_df is not None:
+                # Queues lourdes : ν = exp(log_df), apprenable depuis noise_head.
+                L_nll = student_t_nll_loss(
+                    qo_pool[valid_pool], qs_pool[valid_pool], ls_pool[valid_pool],
+                    log_df, lam=self.nll_lambda,
+                )
+            else:
+                L_nll = gaussian_nll_loss(
+                    qo_pool[valid_pool], qs_pool[valid_pool], ls_pool[valid_pool],
+                    lam=self.nll_lambda,
+                )
         else:
             L_nll = torch.tensor(0.0, device=q_sim.device)
+
+        # Flatness loss : pénalité directe sur la déviation du PIT histogram
+        # par rapport à uniforme. Cible exactement la "vague" Talagrand,
+        # contrairement au NLL qui peut accepter une σ gonflée.
+        if self.w_flatness > 0 and log_sigma_sim is not None:
+            log_sigma_at_stations = log_sigma_sim[:, station_mask]
+            ls_pool_f = log_sigma_at_stations.reshape(-1)
+            qs_pool_f = q_sim_at_stations.reshape(-1)
+            qo_pool_f = q_obs.reshape(-1)
+            valid_f = ~torch.isnan(qo_pool_f) & ~torch.isnan(qs_pool_f)
+            L_flatness = flatness_loss(
+                qo_pool_f[valid_f], qs_pool_f[valid_f], ls_pool_f[valid_f],
+                lam=self.nll_lambda,
+                n_bins=self.flatness_n_bins,
+                bandwidth=self.flatness_bandwidth,
+            )
+        else:
+            L_flatness = torch.tensor(0.0, device=q_sim.device)
+
+        # Pondération pics (seuil climato Q_p75 par station) : MSE restreinte
+        # aux pas de temps où Q_obs dépasse le seuil. Vise la queue haute
+        # diagnostiquée comme sous-dispersée dans le PIT val.
+        if self.w_peak > 0 and self.peak_threshold is not None:
+            L_peak = peak_weighted_mse_loss(
+                q_obs, q_sim_at_stations, self.peak_threshold,
+                station_var=self.station_var,
+            )
+        else:
+            L_peak = torch.tensor(0.0, device=q_sim.device)
 
         loss = (self.w_nse * L_nse + self.w_pbias * L_pbias
                 + self.w_kge * L_kge + self.w_mse * L_mse
                 + self.w_nrmse * L_nrmse
                 + self.w_log_nse * L_log_nse
                 + self.w_log_mse * L_log_mse
-                + self.w_nll * L_nll)
+                + self.w_nll * L_nll
+                + self.w_flatness * L_flatness
+                + self.w_peak * L_peak)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
-                      "nll_loss": L_nll}
+                      "flatness_loss": L_flatness,
+                      "nll_loss": L_nll,
+                      "peak_loss": L_peak}
 
         if self.w_snow > 0 and swe_obs is not None and swe_sim is not None:
             valid = ~torch.isnan(swe_obs) & ~torch.isnan(swe_sim)

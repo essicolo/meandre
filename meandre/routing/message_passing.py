@@ -60,6 +60,8 @@ class RoutingLayer(nn.Module):
         self,
         use_travel_time_attention: bool = True,
         max_tau_days: int = 30,
+        routing_mode: str = "level",
+        routing_substeps: int = 2,
     ) -> None:
         super().__init__()
         self.use_tta = use_travel_time_attention
@@ -71,8 +73,47 @@ class RoutingLayer(nn.Module):
             self.register_buffer("tta_warmup_factor", torch.tensor(0.0))
         # n_substeps=2 (12h) — compromis vitesse/précision.
         # Limite : K < 6h sera instable; les bornes K_musk_hours doivent rester ≥ 4h.
-        self.muskingum = MuskingumCunge(n_substeps=2)
+        self.muskingum = MuskingumCunge(n_substeps=routing_substeps)
         self.lake = LakeModule()
+        # Routage : "level" (balayage par niveau), "operator" (solve par
+        # étages de lacs, sémantique identique) ou "operator-lagged" (lacs
+        # sur stockage de la veille, un seul solve). Cf operator_routing.py.
+        if routing_mode not in ("level", "operator", "operator-lagged"):
+            raise ValueError(f"routing_mode inconnu : {routing_mode!r}")
+        self.routing_mode = routing_mode
+        self._op_state = None    # opérateur du forward courant (rebâti à t=0)
+        # Célérité dépendante du débit (Muskingum-Cunge non-linéaire, type onde
+        # cinématique d'Hydrotel). Diagnostic 2026-06-15 : la GÉNÉRATION est
+        # parfaite (peak_ratio 0.997 en routage instantané), tout le déficit de
+        # pic (→0.74) vient de la diffusion du Muskingum LINÉAIRE à célérité
+        # constante. Ici K_eff = K · (Qref/(Q+Qref))^β baisse à haut débit, donc
+        # le PIC voyage plus vite et s'atténue moins, l'étiage garde son K lent.
+        # Qref = qref_specific · aire (échelle de débit propre au tronçon).
+        self.dq_celerity = False
+        self.dq_beta = 0.4
+        self.dq_qref_specific = 0.01   # m³/s par km²
+        self.dq_kmin_frac = 0.15       # K_eff ≥ 15 % de K_base (stabilité)
+        # Advection PURE (plug-flow / onde cinématique sans diffusion) : c01=1,
+        # c2=0 → Q_out = Q_amont + apport, AUCUNE atténuation. Le Muskingum est
+        # un schéma DIFFUSIF dont l'atténuation est verrouillée à bas x par la
+        # stabilité (2Kx ≤ dt) ; il rabote les pics par construction. Hydrotel/
+        # Raven préservent les pics avec une onde cinématique = advection pure.
+        self.pure_advection = False
+        # Atténuation DYNAMIQUE selon le régime (résout le mur de Pareto) : le
+        # Muskingum lisse (atténue) à l'étiage pour le kge, mais NE doit PAS
+        # atténuer en crue pour préserver le pic. Un coefficient statique ne peut
+        # pas les deux. Ici c2_eff = c2·(1−α(Q)) avec α→1 à haut débit : pleine
+        # atténuation à l'étiage, zéro atténuation en crue. STABLE (c2_eff ∈
+        # [0, c2_musk]) contrairement aux tweaks de K/x. Piloté par le débit
+        # retardé (un GRU pourra piloter α plus finement ensuite).
+        self.dynamic_atten = False
+        self.da_beta = 2.0           # raideur de la rampe α(Q)
+        self.da_qref_specific = 0.05  # m³/s par km² (échelle de crue)
+        # Params de lac par nœud (k_lake, beta) sortis du NeRF, posés par
+        # HydroModel avant la boucle (constants dans le temps). None = scalaires
+        # globaux du LakeModule (rétrocompat).
+        self._lake_k = None
+        self._lake_beta = None
 
     def forward(
         self,
@@ -147,7 +188,70 @@ class RoutingLayer(nn.Module):
         # only on K, x, dt — invariant across the topological level loop. Saves
         # ~5 ops per node per level (denom/c0/c1/c2/clamp/scale) which on slso
         # (109 levels × 2 substeps) is the dominant per-timestep cost.
-        c01, c2 = self.muskingum.precompute_coefficients(K_musk, x_musk)
+        # Onde cinématique d'Hydrotel : célérité c = (5/3)·v ∝ Q^0.4, donc le
+        # temps de parcours K = dx/c ∝ Q^-0.4 BAISSE à haut débit → le pic
+        # voyage plus vite et s'atténue moins. K_eff = K_base·(Qref/(Q+Qref))^β.
+        # STABILITÉ : K_eff borné ≥ dt_sub (baisser K sous le sous-pas déstabilise
+        # le Muskingum) — d'où la nécessité de sous-pas FINS (routing_substeps).
+        if self.pure_advection:
+            # Translation pure, zéro atténuation (onde cinématique limite).
+            c01 = torch.ones_like(K_musk)
+            c2 = torch.zeros_like(K_musk)
+        elif self.dynamic_atten and area_km2 is not None and Q_out_prev is not None:
+            # Atténuation dépendante du régime : c2_eff = c2·(1−α), α→1 en crue.
+            c01, c2 = self.muskingum.precompute_coefficients(K_musk, x_musk)
+            Qref = self.da_qref_specific * area_km2 + 1e-3
+            q = Q_out_prev.clamp(min=0.0)
+            alpha = (q / (q + Qref)) ** self.da_beta     # ∈[0,1), monte avec Q
+            c2 = c2 * (1.0 - alpha)                       # moins d'atténuation en crue
+            c01 = 1.0 - c2                                # conservation (c01+c2=1)
+        elif self.dq_celerity and area_km2 is not None and Q_out_prev is not None:
+            Qref = self.dq_qref_specific * area_km2 + 1e-3
+            factor = (Qref / (Q_out_prev.clamp(min=0.0) + Qref)) ** self.dq_beta
+            dt_sub = self.muskingum.dt / self.muskingum.n_substeps  # secondes
+            K_eff = torch.clamp(K_musk * factor, min=dt_sub)
+            c01, c2 = self.muskingum.precompute_coefficients(K_eff, x_musk)
+        else:
+            c01, c2 = self.muskingum.precompute_coefficients(K_musk, x_musk)
+
+        # Routage par opérateur (solve triangulaire précalculé) : actif quand
+        # demandé, hors thermie (non portée) et hors TTA actif. L'opérateur
+        # est rebâti à t=0 (début de chaque simulate/chunk) et réutilisé sur
+        # tous les pas — c01/c2 sont invariants dans le temps.
+        if self.routing_mode != "level" and (
+                temp_kwargs is not None or (self.use_tta and len(outflow_buffer) > 0)):
+            if not getattr(self, "_op_fallback_warned", False):
+                self._op_fallback_warned = True
+                why = "thermie active" if temp_kwargs is not None else "TTA actif"
+                print(f"[routing] routing_mode={self.routing_mode!r} ignoré ({why}) "
+                      f"— fallback balayage par niveau. Couper use_temperature "
+                      f"pour activer l'opérateur.", flush=True)
+        if (self.routing_mode != "level" and temp_kwargs is None
+                and not (self.use_tta and len(outflow_buffer) > 0)):
+            from meandre.routing.operator_routing import (
+                build_operator_topo, build_operator_state, route_operator,
+            )
+            lagged = self.routing_mode == "operator-lagged"
+            topo_cache = getattr(graph, "_operator_topo", None)
+            if topo_cache is None or getattr(graph, "_operator_topo_lagged", None) != lagged:
+                graph._operator_topo = build_operator_topo(graph, lagged)
+                graph._operator_topo_lagged = lagged
+            # fp32 forcé : le solve/GEMV sous autocast bf16 mélange les dtypes
+            # et dégrade les récurrences longues.
+            with torch.autocast(device_type=q_lat_m3s.device.type, enabled=False):
+                # Coefficients constants → opérateur bâti une fois (t=0). Avec
+                # la célérité dépendante du débit, c01/c2 changent chaque pas →
+                # on rebâtit l'opérateur à chaque pas (coût accepté ; à optimiser).
+                if t == 0 or self._op_state is None or self.dq_celerity or self.dynamic_atten:
+                    self._op_state = build_operator_state(
+                        graph._operator_topo, c01, c2, self.muskingum.n_substeps,
+                    )
+                Q_out = route_operator(
+                    self, graph._operator_topo, self._op_state, q_lat_m3s,
+                    Q_out_prev, net_W, lake_storage_new, area_km2, dam_data, t,
+                    lagged,
+                )
+            return Q_out, lake_storage_new, None
 
         # TTA vectorized path: all edges computed in a single batched call.
         # The sequential path (Python loop) is removed; it was unnecessary because
@@ -276,6 +380,8 @@ class RoutingLayer(nn.Module):
                 E_lake=zeros_l,
                 P_lake=zeros_l,
                 S_dead=zeros_l,
+                k_lake=self._lake_k[lake_mask] if self._lake_k is not None else None,
+                beta=self._lake_beta[lake_mask] if self._lake_beta is not None else None,
             )
 
             if dam_data is not None:
@@ -390,6 +496,8 @@ class RoutingLayer(nn.Module):
                     E_lake=zeros_l,
                     P_lake=zeros_l,
                     S_dead=zeros_l,
+                    k_lake=self._lake_k[li] if self._lake_k is not None else None,
+                    beta=self._lake_beta[li] if self._lake_beta is not None else None,
                 )
 
                 if dam_data is not None:

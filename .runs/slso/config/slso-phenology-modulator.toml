@@ -1,0 +1,148 @@
+# slso-phenology-modulator.toml — Phase B IHI étape 1 : K_c via GDD.
+#
+# Backbone GELÉ depuis best-phase1-grace.pt. Seul PhenologyModulator (4 params)
+# entraînable : GDD_emerg, GDD_mid, K_c_min, K_c_max_factor.
+#
+# Multi-obj ET MODIS pour contraindre l'apprentissage vers la physique
+# (sans ET, K_c effectif peut compenser des biais Q sans signification phéno).
+#
+# Cibles smoke (5 epochs) :
+#   - GDD_emerg appris : 100-200 °C·j (forêt boréale Québec, débourrement mai)
+#   - GDD_mid : 500-1000 °C·j (pic LAI mi-juillet)
+#   - K_c_min : 0.2-0.4 (dormance hivernale)
+#   - K_c_max_factor : 0.8-1.2 (amplification raisonnable)
+#   - val_kge conservé ≥ 0.88 (backbone gelé, K_c marginalement différent)
+#   - val_nll_et amélioré vs hardcoded
+#
+# Lancer :
+#   uv run python .runs/slso/slso.py .runs/slso/config/slso-phenology-modulator.toml
+
+[paths]
+basin_db = "data/slso.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing.nc"
+checkpoint = "checkpoints/best-phenology-modulator.pt"
+fields_nc = "results/fields-phenology-modulator.nc"
+reach_parquet = "results/reach-phenology-modulator.parquet"
+runs_db = "logs/runs-phenology-modulator.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[forcing]
+era5_vars = []
+
+[temporal]
+date_start = "2000-01-01"
+spinup_end = "2000-12-31"
+train_start = "2001-01-01"
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+concrete_dropout = true
+concrete_init_p = 0.05
+param_mode = "nerf"
+
+# Phase B IHI étape 1
+use_phenology_modulator = true
+
+[soil]
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 3.0
+rain_hours_max = 24.0
+
+[training]
+warm_start = true
+warm_start_from = "checkpoints/best-phase1-grace.pt"
+
+n_epochs = 15                      # smoke v4 : base lr 1e-2 + GDD seuils ×100 = 1.0 via param group
+lr = 1e-2                          # K_c amplitudes (proven movement in v2)
+lr_finetune = 1e-2                 # GDD seuils auto ×100 via trainer param group → effectif 1.0
+warmup_epochs = 0
+eta_min_factor = 1.0
+weight_decay = 1e-4
+
+# Backbone GELÉ : seuls les 4 params du PhenologyModulator s'entraînent
+freeze_spatial = true
+freeze_temporal = true
+freeze_backbone = true
+
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 4
+compile_modules = false
+best_metric = "kge"
+best_metric_tolerance = 0.0
+station_weight_mode = "sqrt_area"
+
+w_prior = 0.0
+w_boundary = 0.0
+w_sigma_anchor = 0.0
+w_concrete_kl = 0.0
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+autopilot = true
+autopilot_grace_epochs = 5
+autopilot_beta_threshold = 1.00
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 6
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.20
+autopilot_restart_max = 2
+autopilot_restart_min_no_improve = 3
+
+autopilot_unfreeze_spatial_epoch = 9999
+autopilot_unfreeze_spatial_min_kge = 1.0
+autopilot_unfreeze_spatial_lr_factor = 1.0
+
+autopilot_nll = false
+kendall_gal_auto = false
+
+[loss]
+# Loss déterministe (pas de tête proba ici) : KGE + multi-obj ET pour contraindre K_c
+nll_distribution = "normal"
+
+w_nll = 0.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.1
+w_mse = 0.1
+w_log_nse = 0.0
+w_log_mse = 0.3
+w_nrmse = 0.0
+w_quantile = 0.0
+w_peak = 0.0
+w_physics = 0.01
+w_residual = 0.0
+w_flatness = 0.0
+
+# Multi-obj ET MODIS crucial pour identifier phenology
+w_et = 0.5                         # plus haut que d'habitude (0.1) pour pousser K_c via ET
+w_tws = 0.3                        # GRACE pour conservation masse
+w_snow = 0.0

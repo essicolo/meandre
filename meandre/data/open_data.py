@@ -1578,6 +1578,38 @@ def download_observations_hydat(
     return stations_path, obs_path
 
 
+def download_observations_cehq(
+    bbox: "tuple[float, float, float, float]",
+    cache_dir: "str | Path",
+    start_date: str,
+    end_date: str,
+) -> "tuple[Path, Path] | None":
+    """STUB — débits journaliers des jauges provinciales québécoises (CEHQ/MELCC).
+
+    Complète download_observations_hydat() (réseau fédéral) avec le réseau
+    provincial, indispensable au scale-up Québec (HYDAT seul est clairsemé sur
+    la rive sud). Doit retourner deux parquets au MÊME schéma que HYDAT pour se
+    brancher tel quel sur populate_basin_observations / l'ancrage du build :
+      stations : station_id, lon, lat, drainage_area_km2
+      obs      : station_id, date, Q_m3s
+
+    Workflow attendu :
+      1. Récupérer le répertoire des stations hydrométriques actives + l'aire
+         drainée publiée depuis Données Québec / le portail CEHQ
+         (https://www.donneesquebec.ca, jeu « Stations hydrométriques »).
+      2. Filtrer par bbox (EPSG:4326).
+      3. Télécharger les séries journalières de débit (m³/s) sur [start, end].
+      4. Sauver hydat-compatibles : cehq_stations.parquet, cehq_observations.parquet.
+
+    En attendant, le PoC SLSO réutilise les 32/41 stations CEHQ déjà curées dans
+    la BD PHYSITEL via .runs/slso-od/inject_cehq_obs.py (injection directe).
+    """
+    raise NotImplementedError(
+        "Loader CEHQ/MELCC pas encore implémenté. "
+        "PoC : voir .runs/slso-od/inject_cehq_obs.py (source slso.duckdb)."
+    )
+
+
 def populate_basin_observations(
     basin_db: str | Path,
     stations_parquet: str | Path,
