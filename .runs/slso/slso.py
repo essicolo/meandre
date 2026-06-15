@@ -390,6 +390,7 @@ model = HydroModel(
     soil_quickflow_beta = soil_quickflow_beta,
     soil_separate_infil_capacity = soil_separate_infil_capacity,
     soil_frozen_gate = soil_frozen_gate,
+    soil_mode = cfg.get("soil", {}).get("mode", "meandre"),
     use_hillslope_uh = cfg.get("model", {}).get("use_hillslope_uh", False),
     soil_bounds = soil_bounds,
     use_quantile_head = cfg.get("loss", {}).get("nll_distribution", "").lower() == "quantile",

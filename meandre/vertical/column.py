@@ -55,6 +55,7 @@ class VerticalColumn(nn.Module):
                  soil_quickflow_beta: float = 0.5,
                  soil_separate_infil_capacity: bool = False,
                  soil_frozen_gate: bool = False,
+                 soil_mode: str = "meandre",
                  use_hillslope_uh: bool = False) -> None:
         super().__init__()
         self.snow = SnowModule()
@@ -66,6 +67,27 @@ class VerticalColumn(nn.Module):
                                quickflow_beta=soil_quickflow_beta,
                                use_separate_infil_capacity=soil_separate_infil_capacity,
                                use_frozen_gate=soil_frozen_gate)
+        # ── Mode SOL FIDÈLE Hydrotel (ronde d'équivalence 2026-06-15) ──────
+        # soil_mode="hydrotel" : remplace le bilan vertical de méandre (van
+        # Genuchten + VSA + partition softmax + aquifère) par le BV3C2 EXACT
+        # d'Hydrotel (Campbell, hortonien plafonné Ks, portes gel/saturation,
+        # interflow pente, baseflow krec). Le baseflow krec étant interne au sol
+        # fidèle, l'aquifère est COURT-CIRCUITÉ en mode hydrotel. Les params de
+        # forme Campbell (b, psis par couche) et krec, absents de SpatialParams,
+        # sont GLOBAUX apprenables, init calibrés (silt_loam/loam, bv3c.csv).
+        # ks/thetas/thetacc/thetapf viennent du NeRF (round structurel) ; ils
+        # seront injectés calibrés à la validation PHYSITEL finale.
+        self.soil_mode = str(soil_mode)
+        if self.soil_mode == "hydrotel":
+            from meandre.vertical.bv3c_hydrotel import BV3CHydrotel, SOIL_TEXTURES, KREC_DEFAULT
+            import math as _m
+            self.soil_hydrotel = BV3CHydrotel(n_substeps_max=48)
+            tx = (SOIL_TEXTURES["silt_loam"], SOIL_TEXTURES["loam"], SOIL_TEXTURES["loam"])
+            for i, t in enumerate(tx, start=1):
+                # b = 1/lambda, psis (m) — globaux apprenables (log pour positivité).
+                setattr(self, f"bv_log_b{i}", nn.Parameter(torch.tensor(_m.log(1.0 / t["lam"]))))
+                setattr(self, f"bv_log_psis{i}", nn.Parameter(torch.tensor(_m.log(t["psis"]))))
+            self.bv_log_krec = nn.Parameter(torch.tensor(_m.log(KREC_DEFAULT)))
         self.wetland = WetlandModule()
         self.aquifer = AquiferModule()
         # Hydrogramme unitaire de VERSANT (cascade de Nash à 2 réservoirs).
@@ -195,24 +217,50 @@ class VerticalColumn(nn.Module):
         )
 
         # 5. Soil balance (frost-modified K_sat for layer 1)
-        theta1_new, theta2_new, theta3_new, R_surface, interflow, recharge, S_uz_new = self.soil(
-            P_thru, ET1, ET2, ET3,
-            state.theta1, state.theta2, state.theta3,
-            K_sat_1_eff, K_sat_2_eff, K_sat_3_eff,
-            params.porosity_1, params.porosity_2, params.porosity_3,
-            params.theta_fc_1, params.theta_fc_2, params.theta_fc_3,
-            params.theta_wp_1, params.theta_wp_2, params.theta_wp_3,
-            f_vert_1=params.f_vert_1,
-            f_vert_2=params.f_vert_2,
-            f_vert_3=params.f_vert_3,
-            vg_n=getattr(params, 'vg_n', None),
-            z2=getattr(params, 'Z2', None),
-            z3=getattr(params, 'Z3', None),
-            rain_hours=rain_hours_eff,
-            vsa_b=getattr(params, 'vsa_b', None),
-            S_uz=getattr(state, 'S_uz', None),
-            frozen_frac=frozen_frac,
-        )
+        Q_baseflow_faithful = None
+        if self.soil_mode == "hydrotel":
+            # ── Sol BV3C2 fidèle Hydrotel (baseflow interne, aquifère bypass) ──
+            z2v = getattr(params, 'Z2', None); z3v = getattr(params, 'Z3', None)
+            if z2v is None: z2v = torch.full_like(state.theta1, self.soil.z2_default)
+            if z3v is None: z3v = torch.full_like(state.theta1, self.soil.z3_default)
+            gp = lambda name: torch.exp(getattr(self, name))
+            p_bv = {
+                "z1": torch.full_like(state.theta1, self.soil.z1), "z2": z2v, "z3": z3v,
+                "ks1": K_sat_1_eff / 24.0, "ks2": K_sat_2_eff / 24.0, "ks3": K_sat_3_eff / 24.0,
+                "b1": gp("bv_log_b1"), "b2": gp("bv_log_b2"), "b3": gp("bv_log_b3"),
+                "psis1": gp("bv_log_psis1"), "psis2": gp("bv_log_psis2"), "psis3": gp("bv_log_psis3"),
+                "thetas1": params.porosity_1, "thetas2": params.porosity_2, "thetas3": params.porosity_3,
+                "slope": torch.full_like(state.theta1, 0.04),   # TODO per-nœud via territorial
+                "krec": gp("bv_log_krec"), "coef_recharge": torch.zeros_like(state.theta1),
+            }
+            frozen_bool = t_soil_new < 0.0
+            runoff_f, interflow_f, base_f, rech_f, (theta1_new, theta2_new, theta3_new), _ = self.soil_hydrotel(
+                state.theta1, state.theta2, state.theta3, P_thru, ET1 + ET2 + ET3,
+                frozen_bool, state.swe, p_bv,
+            )
+            R_surface = runoff_f; interflow = interflow_f
+            recharge = torch.zeros_like(state.theta1)
+            S_uz_new = getattr(state, 'S_uz', None)
+            Q_baseflow_faithful = base_f + rech_f
+        else:
+            theta1_new, theta2_new, theta3_new, R_surface, interflow, recharge, S_uz_new = self.soil(
+                P_thru, ET1, ET2, ET3,
+                state.theta1, state.theta2, state.theta3,
+                K_sat_1_eff, K_sat_2_eff, K_sat_3_eff,
+                params.porosity_1, params.porosity_2, params.porosity_3,
+                params.theta_fc_1, params.theta_fc_2, params.theta_fc_3,
+                params.theta_wp_1, params.theta_wp_2, params.theta_wp_3,
+                f_vert_1=params.f_vert_1,
+                f_vert_2=params.f_vert_2,
+                f_vert_3=params.f_vert_3,
+                vg_n=getattr(params, 'vg_n', None),
+                z2=getattr(params, 'Z2', None),
+                z3=getattr(params, 'Z3', None),
+                rain_hours=rain_hours_eff,
+                vsa_b=getattr(params, 'vsa_b', None),
+                S_uz=getattr(state, 'S_uz', None),
+                frozen_frac=frozen_frac,
+            )
 
         # 6. Wetland
         Q_wetland, R_direct, wetland_new = self.wetland(
@@ -221,10 +269,15 @@ class VerticalColumn(nn.Module):
 
         # 7. Aquifer: intercept soil recharge, delay through GW storage
         # Groundwater withdrawals act directly on S_gw (not on stream Q).
-        Q_baseflow, S_gw_new = self.aquifer(
-            recharge, state.S_gw, params.k_gw,
-            gw_withdrawal=gw_withdrawal_mm,
-        )
+        # Mode hydrotel : baseflow krec interne au sol fidèle → aquifère bypass.
+        if self.soil_mode == "hydrotel":
+            Q_baseflow = Q_baseflow_faithful
+            S_gw_new = state.S_gw
+        else:
+            Q_baseflow, S_gw_new = self.aquifer(
+                recharge, state.S_gw, params.k_gw,
+                gw_withdrawal=gw_withdrawal_mm,
+            )
 
         # Hydrogrammes de versant SÉPARÉS (cascades de Nash) : surface POINTUE
         # (préserve le pic), interflow LARGE (douceur jour-à-jour pour le kge).
