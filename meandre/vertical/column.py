@@ -81,13 +81,25 @@ class VerticalColumn(nn.Module):
         if self.soil_mode == "hydrotel":
             from meandre.vertical.bv3c_hydrotel import BV3CHydrotel, SOIL_TEXTURES, KREC_DEFAULT
             import math as _m
-            self.soil_hydrotel = BV3CHydrotel(n_substeps_max=48)
+            # 8 sous-pas : compromis vitesse/precision pour le banc structurel
+            # (masse conservee a tout N grace a la limitation de flux ; interflow
+            # ~30% sous 48). La validation PHYSITEL finale remontera N.
+            self.soil_hydrotel = BV3CHydrotel(n_substeps_max=8)
             tx = (SOIL_TEXTURES["silt_loam"], SOIL_TEXTURES["loam"], SOIL_TEXTURES["loam"])
+            # Params Campbell BORNÉS (sigmoïde) — b non borné fait exploser
+            # omega^(2b+3) (gradient 0·inf = NaN). Plages physiques de la table
+            # texturale : b=1/lambda ∈ [1.4, 6], psis ∈ [0.01, 1] m, krec ∈
+            # [1e-8, 1e-5] m/h. Le raw redonne la valeur calibrée après sigmoïde.
+            self._bv_b_bounds = (1.4, 6.0)
+            self._bv_psis_bounds = (0.01, 1.0)
+            self._bv_krec_bounds = (1e-8, 1e-5)
+            def inv(v, lo, hi):
+                f = min(max((v - lo) / (hi - lo), 1e-4), 1 - 1e-4)
+                return torch.tensor(_m.log(f / (1 - f)))
             for i, t in enumerate(tx, start=1):
-                # b = 1/lambda, psis (m) — globaux apprenables (log pour positivité).
-                setattr(self, f"bv_log_b{i}", nn.Parameter(torch.tensor(_m.log(1.0 / t["lam"]))))
-                setattr(self, f"bv_log_psis{i}", nn.Parameter(torch.tensor(_m.log(t["psis"]))))
-            self.bv_log_krec = nn.Parameter(torch.tensor(_m.log(KREC_DEFAULT)))
+                setattr(self, f"bv_b{i}_raw", nn.Parameter(inv(1.0 / t["lam"], *self._bv_b_bounds)))
+                setattr(self, f"bv_psis{i}_raw", nn.Parameter(inv(t["psis"], *self._bv_psis_bounds)))
+            self.bv_krec_raw = nn.Parameter(inv(KREC_DEFAULT, *self._bv_krec_bounds))
         self.wetland = WetlandModule()
         self.aquifer = AquiferModule()
         # Hydrogramme unitaire de VERSANT (cascade de Nash à 2 réservoirs).
@@ -223,15 +235,19 @@ class VerticalColumn(nn.Module):
             z2v = getattr(params, 'Z2', None); z3v = getattr(params, 'Z3', None)
             if z2v is None: z2v = torch.full_like(state.theta1, self.soil.z2_default)
             if z3v is None: z3v = torch.full_like(state.theta1, self.soil.z3_default)
-            gp = lambda name: torch.exp(getattr(self, name))
+            def bd(name, bounds):
+                lo, hi = bounds
+                return lo + (hi - lo) * torch.sigmoid(getattr(self, name))
             p_bv = {
                 "z1": torch.full_like(state.theta1, self.soil.z1), "z2": z2v, "z3": z3v,
                 "ks1": K_sat_1_eff / 24.0, "ks2": K_sat_2_eff / 24.0, "ks3": K_sat_3_eff / 24.0,
-                "b1": gp("bv_log_b1"), "b2": gp("bv_log_b2"), "b3": gp("bv_log_b3"),
-                "psis1": gp("bv_log_psis1"), "psis2": gp("bv_log_psis2"), "psis3": gp("bv_log_psis3"),
+                "b1": bd("bv_b1_raw", self._bv_b_bounds), "b2": bd("bv_b2_raw", self._bv_b_bounds),
+                "b3": bd("bv_b3_raw", self._bv_b_bounds),
+                "psis1": bd("bv_psis1_raw", self._bv_psis_bounds), "psis2": bd("bv_psis2_raw", self._bv_psis_bounds),
+                "psis3": bd("bv_psis3_raw", self._bv_psis_bounds),
                 "thetas1": params.porosity_1, "thetas2": params.porosity_2, "thetas3": params.porosity_3,
                 "slope": torch.full_like(state.theta1, 0.04),   # TODO per-nœud via territorial
-                "krec": gp("bv_log_krec"), "coef_recharge": torch.zeros_like(state.theta1),
+                "krec": bd("bv_krec_raw", self._bv_krec_bounds), "coef_recharge": torch.zeros_like(state.theta1),
             }
             frozen_bool = t_soil_new < 0.0
             runoff_f, interflow_f, base_f, rech_f, (theta1_new, theta2_new, theta3_new), _ = self.soil_hydrotel(
