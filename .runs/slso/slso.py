@@ -390,6 +390,7 @@ model = HydroModel(
     soil_quickflow_beta = soil_quickflow_beta,
     soil_separate_infil_capacity = soil_separate_infil_capacity,
     soil_frozen_gate = soil_frozen_gate,
+    soil_runoff_clean = soil_cfg.get("runoff_clean", False),
     soil_mode = cfg.get("soil", {}).get("mode", "meandre"),
     use_overland_uh = cfg.get("model", {}).get("use_overland_uh", False),
     use_hillslope_uh = cfg.get("model", {}).get("use_hillslope_uh", False),

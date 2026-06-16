@@ -48,8 +48,14 @@ class SoilModule(nn.Module):
         quickflow_beta: float = 0.5,
         use_separate_infil_capacity: bool = False,
         use_frozen_gate: bool = False,
+        runoff_clean: bool = False,
     ) -> None:
         super().__init__()
+        # Clone Hydrotel : UNE seule capacité d'infiltration porte tout le
+        # ruissellement (hortonien + saturation + gel unifiés), au lieu des
+        # 7 mécanismes empilés (VSA + Eagleson + excès-saturation + porte gel +
+        # quickflow + infil séparé + partition). Voir forward().
+        self.runoff_clean = bool(runoff_clean)
         # Z1 (root zone surface) reste fixe — sémantique stable (~30cm).
         # Z2, Z3 deviennent per-node via forward() args; defaults pour fallback.
         self.z1 = float(z1)
@@ -315,66 +321,65 @@ class SoilModule(nn.Module):
         ET2_m = ET2 * 1e-3
         ET3_m = ET3 * 1e-3
 
-        # ── Porte GEL (fidèle Hydrotel) ───────────────────────────────────
-        # Sur sol gelé, une fraction de l'apport ruisselle DIRECTEMENT, avant
-        # toute infiltration (Hydrotel coupe pinf à 0). R_frozen quitte P_m ;
-        # le reste suit le chemin normal. frozen_frac ∈ [0,1] (1 = gelé), passé
-        # par la colonne (= 1 − frost_factor). Conserve la masse.
-        R_frozen = torch.zeros_like(P_m)
-        if self.use_frozen_gate and frozen_frac is not None:
-            lo, hi = self._frozen_gate_bounds
-            gate = lo + (hi - lo) * torch.sigmoid(self.frozen_gate_raw)
-            R_frozen = frozen_frac * gate * torch.clamp(P_m, min=0.0)
-            P_m = P_m - R_frozen
-
-        # ── Infiltration-excess runoff (Eagleson 1978) ──────────────────
-        # Capacité d'infiltration de SURFACE découplée du K_sat de DRAINAGE
-        # (2026-06-14). Ce sont deux propriétés physiques distinctes :
-        # l'infiltrabilité de surface (croûtage, scellage, macropores) limite
-        # l'entrée de la pluie, le K_sat de van Genuchten décrit le drainage du
-        # profil. Les confondre entremêle pics et récession (scan K_sat). On
-        # multiplie K_sat_1 par un facteur appris infil_ratio ∈ (0.05,1) :
-        # garde la variation spatiale + le couplage au gel, ajoute un seul
-        # bouton de scellage. infil_ratio=1 ⇒ comportement actuel (équivalence).
-        R_infilt_excess = torch.zeros_like(P_m)
-        if self.use_infiltration_excess:
-            P_mm = P_eff  # mm/day
-            infil_factor = 1.0
-            if self.use_separate_infil_capacity:
-                lo, hi = self._infil_bounds
-                infil_factor = lo + (hi - lo) * torch.sigmoid(self.infil_ratio_raw)
-            K_sat_mmh = K_sat_1 * 1000.0 / 24.0 * infil_factor  # m/day → mm/h
-            mean_intensity = P_mm / torch.clamp(rain_hours, min=0.5)  # mm/h
-            ratio = K_sat_mmh / (mean_intensity + 1e-3)
-            frac_excess = torch.exp(-ratio)
-            R_infilt_excess = P_mm * frac_excess * 1e-3  # m/day
-            R_infilt_excess = torch.where(
-                P_mm > 1.0, R_infilt_excess, torch.zeros_like(R_infilt_excess)
+        # ════ CLONE HYDROTEL : UNE capacité d'infiltration ════════════════
+        # Tout le ruissellement vient d'UNE fonction. La surface peut avaler
+        # l'eau jusqu'à un débit = K_sat de surface (déjà réduit par le gel en
+        # amont via K_sat_1). Ce qui dépasse l'intensité de pluie ruisselle
+        # (hortonien). Et on ne peut pas infiltrer plus que le stockage restant
+        # (saturation). Gel + hortonien + saturation, UNE courbe, comme Hydrotel.
+        # Remplace VSA + Eagleson + excès-saturation + porte gel + quickflow.
+        if self.runoff_clean:
+            # UNE capacité d'infiltration porte TOUT le ruissellement.
+            P_mm = torch.clamp(P_eff, min=0.0)               # mm/j (pluie+fonte)
+            cap_mmh = K_sat_1 * 1000.0 / 24.0                # m/j -> mm/h (gel inclus)
+            intensity = P_mm / torch.clamp(rain_hours, min=0.5)  # mm/h
+            infil_mm = torch.minimum(intensity, cap_mmh) * rain_hours  # mm infiltrés
+            remaining_mm = soft_relu(porosity_1 - theta1, self.sharpness) * z1 * 1000.0
+            infil_mm = torch.minimum(infil_mm, remaining_mm)  # borne saturation
+            R_frozen = (P_mm - infil_mm) * 1e-3              # m/j ruissellement (terme unique)
+            P_infiltrated = infil_mm * 1e-3                  # m/j infiltré
+            excess_1 = torch.zeros_like(P_m)
+            R_infilt_excess = torch.zeros_like(P_m)
+            R_sat_vsa = torch.zeros_like(P_m)
+        else:
+            # ════ LEGACY : les 7 boutons empilés (à supprimer après) ════════
+            # ── Porte GEL ──
+            R_frozen = torch.zeros_like(P_m)
+            if self.use_frozen_gate and frozen_frac is not None:
+                lo, hi = self._frozen_gate_bounds
+                gate = lo + (hi - lo) * torch.sigmoid(self.frozen_gate_raw)
+                R_frozen = frozen_frac * gate * torch.clamp(P_m, min=0.0)
+                P_m = P_m - R_frozen
+            # ── Infiltration-excess (Eagleson 1978) ──
+            R_infilt_excess = torch.zeros_like(P_m)
+            if self.use_infiltration_excess:
+                P_mm = P_eff
+                infil_factor = 1.0
+                if self.use_separate_infil_capacity:
+                    lo, hi = self._infil_bounds
+                    infil_factor = lo + (hi - lo) * torch.sigmoid(self.infil_ratio_raw)
+                K_sat_mmh = K_sat_1 * 1000.0 / 24.0 * infil_factor
+                mean_intensity = P_mm / torch.clamp(rain_hours, min=0.5)
+                ratio = K_sat_mmh / (mean_intensity + 1e-3)
+                frac_excess = torch.exp(-ratio)
+                R_infilt_excess = P_mm * frac_excess * 1e-3
+                R_infilt_excess = torch.where(
+                    P_mm > 1.0, R_infilt_excess, torch.zeros_like(R_infilt_excess)
+                )
+                P_m = P_m - R_infilt_excess
+            # ── VSA (aire-source-variable) ──
+            Se_1 = torch.clamp(
+                (theta1 - theta_wp_1) / (porosity_1 - theta_wp_1 + 1e-6), 0.0, 1.0
             )
-            P_m = P_m - R_infilt_excess
-
-        # ── Ruissellement par aire-source-variable (VSA, type VIC/TOPMODEL) ──
-        # Une fraction f_sat de la surface est saturée et ruisselle DIRECTEMENT,
-        # avant que le seau de la couche 1 ne se remplisse. La fraction croît
-        # avec l'humidité de surface : f_sat = Se_1^vsa_b. Capture le fait que
-        # les zones humides (freshet, sol près de la nappe, orages successifs)
-        # génèrent du ruissellement rapide que le modèle à seau seul rate — le
-        # déficit de génération de crue diagnostiqué 2026-06-13 (60 % de l'eau
-        # d'orage absorbée en stockage). Conserve la masse : R_sat_vsa quitte
-        # P_m, le reste continue vers l'infiltration / saturation pleine.
-        Se_1 = torch.clamp(
-            (theta1 - theta_wp_1) / (porosity_1 - theta_wp_1 + 1e-6), 0.0, 1.0
-        )
-        vsa_b_eff = vsa_b if vsa_b is not None else self.vsa_b
-        f_sat = Se_1 ** vsa_b_eff
-        R_sat_vsa = f_sat * torch.clamp(P_m, min=0.0)
-        P_m = P_m - R_sat_vsa
-
-        # Saturation-excess runoff from layer 1 (smooth)
-        excess_1 = soft_relu(
-            theta1 + P_m / z1 - porosity_1, self.sharpness
-        ) * z1
-        P_infiltrated = P_m - excess_1
+            vsa_b_eff = vsa_b if vsa_b is not None else self.vsa_b
+            f_sat = Se_1 ** vsa_b_eff
+            R_sat_vsa = f_sat * torch.clamp(P_m, min=0.0)
+            P_m = P_m - R_sat_vsa
+            # ── Excès de saturation ──
+            excess_1 = soft_relu(
+                theta1 + P_m / z1 - porosity_1, self.sharpness
+            ) * z1
+            P_infiltrated = P_m - excess_1
 
         # Inter-layer Darcy fluxes
         q12 = self._darcy_flux(

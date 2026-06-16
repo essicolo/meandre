@@ -55,6 +55,7 @@ class VerticalColumn(nn.Module):
                  soil_quickflow_beta: float = 0.5,
                  soil_separate_infil_capacity: bool = False,
                  soil_frozen_gate: bool = False,
+                 soil_runoff_clean: bool = False,
                  soil_mode: str = "meandre",
                  use_overland_uh: bool = False,
                  use_hillslope_uh: bool = False) -> None:
@@ -67,7 +68,8 @@ class VerticalColumn(nn.Module):
                                use_quickflow_reservoir=soil_quickflow_reservoir,
                                quickflow_beta=soil_quickflow_beta,
                                use_separate_infil_capacity=soil_separate_infil_capacity,
-                               use_frozen_gate=soil_frozen_gate)
+                               use_frozen_gate=soil_frozen_gate,
+                               runoff_clean=soil_runoff_clean)
         # ── Mode SOL FIDÈLE Hydrotel (ronde d'équivalence 2026-06-15) ──────
         # soil_mode="hydrotel" : remplace le bilan vertical de méandre (van
         # Genuchten + VSA + partition softmax + aquifère) par le BV3C2 EXACT
