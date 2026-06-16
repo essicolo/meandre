@@ -201,6 +201,17 @@ def build_basin(
         print(f"  reach length on edges: médiane {edge_len.median().item():.0f} m, "
               f"max {edge_len.max().item():.0f} m", flush=True)
 
+    # Préserver les fractions BRUTES [0,1] (occupation du sol + texture + pente)
+    # pour le split de génération BV3C2 (fsa perméable / fse eau / fsi imperméable)
+    # et les textures Campbell. Le NeRF les reçoit NORMALISÉES (dans `data`), mais
+    # la physique du sol clonée d'Hydrotel a besoin des vraies fractions. Stockées
+    # dans `physical` sous suffixe _raw (chargées via la convention _raw du cache).
+    _raw_keep = ["f_urban", "f_water", "f_wetland", "f_peatland", "lake_fraction",
+                 "f_forest", "f_sand", "f_silt", "f_clay", "mean_slope_pct"]
+    for _c in _raw_keep:
+        if _c in columns:
+            physical[_c + "_raw"] = features[:, columns.index(_c)].clone()
+
     # Step 5: Normalise features
     if normalise:
         # L'aire drainée s'étale sur ~0,1–14000 km² (skew ~4). Un z-score

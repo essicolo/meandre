@@ -1538,8 +1538,11 @@ class BasinCache:
 
         # Separate feature columns from physical columns
         all_cols = [c for c in df.columns if c != "node_idx"]
-        physical_cols = [c for c in all_cols if c in DEFAULT_PHYSICAL_COLUMNS]
-        feature_cols = [c for c in all_cols if c not in DEFAULT_PHYSICAL_COLUMNS]
+        # Colonnes physiques : DEFAULT_PHYSICAL_COLUMNS + convention suffixe _raw
+        # (fractions brutes occupation/texture pour le split BV3C2). Jamais au NeRF.
+        physical_cols = [c for c in all_cols
+                         if c in DEFAULT_PHYSICAL_COLUMNS or c.endswith("_raw")]
+        feature_cols = [c for c in all_cols if c not in physical_cols]
 
         # Build normalised feature tensor
         feature_data = torch.tensor(
