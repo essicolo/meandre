@@ -97,56 +97,66 @@ class BV3C2Clone(torch.nn.Module):
         pinf = torch.where(frozen | omega1_sat, torch.zeros_like(pinf), pinf)
         ruis_rate = torch.clamp(prec - pinf, min=0.0)   # m/h (ruissellement hortonien)
 
-        # ── Sous-pas internes (TriCoucheOct97), accumulation lames ──
-        nt = self.n_substep
-        dtc = DT_H / nt                                 # h
+        # ── Sous-pas internes adaptatifs (TriCoucheOct97), accumulation lames ──
+        # FIDÈLE Hydrotel : PAS de clamp de flux. On laisse theta dépasser thetas
+        # puis on cascade le surplus en RUISSELLEMENT (l.2113), et on gère la
+        # négativité en refoulant depuis les couches voisines (l.2118-2158). La
+        # stabilité vient du sous-pas ADAPTATIF Courant (|flux·dtc/(theta·z)|<cin,
+        # l.1954-2031), pas d'un clamp qui tuait la saturation.
         sin_slope = torch.sin(torch.atan(slope))
-        et_mh = (etp_mm / 1000.0) / DT_H                # ETP m/h (réparti grossièrement L1)
-        # ETR par couche si fourni, sinon ETP sur L1
-        e1 = (etr1_mm/1000.0/DT_H) if etr1_mm is not None else et_mh
-        e2 = (etr2_mm/1000.0/DT_H) if etr2_mm is not None else torch.zeros_like(et_mh)
-        e3 = (etr3_mm/1000.0/DT_H) if etr3_mm is not None else torch.zeros_like(et_mh)
-
+        et_mh = (etp_mm / 1000.0) / DT_H
+        e1 = (etr1_mm / 1000.0 / DT_H) if etr1_mm is not None else et_mh
+        e2 = (etr2_mm / 1000.0 / DT_H) if etr2_mm is not None else torch.zeros_like(et_mh)
+        e3 = (etr3_mm / 1000.0 / DT_H) if etr3_mm is not None else torch.zeros_like(et_mh)
+        cin = p["cin"]
         t1, t2, t3 = theta1, theta2, theta3
-        lruis = torch.zeros_like(t1)                    # ruissellement cumulé (m)
-        lhyp = torch.zeros_like(t1)                     # interflow cumulé (m)
-        lbase = torch.zeros_like(t1)                    # baseflow cumulé (m)
-        froz_frac = torch.clamp(frozen_depth_cm / 100.0 / z1, 0.0, 1.0)  # gel relatif L1
+        lruis = torch.zeros_like(t1); lhyp = torch.zeros_like(t1); lbase = torch.zeros_like(t1)
+        froz_frac = torch.clamp(frozen_depth_cm / 100.0 / z1, 0.0, 1.0)
         throttle = torch.where(frozen, torch.clamp(1.0 - froz_frac, 0.0, 1.0), torch.ones_like(t1))
+        tr = torch.full_like(t1, DT_H)                  # temps restant (h) par nœud
+        dtc_min = DT_H / 1152.0                          # plus fin niveau Hydrotel
 
-        for _ in range(nt):
+        for _ in range(self.n_substep):                 # cap d'itérations (sécurité)
             k1 = campbell_K(t1, ths1, ks1, b1); k2 = campbell_K(t2, ths2, ks2, b2); k3 = campbell_K(t3, ths3, ks3, b3)
             ps1 = campbell_psi(t1, ths1, psis1, b1, p["omegpi1"], p["mm1"], p["nn1"])
             ps2 = campbell_psi(t2, ths2, psis2, b2, p["omegpi2"], p["mm2"], p["nn2"])
             ps3 = campbell_psi(t3, ths3, psis3, b3, p["omegpi3"], p["mm3"], p["nn3"])
             k12 = torch.maximum(k1, k2); k23 = torch.maximum(k2, k3)
-            qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)     # m/h
+            qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)
             qq23 = k23 * (2.0 * (ps3 - ps2) / (z2 + z3) + 1.0)
-            q2 = k2 * sin_slope * z2                                # interflow (m2/h -> /z2 plus bas)
-            q3 = krec * z3 * t3                                     # baseflow
-            # gel : étrangle qq12/qq23/q2 ; q3 halve (approx l.1888-1913)
+            q2 = k2 * sin_slope * z2; q3 = krec * z3 * t3
             qq12 = qq12 * throttle; qq23 = qq23 * throttle; q2 = q2 * throttle
             q3 = torch.where(frozen, q3 * 0.5, q3)
-            # limitation de flux (stabilité, remplace le sous-pas adaptatif C++) :
-            # un flux ne vide pas une couche sous 0 ni ne dépasse l'autre.
-            qq12 = torch.clamp(qq12, -(ths2 - t2) * z2 / dtc, t1 * z1 / dtc)
-            qq23 = torch.clamp(qq23, -(ths3 - t3) * z3 / dtc, t2 * z2 / dtc)
-            q2 = torch.clamp(torch.minimum(q2, t2 * z2 / dtc), min=0.0)
-            q3 = torch.clamp(torch.minimum(q3, t3 * z3 / dtc), min=0.0)
-            e1e = torch.clamp(torch.minimum(e1, t1 * z1 / dtc), min=0.0)
-            # mise à jour theta (l.2036-2038)
+            # dtc ADAPTATIF Courant : |flux·dtc/(theta·z)| < cin, borné [dtc_min, tr]
+            net1 = (pinf - qq12 - e1).abs(); net2 = (qq12 - qq23 - e2 - q2).abs()
+            d1 = cin * torch.clamp(t1, min=1e-3) * z1 / torch.clamp(net1, min=1e-12)
+            d2 = cin * torch.clamp(t2, min=1e-3) * z2 / torch.clamp(net2, min=1e-12)
+            dtc = torch.minimum(torch.minimum(d1, d2), tr)
+            # Hydrotel l.1925 : si infiltration, dtc ≤ 1 h (résout le remplissage
+            # fin, sinon un gros pas rate la saturation intra-journalière).
+            dtc = torch.where(pinf > 0.0, torch.minimum(dtc, torch.ones_like(dtc)), dtc)
+            dtc = torch.clamp(dtc, min=dtc_min)
+            dtc = torch.minimum(dtc, tr)                 # ne dépasse pas le temps restant
+            active = (tr > 1e-7).to(dtc.dtype)
+            dtc = dtc * active                           # nœuds finis : dtc=0
+            e1e = torch.minimum(e1, torch.clamp(t1, min=0.0) * z1 / torch.clamp(dtc, min=1e-12))
             t1 = t1 + dtc * (pinf - qq12 - e1e) / z1
             t2 = t2 + dtc * (qq12 - qq23 - e2 - q2) / z2
             t3 = t3 + dtc * (qq23 - q3 - e3) / z3
-            # ── cascade de SATURATION (l.2046-2116) : refoulement vers le haut ──
+            # cascade SATURATION (refoulement haut → ov1 = RUISSELLEMENT, l.2046-2116)
             ov3 = torch.clamp(t3 - ths3, min=0.0); t3 = t3 - ov3; t2 = t2 + ov3 * z3 / z2
             ov2 = torch.clamp(t2 - ths2, min=0.0); t2 = t2 - ov2; t1 = t1 + ov2 * z2 / z1
-            ov1 = torch.clamp(t1 - ths1, min=0.0); t1 = t1 - ov1   # l.2113 : déborde en RUISSELLEMENT
-            t1 = torch.clamp(t1, min=0.0); t2 = torch.clamp(t2, min=0.0); t3 = torch.clamp(t3, min=0.0)
-            # accumulation lames (l.808-813)
-            lruis = lruis + (ruis_rate * dtc) + ov1 * z1   # hortonien + débordement saturation
-            lhyp = lhyp + q2 * dtc / z2 * z2               # q2 déjà *z2 ; lame = q2*dtc/... -> garder q2*dtc
+            ov1 = torch.clamp(t1 - ths1, min=0.0); t1 = t1 - ov1
+            # NÉGATIVITÉ (l.2118-2158) : refoule depuis la couche du dessous
+            neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
+            neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
+            t3 = torch.clamp(t3, min=0.0)
+            lruis = lruis + ruis_rate * dtc + ov1 * z1
+            lhyp = lhyp + q2 * dtc
             lbase = lbase + q3 * dtc
+            tr = torch.clamp(tr - dtc, min=0.0)
+            if bool((tr <= 1e-7).all()):
+                break
 
         # ── CalculeUHRH (l.820) : production avec split occupation du sol ──
         # leau = (pluie − ET) sur fraction EAU ; lprec = pluie sur IMPERMÉABLE
