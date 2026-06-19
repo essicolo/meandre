@@ -92,6 +92,8 @@ class HydroModel(nn.Module):
         soil_frozen_gate: bool = False,
         soil_runoff_clean: bool = False,
         soil_mode: str = "meandre",
+        soil_clone_substep: int = 48,
+        soil_clone_krec_init: float = 1e-5,
         use_overland_uh: bool = False,
         use_hillslope_uh: bool = False,
         soil_bounds: dict | None = None,
@@ -171,6 +173,8 @@ class HydroModel(nn.Module):
             soil_frozen_gate=soil_frozen_gate,
             soil_runoff_clean=soil_runoff_clean,
             soil_mode=soil_mode,
+            soil_clone_substep=soil_clone_substep,
+            soil_clone_krec_init=soil_clone_krec_init,
             use_overland_uh=use_overland_uh,
             use_hillslope_uh=use_hillslope_uh,
         )
@@ -311,6 +315,10 @@ class HydroModel(nn.Module):
         spatial_params = self.spatial_encoder(
             node_coords, territorial.to_tensor(),
         )
+        # Clone BV3C2 : charge une fois les fractions d'occupation brutes par nœud.
+        if getattr(self.vertical_column, "soil_mode", "meandre") == "clone" \
+                and getattr(self.vertical_column, "_clone_static", "x") is None:
+            self.vertical_column.set_clone_static(territorial)
         K_musk = spatial_params.K_musk_hours * 3600.0  # hours → seconds
         x_musk = spatial_params.x_musk
 
@@ -655,6 +663,8 @@ class HydroModel(nn.Module):
                 "soil_frozen_gate": getattr(self.vertical_column.soil, "use_frozen_gate", False),
                 "soil_runoff_clean": getattr(self.vertical_column.soil, "runoff_clean", False),
                 "soil_mode": getattr(self.vertical_column, "soil_mode", "meandre"),
+                "soil_clone_substep": getattr(getattr(self.vertical_column, "soil_clone", None), "n_substep", 48),
+                "soil_clone_krec_init": 1e-5,  # init scalaire seul ; cl_krec_raw appris est dans le state_dict
                 "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),
                 "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
             },

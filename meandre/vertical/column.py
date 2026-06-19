@@ -57,6 +57,8 @@ class VerticalColumn(nn.Module):
                  soil_frozen_gate: bool = False,
                  soil_runoff_clean: bool = False,
                  soil_mode: str = "meandre",
+                 soil_clone_substep: int = 48,
+                 soil_clone_krec_init: float = 1e-5,
                  use_overland_uh: bool = False,
                  use_hillslope_uh: bool = False) -> None:
         super().__init__()
@@ -104,6 +106,28 @@ class VerticalColumn(nn.Module):
                 setattr(self, f"bv_psis{i}_raw", nn.Parameter(inv(t["psis"], *self._bv_psis_bounds)))
             self.bv_krec_raw = nn.Parameter(inv(KREC_DEFAULT, *self._bv_krec_bounds))
 
+        if self.soil_mode == "clone":
+            # ── Clone BV3C2 FIDÈLE (hydrotel_clone) : cascade de saturation +
+            # split occupation fsa/fse/fsi, les deux mécanismes qui génèrent les
+            # pics au pas JOURNALIER. Hydraulique du NeRF (porosité, K_sat, fc,
+            # wp — régionalisés) ; forme Campbell b/psis + krec globaux
+            # apprenables ; fractions fsa/fse/fsi + pente STATIQUES par nœud
+            # (set_clone_static depuis le territorial brut).
+            from hydrotel_clone.bv3c2 import BV3C2Clone, SOIL_TEXTURES as _CLT, KREC_DEFAULT as _CK
+            import math as _mc
+            self.soil_clone = BV3C2Clone(n_substep=soil_clone_substep)   # cap sous-pas adaptatif (config [soil].clone_substep)
+            # krec : borne élargie (1e-7, 1e-4) pour que l'init SLSO 1e-5 ne soit
+            # pas au plafond (le vrai bv3c.csv SLSO = 1e-5 m/h ; DELISLE = 1e-6).
+            self._cl_b_bounds = (1.4, 6.0); self._cl_psis_bounds = (0.01, 1.0); self._cl_krec_bounds = (1e-7, 1e-4)
+            def _inv(v, lo, hi):
+                f = min(max((v - lo) / (hi - lo), 1e-4), 1 - 1e-4); return torch.tensor(_mc.log(f / (1 - f)))
+            txc = (_CLT["silt_loam"], _CLT["loam"], _CLT["loam"])
+            for i, t in enumerate(txc, start=1):
+                setattr(self, f"cl_b{i}_raw", nn.Parameter(_inv(1.0 / t["lam"], *self._cl_b_bounds)))
+                setattr(self, f"cl_psis{i}_raw", nn.Parameter(_inv(t["psis"], *self._cl_psis_bounds)))
+            self.cl_krec_raw = nn.Parameter(_inv(soil_clone_krec_init, *self._cl_krec_bounds))
+            self._clone_static = None   # (fsa, fse, fsi, slope) par nœud, set lazy
+
         # ── Hydrogramme géomorphologique de VERSANT (fidèle Hydrotel) ──────
         # Hydrotel convolue le ruissellement par UN hydrogramme unitaire large
         # (onde cinématique versant, .hgm, jusqu'à 10 jours) qui fabrique la
@@ -134,6 +158,26 @@ class VerticalColumn(nn.Module):
             self.log_uh_k_surf = nn.Parameter(torch.tensor(_m.log(0.3)))   # ~0.3 j
             self.log_uh_k_inter = nn.Parameter(torch.tensor(_m.log(2.5)))  # ~2.5 j
         self.temporal_modulator = TemporalModulator(n_modulated=len(self.MODULATED))
+
+    def set_clone_static(self, territorial) -> None:
+        """Charge les fractions d'occupation BRUTES (fsa/fse/fsi) + pente par
+        nœud pour le clone BV3C2, depuis le territorial. fsi=imperméable (urbain),
+        fse=eau (eau+lacs), fsa=perméable=1−fsi−fse. Appelé une fois par simulate."""
+        gp = territorial.get_physical
+        urb = gp("f_urban_raw"); wat = gp("f_water_raw"); lak = gp("lake_fraction_raw")
+        slp = gp("mean_slope_pct_raw")
+        if urb is None:   # bassin sans fractions brutes : fallback global
+            n = territorial.to_tensor().shape[0]
+            dev = territorial.to_tensor().device
+            fsa = torch.full((n,), 0.90, device=dev); fse = torch.full((n,), 0.05, device=dev)
+            fsi = torch.full((n,), 0.05, device=dev); slope = torch.full((n,), 0.04, device=dev)
+        else:
+            z = torch.zeros_like(urb)
+            fsi = torch.clamp(urb, 0.0, 1.0)
+            fse = torch.clamp((wat if wat is not None else z) + (lak if lak is not None else z), 0.0, 1.0)
+            fsa = torch.clamp(1.0 - fsi - fse, 0.0, 1.0)
+            slope = torch.clamp((slp if slp is not None else torch.full_like(urb, 4.0)) / 100.0, 1e-3, 0.5)
+        self._clone_static = (fsa, fse, fsi, slope)
 
     def forward(
         self,
@@ -275,6 +319,40 @@ class VerticalColumn(nn.Module):
             recharge = torch.zeros_like(state.theta1)
             S_uz_new = getattr(state, 'S_uz', None)
             Q_baseflow_faithful = base_f + rech_f
+        elif self.soil_mode == "clone":
+            # ── Clone BV3C2 fidèle : cascade saturation + split fsa/fse/fsi ──
+            z2v = getattr(params, 'Z2', None); z3v = getattr(params, 'Z3', None)
+            if z2v is None: z2v = torch.full_like(state.theta1, self.soil.z2_default)
+            if z3v is None: z3v = torch.full_like(state.theta1, self.soil.z3_default)
+            bdc = lambda nm, bnd: bnd[0] + (bnd[1] - bnd[0]) * torch.sigmoid(getattr(self, nm))
+            def _spline(b, psis):
+                A = (1.0 + 2.0 * b) / (2.0 + 2.0 * b)
+                psi_i = psis * A.pow(-b); dpsi_i = -psis * b * A.pow(-b - 1.0); r = psi_i / dpsi_i
+                nn = (A * A - A - 2.0 * r * A + r) / (A - 1.0 - r)
+                mm = -dpsi_i / (2.0 * A - nn - 1.0)
+                return A, mm, nn
+            if self._clone_static is None:
+                fsa = torch.full_like(state.theta1, 0.90); fse = torch.full_like(state.theta1, 0.05)
+                fsi = torch.full_like(state.theta1, 0.05); slope = torch.full_like(state.theta1, 0.04)
+            else:
+                fsa, fse, fsi, slope = self._clone_static
+            b1 = bdc("cl_b1_raw", self._cl_b_bounds); b2 = bdc("cl_b2_raw", self._cl_b_bounds); b3 = bdc("cl_b3_raw", self._cl_b_bounds)
+            ps1 = bdc("cl_psis1_raw", self._cl_psis_bounds); ps2 = bdc("cl_psis2_raw", self._cl_psis_bounds); ps3 = bdc("cl_psis3_raw", self._cl_psis_bounds)
+            o1, m1, n1 = _spline(b1, ps1); o2, m2, n2 = _spline(b2, ps2); o3, m3, n3 = _spline(b3, ps3)
+            p_cl = {"z1": torch.full_like(state.theta1, self.soil.z1), "z2": z2v, "z3": z3v,
+                    "thetas1": params.porosity_1, "thetas2": params.porosity_2, "thetas3": params.porosity_3,
+                    "ks1": K_sat_1_eff / 24.0, "ks2": K_sat_2_eff / 24.0, "ks3": K_sat_3_eff / 24.0,
+                    "b1": b1, "b2": b2, "b3": b3, "psis1": ps1, "psis2": ps2, "psis3": ps3,
+                    "omegpi1": o1, "omegpi2": o2, "omegpi3": o3, "mm1": m1, "mm2": m2, "mm3": m3,
+                    "nn1": n1, "nn2": n2, "nn3": n3, "krec": bdc("cl_krec_raw", self._cl_krec_bounds),
+                    "slope": slope, "cin": torch.full_like(state.theta1, 0.03),
+                    "fsa": fsa, "fse": fse, "fsi": fsi, "coef_recharge": torch.zeros_like(state.theta1)}
+            frozen_cm = torch.where(t_soil_new < 0.0, torch.full_like(state.theta1, 30.0), torch.zeros_like(state.theta1))
+            ps_s, ph_s, pb_s, rech_s, (theta1_new, theta2_new, theta3_new), _ = self.soil_clone(
+                state.theta1, state.theta2, state.theta3, P_thru, ET1 + ET2 + ET3, frozen_cm, state.swe, p_cl)
+            R_surface = ps_s; interflow = ph_s
+            recharge = torch.zeros_like(state.theta1); S_uz_new = getattr(state, 'S_uz', None)
+            Q_baseflow_faithful = pb_s + rech_s
         else:
             theta1_new, theta2_new, theta3_new, R_surface, interflow, recharge, S_uz_new = self.soil(
                 P_thru, ET1, ET2, ET3,
@@ -303,7 +381,7 @@ class VerticalColumn(nn.Module):
         # 7. Aquifer: intercept soil recharge, delay through GW storage
         # Groundwater withdrawals act directly on S_gw (not on stream Q).
         # Mode hydrotel : baseflow krec interne au sol fidèle → aquifère bypass.
-        if self.soil_mode == "hydrotel":
+        if self.soil_mode in ("hydrotel", "clone"):
             Q_baseflow = Q_baseflow_faithful
             S_gw_new = state.S_gw
         else:
