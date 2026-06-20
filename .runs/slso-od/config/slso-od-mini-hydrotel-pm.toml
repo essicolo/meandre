@@ -1,0 +1,126 @@
+# ─── SLSO open-data — banc mini, COLONNE FIDÈLE HYDROTEL (Phase A) ──────────
+# Dérivé de slso-od-mini-clone.toml. column_mode="hydrotel" remplace toute la
+# VerticalColumn par HydrotelColumn (chaîne native des modules clonés+validés
+# Phase B : neige degré-jour → gel RANKINEN → ETP McGuinness → ETR par couche →
+# sol BV3C2 → milieu humide). [soil].mode est sans effet en mode hydrotel.
+#
+# Le NeRF (hydraulique : porosité, K_sat, fc, wp, Z) se warm-start depuis
+# best-mini-clone (model.load drop les clés incompatibles) ; les params propres à
+# la colonne (Campbell b/psis/krec, coeffs de fonte, alpha ETR) partent des
+# défauts Hydrotel. Run COURT pour la validation COMPORTEMENTALE (génération,
+# pics, bilan, gel) — pas la calibration finale.
+#
+#   python .runs/slso/slso.py .runs/slso-od/config/slso-od-mini-hydrotel.toml
+
+[paths]
+basin_db = "data/basin_hs_mini.duckdb"
+geo_cache = "D:/meandre-data/geo_cache/slso-od"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "D:/meandre-data/geo_cache/slso-od/forcing_simat_mini.nc"
+checkpoint = "checkpoints/best-mini-hydrotel-pm.pt"
+fields_nc = "results/fields-mini-hydrotel-pm.nc"
+reach_parquet = "results/reach-mini-hydrotel-pm.parquet"
+runs_db = "runs-mini-hydrotel-pm.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[basin.build]
+bbox = [-73.0, 44.5, -69.6, 47.7]
+outlet = [-71.27, 46.77]
+min_area_km2 = 5.0
+max_subcatchments = 15000
+max_segment_area_km2 = 75.0
+max_segment_length_km = 40.0
+max_dem_pixels = 4_000_000
+min_lake_area_km2 = 1.0
+
+[temporal]
+date_start = "2019-01-01"
+spinup_end = "2019-12-31"
+train_start = "2020-01-01"
+train_end = "2021-12-31"
+val_start = "2022-01-01"
+val_end = "2022-12-31"
+test_start = "2022-01-01"
+test_end = "2024-12-31"
+date_end = "2022-12-31"
+
+[model]
+column_mode = "hydrotel"        # ← colonne fidèle clonée (Phase A)
+use_frost_rankinen = true       # gel RANKINEN (isolation neige + profil)
+routing_mode = "operator-lagged"
+use_temperature = false
+predict_lake_params = true
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+param_mode = "nerf"
+use_latent_codes = true
+latent_dim = 8
+n_coord_freqs = 8
+
+[et]
+mode = "penman"                 # PM FAO-56 — variante pour isoler l'effet ET vs McGuinness
+
+[soil]
+mode = "clone"   # SANS EFFET en column_mode=hydrotel (gardé pour cohérence)
+clone_substep = 48
+clone_krec_init = 1e-5
+z1 = 0.15
+
+[training]
+n_epochs = 30
+lr = 5e-4
+lr_finetune = 1e-4
+lr_new_features_mult = 10.0
+weight_decay = 2e-4
+grad_clip = 1.0
+w_latent_reg = 1e-3
+latent_lr_mult = 50.0
+tbptt_steps = 365
+chunk_steps = 180
+val_every = 1
+patience = 50
+best_metric = "kge_median"
+best_metric_tolerance = 0.005
+warm_start = true
+warm_start_from = "checkpoints/best-mini-clone.pt"   # transfère le NeRF hydraulique
+compile_modules = false
+
+w_prior = 0.005
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+tta_warmup_epochs = 10
+
+# ── Autopilot ──
+autopilot = true
+autopilot_grace_epochs = 15
+autopilot_beta_threshold = 1.00
+autopilot_beta_penalty = 0.005
+autopilot_gamma_threshold = 0.20
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 8
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-6
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+
+[loss]
+w_nll = 0.0
+w_nll_et = 0.0
+w_nll_swe = 0.0
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.1
+w_mse = 0.2
+w_log_nse = 0.0
+w_log_mse = 0.1
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01
+w_peak = 0.5

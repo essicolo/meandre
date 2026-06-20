@@ -20,10 +20,44 @@ from meandre.utils.physics import (
 
 
 class ETModule(nn.Module):
-    """Differentiable Penman-Monteith ETP and actual ETR per soil layer."""
+    """Differentiable ETP (Penman-Monteith ou McGuinness) et ETR réelle par couche.
 
-    def __init__(self) -> None:
+    et_mode :
+      "penman"     — FAO-56 Penman-Monteith (défaut), utilise R_n, u2, e_a.
+      "mcguinness" — ETP-MC-GUINESS d'Hydrotel SLSO (clone fidèle, ne dépend que
+                     de T, lat, jour julien). Suspect n°1 du déficit de volume :
+                     le PM sur-évapore l'eau retenue par le sol clone fidèle.
+                     Requiert lat (n_nodes) et doy passés au forward.
+    """
+
+    def __init__(self, et_mode: str = "penman") -> None:
         super().__init__()
+        self.et_mode = str(et_mode)
+
+    def etp(
+        self,
+        T_min: Tensor,
+        T_max: Tensor,
+        R_n: Tensor,
+        u2: Tensor,
+        e_a: Tensor,
+        lat: Tensor | None = None,
+        doy: Tensor | int | None = None,
+    ) -> Tensor:
+        """ETP de référence (mm/jour) selon et_mode. Dispatcher commun aux deux
+        sites d'appel (évaporation canopée + ETR par couche)."""
+        if self.et_mode == "mcguinness":
+            if lat is None or doy is None:
+                raise ValueError(
+                    "et_mode='mcguinness' requiert lat (n_nodes) et doy ; "
+                    "vérifier que node_coords/day_of_year sont threadés."
+                )
+            from hydrotel_clone.mcguinness import mcguinness_etp
+            jd = doy if isinstance(doy, Tensor) else torch.tensor(
+                float(doy), device=T_min.device, dtype=T_min.dtype
+            )
+            return mcguinness_etp(T_min, T_max, lat, jd)
+        return self.penman_monteith(T_min, T_max, R_n, u2, e_a)
 
     def penman_monteith(
         self,
@@ -103,17 +137,20 @@ class ETModule(nn.Module):
         f_root_3: Tensor,
         E_canopy: Tensor,
         K_c: Tensor | None = None,
+        lat: Tensor | None = None,
+        doy: Tensor | int | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """
         Args:
             K_c: optional crop/calibration coefficient applied to ETP.
                  Hydrotel's "coefficient multiplicatif d'optimisation".
                  Defaults to 1.0 (FAO-56 reference, no scaling).
+            lat, doy: required when et_mode == "mcguinness".
         Returns:
             ET1, ET2, ET3: actual ET per layer (mm/day)
             ETP:           potential ET (mm/day) — already K_c-scaled
         """
-        ETP = self.penman_monteith(T_min, T_max, R_n, u2, e_a)
+        ETP = self.etp(T_min, T_max, R_n, u2, e_a, lat=lat, doy=doy)
         if K_c is not None:
             ETP = ETP * K_c
 

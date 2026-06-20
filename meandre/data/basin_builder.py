@@ -207,7 +207,12 @@ def build_basin(
     # la physique du sol clonée d'Hydrotel a besoin des vraies fractions. Stockées
     # dans `physical` sous suffixe _raw (chargées via la convention _raw du cache).
     _raw_keep = ["f_urban", "f_water", "f_wetland", "f_peatland", "lake_fraction",
-                 "f_forest", "f_sand", "f_silt", "f_clay", "mean_slope_pct"]
+                 "f_forest", "f_sand", "f_silt", "f_clay", "mean_slope_pct",
+                 # Classes d'occupation Hydrotel pour la colonne fidèle (neige par
+                 # classe conif/feuillus/découvert, ETR par classe). Le builder les
+                 # normalise pour le NeRF ; on garde aussi le brut [0,1] pour la
+                 # physique. Requiert un rebuild pour apparaître dans les caches existants.
+                 "f_forest_conifer", "f_forest_deciduous", "f_forest_mixed", "f_agriculture"]
     for _c in _raw_keep:
         if _c in columns:
             physical[_c + "_raw"] = features[:, columns.index(_c)].clone()

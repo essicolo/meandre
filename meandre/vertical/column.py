@@ -60,12 +60,13 @@ class VerticalColumn(nn.Module):
                  soil_clone_substep: int = 48,
                  soil_clone_krec_init: float = 1e-5,
                  use_overland_uh: bool = False,
-                 use_hillslope_uh: bool = False) -> None:
+                 use_hillslope_uh: bool = False,
+                 et_mode: str = "penman") -> None:
         super().__init__()
         self.snow = SnowModule()
         self.frost = FrostModule()
         self.interception = InterceptionModule()
-        self.et = ETModule()
+        self.et = ETModule(et_mode=et_mode)
         self.soil = SoilModule(z1=soil_z1, vsa_b=soil_vsa_b,
                                use_quickflow_reservoir=soil_quickflow_reservoir,
                                quickflow_beta=soil_quickflow_beta,
@@ -273,7 +274,10 @@ class VerticalColumn(nn.Module):
             else:
                 K_c_eff = season_modulator  # bare phenology when no K_c
 
-        ETP_approx = self.et.penman_monteith(T_min, T_max, R_n, u2, e_a) * K_c_eff
+        # ETP de référence : Penman-Monteith ou McGuinness (et_mode). McGuinness
+        # a besoin de la latitude par nœud (stashée par simulate) et du doy.
+        _lat = getattr(self, "_node_lat", None)
+        ETP_approx = self.et.etp(T_min, T_max, R_n, u2, e_a, lat=_lat, doy=doy) * K_c_eff
         P_thru, E_canopy, canopy_new = self.interception(
             P_eff, ETP_approx, state.canopy_storage, interception_cap_eff
         )
@@ -287,6 +291,7 @@ class VerticalColumn(nn.Module):
             params.f_root_1,  params.f_root_2,   params.f_root_3,
             E_canopy,
             K_c=K_c_eff,
+            lat=_lat, doy=doy,
         )
 
         # 5. Soil balance (frost-modified K_sat for layer 1)

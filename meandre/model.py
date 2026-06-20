@@ -94,6 +94,10 @@ class HydroModel(nn.Module):
         soil_mode: str = "meandre",
         soil_clone_substep: int = 48,
         soil_clone_krec_init: float = 1e-5,
+        et_mode: str = "penman",
+        column_mode: str = "meandre",   # "meandre" | "hydrotel" (colonne fidèle clonée)
+        column_theta_init_frac: float = 0.9,  # theta init = frac·thetas (init Hydrotel validé) en mode hydrotel ; 0 = garder la theta du cache
+        use_frost_rankinen: bool = True,
         use_overland_uh: bool = False,
         use_hillslope_uh: bool = False,
         soil_bounds: dict | None = None,
@@ -177,7 +181,18 @@ class HydroModel(nn.Module):
             soil_clone_krec_init=soil_clone_krec_init,
             use_overland_uh=use_overland_uh,
             use_hillslope_uh=use_hillslope_uh,
+            et_mode=et_mode,
         )
+        # Colonne verticale FIDÈLE Hydrotel (Phase A) : remplace VerticalColumn,
+        # présente la même interface (column_step → ColumnOutput).
+        self.column_mode = str(column_mode)
+        self.column_theta_init_frac = float(column_theta_init_frac)
+        if self.column_mode == "hydrotel":
+            from meandre.vertical.hydrotel_column import HydrotelColumn
+            self.vertical_column = HydrotelColumn(
+                et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman") else "mcguinness"),
+                use_frost=use_frost_rankinen,
+            )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
         self.residual_corrector = StateResidualCorrector(
@@ -319,6 +334,24 @@ class HydroModel(nn.Module):
         if getattr(self.vertical_column, "soil_mode", "meandre") == "clone" \
                 and getattr(self.vertical_column, "_clone_static", "x") is None:
             self.vertical_column.set_clone_static(territorial)
+        # Latitude par nœud pour l'ETP McGuinness (et_mode="mcguinness").
+        # node_coords = [lon, lat] ; statique, posée une fois par simulate.
+        self.vertical_column._node_lat = node_coords[:, 1]
+        # Colonne fidèle Hydrotel : assemble params (NeRF→clone) + init état riche.
+        if getattr(self, "column_mode", "meandre") == "hydrotel":
+            # Cale la theta initiale sur l'init Hydrotel validé (0.9·thetas) au lieu
+            # de la valeur du cache (0.3, trop sèche → gros réservoir à remplir avant
+            # de produire = déficit de volume). frac=0 garde la theta du cache.
+            frac = getattr(self, "column_theta_init_frac", 0.9)
+            if frac > 0.0:
+                import dataclasses
+                state = dataclasses.replace(
+                    state,
+                    theta1=frac * spatial_params.porosity_1,
+                    theta2=frac * spatial_params.porosity_2,
+                    theta3=frac * spatial_params.porosity_3)
+            self.vertical_column.setup_simulate(
+                spatial_params, territorial, node_coords, state)
         K_musk = spatial_params.K_musk_hours * 3600.0  # hours → seconds
         x_musk = spatial_params.x_musk
 
@@ -398,6 +431,8 @@ class HydroModel(nn.Module):
             if tbptt_steps > 0 and t > 0 and t % tbptt_steps == 0:
                 state = state.detach()
                 Q_out_prev = Q_out_prev.detach()
+                if getattr(self, "column_mode", "meandre") == "hydrotel":
+                    self.vertical_column.detach_aux()
 
             # 1. Temporal context (indexed from pre-computed tensor)
             if all_context is not None:
@@ -432,16 +467,23 @@ class HydroModel(nn.Module):
                     gdd_cum=update_gdd_cum(state.gdd_cum, _T_mean_t, _doy_int),
                 )
 
-            vc_out = self.vertical_column(
-                enriched, state, spatial_params,
-                return_diagnostics=return_diagnostics,
-                gw_withdrawal_mm=gw_w_mm,
-                doy=day_of_year[t] if day_of_year is not None else None,
-                phenology_modulator=(
-                    self.phenology_modulator
-                    if getattr(self, "use_phenology_modulator", False) else None
-                ),
-            )
+            if getattr(self, "column_mode", "meandre") == "hydrotel":
+                vc_out = self.vertical_column.column_step(
+                    enriched, state,
+                    doy=day_of_year[t] if day_of_year is not None else None,
+                    return_diagnostics=return_diagnostics,
+                )
+            else:
+                vc_out = self.vertical_column(
+                    enriched, state, spatial_params,
+                    return_diagnostics=return_diagnostics,
+                    gw_withdrawal_mm=gw_w_mm,
+                    doy=day_of_year[t] if day_of_year is not None else None,
+                    phenology_modulator=(
+                        self.phenology_modulator
+                        if getattr(self, "use_phenology_modulator", False) else None
+                    ),
+                )
             physics_state = vc_out.state
 
             # 3. State residual correction
@@ -665,6 +707,9 @@ class HydroModel(nn.Module):
                 "soil_mode": getattr(self.vertical_column, "soil_mode", "meandre"),
                 "soil_clone_substep": getattr(getattr(self.vertical_column, "soil_clone", None), "n_substep", 48),
                 "soil_clone_krec_init": 1e-5,  # init scalaire seul ; cl_krec_raw appris est dans le state_dict
+                "et_mode": getattr(getattr(self.vertical_column, "et", None), "et_mode", "penman"),
+                "column_mode": getattr(self, "column_mode", "meandre"),
+                "column_theta_init_frac": getattr(self, "column_theta_init_frac", 0.9),
                 "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),
                 "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
             },

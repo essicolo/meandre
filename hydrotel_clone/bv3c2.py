@@ -27,6 +27,7 @@ from torch import Tensor
 # Table proprietehydrolique.sol (Hydrotel) — thetas, thetacc, thetapf, ks(m/h), psis(m), lambda
 SOIL_TEXTURES = {
     "sand": dict(thetas=0.417, thetacc=0.091, thetapf=0.033, ks=0.2100, psis=0.1598, lam=0.694),
+    "loamy_sand": dict(thetas=0.401, thetacc=0.125, thetapf=0.055, ks=0.0611, psis=0.2058, lam=0.553),
     "sandy_loam": dict(thetas=0.412, thetacc=0.207, thetapf=0.095, ks=0.0259, psis=0.302, lam=0.378),
     "loam": dict(thetas=0.434, thetacc=0.270, thetapf=0.117, ks=0.0132, psis=0.4012, lam=0.252),
     "silt_loam": dict(thetas=0.486, thetacc=0.330, thetapf=0.133, ks=0.0068, psis=0.5087, lam=0.234),
