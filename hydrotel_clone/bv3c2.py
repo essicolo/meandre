@@ -137,11 +137,15 @@ class BV3C2Clone(torch.nn.Module):
             dtc0 = torch.where(pinf > 0.0, torch.minimum(tr, one), tr)   # cap 1h si infiltration
             def viol(d): return (torch.abs(q12z * d) >= cin * t1) | (torch.abs((q23z + q2s) * d) >= cin * t2)
             v0 = viol(dtc0)
-            # bloc 1954 : dtcTemp = min des dVal non nuls, plancher fdtcmin, quantifié
+            # bloc 1954 : dtcTemp = min des dVal non nuls, plancher fdtcmin, quantifié.
+            # Dénominateurs SÉCURISÉS (|q|→1 quand nul) : le where sélectionne 0, mais
+            # autograd dérive AUSSI la branche non choisie → diviser par 0 y mettrait
+            # un gradient NaN. Forward inchangé.
             zr = torch.zeros_like(t1)
-            dVal1 = torch.where((t1 != 0) & (q12z != 0), cin * t1 / torch.abs(q12z), zr)
-            dq2 = q23z + q2s
-            dVal2 = torch.where((t2 != 0) & (dq2 != 0), cin * t2 / torch.abs(dq2), zr)
+            aq12 = torch.abs(q12z)
+            dVal1 = torch.where((t1 != 0) & (q12z != 0), cin * t1 / torch.where(aq12 > 0, aq12, one), zr)
+            dq2 = q23z + q2s; adq2 = torch.abs(dq2)
+            dVal2 = torch.where((t2 != 0) & (dq2 != 0), cin * t2 / torch.where(adq2 > 0, adq2, one), zr)
             both = (dVal1 != 0) & (dVal2 != 0)
             dtcTemp = torch.where(both, torch.minimum(dVal1, dVal2), torch.where(dVal1 != 0, dVal1, dVal2))
             nonzero = dtcTemp != 0
