@@ -201,9 +201,36 @@ class HydrotelColumn(nn.Module):
                      des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
                      z11=self.z1, z22=sp.Z2.mean().item(), z33=sp.Z3.mean().item(), classes=et_classes)
 
+        # milieu humide isolé : actif SI le territorial porte la géométrie par nœud
+        # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
+        wetland = self._wetland_from_territorial(territorial, like)
+
         n_depth = n_intervalles(self.z1 + float(sp.Z2.mean()) + float(sp.Z3.mean()), self.frost.dz)
-        self.set_static(p_snow, p_soil, p_etr, wetland=None, n_depth=n_depth)
+        self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth)
         return p_snow, p_soil, p_etr
+
+    def _wetland_from_territorial(self, territorial, like):
+        """Construit le dict milieu humide isolé par nœud depuis territorial.physical
+        (colonnes *_raw agrégées UHRH→troncon par le loader). Retourne None si pas de
+        géométrie (wet_a_raw absent). Les nœuds sans MH sont masqués (wmask) et reçoivent
+        une géométrie factice positive pour éviter log10(0)=NaN dans le gradient."""
+        from hydrotel_clone.milieu_humide import wetland_geom_vec
+        gp = territorial.get_physical
+        wet_a = gp("wet_a_raw")
+        if wet_a is None:
+            return None
+        z = lambda k, d: (gp(k) if gp(k) is not None else torch.full_like(like, d))
+        area = torch.clamp(z("area_km2_local", 1.0), min=1e-6)   # aire locale du troncon [km2]
+        wetdmax = z("wetdmax_raw", 0.3); frac = z("frac_raw", 0.8); wetdnor = z("wetdnor_raw", 0.2)
+        wet_dra_fr = z("wet_dra_fr_raw", 0.0)
+        wet_k = z("ksat_bs_raw", 0.5); c_ev = z("c_ev_raw", 0.6); c_prod = z("c_prod_raw", 10.0)
+        wmask = wet_a > 0.0
+        wet_a_safe = torch.where(wmask, wet_a, torch.ones_like(wet_a))   # factice 1.0 si pas de MH
+        A, B, wetnvol, wetmxvol = wetland_geom_vec(wet_a_safe, wetdmax, frac, wetdnor)
+        return dict(wet_fr_area=torch.clamp(wet_a / area, 0.0, 1.0), hru_ha=area * 100.0,
+                    wet_dra_fr=torch.where(wmask, wet_dra_fr, torch.zeros_like(wet_dra_fr)),
+                    A=A, B=B, wetnvol=wetnvol, wetmxvol=wetmxvol,
+                    wet_k=wet_k, c_ev=c_ev, c_prod=c_prod, wmask=wmask)
 
     # ── État initial ────────────────────────────────────────────────────
     def init_state(self, n_nodes, theta_init, swe_init_mm=None, device="cpu",
@@ -226,6 +253,10 @@ class HydrotelColumn(nn.Module):
         dev, dt = init_state.theta1.device, init_state.theta1.dtype
         aux = self.init_state(n, theta_init=(0.0, 0.0, 0.0), device=dev, dtype=dt)
         aux.theta1, aux.theta2, aux.theta3 = init_state.theta1, init_state.theta2, init_state.theta3
+        # volume initial du milieu humide depuis le territorial si dispo (sinon 0)
+        wv0 = territorial.get_physical("wet_vol_init_raw")
+        if wv0 is not None:
+            aux.wet_vol = wv0.to(dev).to(dt)
         self._aux = aux
 
     def detach_aux(self):
@@ -327,15 +358,23 @@ class HydrotelColumn(nn.Module):
             etr1_mm=e1 * 1000.0, etr2_mm=e2 * 1000.0, etr3_mm=e3 * 1000.0)
         prod = ps_surf + ph + pb   # mm
 
-        # 6. milieu humide isolé (optionnel)
+        # 6. milieu humide isolé (optionnel). production_surf/hypo/base.csv d'Hydrotel
+        # est POST-MH (bv3c2.cpp l.838-895) : la prod totale passe dans le réservoir
+        # SWAT puis prod = prodOld·(1−wetdrafr) + wetprod. Vectorisé sur tous les nœuds,
+        # masqué (wmask) pour que les nœuds sans MH soient un no-op EXACT.
         wet_vol = state.wet_vol
         if self._static["wetland"] is not None:
             w = self._static["wetland"]
             apport_w = apport * w["wet_fr_area"]   # apport × fraction superficie wetland
-            wet_vol, wsep, wflwi, wflwo, wprod = calcul_milieu_humide_isole(
-                state.wet_vol, apport_w, etp, prod, w["hru_ha"], w["wet_dra_fr"],
+            # clamp wet_vol>0 : évite 0^A=NaN dans le gradient (volume physique, pas
+            # de masquage ; les vrais nœuds MH ont wet_vol>0, ce plancher est négligeable)
+            vol_in = torch.clamp(state.wet_vol, min=1e-9)
+            wet_vol_n, wsep, wflwi, wflwo, wprod = calcul_milieu_humide_isole(
+                vol_in, apport_w, etp, prod, w["hru_ha"], w["wet_dra_fr"],
                 w["A"], w["B"], w["wetnvol"], w["wetmxvol"], w["wet_k"], w["c_ev"], w["c_prod"])
-            prod = prod * (1.0 - w["wet_dra_fr"]) + wprod
+            prod_w = prod * (1.0 - w["wet_dra_fr"]) + wprod
+            prod = torch.where(w["wmask"], prod_w, prod)
+            wet_vol = torch.where(w["wmask"], wet_vol_n, state.wet_vol)
 
         new_state = HydrotelColumnState(t1, t2, t3, snow_new, frost_profile, wet_vol)
         etr_tot = (e1 + e2 + e3) * 1000.0

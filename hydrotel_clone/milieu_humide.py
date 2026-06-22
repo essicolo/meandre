@@ -33,6 +33,19 @@ def init_wetland_geom(wet_a_km2, wetdmax, frac, wetdnor):
     return A, B, wetnvol, wetmxvol
 
 
+def wetland_geom_vec(wet_a_km2, wetdmax, frac, wetdnor):
+    """Version VECTORISÉE (tenseurs par nœud) de init_wetland_geom, différentiable.
+    Suppose wet_a_km2 > 0 partout (les nœuds sans milieu humide doivent passer une
+    valeur factice positive et être masqués en aval — sinon log10(0)=−inf → NaN)."""
+    wetmxsa = wet_a_km2 * 1.0e6
+    wetmxvol = wetdmax * wetmxsa
+    wet_nsa = frac * wetmxsa
+    wetnvol = wetdnor * wet_nsa
+    A = (torch.log10(wetmxsa) - torch.log10(wet_nsa)) / (torch.log10(wetmxvol) - torch.log10(wetnvol))
+    B = wetmxsa / wetmxvol.pow(A)
+    return A, B, wetnvol, wetmxvol
+
+
 def calcul_milieu_humide_isole(wet_vol, apport_mm, evp_mm, prod_mm, hru_ha, wet_fr,
                                A, B, wetnvol, wetmxvol, wet_k, c_ev, c_prod, pdt=24):
     """Un pas de temps (bv3c2.cpp:1460). wet_vol [m3] = volume au DÉBUT du pas.
