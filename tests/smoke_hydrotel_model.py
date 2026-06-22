@@ -50,4 +50,16 @@ cg = sum(float(p.grad.abs().sum()) for p in m.vertical_column.parameters() if p.
 print(f"Q {tuple(Q.shape)}  mean {float(Q.mean()):.2f}  max {float(Q.max()):.1f}  NaN={bool(torch.isnan(Q).any())}")
 print(f"grad NeRF {ng:.1f}  grad colonne {cg:.3f}")
 assert ng > 0 and cg > 0, "gradient ne remonte pas end-to-end"
+
+# Chemin return_diagnostics=True : c'est CELUI qui crashait en fin de run
+# (KeyError 'etr' au simulate final). On le couvre sur données réelles.
+with torch.no_grad():
+    Qd, _, diag = m.simulate(
+        forcing=fc, initial_state=HydroState.default_warm(n), graph=h["graph"],
+        node_coords=h["node_coords"], territorial=h["territorial"], withdrawals=wd,
+        day_of_year=doy, return_diagnostics=True)
+for k in ("etp", "etr"):   # le crash historique etait sur diag['etr'] au pas colonne
+    v = getattr(diag, k)
+    assert v is not None and not torch.isnan(v).any(), f"diag.{k} manquant/NaN"
+print(f"diag OK (return_diagnostics, pas de KeyError 'etr') : etr_mean={float(diag.etr.mean()):.2f}")
 print("SMOKE OK (colonne Hydrotel branchee, differentiable end-to-end)")
