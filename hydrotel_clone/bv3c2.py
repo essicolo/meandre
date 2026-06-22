@@ -70,9 +70,15 @@ def init_spline_coeffs(b):
 class BV3C2Clone(torch.nn.Module):
     """Bilan vertical BV3C2 fidèle, un pas de temps (journalier), vectorisé."""
 
-    def __init__(self, n_substep=48):
+    def __init__(self, n_substep=48, static=False):
         super().__init__()
         self.n_substep = n_substep   # sous-pas internes (le C++ adapte ; on fixe)
+        # static=True : pas de break data-dépendant (les itérations no-op après
+        # convergence sont idempotentes, dtc=0). Permet torch.compile (pas de
+        # synchro GPU `bool().all()` par itération, boucle statique fusionnable).
+        # Résultats IDENTIQUES au mode break à n_substep égal. À réserver à un
+        # n_substep modéré (ex. 48) — PAS à la validation n_substep=1500.
+        self.static = static
 
     def forward(self, theta1, theta2, theta3, apport_mm, etp_mm,
                 frozen_depth_cm, swe_mm, p, etr1_mm=None, etr2_mm=None, etr3_mm=None):
@@ -201,8 +207,9 @@ class BV3C2Clone(torch.nn.Module):
             lhyp = lhyp + q2 * dtc
             lbase = lbase + q3 * dtc
             tr = torch.clamp(tr - dtc, min=0.0)
-            if bool((tr <= 1e-7).all()):
-                break
+            if not self.static:                      # break = synchro GPU + graph-break
+                if bool((tr <= 1e-7).all()):
+                    break
 
         # ── CalculeUHRH (l.820) : production avec split occupation du sol ──
         # leau = (pluie − ET) sur fraction EAU ; lprec = pluie sur IMPERMÉABLE

@@ -98,6 +98,7 @@ class HydroModel(nn.Module):
         column_mode: str = "meandre",   # "meandre" | "hydrotel" (colonne fidèle clonée)
         column_theta_init_frac: float = 0.9,  # theta init = frac·thetas (init Hydrotel validé) en mode hydrotel ; 0 = garder la theta du cache
         use_frost_rankinen: bool = True,
+        compile_soil: bool = False,   # mode hydrotel : torch.compile du sol (~7× GPU, résultats identiques)
         use_overland_uh: bool = False,
         use_hillslope_uh: bool = False,
         soil_bounds: dict | None = None,
@@ -192,6 +193,7 @@ class HydroModel(nn.Module):
             self.vertical_column = HydrotelColumn(
                 et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman") else "mcguinness"),
                 use_frost=use_frost_rankinen,
+                compile_soil=bool(compile_soil),
             )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS

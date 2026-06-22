@@ -398,6 +398,7 @@ model = HydroModel(
     column_mode = cfg.get("model", {}).get("column_mode", "meandre"),
     column_theta_init_frac = cfg.get("model", {}).get("column_theta_init_frac", 0.9),
     use_frost_rankinen = cfg.get("model", {}).get("use_frost_rankinen", True),
+    compile_soil = cfg.get("model", {}).get("compile_soil", False),
     use_overland_uh = cfg.get("model", {}).get("use_overland_uh", False),
     use_hillslope_uh = cfg.get("model", {}).get("use_hillslope_uh", False),
     soil_bounds = soil_bounds,
