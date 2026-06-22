@@ -66,15 +66,14 @@ class Rankinen(torch.nn.Module):
 
         # surface (index 0) : eq2 à profondeur 0 (rankinen.cpp:214-217)
         surf = torch.where(snow_depth_m != 0.0, tair * damp, tair)
-        cols = [surf]
-        for i in range(1, n_depth):
-            zs = i * self.dz
-            t_prev = profil[:, i]
-            # eq1 : relaxation vers Tair, taux ∝ KT/(CA·(2z)²)
-            fT = t_prev + self.dt * self.kt / (ca * (2.0 * zs) ** 2) * (tair - t_prev)
-            # eq2 : amortissement neige
-            cols.append(fT * damp)
-        profil_new = torch.stack(cols, dim=1)                     # (n_nodes, n_depth)
+        # nœuds de profondeur 1..n_depth-1 : VECTORISÉS sur l'axe profondeur (pas
+        # de couplage entre nœuds, cf docstring) — remplace la boucle Python+stack.
+        zs = torch.arange(1, n_depth, dtype=tair.dtype, device=tair.device) * self.dz  # (n_depth-1,)
+        rate = self.dt * self.kt / (ca * (2.0 * zs) ** 2)         # (n_depth-1,)
+        t_prev = profil[:, 1:]                                    # (n_nodes, n_depth-1)
+        fT = t_prev + rate[None, :] * (tair[:, None] - t_prev)   # eq1 relaxation
+        deep = fT * damp[:, None]                                 # eq2 amortissement neige
+        profil_new = torch.cat([surf[:, None], deep], dim=1)     # (n_nodes, n_depth)
 
         # profondeur de gel : dernier indice où T ≤ seuil, interpolé (rankinen.cpp:253-269)
         frozen = profil_new <= self.seuil_gel                     # (n_nodes, n_depth)

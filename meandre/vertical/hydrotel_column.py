@@ -40,6 +40,17 @@ from hydrotel_clone.bv3c2 import BV3C2Clone, make_params, SOIL_TEXTURES
 from hydrotel_clone.milieu_humide import init_wetland_geom, calcul_milieu_humide_isole
 
 
+def _interp1d(x, xp, fp):
+    """Interpolation linéaire 1D torch reproduisant np.interp (xp croissant,
+    clampé aux bords). x : tenseur 0-dim. Sans .item()/float() → pas de synchro
+    GPU, compilable. Remplace le np.interp par pas de temps de la phénologie."""
+    i = torch.searchsorted(xp, x.reshape(1), right=True).clamp(1, xp.numel() - 1)[0]
+    x0, x1, y0, y1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
+    y = y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    y = torch.where(x <= xp[0], fp[0], y)
+    return torch.where(x >= xp[-1], fp[-1], y)
+
+
 @dataclass
 class HydrotelColumnState:
     """État interne de la colonne (plus riche que HydroState : la neige a 3
@@ -320,6 +331,17 @@ class HydrotelColumn(nn.Module):
             return ETModule("penman").penman_monteith(tmin_j, tmax_j, Rn, u2, ea)
         raise ValueError(f"et_mode inconnu: {self.et_mode}")
 
+    def _pheno_tensors(self, classes, ref):
+        """Cache les breakpoints phénologie (jbp/leaf/root) en tenseurs au device/
+        dtype de ref, construits une seule fois. Évite numpy + alloc par pas."""
+        key = (ref.device, ref.dtype)
+        if getattr(self, "_pheno_cache_key", None) != key:
+            T = lambda v: torch.as_tensor(v, dtype=ref.dtype, device=ref.device)
+            self._pheno_cache = [(pct, T(jbp), T(leaf_bp), T(root_bp))
+                                 for (pct, jbp, leaf_bp, root_bp) in classes]
+            self._pheno_cache_key = key
+        return self._pheno_cache
+
     def forward(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
                 tmin_j=None, tmax_j=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Un pas de temps. P/tmin/tmax/Rn/u2/ea : forçage (n_nodes,). doy : jour
@@ -350,14 +372,16 @@ class HydrotelColumn(nn.Module):
         # 3. ETP
         etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t)
 
-        # 4. ETR par couche (sur theta DÉBUT de pas)
+        # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
+        # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro
+        # float(doy) par pas de temps. Résultats identiques (interp linéaire clampé).
+        pheno = self._pheno_tensors(pe["classes"], P)
+        d = doy_t.reshape(-1)[0]                  # jour julien scalaire (tenseur, sans synchro)
         etp_classes, roots, leaves = [], [], []
-        import numpy as _np
-        jr = float(doy) if not torch.is_tensor(doy) else float(doy_t.flatten()[0])
-        for (pct, jbp, leaf_bp, root_bp) in pe["classes"]:
+        for (pct, jbp_t, leaf_t, root_t) in pheno:
             etp_classes.append(etp * pct / 1000.0)
-            roots.append(torch.full_like(P, float(_np.interp(jr, jbp, root_bp))))
-            leaves.append(torch.full_like(P, float(_np.interp(jr, jbp, leaf_bp))))
+            roots.append(_interp1d(d, jbp_t, root_t).expand_as(P))
+            leaves.append(_interp1d(d, jbp_t, leaf_t).expand_as(P))
         e1, e2, e3 = calcule_etr(state.theta1, state.theta2, state.theta3,
                                  etp_classes, roots, leaves, pe["thetacc"], pe["thetapf"],
                                  pe["alpha"], pe["z11"], pe["z22"], pe["z33"], pe["des"], pe["coef_assech"])
