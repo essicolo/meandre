@@ -90,13 +90,10 @@ class BV3C2Clone(torch.nn.Module):
         fsa, fse, fsi = p["fsa"], p["fse"], p["fsi"]
         coef_rech = p["coef_recharge"]
 
-        # ── CalculeRuisselement (l.2175) : pinf = min(prec, ks) + portes ──
+        # ── CalculeRuisselement (l.2175) : prec constant ; pinf/ruis RECALCULÉS
+        # CHAQUE sous-pas dans la boucle (porte theta1==thetas sur le t1 COURANT). ──
         prec = (apport_mm / 1000.0) / DT_H              # mm/j -> m/h
         frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
-        omega1_sat = theta1 >= (ths1 - 1e-4)
-        pinf = torch.minimum(prec, ks1)
-        pinf = torch.where(frozen | omega1_sat, torch.zeros_like(pinf), pinf)
-        ruis_rate = torch.clamp(prec - pinf, min=0.0)   # m/h (ruissellement hortonien)
 
         # ── Sous-pas internes adaptatifs (TriCoucheOct97), accumulation lames ──
         # FIDÈLE Hydrotel : PAS de clamp de flux. On laisse theta dépasser thetas
@@ -115,7 +112,7 @@ class BV3C2Clone(torch.nn.Module):
         froz_frac = torch.clamp(frozen_depth_cm / 100.0 / z1, 0.0, 1.0)
         throttle = torch.where(frozen, torch.clamp(1.0 - froz_frac, 0.0, 1.0), torch.ones_like(t1))
         tr = torch.full_like(t1, DT_H)                  # temps restant (h) par nœud
-        dtc_min = DT_H / 1152.0                          # plus fin niveau Hydrotel
+        fdtcmin = DT_H / (24.0 * 60.0 * 60.0 * 1000.0)  # _fDTCMin C++ (l.744)
 
         for _ in range(self.n_substep):                 # cap d'itérations (sécurité)
             k1 = campbell_K(t1, ths1, ks1, b1); k2 = campbell_K(t2, ths2, ks2, b2); k3 = campbell_K(t3, ths3, ks3, b3)
@@ -128,25 +125,69 @@ class BV3C2Clone(torch.nn.Module):
             q2 = k2 * sin_slope * z2; q3 = krec * z3 * t3
             qq12 = qq12 * throttle; qq23 = qq23 * throttle; q2 = q2 * throttle
             q3 = torch.where(frozen, q3 * 0.5, q3)
-            # dtc ADAPTATIF Courant : |flux·dtc/(theta·z)| < cin, borné [dtc_min, tr]
-            net1 = (pinf - qq12 - e1).abs(); net2 = (qq12 - qq23 - e2 - q2).abs()
-            d1 = cin * torch.clamp(t1, min=1e-3) * z1 / torch.clamp(net1, min=1e-12)
-            d2 = cin * torch.clamp(t2, min=1e-3) * z2 / torch.clamp(net2, min=1e-12)
-            dtc = torch.minimum(torch.minimum(d1, d2), tr)
-            # Hydrotel l.1925 : si infiltration, dtc ≤ 1 h (résout le remplissage
-            # fin, sinon un gros pas rate la saturation intra-journalière).
-            dtc = torch.where(pinf > 0.0, torch.minimum(dtc, torch.ones_like(dtc)), dtc)
-            dtc = torch.clamp(dtc, min=dtc_min)
+            # CalculeRuisselement (l.2191-2201) sur t1 COURANT : si t1 saturé,
+            # pinf=0 → toute la pluie part en hortonien ; sinon pinf=min(prec,ks).
+            omega1_sat = t1 >= (ths1 - 1e-4)
+            pinf = torch.where(frozen | omega1_sat, torch.zeros_like(prec), torch.minimum(prec, ks1))
+            ruis_rate = torch.clamp(prec - pinf, min=0.0)   # m/h (hortonien)
+            # ── dtc FIDÈLE C++ (l.1925-2034) : flux relatifs, test Courant, dtcTemp
+            # quantifié pas/(iVal+1|+2) en min avec l'échelle {48,288,1152}. ──
+            q12z = qq12 / z1; q23z = qq23 / z2; q2s = q2 / z2
+            one = torch.ones_like(tr)
+            dtc0 = torch.where(pinf > 0.0, torch.minimum(tr, one), tr)   # cap 1h si infiltration
+            def viol(d): return (torch.abs(q12z * d) >= cin * t1) | (torch.abs((q23z + q2s) * d) >= cin * t2)
+            v0 = viol(dtc0)
+            # bloc 1954 : dtcTemp = min des dVal non nuls, plancher fdtcmin, quantifié
+            zr = torch.zeros_like(t1)
+            dVal1 = torch.where((t1 != 0) & (q12z != 0), cin * t1 / torch.abs(q12z), zr)
+            dq2 = q23z + q2s
+            dVal2 = torch.where((t2 != 0) & (dq2 != 0), cin * t2 / torch.abs(dq2), zr)
+            both = (dVal1 != 0) & (dVal2 != 0)
+            dtcTemp = torch.where(both, torch.minimum(dVal1, dVal2), torch.where(dVal1 != 0, dVal1, dVal2))
+            nonzero = dtcTemp != 0
+            dtcTemp_c = torch.where(dtcTemp < fdtcmin, torch.full_like(dtcTemp, fdtcmin), dtcTemp)
+            iVal = torch.floor(DT_H / torch.clamp(dtcTemp_c, min=fdtcmin))
+            even = (iVal % 2.0 == 0.0)
+            dtcTemp_q = torch.minimum(dtc0, DT_H / torch.where(even, iVal + 2.0, iVal + 1.0))
+            bDtcMod = v0 & nonzero
+            # bloc 2022 : échelle discrète {pas/48, pas/288, pas/1152} si Courant violé
+            l1 = viol(dtc0)
+            dtc_l = torch.where(l1, torch.full_like(dtc0, DT_H / 48.0), dtc0)
+            l2 = l1 & viol(torch.full_like(dtc0, DT_H / 48.0))
+            dtc_l = torch.where(l2, torch.full_like(dtc0, DT_H / 288.0), dtc_l)
+            l3 = l2 & viol(torch.full_like(dtc0, DT_H / 288.0))
+            dtc_l = torch.where(l3, torch.full_like(dtc0, DT_H / 1152.0), dtc_l)
+            # l.2033 : if bDtcMod: dtc = min(dtc_ladder, dtcTemp_quantifié)
+            dtc = torch.where(bDtcMod, torch.minimum(dtc_l, dtcTemp_q), dtc_l)
             dtc = torch.minimum(dtc, tr)                 # ne dépasse pas le temps restant
             active = (tr > 1e-7).to(dtc.dtype)
             dtc = dtc * active                           # nœuds finis : dtc=0
-            e1e = torch.minimum(e1, torch.clamp(t1, min=0.0) * z1 / torch.clamp(dtc, min=1e-12))
-            t1 = t1 + dtc * (pinf - qq12 - e1e) / z1
+            # ET BRUTE (C++ l.2036 : v_etr1 sans clamp) ; la négativité éventuelle
+            # est refoulée depuis la couche du dessous (l.2118), PAS masquée.
+            t1 = t1 + dtc * (pinf - qq12 - e1) / z1
             t2 = t2 + dtc * (qq12 - qq23 - e2 - q2) / z2
             t3 = t3 + dtc * (qq23 - q3 - e3) / z3
-            # cascade SATURATION (refoulement haut → ov1 = RUISSELLEMENT, l.2046-2116)
-            ov3 = torch.clamp(t3 - ths3, min=0.0); t3 = t3 - ov3; t2 = t2 + ov3 * z3 / z2
-            ov2 = torch.clamp(t2 - ths2, min=0.0); t2 = t2 - ov2; t1 = t1 + ov2 * z2 / z1
+            # cascade SATURATION fidèle C++ (l.2046-2116) : on REMPLIT d'abord la
+            # capacité disponible (refoulement bas→haut PUIS redistribution
+            # haut→bas) ; seul l'excès quand le profil est plein déborde en
+            # ruissellement. surplus=0 hors débordement → blocs applicables tels quels.
+            zr = torch.zeros_like(t1)
+            # bloc A : couche 3 sature → vers 2
+            s = torch.clamp(t3 - ths3, min=0.0); t2 = t2 + s * z3 / z2; t3 = t3 - s
+            # bloc B : couche 2 sature ET 3 a de la place → vers 3 (re-refoule si 3 sature)
+            doB = (t2 > ths2) & (t3 < ths3)
+            s = torch.where(doB, t2 - ths2, zr) * z2; t3 = t3 + s / z3; t2 = torch.where(doB, ths2, t2)
+            s = torch.clamp(t3 - ths3, min=0.0); t2 = t2 + s * z3 / z2; t3 = t3 - s
+            # bloc C : couche 2 sature → vers 1
+            s = torch.clamp(t2 - ths2, min=0.0); t1 = t1 + s * z2 / z1; t2 = t2 - s
+            # bloc D : couche 1 sature ET place en dessous → vers 2 (puis cascade)
+            doD = (t1 > ths1) & ((t2 < ths2) | (t3 < ths3))
+            s = torch.where(doD, t1 - ths1, zr) * z1; t2 = t2 + s / z2; t1 = torch.where(doD, ths1, t1)
+            doDi = (t2 > ths2) & (t3 < ths3)
+            s = torch.where(doDi, t2 - ths2, zr) * z2; t3 = t3 + s / z3; t2 = torch.where(doDi, ths2, t2)
+            s = torch.clamp(t3 - ths3, min=0.0); t2 = t2 + s * z3 / z2; t3 = t3 - s
+            s = torch.clamp(t2 - ths2, min=0.0); t1 = t1 + s * z2 / z1; t2 = t2 - s
+            # bloc E : couche 1 encore sature → RUISSELLEMENT (l.2113)
             ov1 = torch.clamp(t1 - ths1, min=0.0); t1 = t1 - ov1
             # NÉGATIVITÉ (l.2118-2158) : refoule depuis la couche du dessous
             neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
