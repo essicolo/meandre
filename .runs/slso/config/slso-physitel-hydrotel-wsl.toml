@@ -69,7 +69,7 @@ param_mode = "nerf"
 column_mode = "hydrotel"
 use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
 column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
-compile_soil = true               # torch.compile du sol (~7x GPU, resultats identiques)
+compile_column = true             # torch.compile de TOUT le pas (snow+gel+ET+sol)
 
 [et]
 # McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).

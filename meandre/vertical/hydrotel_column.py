@@ -81,7 +81,8 @@ class HydrotelColumn(nn.Module):
                  frost_temp_ini: float = 4.0, frost_seuil: float = -0.5,
                  frost_fs: float = 2.35, frost_kt: float = 0.8,
                  frost_cs: float = 1.0e6, frost_cice: float = 4.0e6,
-                 t_neige_seuil: float = 0.0, compile_soil: bool = False) -> None:
+                 t_neige_seuil: float = 0.0, compile_soil: bool = False,
+                 compile_column: bool = False) -> None:
         super().__init__()
         self.et_mode = str(et_mode)
         self.use_frost = bool(use_frost)
@@ -89,13 +90,19 @@ class HydrotelColumn(nn.Module):
         self.snow = DegreJourModifie(pas_de_temps=24)
         self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
                               frost_kt, frost_cs, frost_cice, pas_de_temps=24)
-        # compile_soil : boucle de sous-pas STATIQUE (sans break) + torch.compile.
-        # ~7× plus rapide sur GPU (fusion, supprime la synchro bool().all() par
-        # itération), résultats IDENTIQUES au mode break à n_substep égal (vérifié).
-        # Coût : ~40s de compilation au 1er pas. Requiert un backend (Triton/WSL).
-        self.soil = BV3C2Clone(n_substep=soil_n_substep, static=bool(compile_soil))
-        if compile_soil:
+        # Deux modes de compilation (le wall-clock est CPU-dispatch-bound sur la
+        # boucle par jour, GPU ~0% en eager) :
+        #  - compile_column : compile TOUT le compute du pas (snow+gel+ET+sol) en
+        #    peu de kernels/jour → réduit le dispatch Python. Le sol est static
+        #    (sans break) mais PAS compilé séparément (le compile externe l'inline).
+        #  - compile_soil : compile seulement le sol (sous-ensemble de l'effet).
+        # Boucle de sous-pas static = résultats IDENTIQUES au mode break (vérifié).
+        self.compile_column = bool(compile_column)
+        soil_static = bool(compile_soil or compile_column)
+        self.soil = BV3C2Clone(n_substep=soil_n_substep, static=soil_static)
+        if compile_soil and not compile_column:
             self.soil = torch.compile(self.soil, dynamic=False)
+        self._fwd_compiled = None
         self._static = None      # posé par set_static()
         self.z1 = 0.15           # épaisseur couche 1 (config ; Z2/Z3 du NeRF)
 
@@ -344,6 +351,25 @@ class HydrotelColumn(nn.Module):
 
     def forward(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
                 tmin_j=None, tmax_j=None) -> tuple[Tensor, HydrotelColumnState, dict]:
+        """Dispatcher : appelle le forward compilé (compile_column) ou eager.
+        Le compilé fond le compute par jour en peu de kernels (le wall-clock est
+        dominé par le dispatch Python de la boucle par jour, GPU sinon ~0%)."""
+        if getattr(self, "compile_column", False):
+            if getattr(self, "_fwd_compiled", None) is None:
+                try:
+                    self._fwd_compiled = torch.compile(self._forward_impl, dynamic=False)
+                except Exception:
+                    self._fwd_compiled = self._forward_impl   # fallback eager
+            try:
+                return self._fwd_compiled(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j)
+            except Exception:
+                # compile échoue à l'exécution → bascule eager définitivement
+                self._fwd_compiled = self._forward_impl
+                return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j)
+        return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j)
+
+    def _forward_impl(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
+                      tmin_j=None, tmax_j=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Un pas de temps. P/tmin/tmax/Rn/u2/ea : forçage (n_nodes,). doy : jour
         julien (scalaire ou n_nodes). Retourne (prod_totale_mm, new_state, diag)."""
         assert self._static is not None, "appeler set_static() avant forward()"
