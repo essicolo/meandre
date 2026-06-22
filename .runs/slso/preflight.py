@@ -38,10 +38,14 @@ CFG_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("notebooks/slso/conf
 with open(CFG_PATH, "rb") as f:
     cfg = tomllib.load(f)
 
-BASIN_DB = Path(cfg["paths"]["basin_db"])
-ZARR_PATH = Path(cfg["paths"]["weather_grid"])
-FORCING_CACHE = Path(cfg["paths"]["forcing_cache"])
-CHECKPOINT = Path(cfg["paths"]["checkpoint"])
+# Chemins résolus relativement au run dir (.runs/<case>/), comme slso.py —
+# sinon basin_db="data/..." est cherché à la racine du repo et n'existe pas.
+from meandre.utils.paths import run_dir_from_config, resolve_run_path
+_RD = run_dir_from_config(CFG_PATH)
+BASIN_DB = resolve_run_path(cfg["paths"]["basin_db"], _RD)
+ZARR_PATH = Path(cfg["paths"]["weather_grid"])   # chemin absolu (zarr global)
+FORCING_CACHE = resolve_run_path(cfg["paths"]["forcing_cache"], _RD)
+CHECKPOINT = resolve_run_path(cfg["paths"]["checkpoint"], _RD)
 WARM_START = cfg["training"].get("warm_start", False)
 LR = cfg["training"]["lr"]
 LR_FINETUNE = cfg["training"].get("lr_finetune", LR * 0.1)
