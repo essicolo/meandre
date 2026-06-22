@@ -90,6 +90,55 @@ _TEXTURE_FRACTIONS: list[tuple[float, float, float]] = [
 # Public API
 # ---------------------------------------------------------------------------
 
+def _parse_milieux_humides_isoles(project_dir: Path) -> dict:
+    """Milieux humides isolés Hydrotel, PAR UHRH, depuis le projet.
+
+    Respecte le flag `MILIEUX HUMIDES ISOLES` de simulation.csv : si 0/absent,
+    retourne {} (le bassin tourne SANS milieu humide, ex SLSO). Sinon parse
+    milieux_humides_isoles.csv (UhrhId; uhrh_a; wet_a; wet_dra_fr; frac;
+    wetdnor; wetdmax; ksat_bs; c_ev; c_prod; sauvegarde) + le volume initial
+    MH WETVOL du dernier etat bilan_vertical. Cherche sous project_dir/simulation/*/.
+
+    Retourne {uhrh_id: dict(wet_a, wet_dra_fr, frac, wetdnor, wetdmax, ksat_bs,
+    c_ev, c_prod, wet_vol_init)}. Seuls les UHRH listés (avec milieu humide)
+    figurent ; les autres → pas de milieu humide.
+    """
+    sim_csvs = list(project_dir.glob("simulation/*/simulation.csv"))
+    if not sim_csvs:
+        return {}
+    sim_dir = sim_csvs[0].parent
+    mh_csv = sim_dir / "milieux_humides_isoles.csv"
+    if not mh_csv.exists():
+        return {}
+    # flag d'activation
+    active = False
+    for ln in sim_csvs[0].read_text(encoding="latin-1").splitlines():
+        if ln.upper().startswith("MILIEUX HUMIDES ISOLES"):
+            c = ln.split(";")
+            active = len(c) > 1 and c[1].strip() == "1"
+            break
+    if not active:
+        return {}
+    out: dict[int, dict] = {}
+    for ln in mh_csv.read_text(encoding="latin-1").splitlines():
+        c = ln.split(";")
+        if len(c) >= 10 and c[0].strip().isdigit():
+            uid = int(c[0]); v = [float(x) for x in c[1:10]]
+            out[uid] = dict(uhrh_a=v[0], wet_a=v[1], wet_dra_fr=v[2], frac=v[3],
+                            wetdnor=v[4], wetdmax=v[5], ksat_bs=v[6], c_ev=v[7],
+                            c_prod=v[8], wet_vol_init=0.0)
+    # volume initial depuis le dernier etat bilan_vertical (col 4 = MH WETVOL)
+    etats = sorted(project_dir.glob("etat*/bilan_vertical_*.csv"))
+    if etats:
+        for ln in etats[-1].read_text(encoding="latin-1").splitlines():
+            c = ln.split(";")
+            if len(c) >= 5 and c[0].strip().isdigit():
+                uid = int(c[0])
+                if uid in out:
+                    out[uid]["wet_vol_init"] = float(c[4])
+    return out
+
+
 def load_hydrotel(
     project_dir: str | Path,
     normalise: bool = True,
@@ -141,10 +190,13 @@ def load_hydrotel(
         troncons, velocity_m_s=velocity_m_s, device=device
     )
 
+    # ---- 5b. Milieux humides isolés (par UHRH, si flag Hydrotel actif) -------
+    wetlands = _parse_milieux_humides_isoles(root)
+
     # ---- 6. Territorial indicators ------------------------------------------
     territorial, node_coords = _build_territorial(
         troncons, troncon_idx, node_ids, uhrh, lc_pixels, soil_class,
-        graph, normalise=normalise, device=device,
+        graph, normalise=normalise, device=device, wetlands=wetlands,
     )
 
     # ---- 7. HydroState from latest etat/ snapshot ---------------------------
@@ -587,9 +639,11 @@ def _build_territorial(
     graph: RiverGraph,
     normalise: bool,
     device: torch.device | None,
+    wetlands: dict | None = None,
 ) -> tuple[TerritorialFeatures, Tensor]:
     """Aggregate UHRH-level attributes to troncon-level indicators."""
     n_nodes = len(node_ids)
+    wetlands = wetlands or {}
 
     # Per-troncon accumulators (area-weighted)
     alt = np.zeros(n_nodes)
@@ -610,6 +664,15 @@ def _build_territorial(
     sand = np.zeros(n_nodes)
     silt = np.zeros(n_nodes)
     clay = np.zeros(n_nodes)
+
+    # Milieu humide isolé agrégé UHRH→troncon (le C++ l'applique par UHRH ; ici
+    # un réservoir équivalent par troncon, cohérent avec l'agrégation du sol).
+    wet_a_t = np.zeros(n_nodes)        # superficie MH du troncon [km2] (somme)
+    wet_dra_t = np.zeros(n_nodes)      # fraction drainée (pondérée aire UHRH)
+    wet_vol0_t = np.zeros(n_nodes)     # volume initial [m3] (somme)
+    # params de réservoir (pondérés par superficie MH ; constants en pratique)
+    wet_frac_t = np.zeros(n_nodes); wetdnor_t = np.zeros(n_nodes); wetdmax_t = np.zeros(n_nodes)
+    wet_ksat_t = np.zeros(n_nodes); wet_cev_t = np.zeros(n_nodes); wet_cprod_t = np.zeros(n_nodes)
 
     troncon_map: dict[int, dict] = {t["id"]: t for t in troncons}
 
@@ -675,6 +738,24 @@ def _build_territorial(
         sand[ni] = s_sand
         silt[ni] = s_silt
         clay[ni] = s_clay
+
+        # Milieu humide isolé : agrège les UHRH du troncon en un réservoir
+        # équivalent. wet_a + volume = SOMMES ; wet_dra_fr pondéré par l'aire
+        # UHRH (fraction de production drainée) ; params de réservoir pondérés
+        # par la superficie MH (intensifs).
+        if wetlands:
+            wa = np.array([wetlands.get(u, {}).get("wet_a", 0.0) for u in uids])
+            wa_tot = wa.sum()
+            wet_a_t[ni] = wa_tot
+            wet_vol0_t[ni] = sum(wetlands.get(u, {}).get("wet_vol_init", 0.0) for u in uids)
+            wet_dra_t[ni] = sum(wi * wetlands.get(u, {}).get("wet_dra_fr", 0.0)
+                                for u, wi in zip(uids, w))
+            if wa_tot > 0:
+                ww = wa / wa_tot   # pondération par superficie MH
+                gw = lambda k: sum(ww[j] * wetlands.get(u, {}).get(k, 0.0)
+                                   for j, u in enumerate(uids))
+                wet_frac_t[ni] = gw("frac"); wetdnor_t[ni] = gw("wetdnor"); wetdmax_t[ni] = gw("wetdmax")
+                wet_ksat_t[ni] = gw("ksat_bs"); wet_cev_t[ni] = gw("c_ev"); wet_cprod_t[ni] = gw("c_prod")
 
     # Drainage area: accumulate upstream through graph (topo order)
     cum_area = area_local.copy()
@@ -755,6 +836,21 @@ def _build_territorial(
         "area_km2_local": _t_noscale(np.maximum(area_incremental, 1e-3)),
         "slope_fraction": _t_noscale(np.maximum(slope / 100.0, 1e-4)),
     }
+    # Colonnes milieu humide isolé (raw → physical, lues par
+    # HydrotelColumn._wetland_from_territorial). Émises seulement si le bassin
+    # en a (flag Hydrotel actif) ; sinon absentes → colonne sol seul.
+    if wetlands:
+        physical.update({
+            "wet_a_raw": _t_noscale(wet_a_t),
+            "wet_dra_fr_raw": _t_noscale(wet_dra_t),
+            "frac_raw": _t_noscale(wet_frac_t),
+            "wetdnor_raw": _t_noscale(wetdnor_t),
+            "wetdmax_raw": _t_noscale(wetdmax_t),
+            "ksat_bs_raw": _t_noscale(wet_ksat_t),
+            "c_ev_raw": _t_noscale(wet_cev_t),
+            "c_prod_raw": _t_noscale(wet_cprod_t),
+            "wet_vol_init_raw": _t_noscale(wet_vol0_t),
+        })
 
     territorial = TerritorialFeatures(
         data=data, columns=columns, physical=physical,

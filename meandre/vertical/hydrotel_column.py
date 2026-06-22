@@ -225,8 +225,13 @@ class HydrotelColumn(nn.Module):
         wet_dra_fr = z("wet_dra_fr_raw", 0.0)
         wet_k = z("ksat_bs_raw", 0.5); c_ev = z("c_ev_raw", 0.6); c_prod = z("c_prod_raw", 10.0)
         wmask = wet_a > 0.0
-        wet_a_safe = torch.where(wmask, wet_a, torch.ones_like(wet_a))   # factice 1.0 si pas de MH
-        A, B, wetnvol, wetmxvol = wetland_geom_vec(wet_a_safe, wetdmax, frac, wetdnor)
+        # géométrie factice POSITIVE sur les nœuds sans MH (sinon log10(0)=−inf→NaN
+        # dans wetland_geom_vec ; ces nœuds sont masqués en aval de toute façon).
+        wet_a_safe = torch.where(wmask, wet_a, torch.ones_like(wet_a))
+        wetdmax_s = torch.where(wmask, wetdmax, torch.full_like(wetdmax, 0.3))
+        frac_s = torch.where(wmask, frac, torch.full_like(frac, 0.8))
+        wetdnor_s = torch.where(wmask, wetdnor, torch.full_like(wetdnor, 0.2))
+        A, B, wetnvol, wetmxvol = wetland_geom_vec(wet_a_safe, wetdmax_s, frac_s, wetdnor_s)
         return dict(wet_fr_area=torch.clamp(wet_a / area, 0.0, 1.0), hru_ha=area * 100.0,
                     wet_dra_fr=torch.where(wmask, wet_dra_fr, torch.zeros_like(wet_dra_fr)),
                     A=A, B=B, wetnvol=wetnvol, wetmxvol=wetmxvol,
