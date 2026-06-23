@@ -217,7 +217,10 @@ w_residual = 0.01 # L2 regularisation on the residual corrector. Keeps correctio
 # Chow 1959 (Manning), Allen et al. 1998 FAO-56 (Penman-Monteith ET).
 # Uncomment and adjust any value to override the default.
 #
-# [literature_prior]
+[literature_prior]
+# B : init K_c < 1 (McGuinness ETP=881mm sur-estime ~75% ; le NeRF affine par
+# noeud). Cale beta vers 1 d'emblee (au lieu d'apprendre K_c depuis 1.0).
+K_c = 0.6
 # K_sat_1 = 0.010            # m/day (Rawls loam=0.013, silt_loam=0.007)
 # K_sat_2 = 0.005            # m/day
 # K_sat_3 = 0.002            # m/day
