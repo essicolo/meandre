@@ -487,6 +487,7 @@ class HydroModel(nn.Module):
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,
                     return_diagnostics=return_diagnostics,
+                    gw_withdrawal_mm=gw_w_mm,
                 )
             else:
                 vc_out = self.vertical_column(

@@ -330,10 +330,12 @@ class HydrotelColumn(nn.Module):
         if getattr(self, "_aux", None) is not None:
             self._aux = self._aux.detach()
 
-    def column_step(self, enriched, state, doy=None, return_diagnostics=False, **_):
+    def column_step(self, enriched, state, doy=None, return_diagnostics=False,
+                    gw_withdrawal_mm=None, **_):
         """Un pas, interface ColumnOutput. enriched[:, :6] = P,Tmin,Tmax,Rn,u2,ea.
         theta est re-synchronisé depuis `state` (pour intégrer une éventuelle
-        correction résiduelle), le reste de l'état riche est interne (self._aux)."""
+        correction résiduelle), le reste de l'état riche est interne (self._aux).
+        gw_withdrawal_mm : prélèvement/rejet souterrain (mm/j, +ajout/−retrait)."""
         from meandre.utils.state import ColumnOutput
         a = self._aux
         a.theta1, a.theta2, a.theta3 = state.theta1, state.theta2, state.theta3
@@ -342,6 +344,20 @@ class HydrotelColumn(nn.Module):
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
                                      doy if doy is not None else 1, a)
         self._aux = a
+        # Prélèvements/rejets SOUTERRAINS. La colonne Hydrotel fidèle n'a pas de
+        # réservoir d'aquifère restituant (cf. C++ : la recharge fuit, le baseflow
+        # pb est généré instantanément depuis le drainage L3). Un prélèvement
+        # souterrain intercepte donc l'eau qui serait devenue baseflow CE JOUR :
+        # on l'applique à pb (et donc à prod = ps_surf+ph+pb), borné >= 0. Signe :
+        # +ajout (recharge artificielle/rejet), −retrait (pompage), cohérent avec
+        # WithdrawalData/AquiferModule. forward() (validé décimale) reste intouché.
+        if gw_withdrawal_mm is not None:
+            pb = diag["prod_base"]
+            pb_new = torch.clamp(pb + gw_withdrawal_mm, min=0.0)
+            applied = pb_new - pb
+            prod = prod + applied
+            diag["prod_base"] = pb_new
+            diag["lateral_mm"] = prod
         new_state = HydroState(
             theta1=a.theta1, theta2=a.theta2, theta3=a.theta3,
             swe=diag["couvert_nival_mm"], t_soil=a.frost_profile[:, 0],
