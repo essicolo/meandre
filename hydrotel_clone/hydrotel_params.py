@@ -111,10 +111,13 @@ def load_bv3c(path):
         elif ln.upper().startswith("CLASSE INTEGRE EAU"):
             integ_eau = [int(x) for x in ln.split(";")[1:] if x.strip().isdigit()]
         c = ln.split(";")
-        if len(c) >= 12 and c[0].strip().isdigit():
-            uid = int(c[0]); v = [float(x) for x in c[1:12]]
+        # >=11 champs : z1,z2,z3,hri1-3,extinction,krec,assech,cin (+ recharge en
+        # c[11] si présent). DELISLE a 12 champs (avec recharge), SLSO 11 (sans).
+        if len(c) >= 11 and c[0].strip().isdigit():
+            uid = int(c[0]); v = [float(x) for x in c[1:11]]
+            recharge = float(c[11]) if len(c) >= 12 and c[11].strip() != "" else 0.0
             out[uid] = dict(z1=v[0], z2=v[1], z3=v[2], hri1=v[3], hri2=v[4], hri3=v[5],
-                            extinction=v[6], krec=v[7], assech=v[8], cin=v[9], recharge=v[10])
+                            extinction=v[6], krec=v[7], assech=v[8], cin=v[9], recharge=recharge)
     return out, integ_imperm, integ_eau
 
 

@@ -189,6 +189,12 @@ class HydroModel(nn.Module):
         # présente la même interface (column_step → ColumnOutput).
         self.column_mode = str(column_mode)
         self.column_theta_init_frac = float(column_theta_init_frac)
+        # Mémorise les flags de construction de la colonne pour save() (sinon les
+        # métadonnées du checkpoint hydrotel sont re-dérivées du sol natif = fausses).
+        self._build_et_mode = str(et_mode)
+        self._build_use_frost_rankinen = bool(use_frost_rankinen)
+        self._build_compile_soil = bool(compile_soil)
+        self._build_compile_column = bool(compile_column)
         if self.column_mode == "hydrotel":
             from meandre.vertical.hydrotel_column import HydrotelColumn
             self.vertical_column = HydrotelColumn(
@@ -711,7 +717,12 @@ class HydroModel(nn.Module):
                 "soil_mode": getattr(self.vertical_column, "soil_mode", "meandre"),
                 "soil_clone_substep": getattr(getattr(self.vertical_column, "soil_clone", None), "n_substep", 48),
                 "soil_clone_krec_init": 1e-5,  # init scalaire seul ; cl_krec_raw appris est dans le state_dict
-                "et_mode": getattr(getattr(self.vertical_column, "et", None), "et_mode", "penman"),
+                # Flags de construction (corrects pour TOUTE colonne, y c. hydrotel ;
+                # ne pas re-dériver du sol natif qui n'existe pas en mode hydrotel).
+                "et_mode": getattr(self, "_build_et_mode", "penman"),
+                "use_frost_rankinen": getattr(self, "_build_use_frost_rankinen", True),
+                "compile_soil": getattr(self, "_build_compile_soil", False),
+                "compile_column": getattr(self, "_build_compile_column", False),
                 "column_mode": getattr(self, "column_mode", "meandre"),
                 "column_theta_init_frac": getattr(self, "column_theta_init_frac", 0.9),
                 "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),

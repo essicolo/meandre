@@ -459,6 +459,17 @@ else:
     model.spatial_encoder.init_from_literature(literature_targets)
     print("Training from scratch (literature-initialised spatial params)")
 
+# Ancrage Hydrotel (REPRODUCE) : remplace le sol NeRF/littérature par la
+# calibration Hydrotel par nœud (bv3c.csv + textures, agrégée UHRH→troncon).
+# Optionnel ([soil].hydrotel_calib_dir) — point de départ, retiré pour découpler.
+_calib_dir = cfg.get("soil", {}).get("hydrotel_calib_dir")
+if _calib_dir and cfg.get("model", {}).get("column_mode") == "hydrotel":
+    from meandre.data.hydrotel_calib import load_calibrated_soil
+    _z1 = float(getattr(model.vertical_column, "z1", 0.15))
+    _calib = load_calibrated_soil(_calib_dir, node_ids, _z1, device=device)
+    model.vertical_column.set_calibrated_soil(_calib)
+    print(f"[reproduce] sol ancre sur calibration Hydrotel : {_calib_dir}")
+
 # Optional : freeze spatial encoder. Useful to isolate noise_head + temporal
 # encoder training when the literature init is already good (cf. stfran case
 # 2026-05-13 where cold-start gives val_kge=0.17 / β=0.98 and Adam overshoots).
