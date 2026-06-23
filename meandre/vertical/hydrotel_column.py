@@ -103,6 +103,9 @@ class HydrotelColumn(nn.Module):
         if compile_soil and not compile_column:
             self.soil = torch.compile(self.soil, dynamic=False)
         self._fwd_compiled = None
+        # Ancrage OPTIONNEL sur la calibration Hydrotel (reproduce). None = init
+        # NeRF/littérature (objectif ultime : découplé). Posé via set_calibrated_soil.
+        self._calib_soil = None
         self._static = None      # posé par set_static()
         self.z1 = 0.15           # épaisseur couche 1 (config ; Z2/Z3 du NeRF)
 
@@ -147,6 +150,14 @@ class HydrotelColumn(nn.Module):
         n_depth: nombre de nœuds du profil de gel."""
         self._static = dict(snow=p_snow, soil=p_soil, etr=p_etr, wetland=wetland, n_depth=n_depth)
 
+    def set_calibrated_soil(self, p_soil: dict):
+        """Ancre le sol sur la calibration Hydrotel (params par nœud). Quand posé,
+        params_from_nerf l'utilise À LA PLACE du sol NeRF (reproduce). Optionnel.
+        Mémorise aussi les z médians pour rendre ETR/gel cohérents avec ces z."""
+        self._calib_soil = p_soil
+        self._calib_z = (float(p_soil["z1"].median()), float(p_soil["z2"].median()),
+                         float(p_soil["z3"].median()))
+
     # ── Seam NeRF/territorial → params (Phase A) ────────────────────────
     def params_from_nerf(self, sp, territorial, node_coords):
         """Assemble les params statiques par nœud depuis le NeRF (SpatialParams)
@@ -166,7 +177,13 @@ class HydrotelColumn(nn.Module):
         fse = torch.clamp(f_water + f_lake, 0.0, 1.0)
         fsi = torch.clamp(f_urban, 0.0, 1.0)
         fsa = torch.clamp(1.0 - fse - fsi, 0.0, 1.0)
-        slope = torch.clamp(z("mean_slope_pct_raw", 4.0) / 100.0, 1e-3, 0.5)
+        # pente = géométrie universelle. Priorité : slope_fraction (présent dans le
+        # cache PHYSITEL, déjà en fraction), sinon mean_slope_pct_raw/100, sinon défaut.
+        slope_frac = gp("slope_fraction")
+        if slope_frac is not None:
+            slope = torch.clamp(slope_frac.to(like.dtype), 1e-3, 0.5)
+        else:
+            slope = torch.clamp(z("mean_slope_pct_raw", 4.0) / 100.0, 1e-3, 0.5)
 
         # orientation depuis l'aspect (sin/cos dans .data) → code 0-7
         try:
@@ -212,6 +229,11 @@ class HydrotelColumn(nn.Module):
                       slope=slope, cin=torch.full_like(like, 0.03),
                       fsa=fsa, fse=fse, fsi=fsi, coef_recharge=torch.zeros_like(like))
 
+        # Ancrage Hydrotel (reproduce) : remplace le sol NeRF par la calibration
+        # par nœud si fournie. Optionnel — retiré pour découpler.
+        if self._calib_soil is not None:
+            p_soil = {k: v.to(like.device).to(like.dtype) for k, v in self._calib_soil.items()}
+
         # ETR : thetacc/thetapf du NeRF (couche 1), alpha global ; classes dispo
         alpha = torch.exp(self.log_etr_alpha)
         et_classes = []
@@ -221,15 +243,27 @@ class HydrotelColumn(nn.Module):
             et_classes.append((pct_conif, _JBP, _LEAF["conifers"], _ROOT["conifers"]))
         if f_wet.sum() > 0:
             et_classes.append((f_wet, _JBP, _LEAF["humides"], _ROOT["humides"]))
+        # DÉGRADATION GRACIEUSE : sans descriptif d'occupation (ex réseau PHYSITEL,
+        # qui ne porte pas les fractions par classe), l'ET ne doit PAS tomber à 0.
+        # Classe végétation par défaut sur la fraction perméable (LAI/racines
+        # génériques boréal QC). La variation spatiale de l'ET vient alors du NeRF
+        # (thetacc/thetapf/ks → stress + eau dispo) + alpha apprenable. Occupation
+        # = optionnelle, pas un prérequis (objectif découplage).
+        if not et_classes:
+            et_classes.append((fsa, _JBP, _LEAF["default"], _ROOT["default"]))
+        # z des couches : calibrés Hydrotel si ancré (cohérence ETR/gel/sol), sinon NeRF
+        z11, z22, z33 = self.z1, float(sp.Z2.mean()), float(sp.Z3.mean())
+        if self._calib_soil is not None:
+            z11, z22, z33 = self._calib_z
         p_etr = dict(thetacc=sp.theta_fc_1, thetapf=sp.theta_wp_1, alpha=alpha * torch.ones_like(like),
                      des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
-                     z11=self.z1, z22=sp.Z2.mean().item(), z33=sp.Z3.mean().item(), classes=et_classes)
+                     z11=z11, z22=z22, z33=z33, classes=et_classes)
 
         # milieu humide isolé : actif SI le territorial porte la géométrie par nœud
         # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
         wetland = self._wetland_from_territorial(territorial, like)
 
-        n_depth = n_intervalles(self.z1 + float(sp.Z2.mean()) + float(sp.Z3.mean()), self.frost.dz)
+        n_depth = n_intervalles(z11 + z22 + z33, self.frost.dz)
         self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth)
         return p_snow, p_soil, p_etr
 
@@ -451,10 +485,14 @@ class HydrotelColumn(nn.Module):
 _JBP = [1, 100, 135, 166, 180, 210, 244, 270, 274, 280, 365]
 _LEAF = {"feuillus": [3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 3], "ouverts": [1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 1],
          "humides": [2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 2], "conifers": [5] * 11,
-         "mixtes": [3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 3], "agri": [0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 0]}
+         "mixtes": [3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 3], "agri": [0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 0],
+         # végétation générique boréal QC (défaut quand l'occupation manque) :
+         # LAI saisonnier modéré, racine ~1.2 m (cf pro_rac.def SLSO forêt = 1.26)
+         "default": [2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 2]}
 _ROOT = {"feuillus": [1.5] * 11, "ouverts": [0.5] * 11, "humides": [0.75] * 11,
          "conifers": [1.0] * 11, "mixtes": [1.25] * 11,
-         "agri": [0, 0, 0.3, 0.55, 0.7, 0.8, 0.8, 0.8, 0.3, 0, 0]}
+         "agri": [0, 0, 0.3, 0.55, 0.7, 0.8, 0.8, 0.8, 0.3, 0, 0],
+         "default": [1.2] * 11}
 
 
 def build_static_params(n_nodes, lat, slope, orientation, texture, z, occupation,
