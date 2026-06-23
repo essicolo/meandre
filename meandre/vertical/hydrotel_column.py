@@ -334,7 +334,7 @@ class HydrotelColumn(nn.Module):
         """Un pas, interface ColumnOutput. enriched[:, :6] = P,Tmin,Tmax,Rn,u2,ea.
         theta est re-synchronisé depuis `state` (pour intégrer une éventuelle
         correction résiduelle), le reste de l'état riche est interne (self._aux)."""
-        from meandre.vertical.column import ColumnOutput
+        from meandre.utils.state import ColumnOutput
         a = self._aux
         a.theta1, a.theta2, a.theta3 = state.theta1, state.theta2, state.theta3
         P, tmin, tmax = enriched[:, 0], enriched[:, 1], enriched[:, 2]

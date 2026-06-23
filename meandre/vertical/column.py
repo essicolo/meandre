@@ -7,15 +7,15 @@ Output: ColumnOutput with lateral inflow, updated state, and component fluxes
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import torch
 import torch.nn as nn
 from torch import Tensor
 
 from meandre.spatial.field_network import SpatialParams
 from meandre.temporal.temporal_modulator import TemporalModulator
-from meandre.utils.state import HydroState
+# ColumnOutput vit dans state.py (interface partagée, découplage). Ré-exporté
+# ici pour rétrocompatibilité des imports `from meandre.vertical.column import ColumnOutput`.
+from meandre.utils.state import ColumnOutput, HydroState
 from meandre.vertical.aquifer import AquiferModule
 from meandre.vertical.evapotranspiration import ETModule
 from meandre.vertical.frost import FrostModule
@@ -23,21 +23,6 @@ from meandre.vertical.interception import InterceptionModule
 from meandre.vertical.snow import SnowModule
 from meandre.vertical.soil import SoilModule
 from meandre.vertical.wetland import WetlandModule
-
-
-@dataclass
-class ColumnOutput:
-    """Output from VerticalColumn.forward().
-
-    Always returned (no conditional tuple unpacking).
-    """
-
-    lateral_inflow: Tensor   # (n_nodes,) mm/day — total input to routing
-    state: HydroState        # updated state after one day
-    snowmelt: Tensor         # (n_nodes,) mm/day — for temperature module
-    recharge: Tensor         # (n_nodes,) mm/day — soil L3 drainage (pre-aquifer)
-    Q_baseflow: Tensor       # (n_nodes,) mm/day — GW contribution (isolated)
-    diag: dict | None        # per-node diagnostic tensors, or None
 
 
 class VerticalColumn(nn.Module):

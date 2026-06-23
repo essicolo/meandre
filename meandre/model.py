@@ -28,7 +28,8 @@ from meandre.temporal.state_noise import CorrelatedStateNoise
 from meandre.utils.diagnostics import SimDiagnostics
 from meandre.utils.noise_head import HeteroscedasticNoiseHead, SpatialNoiseHead
 from meandre.utils.state import HydroState
-from meandre.vertical.column import VerticalColumn
+# VerticalColumn (colonne native legacy) importée paresseusement dans __init__
+# uniquement quand column_mode != "hydrotel" (découplage du clone Hydrotel).
 
 
 class HydroModel(nn.Module):
@@ -171,22 +172,10 @@ class HydroModel(nn.Module):
             concrete_init_p=concrete_init_p,
         ) if use_temporal else None
 
-        self.vertical_column = VerticalColumn(
-            soil_z1=soil_z1, soil_vsa_b=soil_vsa_b,
-            soil_quickflow_reservoir=soil_quickflow_reservoir,
-            soil_quickflow_beta=soil_quickflow_beta,
-            soil_separate_infil_capacity=soil_separate_infil_capacity,
-            soil_frozen_gate=soil_frozen_gate,
-            soil_runoff_clean=soil_runoff_clean,
-            soil_mode=soil_mode,
-            soil_clone_substep=soil_clone_substep,
-            soil_clone_krec_init=soil_clone_krec_init,
-            use_overland_uh=use_overland_uh,
-            use_hillslope_uh=use_hillslope_uh,
-            et_mode=et_mode,
-        )
-        # Colonne verticale FIDÈLE Hydrotel (Phase A) : remplace VerticalColumn,
-        # présente la même interface (column_step → ColumnOutput).
+        # Colonne verticale. En mode "hydrotel" : clone FIDÈLE Hydrotel (Phase A).
+        # Sinon : VerticalColumn native (legacy). Les deux exposent la même
+        # interface column_step → ColumnOutput. Imports paresseux pour que le
+        # mode hydrotel n'ait aucune dépendance sur la colonne native.
         self.column_mode = str(column_mode)
         self.column_theta_init_frac = float(column_theta_init_frac)
         # Mémorise les flags de construction de la colonne pour save() (sinon les
@@ -202,6 +191,22 @@ class HydroModel(nn.Module):
                 use_frost=use_frost_rankinen,
                 compile_soil=bool(compile_soil),
                 compile_column=bool(compile_column),
+            )
+        else:
+            from meandre.vertical.column import VerticalColumn
+            self.vertical_column = VerticalColumn(
+                soil_z1=soil_z1, soil_vsa_b=soil_vsa_b,
+                soil_quickflow_reservoir=soil_quickflow_reservoir,
+                soil_quickflow_beta=soil_quickflow_beta,
+                soil_separate_infil_capacity=soil_separate_infil_capacity,
+                soil_frozen_gate=soil_frozen_gate,
+                soil_runoff_clean=soil_runoff_clean,
+                soil_mode=soil_mode,
+                soil_clone_substep=soil_clone_substep,
+                soil_clone_krec_init=soil_clone_krec_init,
+                use_overland_uh=use_overland_uh,
+                use_hillslope_uh=use_hillslope_uh,
+                et_mode=et_mode,
             )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS

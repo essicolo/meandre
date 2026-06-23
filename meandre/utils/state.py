@@ -205,3 +205,21 @@ class HydroState:
 
     # Number of state variables (used by residual corrector)
     N_VARS: int = 11
+
+
+@dataclass
+class ColumnOutput:
+    """Sortie d'un pas de colonne verticale (interface commune).
+
+    Toujours retournée (pas d'unpacking de tuple conditionnel). Partagée par
+    VerticalColumn (colonne native) et HydrotelColumn (clone fidèle). Vit ici
+    plutôt que dans column.py pour que la colonne hydrotel n'ait pas à importer
+    la colonne native (objectif de découplage / suppression à terme).
+    """
+
+    lateral_inflow: Tensor   # (n_nodes,) mm/day — total input to routing
+    state: HydroState        # updated state after one day
+    snowmelt: Tensor         # (n_nodes,) mm/day — for temperature module
+    recharge: Tensor         # (n_nodes,) mm/day — soil L3 drainage (pre-aquifer)
+    Q_baseflow: Tensor       # (n_nodes,) mm/day — GW contribution (isolated)
+    diag: dict | None        # per-node diagnostic tensors, or None
