@@ -65,11 +65,11 @@ param_mode = "nerf"
 # Remplace VerticalColumn par HydrotelColumn : neige degré-jour → gel Rankinen
 # → ETP → ETR par couche → sol BV3C2 cloné (validé décimale vs C++) → milieu
 # humide isolé (inactif ici : SLSO Hydrotel a MILIEUX HUMIDES ISOLES=0). Le
-# [soil] ci-dessous est sans effet en mode hydrotel.
+# [soil] ci-dessous est sans effet en mode hydrotel (sauf hydrotel_calib_dir).
 column_mode = "hydrotel"
 use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
 column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
-compile_column = true             # torch.compile de TOUT le pas (snow+gel+ET+sol)
+compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 
 [et]
 # McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).
@@ -92,6 +92,9 @@ era5_vars = []   # ex. ["R_n", "e_a", "u2"] pour tout surcharger
 # era5_bbox  = [-73.0, 44.5, -69.6, 47.7]  # optionnel (défaut: nœuds + marge 0.2°)
 
 [soil]
+# REPRODUCE : ancre le sol sur la calibration Hydrotel (bv3c.csv + textures,
+# agrégée UHRH→troncon). Optionnel — retirer cette ligne pour découpler (NeRF).
+# (B decouple : ancrage Hydrotel retire) hydrotel_calib_dir = "/mnt/c/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/SLSO_LN24HA_2020"
 # Layer thicknesses (m), NOT depths from surface.
 # Layers stack: L1 = [0, z1], L2 = [z1, z1+z2], L3 = [z1+z2, z1+z2+z3]
 # Total soil depth = z1 + z2 + z3 (derived).
@@ -111,7 +114,7 @@ rain_hours_min = 2.0       # h (intense convective storms)
 rain_hours_max = 8.0      # h (long frontal rains)
 
 [training]
-n_epochs = 6  # PETIT test : confirmer que l_orage concentre leve les pics
+n_epochs = 10   # B : test K_c apprenable pour caler beta
 lr = 5e-4
 lr_finetune = 2e-4
 lr_new_features_mult = 10.0   # fc1/fc2 get 10x the base LR when fine-tuning with new features

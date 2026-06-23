@@ -255,9 +255,13 @@ class HydrotelColumn(nn.Module):
         z11, z22, z33 = self.z1, float(sp.Z2.mean()), float(sp.Z3.mean())
         if self._calib_soil is not None:
             z11, z22, z33 = self._calib_z
+        # K_c (coefficient cultural) par nœud, prédit par le NeRF (borné [0.3,1.5],
+        # prior vers 0.85). Multiplie l'ETP → corrige la sur-évaporation McGuinness
+        # et laisse le NeRF caler le volume (β) par nœud. Levier de découplage.
+        kc = sp.K_c if hasattr(sp, "K_c") else torch.ones_like(like)
         p_etr = dict(thetacc=sp.theta_fc_1, thetapf=sp.theta_wp_1, alpha=alpha * torch.ones_like(like),
                      des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
-                     z11=z11, z22=z22, z33=z33, classes=et_classes)
+                     z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc)
 
         # milieu humide isolé : actif SI le territorial porte la géométrie par nœud
         # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
@@ -429,8 +433,10 @@ class HydrotelColumn(nn.Module):
             frost_profile = state.frost_profile
             prof_gel_cm = torch.zeros_like(P)
 
-        # 3. ETP
-        etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t)
+        # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
+        # McGuinness et donne au NeRF un levier direct sur le volume (β).
+        # K_c=1.0 par défaut si non fourni (chemins set_static hand-built).
+        etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * pe.get("K_c", 1.0)
 
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
         # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro
