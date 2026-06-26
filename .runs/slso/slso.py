@@ -456,8 +456,43 @@ else:
     # loam/silt_loam) and the optimizer wastes dozens of epochs just
     # bringing soil hydraulics into a physically plausible range.
     literature_targets = cfg.get("literature_prior", cfg.get("hydrotel_prior"))
-    model.spatial_encoder.init_from_literature(literature_targets)
-    print("Training from scratch (literature-initialised spatial params)")
+    # [model].literature_init = false : NE PAS rétrécir fc_out ×100. Sert au test
+    # de collapse (laisser au NeRF sa sensibilité spatiale dès le départ pour voir
+    # si les params de colonne se différencient sous gradient). Defaut true.
+    if cfg.get("model", {}).get("literature_init", True):
+        model.spatial_encoder.init_from_literature(literature_targets)
+        print("Training from scratch (literature-initialised spatial params)")
+    else:
+        print("Training from scratch (literature_init=OFF : fc_out NON rétréci, "
+              "sensibilité spatiale pleine — test collapse)")
+
+# RECETTE FRESHET (validée par sweep eval 2026-06-26, melt0.4+ksat0.3 = parité
+# Hydrotel). Deux boutons config-driven, appliqués comme le patch d'éval :
+#  - melt_factor_scale : multiplie le facteur de fonte degré-jour (coincé à
+#    12/14/16 = init trop fort → fonte précoce). 0.4 = optimum.
+#  - ksat_scale : multiplie le K_sat NeRF (épinglé ~3× trop perméable → l'eau de
+#    fonte s'infiltre, gamma trop bas). 0.3 = optimum. Scaling différentiable,
+#    le NeRF apprend autour.
+_mfs = float(cfg.get("model", {}).get("melt_factor_scale", 1.0))
+if _mfs != 1.0 and cfg.get("model", {}).get("column_mode") == "hydrotel":
+    import torch.nn.functional as _F
+    with torch.no_grad():
+        for _nm in ("sp_fonte_conif", "sp_fonte_feu", "sp_fonte_dec"):
+            _p = getattr(model.vertical_column, _nm, None)
+            if _p is not None:
+                _eff = _F.softplus(_p) * _mfs
+                _p.copy_(torch.log(torch.expm1(_eff.clamp(min=1e-4))))
+    print(f"[recette] melt_factor_scale={_mfs} (fonte ÷{1/_mfs:.1f})")
+_kss = float(cfg.get("model", {}).get("ksat_scale", 1.0))
+if _kss != 1.0:
+    _orig_se = model.spatial_encoder.forward
+    def _se_ksat(*a, _o=_orig_se, _s=_kss, **k):
+        sp = _o(*a, **k)
+        for _nm in ("K_sat_1", "K_sat_2", "K_sat_3"):
+            setattr(sp, _nm, getattr(sp, _nm) * _s)
+        return sp
+    model.spatial_encoder.forward = _se_ksat
+    print(f"[recette] ksat_scale={_kss}")
 
 # Ancrage Hydrotel (REPRODUCE) : remplace le sol NeRF/littérature par la
 # calibration Hydrotel par nœud (bv3c.csv + textures, agrégée UHRH→troncon).

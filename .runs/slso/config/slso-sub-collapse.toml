@@ -1,0 +1,97 @@
+# ─── TEST COLLAPSE NeRF (slso-sub, 204 noeuds, CPU) ──────────────────────────
+# Hypothese : les params de COLONNE collapsent car epingles par (a) l'init
+# littérature qui rétrécit fc_out ×100 et (b) la régularisation w_prior.
+# Test : couper les DEUX (literature_init=false + w_prior=0), 5 epochs cold-start
+# sur le débit seul, puis re-mesurer le CV des params (diag_nerf_learned.py).
+#   - CV grimpe  -> coupable = prior/init (réglable).
+#   - CV reste plat -> identifiabilité pure (le débit ne porte pas l'info).
+# Cold-start, découplé, loss débit (PAS le montage probabiliste de slso-sub.toml).
+
+[paths]
+basin_db = "data/slso-sub.duckdb"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-03/data/03_imputation/quebec.zarr"
+forcing_cache = "data/forcing-sub.nc"
+checkpoint = "checkpoints/best-sub-collapse.pt"
+fields_nc = "results/fields-sub-collapse.nc"
+reach_parquet = "results/reach-sub-collapse.parquet"
+runs_db = "runs-sub-collapse.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+date_start = "2016-01-01"
+spinup_end = "2016-12-31"
+train_start = "2022-01-01"
+train_end = "2022-12-31"
+val_start = "2023-01-01"
+val_end = "2023-12-31"
+date_end = "2024-12-31"
+
+[model]
+n_forcing = 6
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0
+param_mode = "nerf"
+column_mode = "hydrotel"
+use_frost_rankinen = true
+column_theta_init_frac = 0.9
+compile_soil = false           # Windows : pas de Triton
+literature_init = false        # <<< EPINGLE 1 COUPEE : fc_out non rétréci
+
+[et]
+mode = "mcguinness"
+
+[forcing]
+era5_vars = []
+
+[soil]
+runoff_clean = true
+z1 = 0.30
+z2_min = 0.30
+z2_max = 1.50
+z3_min = 0.50
+z3_max = 4.00
+rain_hours_min = 2.0
+rain_hours_max = 8.0
+
+[training]
+n_epochs = 5
+lr = 5e-4
+lr_finetune = 2e-4
+warmup_epochs = 2
+weight_decay = 2e-4
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 365              # 1 an = 1 chunk (204 noeuds, CPU OK) -> KGE utilisable
+val_every = 1
+patience = 20
+best_metric = "kge_station"
+warm_start = false
+compile_modules = false
+autopilot = false              # test propre, pas de restart/LR auto qui confond
+
+w_prior = 0.0                  # <<< EPINGLE 2 COUPEE : aucune régularisation prior
+
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999
+enable_travel_epoch = 9999
+residual_warmup_epochs = 5
+
+[loss]
+w_nll = 0.0
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.1
+w_mse = 0.1
+w_log_nse = 0.0
+w_log_mse = 0.3
+w_peak = 0.5
+w_nrmse = 0.0
+w_physics = 0.01
+w_residual = 0.01
+
+[literature_prior]
+K_c = 0.6
