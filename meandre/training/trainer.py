@@ -114,6 +114,11 @@ class TrainingConfig:
     # 0 = no truncation (very slow for long sequences).
     tbptt_steps: int = 90         # one season = good balance of speed vs. gradient depth
 
+    # Neige : SWE (mm) au-dessus duquel la couverture est ~saturée, pour mapper
+    # SWE simulé → fraction de couverture (SCF = 1-exp(-SWE/ref)) comparée à MODIS
+    # snow cover. ~15 mm = la neige couvre le pixel dès une faible accumulation.
+    snow_swe_ref: float = 15.0
+
     # Warm-start spinup: after epoch 0, run only this many steps from the
     # cached spinup state instead of re-running all spinup_steps from zeros.
     # 0 = always run full spinup (safe but slow).
@@ -822,7 +827,12 @@ class Trainer:
             _need_et = ((self.loss_fn.w_nll_et > 0 or self.loss_fn.w_et > 0)
                         and data.et_obs is not None)
             _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
-            _need_diag = _need_et or _need_tws
+            # Neige : MODIS snow cover (fraction) cale le taux de FONTE (sp_fonte).
+            # On compare une fraction de couverture SIMULÉE = 1-exp(-SWE/SWE_REF)
+            # (différentiable, monotone) à snow_frac MODIS. data.swe_obs porte le
+            # snow_frac MODIS (0-1), PAS du SWE en mm.
+            _need_snow = (self.loss_fn.w_snow > 0 and data.swe_obs is not None)
+            _need_diag = _need_et or _need_tws or _need_snow
             with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
                 _sim_out = self.model.simulate(
                     forcing=data.forcing[sl],
@@ -878,6 +888,13 @@ class Trainer:
                     if self.loss_fn.w_nll_et > 0 and hasattr(self.model, "noise_head_et"):
                         log_sigma_et_chunk = self.model.noise_head_et(et_sim_chunk.detach())
 
+                # Neige : fraction de couverture simulée vs MODIS snow_frac.
+                scf_sim_chunk = snow_obs_chunk = None
+                if _need_snow:
+                    _swe_mm = _diag_chunk.swe[burnin:]
+                    scf_sim_chunk = 1.0 - torch.exp(-_swe_mm / self.config.snow_swe_ref)
+                    snow_obs_chunk = data.swe_obs[obs_offset + burnin:obs_offset + chunk_len]
+
                 loss_chunk, comps = self.loss_fn(
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,
@@ -886,6 +903,8 @@ class Trainer:
                     et_obs=et_obs_chunk,
                     et_sim=et_sim_chunk,
                     log_sigma_et_sim=log_sigma_et_chunk,
+                    swe_obs=snow_obs_chunk,
+                    swe_sim=scf_sim_chunk,
                     residual_gate_logits=(
                         self.model.residual_corrector.gate_logit
                         if self.model.use_residual and self.model.residual_corrector is not None

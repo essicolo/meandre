@@ -618,6 +618,20 @@ if _lcfg_early.get("w_tws", 0.0) > 0:
         _con.close()
         print("[GRACE] table grace_tws absente — w_tws ignoré")
 
+# ── MODIS snow cover (conditionnel — si w_snow > 0) ─────────────────────────
+# Couverture neigeuse fractionnaire (0-1) par nœud, sparse (NaN si nuage). Cale
+# le TAUX DE FONTE (sp_fonte) en contraignant la date de disparition du manteau :
+# le trainer compare 1-exp(-SWE_sim/ref) à snow_frac. Fix FIDÈLE remplaçant le
+# scaling empirique melt_factor_scale.
+snow_obs_tensor = None
+if _lcfg_early.get("w_snow", 0.0) > 0:
+    if cache.has_modis_snow():
+        snow_obs_tensor = cache.load_modis_snow(DATE_START, DATE_END, device=device)
+        _nsnow = int((~torch.isnan(snow_obs_tensor)).sum()) if snow_obs_tensor is not None else 0
+        print(f"[MODIS snow] snow_frac chargé : {_nsnow:,} observations valides")
+    else:
+        print("[MODIS snow] table modis_snow absente — w_snow ignoré")
+
 # %% [markdown]
 """
 ## Entraînement
@@ -651,6 +665,8 @@ _et_train = et_obs_tensor[train_sl.start:] if et_obs_tensor is not None else Non
 _et_val = et_obs_tensor[val_sl.start:] if et_obs_tensor is not None else None
 _tws_train = tws_obs_tensor[train_sl.start:] if tws_obs_tensor is not None else None
 _tws_val = tws_obs_tensor[val_sl.start:] if tws_obs_tensor is not None else None
+_snow_train = snow_obs_tensor[train_sl.start:] if snow_obs_tensor is not None else None
+_snow_val = snow_obs_tensor[val_sl.start:] if snow_obs_tensor is not None else None
 
 # IHI : précalculer les indices une fois sur le forcing complet, normaliser
 # z-score, sliciter aux stations. Utilisés par ContextualQuantileHead.
@@ -687,6 +703,7 @@ train_data = TrainingData(
     val_slice = train_sl,
     et_obs = _et_train,
     tws_obs = _tws_train,
+    swe_obs = _snow_train,
     indices_ihi = _ihi_train,
 )
 val_data = TrainingData(
@@ -703,6 +720,7 @@ val_data = TrainingData(
     val_slice = val_sl,
     et_obs = _et_val,
     tws_obs = _tws_val,
+    swe_obs = _snow_val,
     indices_ihi = _ihi_val,
 )
 
