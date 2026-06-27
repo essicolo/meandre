@@ -72,7 +72,7 @@ column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel valid
 compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 # ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
 melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
-ksat_scale = 0.3                 # K_sat ÷3.3 (recette).
+ksat_scale = 1.0                 # K_sat FIDELE : avec le versant UH + cinematique, c'est l'UH qui lisse, pas le ksat hack (calE pour Muskingum, donnait gamma 1.5).
 # ── ROUTAGE FIDÈLE (versant UH + cinématique) : lissage au VERSANT (cascade Nash,
 # surface pointue + interflow large) AVANT le canal, canal en advection PURE
 # (cinématique, masse conservée e5e6440). Remplace le pansement Muskingum diffusif.
