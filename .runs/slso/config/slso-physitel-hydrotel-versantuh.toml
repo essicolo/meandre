@@ -208,7 +208,9 @@ w_kge = 1.0 # Per-station KGE — directly targets beta, r, gamma.
                    # Chunk-approximate but the signal on beta/r is much stronger
                    # than MSE alone. Bumped to 1.0 (vs 0.5) to counter the
                    # flat-signal collapse.
-w_pbias = 2.0 # Volume ANCRE (canonical) : empeche la derive beta>1 vue sur le run recette. pbias=|Σsim-Σobs|/Σobs ~0.15, w=2 -> cout 0.3 pour 15% de derive.
+w_pbias = 0.5 # ET ancre le volume (multi-obj).
+w_et = 1.0   # MODIS ET : ancre volume, corrige derive beta (cf multiobj).
+w_tws = 0.2  # GRACE TWS : garde-fou stockage.
 w_mse = 0.1 # MSE (kept low to avoid flattening peaks; log_mse handles low flows)
 w_log_nse = 0.0 # NSE on log-flows. NOT chunk-safe.
 w_log_mse = 0.3 # MSE on log-flows. Chunk-safe. Emphasises baseflow.
