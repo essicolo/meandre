@@ -191,6 +191,7 @@ class HydroModel(nn.Module):
                 use_frost=use_frost_rankinen,
                 compile_soil=bool(compile_soil),
                 compile_column=bool(compile_column),
+                use_hillslope_uh=bool(use_hillslope_uh),
             )
         else:
             from meandre.vertical.column import VerticalColumn

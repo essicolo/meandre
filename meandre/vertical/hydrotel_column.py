@@ -63,14 +63,22 @@ class HydrotelColumnState:
     snow: dict                 # {classe: (stock,hauteur,chaleur,eau), 'albedo_'+classe, 'couvert_nival_mm'}
     frost_profile: Tensor      # (n_nodes, n_depth) température du sol
     wet_vol: Tensor            # (n_nodes,) volume milieu humide [m3]
+    # États des cascades de Nash de l'hydrogramme de VERSANT (use_hillslope_uh) :
+    # surface (uh_s1,uh_s2) + interflow (uh_s3,uh_s4). None si UH désactivé.
+    uh_s1: Tensor | None = None
+    uh_s2: Tensor | None = None
+    uh_s3: Tensor | None = None
+    uh_s4: Tensor | None = None
 
     def detach(self) -> "HydrotelColumnState":
         sn = {}
         for k, v in self.snow.items():
             sn[k] = tuple(t.detach() for t in v) if isinstance(v, tuple) else v.detach()
+        _d = lambda t: t.detach() if t is not None else None
         return HydrotelColumnState(
             self.theta1.detach(), self.theta2.detach(), self.theta3.detach(),
-            sn, self.frost_profile.detach(), self.wet_vol.detach())
+            sn, self.frost_profile.detach(), self.wet_vol.detach(),
+            _d(self.uh_s1), _d(self.uh_s2), _d(self.uh_s3), _d(self.uh_s4))
 
 
 class HydrotelColumn(nn.Module):
@@ -82,10 +90,11 @@ class HydrotelColumn(nn.Module):
                  frost_fs: float = 2.35, frost_kt: float = 0.8,
                  frost_cs: float = 1.0e6, frost_cice: float = 4.0e6,
                  t_neige_seuil: float = 0.0, compile_soil: bool = False,
-                 compile_column: bool = False) -> None:
+                 compile_column: bool = False, use_hillslope_uh: bool = False) -> None:
         super().__init__()
         self.et_mode = str(et_mode)
         self.use_frost = bool(use_frost)
+        self.use_hillslope_uh = bool(use_hillslope_uh)
         self.t_neige_seuil = t_neige_seuil   # seuil pluie/neige (split de phase, TODO: règle Hydrotel exacte)
         self.snow = DegreJourModifie(pas_de_temps=24)
         self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
@@ -125,6 +134,14 @@ class HydrotelColumn(nn.Module):
         self.sp_fonte_conif = nn.Parameter(torch.tensor(_m.log(_m.exp(12.0) - 1)))
         self.sp_fonte_feu = nn.Parameter(torch.tensor(_m.log(_m.exp(14.0) - 1)))
         self.sp_fonte_dec = nn.Parameter(torch.tensor(_m.log(_m.exp(16.0) - 1)))
+        # Hydrogramme unitaire de VERSANT (cascade de Nash 2 réservoirs, fidèle
+        # Hydrotel — porté de column.py). Lisse le ruissellement AVANT le canal,
+        # par étalement des temps de parcours (préserve les pics, contrairement à
+        # l'atténuation Muskingum). DEUX échelles : surface POINTUE (k court),
+        # interflow LARGE (k long). À coupler avec pure_advection (canal cinématique).
+        if self.use_hillslope_uh:
+            self.log_uh_k_surf = nn.Parameter(torch.tensor(_m.log(0.3)))    # ~0.3 j
+            self.log_uh_k_inter = nn.Parameter(torch.tensor(_m.log(2.5)))   # ~2.5 j
 
     def _sig(self, raw, bounds):
         return bounds[0] + (bounds[1] - bounds[0]) * torch.sigmoid(raw)
@@ -306,9 +323,14 @@ class HydrotelColumn(nn.Module):
         z = lambda v: torch.full((n_nodes,), float(v), device=device, dtype=dtype)
         nd = self._static["n_depth"] if self._static else 31
         frost_profile = torch.full((n_nodes, nd), self.frost.temp_ini_base, device=device, dtype=dtype)
+        _uh = (torch.zeros(n_nodes, device=device, dtype=dtype) if self.use_hillslope_uh else None)
         return HydrotelColumnState(
             theta1=z(theta_init[0]), theta2=z(theta_init[1]), theta3=z(theta_init[2]),
-            snow=sn, frost_profile=frost_profile, wet_vol=torch.zeros(n_nodes, device=device, dtype=dtype))
+            snow=sn, frost_profile=frost_profile, wet_vol=torch.zeros(n_nodes, device=device, dtype=dtype),
+            uh_s1=(_uh.clone() if _uh is not None else None),
+            uh_s2=(_uh.clone() if _uh is not None else None),
+            uh_s3=(_uh.clone() if _uh is not None else None),
+            uh_s4=(_uh.clone() if _uh is not None else None))
 
     # ── Adaptateur interface VerticalColumn (pour model.py simulate) ────
     def setup_simulate(self, spatial_params, territorial, node_coords, init_state):
@@ -475,6 +497,27 @@ class HydrotelColumn(nn.Module):
             etr1_mm=e1 * 1000.0, etr2_mm=e2 * 1000.0, etr3_mm=e3 * 1000.0)
         prod = ps_surf + ph + pb   # mm
 
+        # 5b. Hydrogramme de VERSANT (cascade de Nash, fidèle Hydrotel, porté de
+        # column.py). Lisse les composantes RAPIDES par étalement des temps de
+        # parcours de versant AVANT le canal : surface POINTUE (k court, pic
+        # préservé) + interflow LARGE (k long), baseflow direct. À coupler avec
+        # pure_advection (canal cinématique). Sans lui, le Muskingum diffusif lisse
+        # au mauvais endroit (pansement, cf 2026-06-27). forward sans le flag =
+        # inchangé (fidélité 370.9 préservée).
+        uh1n = uh2n = uh3n = uh4n = None
+        if self.use_hillslope_uh:
+            def _nash(inflow, s1, s2, log_k):
+                if s1 is None: s1 = torch.zeros_like(inflow)
+                if s2 is None: s2 = torch.zeros_like(inflow)
+                k = torch.nn.functional.softplus(log_k) + 0.05      # jours
+                a = 1.0 - torch.exp(-1.0 / k)                       # relâché/jour
+                s1n = s1 + inflow; o1 = s1n * a; s1_new = s1n - o1
+                s2n = s2 + o1;     o2 = s2n * a; s2_new = s2n - o2
+                return o2, s1_new, s2_new
+            surf_out, uh1n, uh2n = _nash(ps_surf, state.uh_s1, state.uh_s2, self.log_uh_k_surf)
+            inter_out, uh3n, uh4n = _nash(ph, state.uh_s3, state.uh_s4, self.log_uh_k_inter)
+            prod = surf_out + inter_out + pb
+
         # 6. milieu humide isolé (optionnel). production_surf/hypo/base.csv d'Hydrotel
         # est POST-MH (bv3c2.cpp l.838-895) : la prod totale passe dans le réservoir
         # SWAT puis prod = prodOld·(1−wetdrafr) + wetprod. Vectorisé sur tous les nœuds,
@@ -493,7 +536,8 @@ class HydrotelColumn(nn.Module):
             prod = torch.where(w["wmask"], prod_w, prod)
             wet_vol = torch.where(w["wmask"], wet_vol_n, state.wet_vol)
 
-        new_state = HydrotelColumnState(t1, t2, t3, snow_new, frost_profile, wet_vol)
+        new_state = HydrotelColumnState(t1, t2, t3, snow_new, frost_profile, wet_vol,
+                                        uh1n, uh2n, uh3n, uh4n)
         etr_tot = (e1 + e2 + e3) * 1000.0
         diag = dict(apport=apport, etp=etp, etr1=e1 * 1000.0, etr2=e2 * 1000.0, etr3=e3 * 1000.0,
                     prof_gel_cm=prof_gel_cm, couvert_nival_mm=couvert_mm,
