@@ -27,7 +27,7 @@ from meandre.utils.state import HydroState
 from meandre.routing.withdrawals import WithdrawalData
 
 INTERV = sys.argv[1] if len(sys.argv) > 1 else "none"
-CKPT = ".runs/slso/checkpoints/best-physitel-hydrotel-overnight.pt"
+CKPT = os.environ.get("EVAL_CKPT", ".runs/slso/checkpoints/best-physitel-hydrotel-overnight.pt")
 # Chemins Windows LOCAUX (CPU stable, evite le wedge WSL/GPU D-state).
 FORC = ".runs/slso/data/forcing.nc"
 DB = ".runs/slso/data/slso.duckdb"
@@ -90,6 +90,14 @@ def apply_one(tok):
         _ksat_scales.append(float(tok.replace("ksat", "")))
     elif tok == "puredv":
         m.routing.pure_advection = True
+    elif tok.startswith("dqcel"):
+        # célérité dépendante du débit (onde cinématique DANS le Muskingum) :
+        # K_eff = K·(Qref/(Q+Qref))^beta → pic voyage plus vite, s'atténue moins.
+        # beta optionnel après "dqcel" (ex dqcel0.6), défaut = celui du modèle.
+        m.routing.dq_celerity = True
+        b = tok.replace("dqcel", "")
+        if b:
+            m.routing.dq_beta = float(b)
     else:
         raise ValueError(f"intervention inconnue: {tok}")
 
