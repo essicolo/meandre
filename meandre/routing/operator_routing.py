@@ -213,7 +213,13 @@ def build_operator_state(
         s_geo = s_geo + acc
     alpha = c01 * s_geo
     gamma = acc * c2                      # c2^n
-    beta = s_geo / float(n_substeps)
+    # Coefficient de l'apport latéral. Pour conserver la masse, la sortie
+    # stationnaire d'un nœud isolé (Q_ss = beta·q_lat/(1−gamma)) doit égaler
+    # q_lat → beta = 1−gamma. L'ancienne valeur s_geo/n donnait q_lat/(n(1−c2))
+    # = correct SEULEMENT si c2=1−1/n (Muskingum standard, d'où volume OK), mais
+    # FAUX en advection pure (c2=0 → q_lat/n, perte de (n−1)/n de l'eau latérale).
+    # 1−gamma = alpha quand c01=1−c2, donc inchangé pour le cas normal.
+    beta = 1.0 - gamma
 
     W: list[Tensor] = []
     for k in range(topo.n_stages):

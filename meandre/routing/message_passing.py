@@ -474,7 +474,13 @@ class RoutingLayer(nn.Module):
             if r_hi > r_lo:
                 ri = topo.river_idx[r_lo:r_hi]
                 Q_in = Q_agg[ri] + net_W[ri]
-                q_lat_sub = q_lat_m3s[ri] / self.muskingum.n_substeps
+                # Apport latéral conservatif : injecté à (1−c2)·q_lat par sous-pas
+                # (et NON q_lat/n). La contribution end-of-step = (1−c2)·S_geo·q_lat
+                # = (1−c2^n)·q_lat = beta·q_lat (beta=1−gamma de l'opérateur), donc
+                # sortie stationnaire = q_lat (masse conservée pour TOUT c2). L'ancien
+                # q_lat/n perdait (n−1)/n de l'apport en advection pure (c2=0).
+                # Coïncide avec q_lat/n quand c2=1−1/n (Muskingum standard).
+                q_lat_sub = q_lat_m3s[ri] * (1.0 - c2[ri])
                 Q = Q_out_prev[ri]
                 for _ in range(self.muskingum.n_substeps):
                     Q = torch.clamp(c01[ri] * Q_in + c2[ri] * Q + q_lat_sub, min=0.0)
