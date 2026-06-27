@@ -184,31 +184,20 @@ class HydroModel(nn.Module):
         self._build_use_frost_rankinen = bool(use_frost_rankinen)
         self._build_compile_soil = bool(compile_soil)
         self._build_compile_column = bool(compile_column)
-        if self.column_mode == "hydrotel":
-            from meandre.vertical.hydrotel_column import HydrotelColumn
-            self.vertical_column = HydrotelColumn(
-                et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman") else "mcguinness"),
-                use_frost=use_frost_rankinen,
-                compile_soil=bool(compile_soil),
-                compile_column=bool(compile_column),
-                use_hillslope_uh=bool(use_hillslope_uh),
-            )
-        else:
-            from meandre.vertical.column import VerticalColumn
-            self.vertical_column = VerticalColumn(
-                soil_z1=soil_z1, soil_vsa_b=soil_vsa_b,
-                soil_quickflow_reservoir=soil_quickflow_reservoir,
-                soil_quickflow_beta=soil_quickflow_beta,
-                soil_separate_infil_capacity=soil_separate_infil_capacity,
-                soil_frozen_gate=soil_frozen_gate,
-                soil_runoff_clean=soil_runoff_clean,
-                soil_mode=soil_mode,
-                soil_clone_substep=soil_clone_substep,
-                soil_clone_krec_init=soil_clone_krec_init,
-                use_overland_uh=use_overland_uh,
-                use_hillslope_uh=use_hillslope_uh,
-                et_mode=et_mode,
-            )
+        # Colonne native (VerticalColumn/soil.py/aquifer.py) RETIRÉE 2026-06-27
+        # (ETP/baseflow déficients). Seule la HydrotelColumn fidèle subsiste.
+        if self.column_mode != "hydrotel":
+            raise ValueError(
+                f"column_mode={self.column_mode!r} non supporté : la colonne native "
+                "a été retirée (nettoyage 2026-06-27). Utiliser column_mode='hydrotel'.")
+        from meandre.vertical.hydrotel_column import HydrotelColumn
+        self.vertical_column = HydrotelColumn(
+            et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman") else "mcguinness"),
+            use_frost=use_frost_rankinen,
+            compile_soil=bool(compile_soil),
+            compile_column=bool(compile_column),
+            use_hillslope_uh=bool(use_hillslope_uh),
+        )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
         self.residual_corrector = StateResidualCorrector(
