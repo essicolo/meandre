@@ -28,7 +28,14 @@ import xarray as xr
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-REPO = Path(__file__).resolve().parent
+# Script d'éval held-out (lancer via `python tests/scripts/eval_test.py`), PAS un
+# test unitaire : tout le corps s'exécute au niveau module. Sous pytest (import,
+# __name__ != "__main__"), on saute la collecte pour ne pas lancer une éval complète.
+if __name__ != "__main__":
+    import pytest
+    pytest.skip("script d'eval held-out, pas un test unitaire", allow_module_level=True)
+
+REPO = Path(__file__).resolve().parents[2]   # racine du repo (corrige l'ancien .parent)
 os.chdir(REPO)
 
 from meandre.data.basin_cache import BasinCache
@@ -40,7 +47,7 @@ from meandre.utils.state import HydroState
 
 DEVICE = torch.device("cpu")
 
-with open("notebooks/slso/config/slso.toml", "rb") as f:
+with open(".runs/slso/config/slso.toml", "rb") as f:
     cfg = tomllib.load(f)
 paths = cfg["paths"]
 mcfg = cfg["model"]
@@ -161,7 +168,7 @@ for sid in sids:
     ))
 
 df = pd.DataFrame(rows).sort_values("KGE")
-out = Path("notebooks/slso/results/test_eval")
+out = Path(".runs/slso/results/test_eval")
 out.mkdir(parents=True, exist_ok=True)
 df.to_parquet(out / "per_station.parquet", index=False)
 
@@ -203,4 +210,4 @@ for _, r in df.tail(5).iterrows():
     print(f"    {r['station']}  area={r['area_km2']:.0f}km²  KGE={r['KGE']:.3f}  "
           f"β={r['beta']:.2f}  γ={r['gamma']:.2f}  r={r['r']:.2f}")
 
-print(f"\n[out] notebooks/slso/results/test_eval/per_station.parquet")
+print(f"\n[out] .runs/slso/results/test_eval/per_station.parquet")

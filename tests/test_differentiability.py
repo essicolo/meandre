@@ -52,57 +52,10 @@ def test_residual_corrector_gradients():
         assert param.grad is not None, f"No gradient for corrector param {name}"
 
 
-def test_snow_module_gradients():
-    """Gradients must flow through the snow module thresholds."""
-    from meandre.vertical.snow import SnowModule
-
-    snow = SnowModule()
-    n = 20
-    P = torch.rand(n, requires_grad=True)   # leaf tensor — no in-place ops
-    T_air = torch.randn(n)
-    SWE = torch.rand(n) * 50
-    C_f = torch.ones(n) * 3.0
-    T_melt = torch.zeros(n)
-    T_snow = torch.zeros(n)
-
-    P_eff, SWE_new, _ = snow(P, T_air, SWE, C_f, T_melt, T_snow)
-    (P_eff.sum() + SWE_new.sum()).backward()
-
-    assert P.grad is not None
-    assert not torch.all(P.grad == 0)
-
-
-def test_soil_module_gradients():
-    """Gradients must flow through the soil water balance."""
-    from meandre.vertical.soil import SoilModule
-
-    soil = SoilModule()
-    n = 8
-    P_eff = torch.rand(n, requires_grad=True)  # leaf tensor
-    ET1 = torch.rand(n) * 1
-    ET2 = torch.rand(n) * 0.5
-    ET3 = torch.rand(n) * 0.2
-
-    theta1 = torch.rand(n) * 0.3 + 0.1
-    theta2 = torch.rand(n) * 0.25 + 0.1
-    theta3 = torch.rand(n) * 0.2 + 0.1
-    K_sat = torch.ones(n) * 0.5
-    por = torch.ones(n) * 0.45
-    fc = torch.ones(n) * 0.35
-    wp = torch.ones(n) * 0.15
-
-    f_vert = torch.full((n,), 0.5, requires_grad=True)
-    t1, t2, t3, R, interflow, baseflow, _S_uz = soil(
-        P_eff, ET1, ET2, ET3,
-        theta1, theta2, theta3,
-        K_sat, K_sat, K_sat,
-        por, por, por,
-        fc, fc, fc,
-        wp, wp, wp,
-        f_vert, f_vert, f_vert,
-    )
-    (t1.sum() + t2.sum() + t3.sum() + R.sum() + interflow.sum() + baseflow.sum()).backward()
-    assert P_eff.grad is not None
+# test_snow_module_gradients / test_soil_module_gradients RETIRÉS 2026-06-27 :
+# testaient les modules natifs (snow.py/soil.py) supprimés. La différentiabilité
+# end-to-end de la colonne hydrotel (snow+gel+sol+UH) est couverte par
+# tests/smoke_hydrotel_model.py (backward + gradient NeRF/colonne).
 
 
 def test_spatial_field_network_gradients():

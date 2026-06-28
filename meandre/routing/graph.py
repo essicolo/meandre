@@ -77,6 +77,8 @@ class RiverGraph:
 
     def __post_init__(self) -> None:
         n_nodes = int(self.topo_order.shape[0])
+        if self.edge_index.numel() == 0:
+            return   # graphe sans arête (nœud isolé / sous-bassin minimal) : rien à valider
         if self.edge_index.max().item() >= n_nodes:
             raise ValueError(
                 f"edge_index contains node index >= n_nodes ({n_nodes}). "

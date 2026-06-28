@@ -96,7 +96,7 @@ class HydroModel(nn.Module):
         soil_clone_substep: int = 48,
         soil_clone_krec_init: float = 1e-5,
         et_mode: str = "penman",
-        column_mode: str = "meandre",   # "meandre" | "hydrotel" (colonne fidèle clonée)
+        column_mode: str = "hydrotel",   # "hydrotel" = colonne fidèle clonée (seule restante depuis 2026-06-27 ; le natif "meandre" est retiré)
         column_theta_init_frac: float = 0.9,  # theta init = frac·thetas (init Hydrotel validé) en mode hydrotel ; 0 = garder la theta du cache
         use_frost_rankinen: bool = True,
         compile_soil: bool = False,   # mode hydrotel : torch.compile du sol seul

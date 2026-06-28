@@ -156,7 +156,10 @@ def test_to_dict_keys():
     core = {"etp", "etr", "snowmelt", "lateral_mm", "recharge", "q_baseflow", "q_lateral", "q_upstream"}
     keys = set(diag.to_dict().keys())
     assert core.issubset(keys), f"Missing keys: {core - keys}"
-    assert keys - core <= {"T_water", "swe"}, f"Unexpected keys: {keys - core - {'T_water', 'swe'}}"
+    # T_water/swe conditionnels ; theta1/2/3 + stockages (canopy/s_gw/wetland) =
+    # diagnostics d'état exposés par SimDiagnostics.
+    allowed_extra = {"T_water", "swe", "theta1", "theta2", "theta3", "canopy", "s_gw", "wetland"}
+    assert keys - core <= allowed_extra, f"Unexpected keys: {keys - core - allowed_extra}"
 
 
 def test_units_dict():
