@@ -80,6 +80,10 @@ u2 = UVC * 0.748                                                        # 10m ->
 
 # Empile (time, node, 6) = [P, Tmin, Tmax, R_n, u2, e_a]
 chans = [P, TT_min, TT_max, R_n, u2, e_a]
+idx_slice = (idx >= pd.Timestamp("2000-01-01")) & (idx <= pd.Timestamp("2024-12-31"))
+idx = idx[idx_slice]
+P, TT_min, TT_max, R_n, u2, e_a = [x.reindex(idx) for x in (P, TT_min, TT_max, R_n, u2, e_a)]
+chans = [P, TT_min, TT_max, R_n, u2, e_a]
 forcing = np.stack([c.values.astype(np.float32) for c in chans], axis=-1)  # (T, n, 6)
 print(f"forcing {forcing.shape}  NaN={np.isnan(forcing).any()}  "
       f"P_moy_an={float(np.nanmean(P.values))*365:.0f}mm  Rn_moy={float(np.nanmean(R_n)):.1f}MJ/j  u2_moy={float(np.nanmean(u2)):.1f}m/s")
