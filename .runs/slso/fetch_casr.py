@@ -10,7 +10,10 @@ BASE = "https://hpfx.collab.science.gc.ca/~scar700/rcas-casr/data/CaSRv3.2/netcd
 OUT = ".runs/slso/data/casr"
 os.makedirs(OUT, exist_ok=True)
 
-TILES = ["rlon526-560_rlat351-385", "rlon526-560_rlat386-420"]   # SLSO (sud + nord)
+# SLSO mosaïque 2x2 : 32% des nœuds (est du bassin) débordaient de la seule colonne
+# rlon526-560 -> ajout colonne est rlon561-595 (vérifié contre les coords en pôle tourné).
+TILES = ["rlon526-560_rlat351-385", "rlon526-560_rlat386-420",
+         "rlon561-595_rlat351-385", "rlon561-595_rlat386-420"]
 # (code variable ECCC, nom de fichier) — A_=analyse (obs-contraint), P_=champ modèle
 VARS = [
     "A_PR0_SFC",     # précipitation (mm/h, analyse CaPA)

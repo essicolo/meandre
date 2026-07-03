@@ -29,7 +29,7 @@ from meandre.routing.withdrawals import WithdrawalData
 INTERV = sys.argv[1] if len(sys.argv) > 1 else "none"
 CKPT = os.environ.get("EVAL_CKPT", ".runs/slso/checkpoints/best-physitel-hydrotel-overnight.pt")
 # Chemins Windows LOCAUX (CPU stable, evite le wedge WSL/GPU D-state).
-FORC = ".runs/slso/data/forcing.nc"
+FORC = os.environ.get("EVAL_FORC", ".runs/slso/data/forcing.nc")
 DB = ".runs/slso/data/slso.duckdb"
 SPIN0, TEST1 = "2020-01-01", "2024-12-31"   # 2 ans spinup + 3 test
 dev = "cuda" if torch.cuda.is_available() else "cpu"

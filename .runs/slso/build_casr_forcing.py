@@ -56,7 +56,11 @@ def load_var(var, agg):
         df = pd.DataFrame(node_series, index=times)
         d = getattr(df.resample("1D"), agg)()
         daily_all.append(d)
-    return pd.concat(daily_all)
+    out = pd.concat(daily_all)
+    # Dédup des jours-frontière entre tranches (un jour peut être partiel dans 2
+    # tranches de 4 ans) : ré-agrège par date avec la MÊME opération (exact pour
+    # sum/min/max ; ~ pour mean, négligeable sur 1 jour/4ans).
+    return getattr(out.groupby(out.index), agg)()
 
 print("P (PR0 somme, m->mm)..."); P = load_var("A_PR0_SFC", "sum") * 1000.0
 print("Tmin/Tmax (TT)..."); TT_min = load_var("A_TT_1.5m", "min"); TT_max = load_var("A_TT_1.5m", "max")

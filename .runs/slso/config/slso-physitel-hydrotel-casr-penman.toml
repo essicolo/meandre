@@ -10,9 +10,9 @@ basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 forcing_cache = "/home/essi/slso-data/forcing-casr-riox.nc"  # FORCAGE CaSR v3.2 (open data, source unique)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-riox.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-riox.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-riox.parquet"
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-penman-riox.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-penman-riox.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-penman-riox.parquet"
 runs_db = "/home/essi/slso-data/runs.duckdb"
 
 [basin]
@@ -75,8 +75,10 @@ melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet 
 ksat_scale = 0.3                 # K_sat ÷3.3 : sol trop perméable → fonte s'infiltre. Corrige gamma.
 
 [et]
-# McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).
-mode = "mcguinness"
+# Penman sur radiation/vent RÉELS de CaSR (canaux R_n/u2/e_a du cache forcing-casr,
+# pas des proxys). era5_vars reste vide : on n'écrase PAS CaSR avec ERA5. C'est le
+# vrai intérêt du mode open data. Sur-évaporation tenue par l'ancrage MODIS ET.
+mode = "penman"
 
 [forcing]
 # Surcharge optionnelle des variables énergie/humidité par ERA5-Land mesuré

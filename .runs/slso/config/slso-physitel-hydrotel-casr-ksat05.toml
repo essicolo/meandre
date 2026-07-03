@@ -10,9 +10,9 @@ basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 forcing_cache = "/home/essi/slso-data/forcing-casr-riox.nc"  # FORCAGE CaSR v3.2 (open data, source unique)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-riox.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-riox.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-riox.parquet"
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-ksat05.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-ksat05.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-ksat05.parquet"
 runs_db = "/home/essi/slso-data/runs.duckdb"
 
 [basin]
@@ -72,7 +72,8 @@ column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel valid
 compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 # ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
 melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
-ksat_scale = 0.3                 # K_sat ÷3.3 : sol trop perméable → fonte s'infiltre. Corrige gamma.
+ksat_scale = 0.5                 # K_sat ÷2 (relâché vs 0.3 calé quebec) : plus d'infiltration sur CaSR
+                                 # plus humide -> amortit les pics flashy, vise gamma 1.13 -> ~1.0 (attribution 2026-06-29)
 
 [et]
 # McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).

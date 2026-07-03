@@ -9,10 +9,10 @@ basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 #weather_grid   = "/home/essi/Documents/quebec.zarr"
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
-forcing_cache = "/home/essi/slso-data/forcing-casr-riox.nc"  # FORCAGE CaSR v3.2 (open data, source unique)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-riox.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-riox.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-riox.parquet"
+forcing_cache = "/home/essi/slso-data/forcing-casr-riox-eb.nc"  # CaSR 8 canaux (FB/FI ajoutés pour ETI)
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-eti.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-eti.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-eti.parquet"
 runs_db = "/home/essi/slso-data/runs.duckdb"
 
 [basin]
@@ -35,7 +35,7 @@ date_end = "2024-12-31"   # forcing window end
 [model]
 routing_mode = "operator-lagged"
 use_temperature = false
-n_forcing = 6      # P, T_min, T_max, R_n, u2, e_a
+n_forcing = 8      # P, T_min, T_max, R_n, u2, e_a, FB, FI (FB/FI = radiation incidente brute pour ETI)
 context_window = 30
 residual_history = 14
 max_travel_days = 20
@@ -71,8 +71,13 @@ use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
 column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
 compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 # ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
-melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
-ksat_scale = 0.3                 # K_sat ÷3.3 : sol trop perméable → fonte s'infiltre. Corrige gamma.
+# FONTE ÉNERGÉTIQUE ETI (radiation réelle CaSR) : remplace la rustine degré-jour.
+# melt_factor_scale n'a plus d'effet (coeff_fonte degré-jour inutilisé en mode eti) ;
+# la fonte est pilotée par tf (température) + srf (radiation) apprenables. On RETIRE
+# donc la rustine melt÷2.5 (=1.0), et on garde ksat÷3.3 pour isoler le changement de fonte.
+melt_mode = "eti"
+melt_factor_scale = 1.0
+ksat_scale = 0.3                 # K_sat ÷3.3 : conservé (gamma), orthogonal à la fonte
 
 [et]
 # McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).

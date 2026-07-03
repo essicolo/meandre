@@ -10,9 +10,9 @@ basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 forcing_cache = "/home/essi/slso-data/forcing-casr-riox.nc"  # FORCAGE CaSR v3.2 (open data, source unique)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-riox.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-riox.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-riox.parquet"
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-retention.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-retention.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-retention.parquet"
 runs_db = "/home/essi/slso-data/runs.duckdb"
 
 [basin]
@@ -72,7 +72,8 @@ column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel valid
 compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 # ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
 melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
-ksat_scale = 0.3                 # K_sat ÷3.3 : sol trop perméable → fonte s'infiltre. Corrige gamma.
+ksat_scale = 0.5                 # K_sat ÷2 (relâché vs 0.3 calé quebec) : plus d'infiltration sur CaSR
+                                 # plus humide -> amortit les pics flashy, vise gamma 1.13 -> ~1.0 (attribution 2026-06-29)
 
 [et]
 # McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).
@@ -207,7 +208,9 @@ w_pbias = 0.5 # reduit : l_ET ancre le volume physiquement (MODIS), plus besoin 
 # ── MULTI-OBJECTIF (tache #3) ──
 w_et = 1.0   # MSE(etr_sim, MODIS MOD16). Modele sous-evapore (491 vs 581 mm/an) -> ancre l_ET en haut,
              # baisse le volume, CORRIGE la derive beta. Contraint K_c (identifiabilite). Couverture 2013-2024.
-w_tws = 0.2  # GRACE TWS mensuel (anomalie stockage total basin, sigma=25mm). Garde-fou stockage. 2002-2026.
+w_tws = 0.5  # RÉTENTION : poussé 0.2->0.5. Le biais saisonnier CaSR (hiver sur-produit ×1.39,
+             # été sous-produit ×0.80) = stockage vidé trop vite hiver->été. GRACE contraint le
+             # cycle de stockage : on le pondère plus pour forcer le modèle à retenir l'eau d'hiver.
 w_mse = 0.1 # MSE (kept low to avoid flattening peaks; log_mse handles low flows)
 w_log_nse = 0.0 # NSE on log-flows. NOT chunk-safe.
 w_log_mse = 0.3 # MSE on log-flows. Chunk-safe. Emphasises baseflow.
@@ -228,6 +231,10 @@ w_residual = 0.01 # L2 regularisation on the residual corrector. Keeps correctio
 # B : init K_c < 1 (McGuinness ETP=881mm sur-estime ~75% ; le NeRF affine par
 # noeud). Cale beta vers 1 d'emblee (au lieu d'apprendre K_c depuis 1.0).
 K_c = 0.6
+# Récession plus lente (nudge bas risque ; en mode hydrotel le baseflow est surtout
+# soil/krec, k_gw peut être inactif) : 0.02 (50j) -> 0.012 (~80j) pour favoriser le
+# soutien d'étiage. C'est GRACE (w_tws) qui fait le vrai travail de rétention.
+k_gw = 0.012
 # K_sat_1 = 0.010            # m/day (Rawls loam=0.013, silt_loam=0.007)
 # K_sat_2 = 0.005            # m/day
 # K_sat_3 = 0.002            # m/day

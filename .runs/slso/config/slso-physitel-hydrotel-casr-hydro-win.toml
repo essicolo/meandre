@@ -4,16 +4,16 @@
 # Supported formats: .zarr, .nc, .grib/.grib2/.grb
 
 [paths]
-basin_db = "/home/essi/slso-data/slso.duckdb"
+basin_db = "data/slso.duckdb"
 basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 #weather_grid   = "/home/essi/Documents/quebec.zarr"
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
-forcing_cache = "/home/essi/slso-data/forcing-casr-riox.nc"  # FORCAGE CaSR v3.2 (open data, source unique)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-riox.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-riox.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-riox.parquet"
-runs_db = "/home/essi/slso-data/runs.duckdb"
+forcing_cache = "D:/meandre-data/slso/forcing-casr-hydro.nc"  # CaSR 7 canaux (+ DT_eff durée d'orage)
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-hydro.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-hydro.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-hydro.parquet"
+runs_db = "data/runs-win.duckdb"
 
 [basin]
 prefix = "SLSO"
@@ -34,8 +34,11 @@ date_end = "2024-12-31"   # forcing window end
 
 [model]
 routing_mode = "operator-lagged"
+# Célérité dépendante du débit : pics plus rapides (corrige le pic hortonien +2j vs réel +1j).
+discharge_dependent_celerity = false
+dq_beta = 0.5
 use_temperature = false
-n_forcing = 6      # P, T_min, T_max, R_n, u2, e_a
+n_forcing = 7      # P, T_min, T_max, R_n, u2, e_a, DT_eff (durée effective d'orage, hortonien)
 context_window = 30
 residual_history = 14
 max_travel_days = 20
@@ -67,12 +70,19 @@ param_mode = "nerf"
 # humide isolé (inactif ici : SLSO Hydrotel a MILIEUX HUMIDES ISOLES=0). Le
 # [soil] ci-dessous est sans effet en mode hydrotel (sauf hydrotel_calib_dir).
 column_mode = "hydrotel"
+# RUISSELLEMENT HORTONIEN sous-journalier : excès d'infiltration piloté par l'intensité
+# réelle (DT_eff, canal 6). Génère le quickflow d'orage d'été que le pas journalier
+# DT_H=24 écrasait (cause racine du déficit d'été + baseflow excédentaire, diag 2026-06-30).
+# Capacité d'infiltration = ks1·DT_eff ; apprenable. Le ksat0.5 reste (abaisse ks1).
+use_hortonian = true
 use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
 column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
-compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
+compile_soil = true  # triton-windows tcc OK sur Windows natif (test 2026-07-02)               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 # ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
 melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
-ksat_scale = 0.3                 # K_sat ÷3.3 : sol trop perméable → fonte s'infiltre. Corrige gamma.
+ksat_scale = 1.0                 # PAS de rustine : l'Hortonien EST le levier de génération de quickflow
+                                 # (ks1·DT_eff réaliste). ksat0.5 par-dessus = double comptage qui casse r.
+                                 # plus humide -> amortit les pics flashy, vise gamma 1.13 -> ~1.0 (attribution 2026-06-29)
 
 [et]
 # McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).

@@ -10,9 +10,9 @@ basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 forcing_cache = "/home/essi/slso-data/forcing-casr-riox.nc"  # FORCAGE CaSR v3.2 (open data, source unique)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-riox.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-riox.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-riox.parquet"
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-quantile.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-quantile.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-quantile.parquet"
 runs_db = "/home/essi/slso-data/runs.duckdb"
 
 [basin]
@@ -117,19 +117,28 @@ rain_hours_min = 2.0       # h (intense convective storms)
 rain_hours_max = 8.0      # h (long frontal rains)
 
 [training]
-n_epochs = 25   # MULTI-OBJ : recette + routage fixe + MODIS ET (ancre ET/volume, corrige derive beta) + GRACE TWS.
-lr = 5e-4
-lr_finetune = 2e-4
-lr_new_features_mult = 10.0   # fc1/fc2 get 10x the base LR when fine-tuning with new features
-weight_decay = 2e-4
+# PHASE 2 PROBABILISTE : backbone CaSR (best-...-casr-riox) GELÉ, on entraîne UNIQUEMENT
+# la tête quantile (offsets δ_τ depuis μ, médiane = μ -> KGE du backbone préservé). Pinball
+# loss sur K=6 quantiles. Recette prouvée slso-phase2-grace-quantile sur le backbone CaSR.
+n_epochs = 15
+lr = 1e-3              # tête quantile fresh-init, pas warm-startée
+lr_finetune = 1e-3
+weight_decay = 1e-4
 grad_clip = 1.0
 tbptt_steps = 365
-chunk_steps = 45            # reduit pour la colonne hydrotel sur GPU 8GB (boucle sous-pas = graphe autograd lourd)
-val_every = 1              # validation every epoch (required by autopilot)
-patience = 50             # long — autopilot manages LR and restarts
-best_metric = "kge_median" # Checkpoint on pooled KGE (published hydro convention). Options: "nse", "kge", "kge_station", "kge_median"
-warm_start = false   # cold : checkpoint cleanh = colonne native incompatible avec hydrotel
-# warm_start_from desactive (cold start colonne hydrotel)
+chunk_steps = 45            # reduit pour la colonne hydrotel sur GPU 8GB
+val_every = 1
+patience = 8
+best_metric = "nll"          # = pinball moyen en mode quantile (mappé), tolérance absolue
+best_metric_tolerance = 0.005
+warm_start = true
+warm_start_from = "checkpoints/best-physitel-hydrotel-casr-riox.pt"   # backbone McGuinness CaSR
+# Backbone GELÉ — la physique et la médiane (= μ) ne bougent pas
+freeze_spatial = true
+freeze_temporal = true
+freeze_backbone = true
+autopilot_nll = false
+kendall_gal_auto = false
 compile_modules = false  # Triton missing on Windows → torch.compile crashes on first forward
 
 # Soft prior regularization on spatial NeRF parameters (k_gw, krec, K_c).
@@ -198,24 +207,25 @@ autopilot_restart_max = 3
 # Regularisation:
 #   w_physics  — penalises water-balance residual (mass closure)
 #   w_residual — penalises residual corrector amplitude (keep physics dominant)
-w_nse = 0.0 # Nash-Sutcliffe Efficiency. NOT chunk-safe — disabled with chunk_steps>0
-w_kge = 1.0 # Per-station KGE — directly targets beta, r, gamma.
-                   # Chunk-approximate but the signal on beta/r is much stronger
-                   # than MSE alone. Bumped to 1.0 (vs 0.5) to counter the
-                   # flat-signal collapse.
-w_pbias = 0.5 # reduit : l_ET ancre le volume physiquement (MODIS), plus besoin du pbias brut fort.
-# ── MULTI-OBJECTIF (tache #3) ──
-w_et = 1.0   # MSE(etr_sim, MODIS MOD16). Modele sous-evapore (491 vs 581 mm/an) -> ancre l_ET en haut,
-             # baisse le volume, CORRIGE la derive beta. Contraint K_c (identifiabilite). Couverture 2013-2024.
-w_tws = 0.2  # GRACE TWS mensuel (anomalie stockage total basin, sigma=25mm). Garde-fou stockage. 2002-2026.
-w_mse = 0.1 # MSE (kept low to avoid flattening peaks; log_mse handles low flows)
-w_log_nse = 0.0 # NSE on log-flows. NOT chunk-safe.
-w_log_mse = 0.3 # MSE on log-flows. Chunk-safe. Emphasises baseflow.
-w_peak = 0.5    # protege le gain de pic de la porte gel (sinon le NeRF le troque contre du KGE)
-                   # Lowered from 0.5 to 0.3: too strong was pulling toward a flat signal (collapse 2026-05-04).
-w_nrmse = 0.0 # Normalised RMSE. Dimensionless, gives a relative error.
-w_physics = 0.01 # Penalises water-balance non-closure (P − ET − Q − ΔS ≈ 0). Forces the model to respect physics.
-w_residual = 0.01 # L2 regularisation on the residual corrector. Keeps corrections small so the physics component dominates.
+# PHASE 2 PROBABILISTE : backbone gelé -> SEUL le pinball quantile pilote (tête).
+# Toutes les pertes déterministes à 0 (elles n'auraient aucun gradient, backbone figé).
+nll_distribution = "quantile"   # offsets δ_τ depuis μ, médiane = μ (KGE backbone préservé)
+quantile_taus = [0.05, 0.10, 0.25, 0.75, 0.90, 0.95]   # K=6, en m³/s
+w_quantile = 1.0                # pilote unique : pinball multi-quantile
+w_nse = 0.0
+w_kge = 0.0
+w_pbias = 0.0
+w_et = 0.0
+w_tws = 0.0
+w_mse = 0.0
+w_log_nse = 0.0
+w_log_mse = 0.0
+w_peak = 0.0
+w_nrmse = 0.0
+w_physics = 0.0
+w_residual = 0.0
+w_nll = 0.0
+w_flatness = 0.0
 
 # ─── Literature Prior ─────────────────────────────────────────────────────
 # Override spatial parameter initialization when training from scratch.
