@@ -173,6 +173,9 @@ def test_loss_is_differentiable():
         "noise_head_swe.log_sigma_a", "noise_head_swe.log_sigma_b",
         # log_df (Student-t) : sans gradient quand w_nll{,_et,_swe}=0, comme les sigma.
         "noise_head.log_df", "noise_head_et.log_df", "noise_head_swe.log_df",
+        # Facteurs de fonte ETI : utilisés seulement si melt_mode="eti" (défaut
+        # degree_day), donc sans gradient dans le modèle par défaut.
+        "vertical_column.sp_tf", "vertical_column.sp_srf",
     }
 
     no_grad_params = []

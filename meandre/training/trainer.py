@@ -530,6 +530,7 @@ class Trainer:
         _MAX_ROLLBACKS = 3        # stop reducing after this many
         for epoch in pbar:
             self._apply_curriculum(epoch)
+            self._cur_epoch = epoch   # utilisé par l'offset aléatoire des chunks
 
             train_loss, train_comps = self._train_epoch()
 
@@ -812,8 +813,20 @@ class Trainer:
         n_chunks = 0
         sp_tensor: Tensor | None = None  # cached spatial params for SpatialNoiseHead
 
+        # OFFSET ALÉATOIRE des frontières de chunks, par epoch (revue 2026-07-01) :
+        # avec des frontières FIXES, les mêmes 11 jours de burn-in sur 45 (24 % des
+        # jours) ne recevaient JAMAIS de gradient, epoch après epoch — tout orage
+        # dans ces fenêtres était invisible à l'optimisation. On ALLONGE le premier
+        # chunk de `offset` (plutôt que le raccourcir : fenêtre de loss trop courte
+        # sinon), ce qui décale toutes les frontières suivantes. Mémoire : premier
+        # chunk ≤ 2·chunk−1, dans l'enveloppe déjà tolérée par le merge de reliquat
+        # (< chunk+60). Déterministe par epoch (reproductible).
+        _g = torch.Generator().manual_seed(int(getattr(self, "_cur_epoch", 0)))
+        _first_offset = int(torch.randint(0, chunk, (1,), generator=_g).item())
+
         while t_start < data.train_slice.stop:
-            t_end = min(t_start + chunk, data.train_slice.stop)
+            _len = chunk + _first_offset if n_chunks == 0 else chunk
+            t_end = min(t_start + _len, data.train_slice.stop)
             # Merge tiny remainder into the previous chunk
             remainder = data.train_slice.stop - t_end
             if 0 < remainder < 60:

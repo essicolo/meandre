@@ -38,6 +38,7 @@ from hydrotel_clone.et import hydro_quebec_etp, calcule_etr
 from hydrotel_clone.mcguinness import mcguinness_etp
 from hydrotel_clone.bv3c2 import BV3C2Clone, make_params, SOIL_TEXTURES
 from hydrotel_clone.milieu_humide import init_wetland_geom, calcul_milieu_humide_isole
+from meandre.vertical.aquifer import AquiferModule
 
 
 def _interp1d(x, xp, fp):
@@ -90,11 +91,35 @@ class HydrotelColumn(nn.Module):
                  frost_fs: float = 2.35, frost_kt: float = 0.8,
                  frost_cs: float = 1.0e6, frost_cice: float = 4.0e6,
                  t_neige_seuil: float = 0.0, compile_soil: bool = False,
-                 compile_column: bool = False, use_hillslope_uh: bool = False) -> None:
+                 compile_column: bool = False, use_hillslope_uh: bool = False,
+                 melt_mode: str = "degree_day", use_aquifer: bool = False,
+                 use_hortonian: bool = False) -> None:
         super().__init__()
         self.et_mode = str(et_mode)
         self.use_frost = bool(use_frost)
         self.use_hillslope_uh = bool(use_hillslope_uh)
+        # Mode de fonte : "degree_day" (clone fidèle, indice radiation géométrique)
+        # ou "eti" (Enhanced Temperature Index, radiation RÉELLE sw_in = canal FB).
+        self.melt_mode = str(melt_mode)
+        self.sw_channel = 6 if self.melt_mode == "eti" else None   # FB = canal 6 du forçage (cache -eb)
+        # Hortonien sous-journalier (excès d'infiltration intensité-dépendant) : DT_eff au canal 6 (cache -intens).
+        self.use_hortonian = bool(use_hortonian)
+        self.storm_channel = 6 if self.use_hortonian else None
+        # GARDE-FOU : les deux modes lisent le canal 6 mais attendent des caches
+        # DIFFÉRENTS (FB en W/m² vs DT_eff en h). Les combiner lirait silencieusement
+        # la mauvaise grandeur physique (revue 2026-07-01). Interdit tant que les
+        # index ne sont pas séparés/validés contre les noms de variables du cache.
+        if self.melt_mode == "eti" and self.use_hortonian:
+            raise ValueError(
+                "melt_mode='eti' et use_hortonian=True sont incompatibles : les deux "
+                "lisent le canal de forçage 6 (FB vs DT_eff). Construire un cache "
+                "combiné et séparer sw_channel/storm_channel avant de les cumuler.")
+        # Aquifère restituant OPTIONNEL (meandre > Hydrotel) : route le drainage L3
+        # (sinon baseflow instantané, recharge perdue cf. C++) dans un réservoir
+        # linéaire qui SOUTIENT L'ÉTIAGE. Prélèvements souterrains agissent dans le
+        # réservoir. k_gw par nœud (NeRF), contraint GRACE. OFF = clone Hydrotel fidèle.
+        self.use_aquifer = bool(use_aquifer)
+        self.aquifer = AquiferModule() if self.use_aquifer else None
         self.t_neige_seuil = t_neige_seuil   # seuil pluie/neige (split de phase, TODO: règle Hydrotel exacte)
         self.snow = DegreJourModifie(pas_de_temps=24)
         self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
@@ -134,6 +159,11 @@ class HydrotelColumn(nn.Module):
         self.sp_fonte_conif = nn.Parameter(torch.tensor(_m.log(_m.exp(12.0) - 1)))
         self.sp_fonte_feu = nn.Parameter(torch.tensor(_m.log(_m.exp(14.0) - 1)))
         self.sp_fonte_dec = nn.Parameter(torch.tensor(_m.log(_m.exp(16.0) - 1)))
+        # ETI (mode "eti") : facteurs de fonte température (tf, m/°C/j) et radiation
+        # (srf, m/j par W/m²), softplus pour positivité. Init Pellicciotti 2005 (en
+        # journalier) : tf≈1.2 mm/°C/j, srf≈0.2 mm/j par W/m². Apprenables.
+        self.sp_tf = nn.Parameter(torch.tensor(_m.log(_m.exp(0.0012) - 1)))
+        self.sp_srf = nn.Parameter(torch.tensor(_m.log(_m.exp(0.00020) - 1)))
         # Hydrogramme unitaire de VERSANT (cascade de Nash 2 réservoirs, fidèle
         # Hydrotel — porté de column.py). Lisse le ruissellement AVANT le canal,
         # par étalement des temps de parcours (préserve les pics, contrairement à
@@ -230,7 +260,10 @@ class HydrotelColumn(nn.Module):
                       seuil_fonte_conifers=torch.zeros_like(like), seuil_fonte_feuillus=torch.zeros_like(like),
                       seuil_fonte_decouver=torch.zeros_like(like),
                       taux_fonte_geo=torch.full_like(like, 0.5), densite_max=torch.full_like(like, 466.0),
-                      constante_tassement=torch.full_like(like, 0.1))
+                      constante_tassement=torch.full_like(like, 0.1),
+                      melt_mode=self.melt_mode,
+                      tf=sp_(self.sp_tf) * torch.ones_like(like),
+                      srf=sp_(self.sp_srf) * torch.ones_like(like))
 
         # sol BV3C2 : NeRF (thetas/ks) + Campbell global
         b1 = self._sig(self.b1_raw, self._b_bounds); b2 = self._sig(self.b2_raw, self._b_bounds); b3 = self._sig(self.b3_raw, self._b_bounds)
@@ -286,6 +319,8 @@ class HydrotelColumn(nn.Module):
 
         n_depth = n_intervalles(z11 + z22 + z33, self.frost.dz)
         self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth)
+        if self.use_aquifer:
+            self._static["k_gw"] = sp.k_gw   # récession aquifère par nœud (1/j)
         return p_snow, p_soil, p_etr
 
     def _wetland_from_territorial(self, territorial, like):
@@ -363,8 +398,12 @@ class HydrotelColumn(nn.Module):
         a.theta1, a.theta2, a.theta3 = state.theta1, state.theta2, state.theta3
         P, tmin, tmax = enriched[:, 0], enriched[:, 1], enriched[:, 2]
         Rn, u2, ea = enriched[:, 3], enriched[:, 4], enriched[:, 5]
+        # Fonte ETI : courte longueur d'onde incidente brute = canal FB (index 6).
+        sw_in = enriched[:, self.sw_channel] if self.sw_channel is not None else None
+        # Hortonien sous-journalier : durée effective d'orage DT_eff = canal (index storm_channel).
+        storm_hours = enriched[:, self.storm_channel] if self.storm_channel is not None else None
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
-                                     doy if doy is not None else 1, a)
+                                     doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours)
         self._aux = a
         # Prélèvements/rejets SOUTERRAINS. La colonne Hydrotel fidèle n'a pas de
         # réservoir d'aquifère restituant (cf. C++ : la recharge fuit, le baseflow
@@ -373,18 +412,29 @@ class HydrotelColumn(nn.Module):
         # on l'applique à pb (et donc à prod = ps_surf+ph+pb), borné >= 0. Signe :
         # +ajout (recharge artificielle/rejet), −retrait (pompage), cohérent avec
         # WithdrawalData/AquiferModule. forward() (validé décimale) reste intouché.
-        if gw_withdrawal_mm is not None:
-            pb = diag["prod_base"]
-            pb_new = torch.clamp(pb + gw_withdrawal_mm, min=0.0)
-            applied = pb_new - pb
-            prod = prod + applied
-            diag["prod_base"] = pb_new
+        pb = diag["prod_base"]
+        if self.use_aquifer:
+            # AQUIFÈRE RESTITUANT : le drainage L3 (pb) RECHARGE un réservoir linéaire
+            # au lieu de sortir instantanément. Soutien d'étiage + prélèvement souterrain
+            # agissent sur la VRAIE réserve (cf. AquiferModule). k_gw par nœud, GRACE le
+            # contraint. prod = ps_surf+ph+pb -> on remplace pb par le baseflow retardé.
+            kgw = self._static.get("k_gw")
+            Q_bf, S_gw_new = self.aquifer(pb, state.S_gw, kgw, gw_withdrawal=gw_withdrawal_mm)
+            prod = prod - pb + Q_bf
+            diag["prod_base"] = Q_bf
             diag["lateral_mm"] = prod
+        else:
+            S_gw_new = state.S_gw
+            if gw_withdrawal_mm is not None:
+                pb_new = torch.clamp(pb + gw_withdrawal_mm, min=0.0)
+                prod = prod + (pb_new - pb)
+                diag["prod_base"] = pb_new
+                diag["lateral_mm"] = prod
         new_state = HydroState(
             theta1=a.theta1, theta2=a.theta2, theta3=a.theta3,
             swe=diag["couvert_nival_mm"], t_soil=a.frost_profile[:, 0],
             canopy_storage=state.canopy_storage, wetland_storage=state.wetland_storage,
-            S_gw=state.S_gw, T_water=state.T_water,
+            S_gw=S_gw_new, T_water=state.T_water,
             cold_content=state.cold_content, gdd_cum=state.gdd_cum)
         return ColumnOutput(
             lateral_inflow=prod, state=new_state, snowmelt=diag["apport"],
@@ -426,10 +476,12 @@ class HydrotelColumn(nn.Module):
         return self._pheno_cache
 
     def forward(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
-                tmin_j=None, tmax_j=None) -> tuple[Tensor, HydrotelColumnState, dict]:
+                tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Dispatcher : appelle le forward compilé (compile_column) ou eager.
         Le compilé fond le compute par jour en peu de kernels (le wall-clock est
-        dominé par le dispatch Python de la boucle par jour, GPU sinon ~0%)."""
+        dominé par le dispatch Python de la boucle par jour, GPU sinon ~0%).
+        sw_in : courte longueur d'onde incidente (W/m²) pour la fonte ETI.
+        storm_hours : durée effective d'orage (h, daily) pour l'hortonien sous-journalier."""
         if getattr(self, "compile_column", False):
             if getattr(self, "_fwd_compiled", None) is None:
                 try:
@@ -437,15 +489,15 @@ class HydrotelColumn(nn.Module):
                 except Exception:
                     self._fwd_compiled = self._forward_impl   # fallback eager
             try:
-                return self._fwd_compiled(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j)
+                return self._fwd_compiled(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours)
             except Exception:
                 # compile échoue à l'exécution → bascule eager définitivement
                 self._fwd_compiled = self._forward_impl
-                return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j)
-        return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j)
+                return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours)
+        return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours)
 
     def _forward_impl(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
-                      tmin_j=None, tmax_j=None) -> tuple[Tensor, HydrotelColumnState, dict]:
+                      tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Un pas de temps. P/tmin/tmax/Rn/u2/ea : forçage (n_nodes,). doy : jour
         julien (scalaire ou n_nodes). Retourne (prod_totale_mm, new_state, diag)."""
         assert self._static is not None, "appeler set_static() avant forward()"
@@ -457,7 +509,7 @@ class HydrotelColumn(nn.Module):
 
         # 1. split pluie/neige → fonte neige → apport
         pluie, neige = self._split_precip(P, tmin, tmax)
-        apport, snow_new = self.snow(tmin, tmax, pluie, neige, doy_t, state.snow, ps)
+        apport, snow_new = self.snow(tmin, tmax, pluie, neige, doy_t, state.snow, ps, sw_in=sw_in)
         # hauteur agrégée du couvert nival [m] pour le gel
         haut = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"] * snow_new[c][1]
                    for c in DegreJourModifie.CLASSES)
@@ -492,9 +544,18 @@ class HydrotelColumn(nn.Module):
 
         # 5. bilan sol BV3C2 (porte gel via prof_gel_cm + couvert nival)
         couvert_mm = snow_new["couvert_nival_mm"]
+        # Durée d'orage EFFECTIVE pondérée par la masse pluie vs fonte : seule la
+        # PLUIE porte l'intensité convective DT_eff ; la fonte s'écoule sur 24 h.
+        # Sans ça, un jour de fonte + averse courte fait passer toute la lame de
+        # fonte dans le cap hortonien -> horton fictif massif au freshet (revue
+        # 2026-07-01). apport = pluie (si pas de neige) ou fonte+pluie relâchées.
+        if storm_hours is not None:
+            melt_mm = torch.clamp(apport - pluie, min=0.0)
+            w_rain = pluie / torch.clamp(pluie + melt_mm, min=1e-6)
+            storm_hours = w_rain * storm_hours + (1.0 - w_rain) * 24.0
         ps_surf, ph, pb, rech, (t1, t2, t3), sdiag = self.soil(
             state.theta1, state.theta2, state.theta3, apport, etp, prof_gel_cm, couvert_mm, pso,
-            etr1_mm=e1 * 1000.0, etr2_mm=e2 * 1000.0, etr3_mm=e3 * 1000.0)
+            etr1_mm=e1 * 1000.0, etr2_mm=e2 * 1000.0, etr3_mm=e3 * 1000.0, storm_hours=storm_hours)
         prod = ps_surf + ph + pb   # mm
 
         # 5b. Hydrogramme de VERSANT (cascade de Nash, fidèle Hydrotel, porté de

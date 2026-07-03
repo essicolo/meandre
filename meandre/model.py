@@ -103,6 +103,9 @@ class HydroModel(nn.Module):
         compile_column: bool = False,   # mode hydrotel : torch.compile de TOUT le pas (snow+gel+ET+sol)
         use_overland_uh: bool = False,
         use_hillslope_uh: bool = False,
+        melt_mode: str = "degree_day",   # "degree_day" (clone fidèle) ou "eti" (fonte radiation réelle CaSR)
+        use_aquifer: bool = False,   # aquifère restituant optionnel (soutien d'étiage, meandre > Hydrotel)
+        use_hortonian: bool = False,   # excès d'infiltration sous-journalier (quickflow d'orage, canal DT_eff)
         soil_bounds: dict | None = None,
         use_quantile_head: bool = False,
         quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
@@ -197,6 +200,9 @@ class HydroModel(nn.Module):
             compile_soil=bool(compile_soil),
             compile_column=bool(compile_column),
             use_hillslope_uh=bool(use_hillslope_uh),
+            melt_mode=str(melt_mode),
+            use_aquifer=bool(use_aquifer),
+            use_hortonian=bool(use_hortonian),
         )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
@@ -723,6 +729,9 @@ class HydroModel(nn.Module):
                 "column_theta_init_frac": getattr(self, "column_theta_init_frac", 0.9),
                 "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),
                 "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
+                "melt_mode": getattr(self.vertical_column, "melt_mode", "degree_day"),
+                "use_aquifer": getattr(self.vertical_column, "use_aquifer", False),
+                "use_hortonian": getattr(self.vertical_column, "use_hortonian", False),
             },
         }, path)
 

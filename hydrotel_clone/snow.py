@@ -127,11 +127,21 @@ def indice_radiation(lat_dd: Tensor, ce1: Tensor, ce0: Tensor, jour: Tensor,
 def calcule_fonte(tmin, tmax, pluie_m, neige_m, indice_rad,
                   stock, hauteur, chaleur, eau_retenue, albedo,
                   coeff_fonte, seuil_fonte, taux_fonte_geo, densite_max,
-                  constante_tassement, pas_de_temps=24, methode_albedo=1):
+                  constante_tassement, pas_de_temps=24, methode_albedo=1,
+                  melt_mode="degree_day", sw_in=None, tf=None, srf=None):
     """CalculeFonte (degre_jour_modifie.cpp:1241) pour UNE classe d'occupation, un
     pas de temps, vectorisé. Tout en m / °C / heures. coeff_fonte déjà en m/°C/jour
     (taux mm/jour /1000). Retourne (fonte_m, stock, hauteur, chaleur, eau_retenue,
-    albedo) — fonte_m = lame d'eau libérée (avant pondération par la classe)."""
+    albedo) — fonte_m = lame d'eau libérée (avant pondération par la classe).
+
+    melt_mode :
+      "degree_day" (défaut, clone fidèle) : fonte = coeff_fonte·(T−seuil)·indice_rad·(1−albédo),
+        où indice_rad = ratio géométrique ciel-clair (radiation POTENTIELLE).
+      "eti" (Enhanced Temperature Index, Pellicciotti 2005 / Hock 2003) : remplace le
+        proxy géométrique par la radiation RÉELLE : fonte = tf·(T−seuil) + srf·(1−albédo)·sw_in,
+        sw_in = courte longueur d'onde incidente (W/m²), tf (m/°C/j), srf (m/j par W/m²).
+        L'albédo reste celui, évolutif, du manteau ; tout le reste du bilan calorifique
+        (cold content, surplus, rétention) est inchangé."""
     pdts = pas_de_temps * 3600
     temperature_moyenne = (tmin + tmax) / 2.0
 
@@ -189,10 +199,18 @@ def calcule_fonte(tmin, tmax, pluie_m, neige_m, indice_rad,
     if methode_albedo == 1:
         albedo = albedo_new
 
-    # fonte par radiation degré-jour (l.1347-1351)
-    fonte = torch.where(temperature_moyenne > seuil_fonte,
-                        coeff_fonte * (temperature_moyenne - seuil_fonte) * indice_rad * (1.0 - albedo),
-                        torch.zeros_like(stock_n))
+    # terme de fonte : degré-jour modulé par radiation POTENTIELLE (clone fidèle),
+    # ou ETI avec radiation RÉELLE CaSR (modernisation). Le reste du bilan est commun.
+    if melt_mode == "eti" and sw_in is not None:
+        fonte = torch.where(temperature_moyenne > seuil_fonte,
+                            tf * (temperature_moyenne - seuil_fonte)
+                            + srf * (1.0 - albedo) * sw_in,
+                            torch.zeros_like(stock_n))
+    else:
+        # fonte par radiation degré-jour (l.1347-1351)
+        fonte = torch.where(temperature_moyenne > seuil_fonte,
+                            coeff_fonte * (temperature_moyenne - seuil_fonte) * indice_rad * (1.0 - albedo),
+                            torch.zeros_like(stock_n))
     fonte = fonte * (pas_de_temps / 24.0)
     chaleur_n = chaleur_n + fonte * DENSITE_EAU * CHALEUR_FONTE
 
@@ -255,13 +273,16 @@ class DegreJourModifie(torch.nn.Module):
         super().__init__()
         self.pas_de_temps = pas_de_temps
 
-    def forward(self, tmin, tmax, pluie_mm, neige_mm, jour, state, p):
+    def forward(self, tmin, tmax, pluie_mm, neige_mm, jour, state, p, sw_in=None):
         """Un pas de temps. tmin/tmax °C ; pluie/neige mm ; jour = jour julien ;
         state = dict {classe: (stock,hauteur,chaleur,eau_ret), 'albedo_'+classe};
         p = dict params par nœud (lat, ce1, ce0, pct_conifers/feuillus/autres,
         coeff_fonte_*, seuil_fonte_*, taux_fonte_geo, densite_max, constante_tassement).
+        sw_in = courte longueur d'onde incidente W/m² (mode ETI, p["melt_mode"]=="eti").
         Retourne apport_mm (mm) et nouveau state."""
         ir = indice_radiation(p["lat"], p["ce1"], p["ce0"], jour, self.pas_de_temps)
+        _mode = p.get("melt_mode", "degree_day")
+        _tf, _srf = p.get("tf"), p.get("srf")
         pluie_m = pluie_mm / 1000.0
         neige_m = neige_mm / 1000.0
         new_state = {}
@@ -274,7 +295,8 @@ class DegreJourModifie(torch.nn.Module):
             fonte, st2, ha2, ch2, er2, alb2 = calcule_fonte(
                 tmin, tmax, pluie_m, neige_m, ir, st, ha, ch, er, alb,
                 p["coeff_fonte_" + c], p["seuil_fonte_" + c], p["taux_fonte_geo"],
-                p["densite_max"], p["constante_tassement"], self.pas_de_temps)
+                p["densite_max"], p["constante_tassement"], self.pas_de_temps,
+                melt_mode=_mode, sw_in=sw_in, tf=_tf, srf=_srf)
             new_state[c] = (st2, ha2, ch2, er2)
             new_state["albedo_" + c] = alb2
             apport = apport + pct[c] * fonte

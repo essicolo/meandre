@@ -72,7 +72,10 @@ class RoutingLayer(nn.Module):
             # Set by Trainer._apply_curriculum during TTA warmup.
             self.register_buffer("tta_warmup_factor", torch.tensor(0.0))
         # n_substeps=2 (12h) — compromis vitesse/précision.
-        # Limite : K < 6h sera instable; les bornes K_musk_hours doivent rester ≥ 4h.
+        # Stabilité : inconditionnelle (c2 clampé ≥ 0, c01 = 1−c2, combinaison
+        # convexe dans precompute_coefficients). K < dt_sub → translation pure
+        # (c2=0), pas d'oscillation. L'ancien commentaire « K < 6h instable »
+        # était périmé (revue 2026-07-01).
         self.muskingum = MuskingumCunge(n_substeps=routing_substeps)
         self.lake = LakeModule()
         # Routage : "level" (balayage par niveau), "operator" (solve par
@@ -207,9 +210,19 @@ class RoutingLayer(nn.Module):
             c01 = 1.0 - c2                                # conservation (c01+c2=1)
         elif self.dq_celerity and area_km2 is not None and Q_out_prev is not None:
             Qref = self.dq_qref_specific * area_km2 + 1e-3
-            factor = (Qref / (Q_out_prev.clamp(min=0.0) + Qref)) ** self.dq_beta
-            dt_sub = self.muskingum.dt / self.muskingum.n_substeps  # secondes
-            K_eff = torch.clamp(K_musk * factor, min=dt_sub)
+            # Débit pilote = max(Q routé d'hier, apport latéral d'AUJOURD'HUI) :
+            # sur la montée de crue l'accélération agit le jour même, pas à t+1
+            # (revue 2026-07-01 : Q_prev seul = rétroaction retardée d'un jour).
+            q_drive = Q_out_prev.clamp(min=0.0)
+            if lateral_inflow is not None:
+                q_drive = torch.maximum(q_drive, lateral_inflow.clamp(min=0.0))
+            factor = (Qref / (q_drive + Qref)) ** self.dq_beta
+            # Plancher RELATIF (dq_kmin_frac·K_base), pas dt_sub : l'ancien plancher
+            # absolu 12 h RALENTISSAIT les tronçons rapides (K 4-8 h remontés à 12 h,
+            # atténuation ajoutée au pic). La stabilité ne l'exige pas : c2 est
+            # clampé ≥ 0 et c01 = 1−c2 (combinaison convexe, pas d'oscillation) ;
+            # K_eff → 0 tend vers la translation pure, comportement voulu en crue.
+            K_eff = torch.maximum(K_musk * factor, self.dq_kmin_frac * K_musk)
             c01, c2 = self.muskingum.precompute_coefficients(K_eff, x_musk)
         else:
             c01, c2 = self.muskingum.precompute_coefficients(K_musk, x_musk)

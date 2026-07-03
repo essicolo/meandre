@@ -359,6 +359,13 @@ class SpatialFieldNetwork(nn.Module):
         }
         if targets:
             d.update(targets)
+        # Source unique de vérité : physical_prior_loss tire vers CES cibles
+        # (résolues, overrides config inclus). Avant, le prior avait ses propres
+        # constantes contradictoires avec l'init (K_c 0.85 vs init 1.0/0.6,
+        # C_f 3.0 vs 4.5, porosity 0.40 uniforme vs 0.46/0.44/0.42), ce qui
+        # créait un gradient uniforme synchronisant dès le premier pas (revue
+        # 2026-07-01).
+        self._prior_targets = dict(d)
 
         def inv_bounded(val, lo, hi):
             """Inverse of lo + (hi-lo)*sigmoid(x) → logit."""
@@ -680,54 +687,71 @@ class SpatialFieldNetwork(nn.Module):
         h = torch.nn.functional.silu(self.fc2(h))
         raw = self.fc_out(h)
 
+        # Colonnes sigmoid-bornées : la liste couvrait 3-31 seulement ; les params
+        # 32-36 (K_c, rain_hours, Z2, Z3, vsa_b), sigmoid-bornés eux aussi, n'étaient
+        # pas surveillés contre la saturation (revue 2026-07-01).
         sig_cols = (list(range(3, 12)) + list(range(15, 24))
-                    + [25, 26, 27, 28, 29, 30, 31])
+                    + [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36])
         sig = torch.sigmoid(raw[:, sig_cols])
         # |2σ-1| ∈ [0, 1]. Hinge active only when this exceeds sat_threshold.
         excess = torch.clamp(torch.abs(2.0 * sig - 1.0) - sat_threshold, min=0.0)
         return (excess ** 2).mean()
 
     def physical_prior_loss(self, params: SpatialParams) -> Tensor:
-        """Soft L2 penalty pulling parameters toward physically reasonable values.
+        """Soft L2 penalty pulling the SPATIAL MEAN toward literature targets.
 
-        Light-touch: only penalise extreme deviations, not normal variation.
+        PRIOR SUR LA MOYENNE, PAS PAR NŒUD (revue 2026-07-01) : l'ancienne forme
+        ``((p - c)**2).mean()`` se décompose en (p_bar - c)² + Var(p) — elle
+        pénalisait DIRECTEMENT la variance spatiale, au même poids que le biais
+        de moyenne. Structurellement anti-NeRF : cause mathématique du collapse
+        de k_gw/f_vert/vg_n/frost_alpha (CV ~0.002-0.005). La forme
+        ``(p.mean() - c)**2`` ancre la climatologie du champ et laisse la
+        différenciation spatiale libre.
+
+        Cibles : ``self._prior_targets`` (résolues par init_from_literature,
+        overrides [literature_prior] de la config inclus) — une seule source de
+        vérité, plus de contradictions init/prior.
         """
         import math
         device = params.K_sat_1.device
         loss = torch.tensor(0.0, device=device)
+        t = getattr(self, "_prior_targets", None) or {}
+        def tg(key, fallback):
+            return float(t.get(key, fallback))
 
-        # K_sat in log-space
-        # Targets cohérents avec init_from_literature (m/day, effectif journalier)
-        for k, target in [(params.K_sat_1, 0.08), (params.K_sat_2, 0.04), (params.K_sat_3, 0.015)]:
-            loss = loss + ((torch.log(k + 1e-8) - math.log(target)) ** 2).mean() * 0.3
+        # K_sat en log-espace (moyenne du log = médiane géométrique du champ)
+        for k, key, fb in [(params.K_sat_1, "K_sat_1", 0.08),
+                           (params.K_sat_2, "K_sat_2", 0.04),
+                           (params.K_sat_3, "K_sat_3", 0.015)]:
+            loss = loss + ((torch.log(k + 1e-8).mean() - math.log(tg(key, fb))) ** 2) * 0.3
 
-        # Porosity
-        for p in [params.porosity_1, params.porosity_2, params.porosity_3]:
-            loss = loss + ((p - 0.40) ** 2).mean()
+        # Porosity (cibles par couche, alignées init)
+        for p, key, fb in [(params.porosity_1, "porosity_1", 0.46),
+                           (params.porosity_2, "porosity_2", 0.44),
+                           (params.porosity_3, "porosity_3", 0.42)]:
+            loss = loss + ((p.mean() - tg(key, fb)) ** 2)
 
-        # C_f
-        loss = loss + ((params.C_f - 3.0) ** 2).mean() * 0.3
+        # C_f (aligné init Hock 4.5, plus 3.0)
+        loss = loss + ((params.C_f.mean() - tg("C_f", 4.5)) ** 2) * 0.3
 
-        # T_melt: near 0°C
-        loss = loss + (params.T_melt ** 2).mean() * 0.5
+        # T_melt
+        loss = loss + ((params.T_melt.mean() - tg("T_melt", -0.5)) ** 2) * 0.5
 
         # frost_alpha
-        loss = loss + ((params.frost_alpha - 0.5) ** 2).mean() * 0.3
+        loss = loss + ((params.frost_alpha.mean() - tg("frost_alpha", 0.5)) ** 2) * 0.3
 
-        # alpha_T: reduced from 100x to 1x
-        loss = loss + ((params.alpha_T - 0.03) ** 2).mean()
+        # alpha_T
+        loss = loss + ((params.alpha_T.mean() - tg("alpha_T", 0.03)) ** 2)
 
-        # vg_n: typical 1.5 for loam
-        loss = loss + ((params.vg_n - 1.5) ** 2).mean() * 0.3
+        # vg_n
+        loss = loss + ((params.vg_n.mean() - tg("vg_n", 1.5)) ** 2) * 0.3
 
-        # k_gw aquifer recession (1/day): target ~0.02 (recession ~50d).
-        # Empêche la dérive vers k_gw trop bas (= aquifère qui sur-stocke
-        # et libère l'eau avec des années de retard).
-        loss = loss + ((torch.log(params.k_gw + 1e-8) - math.log(0.02)) ** 2).mean() * 0.3
+        # k_gw récession (log-espace)
+        loss = loss + ((torch.log(params.k_gw + 1e-8).mean() - math.log(tg("k_gw", 0.02))) ** 2) * 0.3
 
-        # K_c: target ~0.85 (Hydrotel SLSO McGuinness coefficient typical)
+        # K_c (aligné sur la cible d'init, ex. 0.6 via [literature_prior])
         if hasattr(params, 'K_c'):
-            loss = loss + ((params.K_c - 0.85) ** 2).mean() * 0.2
+            loss = loss + ((params.K_c.mean() - tg("K_c", 1.0)) ** 2) * 0.2
 
         return loss
 

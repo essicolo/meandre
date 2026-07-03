@@ -81,15 +81,33 @@ class BV3C2Clone(torch.nn.Module):
         self.static = static
 
     def forward(self, theta1, theta2, theta3, apport_mm, etp_mm,
-                frozen_depth_cm, swe_mm, p, etr1_mm=None, etr2_mm=None, etr3_mm=None):
+                frozen_depth_cm, swe_mm, p, etr1_mm=None, etr2_mm=None, etr3_mm=None,
+                storm_hours=None):
         """Un pas de temps BV3C2. theta en m3/m3, apport/etp en mm/jour.
         p : dict de tenseurs par nœud (thetas/ks/psis/b/omegpi/mm/nn par couche,
         z1/z2/z3, slope, krec, cin, fsa/fse/fsi, coef_recharge).
+        storm_hours : durée effective d'orage (h, DAILY, depuis l'horaire CaSR). Si
+        fourni, active l'EXCÈS D'INFILTRATION hortonien sous-journalier : capacité
+        d'infiltration = ks1·storm_hours, l'excès ruisselle AVANT le sol. Récupère le
+        ruissellement convectif d'été que le pas journalier (DT_H=24) écrase. OFF = clone fidèle.
         Retourne prod_surf, prod_hypo, prod_base (mm), recharge (mm), thetas new."""
         eps = 1e-9
         z1, z2, z3 = p["z1"], p["z2"], p["z3"]
         ths1, ths2, ths3 = p["thetas1"], p["thetas2"], p["thetas3"]
         ks1, ks2, ks3 = p["ks1"], p["ks2"], p["ks3"]
+        # ── EXCÈS D'INFILTRATION hortonien (opt-in, intensité sous-journalière) ──
+        # Le hortonien est un processus de la fraction SOL (fsa) : les fractions eau
+        # (fse) et imperméable (fsi) reçoivent l'apport TOTAL (sinon fuite de masse
+        # H·(fse+fsi), revue 2026-07-01).
+        runoff_horton = torch.zeros_like(apport_mm)
+        apport_total_mm = apport_mm
+        if storm_hours is not None:
+            _frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
+            # mm infiltrable pendant l'orage = ks1[m/h]·storm_hours[h]·1000 ; gelé -> 0
+            infil_cap = torch.where(_frozen, torch.zeros_like(apport_mm),
+                                    ks1 * storm_hours * 1000.0)
+            runoff_horton = torch.clamp(apport_mm - infil_cap, min=0.0)
+            apport_mm = apport_mm - runoff_horton    # le reste entre dans le sol (fraction fsa)
         b1, b2, b3 = p["b1"], p["b2"], p["b3"]
         psis1, psis2, psis3 = p["psis1"], p["psis2"], p["psis3"]
         krec, slope, cin = p["krec"], p["slope"], p["cin"]
@@ -213,8 +231,12 @@ class BV3C2Clone(torch.nn.Module):
 
         # ── CalculeUHRH (l.820) : production avec split occupation du sol ──
         # leau = (pluie − ET) sur fraction EAU ; lprec = pluie sur IMPERMÉABLE
-        lprec = (apport_mm / 1000.0)                     # m (pluie totale du pas)
-        leau = torch.clamp((apport_mm - etp_mm) / 1000.0, min=0.0)
+        # fractions eau/imperméable : apport TOTAL (le hortonien ne les concerne pas)
+        lprec = (apport_total_mm / 1000.0)               # m (pluie totale du pas)
+        leau = torch.clamp((apport_total_mm - etp_mm) / 1000.0, min=0.0)
+        # le ruissellement hortonien (excès d'infiltration) s'ajoute au ruissellement
+        # de la fraction sol perméable (fsa), avant pondération.
+        lruis = lruis + runoff_horton / 1000.0           # m
         prod_surf = lruis * fsa + leau * fse + lprec * fsi      # m
         prod_hypo = lhyp * fsa
         prod_base = lbase * fsa
