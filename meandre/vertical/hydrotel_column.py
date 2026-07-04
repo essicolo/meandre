@@ -460,6 +460,16 @@ class HydrotelColumn(nn.Module):
             return mcguinness_etp(tmin_j, tmax_j, lat, doy)
         if self.et_mode == "hydro_quebec":
             return hydro_quebec_etp(tmin_j, tmax_j)
+        if self.et_mode == "oudin":
+            # EXP-3 : Oudin et al. (2005), ETP température-radiation. Oudin a comparé
+            # 27 formules d'ETP pour la modélisation pluie-débit et trouvé cette forme
+            # simple optimale. Ne dépend que de T + lat + doy (compatible quebec.zarr,
+            # pas besoin de Rn/vent). PE = (Re/λ)·(Ta+5)/100, gated Ta+5>0.
+            from hydrotel_clone.mcguinness import rayonnement_extraterrestre, _LAMBDA
+            import torch as _t
+            Re = rayonnement_extraterrestre(doy, lat)          # MJ/m²/j
+            Ta = 0.5 * (tmin_j + tmax_j)
+            return _t.clamp((Re / _LAMBDA) * (Ta + 5.0) / 100.0, min=0.0)  # mm/j
         if self.et_mode == "penman":
             from meandre.vertical.evapotranspiration import ETModule
             return ETModule("penman").penman_monteith(tmin_j, tmax_j, Rn, u2, ea)
