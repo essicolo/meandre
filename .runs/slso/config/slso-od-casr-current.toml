@@ -11,8 +11,8 @@ weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_i
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 forcing_cache = "C:/Users/parse01/documents-locaux/GitHub/meandre/.runs/slso-od/data/forcing-casr-riox.nc"  # CaSR 7 canaux (+ DT_eff durée d'orage)
 checkpoint = "checkpoints/best-physitel-hydrotel-od-casr.pt"
-fields_nc = "results/fields-physitel-hydrotel-od-casr.nc"
-reach_parquet = "results/reach-physitel-hydrotel-od-casr.parquet"
+fields_nc = "D:/meandre-data/slso/results/fields-physitel-hydrotel-od-casr.nc"
+reach_parquet = "D:/meandre-data/slso/results/reach-physitel-hydrotel-od-casr.parquet"
 runs_db = "data/runs-win.duckdb"
 
 [basin]

@@ -11,8 +11,8 @@ weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_i
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 forcing_cache = "D:/meandre-data/slso/forcing-exp4-hillslope.nc"  # CaSR 7 canaux (+ DT_eff durée d'orage)
 checkpoint = "checkpoints/best-physitel-hydrotel-exp4-hillslope.pt"
-fields_nc = "results/fields-physitel-hydrotel-exp4-hillslope.nc"
-reach_parquet = "results/reach-physitel-hydrotel-exp4-hillslope.parquet"
+fields_nc = "D:/meandre-data/slso/results/fields-physitel-hydrotel-exp4-hillslope.nc"
+reach_parquet = "D:/meandre-data/slso/results/reach-physitel-hydrotel-exp4-hillslope.parquet"
 runs_db = "data/runs-win.duckdb"
 
 [basin]
