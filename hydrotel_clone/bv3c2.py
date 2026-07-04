@@ -70,9 +70,15 @@ def init_spline_coeffs(b):
 class BV3C2Clone(torch.nn.Module):
     """Bilan vertical BV3C2 fidèle, un pas de temps (journalier), vectorisé."""
 
-    def __init__(self, n_substep=48, static=False):
+    def __init__(self, n_substep=48, static=False, frozen_gate_continuous=False):
         super().__init__()
         self.n_substep = n_substep   # sous-pas internes (le C++ adapte ; on fixe)
+        # EXP-2 : porte de gel CONTINUE sur l'infiltration. Le clone fidèle coupe
+        # pinf=0 dès frost>0 (binaire). Ici pinf = min(prec,ks1)·(1−froz_frac),
+        # cohérent avec le drainage déjà continu (throttle=1−froz_frac). Plus
+        # physique (gel partiel → infiltration partielle), et relève potentiellement
+        # les pics de freshet (gel → plus de ruissellement de fonte). Opt-in.
+        self.frozen_gate_continuous = bool(frozen_gate_continuous)
         # static=True : pas de break data-dépendant (les itérations no-op après
         # convergence sont idempotentes, dtc=0). Permet torch.compile (pas de
         # synchro GPU `bool().all()` par itération, boucle statique fusionnable).
@@ -152,7 +158,13 @@ class BV3C2Clone(torch.nn.Module):
             # CalculeRuisselement (l.2191-2201) sur t1 COURANT : si t1 saturé,
             # pinf=0 → toute la pluie part en hortonien ; sinon pinf=min(prec,ks).
             omega1_sat = t1 >= (ths1 - 1e-4)
-            pinf = torch.where(frozen | omega1_sat, torch.zeros_like(prec), torch.minimum(prec, ks1))
+            if self.frozen_gate_continuous:
+                # EXP-2 : capacité d'infiltration réduite CONTINÛMENT par le gel
+                # (froz_frac de Rankinen, qui tient déjà compte de l'isolation neige).
+                infil_cap = torch.minimum(prec, ks1 * (1.0 - froz_frac))
+                pinf = torch.where(omega1_sat, torch.zeros_like(prec), infil_cap)
+            else:
+                pinf = torch.where(frozen | omega1_sat, torch.zeros_like(prec), torch.minimum(prec, ks1))
             ruis_rate = torch.clamp(prec - pinf, min=0.0)   # m/h (hortonien)
             # ── dtc FIDÈLE C++ (l.1925-2034) : flux relatifs, test Courant, dtcTemp
             # quantifié pas/(iVal+1|+2) en min avec l'échelle {48,288,1152}. ──

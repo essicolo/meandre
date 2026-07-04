@@ -203,6 +203,7 @@ class HydroModel(nn.Module):
             melt_mode=str(melt_mode),
             use_aquifer=bool(use_aquifer),
             use_hortonian=bool(use_hortonian),
+            frozen_gate_continuous=bool(soil_frozen_gate),
         )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
