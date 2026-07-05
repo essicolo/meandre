@@ -76,3 +76,8 @@ Six leviers testés rigoureusement (held-out aveugle, sélection dev). Baseline 
 - Neutre/physique : versant UH (0.649, +moyenne).
 - Seul positif : GRU résidu MINIMAL borné (+0.006, généralise).
 RÉSULTAT SCIENTIFIQUE : en prédiction hors-distribution (période non stationnaire 2022-24), AJOUTER de la flexibilité (ET riche, résidu d'état, célérité dynamique) NE GÉNÉRALISE PAS et souvent dégrade. La physique bien contrainte + routage physique + résidu minimal borné est l'optimum robuste. Appuie la thèse physique-différentiable vs ML pur. Contribution paper : le sur-apprentissage guette dès qu'on relâche les contraintes ; l'hybridation ne paie que minimale et bornée.
+
+### QM-CASR : quantile mapping CaSR -> distribution quebec.zarr
+- v1 : QM complet (forme + volume QZ). held-out médian 0.508, pooled 0.760, r 0.887 (EXCELLENT timing préservé), beta 0.840 (SOUS-production, vol trop sec).
+- Diagnostic : le QM libère le timing supérieur de CaSR (r 0.887 vs QZ 0.77) mais mapper sur le volume QZ (1087) rend CaSR trop sec pour son timing → beta 0.84 écrase le médian. Levier restant = VOLUME.
+- v2 : QM de FORME (distribution QZ) mais VOLUME propre de CaSR préservé par nœud. Isole la correction de forme. LANCÉ.

@@ -1,0 +1,250 @@
+# ─── SLSO Basin Configuration ─────────────────────────────────────────────
+# All paths are relative to repo root (project runs from there).
+# Weather grid is an absolute path (large external dataset).
+# Supported formats: .zarr, .nc, .grib/.grib2/.grb
+
+[paths]
+basin_db = "data/slso.duckdb"
+basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
+#weather_grid   = "/home/essi/Documents/quebec.zarr"
+weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+#weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+forcing_cache = "D:/meandre-data/slso/forcing-casr-qm2.nc"  # CaSR 7 canaux (+ DT_eff durée d'orage)
+checkpoint = "checkpoints/best-physitel-hydrotel-qmcasr2.pt"
+fields_nc = "results/fields-physitel-hydrotel-qmcasr2.nc"
+reach_parquet = "results/reach-physitel-hydrotel-qmcasr2.parquet"
+runs_db = "data/runs-win.duckdb"
+
+[basin]
+prefix = "SLSO"
+
+[temporal]
+# Strict data split: train (optimisation), dev (early stop + checkpoint
+# selection), test (NEVER seen during training, honest final metric).
+# Avoids data leak via checkpoint selection on the evaluation period.
+date_start = "2000-01-01"   # forcing window start (zarr io_2026-04)
+spinup_end = "2000-12-31"   # 1-year spinup
+train_start = "2001-01-01"   # 18-year calibration (multi-regime, incl. 2001 droughts, 2011 floods)
+train_end = "2018-12-31"
+val_start = "2019-01-01"   # 3-year dev (climatic mix) — avoids anomalous-year bias
+val_end = "2021-12-31"
+test_start = "2022-01-01"   # 3-year test (held-out, honest final metric)
+test_end = "2024-12-31"
+date_end = "2024-12-31"   # forcing window end
+
+[model]
+routing_mode = "operator-lagged"
+# Célérité dépendante du débit : pics plus rapides (corrige le pic hortonien +2j vs réel +1j).
+discharge_dependent_celerity = false
+dq_beta = 0.5
+use_temperature = false
+n_forcing = 7      # P, T_min, T_max, R_n, u2, e_a, DT_eff (durée effective d'orage, hortonien)
+context_window = 30
+residual_history = 14
+max_travel_days = 20
+dropout = 0.0    # Standard MC Dropout (0 = disabled when using concrete)
+
+# ── Position B uncertainty stack ───────────────────────────────────────
+# Concrete Dropout on temporal_encoder ONLY (epistemic uncertainty over
+# the interpretation of the meteorological context). The spatial encoder
+# uses ParamNoise below (mass-conserving parametric uncertainty).
+# To fully disable Concrete Dropout, set to false.
+concrete_dropout = false  # Phase B (déterministe) — réactiver pour Phase 2 UQ calibration
+concrete_init_p = 0.1
+# ParamNoise: learnable Gaussian σ injected on fc_out logits of the NeRF
+# (before constraints). Preserves the water balance because constraints
+# bound the perturbed params within their physical ranges. Each ensemble
+# member = a coherent bounded param set (analogous to an alternative
+# Hydrotel calibration). See README for details.
+param_noise = false  # Phase B (déterministe) — réactiver pour Phase 2 UQ calibration
+param_noise_init_sigma = 0.01   # logit-space perturbation (0.01 = gentle for fine-tune)
+
+# Spatial parameter mode: "nerf" or "static"
+# nerf: Learn continuous parameter fields per-node (default HydroModel mode)
+# static: Use global parameters like Hydrotel (28 params only!)
+param_mode = "nerf"
+
+# ── Colonne Hydrotel FIDÈLE (Phase A) ──────────────────────────────────
+# Remplace VerticalColumn par HydrotelColumn : neige degré-jour → gel Rankinen
+# → ETP → ETR par couche → sol BV3C2 cloné (validé décimale vs C++) → milieu
+# humide isolé (inactif ici : SLSO Hydrotel a MILIEUX HUMIDES ISOLES=0). Le
+# [soil] ci-dessous est sans effet en mode hydrotel (sauf hydrotel_calib_dir).
+column_mode = "hydrotel"
+# RUISSELLEMENT HORTONIEN sous-journalier : excès d'infiltration piloté par l'intensité
+# réelle (DT_eff, canal 6). Génère le quickflow d'orage d'été que le pas journalier
+# DT_H=24 écrasait (cause racine du déficit d'été + baseflow excédentaire, diag 2026-06-30).
+# Capacité d'infiltration = ks1·DT_eff ; apprenable. Le ksat0.5 reste (abaisse ks1).
+use_hortonian = false
+use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
+column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
+compile_soil = true  # triton-windows tcc OK sur Windows natif (test 2026-07-02)               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
+# ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
+melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
+ksat_scale = 1.0                 # PAS de rustine : l'Hortonien EST le levier de génération de quickflow
+                                 # (ks1·DT_eff réaliste). ksat0.5 par-dessus = double comptage qui casse r.
+                                 # plus humide -> amortit les pics flashy, vise gamma 1.13 -> ~1.0 (attribution 2026-06-29)
+
+[et]
+# McGuinness : ETP fidèle au run Hydrotel SLSO de référence (pas Penman).
+mode = "mcguinness"
+
+[forcing]
+# Surcharge optionnelle des variables énergie/humidité par ERA5-Land mesuré
+# (sinon : proxies dérivés de la température — R_n via Hargreaves, e_a = es(Tmin),
+# u2 constant). Grille ERA5-Land 9 km sur le bbox, interpolée au nœud le plus
+# proche, rayonnement NET (ssr+str). Téléchargée mois par mois via l'API CDS et
+# cachée (1er run lent, runs suivants instantanés). Cache forçage distinct du
+# proxy (suffixe -era5-...), donc activer/désactiver ne corrompt rien.
+#
+# era5_vars : sous-ensemble de ["R_n", "e_a", "u2"]. Vide/absent = proxies.
+# Diagnostic 2026-05-26 (SLSO 2018) : R_n = plus gros gain (Hargreaves
+# surestime l'été ~+10 %, RMSE quotidien ~30 %) ; e_a marginal en boréal
+# humide ; u2 rate le creux estival. Requiert cdsapi + clé ~/.cdsapirc.
+era5_vars = []   # ex. ["R_n", "e_a", "u2"] pour tout surcharger
+# era5_cache = "data/era5"                 # optionnel (défaut: <forcing_cache>/era5)
+# era5_bbox  = [-73.0, 44.5, -69.6, 47.7]  # optionnel (défaut: nœuds + marge 0.2°)
+
+[soil]
+# REPRODUCE : ancre le sol sur la calibration Hydrotel (bv3c.csv + textures,
+# agrégée UHRH→troncon). Optionnel — retirer cette ligne pour découpler (NeRF).
+# (B decouple : ancrage Hydrotel retire) hydrotel_calib_dir = "/mnt/c/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/SLSO_LN24HA_2020"
+# Layer thicknesses (m), NOT depths from surface.
+# Layers stack: L1 = [0, z1], L2 = [z1, z1+z2], L3 = [z1+z2, z1+z2+z3]
+# Total soil depth = z1 + z2 + z3 (derived).
+#
+# Z1 fixed (surface root zone), Z2 and Z3 learnable per-node (NeRF) within
+# their bounds. With these defaults, total depth ∈ [1.10, 5.80] m.
+# For Canadian Shield (thin soils): use z3_max = 1.5 conservative.
+# For deep St. Lawrence alluvium: z3_max = 5.0.
+runoff_clean = true
+z1 = 0.30      # m, thickness of L1 (fixed)
+z2_min = 0.30      # m, thickness of L2 (min)
+z2_max = 1.50      # m, thickness of L2 (max)
+z3_min = 0.50      # m, thickness of L3 (min)
+z3_max = 4.00      # m, thickness of L3 (max)
+# Sub-daily storm duration (Eagleson infiltration excess)
+rain_hours_min = 2.0       # h (intense convective storms)
+rain_hours_max = 8.0      # h (long frontal rains)
+
+[training]
+n_epochs = 30   # MULTI-OBJ : recette + routage fixe + MODIS ET (ancre ET/volume, corrige derive beta) + GRACE TWS.
+lr = 5e-4
+lr_finetune = 2e-4
+lr_new_features_mult = 10.0   # fc1/fc2 get 10x the base LR when fine-tuning with new features
+weight_decay = 2e-4
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 45            # reduit pour la colonne hydrotel sur GPU 8GB (boucle sous-pas = graphe autograd lourd)
+val_every = 1              # validation every epoch (required by autopilot)
+patience = 50             # long — autopilot manages LR and restarts
+best_metric = "kge_median" # Checkpoint on pooled KGE (published hydro convention). Options: "nse", "kge", "kge_station", "kge_median"
+warm_start = false   # cold : checkpoint cleanh = colonne native incompatible avec hydrotel
+# warm_start_from desactive (cold start colonne hydrotel)
+compile_modules = false  # Triton missing on Windows → torch.compile crashes on first forward
+
+# Soft prior regularization on spatial NeRF parameters (k_gw, krec, K_c).
+# Penalises log-space deviations from literature targets (Rawls/Hydrotel SLSO).
+# Prevents wet/dry overfit on dev (e.g. k_gw drifting toward ~0.005 → 200d recession
+# while real QC = 30-100d). 0.005 = soft pull (still allows learning), 0.05 = strict.
+w_prior = 0.005
+
+# ── Position B uncertainty regularizers ───────────────────────────────
+# w_param_noise_kl: penalises log_sigma deviation from log(target_sigma).
+#   Without it, σ→0 (collapse, degenerate ensemble). 0.1 = moderate pull.
+# train_with_param_noise: if true, training forward pass uses
+#   perturb_params=True. Lets σ learn via gradient (data loss vs
+#   regularisation). Recommended for true UQ calibration.
+# w_concrete_kl: weight of the Concrete Dropout KL. Kept low to avoid
+#   dominating the data loss (cf. previous collapse).
+w_param_noise_kl = 0.0   # Phase B (déterministe) — KL inactive when param_noise=false
+param_noise_target_sigma = 0.05
+train_with_param_noise = false # Phase B (déterministe)
+w_concrete_kl = 0.0   # Phase B (déterministe) — KL inactive when concrete_dropout=false
+
+# Curriculum: epoch at which each module is activated
+enable_temporal_epoch = 0
+enable_residual_epoch = 9999 # disabled — current design doomed (gate never trained + noise injection at activation), pending redesign
+enable_travel_epoch = 9999 # 10, or 0 for warm-start past epoch 20
+# Over this many epochs after residual activation, the effective gate
+# multiplier ramps linearly 0 -> 1.  Avoids the loss spike caused by
+# activating random-init GRU weights abruptly.  Set to 0 to disable.
+residual_warmup_epochs = 5
+# Over this many epochs after TTA activation, the routing aggregation
+# blends linearly from simple sum (Σ Q_actuels) to full TTA attention.
+# Avoids a sudden semantic change when warm-starting from a checkpoint
+# trained without TTA.  Set to 0 to use pure TTA immediately.
+tta_warmup_epochs = 10
+
+# ── Autopilot ──────────────────────────────────────────────────────────
+# Autonomous calibration — adjusts hyperparameters based on validation
+# metrics. Designed for long unsupervised runs.
+autopilot = true
+autopilot_grace_epochs = 8      # 15 couvrait le pic
+autopilot_beta_threshold = 0.10  # 1.0 neutralisait la détection (revue autopilote 2026-07-02)
+autopilot_beta_penalty = 0.005 # w_residual increment per epoch
+autopilot_gamma_threshold = 0.20  # |γ-1| > 0.20 → bump w_residual
+autopilot_gamma_penalty = 0.003
+autopilot_lr_patience = 6      # réduire LR plus tôt
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-5
+autopilot_restart_regression = 0.05 # 5% regression + drift → restart
+autopilot_restart_max = 3
+# autopilot_activate_residual_at_kge = 0.55  # disabled: residual must be redesigned (cf. memory 2026-04-24)
+# TTA disabled by autopilot: random-init weights crash the model
+# immediately. Needs a warmup gate like the residual corrector
+# (tta_warmup_factor) but that warmup doesn't yet interact with
+# autopilot restart. Enable only once the warmup is wired.
+# autopilot_activate_tta_at_kge = 0.65
+
+[loss]
+# Weights of the loss components.
+# NSE/KGE/NRMSE/log-NSE: per-station, NOT chunk-safe (requires chunk_steps=0).
+# MSE/log-MSE/PBIAS    : chunk-safe, usable with gradient accumulation.
+#
+# To favour low flows: increase w_log_nse or w_log_mse (log-space amplifies
+# baseflow). For an honest volumetric balance: increase w_pbias.
+# For high flows: NSE dominates naturally.
+#
+# Regularisation:
+#   w_physics  — penalises water-balance residual (mass closure)
+#   w_residual — penalises residual corrector amplitude (keep physics dominant)
+w_nse = 0.0 # Nash-Sutcliffe Efficiency. NOT chunk-safe — disabled with chunk_steps>0
+w_kge = 1.0 # Per-station KGE — directly targets beta, r, gamma.
+                   # Chunk-approximate but the signal on beta/r is much stronger
+                   # than MSE alone. Bumped to 1.0 (vs 0.5) to counter the
+                   # flat-signal collapse.
+w_pbias = 0.5 # reduit : l_ET ancre le volume physiquement (MODIS), plus besoin du pbias brut fort.
+# ── MULTI-OBJECTIF (tache #3) ──
+w_et = 1.0   # MSE(etr_sim, MODIS MOD16). Modele sous-evapore (491 vs 581 mm/an) -> ancre l_ET en haut,
+             # baisse le volume, CORRIGE la derive beta. Contraint K_c (identifiabilite). Couverture 2013-2024.
+w_tws = 0.2  # GRACE TWS mensuel (anomalie stockage total basin, sigma=25mm). Garde-fou stockage. 2002-2026.
+w_mse = 0.1 # MSE (kept low to avoid flattening peaks; log_mse handles low flows)
+w_log_nse = 0.0 # NSE on log-flows. NOT chunk-safe.
+w_log_mse = 0.3 # MSE on log-flows. Chunk-safe. Emphasises baseflow.
+w_peak = 0.5    # protege le gain de pic de la porte gel (sinon le NeRF le troque contre du KGE)
+                   # Lowered from 0.5 to 0.3: too strong was pulling toward a flat signal (collapse 2026-05-04).
+w_nrmse = 0.0 # Normalised RMSE. Dimensionless, gives a relative error.
+w_physics = 0.01 # Penalises water-balance non-closure (P − ET − Q − ΔS ≈ 0). Forces the model to respect physics.
+w_residual = 0.01 # L2 regularisation on the residual corrector. Keeps corrections small so the physics component dominates.
+
+# ─── Literature Prior ─────────────────────────────────────────────────────
+# Override spatial parameter initialization when training from scratch.
+# Defaults (in code) come from public literature for temperate forested
+# loam/silt_loam: Rawls 1982 (soil hydraulics), Hock 2003 (snow degree-day),
+# Chow 1959 (Manning), Allen et al. 1998 FAO-56 (Penman-Monteith ET).
+# Uncomment and adjust any value to override the default.
+#
+[literature_prior]
+# B : init K_c < 1 (McGuinness ETP=881mm sur-estime ~75% ; le NeRF affine par
+# noeud). Cale beta vers 1 d'emblee (au lieu d'apprendre K_c depuis 1.0).
+K_c = 0.6
+# K_sat_1 = 0.010            # m/day (Rawls loam=0.013, silt_loam=0.007)
+# K_sat_2 = 0.005            # m/day
+# K_sat_3 = 0.002            # m/day
+# porosity_1 = 0.46          # m3/m3
+# theta_fc_1 = 0.30          # m3/m3
+# theta_wp_1 = 0.125         # m3/m3
+# C_f = 4.5                  # mm/C/day (Hock 2003 typical 4.0-5.0)
+# T_melt = -0.5              # C (typical -2.5 to 0.5 for boreal)
+# krec = 0.0005              # 1/day (Hydrotel BV3C: 1e-5 m/h = 2.4e-4 m/day)
+# vg_n = 1.5                 # van Genuchten n (loam)
