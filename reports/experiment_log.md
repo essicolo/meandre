@@ -84,3 +84,5 @@ RÉSULTAT SCIENTIFIQUE : en prédiction hors-distribution (période non stationn
 - v2 : forme QZ + volume CaSR (1229). held-out médian 0.626 (vs v1 0.508, GROS gain), pooled 0.769, r 0.864, beta 0.964, gamma 1.095, vol_ratio 1.12.
 - Encadrement volume : 1087→0.508, 1229→0.626. Optimum entre. gamma 1.095 = QM sur-concentre un peu. Proche de quebec.zarr (0.653) avec bien meilleur r.
 - v3 : volume bilan-d'eau flux-tower (1147, entre v1 et v2). LANCÉ.
+- v3 : volume bilan-d'eau 1147 (×0.933 de v2). held-out médian 0.634, POOLED 0.823 (>QZ 0.784!), r 0.893 (record projet), beta 0.935, gamma 1.002, vol_ratio 1.04. Le sweet spot volume.
+- BILAN QM : le quantile mapping au volume bilan-d'eau donne un CaSR qui BAT quebec.zarr sur pooled+r et l'ÉGALE sur médian (0.634 vs 0.653). Forçage CaSR ouvert ≈ krigeage, meilleur timing. Goulot météo largement débloqué. Reste le médian à un cheveu -> exploiter DT_eff (Hortonien).
