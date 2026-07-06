@@ -405,6 +405,7 @@ model = HydroModel(
     melt_mode = cfg.get("model", {}).get("melt_mode", "degree_day"),
     use_aquifer = cfg.get("model", {}).get("use_aquifer", False),
     use_hortonian = cfg.get("model", {}).get("use_hortonian", False),
+    horton_precomputed = cfg.get("model", {}).get("horton_precomputed", False),
     soil_bounds = soil_bounds,
     use_quantile_head = cfg.get("loss", {}).get("nll_distribution", "").lower() == "quantile",
     quantile_taus = tuple(cfg.get("loss", {}).get("quantile_taus", [0.05, 0.10, 0.25, 0.75, 0.90, 0.95])),

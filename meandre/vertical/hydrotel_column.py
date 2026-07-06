@@ -93,7 +93,8 @@ class HydrotelColumn(nn.Module):
                  t_neige_seuil: float = 0.0, compile_soil: bool = False,
                  compile_column: bool = False, use_hillslope_uh: bool = False,
                  melt_mode: str = "degree_day", use_aquifer: bool = False,
-                 use_hortonian: bool = False, frozen_gate_continuous: bool = False) -> None:
+                 use_hortonian: bool = False, frozen_gate_continuous: bool = False,
+                 horton_precomputed: bool = False) -> None:
         super().__init__()
         self.et_mode = str(et_mode)
         self.use_frost = bool(use_frost)
@@ -134,7 +135,8 @@ class HydrotelColumn(nn.Module):
         self.compile_column = bool(compile_column)
         soil_static = bool(compile_soil or compile_column)
         self.soil = BV3C2Clone(n_substep=soil_n_substep, static=soil_static,
-                               frozen_gate_continuous=frozen_gate_continuous)
+                               frozen_gate_continuous=frozen_gate_continuous,
+                               horton_precomputed=horton_precomputed)
         if compile_soil and not compile_column:
             self.soil = torch.compile(self.soil, dynamic=False)
         self._fwd_compiled = None

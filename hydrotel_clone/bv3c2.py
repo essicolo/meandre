@@ -70,9 +70,15 @@ def init_spline_coeffs(b):
 class BV3C2Clone(torch.nn.Module):
     """Bilan vertical BV3C2 fidèle, un pas de temps (journalier), vectorisé."""
 
-    def __init__(self, n_substep=48, static=False, frozen_gate_continuous=False):
+    def __init__(self, n_substep=48, static=False, frozen_gate_continuous=False,
+                 horton_precomputed=False):
         super().__init__()
         self.n_substep = n_substep   # sous-pas internes (le C++ adapte ; on fixe)
+        # horton_precomputed : le canal storm_hours porte le QUICKFLOW journalier (mm)
+        # précalculé offline depuis l'horaire CaSR (intensité réelle), au lieu de la
+        # durée d'orage DT_eff. Test sous-journalier SCALABLE : le modèle reste
+        # journalier, l'excès d'infiltration est calculé une fois hors-ligne.
+        self.horton_precomputed = bool(horton_precomputed)
         # EXP-2 : porte de gel CONTINUE sur l'infiltration. Le clone fidèle coupe
         # pinf=0 dès frost>0 (binaire). Ici pinf = min(prec,ks1)·(1−froz_frac),
         # cohérent avec le drainage déjà continu (throttle=1−froz_frac). Plus
@@ -108,11 +114,18 @@ class BV3C2Clone(torch.nn.Module):
         runoff_horton = torch.zeros_like(apport_mm)
         apport_total_mm = apport_mm
         if storm_hours is not None:
-            _frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
-            # mm infiltrable pendant l'orage = ks1[m/h]·storm_hours[h]·1000 ; gelé -> 0
-            infil_cap = torch.where(_frozen, torch.zeros_like(apport_mm),
-                                    ks1 * storm_hours * 1000.0)
-            runoff_horton = torch.clamp(apport_mm - infil_cap, min=0.0)
+            if self.horton_precomputed:
+                # storm_hours = quickflow journalier (mm) précalculé depuis l'horaire.
+                # Borné par l'eau disponible ; s'annule si sol gelé sous neige (déjà
+                # traité par la porte du sol, on ne double pas).
+                runoff_horton = torch.clamp(storm_hours, min=0.0)
+                runoff_horton = torch.minimum(runoff_horton, apport_mm)
+            else:
+                _frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
+                # mm infiltrable pendant l'orage = ks1[m/h]·storm_hours[h]·1000 ; gelé -> 0
+                infil_cap = torch.where(_frozen, torch.zeros_like(apport_mm),
+                                        ks1 * storm_hours * 1000.0)
+                runoff_horton = torch.clamp(apport_mm - infil_cap, min=0.0)
             apport_mm = apport_mm - runoff_horton    # le reste entre dans le sol (fraction fsa)
         b1, b2, b3 = p["b1"], p["b2"], p["b3"]
         psis1, psis2, psis3 = p["psis1"], p["psis2"], p["psis3"]

@@ -106,6 +106,7 @@ class HydroModel(nn.Module):
         melt_mode: str = "degree_day",   # "degree_day" (clone fidèle) ou "eti" (fonte radiation réelle CaSR)
         use_aquifer: bool = False,   # aquifère restituant optionnel (soutien d'étiage, meandre > Hydrotel)
         use_hortonian: bool = False,   # excès d'infiltration sous-journalier (quickflow d'orage, canal DT_eff)
+        horton_precomputed: bool = False,  # canal = quickflow précalculé (horaire) au lieu de DT_eff
         soil_bounds: dict | None = None,
         use_quantile_head: bool = False,
         quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
@@ -204,6 +205,7 @@ class HydroModel(nn.Module):
             use_aquifer=bool(use_aquifer),
             use_hortonian=bool(use_hortonian),
             frozen_gate_continuous=bool(soil_frozen_gate),
+            horton_precomputed=bool(horton_precomputed),
         )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
