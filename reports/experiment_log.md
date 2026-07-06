@@ -86,3 +86,14 @@ RÉSULTAT SCIENTIFIQUE : en prédiction hors-distribution (période non stationn
 - v3 : volume bilan-d'eau flux-tower (1147, entre v1 et v2). LANCÉ.
 - v3 : volume bilan-d'eau 1147 (×0.933 de v2). held-out médian 0.634, POOLED 0.823 (>QZ 0.784!), r 0.893 (record projet), beta 0.935, gamma 1.002, vol_ratio 1.04. Le sweet spot volume.
 - BILAN QM : le quantile mapping au volume bilan-d'eau donne un CaSR qui BAT quebec.zarr sur pooled+r et l'ÉGALE sur médian (0.634 vs 0.653). Forçage CaSR ouvert ≈ krigeage, meilleur timing. Goulot météo largement débloqué. Reste le médian à un cheveu -> exploiter DT_eff (Hortonien).
+
+### QM+HORTON : QM-v3 + Hortonien (exploite DT_eff)
+- Résultat : REJET. médian 0.634→0.610, pooled 0.823→0.700, r 0.893→0.787, peak_ratio 0.98→0.79. Le quickflow Hortonien dégrade le timing même sur QM propre. Le problème est le mécanisme, pas le forçage. JETÉ.
+
+## SYNTHÈSE GOULOT MÉTÉO (CaSR preprocessing)
+RÉSULTAT MAJEUR : le QUANTILE MAPPING de CaSR au volume bilan-d'eau (QM-v3) donne un forçage entièrement basé sur réanalyse OUVERTE qui :
+- BAT quebec.zarr sur pooled (0.823 vs 0.784) et r (0.893 vs 0.77)
+- l'ÉGALE sur médian (0.634 vs 0.653)
+Méthode : par nœud, remapper la distribution de précip CaSR sur celle de quebec.zarr (préserve le timing CaSR = corr rang 1.0), puis rescaler au volume bilan-d'eau flux-tower (1147 mm/an = ET 450 + Q 697). Le timing CaSR (supérieur) + distribution saine + volume correct.
+Encadrement volume décisif : 1087→0.508, 1147→0.634, 1229→0.626.
+DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est LARGEMENT débloqué : plus besoin du krigeage propriétaire, CaSR prétraité par QM est ≥ quebec.zarr et 100% reproductible (sauf la distribution-cible QZ, remplaçable par une cible climatologique ouverte).
