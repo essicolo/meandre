@@ -66,5 +66,8 @@ totale du maillage.
 2. **Forçage 100% ouvert auto-référencé** : RÉSOLU par CaSR-corr (§1). Plus besoin de cible quebec.zarr.
 3. **Re-calage σ sur CaSR-corr** : la tête de bruit proba est cassée sur ce forçage (cov90 0.23, σ figée
    d'un autre run). Re-caler avant tout usage probabiliste. N'affecte pas le KGE déterministe.
-4. Le médian encore sous PHYSITEL (0.678 vs ~0.75) : gap station-spécifique (petits bassins) + qualité
-   maillage ouvert, pas le forçage (le plafond forçage-limité est atteint).
+4. ATTENTION chiffre fantôme : il n'existe AUCUN 0.75 held-out. Le 0.749 était le kge_med DEV de
+   méandre (période de sélection 2019-21), le 0.761 Hydrotel était mesuré période complète (juin).
+   Sur le held-out 2022-24 strict, tout ce qui a été mesuré : Hydrotel brut 0.651, méandre+quebec.zarr
+   0.653, méandre+CaSR-corr 0.678 = MEILLEUR médian held-out jamais mesuré sur ce bassin. Les leviers
+   restants (volume spatial, fonte ETI, z_n) visent 0.70+, comparé à 0.678, pas à un 0.75 imaginaire.
