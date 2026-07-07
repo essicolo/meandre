@@ -104,3 +104,18 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Verdict : l'intensité RÉELLE bat le proxy DT_eff (le proxy était le coupable), mais le quickflow reste marginalement sous le sans-Horton. Fast-flow perturbe un timing déjà excellent. Quasi-neutre. Test infil_cap plus haut (10mm/h, plus sélectif) pour tipper.
 - cap=10 (ultra-sélectif, 1% jours) : médian 0.636 (parité sans-Horton 0.634), pooled 0.790, r 0.840. Le Hortonien atteint la parité médian mais reste sous sur pooled/r.
 - VERDICT DÉFINITIF Hortonien SLSO : au mieux NEUTRE. L'intensité réelle >> proxy DT_eff (série 0.610→0.622→0.636), mais le fast-flow ne devient jamais un gain net (r plafonne 0.84 < 0.89 sans-Horton). Réponse lente du sol optimale. Documenté, opt-in désactivé.
+
+## CaSR-CORR — correction CaSR auto-référencée, DEUX axes (volume ET timing), 2026-07-07
+- Instruction Essi : « c'est une question de volume ET de timing... il faut bien sûr corriger les deux ». Référence = CaSR (pas quebec.zarr).
+- Méthode (build_casr_corrected.py, entièrement depuis l'horaire CaSR, aucun quebec.zarr) :
+  - TIMING : agrégation sur le jour LOCAL (décalage UTC-5, EST) au lieu du jour UTC, pour aligner P sur le débit CEHQ (jour local). Corrige le décalage de frontière (~5h) qui misplace les orages de fin de journée.
+  - VOLUME/distribution : dé-crachinage horaire (heures < 0.3 mm/h retirées → jours pluvieux 62%→40%) puis calage du total sur le bilan d'eau flux-tower (1147 mm/an = ET 450 + Q 697).
+  - P corrigé remplace le canal 0 ; T/Rn/etc gardés de CaSR.
+- Training (McGuinness, kge_median, 30 ep) : montée forte r 0.68→0.90, best val kge_median 0.7758 (ep 18-19), val_kge pooled 0.877, β 0.94, γ 0.98. Le r monte bien au-dessus de QM-v3 en training → la correction jour-local relève le timing.
+- HELD-OUT 2022-2024 (jamais vu, non-stationnaire) : pooled 0.8142, médian PAR STATION 0.6776, mean 0.630.
+- COMPARAISON :
+  - QM-v3 (vers quebec.zarr) : pooled 0.823, médian 0.634 — MAIS emprunte la forme de distribution de quebec.zarr (pas auto-référencé).
+  - CaSR-corr : pooled 0.814 (parité), médian 0.678 (BAT QM-v3 de +0.044), ENTIÈREMENT auto-référencé CaSR.
+- VERDICT : meilleur résultat CaSR défendable. Corriger les deux axes sur les données horaires propres de CaSR (dé-crachinage + bilan-eau + jour-local) lève le médian held-out à 0.678, au-dessus de QM-v3, sans aucune fuite vers un produit tiers. C'est la correction à recommander pour Ouranos (auto-cohérente).
+- Réserve : couverture proba cassée (cov90 0.23) = tête de bruit non recalibrée sur ce forçage (σ figée), à re-caler ; n'affecte pas le KGE déterministe.
+- Config : slso-casr-corr.toml ; forçage forcing-casr-corr.nc ; ckpt best-physitel-hydrotel-casr-corr.pt.
