@@ -102,3 +102,5 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Méthode : excès d'infiltration horaire (>5mm/h) précalculé offline depuis l'horaire CaSR, injecté comme canal ; modèle reste journalier. SCALABLE.
 - Résultat : held-out médian 0.622, r 0.834, vol 1.00. ENTRE Horton-DT_eff (0.610, r 0.787) et sans-Horton (0.634, r 0.893).
 - Verdict : l'intensité RÉELLE bat le proxy DT_eff (le proxy était le coupable), mais le quickflow reste marginalement sous le sans-Horton. Fast-flow perturbe un timing déjà excellent. Quasi-neutre. Test infil_cap plus haut (10mm/h, plus sélectif) pour tipper.
+- cap=10 (ultra-sélectif, 1% jours) : médian 0.636 (parité sans-Horton 0.634), pooled 0.790, r 0.840. Le Hortonien atteint la parité médian mais reste sous sur pooled/r.
+- VERDICT DÉFINITIF Hortonien SLSO : au mieux NEUTRE. L'intensité réelle >> proxy DT_eff (série 0.610→0.622→0.636), mais le fast-flow ne devient jamais un gain net (r plafonne 0.84 < 0.89 sans-Horton). Réponse lente du sol optimale. Documenté, opt-in désactivé.
