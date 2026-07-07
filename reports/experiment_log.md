@@ -119,3 +119,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - VERDICT : meilleur résultat CaSR défendable. Corriger les deux axes sur les données horaires propres de CaSR (dé-crachinage + bilan-eau + jour-local) lève le médian held-out à 0.678, au-dessus de QM-v3, sans aucune fuite vers un produit tiers. C'est la correction à recommander pour Ouranos (auto-cohérente).
 - Réserve : couverture proba cassée (cov90 0.23) = tête de bruit non recalibrée sur ce forçage (σ figée), à re-caler ; n'affecte pas le KGE déterministe.
 - Config : slso-casr-corr.toml ; forçage forcing-casr-corr.nc ; ckpt best-physitel-hydrotel-casr-corr.pt.
+
+## CORR2 — calage volume SPATIAL par sous-bassin jaugé : REJET (held-out), 2026-07-07
+- Méthode : cible P locale = lame obs train + ETR 450 par plus petit bassin jaugé englobant (51% des nœuds), facteurs bornés [0.75, 1.30], base CaSR-corr.
+- Training : val kge_med 0.7705 (≈ corr 0.7758), convergence OK.
+- HELD-OUT : médian 0.596, pooled 0.753 — RÉGRESSION nette vs corr (0.678 / 0.814).
+- Lecture : cohérent avec le diagnostic de stabilité — corriger le NIVEAU de biais par station vers sa valeur train EMPIRE le test (|beta-1| 0.095→0.118 prédit par le diag statique). Le régime 2022-24 a un coefficient de ruissellement +6% ; ancrer les volumes locaux sur le train fige l'ancien régime. Le pattern d'erreur STABLE est le pattern RELATIF, pas le niveau (confirmé par exp6b).
+- VERDICT : REJET. Champion reste CaSR-corr (calage volume GLOBAL). Le levier beta spatial passe par la correction relative zéro-somme (exp6b), pas par le forçage.
