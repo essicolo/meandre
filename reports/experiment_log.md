@@ -126,3 +126,15 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - HELD-OUT : médian 0.596, pooled 0.753 — RÉGRESSION nette vs corr (0.678 / 0.814).
 - Lecture : cohérent avec le diagnostic de stabilité — corriger le NIVEAU de biais par station vers sa valeur train EMPIRE le test (|beta-1| 0.095→0.118 prédit par le diag statique). Le régime 2022-24 a un coefficient de ruissellement +6% ; ancrer les volumes locaux sur le train fige l'ancien régime. Le pattern d'erreur STABLE est le pattern RELATIF, pas le niveau (confirmé par exp6b).
 - VERDICT : REJET. Champion reste CaSR-corr (calage volume GLOBAL). Le levier beta spatial passe par la correction relative zéro-somme (exp6b), pas par le forçage.
+
+## EXP6 — correcteur d'erreurs ATTRIBUT-CONDITIONNÉ (transformer), 2026-07-08
+- Idée (Essi) : les erreurs résiduelles sont dues aux attributs des bassins ; un réseau attention peut les corriger. Post-hoc sur physique gelée (champion CaSR-corr), correction multiplicative bornée [0.74, 1.35], 16 attributs territoriaux en tokens + token jour (Q_sim, saison, P 3j/14j), TransformerEncoder 2 couches d=32.
+- Prérequis diagnostiqués :
+  - Signatures d'erreur par station STABLES dev↔test (corr beta 0.84, r 0.72, gamma 0.76) → le signal existe.
+  - MAIS décalage de NIVEAU global dev→test (beta 1.05→0.92 ; RC obs +6% en 2022-24, vraie non-stationnarité) → toute correction de niveau apprise sur train EMPIRE le test (vérifié : correction statique |beta-1| 0.095→0.118 ; corr2 rejeté pareillement).
+- v1 sans contrainte : dev +0.08 mais held-out -0.029 (4/24). Apprend la période, pas les attributs.
+- v2 RELATIF (pénalité zéro-somme sur le log-facteur moyen, le correcteur ne peut pas décaler le niveau global) :
+  - FULL (stations vues) : held-out 0.678 → 0.694 (+0.016), 13/24.
+  - LOSO 6-fold (stations JAMAIS vues) : 0.678 → 0.693 (+0.015), 12/24. GAIN IDENTIQUE au FULL.
+- VERDICT : KEEP. La correction attribut→erreur GÉNÉRALISE aux bassins non jaugés (LOSO=FULL) = preuve de RÉGIONALISATION, argument clé scale-up QC. La contrainte relative zéro-somme est l'ingrédient décisif (leçon : seul le pattern relatif inter-stations est stable, jamais le niveau).
+- Script : exp6_attr_transformer.py (MODE=full|loso, REL=1, FOLDS). CSV : exp6-loso.csv.
