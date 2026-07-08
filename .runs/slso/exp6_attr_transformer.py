@@ -147,13 +147,19 @@ if MODE in ("full", "both"):
           f"(delta {df.kge_corr.median()-df.kge_base.median():+.4f}) | gagnées {(df.kge_corr>df.kge_base).sum()}/{len(df)}")
 
 if MODE in ("loso", "both"):
+    # k-fold leave-group-out : même preuve de généralisation que le LOSO strict, k× moins cher
+    FOLDS = int(os.environ.get("FOLDS", "6"))
+    order = np.random.RandomState(0).permutation(len(sta_rows))
     rows = []
-    for i, held in enumerate(sta_rows):
-        train_s = [s for k, s in enumerate(sta_rows) if k != i]
-        res, _ = fit_eval(train_s, [held], f"LOSO-{held[0]}", epochs=40)
-        rows.append(res[0]); print(f"  LOSO {res[0][0]}: base {res[0][1]:.3f} -> corr {res[0][2]:.3f}")
+    for f_i in range(FOLDS):
+        held_idx = set(order[f_i::FOLDS].tolist())
+        train_s = [s for k, s in enumerate(sta_rows) if k not in held_idx]
+        eval_s = [s for k, s in enumerate(sta_rows) if k in held_idx]
+        res, _ = fit_eval(train_s, eval_s, f"FOLD-{f_i}", epochs=30)
+        rows.extend(res)
+        for r in res: print(f"  fold{f_i} {r[0]}: base {r[1]:.3f} -> corr {r[2]:.3f}", flush=True)
     df = pd.DataFrame(rows, columns=["sta", "kge_base", "kge_corr", "f_moy"])
-    print(f"\n== LOSO (station JAMAIS vue ; preuve régionalisation) ==")
+    print(f"\n== LOSO {FOLDS}-fold (stations JAMAIS vues ; preuve régionalisation) ==")
     print(f"held-out médian : base {df.kge_base.median():.4f} -> corrigé {df.kge_corr.median():.4f} "
           f"(delta {df.kge_corr.median()-df.kge_base.median():+.4f}) | gagnées {(df.kge_corr>df.kge_base).sum()}/{len(df)}")
     df.to_csv(".runs/slso/results/exp6-loso.csv", index=False)
