@@ -144,3 +144,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Training : val kge_med best 0.7089 (vs champion 0.7758), r plafonné 0.82 (vs 0.90). tf/srf appris de zéro ne rattrapent pas la recette degré-jour calée (melt÷2.5) en 30 epochs.
 - HELD-OUT : médian 0.551, pooled 0.757 — REJET (champion 0.678/0.814).
 - Piste si on y revient : init littérature tf/srf (Hock 2003) + warm-start du champion, pas cold-start. Le forçage FB reste disponible.
+
+## Z_N — codes latents additifs par nœud : KEEP (nouveau champion médian), 2026-07-08
+- Config champion CaSR-corr + use_latent_codes=true, latent_mode=additive (le gagnant du banc mini-bassin).
+- Training : val kge_med 0.7596 (≈ champion 0.7758).
+- HELD-OUT : médian 0.6881 (+0.010 vs champion 0.678) = NOUVEAU RECORD ; pooled 0.798 (-0.016).
+- Lecture : les effets par station en ESPACE-PARAMÈTRES (shrinkage L2, partial pooling) TRANSFÈRENT au régime 2022-24, contrairement aux corrections de niveau en espace-volume (corr2, 0.596) et sortie (exp6 v1). Triade cohérente : la correction locale doit passer par la physique.
+- Suite : empilage correcteur d'attributs relatif par-dessus (exp6 sur parquet z_n, en cours).
