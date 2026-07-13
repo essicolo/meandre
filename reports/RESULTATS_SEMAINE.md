@@ -35,10 +35,17 @@ d'entraînement et généralise moins. **Appuie la thèse physique-différentiab
 
 | solution | held-out | statut | comment l'activer |
 |---|---|---|---|
-| **CaSR-corr** (volume+timing auto-réf) | pooled 0.814, méd 0.678 | **RECOMMANDÉ** | forçage `forcing-casr-corr.nc` |
+| **z_n codes latents** (espace-paramètres) | méd 0.688 = RECORD jaugé | **CHAMPION jaugé** | `[model] use_latent_codes = true` + `latent_mode = "additive"` |
+| **CaSR-corr + correcteur attributs** | méd 0.693, RÉGIONALISABLE (LOSO prouvé) | **CHAMPION non-jaugé** | forçage corr + `exp6_attr_transformer.py` REL=1 |
+| **CaSR-corr** (volume+timing auto-réf) | pooled 0.814, méd 0.678 | forçage canonique | forçage `forcing-casr-corr.nc` |
 | QM-CaSR (v3, emprunte quebec.zarr) | pooled 0.823, méd 0.634 | dépassé (garder comparatif) | forçage `forcing-casr-qm3.nc` |
 | **versant UH** (Nash) | méd 0.649 (neutre), +moyenne | garder, plus physique | `[model] use_hillslope_uh = true` |
 | **GRU résidu minimal** | +0.006, généralise | garder si bridé | `.runs/slso/exp5_gru_residual.py` |
+
+NB : z_n + correcteur d'attributs NE s'additionnent PAS (même signal, redondance mesurée). Architecture
+scale-up QC : z_n où il y a des jauges, correcteur d'attributs ailleurs. Rejets supplémentaires documentés
+dans experiment_log : corr2 (volume spatial par bassin, 0.596 — les niveaux ne transfèrent pas) et ETI
+cold-start (0.551 — à retenter en warm-start + init Hock, forçage FB déjà construit).
 
 Note GRU : positif SEULEMENT en version minimale (features = Q + forçage, correction bornée ±30%,
 early-stop). Enrichir les features (état physique) fait SUR-APPRENDRE (voir rejets).
