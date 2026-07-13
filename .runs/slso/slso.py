@@ -478,6 +478,11 @@ else:
 #    fonte s'infiltre, gamma trop bas). 0.3 = optimum. Scaling différentiable,
 #    le NeRF apprend autour.
 _mfs = float(cfg.get("model", {}).get("melt_factor_scale", 1.0))
+# PIÈGE (corrigé 2026-07-13) : ne JAMAIS réappliquer la recette sur un warm-start —
+# les poids chargés l'intègrent déjà (double application = fonte ÷6, r effondré).
+if WARM_START and _ws_path.exists() and _mfs != 1.0:
+    print(f"[recette] melt_factor_scale={_mfs} IGNORÉ (warm-start : déjà dans les poids)")
+    _mfs = 1.0
 if _mfs != 1.0 and cfg.get("model", {}).get("column_mode") == "hydrotel":
     import torch.nn.functional as _F
     with torch.no_grad():
