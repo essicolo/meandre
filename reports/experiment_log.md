@@ -151,3 +151,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - HELD-OUT : médian 0.6881 (+0.010 vs champion 0.678) = NOUVEAU RECORD ; pooled 0.798 (-0.016).
 - Lecture : les effets par station en ESPACE-PARAMÈTRES (shrinkage L2, partial pooling) TRANSFÈRENT au régime 2022-24, contrairement aux corrections de niveau en espace-volume (corr2, 0.596) et sortie (exp6 v1). Triade cohérente : la correction locale doit passer par la physique.
 - Suite : empilage correcteur d'attributs relatif par-dessus (exp6 sur parquet z_n, en cours).
+
+## EMPILAGE z_n + correcteur attributs : REJET (redondance), 2026-07-08
+- exp6 relatif sur parquet z_n : FULL 0.6964→0.6871 (-0.009), LOSO 0.6748 (-0.022).
+- Lecture : z_n absorbe déjà le signal d'erreur station-spécifique (en espace-paramètres, mieux) ; le correcteur n'a plus rien à corriger et ajoute du bruit. Les deux leviers NE S'ADDITIONNENT PAS.
+- CLASSEMENT FINAL held-out (médian) : z_n 0.688 (0.696/24 communes) ≈ corr+correcteur 0.693 > corr 0.678 > Hydrotel brut 0.651 >> corr2 0.596, ETI 0.551.
+- Architecture scale-up QC suggérée : z_n sur bassins jaugés, correcteur d'attributs (régionalisable, prouvé LOSO) sur non jaugés.
