@@ -157,3 +157,11 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Lecture : z_n absorbe déjà le signal d'erreur station-spécifique (en espace-paramètres, mieux) ; le correcteur n'a plus rien à corriger et ajoute du bruit. Les deux leviers NE S'ADDITIONNENT PAS.
 - CLASSEMENT FINAL held-out (médian) : z_n 0.688 (0.696/24 communes) ≈ corr+correcteur 0.693 > corr 0.678 > Hydrotel brut 0.651 >> corr2 0.596, ETI 0.551.
 - Architecture scale-up QC suggérée : z_n sur bassins jaugés, correcteur d'attributs (régionalisable, prouvé LOSO) sur non jaugés.
+
+## ZN-QUANTILE — re-calibration probabiliste sur champion z_n : SUCCÈS, 2026-07-13
+- Recette Phase 2 (tête quantile K=6, offsets depuis mu, médiane = mu) warm-startée sur backbone z_n GELÉ, forçage CaSR-corr.
+- BUG TROUVÉ ET CORRIGÉ : melt_factor_scale réappliqué sur warm-start (double application, fonte ÷6, backbone gelé dégradé r 0.90→0.70). slso.py ignore désormais la recette en warm-start.
+- Après fix : epoch 0 reproduit le champion (val 0.866/0.761), tête calibrée en 15 epochs.
+- HELD-OUT 2022-24 (32 092 obs) : cov_90 = 0.9048 (cible 0.90), cov_50 = 0.4981 (cible 0.50), KGE médian 0.6881 PRÉSERVÉ (= record), pooled 0.798.
+- NB : le bloc held-out de slso.py affiche encore les cov de la vieille tête sigma (0.09/0.23) — ignorer en mode quantile, la vraie couverture quantile est ci-dessus (script inline, à intégrer dans slso.py un jour).
+- Checkpoint : best-physitel-hydrotel-casr-zn-quantile.pt. PIPELINE COMPLET : déterministe record + probabiliste calibré, 100% open data.
