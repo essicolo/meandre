@@ -1002,7 +1002,26 @@ if TEST_START and TEST_END:
     print(f"  Stations with KGE > 0.5: {(test_kges > 0.5).sum()}/{len(test_kges)}")
     print(f"  Stations with KGE < 0  : {(test_kges < 0).sum()}/{len(test_kges)}")
 
+    # ── Couverture QUANTILE sur le test (mode quantile : q_tau = mu + delta_tau) ──
+    # (piège 2026-07-13 : le bloc noise_head ci-dessous évalue la VIEILLE tête sigma,
+    # à ignorer en mode quantile — la vraie couverture est celle-ci)
+    if (getattr(model, "use_quantile_head", False) and hasattr(model, "quantile_head")):
+        with torch.no_grad():
+            _spq = model.spatial_encoder(node_coords, territorial.to_tensor())
+            _off_full = model.quantile_head(_spq.to_tensor(), Q_test_full.detach())  # (T, N, K)
+        _off = _off_full[test_sl.start:test_sl.stop, station_mask].cpu()[:n_test]
+        _taus = list(getattr(model.quantile_head, "taus", [0.05, 0.10, 0.25, 0.75, 0.90, 0.95]))
+        _validq = ~torch.isnan(q_obs_test) & ~torch.isnan(Q_test)
+        print("  -- Couverture QUANTILE sur le test --")
+        for _lvl, _tlo, _thi in [(50, 0.25, 0.75), (90, 0.05, 0.95)]:
+            _lo = Q_test + _off[:, :, _taus.index(_tlo)]
+            _hi = Q_test + _off[:, :, _taus.index(_thi)]
+            _in = (q_obs_test >= _lo) & (q_obs_test <= _hi)
+            _cov = (_in & _validq).sum().float() / _validq.sum().float()
+            print(f"  Test cov_{_lvl} (quantile): {float(_cov):.4f}  (cible {_lvl/100:.2f})")
+
     # ── Couverture probabiliste Box-Cox sur le test (noise head) ────────────
+    # NB : en mode quantile, ces cov sigma sont OBSOLÈTES (tête jamais re-calée).
     if hasattr(model, "noise_head") and model.noise_head is not None:
         from meandre.utils.noise_head import SpatialNoiseHead
         from meandre.training.loss import box_cox as _bc, gaussian_nll_loss as _gnll
