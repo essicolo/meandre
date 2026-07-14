@@ -165,3 +165,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - HELD-OUT 2022-24 (32 092 obs) : cov_90 = 0.9048 (cible 0.90), cov_50 = 0.4981 (cible 0.50), KGE médian 0.6881 PRÉSERVÉ (= record), pooled 0.798.
 - NB : le bloc held-out de slso.py affiche encore les cov de la vieille tête sigma (0.09/0.23) — ignorer en mode quantile, la vraie couverture quantile est ci-dessus (script inline, à intégrer dans slso.py un jour).
 - Checkpoint : best-physitel-hydrotel-casr-zn-quantile.pt. PIPELINE COMPLET : déterministe record + probabiliste calibré. PRÉCISION (2026-07-13) : forçage 100% ouvert (CaSR auto-corrigé) et jauges publiques, mais MAILLAGE PHYSITEL (comme Hydrotel opérationnel — comparaison équitable). Le variant 100% ouvert (HydroSHEDS, slso-od) plafonne à ~0.41 médian, en pause.
+
+## ETI v2 — warm-start champion + init Pellicciotti corrigée : REJET DÉFINITIF, 2026-07-14
+- Corrections apportées : warm-start depuis z_n (0.688), init srf littérature 0.0094 mm/j/(W/m²) (l'ancienne était 20× trop forte, bug corrigé dans hydrotel_column), pas de double recette.
+- Résultat : val kge_med plafonne 0.620 (r 0.78 vs 0.90 champion), held-out 0.549/0.675. Le passage à l'ETI dégrade IMMÉDIATEMENT le champion et ne récupère pas.
+- VERDICT : 2 échecs propres (cold 0.551, warm 0.549) = l'ETI journalier n'apporte rien ici. Le degré-jour Hydrotel (indice de radiation potentielle par géométrie) + recette calée reste supérieur au forçage journalier. L'ETI aurait besoin du sous-journalier pour exprimer son avantage. PISTE FERMÉE sur SLSO journalier.
