@@ -54,7 +54,13 @@ for ch in CHUNKS:
     da = xr.DataArray(merged, dims=("time", "rlat", "rlon"),
                       coords={"time": times, "rlat": np.concatenate([rlat0, rlat1]), "rlon": np.concatenate([rlon0, rlon1])})
     samp = da.interp(rlon=nrlon_da, rlat=nrlat_da, method="linear")
-    idx_local = times + pd.Timedelta(hours=SHIFT_H)                     # TIMING : jour local
+    if os.environ.get("DST", "0") == "1":
+        # heure avancée : UTC-4 avril-octobre (approx 2e dim. mars - 1er dim. nov.),
+        # UTC-5 (SHIFT_H) le reste — aligne l'été sur l'heure locale réelle des jauges
+        _off = np.where(times.month.isin(range(4, 11)), SHIFT_H + 1, SHIFT_H)
+        idx_local = times + pd.to_timedelta(_off, unit="h")             # TIMING : jour local DST
+    else:
+        idx_local = times + pd.Timedelta(hours=SHIFT_H)                 # TIMING : jour local
     df = pd.DataFrame(samp.values * 1000.0, index=idx_local)           # mm/h
     kept = df.where(df >= DRIZZLE_H, 0.0)                              # VOLUME/distrib : dé-crachinage
     daily.append(kept.resample("1D").sum())
@@ -70,5 +76,5 @@ assert F.shape[0] == Pcorr.shape[0], f"{F.shape} vs {Pcorr.shape}"
 F[:, :, 0] = Pcorr.astype(np.float32)
 if os.path.exists(OUT): os.remove(OUT)
 xr.Dataset({"forcing": (("time", "node", "var"), F.astype(np.float32))},
-           coords={"time": t, "node": np.arange(F.shape[1]), "var": VARS}).to_netcdf(OUT, engine="h5netcdf")
+           coords={"time": t, "node": np.arange(F.shape[1]), "var": VARS}).to_netcdf(OUT)
 print(f"[ok] {OUT} (P corrigé jour-local + dé-crachiné + volume ; T/Rn de CaSR)")
