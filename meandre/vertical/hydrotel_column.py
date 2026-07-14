@@ -163,10 +163,12 @@ class HydrotelColumn(nn.Module):
         self.sp_fonte_feu = nn.Parameter(torch.tensor(_m.log(_m.exp(14.0) - 1)))
         self.sp_fonte_dec = nn.Parameter(torch.tensor(_m.log(_m.exp(16.0) - 1)))
         # ETI (mode "eti") : facteurs de fonte température (tf, m/°C/j) et radiation
-        # (srf, m/j par W/m²), softplus pour positivité. Init Pellicciotti 2005 (en
-        # journalier) : tf≈1.2 mm/°C/j, srf≈0.2 mm/j par W/m². Apprenables.
+        # (srf, m/j par W/m²), softplus pour positivité. Init Pellicciotti 2005 (neige,
+        # journalier) : TF≈1.2 mm/°C/j, SRF≈0.0094 mm/j par W/m². (Corrigé 2026-07-13 :
+        # l'ancienne init srf 0.2 mm/j/(W/m²) était ~20× trop forte → fonte radiative
+        # ~30 mm/j au départ, cause de l'échec du run ETI cold-start du 2026-07-08.)
         self.sp_tf = nn.Parameter(torch.tensor(_m.log(_m.exp(0.0012) - 1)))
-        self.sp_srf = nn.Parameter(torch.tensor(_m.log(_m.exp(0.00020) - 1)))
+        self.sp_srf = nn.Parameter(torch.tensor(_m.log(_m.exp(9.4e-6) - 1)))
         # Hydrogramme unitaire de VERSANT (cascade de Nash 2 réservoirs, fidèle
         # Hydrotel — porté de column.py). Lisse le ruissellement AVANT le canal,
         # par étalement des temps de parcours (préserve les pics, contrairement à

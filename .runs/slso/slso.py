@@ -492,6 +492,18 @@ if _mfs != 1.0 and cfg.get("model", {}).get("column_mode") == "hydrotel":
                 _eff = _F.softplus(_p) * _mfs
                 _p.copy_(torch.log(torch.expm1(_eff.clamp(min=1e-4))))
     print(f"[recette] melt_factor_scale={_mfs} (fonte ÷{1/_mfs:.1f})")
+# ETI : ré-init tf/srf à la littérature APRÈS un warm-start depuis un checkpoint
+# degré-jour (le checkpoint stocke sp_tf/sp_srf à leur init d'époque, jamais
+# entraînés — potentiellement l'ancienne init srf 20× trop forte).
+if (cfg.get("model", {}).get("melt_mode") == "eti"
+        and cfg.get("model", {}).get("eti_reinit_factors", False)):
+    import math as _math
+    _tf = float(cfg["model"].get("eti_tf", 0.0012))       # m/°C/j (Pellicciotti 2005)
+    _srf = float(cfg["model"].get("eti_srf", 9.4e-6))     # m/j par W/m²
+    with torch.no_grad():
+        model.vertical_column.sp_tf.copy_(torch.tensor(_math.log(_math.expm1(_tf))))
+        model.vertical_column.sp_srf.copy_(torch.tensor(_math.log(_math.expm1(_srf))))
+    print(f"[recette] ETI tf={_tf*1000:.2f} mm/°C/j, srf={_srf*1000:.4f} mm/j/(W/m²) (ré-init littérature)")
 _kss = float(cfg.get("model", {}).get("ksat_scale", 1.0))
 if _kss != 1.0:
     _orig_se = model.spatial_encoder.forward
