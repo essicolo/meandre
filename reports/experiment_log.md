@@ -170,3 +170,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Corrections apportées : warm-start depuis z_n (0.688), init srf littérature 0.0094 mm/j/(W/m²) (l'ancienne était 20× trop forte, bug corrigé dans hydrotel_column), pas de double recette.
 - Résultat : val kge_med plafonne 0.620 (r 0.78 vs 0.90 champion), held-out 0.549/0.675. Le passage à l'ETI dégrade IMMÉDIATEMENT le champion et ne récupère pas.
 - VERDICT : 2 échecs propres (cold 0.551, warm 0.549) = l'ETI journalier n'apporte rien ici. Le degré-jour Hydrotel (indice de radiation potentielle par géométrie) + recette calée reste supérieur au forçage journalier. L'ETI aurait besoin du sous-journalier pour exprimer son avantage. PISTE FERMÉE sur SLSO journalier.
+
+## DST — agrégation jour-local saisonnière (UTC-4 avril-oct) : NEUTRE, 2026-07-14
+- Même config que champion z_n, seul le forçage change (offset saisonnier dans l'agrégation jour-local).
+- HELD-OUT : médian 0.6838 (vs 0.6881, -0.004 = bruit), pooled 0.8047 (vs 0.798).
+- VERDICT : NEUTRE. Le UTC-5 fixe suffit ; garder le champion (plus simple). Axe correction timing épuisé au journalier.
