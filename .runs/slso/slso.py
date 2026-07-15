@@ -120,7 +120,12 @@ _con = duckdb.connect(str(BASIN_DB), read_only=True)
 _has_wd = "withdrawals" in _con.execute("SHOW TABLES").df()["name"].tolist()
 _con.close()
 if not _has_wd:
-    _BC(BASIN_DB).import_withdrawals("notebooks/io-eau-meandre.parquet", site_col="site_id")
+    # Prélèvements : parquet SLSO uniquement ; pour les autres régions (Québec
+    # scale-up), fichier absent -> prélèvements zéro (effet net SLSO ~0.003 m³/s).
+    if Path("notebooks/io-eau-meandre.parquet").exists():
+        _BC(BASIN_DB).import_withdrawals("notebooks/io-eau-meandre.parquet", site_col="site_id")
+    else:
+        print("[withdrawals] parquet absent — prélèvements zéro pour cette région")
 
 
 # %% [markdown]
