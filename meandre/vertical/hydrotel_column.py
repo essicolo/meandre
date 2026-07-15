@@ -94,9 +94,14 @@ class HydrotelColumn(nn.Module):
                  compile_column: bool = False, use_hillslope_uh: bool = False,
                  melt_mode: str = "degree_day", use_aquifer: bool = False,
                  use_hortonian: bool = False, frozen_gate_continuous: bool = False,
-                 horton_precomputed: bool = False) -> None:
+                 horton_precomputed: bool = False, spatial_melt: bool = False) -> None:
         super().__init__()
         self.et_mode = str(et_mode)
+        # Fonte SPATIALE : module les facteurs de fonte par classe avec le C_f du
+        # NeRF (borné [0.5, 8], cible littérature 4.5 -> échelle neutre 1.0). Le
+        # facteur de fonte devient un champ appris par nœud (sud-nord QC) au lieu
+        # d'un scalaire global rustiné à la main (melt_factor_scale).
+        self.spatial_melt = bool(spatial_melt)
         self.use_frost = bool(use_frost)
         self.use_hillslope_uh = bool(use_hillslope_uh)
         # Mode de fonte : "degree_day" (clone fidèle, indice radiation géométrique)
@@ -256,12 +261,17 @@ class HydrotelColumn(nn.Module):
         else:                               # fallback OD : toute la forêt en feuillus
             pct_conif = torch.zeros_like(like); pct_feu = f_forest
         sp_ = torch.nn.functional.softplus
+        # échelle de fonte par nœud (NeRF C_f / 4.5), sinon 1.0 partout
+        if self.spatial_melt and hasattr(sp, "C_f"):
+            mscale = torch.clamp(sp.C_f / 4.5, 0.15, 1.8)
+        else:
+            mscale = torch.ones_like(like)
         p_snow = dict(lat=lat, ce1=ce1, ce0=ce0,
                       pct_conifers=pct_conif, pct_feuillus=pct_feu,
                       pct_autres=torch.clamp(1.0 - pct_conif - pct_feu, 0.0, 1.0),
-                      coeff_fonte_conifers=sp_(self.sp_fonte_conif) / 1000.0 * torch.ones_like(like),
-                      coeff_fonte_feuillus=sp_(self.sp_fonte_feu) / 1000.0 * torch.ones_like(like),
-                      coeff_fonte_decouver=sp_(self.sp_fonte_dec) / 1000.0 * torch.ones_like(like),
+                      coeff_fonte_conifers=sp_(self.sp_fonte_conif) / 1000.0 * mscale,
+                      coeff_fonte_feuillus=sp_(self.sp_fonte_feu) / 1000.0 * mscale,
+                      coeff_fonte_decouver=sp_(self.sp_fonte_dec) / 1000.0 * mscale,
                       seuil_fonte_conifers=torch.zeros_like(like), seuil_fonte_feuillus=torch.zeros_like(like),
                       seuil_fonte_decouver=torch.zeros_like(like),
                       taux_fonte_geo=torch.full_like(like, 0.5), densite_max=torch.full_like(like, 466.0),

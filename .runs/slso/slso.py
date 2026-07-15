@@ -408,6 +408,7 @@ model = HydroModel(
     use_overland_uh = cfg.get("model", {}).get("use_overland_uh", False),
     use_hillslope_uh = cfg.get("model", {}).get("use_hillslope_uh", False),
     melt_mode = cfg.get("model", {}).get("melt_mode", "degree_day"),
+    spatial_melt = cfg.get("model", {}).get("spatial_melt", False),
     use_aquifer = cfg.get("model", {}).get("use_aquifer", False),
     use_hortonian = cfg.get("model", {}).get("use_hortonian", False),
     horton_precomputed = cfg.get("model", {}).get("horton_precomputed", False),
@@ -485,6 +486,9 @@ else:
 _mfs = float(cfg.get("model", {}).get("melt_factor_scale", 1.0))
 # PIÈGE (corrigé 2026-07-13) : ne JAMAIS réappliquer la recette sur un warm-start —
 # les poids chargés l'intègrent déjà (double application = fonte ÷6, r effondré).
+if cfg.get("model", {}).get("spatial_melt", False) and _mfs != 1.0:
+    print(f"[recette] melt_factor_scale={_mfs} IGNORÉ (spatial_melt : le NeRF porte l'échelle de fonte)")
+    _mfs = 1.0
 if WARM_START and _ws_path.exists() and _mfs != 1.0:
     print(f"[recette] melt_factor_scale={_mfs} IGNORÉ (warm-start : déjà dans les poids)")
     _mfs = 1.0

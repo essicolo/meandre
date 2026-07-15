@@ -107,6 +107,7 @@ class HydroModel(nn.Module):
         use_aquifer: bool = False,   # aquifère restituant optionnel (soutien d'étiage, meandre > Hydrotel)
         use_hortonian: bool = False,   # excès d'infiltration sous-journalier (quickflow d'orage, canal DT_eff)
         horton_precomputed: bool = False,  # canal = quickflow précalculé (horaire) au lieu de DT_eff
+        spatial_melt: bool = False,       # facteur de fonte spatialisé (NeRF C_f/4.5 module les classes)
         soil_bounds: dict | None = None,
         use_quantile_head: bool = False,
         quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
@@ -206,6 +207,7 @@ class HydroModel(nn.Module):
             use_hortonian=bool(use_hortonian),
             frozen_gate_continuous=bool(soil_frozen_gate),
             horton_precomputed=bool(horton_precomputed),
+            spatial_melt=bool(spatial_melt),
         )
 
         _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
@@ -733,6 +735,7 @@ class HydroModel(nn.Module):
                 "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),
                 "use_hillslope_uh": getattr(self.vertical_column, "use_hillslope_uh", False),
                 "melt_mode": getattr(self.vertical_column, "melt_mode", "degree_day"),
+                "spatial_melt": getattr(self.vertical_column, "spatial_melt", False),
                 "use_aquifer": getattr(self.vertical_column, "use_aquifer", False),
                 "use_hortonian": getattr(self.vertical_column, "use_hortonian", False),
             },
