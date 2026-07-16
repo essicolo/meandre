@@ -108,11 +108,9 @@ era5_vars = []   # ex. ["R_n", "e_a", "u2"] pour tout surcharger
 # era5_bbox  = [-73.0, 44.5, -69.6, 47.7]  # optionnel (défaut: nœuds + marge 0.2°)
 
 [soil]
-hydrotel_calib_dir = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/MONT_LN24HA_2020"
 # REPRODUCE : ancre le sol sur la calibration Hydrotel (bv3c.csv + textures,
 # agrégée UHRH→troncon). Optionnel — retirer cette ligne pour découpler (NeRF).
-# (B decouple : ancrage Hydrotel retire) hydrotel_calib_dir = "/mnt/c/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/SLSO_LN24HA_2020"
-# Layer thicknesses (m), NOT depths from surface.
+# (B decouple : ancrage Hydrotel retire) # Layer thicknesses (m), NOT depths from surface.
 # Layers stack: L1 = [0, z1], L2 = [z1, z1+z2], L3 = [z1+z2, z1+z2+z3]
 # Total soil depth = z1 + z2 + z3 (derived).
 #

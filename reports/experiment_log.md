@@ -183,3 +183,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Gate 2 MONT-v2 (23 jauges, spatial_melt) : 0.523 vs Hydrotel 0.637, beta 0.82 (sous-volume). ÉCHEC → pas de flotte.
 - Gate 2bis MONT-v3 EN COURS : + ancrage sol sur calage Hydrotel régional (hydrotel_calib_dir, mécanisme réactivé). Doctrine reproduire-puis-moderniser appliquée au scale-up : prior = calage régional, la différentiabilité raffine.
 - Chantiers structurels notés : entraînement conjoint multi-régions (NeRF partagé, toutes jauges QC), module barrages/régulation.
+
+## MONT-v3 (ancrage sol calage Hydrotel régional) : ÉCHEC BRUTAL, 2026-07-16
+- Held-out médian -0.31, beta 0.20 (80% de l'eau disparaît). load_calibrated_soil écrit/validé pour SLSO, branché sur MONT SANS validation isolée (entorse à la règle validate-before-integrate, la semaine même du rappel).
+- v4 (chaînée avec le même ancrage) tuée avant pollution ; relancée SANS ancrage = melt NeRF + volume Budyko seulement (ablation propre par-dessus v2).
+- TODO avant tout ré-essai d'ancrage : valider load_calibrated_soil(MONT) isolément (params chargés vs bv3c.csv lu à la main, bilan 1 an sur 10 UHRH vs sortie Hydrotel de la plateforme).
