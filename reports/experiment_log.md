@@ -175,3 +175,11 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Même config que champion z_n, seul le forçage change (offset saisonnier dans l'agrégation jour-local).
 - HELD-OUT : médian 0.6838 (vs 0.6881, -0.004 = bruit), pooled 0.8047 (vs 0.798).
 - VERDICT : NEUTRE. Le UTC-5 fixe suffit ; garder le champion (plus simple). Axe correction timing épuisé au journalier.
+
+## QUÉBEC gates — pilotes avant flotte (règle d'Essi), 2026-07-15
+- Rappel Essi : valider sur pilote AVANT toute grande opération ; v1 (recette SLSO uniforme) lancée sans pilote contrasté = erreur, ~15h GPU sur runs à refaire.
+- Bilan v1 (held-out, vs Hydrotel brut mêmes tronçons) : gagne SLSO (0.689/0.666), LABI (0.743/0.644), CNDE (0.622/0.552) ; perd CNDA (0.615/0.759), CNDC (0.489/0.660), MONT-v2 (0.523/0.637). Structurel : recette mono-bassin < 20 ans de calage régional.
+- Gate 1 CNDC-v2 (spatial_melt : C_f NeRF module la fonte, rustine ignorée) : 0.489→0.535, gamma 1.46→1.17. Mieux mais training PLAT (2 jauges = pas de signal). Leçon : région pauvre en jauges ne s'entraîne pas seule.
+- Gate 2 MONT-v2 (23 jauges, spatial_melt) : 0.523 vs Hydrotel 0.637, beta 0.82 (sous-volume). ÉCHEC → pas de flotte.
+- Gate 2bis MONT-v3 EN COURS : + ancrage sol sur calage Hydrotel régional (hydrotel_calib_dir, mécanisme réactivé). Doctrine reproduire-puis-moderniser appliquée au scale-up : prior = calage régional, la différentiabilité raffine.
+- Chantiers structurels notés : entraînement conjoint multi-régions (NeRF partagé, toutes jauges QC), module barrages/régulation.
