@@ -535,6 +535,17 @@ if cfg.get("et", {}).get("mode") == "linacre":
     model.vertical_column.set_linacre_params(*_lp)
     print(f"[linacre] params régionaux chargés ({_lin_dir}) | coeff méd {float(_lp[5].median()):.3f}")
 
+# FONTE RÉGIONALE ([snow].melt_project_dir) : taux et SEUILS de fonte calés de la
+# plateforme (degre_jour_modifie.csv) par nœud. Compatible spatial_melt.
+_melt_dir = cfg.get("snow", {}).get("melt_project_dir")
+if _melt_dir:
+    from meandre.data.hydrotel_calib import load_melt_nodes
+    _mp = load_melt_nodes(_melt_dir, node_ids, device=device)
+    model.vertical_column.set_melt_params(_mp)
+    print(f"[melt] fonte régionale ancrée ({_melt_dir}) | taux c/f/d méd "
+          f"{float(_mp['taux_c'].median()):.1f}/{float(_mp['taux_f'].median()):.1f}/{float(_mp['taux_d'].median()):.1f} "
+          f"| seuils {float(_mp['seuil_c'].median()):.2f}/{float(_mp['seuil_f'].median()):.2f}/{float(_mp['seuil_d'].median()):.2f}")
+
 # Ancrage Hydrotel (REPRODUCE) : remplace le sol NeRF/littérature par la
 # calibration Hydrotel par nœud (bv3c.csv + textures, agrégée UHRH→troncon).
 # Optionnel ([soil].hydrotel_calib_dir) — point de départ, retiré pour découpler.

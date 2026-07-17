@@ -266,16 +266,31 @@ class HydrotelColumn(nn.Module):
             mscale = torch.clamp(sp.C_f / 4.5, 0.15, 1.8)
         else:
             mscale = torch.ones_like(like)
+        if getattr(self, "_melt_anchored", False):
+            # ancrage RÉGIONAL (degre_jour_modifie.csv) : taux et seuils calés par
+            # nœud ; spatial_melt (mscale) module multiplicativement autour.
+            cf_c = self.melt_taux_c / 1000.0 * mscale
+            cf_f = self.melt_taux_f / 1000.0 * mscale
+            cf_d = self.melt_taux_d / 1000.0 * mscale
+            se_c, se_f, se_d = self.melt_seuil_c, self.melt_seuil_f, self.melt_seuil_d
+            tgeo, dmax, tass = self.melt_taux_geo, self.melt_dens_max, self.melt_tasse
+        else:
+            cf_c = sp_(self.sp_fonte_conif) / 1000.0 * mscale
+            cf_f = sp_(self.sp_fonte_feu) / 1000.0 * mscale
+            cf_d = sp_(self.sp_fonte_dec) / 1000.0 * mscale
+            se_c = se_f = se_d = torch.zeros_like(like)
+            tgeo = torch.full_like(like, 0.5); dmax = torch.full_like(like, 466.0)
+            tass = torch.full_like(like, 0.1)
         p_snow = dict(lat=lat, ce1=ce1, ce0=ce0,
                       pct_conifers=pct_conif, pct_feuillus=pct_feu,
                       pct_autres=torch.clamp(1.0 - pct_conif - pct_feu, 0.0, 1.0),
-                      coeff_fonte_conifers=sp_(self.sp_fonte_conif) / 1000.0 * mscale,
-                      coeff_fonte_feuillus=sp_(self.sp_fonte_feu) / 1000.0 * mscale,
-                      coeff_fonte_decouver=sp_(self.sp_fonte_dec) / 1000.0 * mscale,
-                      seuil_fonte_conifers=torch.zeros_like(like), seuil_fonte_feuillus=torch.zeros_like(like),
-                      seuil_fonte_decouver=torch.zeros_like(like),
-                      taux_fonte_geo=torch.full_like(like, 0.5), densite_max=torch.full_like(like, 466.0),
-                      constante_tassement=torch.full_like(like, 0.1),
+                      coeff_fonte_conifers=cf_c,
+                      coeff_fonte_feuillus=cf_f,
+                      coeff_fonte_decouver=cf_d,
+                      seuil_fonte_conifers=se_c, seuil_fonte_feuillus=se_f,
+                      seuil_fonte_decouver=se_d,
+                      taux_fonte_geo=tgeo, densite_max=dmax,
+                      constante_tassement=tass,
                       melt_mode=self.melt_mode,
                       tf=sp_(self.sp_tf) * torch.ones_like(like),
                       srf=sp_(self.sp_srf) * torch.ones_like(like))
@@ -476,6 +491,15 @@ class HydrotelColumn(nn.Module):
         for nm, v in [("lin_lat", lat), ("lin_alti", alti), ("lin_tfroid", t_froid),
                       ("lin_tchaud", t_chaud), ("lin_albedo", albedo), ("lin_coeff", coeff)]:
             self.register_buffer(nm, torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
+
+    def set_melt_params(self, mp: dict):
+        """Params fonte RÉGIONAUX par nœud (degre_jour_modifie.csv du calage
+        plateforme) : seuils par classe, taux par classe (mm/j/C), densité max,
+        tassement, taux géothermique. Remplacent les init globales 12/14/16 et
+        les seuils 0. Compatible spatial_melt (le NeRF module autour)."""
+        for k, v in mp.items():
+            self.register_buffer(f"melt_{k}", torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
+        self._melt_anchored = True
 
     def _etp(self, tmin_j, tmax_j, Rn, u2, ea, lat, doy, couv=None, albn=None):
         if self.et_mode == "linacre":

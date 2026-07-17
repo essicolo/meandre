@@ -129,3 +129,40 @@ def load_linacre_nodes(project_dir, node_ids, sim_subdir="simulation/simulation"
         print(f"[linacre] {n_missing}/{len(node_ids)} troncons sans UHRH -> défauts")
     T = lambda k: torch.tensor(cols[k], dtype=dtype, device=device)
     return T("lat"), T("alti"), T("tf"), T("tc"), T("alb"), T("coeff")
+
+
+def load_melt_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
+                    device="cpu", dtype=None):
+    """Params fonte RÉGIONAUX par nœud depuis degre_jour_modifie.csv (calage
+    plateforme) : seuils de fonte par classe (C), taux de fonte par classe
+    (mm/j/C), taux fonte géothermique, densité max, constante tassement.
+    Agrégés UHRH→troncon pondérés par superficie."""
+    from pathlib import Path
+    dtype = dtype or torch.get_default_dtype()
+    proj = load_project(str(project_dir), sim_subdir)
+    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    uhrh = proj["uhrh"]
+    dj = {}
+    for ln in open(f"{project_dir}/{sim_subdir}/degre_jour_modifie.csv", encoding="latin-1").read().splitlines():
+        c = ln.split(";")
+        if len(c) >= 11 and c[0].strip().isdigit():
+            dj[int(c[0])] = [float(x) for x in c[1:11]]
+    # colonnes : 0 taux_geo, 1 densite_max, 2 tassement, 3-5 seuils c/f/d, 6-8 taux c/f/d, 9 seuil albedo
+    names = ["taux_geo", "dens_max", "tasse", "seuil_c", "seuil_f", "seuil_d",
+             "taux_c", "taux_f", "taux_d", "seuil_alb"]
+    cols = {k: [] for k in names}
+    n_missing = 0
+    for tid in node_ids:
+        uids = [u for u in t2u.get(int(tid), []) if u in uhrh and u in dj]
+        if not uids:
+            n_missing += 1
+            for k, v in zip(names, [0.5, 466.0, 0.1, 0.0, 0.0, 0.0, 12.0, 14.0, 16.0, 1.0]):
+                cols[k].append(v)
+            continue
+        w = torch.tensor([max(uhrh[u]["area_km2"], 1e-9) for u in uids]); w = w / w.sum()
+        for j, k in enumerate(names):
+            cols[k].append(float((w * torch.tensor([dj[u][j] for u in uids])).sum()))
+    if n_missing:
+        print(f"[melt] {n_missing}/{len(node_ids)} troncons sans UHRH -> défauts")
+    return {k: torch.tensor(cols[k], dtype=dtype, device=device) for k in names}
