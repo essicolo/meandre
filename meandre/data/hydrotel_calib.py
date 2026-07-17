@@ -90,3 +90,42 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
         p[f"b{i}"] = b.clone(); p[f"omegpi{i}"] = omegpi.clone()
         p[f"mm{i}"] = mm.clone(); p[f"nn{i}"] = nn.clone()
     return p
+
+
+def load_linacre_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
+                       device="cpu", dtype=None):
+    """Params Linacre par NŒUD (troncon) : lat/alti (uhrh.csv) + linacre.csv
+    (t_froid, t_chaud, albedo, COEFF MULTIPLICATIF OPTIMISATION = calage régional
+    d'ETP des plateformes LN24HA), agrégés UHRH→troncon pondérés par superficie."""
+    from pathlib import Path
+    dtype = dtype or torch.get_default_dtype()
+    proj = load_project(str(project_dir), sim_subdir)
+    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    uhrh = proj["uhrh"]
+    lin = {}
+    for ln in open(f"{project_dir}/{sim_subdir}/linacre.csv", encoding="latin-1").read().splitlines():
+        c = ln.split(";")
+        if len(c) >= 5 and c[0].strip().isdigit():
+            lin[int(c[0])] = [float(x) for x in c[1:5]]
+    cols = {k: [] for k in ("lat", "alti", "tf", "tc", "alb", "coeff")}
+    n_missing = 0
+    for tid in node_ids:
+        uids = [u for u in t2u.get(int(tid), []) if u in uhrh and u in lin]
+        if not uids:
+            n_missing += 1
+            cols["lat"].append(46.0); cols["alti"].append(200.0); cols["tf"].append(-10.0)
+            cols["tc"].append(20.0); cols["alb"].append(0.23); cols["coeff"].append(0.45)
+            continue
+        w = torch.tensor([max(uhrh[u]["area_km2"], 1e-9) for u in uids]); w = w / w.sum()
+        agg = lambda vals: float((w * torch.tensor(vals)).sum())
+        cols["lat"].append(agg([uhrh[u]["lat"] for u in uids]))
+        cols["alti"].append(agg([uhrh[u]["altitude"] for u in uids]))
+        cols["tf"].append(agg([lin[u][0] for u in uids]))
+        cols["tc"].append(agg([lin[u][1] for u in uids]))
+        cols["alb"].append(agg([lin[u][2] for u in uids]))
+        cols["coeff"].append(agg([lin[u][3] for u in uids]))
+    if n_missing:
+        print(f"[linacre] {n_missing}/{len(node_ids)} troncons sans UHRH -> défauts")
+    T = lambda k: torch.tensor(cols[k], dtype=dtype, device=device)
+    return T("lat"), T("alti"), T("tf"), T("tc"), T("alb"), T("coeff")

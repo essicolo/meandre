@@ -469,7 +469,26 @@ class HydrotelColumn(nn.Module):
         return taux * P, (1.0 - taux) * P   # pluie (SWE), neige (SWE)
 
     # ── ETP au choix ────────────────────────────────────────────────────
-    def _etp(self, tmin_j, tmax_j, Rn, u2, ea, lat, doy):
+    def set_linacre_params(self, lat, alti, t_froid, t_chaud, albedo, coeff):
+        """Params Linacre par nœud (agrégés UHRH→troncon depuis linacre.csv de la
+        plateforme régionale). coeff = COEFFICIENT MULTIPLICATIF OPTIMISATION =
+        le calage régional d'ETP des plateformes LN24HA (~0.4-0.5)."""
+        for nm, v in [("lin_lat", lat), ("lin_alti", alti), ("lin_tfroid", t_froid),
+                      ("lin_tchaud", t_chaud), ("lin_albedo", albedo), ("lin_coeff", coeff)]:
+            self.register_buffer(nm, torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
+
+    def _etp(self, tmin_j, tmax_j, Rn, u2, ea, lat, doy, couv=None, albn=None):
+        if self.et_mode == "linacre":
+            # clone fidèle linacre.cpp (validé à la décimale sur MONT 4780 UHRH) ;
+            # couv/albn = couvert nival + albédo du module neige interne.
+            from hydrotel_clone.linacre import linacre_etp
+            assert hasattr(self, "lin_coeff"), "et_mode=linacre : appeler set_linacre_params()"
+            z = torch.zeros_like(tmin_j)
+            return linacre_etp(tmin_j, tmax_j, self.lin_lat, self.lin_alti,
+                               couv if couv is not None else z,
+                               albn if albn is not None else z,
+                               t_froid=self.lin_tfroid, t_chaud=self.lin_tchaud,
+                               albedo=self.lin_albedo, coeff=self.lin_coeff)
         if self.et_mode == "mcguinness":
             return mcguinness_etp(tmin_j, tmax_j, lat, doy)
         if self.et_mode == "hydro_quebec":
@@ -551,7 +570,15 @@ class HydrotelColumn(nn.Module):
         # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
         # McGuinness et donne au NeRF un levier direct sur le volume (β).
         # K_c=1.0 par défaut si non fourni (chemins set_static hand-built).
-        etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * pe.get("K_c", 1.0)
+        if self.et_mode == "linacre":
+            # couvert nival agrégé (mm SWE) + albédo neige pondéré par classe
+            _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
+            _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
+                        * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
+            etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t,
+                            couv=_couv, albn=_albn) * pe.get("K_c", 1.0)
+        else:
+            etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * pe.get("K_c", 1.0)
 
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
         # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro

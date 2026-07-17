@@ -197,7 +197,7 @@ class HydroModel(nn.Module):
                 "a été retirée (nettoyage 2026-06-27). Utiliser column_mode='hydrotel'.")
         from meandre.vertical.hydrotel_column import HydrotelColumn
         self.vertical_column = HydrotelColumn(
-            et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman", "oudin") else "mcguinness"),
+            et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman", "oudin", "linacre") else "mcguinness"),
             use_frost=use_frost_rankinen,
             compile_soil=bool(compile_soil),
             compile_column=bool(compile_column),

@@ -524,6 +524,17 @@ if _kss != 1.0:
     model.spatial_encoder.forward = _se_ksat
     print(f"[recette] ksat_scale={_kss}")
 
+# ETP LINACRE ([et].mode = "linacre") : clone fidèle du modèle des 15 plateformes
+# LN24HA, avec le COEFF MULTIPLICATIF OPTIMISATION par UHRH (= calage régional ETP).
+# Requiert [et].linacre_project_dir = racine de la plateforme régionale.
+if cfg.get("et", {}).get("mode") == "linacre":
+    _lin_dir = cfg.get("et", {}).get("linacre_project_dir")
+    assert _lin_dir, "[et].mode=linacre exige [et].linacre_project_dir"
+    from meandre.data.hydrotel_calib import load_linacre_nodes
+    _lp = load_linacre_nodes(_lin_dir, node_ids, device=device)
+    model.vertical_column.set_linacre_params(*_lp)
+    print(f"[linacre] params régionaux chargés ({_lin_dir}) | coeff méd {float(_lp[5].median()):.3f}")
+
 # Ancrage Hydrotel (REPRODUCE) : remplace le sol NeRF/littérature par la
 # calibration Hydrotel par nœud (bv3c.csv + textures, agrégée UHRH→troncon).
 # Optionnel ([soil].hydrotel_calib_dir) — point de départ, retiré pour découpler.
