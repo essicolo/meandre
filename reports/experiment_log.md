@@ -196,3 +196,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Classement des membres INCOHÉRENT entre régions (MG24HI : 2e MONT, dernier SLSO) = équifinalité documentée, argument identifiabilité.
 - MG24HK MONT : bv3c z 0.10/0.55/1.00 (mince, réactif ; vs 0.22/0.16/2.65 LN), krec 5e-7, fonte 4/4/4 avec seuils 0.25/-1.75/-3.75, tassement 0.0054, McGuinness ×0.50.
 - Conséquence : la barre MONT = 0.758 ; candidat v8 = ancrage MG24HK (sol mince compatible colonne, + coeff McGuinness régional à câbler comme Linacre).
+
+## MONT v7 : fonte régionale = +0.07, v8 (fonte MG24HK) lancé, 2026-07-17
+- v7 (Linacre + fonte LN ancrée : taux 4.5/9/18, seuils +2.3/+1.9/+1.6) : held-out médian 0.592, pooled 0.767 (records méandre-MONT). La fonte à seuils était bien le verrou hiver/printemps (+0.072 vs v6).
+- Série pilotes MONT : v2 0.573 (melt NeRF) / v4 0.552 (+Budyko) / v5 0.535 (krigé : forçage réfuté) / v6 0.520 (+Linacre : beta 1.02 mais gamma 0.80) / v7 0.592 (+fonte régionale).
+- v8 = v7 avec fonte MG24HK (4/4/4, seuils 0.25/-1.75/-3.75, tassement 0.0054) = la fonte du membre champion (0.758).
