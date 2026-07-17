@@ -188,3 +188,11 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Held-out médian -0.31, beta 0.20 (80% de l'eau disparaît). load_calibrated_soil écrit/validé pour SLSO, branché sur MONT SANS validation isolée (entorse à la règle validate-before-integrate, la semaine même du rappel).
 - v4 (chaînée avec le même ancrage) tuée avant pollution ; relancée SANS ancrage = melt NeRF + volume Budyko seulement (ablation propre par-dessus v2).
 - TODO avant tout ré-essai d'ancrage : valider load_calibrated_soil(MONT) isolément (params chargés vs bv3c.csv lu à la main, bilan 1 an sur 10 UHRH vs sortie Hydrotel de la plateforme).
+
+## BENCHMARK CORRIGÉ — Hydrotel = ENSEMBLE de 6 calages (info Essi), 2026-07-17
+- LN24HA (Linacre) + 5 × MG24Hx (McGuinness). Même physique, calages différents = optima locaux.
+- MONT held-out : MG24HK 0.758 >> MG24HI 0.651 > LN 0.637 > MG24HS 0.634 > MG24HQ 0.622 > MG24HA 0.593. Dispersion 0.17.
+- SLSO held-out : méandre 0.689 BAT LES 6 (MG24HK 0.673, LN 0.666, ..., MG24HI 0.560). Claim phare renforcé.
+- Classement des membres INCOHÉRENT entre régions (MG24HI : 2e MONT, dernier SLSO) = équifinalité documentée, argument identifiabilité.
+- MG24HK MONT : bv3c z 0.10/0.55/1.00 (mince, réactif ; vs 0.22/0.16/2.65 LN), krec 5e-7, fonte 4/4/4 avec seuils 0.25/-1.75/-3.75, tassement 0.0054, McGuinness ×0.50.
+- Conséquence : la barre MONT = 0.758 ; candidat v8 = ancrage MG24HK (sol mince compatible colonne, + coeff McGuinness régional à câbler comme Linacre).
