@@ -213,3 +213,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Bénéfice accidentel : carte v4 complète 12 régions vs ensemble 6 membres (reports/quebec_v4_vs_ensemble.csv).
 - LECTURE MAJEURE : l'ensemble Hydrotel est FORT sur les grandes régions de l'est (SAGU 0.77-0.81, SLNO 0.79-0.82, OUTV 0.80-0.83, GASP 0.77-0.79) et FAIBLE sur SLSO/MONT où méandre gagne/rivalise. v4 uniforme y est ~0.2 dessous. méandre-v4 bat la médiane d'ensemble seulement 2/11 (LABI, CNDB).
 - Question décisive : modèle ou forçage (CaSR vs krigé dense) sur ces régions ? Tests v5-style (météo plateforme, fenêtre courte) lancés sur GASP et SAGU.
+
+## ATTRIBUTION EST (GASP/SAGU, tests krigés même fenêtre 2023-24), 2026-07-18
+- GASP : r 0.601→0.703 (+0.10) avec météo MELCCFP mais beta inchangé 0.81 → timing = FORÇAGE (CaSR pauvre à l'est), volume = MODÈLE (McGuinness sur-évaporant, ancrage Linacre pas encore appliqué hors MONT).
+- SAGU : +0.10 KGE avec krigé ; gamma 1.16-1.22 résiduel = régulation (Lac-Saint-Jean).
+- CONTRASTE avec MONT (krigé sans effet) : la valeur de la météo krigée dépend de la densité d'assimilation CaSR locale. À l'est, le forçage compte ; au sud, non.
+- SYNTHÈSE FLOTTE : recette = ancrages v7 partout (Linacre + fonte régionale) + choix forçage par région (CaSR corrigé au sud/centre, MELCCFP ou hybride à l'est) + z_n + quantile. Décisions Essi lundi.
