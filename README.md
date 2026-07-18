@@ -1,6 +1,6 @@
 # meandre
 
-> **Research prototype — not production-ready.** Active development happens on
+> **Research prototype: not production-ready.** Active development happens on
 > the [`dev`](../../tree/dev) branch; `main` is a periodic snapshot. Results
 > below are intermediate and evolve weekly.
 
