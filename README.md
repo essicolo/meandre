@@ -1,5 +1,9 @@
 # meandre
 
+> **Research prototype — not production-ready.** Active development happens on
+> the [`dev`](../../tree/dev) branch; `main` is a periodic snapshot. Results
+> below are intermediate and evolve weekly.
+
 Differentiable end-to-end hydrological model in PyTorch. Reimagines Hydrotel
 (INRS-ETE) as a fully differentiable spatio-temporal pipeline trained by
 gradient descent on observed streamflow, with a faithful clone of the Hydrotel
@@ -57,15 +61,43 @@ regional rankings are mutually inconsistent. meandre:
   diverges deliberately where it can do better (documented divergences:
   restituting aquifer, hillslope UH, learned lake routing).
 
-## Status (held-out 2022-2024, never seen in training or selection)
+## Intermediate results (held-out 2022-2024, never seen in training or selection)
 
-SLSO basin (2889 reaches, 30-38 stations), CaSR open forcing, PHYSITEL mesh:
+One year of the held-out period at a 2163 km² gauge (SLSO domain), probabilistic
+prediction with calibrated quantile intervals:
+
+![Hydrograph, held-out year 2023](docs/img/hydrograph-024014-2023.png)
+
+SLSO basin (2889 reaches, 30-38 stations), CaSR open forcing, PHYSITEL mesh,
+against the operational reference (an ensemble of 6 independent Hydrotel
+calibrations), on common stations and days:
 
 | Metric | meandre | Hydrotel ensemble (6 members) |
 |-----|-----|-----|
-| per-station median KGE | 0.689 | 0.560 – 0.673 (all 6 beaten) |
+| per-station median KGE | **0.689** | 0.560 – 0.673 (all 6 beaten) |
 | pooled KGE | 0.798 | — |
 | quantile cov_90 / cov_50 | 0.905 / 0.498 | point estimates only |
+
+Province-wide scale-up (15 PHYSITEL regions) is in progress; per-region
+held-out medians with the current uniform recipe, before regional anchoring
+(the pilot campaign lifted MONT from 0.52 to 0.59; anchors not yet fleet-wide):
+
+| Region (n gauges) | meandre | best Hydrotel member | ensemble median |
+|---|---|---|---|
+| LABI (1) | **0.79** | 0.74 | 0.65 |
+| CNDB (2) | **0.77** | 0.57 | 0.55 |
+| CNDD (1) | 0.64 | 0.72 | 0.69 |
+| MONT (23) | 0.59 | 0.76 | 0.64 |
+| SLNO (27) | 0.59 | 0.82 | 0.79 |
+| SAGU (20) | 0.52 | 0.81 | 0.77 |
+| OUTV (16) | 0.54 | 0.83 | 0.80 |
+| GASP (16) | 0.49 | 0.79 | 0.77 |
+
+The eastern gap is attributed (forcing timing where CaSR assimilates few
+stations + ETP model, both with validated fixes); the honest current picture
+is: meandre beats the full ensemble where it has been tuned end-to-end (SLSO),
+and the regional anchoring recipe to generalize this is under active pilot
+testing on `dev`.
 
 Quebec scale-up (15 PHYSITEL regions): infrastructure complete (regional
 DuckDB caches, CaSR tiles, corrected forcings, training queue, 6-member
