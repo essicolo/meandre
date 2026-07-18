@@ -1,60 +1,50 @@
 # Meandre — Model Architecture
 
-Two views of the model:
-- **Overview** (FR) — high-level dataflow for stakeholders / presentations
-- **Detailed** (EN) — module-level breakdown for developers
+Updated 2026-07-18. Reflects the current active pipeline: NeRF + z_n latents,
+faithful Hydrotel column (hydrotel_clone), operator routing, quantile head.
+Legacy modules (GRU temporal encoder, residual corrector, ParamNoise /
+Concrete Dropout) are retired and only mentioned for checkpoint compatibility.
 
-Both diagrams are Mermaid blocks: they render natively on GitHub, GitLab, and most Markdown viewers (VS Code requires the *Markdown Preview Mermaid Support* extension).
-
----
-
-## Overview / Vue d'ensemble
+## Overview
 
 ```mermaid
 flowchart LR
-    Met["<b>Météo</b><br/>P, T, radiation,<br/>vent, humidité"]:::input
-    Pay["<b>Paysage</b><br/>occupation du sol,<br/>pentes, aires"]:::input
-    Net["<b>Réseau</b><br/>topologie, lacs,<br/>tronçons"]:::input
-    Pre["<b>Prélèvements</b><br/>m³/s par tronçon"]:::input
-    Qobs["<b>Q_obs</b><br/>débits observés<br/>aux stations"]:::input
-    Aux["<b>Obs. auxiliaires</b><br/>ET (MODIS)<br/>TWS (GRACE)"]:::input
+    Met["<b>Météo</b><br/>CaSR v3.2 corrigé<br/>P, Tmin, Tmax, R_n, u2, e_a"]:::input
+    Pay["<b>Territoire</b><br/>16 attributs par nœud<br/>(PHYSITEL agrégé)"]:::input
+    Net["<b>Réseau</b><br/>tronçons, topologie, lacs"]:::input
+    Qobs["<b>Q_obs</b> (CEHQ/HYDAT)<br/>+ MODIS ET + GRACE TWS"]:::input
 
-    Pay --> SE["<b>Encodeur spatial</b><br/>NeRF Fourier<br/>→ 36 paramètres / tronçon"]:::neural
-    Met --> TE["<b>Encodeur temporel</b><br/>GRU<br/>→ contexte (16D)"]:::neural
+    Pay --> SE["<b>Encodeur spatial NeRF</b><br/>Fourier (haversine isotrope)<br/>+ z_n latents additifs<br/>→ 37 params / nœud"]:::neural
+    Met --> VC
 
-    subgraph VC["Colonne verticale (physique)"]
+    subgraph VC["Colonne Hydrotel (clone fidèle, hydrotel_clone/)"]
         direction TB
-        Snow["<b>Neige</b><br/>accumulation / fonte"]:::physics
-        ETm["<b>Évapotranspiration</b><br/>Penman-Monteith FAO-56"]:::physics
-        Sol["<b>Sol</b> (3 couches)<br/>van Genuchten + Darcy"]:::physics
-        Aqu["<b>Milieux humides + Aquifère</b><br/>réservoirs linéaires"]:::physics
-        Snow --> ETm --> Sol --> Aqu
+        Snow["<b>Neige</b> degré-jour modifié<br/>3 classes, cold content, albédo<br/>ancrage fonte régional + modulation NeRF"]:::physics
+        Frost["<b>Gel</b> (Rankinen)"]:::physics
+        ETm["<b>ETP</b> McGuinness | LINACRE régional<br/>(coeff optimisé par UHRH) | Penman | Oudin"]:::physics
+        Sol["<b>Sol BV3C2</b> (3 couches)<br/>validé à la décimale vs C++ 4.3.6"]:::physics
+        Aqu["<b>Milieu humide + Aquifère</b><br/>(aquifère restituant = divergence assumée)"]:::physics
+        UH["<b>UH de versant</b> (Nash, opt-in)"]:::physics
+        Snow --> Frost --> ETm --> Sol --> Aqu --> UH
     end
 
     SE --> VC
-    Met --> VC
-    VC --> Lat["<b>Apport latéral</b><br/>ruissellement + interflow<br/>+ débit de base"]:::flow
+    VC --> Lat["<b>Apport latéral</b>"]:::flow
+    Net --> Route
+    Lat --> Route
 
-    Net --> Topo["<b>Balayage topologique</b><br/>Kahn / scatter_add"]:::routing
-    Pre --> Wd["<b>Prélèvements / rejets</b><br/>net_W appliqué à Q"]:::routing
-    Lat --> Topo
-    Wd --> Topo
+    subgraph Route["Routage"]
+        direction TB
+        Musk["<b>Muskingum-Cunge</b><br/>mode opérateur (solve triangulaire,<br/>~25-30× plus rapide)"]:::routing
+        Lake["<b>Lacs</b> k/beta appris (NeRF)"]:::routing
+    end
 
-    Topo --> Musk["<b>Muskingum-Cunge</b><br/>rivières (K, x appris)"]:::routing
-    Topo --> Lake["<b>Module lac</b><br/>bilan + loi puissance"]:::routing
-    Topo --> Therm["<b>Thermie</b><br/>advection H = Q·T<br/>+ échange atmosphérique"]:::routing
+    Route --> Qsim["<b>Q_sim</b>(t, n)"]:::output
+    Qsim --> QH["<b>Tête quantile</b> K=6<br/>offsets depuis la médiane<br/>médiane = Q_sim (KGE préservé)"]:::neural
+    QH --> Qint["Intervalles calibrés<br/>cov_90 ≈ 0.90 held-out"]:::output
 
-    Musk --> Qsim["<b>Q_sim</b><br/>débit simulé (m³/s)"]:::output
-    Lake --> Qsim
-    Therm --> Teau["<b>T_eau</b><br/>température (°C)"]:::output
-
-    Qsim --> PH["<b>Tête probabiliste</b> (phase 2)<br/>ContextualQuantileHead<br/>K quantiles non-paramétriques<br/>médiane libre"]:::neural
-    SE --> PH
-    TE --> PH
-
-    PH --> Loss["<b>Fonction de perte</b><br/>phase 1 : KGE + log-MSE + PBIAS<br/>+ ET (MODIS) + TWS (GRACE) + bilan<br/>phase 2 : NLL ou quantile (CRPS)"]:::loss
+    Qsim --> Loss["<b>Loss</b><br/>MSE + log-MSE + PBIAS + pics<br/>+ w_et·MODIS + w_tws·GRACE<br/>+ prior anti-collapse (sur la MOYENNE)"]:::loss
     Qobs --> Loss
-    Aux --> Loss
 
     classDef input fill:#d5e8d4,stroke:#82b366
     classDef neural fill:#e1d5e7,stroke:#9673a6
@@ -65,198 +55,92 @@ flowchart LR
     classDef loss fill:#f8cecc,stroke:#b85450
 ```
 
----
+## Modules
 
-## Detailed architecture
+### Spatial encoder (`meandre/spatial/field_network.py`)
+* MLP with Fourier positional encoding; coordinates projected isotropically
+  (haversine) before encoding — the raw-degrees anisotropy caused the NeRF
+  collapse documented in June 2026.
+* Outputs 37 constrained parameters per node (sigmoid/softplus bounds), incl.
+  soil hydraulics, Muskingum K/x, melt factor C_f, K_c, lake k/beta.
+* `init_from_literature()` biases the output head toward public defaults
+  (Rawls 1982, Hock 2003, Chow 1959, FAO-56).
+* Optional per-node latent codes `z_n` (`use_latent_codes`, mode additive):
+  mixed-effects offsets with L2 shrinkage; the best held-out deterministic
+  recipe on SLSO.
+* Anti-collapse prior: L2 on the deviation of the parameter MEAN from its
+  literature target (per-parameter), never on per-node deviations (that
+  variant collapsed the field).
 
-```mermaid
-flowchart TB
-    %% ─── Inputs ─────────────────────────────────────────────
-    Forcing["<b>Forcing</b><br/>(T, N, 6)"]:::input
-    Coords["<b>Coords</b><br/>(N, 2)"]:::input
-    Terr["<b>Territorial</b><br/>(N, 17)"]:::input
-    Graph["<b>RiverGraph</b>"]:::input
-    State0["<b>Initial State</b><br/>(N, 9)"]:::input
-    Withdraw["<b>Withdrawals</b><br/>(T, N, 5)"]:::input
-    DOY["<b>Day of Year</b>"]:::input
-    Qobs["<b>Q_obs</b><br/>(T, n_stations)"]:::input
+### Hydrotel column (`meandre/vertical/hydrotel_column.py` + `hydrotel_clone/`)
+* Faithful ports from the C++ 4.3.6 source, each validated per-UHRH against
+  the binary: BV3C2 soil (RMSE ~1e-3 mm/day on 4780 MONT UHRH), snow
+  degree-day modified, Linacre ETP (exact), milieu humide isolé.
+* ET modes: `mcguinness` (default), `linacre` (regional: per-UHRH optimized
+  multiplier from the platform's `linacre.csv`, aggregated UHRH→troncon),
+  `penman`, `oudin`, `hydro_quebec`.
+* Melt: class melt factors; optional regional anchor
+  (`[snow].melt_project_dir`) loads calibrated rates AND thresholds from
+  `degre_jour_modifie.csv`; `spatial_melt` lets the NeRF C_f modulate the
+  anchored rates multiplicatively (clamped 0.15–1.8 around C_f/4.5).
+* Deliberate divergences from Hydrotel (documented, opt-in): restituting
+  aquifer (Hydrotel leaks recharge irreversibly), hillslope Nash UH,
+  VSA saturation runoff, phenology modulator (K_c via GDD).
 
-    %% ─── Spatial encoder ────────────────────────────────────
-    subgraph SE["<b>SpatialFieldNetwork</b>"]
-        direction TB
-        Fourier["Fourier encoding<br/>(lon, lat) → 26D"]:::neural
-        Concat["concat(enc, territorial)<br/>→ 43D"]:::hybrid
-        MLP["MLP fc1 → fc2 → fc_out<br/>43→256→256→36 (skip)"]:::neural
-        ParamNoise["<b>ParamNoise</b><br/>⚠ LEGACY — replaced by the<br/>predictive probabilistic head"]:::disabled
-        Constr["_apply_constraints<br/>scaled-tanh, log-normal"]:::neural
-        SP["<b>SpatialParams</b><br/>(N, 36)"]:::hybrid
+### Routing (`meandre/routing/`)
+* Muskingum-Cunge, K∈[4,48] h, x∈[0.01,0.49]; operator mode solves the
+  routing as a triangular system (epoch 17 min → 40 s) with validated
+  gradients; message passing follows the topological sort.
+* Lakes: learned k/beta per lake node (NeRF outputs); proven indispensable
+  (−0.21 KGE without).
+* Withdrawals injected per node when available (SLSO parquet; zeros elsewhere).
 
-        Fourier --> Concat --> MLP --> Constr --> SP
-        ParamNoise -.-> Constr
-    end
+### Probabilistic head (`meandre/utils/quantile_head.py`)
+* K=6 quantiles (0.05…0.95) as offsets from the median; median = Q_sim so the
+  deterministic skill is preserved by construction.
+* Trained with pinball loss on the FROZEN backbone (warm start, freeze_*),
+  `best_metric = "nll"`.
+* Held-out calibration on SLSO: cov_90 = 0.905, cov_50 = 0.498.
+* Supersedes the 2026-05 "Position B" stack (ParamNoise + Concrete Dropout,
+  deprecated) and the sigma noise head (whose coverage block in the held-out
+  report is obsolete in quantile mode — read the "quantile" lines).
 
-    %% ─── Temporal encoder ───────────────────────────────────
-    subgraph TE["<b>TemporalContextEncoder</b>"]
-        direction TB
-        TInputProj["input_proj 6→64<br/>+ DOY encoding"]:::neural
-        TGRU["GRU 64→64<br/>(Concrete Dropout — legacy)"]:::neural
-        TOut["LayerNorm + 64→16<br/>→ context (T, N, 16)"]:::neural
-        TInputProj --> TGRU --> TOut
-    end
+### Losses (`meandre/training/loss.py`)
+* Chunk-safe deterministic set: MSE + log-MSE + PBIAS (+ peak weighting).
+* Multi-objective: MODIS MOD16A2GF 8-day ET (`w_et`) and GRACE TWS monthly
+  anomalies (`w_tws`) — proven to de-collapse the vertical partition
+  (f_vert ×6-8) and lift val KGE.
+* Quantile: pinball on K quantiles (`nll_distribution = "quantile"`).
+* Timing-tolerant MSE available for experiments (NaN-safe).
 
-    Coords --> Fourier
-    Terr --> Concat
-    Forcing --> TInputProj
-    DOY --> TInputProj
+### Trainer (`meandre/training/trainer.py`)
+* TBPTT (365 d), chunked accumulation (180 d, 8 GB VRAM), divergence
+  rollback, warm spinup cache.
+* Autopilot: LR plateau cuts + smart restart (reload best + LR cut) gated on
+  regression AND beta/gamma drift.
+* Warm-start traps handled: `melt_factor_scale` is never re-applied on a
+  warm-started checkpoint (double application bug, fixed 2026-07-13).
 
-    %% ─── Vertical column (physics) ──────────────────────────
-    subgraph VC["<b>Vertical Column</b> (per timestep, vectorised over N)"]
-        direction TB
-        Enrich["Enriched forcing<br/>(N, 22)"]:::flow
-        Snow["<b>1. Snow</b><br/>rain/snow split, melt"]:::physics
-        Frost["<b>2. Frost</b><br/>K_sat × frost_factor"]:::physics
-        Inter["<b>3. Interception</b><br/>canopy → throughfall"]:::physics
-        ETm["<b>4. Evapotranspiration</b><br/>Penman-Monteith FAO-56"]:::physics
-        Sol["<b>5. Soil</b> (3 layers)<br/>van Genuchten + Darcy<br/>runoff / interflow / baseflow"]:::physics
-        Wet["<b>6. Wetland</b><br/>power-law"]:::physics
-        Aqu["<b>7. Aquifer</b><br/>linear reservoir"]:::physics
-        LatOut["<b>lateral_inflow</b><br/>(N,) mm/day"]:::flow
+## Regional anchoring (Quebec scale-up)
 
-        Enrich --> Snow --> Frost --> Inter --> ETm --> Sol --> Wet --> Aqu --> LatOut
-    end
+The Hydrotel operational reference is an ensemble of 6 calibrations (LN24HA
+Linacre + 5 MG24Hx McGuinness) sharing the same physics. Their regional skill
+rankings are mutually inconsistent (equifinality). What actually encodes the
+calibration:
 
-    SP --> VC
-    TOut -.-> Enrich
-
-    %% ─── State corrections ──────────────────────────────────
-    subgraph SC["<b>State Corrections</b>"]
-        Resid["<b>Residual Corrector</b><br/>GRU over state history<br/>state' = physics + gate·δ<br/>⚠ DISABLED — pending redesign"]:::disabled
-        Noise["<b>AR(1) State Noise</b><br/>η_t = ρ·η_{t-1} + σ·ε_t<br/>⚠ LEGACY — breaks mass conservation"]:::disabled
-    end
-    Sol -.-> Resid
-    Resid -.-> Sol
-
-    %% ─── Routing ────────────────────────────────────────────
-    LatOut --> Conv["mm/day → m³/s"]:::flow
-
-    subgraph RT["<b>Routing</b>"]
-        direction TB
-        Topo["<b>Topological sweep</b><br/>Kahn levels + scatter_add<br/>− net withdrawals"]:::routing
-        Musk["<b>Muskingum-Cunge</b><br/>rivers (K, x learned)"]:::routing
-        Lake["<b>Lake module</b><br/>power-law"]:::routing
-        TTA["<b>Travel-Time Attention</b><br/>⚠ DISABLED"]:::disabled
-        Therm["<b>Stream Temperature</b><br/>advection + atmospheric"]:::routing
-        Topo --> Musk
-        Topo --> Lake
-        Topo --> Therm
-        TTA -.-> Topo
-    end
-
-    Graph --> Topo
-    Withdraw --> Topo
-    Conv --> Topo
-
-    %% ─── Outputs + loss ─────────────────────────────────────
-    Musk --> Qsim["<b>Q_sim</b><br/>(T, N) m³/s"]:::output
-    Lake --> Qsim
-    Therm --> Twater["<b>T_water</b><br/>(T, N) °C"]:::output
-
-    %% ─── Probabilistic head (phase 2) ───────────────────────
-    subgraph PH["<b>Probabilistic Head</b> (phase 2 — frozen backbone)"]
-        direction TB
-        Noiseh["<b>SpatialNoiseHead</b> (legacy)<br/>log σ(t,n) = a(n) + b(n)·log|Q|<br/>Gaussian · Student-t · Box-Cox"]:::disabled
-        Quanth["<b>QuantileHead</b> (legacy)<br/>K monotone offsets from μ<br/>(median = μ; CRPS / pinball)"]:::disabled
-        CtxQ["<b>ContextualQuantileHead</b> ✅<br/>K=7 quantiles non-paramétriques<br/>médiane libre + features GRU<br/>δ²≤0.06, cov_90=0.90"]:::neural
-    end
-    SP --> PH
-    TOut --> PH
-    Qsim --> PH
-
-    Qsim --> Loss["<b>Loss</b><br/>skill scores + multi-obj + regularizers<br/>(see table below)"]:::loss
-    PH --> Loss
-    Qobs --> Loss
-    ETobs["<b>ET_obs</b><br/>(MODIS)"]:::input --> Loss
-    TWSobs["<b>TWS_obs</b><br/>(GRACE)"]:::input --> Loss
-
-    State0 --> VC
-
-    classDef input fill:#d5e8d4,stroke:#82b366
-    classDef neural fill:#f8cecc,stroke:#b85450
-    classDef hybrid fill:#e1d5e7,stroke:#9673a6
-    classDef physics fill:#b3d9ff,stroke:#6c8ebf
-    classDef flow fill:#dae8fc,stroke:#6c8ebf
-    classDef routing fill:#ffe6cc,stroke:#d79b00
-    classDef output fill:#d5e8d4,stroke:#82b366
-    classDef loss fill:#f8cecc,stroke:#b85450
-    classDef disabled fill:#eeeeee,stroke:#999999,stroke-dasharray:5 5,color:#666
-```
-
-**Other outputs** (not shown above to keep the diagram compact):
-- `final_state` — `HydroState (N, 9)` for warm restart
-- `diagnostics` — ETP, ETR, snowmelt, q_baseflow, q_upstream, T_water (per timestep)
-
----
-
-## Module status
-
-| Module | Status | Notes |
+| Piece | File in platform | Anchorable in meandre |
 |---|---|---|
-| Snow / Frost / Interception / ET / Soil / Wetland / Aquifer | ✅ Active | core physics chain |
-| Routing (Muskingum-Cunge, Lake, Stream Temperature) | ✅ Active | |
-| SpatialFieldNetwork (NeRF) | ✅ Active | Fourier + MLP → 36 params; constrained by ET/TWS multi-obj |
-| TemporalContextEncoder (GRU) | ✅ Active | Concrete Dropout now legacy (Position B) |
-| Probabilistic head (NoiseHead / QuantileHead) | ✅ Active | phase 2, frozen backbone — heteroscedastic σ or quantiles |
-| Multi-objective (MODIS ET, GRACE TWS) | ✅ Active | phase 1 — decollapses `f_vert`, identifiability |
-| Withdrawals | ✅ Active | rebuilt 2026-05-01 from `io-eau-meandre.parquet` |
-| Residual Corrector | ⚠️ **Disabled** | pending redesign — gate never trained, noise injection at activation |
-| Travel-Time Attention | ⚠️ **Disabled** | random-init weights crash forward; needs warmup gate |
-| ParamNoise (Position B) | ⚠️ **Legacy** | ensemble stack abandoned 2026-05-11 → predictive probabilistic head |
-| Concrete Dropout (Position B) | ⚠️ **Legacy** | idem |
-| AR(1) State Noise | ⚠️ **Legacy** | breaks mass conservation |
+| ETP multiplier (~0.4–0.5, per UHRH) | `linacre.csv` / `etp-mc-guiness.csv` | `[et].mode="linacre"` + `linacre_project_dir` |
+| Melt rates and thresholds | `degre_jour_modifie.csv` | `[snow].melt_project_dir` |
+| Soil (uniform in LN; member-specific in MG24HK) | `bv3c.csv` | `[soil].hydrotel_calib_dir` — DO NOT: freezing the soil field consistently breaks the model |
 
-## Probabilistic prediction (two-phase)
+Law of anchors (6 pilots, MONT): anchor scalar regional processes, keep the
+NeRF free on the fields it must learn.
 
-The ensemble-style "Position B" stack (ParamNoise + Concrete Dropout, sampled at inference) was **abandoned on 2026-05-11** in favour of a **predictive probabilistic head** trained in two phases:
+## Legacy (kept for checkpoint compatibility, inactive)
 
-1. **Phase 1 — backbone (deterministic, multi-objective).** Train physics + spatial/temporal encoders against discharge **and** auxiliary observations: MODIS ET (`w_et`) and GRACE TWS (`w_tws`). The multi-objective signal lifts the equifinality that otherwise collapses the deep-soil flux `f_vert`, restoring parameter identifiability.
-2. **Phase 2 — uncertainty (frozen backbone).** Freeze the backbone and train *only* a probabilistic head on top of `μ = Q_sim`:
-   - **`SpatialNoiseHead`** — per-node `log σ(t,n) = a(n) + b(n)·log(|Q|+ε)`, fit by heteroscedastic NLL (`w_nll`). Distribution selectable: Gaussian, **Student-t** (heavy tails, learned ν), Box-Cox or log-normal.
-   - **`QuantileHead`** — per-node monotone offsets `δ_τ` from the median (`μ`), so `q_τ = μ + δ_τ`; fit by pinball / CRPS (`w_quantile`). The median stays `= μ`, preserving the phase-1 KGE.
-
-## Loss components
-
-Weights are config-driven (TOML `[loss]`); below are representative values from the SLSO runs.
-
-**Phase 1 — backbone (`slso.toml` + multi-obj overrides):**
-
-| Term | Weight | Chunk-safe | Purpose |
-|---|---:|:---:|---|
-| `w_kge` | 1.0 | ⚠️ approx | targets β, r, γ directly |
-| `w_log_mse` | 0.3 | ✅ | baseflow emphasis |
-| `w_pbias` | 0.1 | ✅ | volumetric balance |
-| `w_mse` | 0.1 | ✅ | overall fit |
-| `w_et` | 0.1 | ✅ | MODIS ET match (multi-obj) |
-| `w_tws` | 0.3 | ✅ | GRACE TWS, z-scored (multi-obj) — drives `f_vert` |
-| `w_physics` | 0.01 | ✅ | water-balance closure (P − ET − Q − ΔS) |
-| `w_residual` | 0.01 | ✅ | L2 on corrector gate (kept small) |
-| `w_nse`, `w_log_nse`, `w_nrmse` | 0.0 | ❌ | NOT chunk-safe — disabled when chunk_steps > 0 |
-
-**Phase 2 — probabilistic (frozen backbone), pick one driver:**
-
-| Term | Weight | Purpose |
-|---|---:|---|
-| `w_nll` | 1.0 | heteroscedastic NLL (`nll_distribution` = normal / student-t / box-cox) |
-| `w_quantile` | 1.0 | multi-τ pinball / CRPS (alternative to NLL) |
-| `w_nll_et`, `w_nll_swe` | 0.0 | optional NLL on ET / SWE auxiliary channels |
-| `w_peak` | 0.0 | optional peak weighting (climatological Q_p75 threshold) |
-
-## Learned parameters summary
-
-- **SpatialFieldNetwork MLP** weights → 36 params per node (soil hydraulics ×12, snow ×3, ET ×2, routing ×2, etc.)
-- **TemporalContextEncoder** GRU + projections (Concrete Dropout `logit_p` — legacy)
-- **SpatialNoiseHead** per-node `(a, b)` MLP + `log_df` (ν, Student-t) *(phase 2)*
-- **QuantileHead** per-node `(a_τ, b_τ)` MLP *(phase 2)*
-- **ParamNoise** `log_sigma` per param *(legacy)*
-- **StateResidualCorrector** GRU + gate logits *(disabled)*
-- **TravelTimeAttention** Q/K/V projections *(disabled)*
-- **CorrelatedStateNoise** ρ, σ per state variable *(legacy)*
+* GRU temporal encoder (removed 2026-06-09; inert on the physics path).
+* Residual corrector (disabled; pending redesign).
+* ParamNoise / Concrete Dropout / sigma noise head (superseded by the
+  quantile head).
+* Travel-time attention (off).
