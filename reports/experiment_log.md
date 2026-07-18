@@ -207,3 +207,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - v9 (v7 + sol MG24HK gelé) : 0.125/0.372 — ÉCHEC SÉVÈRE. Confirmé avec v3 : GELER le sol tue méandre, quel que soit le sol (profond LN ou mince MG24HK). Le NeRF compense par le sol les divergences structurelles assumées de la colonne (aquifère restituant, UH versant, etc.) ; le priver de ce levier casse l'équilibre.
 - LOI DES ANCRAGES (3 succès, 3 échecs) : ancrer les PROCESSUS scalaires régionaux (ETP Linacre + coeff, fonte taux/seuils) = OUI ; geler les CHAMPS que le NeRF doit apprendre (sol) = NON.
 - RECETTE FINALE MONT (v7) : sol NeRF libre + Linacre régional + fonte régionale LN + fonte NeRF (modulation) + volume bilan → 0.592/0.767 (vs 0.520 départ, LN24HA 0.637, MG24HK 0.758).
+
+## AVEU + CARTE v4 : la flotte n'avait JAMAIS été arrêtée, 2026-07-18
+- Le kill du 07-16 a tué le python courant mais PAS la boucle bash _fleet_v4 (survivante invisible à mon ps). La flotte a tourné 2 jours en contention avec les pilotes et a fini le 07-18 04:18. J'avais annoncé son arrêt à Essi : faux. Leçon : VÉRIFIER la mort du parent (boucle), pas seulement de l'enfant.
+- Bénéfice accidentel : carte v4 complète 12 régions vs ensemble 6 membres (reports/quebec_v4_vs_ensemble.csv).
+- LECTURE MAJEURE : l'ensemble Hydrotel est FORT sur les grandes régions de l'est (SAGU 0.77-0.81, SLNO 0.79-0.82, OUTV 0.80-0.83, GASP 0.77-0.79) et FAIBLE sur SLSO/MONT où méandre gagne/rivalise. v4 uniforme y est ~0.2 dessous. méandre-v4 bat la médiane d'ensemble seulement 2/11 (LABI, CNDB).
+- Question décisive : modèle ou forçage (CaSR vs krigé dense) sur ces régions ? Tests v5-style (météo plateforme, fenêtre courte) lancés sur GASP et SAGU.
