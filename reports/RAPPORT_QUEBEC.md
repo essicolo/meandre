@@ -44,6 +44,12 @@ Sol NeRF libre + z_n + ETP Linacre régionale (clone validé, coeff par nœud) +
 
 Attendu : les régions type SLSO restent au-dessus de l'ensemble ; les régions type MONT remontent fortement (0.52 → 0.59 démontré) sans encore battre le meilleur membre local ; les régions pauvres en jauges (CND, LABI) profitent des ancrages mais l'entraînement conjoint multi-régions reste LE chantier structurel pour elles.
 
+## 5bis. Carte v4 complète et attribution est (ajout 2026-07-18)
+
+La flotte v4 (dont l'arrêt du 16 a échoué, boucle bash survivante, avoué dans experiment_log) a fini par produire la carte complète. méandre-v4 uniforme bat la médiane de l'ensemble sur 2/11 régions seulement (LABI 0.79, CNDB 0.77) ; l'ensemble Hydrotel est fort à l'est (SAGU/SLNO/OUTV/GASP 0.77-0.80) là où v4 plafonne à 0.49-0.59. Détail : reports/quebec_v4_vs_ensemble.csv.
+
+Tests d'attribution (météo MELCCFP vs CaSR, même fenêtre) : à l'est le timing est FORÇAGE (GASP r +0.10 avec le krigé; CaSR assimile peu là-bas) et le volume est MODÈLE (β 0.81 même en météo parfaite = McGuinness sur-évaporant, l'ancrage Linacre n'y a pas encore été appliqué). SAGU garde un γ 1.2 de régulation (Lac-Saint-Jean). Au sud (MONT), le krigé n'apportait rien. La recette de flotte du point 5 reste valide, plus un choix de forçage PAR RÉGION (CaSR corrigé au sud/centre, MELCCFP ou hybride à l'est).
+
 ## 6. Restes ouverts
 
 - r hiver résiduel MONT (0.59 vs 0.75 du meilleur membre) : après ETP et fonte, le prochain suspect est l'acheminement hiver/glace et le tassement du couvert. Non traité cette semaine.
