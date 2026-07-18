@@ -201,3 +201,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - v7 (Linacre + fonte LN ancrée : taux 4.5/9/18, seuils +2.3/+1.9/+1.6) : held-out médian 0.592, pooled 0.767 (records méandre-MONT). La fonte à seuils était bien le verrou hiver/printemps (+0.072 vs v6).
 - Série pilotes MONT : v2 0.573 (melt NeRF) / v4 0.552 (+Budyko) / v5 0.535 (krigé : forçage réfuté) / v6 0.520 (+Linacre : beta 1.02 mais gamma 0.80) / v7 0.592 (+fonte régionale).
 - v8 = v7 avec fonte MG24HK (4/4/4, seuils 0.25/-1.75/-3.75, tassement 0.0054) = la fonte du membre champion (0.758).
+
+## Fin de la série pilotes MONT : v8 et v9 REJETS, recette finale = v7, 2026-07-17
+- v8 (fonte MG24HK seule sur base v7) : 0.532/0.712 — RECUL vs v7. Le calage d'un membre est un PAQUET cohérent, une pièce isolée ne se greffe pas.
+- v9 (v7 + sol MG24HK gelé) : 0.125/0.372 — ÉCHEC SÉVÈRE. Confirmé avec v3 : GELER le sol tue méandre, quel que soit le sol (profond LN ou mince MG24HK). Le NeRF compense par le sol les divergences structurelles assumées de la colonne (aquifère restituant, UH versant, etc.) ; le priver de ce levier casse l'équilibre.
+- LOI DES ANCRAGES (3 succès, 3 échecs) : ancrer les PROCESSUS scalaires régionaux (ETP Linacre + coeff, fonte taux/seuils) = OUI ; geler les CHAMPS que le NeRF doit apprendre (sol) = NON.
+- RECETTE FINALE MONT (v7) : sol NeRF libre + Linacre régional + fonte régionale LN + fonte NeRF (modulation) + volume bilan → 0.592/0.767 (vs 0.520 départ, LN24HA 0.637, MG24HK 0.758).
