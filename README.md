@@ -41,16 +41,15 @@ model generalises geographically. Per-node additive latent codes (`z_n`,
 mixed-effects style with L2 shrinkage) capture station-specific corrections in
 parameter space.
 
-→ See [`docs/architecture.md`](docs/architecture.md) for the module-level breakdown.
+-> See [`docs/architecture.md`](docs/architecture.md) for the module-level breakdown.
 
 ## Why
 
 Operational hydrological models in Quebec require manual calibration per
 region and produce point estimates. The operational reference is in fact an
-ensemble of 6 equifinal Hydrotel calibrations (LN24HA + 5 × MG24Hx) whose
-regional rankings are mutually inconsistent. meandre:
+ensemble of 6 equifinal Hydrotel calibrations whose regional rankings are mutually inconsistent. meandre:
 
-* Calibrates by gradient descent — hours on a single 8 GB GPU.
+* Calibrates by gradient descent: hours on a single 8 GB GPU.
 * Learns a continuum of parameters instead of N discrete calibrations
   (identifiability instead of equifinality).
 * Quantifies uncertainty with a quantile head (pinball loss, K=6 quantiles
@@ -68,14 +67,13 @@ prediction with calibrated quantile intervals:
 
 ![Hydrograph, held-out year 2023](docs/img/hydrograph-024014-2023.png)
 
-SLSO basin (2889 reaches, 30-38 stations), CaSR open forcing, PHYSITEL mesh,
-against the operational reference (an ensemble of 6 independent Hydrotel
+SLSO basin (2889 reaches, 30-38 stations), CaSR open forcing, PHYSITEL mesh (reproductible mesh production is in progress), against the operational reference (an ensemble of 6 independent Hydrotel
 calibrations), on common stations and days:
 
 | Metric | meandre | Hydrotel ensemble (6 members) |
 |-----|-----|-----|
 | per-station median KGE | **0.689** | 0.560 – 0.673 (all 6 beaten) |
-| pooled KGE | 0.798 | — |
+| pooled KGE | 0.798 | - |
 | quantile cov_90 / cov_50 | 0.905 / 0.498 | point estimates only |
 
 Province-wide scale-up (15 PHYSITEL regions) is in progress; per-region
@@ -113,10 +111,10 @@ east-of-province gap is part forcing (CaSR assimilation density), part model.
 Canonical forcing is CaSR v3.2 (ECCC open reanalysis), self-corrected with no
 third-party product:
 
-1. Timing — hourly precipitation aggregated on the local day (UTC-5) to match
+1. Timing: hourly precipitation aggregated on the local day (UTC-5) to match
    gauge days.
-2. Distribution — hourly de-drizzle (< 0.3 mm/h removed).
-3. Volume — annual total anchored on the regional water balance
+2. Distribution: hourly de-drizzle (< 0.3 mm/h removed).
+3. Volume: annual total anchored on the regional water balance
    (observed runoff + regional ETP model).
 
 Scripts: `.runs/slso/build_casr_corrected.py` (SLSO),
@@ -131,7 +129,7 @@ meandre/
                 Hydrotel regional calibration loaders (soil / Linacre / melt),
                 MODIS, GRACE, HYDAT/CEHQ, withdrawals
   spatial/      NeRF field network, Fourier encoding, latent codes z_n
-  temporal/     (legacy) GRU context encoder — removed from the active model
+  temporal/     (legacy) GRU context encoder: removed from the active model
   vertical/     HydrotelColumn (orchestrates the hydrotel_clone physics),
                 spatial melt modulation, ET modes
   routing/      RiverGraph, Muskingum-Cunge (operator mode), lakes,
@@ -182,23 +180,23 @@ an empty one is accepted).
 
 ## Configuration (TOML per case)
 
-* `[paths]` — basin DuckDB, forcing cache, checkpoint, outputs
-* `[temporal]` — strict train / dev / test split (test never touches selection)
-* `[model]` — `use_latent_codes` (z_n), `spatial_melt` (NeRF C_f modulates
+* `[paths]ˋ: basin DuckDB, forcing cache, checkpoint, outputs
+* `[temporal]`: strict train / dev / test split (test never touches selection)
+* `[model]`: `use_latent_codes` (z_n), `spatial_melt` (NeRF C_f modulates
   melt), `melt_factor_scale` (legacy scalar recipe, ignored when warm-starting
   or when `spatial_melt` is on), lakes, routing mode
-* `[et]` — `mode` (`mcguinness` | `linacre` | `penman` | `oudin` |
+* `[et]`: `mode` (`mcguinness` | `linacre` | `penman` | `oudin` |
   `hydro_quebec`); `linacre` requires `linacre_project_dir` (regional platform,
   loads the per-UHRH optimized ETP multiplier)
-* `[snow]` — `melt_project_dir`: anchor melt rates AND thresholds on the
+* `[snow]`: `melt_project_dir`: anchor melt rates AND thresholds on the
   regional Hydrotel calibration (degre_jour_modifie.csv)
-* `[soil]` — `hydrotel_calib_dir` anchors the soil on a platform calibration.
+* `[soil]`: `hydrotel_calib_dir` anchors the soil on a platform calibration.
   Warning: freezing the soil field has systematically degraded results
   (see reports/experiment_log.md, "loi des ancrages")
-* `[training]` — lr, epochs, chunk_steps, tbptt, `best_metric`
+* `[training]`: lr, epochs, chunk_steps, tbptt, `best_metric`
   (kge_median recommended; `nll` = pinball in quantile mode), warm_start,
   freeze_* for head-only training, autopilot
-* `[loss]` — MSE/log-MSE/PBIAS/peak weights, `w_et`/`w_tws` (MODIS/GRACE
+* `[loss]`: MSE/log-MSE/PBIAS/peak weights, `w_et`/`w_tws` (MODIS/GRACE
   multi-objective), `nll_distribution = "quantile"` + `quantile_taus`
 
 ## Key design rules (learned the hard way)
@@ -227,9 +225,3 @@ an empty one is accepted).
 * Withdrawals parquet is SLSO-only (zeros elsewhere).
 * The GRU temporal encoder and the residual corrector are inactive in the
   current model (kept for checkpoint compatibility).
-
-## Citation / context
-
-Builds on Hydrotel (Fortin et al., INRS-ETE; C++ 4.3.6) and the
-neural-physics hybrid literature. Forcing: CaSR v3.2 (ECCC). Multi-objective
-observations: MOD16A2GF ET, GRACE mascons.
