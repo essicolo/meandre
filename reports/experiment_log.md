@@ -219,3 +219,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - SAGU : +0.10 KGE avec krigé ; gamma 1.16-1.22 résiduel = régulation (Lac-Saint-Jean).
 - CONTRASTE avec MONT (krigé sans effet) : la valeur de la météo krigée dépend de la densité d'assimilation CaSR locale. À l'est, le forçage compte ; au sud, non.
 - SYNTHÈSE FLOTTE : recette = ancrages v7 partout (Linacre + fonte régionale) + choix forçage par région (CaSR corrigé au sud/centre, MELCCFP ou hybride à l'est) + z_n + quantile. Décisions Essi lundi.
+
+## Pilotes v7 est : GASP +0.088, SAGU leçon point-fixe, 2026-07-18/19
+- GASP-v7 (Linacre+fonte+VOL régionaux) : held-out 0.577 vs v4 0.489 (+0.088). beta 0.81→1.03. Recette CONFIRMÉE sur l'est naturel ; reste = plafond forçage (r 0.70).
+- SAGU-v7 : RÉGRESSION 0.524→0.449, beta 0.999→1.19. Cause : VOL = lame + ETP_Linacre suppose ETR≈ETP ; sur boréal humide l'ETR simulée (236) << ETP (359). L'ancrage volume est un POINT FIXE : itérer une fois avec l'ETR simulée (VOL 1037→914). sagu-v7b lancé.
+- Règle de flotte : VOL_région = lame + ETR_sim (une itération après le premier run), pas lame + ETP.
