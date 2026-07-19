@@ -50,6 +50,16 @@ La flotte v4 (dont l'arrêt du 16 a échoué, boucle bash survivante, avoué dan
 
 Tests d'attribution (météo MELCCFP vs CaSR, même fenêtre) : à l'est le timing est FORÇAGE (GASP r +0.10 avec le krigé; CaSR assimile peu là-bas) et le volume est MODÈLE (β 0.81 même en météo parfaite = McGuinness sur-évaporant, l'ancrage Linacre n'y a pas encore été appliqué). SAGU garde un γ 1.2 de régulation (Lac-Saint-Jean). Au sud (MONT), le krigé n'apportait rien. La recette de flotte du point 5 reste valide, plus un choix de forçage PAR RÉGION (CaSR corrigé au sud/centre, MELCCFP ou hybride à l'est).
 
+## 5ter. Verdict final des pilotes (2026-07-19)
+
+| pilote | v4 (uniforme) | v7 (ancrages régionaux) | verdict |
+|---|---|---|---|
+| MONT (agricole sud, 23 j.) | 0.552 | 0.592 | v7 |
+| GASP (montagneux est, 16 j.) | 0.489 | 0.577 | v7 |
+| SAGU (boréal régulé, 20 j.) | 0.524 | 0.449 (v7b volume corrigé : 0.389, r chute) | v4 |
+
+Trois conclusions fermes : les ancrages régionaux (ETP Linacre + fonte à seuils) gagnent sur le sud et l'est naturels ; ils NUISENT au boréal régulé (seuils de fonte du calage sud inadaptés au manteau profond, régulation non modélisée) ; l'ancrage volume par point fixe (lame + ETR simulée, une itération) fonctionne partout et entre dans la recette. La flotte proposée est donc PAR CLASSE de région : v7 pour le sud et l'est naturels, v4 pour le boréal et le régulé en attendant le module barrages et l'entraînement conjoint. Décision à prendre ensemble avant lancement.
+
 ## 6. Restes ouverts
 
 - r hiver résiduel MONT (0.59 vs 0.75 du meilleur membre) : après ETP et fonte, le prochain suspect est l'acheminement hiver/glace et le tassement du couvert. Non traité cette semaine.
