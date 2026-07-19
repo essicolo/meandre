@@ -1,4 +1,4 @@
-# Meandre — Model Architecture
+# Meandre: Model Architecture
 
 Updated 2026-07-18. Reflects the current active pipeline: NeRF + z_n latents,
 faithful Hydrotel column (hydrotel_clone), operator routing, quantile head.
@@ -59,7 +59,7 @@ flowchart LR
 
 ### Spatial encoder (`meandre/spatial/field_network.py`)
 * MLP with Fourier positional encoding; coordinates projected isotropically
-  (haversine) before encoding — the raw-degrees anisotropy caused the NeRF
+  (haversine) before encoding: the raw-degrees anisotropy caused the NeRF
   collapse documented in June 2026.
 * Outputs 37 constrained parameters per node (sigmoid/softplus bounds), incl.
   soil hydraulics, Muskingum K/x, melt factor C_f, K_c, lake k/beta.
