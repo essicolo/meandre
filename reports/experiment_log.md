@@ -224,3 +224,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - GASP-v7 (Linacre+fonte+VOL régionaux) : held-out 0.577 vs v4 0.489 (+0.088). beta 0.81→1.03. Recette CONFIRMÉE sur l'est naturel ; reste = plafond forçage (r 0.70).
 - SAGU-v7 : RÉGRESSION 0.524→0.449, beta 0.999→1.19. Cause : VOL = lame + ETP_Linacre suppose ETR≈ETP ; sur boréal humide l'ETR simulée (236) << ETP (359). L'ancrage volume est un POINT FIXE : itérer une fois avec l'ETR simulée (VOL 1037→914). sagu-v7b lancé.
 - Règle de flotte : VOL_région = lame + ETR_sim (une itération après le premier run), pas lame + ETP.
+
+## SAGU-v7b : volume réglé (point fixe OK, beta 1.037) mais ancrages nuisibles au boréal, 2026-07-19
+- v7b : beta 1.19→1.037 (l'itération ETR simulée FONCTIONNE) mais r 0.578→0.500, gamma 0.73. Le KGE chute à 0.389.
+- Cause : les ancrages LN (seuils fonte +2.3°C, ETP Linacre basse) sont calés pour le sud ; sur le manteau boréal profond du Saguenay ils déforment le freshet. Réseau régulé (Lac-Saint-Jean) amplifie.
+- VERDICT FINAL PILOTES : recette v7 (ancrages régionaux) validée sur MONT (+0.04) et GASP (+0.088) ; v4 (McGuinness+Budyko) reste meilleure sur SAGU (0.524). Les ancrages ne sont PAS universels : par CLASSE de région (sud/est naturel = v7 ; boréal/régulé = v4 en attendant barrages + entraînement conjoint).
+- Le point fixe volume (VOL = lame + ETR_sim, une itération) est validé comme mécanisme et entre dans la recette de flotte.
