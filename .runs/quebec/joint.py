@@ -32,6 +32,7 @@ from joint_data import load_region
 REGIONS = [a.lower() for a in sys.argv[1:]] or ["slso", "mont", "gasp"]
 TAG = os.environ.get("JOINT_TAG", "pilote3")
 N_EPOCHS = int(os.environ.get("JOINT_EPOCHS", "30"))
+LR_OVERRIDE = float(os.environ.get("JOINT_LR", "0"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"   # source des poids loss + hyperparams
 CKPT = f".runs/quebec/checkpoints/best-joint-{TAG}.pt"
@@ -75,7 +76,7 @@ print(f"[joint] modèle partagé : {sum(p.numel() for p in model.parameters()):,
 # ── trainers régionaux (modèle + optimiseur partagés) ───────────────────────
 tconf = TrainingConfig(
     n_epochs=N_EPOCHS,
-    lr=float(tcfg.get("lr", 5e-4)),
+    lr=LR_OVERRIDE if LR_OVERRIDE > 0 else float(tcfg.get("lr", 5e-4)),
     chunk_steps=int(tcfg.get("chunk_steps", 180)),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
     grad_clip=float(tcfg.get("clip_grad_norm", 1.0)),
@@ -99,6 +100,7 @@ def set_region(i):
 # ── boucle conjointe ─────────────────────────────────────────────────────────
 os.makedirs(".runs/quebec/checkpoints", exist_ok=True)
 best_agg = -9e9
+rollbacks = 0
 rng = random.Random(0)
 for epoch in range(N_EPOCHS):
     order = list(range(len(regions))); rng.shuffle(order)
@@ -122,6 +124,14 @@ for epoch in range(N_EPOCHS):
         best_agg = agg
         model.save(CKPT)
         marker = " -> best"
+    # GARDE-FOU divergence (leçon pilote3 : effondrement epoch 7 sans retour) :
+    # régression > 20% sous le best -> recharge best + LR/2, max 3 fois.
+    elif best_agg > 0 and agg < 0.8 * best_agg and rollbacks < 3 and os.path.exists(CKPT):
+        rollbacks += 1
+        model.load(CKPT)
+        for g in shared_opt.param_groups:
+            g["lr"] *= 0.5
+        marker = f" -> ROLLBACK {rollbacks}/3 (LR/2)"
     print(f"[joint] epoch {epoch:3d} | agrégé {agg:.4f} | " + " | ".join(parts) + marker, flush=True)
 
 # ── held-out 2022-2024 par région (best checkpoint) ─────────────────────────
