@@ -474,7 +474,11 @@ class SpatialFieldNetwork(nn.Module):
             if self.use_latent_codes and self.latent_mode == "additive":
                 # Effet aléatoire : offset par nœud sur les params BRUTS (avant
                 # contraintes). raw = effet_fixe(features) + effet_aléatoire(z_n).
-                raw = raw + self.latent_codes
+                # CONJOINT multi-régions : latent_codes est dimensionné sur le
+                # TOTAL des nœuds ; latent_offset (défaut 0) sélectionne la
+                # tranche de la région courante.
+                off = int(getattr(self, "latent_offset", 0))
+                raw = raw + self.latent_codes[off:off + raw.shape[0]]
 
         return self._apply_constraints(raw)
 

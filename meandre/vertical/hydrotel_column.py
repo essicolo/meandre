@@ -535,7 +535,10 @@ class HydrotelColumn(nn.Module):
     def _pheno_tensors(self, classes, ref):
         """Cache les breakpoints phénologie (jbp/leaf/root) en tenseurs au device/
         dtype de ref, construits une seule fois. Évite numpy + alloc par pas."""
-        key = (ref.device, ref.dtype)
+        # n_nodes dans la clé : en entraînement CONJOINT multi-régions, la même
+        # colonne sert plusieurs régions — sans ça, la cache resservait les pct
+        # de la région précédente (mismatch de tailles).
+        key = (ref.device, ref.dtype, int(ref.shape[0]))
         if getattr(self, "_pheno_cache_key", None) != key:
             T = lambda v: torch.as_tensor(v, dtype=ref.dtype, device=ref.device)
             self._pheno_cache = [(pct, T(jbp), T(leaf_bp), T(root_bp))
