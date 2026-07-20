@@ -230,3 +230,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Cause : les ancrages LN (seuils fonte +2.3°C, ETP Linacre basse) sont calés pour le sud ; sur le manteau boréal profond du Saguenay ils déforment le freshet. Réseau régulé (Lac-Saint-Jean) amplifie.
 - VERDICT FINAL PILOTES : recette v7 (ancrages régionaux) validée sur MONT (+0.04) et GASP (+0.088) ; v4 (McGuinness+Budyko) reste meilleure sur SAGU (0.524). Les ancrages ne sont PAS universels : par CLASSE de région (sud/est naturel = v7 ; boréal/régulé = v4 en attendant barrages + entraînement conjoint).
 - Le point fixe volume (VOL = lame + ETR_sim, une itération) est validé comme mécanisme et entre dans la recette de flotte.
+
+## FONDATIONS DONNÉES ASSAINIES (audit Essi "échecs silencieux STAC"), 2026-07-19
+- Instinct d'Essi confirmé 5 fois : ET annuelle (26 valeurs) déguisée en 8-jours dans TOUTES les bases régionales (chemin Planetary Computer = MOD16A3GF annuel, cap structurel) ; token Earthdata expiré depuis le 10 juin (fichier ~/.edl_token ET var d'env EARTHDATA_TOKEN qui le court-circuitait) ; C: plein à 100% ; pyhdf sans DLL Windows (ET8 = WSL only) ; DNS WSL flaky (retry ×3 nécessaire).
+- Résultat : 15/15 bases COMPLÈTES — ET8 MOD16A2GF 1150 composites partout (~30M obs valides), GRACE partout, 100% des nœuds terrestres (les nœuds sans ET = eau libre, vérifié contre f_water/lake_fraction).
+- Critère de complétude corrigé : couverture des nœuds TERRESTRES (MOD16 n'existe pas sur l'eau).
+- Toute la flotte v1-v7 avait tourné avec un multi-obj quasi vide (26 obs annuelles/nœud au lieu de 1150) : les résultats régionaux sont à réinterpréter, le conjoint partira sur des données saines.
+- Ops : tuiles CaSR consolidées sur D: (799), fields archivés, 18 Go libérés sur C:.
