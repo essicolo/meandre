@@ -603,9 +603,10 @@ class HydrotelColumn(nn.Module):
         # McGuinness et donne au NeRF un levier direct sur le volume (β).
         # K_c=1.0 par défaut si non fourni (chemins set_static hand-built).
         if etp_ext is not None:
-            # module ET appris : demande déjà en mm/j, PAS de K_c (double comptage —
-            # le module prédit l'ETR MOD16, le NeRF garde le sol comme levier).
-            etp = torch.clamp(etp_ext, min=0.0)
+            # module ET appris : demande en mm/j × K_c NeRF (correction de biais par nœud —
+            # MOD16 biaise +15-30 % à l'est vs bilan P-Q, et sans multiplicateur le modèle
+            # n'a AUCUN levier de volume : beta cloué 0.807, run gasp-etl 2026-07-21).
+            etp = torch.clamp(etp_ext, min=0.0) * pe.get("K_c", 1.0)
         elif self.et_mode == "linacre":
             # couvert nival agrégé (mm SWE) + albédo neige pondéré par classe
             _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)

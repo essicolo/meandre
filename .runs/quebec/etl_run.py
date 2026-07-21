@@ -32,7 +32,12 @@ CKPT = f".runs/quebec/checkpoints/best-{REG}-etl.pt"
 ETB = "D:/meandre-data/quebec/checkpoints-etbench"
 
 cfg = tomllib.load(open(BASE_CFG, "rb"))
-lcfg = cfg["loss"]; tcfg = cfg["training"]; mcfg = cfg["model"]
+lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
+if "ETL_WET" in os.environ:
+    # mode appris : w_et(MOD16) est un DOUBLE ancrage (le module encode déjà MOD16,
+    # biaisé +15-30 % à l'est vs bilan) — il poussait K_c à 1.07 malgré beta 0.78 (etl2)
+    lcfg["w_et"] = float(os.environ["ETL_WET"])
+    print(f"[etl] w_et override = {lcfg['w_et']}")
 
 r = load_region(REG, lcfg, device=DEVICE)
 td, vd = r["train_data"], r["val_data"]
@@ -108,9 +113,11 @@ model = HydroModel(
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     compile_soil=bool(mcfg.get("compile_soil", True)),
 ).to(DEVICE)
-model.spatial_encoder.init_from_literature(cfg.get("literature_prior"))
+lp = dict(cfg.get("literature_prior") or {})
+lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande apprise, départ neutre
+model.spatial_encoder.init_from_literature(lp)
 model.vertical_column.etp_channel = 6
-print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (module appris, K_c bypassé)")
+print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (demande apprise × K_c NeRF, init 1.0)")
 
 tconf = TrainingConfig(
     n_epochs=N_EPOCHS,
