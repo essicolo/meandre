@@ -129,6 +129,11 @@ for r in train_regs:
 _s = torch.cat(_s).reshape(-1, 6)
 M_MEAN, M_STD = _s.mean(0), _s.std(0) + 1e-6
 del _s
+os.makedirs(CKPT, exist_ok=True)
+torch.save({"mean": M_MEAN, "std": M_STD, "columns": cols0, "h_hist": H_HIST, "h_comp": H_COMP},
+           f"{CKPT}/norm.pt")
+if os.environ.get("ET_STATS_ONLY", "0") == "1":
+    print(f"[banc] stats normalisation -> {CKPT}/norm.pt"); sys.exit(0)
 
 
 class GruET(nn.Module):

@@ -432,8 +432,13 @@ class HydrotelColumn(nn.Module):
         sw_in = enriched[:, self.sw_channel] if self.sw_channel is not None else None
         # Hortonien sous-journalier : durée effective d'orage DT_eff = canal (index storm_channel).
         storm_hours = enriched[:, self.storm_channel] if self.storm_channel is not None else None
+        # ET APPRIS (design_et_appris.md étape 2) : demande évaporative précalculée par le
+        # module supervisé MOD16, injectée comme canal de forçage. Remplace formule ETP × K_c ;
+        # l'extraction par couche et les scaling factors restent intacts (conservation).
+        etp_ext = enriched[:, self.etp_channel] if getattr(self, "etp_channel", None) is not None else None
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
-                                     doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours)
+                                     doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours,
+                                     etp_ext=etp_ext)
         self._aux = a
         # Prélèvements/rejets SOUTERRAINS. La colonne Hydrotel fidèle n'a pas de
         # réservoir d'aquifère restituant (cf. C++ : la recharge fuit, le baseflow
@@ -547,7 +552,7 @@ class HydrotelColumn(nn.Module):
         return self._pheno_cache
 
     def forward(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
-                tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None) -> tuple[Tensor, HydrotelColumnState, dict]:
+                tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None, etp_ext=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Dispatcher : appelle le forward compilé (compile_column) ou eager.
         Le compilé fond le compute par jour en peu de kernels (le wall-clock est
         dominé par le dispatch Python de la boucle par jour, GPU sinon ~0%).
@@ -560,15 +565,15 @@ class HydrotelColumn(nn.Module):
                 except Exception:
                     self._fwd_compiled = self._forward_impl   # fallback eager
             try:
-                return self._fwd_compiled(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours)
+                return self._fwd_compiled(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours, etp_ext)
             except Exception:
                 # compile échoue à l'exécution → bascule eager définitivement
                 self._fwd_compiled = self._forward_impl
-                return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours)
-        return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours)
+                return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours, etp_ext)
+        return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours, etp_ext)
 
     def _forward_impl(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
-                      tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None) -> tuple[Tensor, HydrotelColumnState, dict]:
+                      tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None, etp_ext=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Un pas de temps. P/tmin/tmax/Rn/u2/ea : forçage (n_nodes,). doy : jour
         julien (scalaire ou n_nodes). Retourne (prod_totale_mm, new_state, diag)."""
         assert self._static is not None, "appeler set_static() avant forward()"
@@ -597,7 +602,11 @@ class HydrotelColumn(nn.Module):
         # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
         # McGuinness et donne au NeRF un levier direct sur le volume (β).
         # K_c=1.0 par défaut si non fourni (chemins set_static hand-built).
-        if self.et_mode == "linacre":
+        if etp_ext is not None:
+            # module ET appris : demande déjà en mm/j, PAS de K_c (double comptage —
+            # le module prédit l'ETR MOD16, le NeRF garde le sol comme levier).
+            etp = torch.clamp(etp_ext, min=0.0)
+        elif self.et_mode == "linacre":
             # couvert nival agrégé (mm SWE) + albédo neige pondéré par classe
             _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
             _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
