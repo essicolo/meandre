@@ -237,3 +237,15 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Critère de complétude corrigé : couverture des nœuds TERRESTRES (MOD16 n'existe pas sur l'eau).
 - Toute la flotte v1-v7 avait tourné avec un multi-obj quasi vide (26 obs annuelles/nœud au lieu de 1150) : les résultats régionaux sont à réinterpréter, le conjoint partira sur des données saines.
 - Ops : tuiles CaSR consolidées sur D: (799), fields archivés, 18 Go libérés sur C:.
+
+## PILOTES CONJOINT 3 régions (slso+mont+gasp) : critère ÉCHOUÉ, z_n innocentés, MONT gagne, 2026-07-20/21
+- Design reports/design_conjoint.md : UN NeRF + UNE colonne partagés, latents tranchés par offset, rotation des régions, best sur médiane pondérée jauges, 30 epochs cold-start (recette v4/McGuinness, forçage 6 canaux, LR 3e-4 après leçon pilote3).
+- pilote3 (LR 5e-4) : effondrement terminal epoch 7 (agrégé 0.62→0.18 sans retour) — la boucle conjointe court-circuitait les garde-fous de fit(). Garde-fou ajouté à joint.py (régression >20% sous best → recharge best + LR/2, max 3).
+- pilote3b (LR 3e-4, z_n) : entraînement stable (2 rollbacks rattrapés), best val agrégé 0.617. HELD-OUT 22-24 : slso 0.554 / mont 0.541 / gasp 0.377.
+- pilote3c (idem SANS z_n, JOINT_ZN=0) : best val 0.607 (atteint epoch 8), plateau stable 0.60. HELD-OUT : slso 0.533 / mont 0.601 / gasp 0.321.
+- VERDICT au critère pré-enregistré (aucune région ne régresse vs mono held-out slso 0.689 / mont 0.592 / gasp 0.577) : ÉCHEC dans les deux variantes.
+- z_n INNOCENTÉS : le gap val/test de GASP (0.59 val → 0.32-0.38 test) persiste et EMPIRE sans latents. La fragilité hors-régime du conjoint ne vient pas des effets aléatoires par nœud.
+- MONT GAGNE au conjoint : 0.601-0.603 held-out (pilote3 et 3c) vs 0.592 mono-v7 (avec ancrages) et 0.552 à recette égale (v4). Signal de pooling réel, reproductible sur 2 pilotes.
+- MONT = seule région instable en cours d'entraînement (les 4 plongeons des 2 runs sont portés par mont) ; gasp val d'une stabilité remarquable (0.58-0.59) malgré les turbulences.
+- Confusions non résolues : parité de recette (mono champions = ancrages v7, forçage corr 7 canaux slso, z_n+quantile) vs conjoint cold-start v4 ; sous-entraînement (~10 passes effectives/région) ; gap GASP val/test inexpliqué (à décomposer r/beta/gamma).
+- Décision suivante avec Essi : diagnostiquer le gap GASP avant tout nouveau run.

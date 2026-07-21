@@ -33,6 +33,9 @@ REGIONS = [a.lower() for a in sys.argv[1:]] or ["slso", "mont", "gasp"]
 TAG = os.environ.get("JOINT_TAG", "pilote3")
 N_EPOCHS = int(os.environ.get("JOINT_EPOCHS", "30"))
 LR_OVERRIDE = float(os.environ.get("JOINT_LR", "0"))
+USE_ZN = os.environ.get("JOINT_ZN", "1") != "0"   # JOINT_ZN=0 -> NeRF pur sans latents (pilote3c)
+USE_ANCHORS = os.environ.get("JOINT_ANCHORS", "0") == "1"   # recette v7 : Linacre + fonte régionale PAR RÉGION (pilote3d)
+PLATFORMS = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"   # source des poids loss + hyperparams
 CKPT = f".runs/quebec/checkpoints/best-joint-{TAG}.pt"
@@ -61,9 +64,9 @@ model = HydroModel(
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
     param_mode="nerf",
     column_mode="hydrotel",
-    et_mode="mcguinness",
+    et_mode="linacre" if USE_ANCHORS else "mcguinness",
     use_temperature=False,
-    use_latent_codes=bool(mcfg.get("use_latent_codes", True)),
+    use_latent_codes=USE_ZN and bool(mcfg.get("use_latent_codes", True)),
     latent_mode="additive",
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
@@ -72,6 +75,16 @@ model = HydroModel(
 ).to(DEVICE)
 model.spatial_encoder.init_from_literature(cfg.get("literature_prior"))
 print(f"[joint] modèle partagé : {sum(p.numel() for p in model.parameters()):,} params")
+
+# ── ancrages régionaux v7 (Linacre + fonte, chargés PAR RÉGION, bascule dans set_region) ──
+if USE_ANCHORS:
+    from meandre.data.hydrotel_calib import load_linacre_nodes, load_melt_nodes
+    for r in regions:
+        pdir = f"{PLATFORMS}/{r['name'].upper()}_LN24HA_2020"
+        r["linacre"] = load_linacre_nodes(pdir, r["node_ids"], device=DEVICE)
+        r["melt"] = load_melt_nodes(pdir, r["node_ids"], device=DEVICE)
+        print(f"[joint] ancrages {r['name']}: coeff Linacre méd {float(r['linacre'][5].median()):.3f} | "
+              f"taux fonte méd {float(r['melt']['taux_c'].median()):.1f}/{float(r['melt']['taux_f'].median()):.1f}/{float(r['melt']['taux_d'].median()):.1f}")
 
 # ── trainers régionaux (modèle + optimiseur partagés) ───────────────────────
 tconf = TrainingConfig(
@@ -96,6 +109,9 @@ scheduler = build_scheduler(shared_opt, N_EPOCHS, warmup_epochs=int(tcfg.get("wa
 def set_region(i):
     model.spatial_encoder.latent_offset = int(offsets[i])
     model.n_nodes = int(regions[i]["n_nodes"])   # allocations internes de simulate
+    if USE_ANCHORS:   # buffers par nœud de la colonne partagée -> ceux de la région courante
+        model.vertical_column.set_linacre_params(*regions[i]["linacre"])
+        model.vertical_column.set_melt_params(regions[i]["melt"])
 
 # ── boucle conjointe ─────────────────────────────────────────────────────────
 os.makedirs(".runs/quebec/checkpoints", exist_ok=True)
