@@ -249,3 +249,13 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - MONT = seule région instable en cours d'entraînement (les 4 plongeons des 2 runs sont portés par mont) ; gasp val d'une stabilité remarquable (0.58-0.59) malgré les turbulences.
 - Confusions non résolues : parité de recette (mono champions = ancrages v7, forçage corr 7 canaux slso, z_n+quantile) vs conjoint cold-start v4 ; sous-entraînement (~10 passes effectives/région) ; gap GASP val/test inexpliqué (à décomposer r/beta/gamma).
 - Décision suivante avec Essi : diagnostiquer le gap GASP avant tout nouveau run.
+
+## BANC ET HORS-LIGNE : le module appris bat les formules calées PARTOUT, critère atteint, 2026-07-21
+- Banc design_et_appris.md : 15 régions, ~25M paires (nœud, composite 8-j MOD16), leave-region-out (tenues gasp/sagu/mont = est/boréal/sud) × temporel (test 2022-2024). Bancs physiques ajustés au mieux : K_c McGuinness LSQ = 0.540, coeff Linacre LSQ = 0.472.
+- TENUES (jamais vues, 2019-2024, médianes) : GRU R² 0.914 / MLP 0.916 / McGuinness 0.817 / Linacre 0.770. Biais : appris -1.4 à -1.7 % contre -11 à -12 % pour les formules.
+- TEMPOREL 2022-2024 (12 régions d'entraînement) : GRU 0.911 / MLP 0.912 / McGuinness 0.804 / Linacre 0.728.
+- Le module gagne dans CHAQUE région tenue et chaque période, R² et biais. La relation météo+territoire vers ETR transfère hors-région et hors-régime là où les coefficients calés ne transfèrent pas (biais -15 % GASP McGuinness).
+- SURPRISE : le MLP (agrégats 8 j + 90 j) égale le GRU — pas besoin de mémoire récurrente à la granularité 8 jours ; intégration colonne beaucoup plus simple (pas d'état).
+- Réserve honnête : MOD16 = produit PM (MERRA+LAI), le R² élevé emule en partie son algorithme ; vérif biais annuel vs bilan P-Q-dS(GRACE) à faire avant intégration.
+- Coût : ~1 h GPU au total, itérations en minutes — contraste voulu avec les pilotes 20 h.
+- Prochaine étape (validation Essi) : étape 2 du design = brancher le module comme demande évaporative dans la colonne (extraction par couche et conservation intactes, K_c neutralisé), fine-tuning bout-en-bout.
