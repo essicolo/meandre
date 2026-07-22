@@ -286,3 +286,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 ## MOD10A1 fonte : 15/15 régions COMPLÈTES (~84M lignes, mars-juin 2000-2024, 100 % des nœuds), 2026-07-22
 - Ingestion quotidienne fenêtre de fonte via earthaccess/WSL, cache granules partagé D:/modis10 (~15k granules), zéro échec réseau (retry x3 armé, jamais nécessaire au-delà). ~3015 jours par région, ~40 % d'obs sans nuage (normal printemps).
 - Smoke banc fonte (train SLSO seul) : le MLP transfère déjà mieux que degré-jour/ETI calés en tenue (GASP acc 0.85 vs 0.77, MAE date 24 vs 31 j) ; degré-jour 11 j -> 31 j en changeant de région = l'histoire des constantes qui ne transfèrent pas, again. Banc complet 12 régions lancé.
+
+## BANC FONTE COMPLET : MLP passe le critère DE JUSTESSE, degré-jour global MOD10 = la vraie surprise, 2026-07-22
+- 12 régions train, tenues gasp/sagu/mont. TENUES : mlp 15.6 j / acc 0.875 ; dd calé 16.8 j / 0.848 ; eti 25.5 j / 0.804 (éliminé). TEMPOREL 22-24 : mlp 13.5 j / dd 14.8 j.
+- Critère pré-enregistré techniquement ATTEINT (mlp bat dd et eti partout) mais marge mince (1-2 j). La vraie leçon : un degré-jour calé GLOBALEMENT contre MOD10 transfère déjà très bien (16.8 j en régions jamais vues) — le problème des ancrages était le PAR-RÉGION Hydrotel, pas la forme degré-jour.
+- Params dd calés MOD10 (12 régions) : C_f 5.39 mm/°C/j, T_melt -0.98 °C, seuil pluie/neige -0.47 °C — fonte plus précoce et plus rapide que les défauts littérature (4.5, -0.5, 0).
+- DÉCISION intégration deux temps : (1) pilote4b = init fonte MOD10 (transplant des 3 scalaires en literature_prior + t_neige_seuil, zéro chirurgie sur le clone neige validé décimale, NeRF module autour) ; (2) module MLP fonte = phase 2b différée (marge 1.2 j ne justifie pas encore d'invader le clone).
+- pilote4b lancé : conjoint 3 régions, ET apprise + init fonte MOD10, 12 ep.

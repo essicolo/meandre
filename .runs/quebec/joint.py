@@ -88,9 +88,17 @@ model = HydroModel(
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     compile_soil=bool(mcfg.get("compile_soil", True)),
 ).to(DEVICE)
+USE_MELT10 = os.environ.get("JOINT_MELT10", "0") == "1"   # init fonte calée MOD10 (banc snow_bench, 12 régions)
 _lp = dict(cfg.get("literature_prior") or {})
 if USE_ETL:
     _lp["K_c"] = 1.0   # départ neutre autour de la demande apprise (le 0.6 compensait McGuinness)
+if USE_MELT10:
+    # ancrage DATA-DRIVEN (MOD10, pas Hydrotel) : C_f/T_melt du degré-jour calé
+    # contre le retrait du couvert sur 12 régions ; seuil pluie/neige idem.
+    _lp["C_f"] = 5.39
+    _lp["T_melt"] = -0.98
+    model.vertical_column.t_neige_seuil = -0.47
+    print("[joint] init fonte MOD10 : C_f 5.39, T_melt -0.98, seuil pluie/neige -0.47")
 model.spatial_encoder.init_from_literature(_lp)
 if USE_ETL:
     model.vertical_column.etp_channel = 6
