@@ -40,12 +40,27 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"   # source des poids loss + hyperparams
 CKPT = f".runs/quebec/checkpoints/best-joint-{TAG}.pt"
 
+USE_ETL = os.environ.get("JOINT_ETL", "0") == "1"   # ET APPRISE : demande MLP MOD16 en 7e canal (phase 4 design_modules_appris)
+
 cfg = tomllib.load(open(BASE_CFG, "rb"))
-lcfg = cfg["loss"]; tcfg = cfg["training"]; mcfg = cfg["model"]
+lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
+if USE_ETL:
+    lcfg["w_et"] = 0.0   # double ancrage sinon (leçon etl2 : K_c poussé à 1.07 malgré beta 0.78)
 
 # ── données par région ───────────────────────────────────────────────────────
 print(f"[joint] régions : {REGIONS} | device {DEVICE}")
 regions = [load_region(r, lcfg, device=DEVICE) for r in REGIONS]
+if USE_ETL:
+    from dataclasses import replace as _dc_replace
+    from et_module import compute_demand
+    for r in regions:
+        td = r["train_data"]
+        demand = compute_demand(td.forcing, td.day_of_year, td.node_coords, r["territorial"], DEVICE)
+        f7 = torch.cat([td.forcing[:, :, :6], demand[:, :, None]], dim=2)
+        r["train_data"] = _dc_replace(td, forcing=f7)
+        r["val_data"] = _dc_replace(r["val_data"], forcing=f7)
+        print(f"[joint] demande ET apprise {r['name']}: {float(demand.mean()) * 365.25:.0f} mm/an", flush=True)
+
 offsets = np.cumsum([0] + [r["n_nodes"] for r in regions])
 n_total = int(offsets[-1])
 n_gauges = {r["name"]: r["n_gauges"] for r in regions}
@@ -73,7 +88,13 @@ model = HydroModel(
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     compile_soil=bool(mcfg.get("compile_soil", True)),
 ).to(DEVICE)
-model.spatial_encoder.init_from_literature(cfg.get("literature_prior"))
+_lp = dict(cfg.get("literature_prior") or {})
+if USE_ETL:
+    _lp["K_c"] = 1.0   # départ neutre autour de la demande apprise (le 0.6 compensait McGuinness)
+model.spatial_encoder.init_from_literature(_lp)
+if USE_ETL:
+    model.vertical_column.etp_channel = 6
+    print("[joint] etp_channel=6 : demande apprise × K_c NeRF, w_et=0")
 print(f"[joint] modèle partagé : {sum(p.numel() for p in model.parameters()):,} params")
 
 # ── ancrages régionaux v7 (Linacre + fonte, chargés PAR RÉGION, bascule dans set_region) ──
