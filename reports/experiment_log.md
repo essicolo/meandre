@@ -282,3 +282,7 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - HELD-OUT 22-24 : slso 0.543 / mont 0.585 / gasp 0.373. Vs pilote3c (McGuinness) : slso +0.010, mont -0.016, gasp +0.052.
 - Vs monos : mont 0.585 ~ mont-etl 0.578 et > v4 0.552 (le conjoint ne coûte plus rien à MONT et reste au niveau des ancrages 0.592) ; gasp toujours en gap val 0.514 → test 0.373 (la fonte compromis, cible phase 2) ; slso toujours sous son champion 0.689 (recette différente : forçage corr 7 canaux + z_n + quantile — parité à tester plus tard).
 - Suite de chaîne : banc fonte dès MOD10 complet (slso ~fini, 15 régions ~demain), puis module fonte, puis pilote4b ET+fonte.
+
+## MOD10A1 fonte : 15/15 régions COMPLÈTES (~84M lignes, mars-juin 2000-2024, 100 % des nœuds), 2026-07-22
+- Ingestion quotidienne fenêtre de fonte via earthaccess/WSL, cache granules partagé D:/modis10 (~15k granules), zéro échec réseau (retry x3 armé, jamais nécessaire au-delà). ~3015 jours par région, ~40 % d'obs sans nuage (normal printemps).
+- Smoke banc fonte (train SLSO seul) : le MLP transfère déjà mieux que degré-jour/ETI calés en tenue (GASP acc 0.85 vs 0.77, MAE date 24 vs 31 j) ; degré-jour 11 j -> 31 j en changeant de région = l'histoire des constantes qui ne transfèrent pas, again. Banc complet 12 régions lancé.
