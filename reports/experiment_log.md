@@ -271,3 +271,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Trajectoire saine de bout en bout : beta 0.94→1.05 (le problème de point fixe volume de v7b n'existe plus), r 0.847, gamma 0.833 stable = régulation Lac-Saint-Jean (dossier phase 3, table dams prête).
 - LECTURE : là où le processus ET est réellement un levier (boréal humide, ETR simulée sous-estimée chronique), le module appris livre ; et il livre PRÉCISÉMENT dans la région où les coefficients calés du sud ont échoué. Argument central de la thèse identifiabilité-par-les-données, démontré sur débit.
 - Bilan phase 1 : GASP neutre (goulot = P forçage + fonte, pas l'ET), SAGU +0.097 (record). Un module par processus, jugé sur le goulot local.
+
+## MONT-etl : 0.578 held-out (> v4 0.552, ~= v7 0.592) — triptyque phase 1 complet, 2026-07-22
+- mont-etl (demande apprise 612 mm/an × K_c, w_et=0, 30 ep) : held-out 0.578. Le best vient de l'epoch ~7 : le run a DIVERGÉ ensuite (beta 0.85→0.62, val_med 0.56→0.26) sans être rattrapé — etl_run.py ne passe pas les réglages autopilot du TOML au Trainer, contrairement aux runs slso.py. MONT reconfirme son instabilité (déjà la seule région instable des pilotes conjoints). À corriger si on refait des mono longs.
+- BILAN PHASE 1 (ET apprise, zéro emprunt Hydrotel, held-out 22-24) : GASP 0.468 (v4 0.489 : neutre, goulot = P+fonte) ; SAGU 0.621 (v4 0.524 : RECORD +0.097) ; MONT 0.578 (v4 0.552 : +0.026 ; v7 ancrages 0.592 : -0.014, les ancrages LN restent marginalement devant SUR LEUR territoire de calage).
+- Verdict : le module appris remplace crédiblement les ancrages partout, les bat là où ils échouent (boréal), et ne perd que 0.014 là où ils jouent à domicile. La pièce ET du conjoint sans compromis est validée.
