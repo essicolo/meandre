@@ -293,3 +293,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Params dd calés MOD10 (12 régions) : C_f 5.39 mm/°C/j, T_melt -0.98 °C, seuil pluie/neige -0.47 °C — fonte plus précoce et plus rapide que les défauts littérature (4.5, -0.5, 0).
 - DÉCISION intégration deux temps : (1) pilote4b = init fonte MOD10 (transplant des 3 scalaires en literature_prior + t_neige_seuil, zéro chirurgie sur le clone neige validé décimale, NeRF module autour) ; (2) module MLP fonte = phase 2b différée (marge 1.2 j ne justifie pas encore d'invader le clone).
 - pilote4b lancé : conjoint 3 régions, ET apprise + init fonte MOD10, 12 ep.
+
+## PILOTE4B RÉFUTÉ : l'init fonte MOD10 nuit en conjoint (les scalaires ne survivent pas au changement de structure), 2026-07-22
+- pilote4b (pilote4-et + C_f 5.39 / T_melt -0.98 / seuil pluie-neige -0.47 en init) : held-out slso 0.447 / mont 0.541 / gasp 0.349, TOUT sous pilote4-et (0.543/0.585/0.373). Val aussi (best 0.531 vs 0.565).
+- Cause probable : les scalaires ont été calés dans le modèle mono-réservoir du banc ; la colonne per-classe (albédo dynamique, tassement, pcts de couvert) a une autre cartographie C_f→fonte. Écho de la leçon v8 : un calage = un paquet cohérent, la greffe d'une pièce isolée échoue — même data-driven.
+- MEILLEURE RECETTE CONJOINTE : pilote4-et (ET apprise, sans z_n, sans ancrage, fonte littérature + NeRF). Si la fonte doit être améliorée, ce sera par modulation apprise DANS la structure de la colonne (phase 2b), pas par transplant de scalaires.
