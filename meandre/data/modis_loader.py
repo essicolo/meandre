@@ -215,6 +215,77 @@ def fetch_modis_et_8day(
     return pd.DataFrame(rows, columns=["date", "node_idx", "etr_mm_day", "quality_ok"])
 
 
+def fetch_modis_snow_daily(
+    bbox: tuple[float, float, float, float],
+    date_start: str,
+    date_end: str,
+    node_coords: np.ndarray,
+    node_indices: np.ndarray,
+    cache_dir: str | Path = "D:/meandre-data/modis10",
+    token_path: str = "~/.edl_token",
+) -> pd.DataFrame:
+    """Fetch MOD10A1.061 NDSI Snow Cover QUOTIDIEN via NASA Earthdata (même chemin
+    que fetch_modis_et_8day : token bearer + pyhdf sinusoïdal). Retourne
+    DataFrame(date, node_idx, snow_frac, quality_ok). snow_frac = NDSI_Snow_Cover/100
+    (0-1) ; raw > 100 (nuage 250, nuit 211, eau 237/239, fill 255...) -> NaN/not ok."""
+    import earthaccess
+    import requests
+    from pyhdf.SD import SD, SDC
+    from pyproj import Transformer
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    token = open(Path(token_path).expanduser()).read().strip()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    lons = node_coords[:, 0].astype(float)
+    lats = node_coords[:, 1].astype(float)
+    node_indices = np.asarray(node_indices)
+    tr = Transformer.from_crs("EPSG:4326", _SINU, always_xy=True)
+    nx_sinu, ny_sinu = tr.transform(lons, lats)
+
+    granules = earthaccess.search_data(
+        short_name="MOD10A1", version="61",
+        bounding_box=tuple(bbox), temporal=(date_start, date_end),
+    )
+    logger.info(f"[MOD10A1] {len(granules)} granules quotidiens trouvés")
+
+    rows = []
+    for g in granules:
+        url = next((l for l in g.data_links() if l.endswith(".hdf")), None)
+        if url is None:
+            continue
+        fn = url.split("/")[-1]
+        ayyyyddd = fn.split(".")[1]
+        year, doy = int(ayyyyddd[1:5]), int(ayyyyddd[5:8])
+        cdate = pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=doy - 1)
+
+        local = cache_dir / fn
+        if not local.exists():
+            r = requests.get(url, headers=headers, allow_redirects=True, timeout=300)
+            r.raise_for_status()
+            local.write_bytes(r.content)
+
+        sd = SD(str(local), SDC.READ)
+        ulx, uly, lrx, lry, gnx, gny = _parse_structmeta(sd)
+        psx = (lrx - ulx) / gnx
+        psy = (uly - lry) / gny
+        snow = sd.select("NDSI_Snow_Cover").get()
+        sd.end()
+
+        col = np.floor((nx_sinu - ulx) / psx).astype(int)
+        row = np.floor((uly - ny_sinu) / psy).astype(int)
+        inside = (col >= 0) & (col < gnx) & (row >= 0) & (row < gny)
+        for k in np.nonzero(inside)[0]:
+            raw = float(snow[row[k], col[k]])
+            ok = raw <= 100.0
+            rows.append((cdate, int(node_indices[k]), raw / 100.0 if ok else np.nan, bool(ok)))
+
+    if not rows:
+        return pd.DataFrame(columns=["date", "node_idx", "snow_frac", "quality_ok"])
+    return pd.DataFrame(rows, columns=["date", "node_idx", "snow_frac", "quality_ok"])
+
+
 # ─── MOD16A2 ETR via earthaccess ─────────────────────────────────────────────
 
 def fetch_modis_et(
