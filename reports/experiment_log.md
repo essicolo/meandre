@@ -336,3 +336,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
   - PyGMET = github.com/NCAR/PyGMET (station->grille, régression + covariables élévation, cross-val LOO, ensemble). pygmet_loader.py existe (lit seulement).
   - Stations = API ECCC climate-daily (api.weather.gc.ca/collections/climate-daily, OGC, sans auth, réseau QC dense) > GHCN.
   - Validation anti-bullseye = LOO de PyGMET (révèle les yeux de bœuf au lieu de les cacher).
+
+## PyGMET : cause racine du NaN trouvée = séries stations non complètes, corrigée par infill IDW, 2026-07-23
+- Le run GASP full initial sortait une grille 100% NaN malgré stations/poids/voisins tous valides. Isolé par le cas-test CALI de référence (77% finite avec mon code patché) : le patch est innocent, le bug venait de MES entrées.
+- CAUSE : PyGMET/GMET exige des séries stations SÉRIELLEMENT COMPLÈTES (CALI a un fill_flag, trous pré-remplis). Les stations ECCC ont ~50% de NaN réels ; une seule voisine à NaN un jour donné -> estimation NaN -> grille entièrement vide. Confirmé : remplissage grossier -> grille 33% finite (= fraction terrestre du masque), tmean 11.6°C physique.
+- FIX intégré à build_pygmet_inputs.py : infill spatial IDW (12 voisins ayant des données ce jour-là ; PAS de remplissage à 0 qui biaiserait vers le sec ; fallback climato jour-de-l'année). Stations désormais complètes.
+- Relancé : gasp full corrigé (5 prédicteurs lat/lon/elev/slp_n/slp_e ; le patch numpy gère la singularité qui m'avait fait retirer les pentes). Le run initial de 2h20 était perdu (stations non infillées).

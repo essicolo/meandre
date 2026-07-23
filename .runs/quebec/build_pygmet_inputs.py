@@ -70,22 +70,61 @@ fgrad_ns = RegularGridInterpolator((lat_g, lon_g), grad_ns, bounds_error=False, 
 fgrad_we = RegularGridInterpolator((lat_g, lon_g), grad_we, bounds_error=False, fill_value=0.0)
 felev = RegularGridInterpolator((lat_g, lon_g), elev, bounds_error=False, fill_value=0.0)
 dates = pd.date_range(f"{Y0}-01-01", f"{Y1}-12-31", freq="D")
-rows = []
+# retient les stations assez couvertes, empile P/Tmin/Tmax en (T, S) avec trous NaN
+kept, meta = {}, []
 for sid, g in df.groupby("climate_id"):
     g = g.dropna(subset=["date"]).drop_duplicates("date").set_index("date").reindex(dates)
-    nval = int(g["P"].notna().sum() + g["Tmax"].notna().sum())
     if g["P"].notna().sum() < MIN_DAYS and g["Tmax"].notna().sum() < MIN_DAYS:
         continue
     lat = float(np.nanmedian(g["lat"])); lon = float(np.nanmedian(g["lon"]))
     if not (bbox[1] <= lat <= bbox[3] and bbox[0] <= lon <= bbox[2]):
         continue
+    kept[sid] = g; meta.append((sid, lat, lon))
+sids = [m[0] for m in meta]
+slat = np.array([m[1] for m in meta]); slon = np.array([m[2] for m in meta])
+S = len(sids)
+Pm = np.stack([kept[s]["P"].values for s in sids], axis=1).astype(np.float64)     # (T, S)
+Tmnm = np.stack([kept[s]["Tmin"].values for s in sids], axis=1).astype(np.float64)
+Tmxm = np.stack([kept[s]["Tmax"].values for s in sids], axis=1).astype(np.float64)
+
+# SERIALLEMENT COMPLET (PyGMET l'exige) : infill spatial IDW des K stations voisines
+# ayant des données CE jour-là (pas de remplissage à 0 -> pas de biais sec). Fallback
+# climato jour-de-l'année si aucune voisine. Température : lapse implicite via voisins.
+from scipy.spatial import cKDTree
+tree = cKDTree(np.c_[slon, slat])
+_, knn = tree.query(np.c_[slon, slat], k=min(12, S))   # (S, K) voisins par station
+doy = dates.dayofyear.values
+def infill(M):
+    out = M.copy()
+    miss_t, miss_s = np.nonzero(np.isnan(out))
+    for t, s in zip(miss_t, miss_s):
+        nb = knn[s]
+        vals = M[t, nb]; ok = ~np.isnan(vals)
+        if ok.any():
+            d = np.hypot(slon[nb[ok]] - slon[s], slat[nb[ok]] - slat[s]) + 1e-6
+            w = 1.0 / d
+            out[t, s] = float((vals[ok] * w).sum() / w.sum())
+    # trous restants (jour sans AUCUNE station) -> climato jour-de-l'année de la station
+    if np.isnan(out).any():
+        for s in range(S):
+            col = out[:, s]
+            if np.isnan(col).any():
+                clim = pd.Series(col).groupby(doy).transform(lambda x: x.fillna(x.mean()))
+                out[:, s] = clim.fillna(np.nanmean(col)).values
+    return out
+Pm = np.clip(infill(Pm), 0, None); Tmnm = infill(Tmnm); Tmxm = infill(Tmxm)
+print(f"[{REG}] infill IDW terminé ({S} stations, séries complètes)", flush=True)
+
+rows = []
+for j, sid in enumerate(sids):
     st = xr.Dataset(
-        {"prcp": ("time", g["P"].values.astype(np.float32)),
-         "tmin": ("time", g["Tmin"].values.astype(np.float32)),
-         "tmax": ("time", g["Tmax"].values.astype(np.float32))},
+        {"prcp": ("time", Pm[:, j].astype(np.float32)),
+         "tmin": ("time", Tmnm[:, j].astype(np.float32)),
+         "tmax": ("time", Tmxm[:, j].astype(np.float32))},
         coords={"time": dates})
     st.to_netcdf(OUT / "stndata" / f"{sid}.nc")
-    rows.append({"stnid": sid, "lat": round(lat, 4), "lon": round(lon, 4),
+    lat, lon = slat[j], slon[j]
+    rows.append({"stnid": sid, "lat": round(float(lat), 4), "lon": round(float(lon), 4),
                  "elev": round(float(felev([[lat, lon]])[0]), 1),
                  "slp_n": round(float(fgrad_ns([[lat, lon]])[0]), 3),
                  "slp_e": round(float(fgrad_we([[lat, lon]])[0]), 3)})
