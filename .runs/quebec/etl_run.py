@@ -127,6 +127,17 @@ tconf = TrainingConfig(
     grad_clip=float(tcfg.get("clip_grad_norm", 1.0)),
     w_prior=float(tcfg.get("w_prior", 0.005)),
     best_metric="kge_median",
+    # autopilot du TOML : LR plateau + garde-fou régression (sans lui, GASP/MONT-etl
+    # divergeaient après le pic epoch ~7-12, val -0.15 non rattrapée — bug 2026-07-22)
+    autopilot=bool(tcfg.get("autopilot", True)),
+    autopilot_grace_epochs=int(tcfg.get("autopilot_grace_epochs", 8)),
+    autopilot_lr_patience=int(tcfg.get("autopilot_lr_patience", 6)),
+    autopilot_lr_factor=float(tcfg.get("autopilot_lr_factor", 0.5)),
+    autopilot_lr_min=float(tcfg.get("autopilot_lr_min", 1e-5)),
+    autopilot_beta_threshold=float(tcfg.get("autopilot_beta_threshold", 0.10)),
+    autopilot_restart_regression=float(tcfg.get("autopilot_restart_regression", 0.05)),
+    autopilot_restart_max=int(tcfg.get("autopilot_restart_max", 3)),
+    val_every=1,
 )
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
