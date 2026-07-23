@@ -304,3 +304,17 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - gamma médian actuel : 0.966. Le « gamma 1.16-1.22 = régulation » du 18 juillet était un artefact des vieux runs (krigé/v4), déjà résorbé par l'ET apprise. Un module d'exutoire appris n'aurait AUCUN levier sur nos métriques.
 - Phase 3 différée sine die (réévaluer si des stations sous influence entrent dans la BD, p.ex. relevés Rio Tinto/HQ). La table dams reste (features NeRF potentielles, scénarios).
 - Pilote4c lancé à la place : fonte supervisée MOD10 DANS la structure de la colonne (w_snow=0.3, swe_obs branché dans joint_data), la voie propre après la réfutation du transplant pilote4b.
+
+## PILOTE4C : MEILLEUR CONJOINT (w_snow MOD10 aide sans coût), MONT bat tous ses monos, 2026-07-23
+- pilote4c (pilote4-et + w_snow=0.3 sur MOD10 in-structure) : val agrégé 0.5732 (record conjoint), stable, 0 rollback. HELD-OUT : slso 0.5415 (=) / mont 0.6014 (+0.017) / gasp 0.3873 (+0.014).
+- MONT 0.601 held-out > TOUS ses monos (v7 ancrages 0.592, mont-etl 0.578, v4 0.552) : première région où le conjoint sans aucun emprunt Hydrotel domine tout, critère « au moins une région gagne » ATTEINT.
+- La supervision MOD10 dans la structure fonctionne là où le transplant de scalaires (4b) échouait — la donnée doit entrer par la loss, pas par les paramètres.
+- Critère complet du design toujours PAS atteint : gasp régresse encore vs mono (0.387 vs 0.489 recette égale ; gap val 0.515 → test 0.387), slso sous son champion 0.689 (confonds de recette : forçage corr 7 canaux, z_n, quantile).
+
+## SYNTHÈSE DE LA CHAÎNE MODULES APPRIS (phases 0-4, 2026-07-21 → 23)
+- Phase 0 barrages : répertoire MELCCFP ingéré (8629 ouvrages, 15 bases). Diagnostic : la régulation n'explique PAS le déficit de l'est (GASP/CNDC sans stockage = pires écarts ; CNDB/Manic = méandre gagne).
+- Phase 1 ET apprise : banc gagné sans appel (R² 0.91 vs 0.77-0.82, biais -1.5 % vs -12 %) ; SAGU record 0.621 (+0.097) ; MONT 0.578 ; GASP neutre (goulot ailleurs) ; conjoint STABILISÉ (le compromis ETP était aussi une source d'instabilité). Recette d'intégration : demande × K_c NeRF, w_et=0.
+- Phase 2 fonte : MOD10 15/15 (84M obs) ; banc : MLP gagne de justesse, dd global calé transfère bien (le poison = par-région) ; transplant scalaires RÉFUTÉ (4b) ; supervision in-structure VALIDÉE (4c). Module MLP fonte = différé (2b).
+- Phase 3 régulation : tuée sur pièces (aucune jauge sous influence, gamma déjà sain).
+- Phase 4 : pilote4c = recette conjointe de référence. RESTE OUVERT : gap GASP val→test (suspects : P CaSR à l'est — attribution du 18/07 —, structure de fonte au-delà des seuils, régime 2022-24) ; parité de recette SLSO (7 canaux + z_n régularisés + quantile) à tester pour la flotte.
+- Méthode : 3 chantiers économisés par diagnostics gratuits (z_n après coup, transplant... et phase 3 avant coup) ; bancs hors-ligne à 1 h GPU au lieu de pilotes 20 h ; chaque verdict pré-enregistré.
