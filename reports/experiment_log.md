@@ -327,3 +327,12 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 ## GASP-etl-hyb2 (autopilot corrigé) : 0.586 held-out, DÉPASSE les ancrages v7 sans rien emprunter, 2026-07-23
 - Fix autopilot validé : plateau propre val 0.685, 0 divergence. Held-out 0.5858 (vs 0.559 sans fix, 0.466 CaSR, 0.577 v7 ancrages). r 0.727.
 - ATTRIBUTION FINALE GASP chiffrée : CaSR coûte ~0.12 KGE ; le calage manuel plateformes en récupère ~0.09 (v4→v7) mais NON transférable ; modules appris + krigé = 0.586 PORTABLE et supérieur. Résultat de papier.
+
+## CORRECTION MAJEURE : les runs -hyb sont du SIMAT, pas du krigeage (erreur retrouvée en mémoire), 2026-07-23
+- quebec.zarr = SIMAT ré-grillé (attrs : processing_level=regridded, ordre_priorité simat en tête) = LA carte à yeux de bœuf qu'on avait DÉJÀ rejetée le 29 juin (mémoire casr_canonical_decision : « quebec.zarr krigeage bancal, œils-de-bœuf, carte 2007 »). J'ai rebâti dessus cette semaine en l'appelant krigeage. Faux.
+- Conséquence : gasp-etl-hyb 0.586 et sagu-etl-hyb = comparaison À FORÇAGE-ÉGAL-AVEC-HYDROTEL (SIMAT est l'intrant d'Hydrotel), PAS un krigeage propre ni portable. Ne rien propager (pas de conjoint hyb, pas de flotte).
+- Mon test d'yeux de bœuf était faux-négatif : 10 km + moyenne annuelle + ré-grillage bilinéaire lissent les bullseyes station/journaliers.
+- VRAIE VOIE (décision Essi) : pipeline REPRODUCTIBLE CaSR (énergie) + PyGMET tourné par nous sur stations via API. Abandonne era5land+pygmet des collègues (pipeline non reproductible).
+  - PyGMET = github.com/NCAR/PyGMET (station->grille, régression + covariables élévation, cross-val LOO, ensemble). pygmet_loader.py existe (lit seulement).
+  - Stations = API ECCC climate-daily (api.weather.gc.ca/collections/climate-daily, OGC, sans auth, réseau QC dense) > GHCN.
+  - Validation anti-bullseye = LOO de PyGMET (révèle les yeux de bœuf au lieu de les cacher).
