@@ -298,3 +298,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - pilote4b (pilote4-et + C_f 5.39 / T_melt -0.98 / seuil pluie-neige -0.47 en init) : held-out slso 0.447 / mont 0.541 / gasp 0.349, TOUT sous pilote4-et (0.543/0.585/0.373). Val aussi (best 0.531 vs 0.565).
 - Cause probable : les scalaires ont été calés dans le modèle mono-réservoir du banc ; la colonne per-classe (albédo dynamique, tassement, pcts de couvert) a une autre cartographie C_f→fonte. Écho de la leçon v8 : un calage = un paquet cohérent, la greffe d'une pièce isolée échoue — même data-driven.
 - MEILLEURE RECETTE CONJOINTE : pilote4-et (ET apprise, sans z_n, sans ancrage, fonte littérature + NeRF). Si la fonte doit être améliorée, ce sera par modulation apprise DANS la structure de la colonne (phase 2b), pas par transplant de scalaires.
+
+## PHASE 3 RÉGULATION : TUÉE SUR PIÈCES par le diagnostic gratuit, 2026-07-22
+- Sur le checkpoint record sagu-etl (0.621) : AUCUNE station jaugée SAGU n'a > 0.5 km3 de retenue amont (max 0.42) — les grands réservoirs (Passes-Dangereuses, Lac-Saint-Jean) ne sont en amont d'aucune de nos jauges CEHQ, qui mesurent les tributaires naturels.
+- gamma médian actuel : 0.966. Le « gamma 1.16-1.22 = régulation » du 18 juillet était un artefact des vieux runs (krigé/v4), déjà résorbé par l'ET apprise. Un module d'exutoire appris n'aurait AUCUN levier sur nos métriques.
+- Phase 3 différée sine die (réévaluer si des stations sous influence entrent dans la BD, p.ex. relevés Rio Tinto/HQ). La table dams reste (features NeRF potentielles, scénarios).
+- Pilote4c lancé à la place : fonte supervisée MOD10 DANS la structure de la colonne (w_snow=0.3, swe_obs branché dans joint_data), la voie propre après la réfutation du transplant pilote4b.

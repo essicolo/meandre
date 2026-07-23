@@ -46,6 +46,9 @@ cfg = tomllib.load(open(BASE_CFG, "rb"))
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
 if USE_ETL:
     lcfg["w_et"] = 0.0   # double ancrage sinon (leçon etl2 : K_c poussé à 1.07 malgré beta 0.78)
+if "JOINT_WSNOW" in os.environ:
+    lcfg["w_snow"] = float(os.environ["JOINT_WSNOW"])   # fonte supervisée MOD10 (pilote4c)
+    print(f"[joint] w_snow = {lcfg['w_snow']}")
 
 # ── données par région ───────────────────────────────────────────────────────
 print(f"[joint] régions : {REGIONS} | device {DEVICE}")

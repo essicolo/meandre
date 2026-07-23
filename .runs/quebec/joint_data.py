@@ -60,6 +60,9 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
 
     # multi-obj : ET 8 jours + GRACE (présence vérifiée par l'audit 2026-07-19)
     et_obs = cache.load_modis_et(DATE_START, DATE_END, device=device)
+    # couvert nival MOD10 (fenêtre fonte mars-juin, ingéré 2026-07-22) : supervise la
+    # fonte de la colonne DANS sa structure via w_snow (fraction simulée 1-exp(-SWE/ref))
+    swe_obs = cache.load_modis_snow(DATE_START, DATE_END, device=device) if lcfg.get("w_snow", 0.0) > 0 else None
     tws_obs = None
     con = duckdb.connect(db_path, read_only=True)
     if "grace_tws" in [t[0] for t in con.execute("show tables").fetchall()]:
@@ -97,6 +100,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         w_mse=lcfg.get("w_mse", 0.0), w_nrmse=lcfg.get("w_nrmse", 0.0),
         w_log_nse=lcfg.get("w_log_nse", 0.0), w_log_mse=lcfg.get("w_log_mse", 0.0),
         w_et=lcfg.get("w_et", 0.0), w_tws=lcfg.get("w_tws", 0.0),
+        w_snow=lcfg.get("w_snow", 0.0),
         w_peak=lcfg.get("w_peak", 0.0),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
@@ -113,6 +117,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
             train_slice=sl_, val_slice=sl_,
             et_obs=et_obs[sl_.start:] if et_obs is not None else None,
             tws_obs=tws_obs[sl_.start:] if tws_obs is not None else None,
+            swe_obs=swe_obs[sl_.start:] if swe_obs is not None else None,
         )
     return dict(name=reg, n_nodes=n_nodes, node_ids=node_ids, n_gauges=n_stations,
                 train_data=mk(train_sl), val_data=mk(val_sl), loss_fn=loss_fn,
