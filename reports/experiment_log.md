@@ -323,3 +323,7 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - gasp-etl-hyb (P/T krigés MELCCFP quebec.zarr + énergie CaSR, ET apprise, 30 ep) : held-out 0.5585 vs CaSR 0.466 (+0.092). r 0.66→0.70 en val exactement comme prédit par l'attribution du 18/07. À égalité avec v7 (0.577, ancrages) SANS aucun ancrage — juste la bonne pluie.
 - Confirme sur held-out ce que l'échange de météo avait montré ponctuellement : à l'est, le goulot de GASP est le P de CaSR, pas le modèle. La chaîne modules appris avait réglé le volume/ET ; le krigé règle le timing/intensité.
 - MAIS run diverge encore post-epoch-12 (val 0.664→0.575, best sauvé à 0.664) : etl_run ne passait PAS l'autopilot du TOML au Trainer (bug depuis MONT-etl). Corrigé (autopilot + garde-fou régression câblés). gasp-etl-hyb2 relancé pour capter le plein potentiel.
+
+## GASP-etl-hyb2 (autopilot corrigé) : 0.586 held-out, DÉPASSE les ancrages v7 sans rien emprunter, 2026-07-23
+- Fix autopilot validé : plateau propre val 0.685, 0 divergence. Held-out 0.5858 (vs 0.559 sans fix, 0.466 CaSR, 0.577 v7 ancrages). r 0.727.
+- ATTRIBUTION FINALE GASP chiffrée : CaSR coûte ~0.12 KGE ; le calage manuel plateformes en récupère ~0.09 (v4→v7) mais NON transférable ; modules appris + krigé = 0.586 PORTABLE et supérieur. Résultat de papier.
