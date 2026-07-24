@@ -342,3 +342,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - CAUSE : PyGMET/GMET exige des séries stations SÉRIELLEMENT COMPLÈTES (CALI a un fill_flag, trous pré-remplis). Les stations ECCC ont ~50% de NaN réels ; une seule voisine à NaN un jour donné -> estimation NaN -> grille entièrement vide. Confirmé : remplissage grossier -> grille 33% finite (= fraction terrestre du masque), tmean 11.6°C physique.
 - FIX intégré à build_pygmet_inputs.py : infill spatial IDW (12 voisins ayant des données ce jour-là ; PAS de remplissage à 0 qui biaiserait vers le sec ; fallback climato jour-de-l'année). Stations désormais complètes.
 - Relancé : gasp full corrigé (5 prédicteurs lat/lon/elev/slp_n/slp_e ; le patch numpy gère la singularité qui m'avait fait retirer les pentes). Le run initial de 2h20 était perdu (stations non infillées).
+
+## PyGMET GASP krigé VALIDÉ (LOO CC 0.89 pluie / temp RMSE 1.2°C) ; biais volume Box-Cox corrigé par régression linéaire, 2026-07-23
+- Krigeage GASP corrigé (stations infillées) : validation croisée LOO sur 102/102 stations = pluie CC 0.891 / KGE 0.75, température CC 0.997 / RMSE 1.24°C. PAS d'yeux de bœuf (un bullseye donnerait un LOO mauvais aux stations retirées ; ici le champ généralise).
+- MAIS régression déterministe en espace Box-Cox surestime le VOLUME de pluie ×2.08 même AUX stations (2282 vs 1099 mm/an) : biais de convexité du retransform (x/4+1)^4, que seule la moyenne d'ensemble corrige dans GMET.
+- FIX sans ensemble (30h évitées) : régression en espace LINÉAIRE (transform_vars=['','','']) -> grille 1271 mm/an (vs stations 1099 ; +16% = orographie réelle sur cellules d'altitude, physique). Pattern/timing préservés.
+- Pipeline complet fonctionnel : eccc_loader -> build_pygmet_inputs (infill IDW) -> PyGMET (linéaire, 5 préd, patch numpy) -> build_forcing_pygmet (nearest-valid-cell + blend énergie CaSR). Run GASP full linéaire lancé.
+- Bugs corrigés en route : code mort dans to_nodes (interpolateur (t,y,x)) ; extraction nearest-valid-cell (évite NaN cellules masquées) ; prcp physique (pas de retransform en déterministe).

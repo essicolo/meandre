@@ -10,6 +10,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr
 from scipy.interpolate import RegularGridInterpolator
+from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
 REG = sys.argv[1].lower()
@@ -35,34 +36,31 @@ assert files, f"aucune sortie grille PyGMET dans {PGM_DIR}"
 g = xr.open_mfdataset(files, combine="by_coords") if len(files) > 1 else xr.open_dataset(files[0])
 xg, yg = g["x"].values, g["y"].values
 times = pd.to_datetime(g["time"].values).normalize()
-P = boxcox_retransform(g["prcp_boxcox"].values)          # (y,x,t) mm
-Tmin = (g["tmean"].values - g["trange"].values / 2.0)
-Tmax = (g["tmean"].values + g["trange"].values / 2.0)
+# sortie déterministe = prcp PHYSIQUE (mm) ; ensemble/regression brute = prcp_boxcox.
+# force l'ordre d'axes (y, x, time) quel que soit le stockage.
+pvar = "prcp" if "prcp" in g else "prcp_boxcox"
+gp = g[pvar].transpose("y", "x", "time").values
+P = gp if pvar == "prcp" else boxcox_retransform(gp)
+tmean = g["tmean"].transpose("y", "x", "time").values
+trange = g["trange"].transpose("y", "x", "time").values
+Tmin = tmean - trange / 2.0
+Tmax = tmean + trange / 2.0
 g.close()
 print(f"[{REG}] grille PyGMET {P.shape} | {times[0].date()}..{times[-1].date()}", flush=True)
 
 
-def to_nodes(F):  # (y,x,t) -> (t,N) bilinéaire, ordre y croissant
-    oy = np.argsort(yg)
-    itp = RegularGridInterpolator((yg[oy], xg), np.moveaxis(F, 2, 0)[:, oy, :],
-                                  bounds_error=False, fill_value=None)
-    return itp(np.c_[nlat, nlon]) if False else \
-        np.stack([RegularGridInterpolator((yg[oy], xg), F[oy, :, t], bounds_error=False, fill_value=None)(np.c_[nlat, nlon])
-                  for t in range(F.shape[2])])
-
-
-Pn = np.clip(to_nodes(P), 0, None).astype(np.float32)
-Tmn = to_nodes(Tmin).astype(np.float32)
-Tmx = to_nodes(Tmax).astype(np.float32)
-# combler d'éventuels NaN (jours sans station) par la clim mensuelle du nœud
-for arr, fill in [(Pn, 0.0), (Tmn, None), (Tmx, None)]:
-    if np.isnan(arr).any():
-        mo = times.month.values
-        for m in range(1, 13):
-            sel = mo == m
-            col = np.nanmean(arr[sel], axis=0)
-            idx = np.isnan(arr[sel])
-            a = arr[sel]; a[idx] = np.take(col, np.where(idx)[1]); arr[sel] = a
+# chaque nœud -> cellule VALIDE la plus proche (masque statique = cellules krigées).
+# Évite les NaN des cellules masquées ; plus proche voisin (grille 0.05° ~ 5 km, plus
+# fin que les reaches). Un seul mapping, appliqué sur toute la série temporelle.
+LONg, LATg = np.meshgrid(xg, yg)
+valid = np.isfinite(P).all(axis=2)          # cellules définies à tous les pas
+vy, vx = np.nonzero(valid)
+tree = cKDTree(np.c_[LATg[vy, vx], LONg[vy, vx]])
+_, k = tree.query(np.c_[nlat, nlon])
+iy, ix = vy[k], vx[k]
+Pn = np.clip(P[iy, ix, :].T, 0, None).astype(np.float32)   # (T, N)
+Tmn = Tmin[iy, ix, :].T.astype(np.float32)
+Tmx = Tmax[iy, ix, :].T.astype(np.float32)
 print(f"[{REG}] aux nœuds : P {np.nanmean(Pn)*365.25:.0f} mm/an | Tmax moy {np.nanmean(Tmx):.1f} °C", flush=True)
 
 # ── blend énergie CaSR ───────────────────────────────────────────────────────
