@@ -356,3 +356,12 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Le krigeage propre gagne +0.135 sur CaSR et DÉPASSE le SIMAT (que je présentais comme borne) — sans aucun emprunt à Hydrotel, 100% reproductible (ECCC API + PyGMET vendoré).
 - Réserves : (1) dérive tardive etl_run (best held-out au milieu, beta redescend en fin ; autopilot à durcir) ; (2) l'écart résiduel à l'ensemble Hydrotel (0.768) PERSISTE malgré forçage comparable -> la cause restante n'est plus le forçage mais le CALAGE (Hydrotel calé bassin par bassin, méandre non). Écart de nature différente, honnête pour le papier.
 - Pipeline PyGMET prouvé bout-en-bout sur GASP. Suite : étendre à l'est (10 forçages stations déjà accessibles même chemin) + conjoint sur krigeage propre.
+
+## CAUSE RACINE déficit pics/r ENFIN trouvée + fix : K_sat_1 prior 6× trop perméable, 2026-07-24
+- MÉTHODE (exigée par Essi) : tests d'IMPULSION rapides (ms) au lieu de sims 25 ans. Scripts : impulse.py, storm_diff.py, storm_sensitivity.py, ksat1_test.py.
+- ROUTAGE EXONÉRÉ : impulsion en tête d'une chaîne de 6 tronçons ressort à l'exutoire le JOUR MÊME (retard 0), tous K/modes. Le travel_time_days entier gelé n'est utilisé QUE dans le chemin TTA (pas l'opérateur d'entraînement). Baisser K_musk EMPIRE le retard. Le canal n'est PAS le problème.
+- SOL = coupable : orage 50mm -> coeff ruiss 17% (réel 30-50%), pic +3j, absorbe 83%. Levier = K_sat_1 (surface) : ×0.5->32%, ×0.3->59%, ×0.1->88%, pic +0j, BASEFLOW INTACT (K_sat_3 découplé).
+- POURQUOI le NeRF ne corrige pas : init/prior littérature K_sat_1 = 0.080 m/j (field_network l.315) = 6× Rawls loam (0.013) ; physical_prior_loss l'ANCRE là. Param cloué à un prior faux (réponse à « pourquoi les params ne s'ajustent pas »).
+- Hydrotel = MÊME physique BV3C2 + MÊME pas journalier + météo 24h (Essi a écarté ma fausse piste sous-journalière/hortonien) ; seule diff = K_sat calé.
+- FIX : ETL_KSAT1=0.04 (recale prior). RÉSULTAT GASP -hyb (SIMAT, armes égales Hydrotel) : r 0.727->0.790 (ferme la moitié du gap vs Hydrotel 0.877) ; val_kge 0.68->0.740 ; held-out 0.586->0.627 (record méandre-GASP) ; gamma 0.95 (plus de sur-lissage), beta 0.856, stable.
+- SUITE : pousser K_sat_1 un peu plus bas (0.03) ? combiner avec forçage PyGMET ? généraliser à toutes les régions + rendre défaut. Reste du gap r (0.79->0.877) = génération résiduelle.
