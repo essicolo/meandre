@@ -120,6 +120,13 @@ model = HydroModel(
 ).to(DEVICE)
 lp = dict(cfg.get("literature_prior") or {})
 lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande apprise, départ neutre
+# K_sat_1 (surface) : l'init/prior littérature à 0.080 m/j est 6× trop perméable
+# (diag GASP : le sol absorbe 83% de l'orage, coeff ruiss 17% vs 30-50% réel).
+# Recaler l'ancre du prior plus bas re-génère la crue (banc d'impulsion), K_sat_3
+# intact => baseflow préservé. Cible via env (défaut = valeur actuelle).
+if "ETL_KSAT1" in os.environ:
+    lp["K_sat_1"] = float(os.environ["ETL_KSAT1"])
+    print(f"[etl] K_sat_1 prior recalé -> {lp['K_sat_1']} m/j (génération de crue)")
 model.spatial_encoder.init_from_literature(lp)
 model.vertical_column.etp_channel = 6
 
