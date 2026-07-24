@@ -112,6 +112,11 @@ model = HydroModel(
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     compile_soil=bool(mcfg.get("compile_soil", True)),
+    # LEVIERS PICS (r vs Hydrotel) : advection pure (onde cinématique sans diffusion),
+    # célérité dépendante du débit, UH de versant. Activés par env pour le banc GASP.
+    pure_advection=os.environ.get("ETL_ADVECTION", "0") == "1",
+    discharge_dependent_celerity=os.environ.get("ETL_DQCEL", "0") == "1",
+    use_hillslope_uh=os.environ.get("ETL_HILLSLOPE", "0") == "1",
 ).to(DEVICE)
 lp = dict(cfg.get("literature_prior") or {})
 lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande apprise, départ neutre
