@@ -122,6 +122,19 @@ lp = dict(cfg.get("literature_prior") or {})
 lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande apprise, départ neutre
 model.spatial_encoder.init_from_literature(lp)
 model.vertical_column.etp_channel = 6
+
+# CÉLÉRITÉ : le K_musk appris collapse à 24h/tronçon (init) -> retard cumulé 6j du pic
+# (diag GASP). Facteur d'échelle sur K_musk_hours (célérité de base plus rapide), en
+# gardant le routage opérateur rapide (contrairement à dq_celerity qui le casse).
+_kms = float(os.environ.get("ETL_KMUSK_SCALE", "1"))
+if _kms != 1.0:
+    _orig_fwd = model.spatial_encoder.forward
+    def _fwd_kscale(*a, _o=_orig_fwd, _s=_kms, **k):
+        sp = _o(*a, **k)
+        sp.K_musk_hours = torch.clamp(sp.K_musk_hours * _s, min=1.0, max=48.0)
+        return sp
+    model.spatial_encoder.forward = _fwd_kscale
+    print(f"[etl] K_musk × {_kms} (célérité accélérée, routage opérateur préservé)")
 print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (demande apprise × K_c NeRF, init 1.0)")
 
 tconf = TrainingConfig(
