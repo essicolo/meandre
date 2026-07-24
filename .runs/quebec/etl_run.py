@@ -28,11 +28,16 @@ REG = os.environ.get("ETL_REGION", "gasp").lower()
 N_EPOCHS = int(os.environ.get("ETL_EPOCHS", "12"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"
-CKPT = f".runs/quebec/checkpoints/best-{REG}-etl.pt"
+CKPT = f".runs/quebec/checkpoints/best-{REG}-etl{os.environ.get('ETL_TAG', '')}.pt"   # ETL_TAG évite d'écraser les checkpoints de diagnostic
 ETB = "D:/meandre-data/quebec/checkpoints-etbench"
 
 cfg = tomllib.load(open(BASE_CFG, "rb"))
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
+if "ETL_WSNOW" in os.environ:
+    # seuils de fonte appris contre MOD10 (fonte à 0 jusqu'à Tmax+5.5 au banc freshet
+    # = 2 semaines de retard ; la donnée entre par la loss, leçon pilote4b/4c)
+    lcfg["w_snow"] = float(os.environ["ETL_WSNOW"])
+    print(f"[etl] w_snow = {lcfg['w_snow']} (fonte supervisée MOD10)")
 if "ETL_WET" in os.environ:
     # mode appris : w_et(MOD16) est un DOUBLE ancrage (le module encode déjà MOD16,
     # biaisé +15-30 % à l'est vs bilan) — il poussait K_c à 1.07 malgré beta 0.78 (etl2)
