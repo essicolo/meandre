@@ -349,3 +349,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - FIX sans ensemble (30h évitées) : régression en espace LINÉAIRE (transform_vars=['','','']) -> grille 1271 mm/an (vs stations 1099 ; +16% = orographie réelle sur cellules d'altitude, physique). Pattern/timing préservés.
 - Pipeline complet fonctionnel : eccc_loader -> build_pygmet_inputs (infill IDW) -> PyGMET (linéaire, 5 préd, patch numpy) -> build_forcing_pygmet (nearest-valid-cell + blend énergie CaSR). Run GASP full linéaire lancé.
 - Bugs corrigés en route : code mort dans to_nodes (interpolateur (t,y,x)) ; extraction nearest-valid-cell (évite NaN cellules masquées) ; prcp physique (pas de retransform en déterministe).
+
+## VERDICT GASP sur KRIGEAGE PyGMET REPRODUCTIBLE : 0.601 held-out, meilleur sans rien emprunter, 2026-07-24
+- gasp-etl-pgm (ET apprise + forçage PyGMET krigé stations ECCC + énergie CaSR) : held-out médian 0.6013. Volume enfin correct (P nœuds 1274 mm/an, beta ~1.0).
+- CLASSEMENT GASP held-out 22-24 : CaSR 0.466 | ancrages v7 0.577 | SIMAT emprunté 0.586 | PyGMET reproductible 0.601 | ensemble Hydrotel 0.768.
+- Le krigeage propre gagne +0.135 sur CaSR et DÉPASSE le SIMAT (que je présentais comme borne) — sans aucun emprunt à Hydrotel, 100% reproductible (ECCC API + PyGMET vendoré).
+- Réserves : (1) dérive tardive etl_run (best held-out au milieu, beta redescend en fin ; autopilot à durcir) ; (2) l'écart résiduel à l'ensemble Hydrotel (0.768) PERSISTE malgré forçage comparable -> la cause restante n'est plus le forçage mais le CALAGE (Hydrotel calé bassin par bassin, méandre non). Écart de nature différente, honnête pour le papier.
+- Pipeline PyGMET prouvé bout-en-bout sur GASP. Suite : étendre à l'est (10 forçages stations déjà accessibles même chemin) + conjoint sur krigeage propre.
