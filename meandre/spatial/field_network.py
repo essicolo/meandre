@@ -405,8 +405,8 @@ class SpatialFieldNetwork(nn.Module):
             i += 1
         # C_f: bounded [0.5, 8.0]
         raw[i] = inv_bounded(d["C_f"], 0.5, 8.0); i += 1
-        # T_melt: bounded [-1, 1]
-        raw[i] = inv_bounded(d["T_melt"], -1.0, 1.0); i += 1
+        # T_melt: bounded [-2, 3] (aligné sur la transform ; seuil de fonte NeRF)
+        raw[i] = inv_bounded(d["T_melt"], -2.0, 3.0); i += 1
         # T_snow: bounded [0, 2]
         raw[i] = inv_bounded(d["T_snow"], 0.0, 2.0); i += 1
         # interception_capacity: bounded [0.5, 2.5]
@@ -602,8 +602,10 @@ class SpatialFieldNetwork(nn.Module):
         i += 3
         # C_f: [0.5, 8.0] mm/C/day
         constrained.append(bounded(cols[i], 0.5, 8.0)); i += 1
-        # T_melt: [-1, 1] C
-        constrained.append(bounded(cols[i], -1.0, 1.0)); i += 1
+        # T_melt: [-2, 3] C — élargi 2026-07-25 : borné [-1,1] il ne pouvait PAS
+        # atteindre les seuils de fonte calés (+1.6..+2.3°C, valeur mesurée +0.15 KGE
+        # sur GASP) maintenant qu'il pilote le seuil du module neige.
+        constrained.append(bounded(cols[i], -2.0, 3.0)); i += 1
         # T_snow: [0, 2] C
         constrained.append(bounded(cols[i], 0.0, 2.0)); i += 1
         # interception_capacity: [0.5, 2.5] mm

@@ -132,7 +132,20 @@ lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande 
 if "ETL_KSAT1" in os.environ:
     lp["K_sat_1"] = float(os.environ["ETL_KSAT1"])
     print(f"[etl] K_sat_1 prior recalé -> {lp['K_sat_1']} m/j (génération de crue)")
+if "ETL_TMELT" in os.environ:
+    # seuil de fonte NeRF : cible init+prior Hydrotel-comme-littérature (QC ~ +2°C),
+    # le champ reste libre par nœud (PAS un delta autour d'un squelette figé)
+    lp["T_melt"] = float(os.environ["ETL_TMELT"])
+    print(f"[etl] T_melt prior -> {lp['T_melt']} °C (seuil de fonte NeRF)")
 model.spatial_encoder.init_from_literature(lp)
+if os.environ.get("ETL_FONTE_LIT", "0") == "1":
+    # taux de fonte par couvert : init Hydrotel-littérature (4.5/9/18 mm/j/°C au lieu
+    # de 12/14/16) — apprenables comme avant, C_f NeRF = leur variation spatiale
+    import math as _mth
+    with torch.no_grad():
+        for nm, v in [("sp_fonte_conif", 4.5), ("sp_fonte_feu", 9.0), ("sp_fonte_dec", 18.0)]:
+            getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
+    print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
 model.vertical_column.etp_channel = 6
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
