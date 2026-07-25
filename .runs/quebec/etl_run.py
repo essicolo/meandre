@@ -134,6 +134,14 @@ if "ETL_KSAT1" in os.environ:
     print(f"[etl] K_sat_1 prior recalé -> {lp['K_sat_1']} m/j (génération de crue)")
 model.spatial_encoder.init_from_literature(lp)
 model.vertical_column.etp_channel = 6
+if "ETL_MELT_DIR" in os.environ:
+    # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
+    # A/B inférence 2026-07-25 : +0.149 KGE sur checkpoint gasp (v7 : +0.088 entraîné).
+    from meandre.data.hydrotel_calib import load_melt_nodes
+    _mp = load_melt_nodes(os.environ["ETL_MELT_DIR"], r["node_ids"], device=DEVICE)
+    model.vertical_column.set_melt_params(_mp)
+    print(f"[etl] fonte régionale ancrée ({os.environ['ETL_MELT_DIR'].split('/')[-1]}) | "
+          f"taux méd {float(_mp['taux_c'].median()):.1f}/{float(_mp['taux_f'].median()):.1f}/{float(_mp['taux_d'].median()):.1f}")
 
 # CÉLÉRITÉ : le K_musk appris collapse à 24h/tronçon (init) -> retard cumulé 6j du pic
 # (diag GASP). Facteur d'échelle sur K_musk_hours (célérité de base plus rapide), en
