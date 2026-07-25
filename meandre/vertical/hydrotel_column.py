@@ -278,7 +278,14 @@ class HydrotelColumn(nn.Module):
             cf_c = sp_(self.sp_fonte_conif) / 1000.0 * mscale
             cf_f = sp_(self.sp_fonte_feu) / 1000.0 * mscale
             cf_d = sp_(self.sp_fonte_dec) / 1000.0 * mscale
-            se_c = se_f = se_d = torch.zeros_like(like)
+            # SEUIL de fonte = champ T_melt du NeRF (par nœud, appris des attributs).
+            # Était codé en dur à 0°C et T_melt était MORT (audit 2026-07-25) : LE
+            # levier de timing du freshet (les seuils calés valent +0.15 KGE sur GASP).
+            # Init/prior T_melt = -0.5°C (littérature), supervisable par w_snow MOD10.
+            if self.spatial_melt and hasattr(sp, "T_melt"):
+                se_c = se_f = se_d = sp.T_melt
+            else:
+                se_c = se_f = se_d = torch.zeros_like(like)
             tgeo = torch.full_like(like, 0.5); dmax = torch.full_like(like, 466.0)
             tass = torch.full_like(like, 0.1)
         p_snow = dict(lat=lat, ce1=ce1, ce0=ce0,
