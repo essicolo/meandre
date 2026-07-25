@@ -365,3 +365,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Hydrotel = MÊME physique BV3C2 + MÊME pas journalier + météo 24h (Essi a écarté ma fausse piste sous-journalière/hortonien) ; seule diff = K_sat calé.
 - FIX : ETL_KSAT1=0.04 (recale prior). RÉSULTAT GASP -hyb (SIMAT, armes égales Hydrotel) : r 0.727->0.790 (ferme la moitié du gap vs Hydrotel 0.877) ; val_kge 0.68->0.740 ; held-out 0.586->0.627 (record méandre-GASP) ; gamma 0.95 (plus de sur-lissage), beta 0.856, stable.
 - SUITE : pousser K_sat_1 un peu plus bas (0.03) ? combiner avec forçage PyGMET ? généraliser à toutes les régions + rendre défaut. Reste du gap r (0.79->0.877) = génération résiduelle.
+
+## Empilement forçage/K_sat + verdict freshet, 2026-07-24 soir
+- pgm+ksat1 : held-out 0.623 — PAS d'empilement (hyb+ksat1 0.627, pgm seul 0.601). Le r val de pgm (0.609) << SIMAT (0.790) : timings des deux forçages différents, le NeRF n'additionne pas. Meilleur méandre GASP = 0.627 vs Hydrotel brut même forçage 0.744 (gap 0.117).
+- FRESHET diagnostiqué (banc synthétique manteau 350mm + redoux) : fonte à ZÉRO jusqu'à Tmax +5.5°C puis déchaînée (43 mm/j) = démarre ~2 sem trop tard, pic compressé. Porte de gel INNOCENTÉE (fonte 43 -> ruiss 40 le même jour, l'eau sort). Seuils de fonte trop hauts = le déficit r nival.
+- Le banc MOD10 (phase 2) calait le seuil à -1°C ; transplant direct réfuté (4b) mais supervision in-structure validée (4c, w_snow). Hook ETL_WSNOW ajouté ; run SIMAT+ksat1+w_snow=0.3 lancé (duel à forçage égal vs Hydrotel 0.744).
