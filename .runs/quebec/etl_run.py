@@ -117,6 +117,10 @@ model = HydroModel(
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     compile_soil=bool(mcfg.get("compile_soil", True)),
+    # AQUIFÈRE RESTITUANT (spec Essi 2026-07-28) : recharge -> réservoir lent par nœud,
+    # vidange k_gw NeRF (prior = récessions MESURÉES des jauges). Banc partition :
+    # krec 5e-5 + k_gw 0.068 = baseflow 24%, +0.07 KGE en inférence pure.
+    use_aquifer=os.environ.get("ETL_AQUIFER", "0") == "1",
     # LEVIERS PICS (r vs Hydrotel) : advection pure (onde cinématique sans diffusion),
     # célérité dépendante du débit, UH de versant. Activés par env pour le banc GASP.
     pure_advection=os.environ.get("ETL_ADVECTION", "0") == "1",
@@ -132,6 +136,9 @@ lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande 
 if "ETL_KSAT1" in os.environ:
     lp["K_sat_1"] = float(os.environ["ETL_KSAT1"])
     print(f"[etl] K_sat_1 prior recalé -> {lp['K_sat_1']} m/j (génération de crue)")
+if "ETL_KGW" in os.environ:
+    lp["k_gw"] = float(os.environ["ETL_KGW"])   # prior mesuré (récessions jauges)
+    print(f"[etl] k_gw prior -> {lp['k_gw']} /j (récessions mesurées)")
 if "ETL_TMELT" in os.environ:
     # seuil de fonte NeRF : cible init+prior Hydrotel-comme-littérature (QC ~ +2°C),
     # le champ reste libre par nœud (PAS un delta autour d'un squelette figé)
@@ -147,6 +154,14 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
             getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
     print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
 model.vertical_column.etp_channel = 6
+if "ETL_KREC" in os.environ:
+    import math as _mk
+    _kv = float(os.environ["ETL_KREC"])
+    _lo, _hi = model.vertical_column._krec_bounds
+    _x = min(max((_kv - _lo) / (_hi - _lo), 1e-6), 1 - 1e-6)
+    with torch.no_grad():
+        model.vertical_column.krec_raw.copy_(torch.tensor(_mk.log(_x / (1 - _x))))
+    print(f"[etl] krec init -> {_kv:.0e} (drainage profond, banc partition)")
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
     # A/B inférence 2026-07-25 : +0.149 KGE sur checkpoint gasp (v7 : +0.088 entraîné).
