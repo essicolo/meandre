@@ -128,7 +128,9 @@ model = HydroModel(
     use_hillslope_uh=os.environ.get("ETL_HILLSLOPE", "0") == "1",
 ).to(DEVICE)
 lp = dict(cfg.get("literature_prior") or {})
-lp["K_c"] = 1.0   # le 0.6 du TOML compensait McGuinness ; autour de la demande apprise, départ neutre
+lp["K_c"] = float(os.environ.get("ETL_KC", "1.0"))   # autour de la demande apprise : 1.0 neutre,
+# ou PRIOR MESURÉ = ratio bilan P-Q / MOD16 par région (MOD16 sur-évapore le sud +17-25%,
+# et_bilan_check 2026-07-21 ; K_c×0.8 en inférence : MONT test 0.544->0.617, beta 0.73->0.91)
 # K_sat_1 (surface) : l'init/prior littérature à 0.080 m/j est 6× trop perméable
 # (diag GASP : le sol absorbe 83% de l'orage, coeff ruiss 17% vs 30-50% réel).
 # Recaler l'ancre du prior plus bas re-génère la crue (banc d'impulsion), K_sat_3
