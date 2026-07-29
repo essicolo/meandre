@@ -407,3 +407,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Chaîne (audit demandé par Essi) : loaders/mapping/pluie BLANCHIS (outil ratio d'aires officielle/mappée : 1/28 micro-station ; budyko=SIMAT ±5%) -> décomposition : beta test 0.73 = 27% d'eau perdue en TROP d'ET -> MOD16 sur-évapore le sud (+17-25% vs bilan P-Q, mesuré 21/07) et le module appris hérite -> K_c×0.8 en inférence : 0.544->0.617 (preuve).
 - Prior K_c doux (0.8) RE-DÉFAIT par l'entraînement (0.583) : le gradient sur climat 2000-2018 re-préfère la solution biaisée. FIX STRUCTUREL : demande × ratio bilan/MOD16 au forçage (ETL_DEMAND_SCALE) -> MONT held-out 0.6243 (record ; > 0.601 conjoint, > 0.617 inférence) ; Hydrotel brut MONT test 0.637 = quasi-parité (-0.013).
 - ÉTAT DES 3 RÉGIONS (recette portable, priors mesurés) : GASP 0.742 (parité), SAGU 0.700 (record, gap=régulation), MONT 0.624 (record, quasi-parité). SUITE : débiaisage ET aussi sur GASP/SAGU (beta 0.84-0.90, même biais), puis conjoint provincial.
+
+## MÉANDRE BAT HYDROTEL SUR GASP : 0.749 vs 0.744, recette 100% portable, 2026-07-30
+- Débiaisage ET mesuré (ratio bilan/MOD16) + k_gw de queue : GASP 0.7489 (> Hydrotel brut 0.744, ex-parité 0.742) ; SAGU 0.7053 (record, gap restant = régulation Lac-Saint-Jean).
+- ÉTAT FINAL 3 RÉGIONS (priors tous mesurés, zéro emprunt) : GASP 0.749 BAT Hydrotel | SAGU 0.705 record | MONT 0.624 quasi-parité (0.637). Il y a 9 jours : 0.586/0.621/0.601 avec ancrages empruntés.
+- Recette canonique : ET apprise MOD16 × débiais bilan régional + fonte w_snow MOD10 + K_sat 0.04 + aquifère (krec 5e-5, k_gw = queue de récession régionale) + forçage CaSR/hyb. SUITE : conjoint provincial.
