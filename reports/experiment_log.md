@@ -391,3 +391,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Recette 100% PORTABLE : aucun calage Hydrotel emprunté — k_gw = récessions des jauges, krec = banc de partition, K_sat = bilan d'orage, fonte = MOD10, ET = MOD16. Tous les priors sont MESURÉS.
 - Arc GASP complet : 0.586 -> 0.627 (K_sat) -> 0.642 (fonte MOD10) -> 0.742 (partition+aquifère). Trois paramètres enterrés successivement exhumés (prior K_sat faux, seuil fonte mort, krec à 1% de sa borne), chacun trouvé par bancs rapides.
 - SUITE : audit de leviers sur ce checkpoint (krec/k_gw vivants ?), robustesse à re-vérifier sur les autres régions, recette à généraliser (sagu d'abord), conjoint.
+
+## SAGU-aquifer : 0.700 held-out (+0.078 vs record 0.621), robustesse confirmée (test > val), 2026-07-29
+- Recette portable complète + k_gw MESURÉ SAGU (0.079) : held-out 0.6995 méd (n=19) vs record précédent 0.621. val méd 0.665 -> test 0.700 : AUCUNE chute de régime, 2e confirmation.
+- r 0.839 ; gamma 0.789 = régulation Lac-Saint-Jean (plafond connu sans règles de barrage ; ensemble Hydrotel 0.767 calé DESSUS). Le gap restant est la régulation, pas l'hydrologie.
+- MONT lancé avec SON k mesuré (0.172/j, rivières 2× plus flashy — la variabilité régionale que le prior uniforme écrasait).
