@@ -85,6 +85,13 @@ with torch.no_grad():
         demand[lo:hi] = mlp(x.reshape(-1, x.shape[-1])).reshape(hi - lo, n_nodes)
 print(f"[etl] demande ET apprise : {float(demand.mean()) * 365.25:.0f} mm/an moyen | max {float(demand.max()):.1f} mm/j")
 
+_ds = float(os.environ.get("ETL_DEMAND_SCALE", "1.0"))
+if _ds != 1.0:
+    # débiaisage RÉGIONAL structurel de la demande (ratio bilan P-Q / MOD16) : appliqué
+    # au canal, le gradient ne peut pas le défaire (le prior K_c doux était re-défait
+    # à l'entraînement : mont-kc 0.583 < 0.617 inférence)
+    demand = demand * _ds
+    print(f"[etl] demande ET débiaisée × {_ds} (bilan/MOD16 régional)")
 f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
 
 
