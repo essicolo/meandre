@@ -396,3 +396,9 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Recette portable complète + k_gw MESURÉ SAGU (0.079) : held-out 0.6995 méd (n=19) vs record précédent 0.621. val méd 0.665 -> test 0.700 : AUCUNE chute de régime, 2e confirmation.
 - r 0.839 ; gamma 0.789 = régulation Lac-Saint-Jean (plafond connu sans règles de barrage ; ensemble Hydrotel 0.767 calé DESSUS). Le gap restant est la régulation, pas l'hydrologie.
 - MONT lancé avec SON k mesuré (0.172/j, rivières 2× plus flashy — la variabilité régionale que le prior uniforme écrasait).
+
+## FRONTIÈRE DE LA RECETTE AQUIFÈRE + SYNTHÈSE DE L'ARC, 2026-07-29
+- MONT-aquifer : 0.544 held-out, RECUL (réfs 0.601 conjoint / 0.578 mono) ; chute val->test de retour (0.636->0.544). Queue de récession re-mesurée : MONT est RÉELLEMENT rapide (k queue 0.138, demi-vie 5 j, drainage agricole) — pas un artefact de méthode. Sweep k_gw en inférence : KGE test INSENSIBLE à k_gw (0.544 partout) -> le réservoir lent n'est pas le levier de MONT ; suspect restant = K_sat_1 0.04 uniforme inadapté aux sols du sud.
+- RÈGLE DE CLASSES (symétrique de v7) : recette aquifère-priors-mesurés = EST/BORÉAL naturels (GASP parité 0.742, SAGU record 0.700, test>=val) ; SUD flashy agricole = recette conjointe (MONT 0.601). k_gw par région depuis la QUEUE de récession (gasp 0.052, sagu 0.051, mont 0.138).
+- BILAN DE L'ARC (4 jours, méthode scalpel) : 3 paramètres enterrés exhumés (prior K_sat ×6, seuil fonte mort, krec à 1% de sa borne) ; partition verticale rouverte (spec Essi : recharge -> réservoirs lents par nœud) ; robustesse de régime RÉSOLUE là où la physique du baseflow existe ; recette 100% portable, priors tous mesurés (récessions, MOD10, MOD16, bilan d'orage).
+- SUITE : cause du déficit sud (K_sat/textures par classe de sol — exige fractions brutes PHYSITEL) ; conjoint est+boréal avec recette aquifère ; carte 15 régions ; audit leviers ckpt gasp-aquifer.
