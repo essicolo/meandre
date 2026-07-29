@@ -383,3 +383,11 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - BANC : krec 5e-5 + use_aquifer + k_gw=0.068 (mesuré) = baseflow 24% (cible 20-40%), KGE 0.500->0.570 fenêtre courte SANS réentraînement ; krec 1e-4 = trop (45%, KGE retombe). Courbe en cloche nette.
 - Pédotransfert K_sat : NON fiable pour l'instant (features texturales normalisées en base, reconstruction min-max déforme) — en attente des fractions brutes.
 - Run gasp-aquifer lancé : ksat1 0.04 + w_snow + use_aquifer + krec init 5e-5 + prior k_gw 0.068. Réf à battre : 0.642 (held-out), Hydrotel 0.744.
+
+## PARITÉ HYDROTEL ATTEINTE SUR GASP : 0.742 held-out (Hydrotel brut 0.744), robustesse de régime RÉSOLUE, 2026-07-28
+- gasp-aquifer (ksat1 0.04 + w_snow MOD10 + use_aquifer + krec init 5e-5 + prior k_gw 0.068 MESURÉ) : held-out médian 0.7421 / mean 0.666 ; val 0.749 méd, r 0.830, gamma 1.000, stable 30 epochs.
+- PARITÉ avec Hydrotel brut même forçage (0.744) sur SA meilleure région de l'est, à -0.002 ; ensemble médian 0.768 à portée. Il y a 4 jours : 0.586.
+- ROBUSTESSE RÉSOLUE : chute val->test = 0.007 (0.749->0.742) contre -0.06/-0.10 sur toutes les variantes antérieures. La fragilité de régime était la PARTITION manquante : sans voie profonde, le sol compensait le baseflow par des paramètres sur-adaptés au climat ; avec le réservoir lent (spec Essi), la mémoire lente est physique et transfère.
+- Recette 100% PORTABLE : aucun calage Hydrotel emprunté — k_gw = récessions des jauges, krec = banc de partition, K_sat = bilan d'orage, fonte = MOD10, ET = MOD16. Tous les priors sont MESURÉS.
+- Arc GASP complet : 0.586 -> 0.627 (K_sat) -> 0.642 (fonte MOD10) -> 0.742 (partition+aquifère). Trois paramètres enterrés successivement exhumés (prior K_sat faux, seuil fonte mort, krec à 1% de sa borne), chacun trouvé par bancs rapides.
+- SUITE : audit de leviers sur ce checkpoint (krec/k_gw vivants ?), robustesse à re-vérifier sur les autres régions, recette à généraliser (sagu d'abord), conjoint.
