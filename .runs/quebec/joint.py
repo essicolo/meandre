@@ -40,7 +40,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"   # source des poids loss + hyperparams
 CKPT = f".runs/quebec/checkpoints/best-joint-{TAG}.pt"
 
-USE_ETL = os.environ.get("JOINT_ETL", "0") == "1"   # ET APPRISE : demande MLP MOD16 en 7e canal (phase 4 design_modules_appris)
+USE_ETL = os.environ.get("JOINT_ETL", "0") == "1"
+USE_AQ = os.environ.get("JOINT_AQUIFER", "0") == "1"   # recette canonique 2026-07-30
+DS = {"gasp": 0.81, "sagu": 0.85, "mont": 0.80, "slso": 0.85}   # débiais bilan/MOD16 par région   # ET APPRISE : demande MLP MOD16 en 7e canal (phase 4 design_modules_appris)
 
 cfg = tomllib.load(open(BASE_CFG, "rb"))
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
@@ -58,7 +60,7 @@ if USE_ETL:
     from et_module import compute_demand
     for r in regions:
         td = r["train_data"]
-        demand = compute_demand(td.forcing, td.day_of_year, td.node_coords, r["territorial"], DEVICE)
+        demand = compute_demand(td.forcing, td.day_of_year, td.node_coords, r["territorial"], DEVICE) * (DS.get(r["name"], 1.0) if USE_AQ else 1.0)
         f7 = torch.cat([td.forcing[:, :, :6], demand[:, :, None]], dim=2)
         r["train_data"] = _dc_replace(td, forcing=f7)
         r["val_data"] = _dc_replace(r["val_data"], forcing=f7)
@@ -90,6 +92,7 @@ model = HydroModel(
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     compile_soil=bool(mcfg.get("compile_soil", True)),
+    use_aquifer=USE_AQ,
 ).to(DEVICE)
 USE_MELT10 = os.environ.get("JOINT_MELT10", "0") == "1"   # init fonte calée MOD10 (banc snow_bench, 12 régions)
 _lp = dict(cfg.get("literature_prior") or {})
@@ -102,7 +105,16 @@ if USE_MELT10:
     _lp["T_melt"] = -0.98
     model.vertical_column.t_neige_seuil = -0.47
     print("[joint] init fonte MOD10 : C_f 5.39, T_melt -0.98, seuil pluie/neige -0.47")
+if USE_AQ:
+    _lp["K_sat_1"] = 0.04; _lp["K_c"] = 1.0; _lp["k_gw"] = 0.07   # priors mesurés (bilan orage, récessions)
 model.spatial_encoder.init_from_literature(_lp)
+if USE_AQ:
+    import math as _mk
+    _lo, _hi = model.vertical_column._krec_bounds
+    _x = min(max((5e-5 - _lo) / (_hi - _lo), 1e-6), 1 - 1e-6)
+    with torch.no_grad():
+        model.vertical_column.krec_raw.copy_(torch.tensor(_mk.log(_x / (1 - _x))))
+    print("[joint] recette canonique : aquifère + krec 5e-5 + priors mesurés + débiais ET par région")
 if USE_ETL:
     model.vertical_column.etp_channel = 6
     print("[joint] etp_channel=6 : demande apprise × K_c NeRF, w_et=0")
