@@ -421,3 +421,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - gasp 0.444 / sagu 0.623 / mont 0.541 held-out vs monos records 0.749 / 0.705 / 0.624. La recette canonique ne survit PAS au partage d'un seul NeRF+colonne entre 3 régions (GASP s'effondre en particulier).
 - Confonds à instruire AVANT tout re-run : 15 epochs sans autopilot (monos = 30 + autopilot), k_gw prior GLOBAL 0.07 (monos : par région 0.052/0.051/0.138 — la variabilité régionale mesurée est écrasée par le prior partagé), pondération jauges.
 - DÉCISION STRATÉGIQUE pour Essi : (a) flotte de MONOS avec la recette canonique par région (chemin PROUVÉ : 3/3 records, priors régionaux mesurés scriptables pour les 15 régions) vs (b) instruire le conjoint (priors par région DANS le conjoint, plus d'epochs+garde-fous). Le produit provincial n'exige pas le conjoint — la recette portable EST la régionalisation.
+
+## BUG STRUCTUREL DE TOUS LES CONJOINTS TROUVÉ (intuition Essi) : normalisation territoriale PAR RÉGION, 2026-07-30
+- Vérifié : chaque duckdb régional stocke les features z-scorées sur SES stats (mean 0/std 0.92 partout). Le NeRF partagé reçoit des entrées incompatibles entre régions (+1σ sable = sols différents) -> ne peut pas apprendre de règle attributs->paramètres commune -> compromis mou, instabilité MONT, 5 échecs conjoints (pilote3->5) expliqués d'un coup. Le pooling n'a JAMAIS été testé proprement.
+- FIX avant tout re-run conjoint : renormalisation GLOBALE provinciale des features dans joint_data (exige les stats brutes — vérifier si récupérables des DB ou rebuild territorial). Probable gain aussi pour et_bench (même biais, atténué car la météo domine).
+- Les monos records restent valides (normalisation cohérente en intra-région).
