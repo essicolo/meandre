@@ -169,6 +169,14 @@ for epoch in range(N_EPOCHS):
         set_region(i)
         trainers[i]._cur_epoch = epoch
         loss, comps = trainers[i]._train_epoch()
+        if os.environ.get("JOINT_DIAG", "0") == "1":
+            # instrumentation du paradoxe : loss + norme de gradient PAR RÉGION
+            gn = 0.0
+            for pgroup in shared_opt.param_groups:
+                for prm in pgroup["params"]:
+                    if prm.grad is not None:
+                        gn += float(prm.grad.norm()) ** 2
+            print(f"[diag] ep {epoch} | {regions[i]['name']} | loss {float(loss):.4f} | grad_norm {gn**0.5:.2f}", flush=True)
     scheduler.step()
     # validation par région
     meds, parts = [], []
