@@ -441,3 +441,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - La grille SIMAT s'arrête à 53.3N : les -hyb boréaux perdaient 12-27% de P (cndb 854 vs 1175 mm/an). Sur budyko + ds neutre : labi 0.339->0.601, cndb 0.310->0.746 (BAT l'ensemble 0.547), outv 0.272->0.512, cnda 0.470->0.490 ; betas ~1 partout.
 - RÈGLE DE FORÇAGE PAR CLASSE actée : hybride SIMAT+CaSR au sud/est de la grille ; CaSR-budyko au boréal/nord. Carte v2 médiane provinciale ~0.62 en zero-shot pur.
 - Zero-shot BAT la médiane d'ensemble sur cndd/cndc/abit/cndb ; talonne gasp/sagu/labi ; fine-tune phase 5 : slso (parité de recette 7 canaux+z_n+quantile), mont, outm/outv/slno.
+
+## Tournée bancs d'orage régionaux : K_sat INNOCENTÉ pour les retardataires, adaptateurs mesurés épuisés, 2026-07-30
+- Coefficient d'orage du champion transféré : ~34% partout (mont/slso/outm/slno/outv), déjà dans la cible 30-50% -> échelle retenue 1.0, scores inchangés. Le fix K_sat généralise ; les écarts restants ne sont PAS la génération d'orage.
+- Restants : slso 0.551 (parité de recette avec son champion 0.689 : forçage corr 7 canaux + z_n + quantile), mont 0.559 (domaine du champion, sols agricoles), outm/outv/slno 0.51-0.63 (ouest, ensemble Hydrotel 0.77-0.80 : à instruire, forçage ouest ou régulation).
+- SUITE (option propre n°2) : instrumentation du paradoxe du conjoint (transfert OK, pooling KO) — run court 2 régions avec loss/gradients par région.
