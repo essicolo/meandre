@@ -431,3 +431,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Hypothèse normalisation RÉFUTÉE proprement (A/B : z-local 0.706 = brut aligné 0.707 sur gasp->sagu ; les stats régionales se ressemblent, le NeRF est peu sensible à l'écart).
 - DÉCOUVERTE (intuition Essi « je ne vois pas pourquoi méandre échouerait ») : le NeRF GASP transfère en ZERO-SHOT : SAGU 0.706 (= mono 0.705 !), MONT 0.568 (91% du mono 0.624, classe opposée). Le modèle EST déjà régional ; c'est la PROCÉDURE d'entraînement conjoint qui casse (optimiseur partagé/rotation/pondération), pas la transférabilité.
 - Voie provinciale recommandée : UN champion (gasp-ds) + demand-scale et k_gw régionaux mesurés -> carte 15 régions en inférences (minutes/région) ; fine-tune court par région si besoin (sud). Conjoint = R&D non bloquante.
+
+## CARTE PROVINCIALE ZERO-SHOT v1 (1 champion, 90 min d'inférence), 2026-07-30
+- gasp 0.720 | sagu 0.718 | cndd 0.821 | cndc 0.710 | abit 0.701 | slno 0.630 | cnde 0.614 | mont 0.559 | slso 0.551 | outm 0.522 | cnda 0.470 | labi 0.339 | cndb 0.310 | outv 0.272 (vaud à vérifier).
+- BAT la médiane d'ensemble Hydrotel sur cndd/cndc/abit ; parité proche gasp/sagu ; DÉCROCHAGES corrélés aux ds CONTAMINÉS : labi/cndb/outv ont ds 1.07-1.10 issus de bilans P-Q faussés par la régulation/dérivations (flaggés dès la vérif du 21/07) — le débiaisage y AUGMENTE l'ET à tort. Fix : ds=1 (ou borne <=1) pour les bassins au bilan non fiable, re-sweep 30 min.
+- slso 0.551 : champion sur forçage -hyb vs champion slso historique 0.689 (7 canaux corr + z_n + quantile) — écart de recette, pas de transfert.
