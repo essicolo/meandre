@@ -118,6 +118,11 @@ if USE_AQ:
 if USE_ETL:
     model.vertical_column.etp_channel = 6
     print("[joint] etp_channel=6 : demande apprise × K_c NeRF, w_et=0")
+if "JOINT_WARM" in os.environ:
+    # warm-start du CHAMPION : départage interférence-de-rotation vs lenteur-à-froid.
+    # Si le conjoint dégrade depuis le point zero-shot, l'interférence est prouvée.
+    model.load(os.environ["JOINT_WARM"])
+    print(f"[joint] warm-start depuis {os.environ['JOINT_WARM']}")
 print(f"[joint] modèle partagé : {sum(p.numel() for p in model.parameters()):,} params")
 
 # ── ancrages régionaux v7 (Linacre + fonte, chargés PAR RÉGION, bascule dans set_region) ──
