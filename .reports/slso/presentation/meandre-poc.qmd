@@ -280,7 +280,9 @@ Un mécanisme d'autopilote gère, dans chaque phase, la réduction du taux d'app
 
 L'entraînement utilise la rétropropagation tronquée dans le temps (TBPTT, fenêtre 365 j) et l'accumulation par blocs (180 j) pour tenir dans 8 Go de mémoire GPU. Les termes de perte utilisés sur les blocs (MSE, log-MSE, PBIAS) sont chunk-safe ; les critères fondés sur des statistiques de séquence complète (NSE, KGE) ne servent qu'en validation.
 
-# Résultats sur SLSO
+# Validation initiale sur bassin unique (SLSO)
+
+Cette section documente l'étape historique qui a validé l'architecture avant le passage à l'échelle : un seul bassin (Saint-Laurent sud-ouest), très instrumenté, où chaque composante a été confrontée à Hydrotel sur les mêmes intrants. C'est ici qu'ont été établies la parité de performance avec le modèle opérationnel, la calibration de la tête probabiliste, et la vitesse du routage par opérateur. Les chiffres qui suivent se rapportent à la recette de cette époque ; la recette canonique actuelle (section Stratégie) a depuis remplacé certaines fermetures et ajouté l'aquifère, et ses résultats provinciaux sont présentés plus loin. On conserve cette section parce qu'elle montre le niveau de détail de la validation par composante (hydrogrammes, cartes de paramètres, couverture des intervalles), qui reste la norme du projet.
 ## Bassin et fenêtres temporelles
 
 ```{python}
@@ -677,6 +679,26 @@ Sur le modèle déterministe validé se greffe la couche probabiliste, déjà d�
 
 Sur les régions pilotes, à météo égale et en évaluation hors distribution : parité ou victoire contre Hydrotel là où le calage manuel d'Hydrotel excellait (GASP 0.749 contre 0.744), record sans calage sur le Saguenay (0.705, l'écart restant à l'ensemble Hydrotel portant la signature de la régulation des barrages, non modélisée des deux côtés), transfert régional démontré, physique certifiée (bilan de masse fermé à 1.3%, paramètres dans leurs plages, évapotranspiration égale au bilan indépendant), et un facteur de vitesse de plusieurs centaines qui change la nature des produits possibles. Chaque chiffre de ce document provient du journal d'expériences du dépôt (reports/experiment_log.md), qui trace la cause, le test et le verdict de chaque décision.
 
+
+# Stratégies écartées et leçons
+
+La trajectoire du projet compte autant d'abandons documentés que de composantes retenues ; chacun a produit une règle de conception. Cette section les consigne pour éviter qu'ils soient retentés, et parce que les règles qui en sortent définissent la méthode.
+
+Le correcteur résiduel additif sur le débit (un GRU qui corrigeait la sortie) : performant en apparence, il violait la conservation (il créait de l'eau) et sa correction ne transférait pas aux stations non vues ; sa seule variante viable fut un correcteur relatif à somme nulle. Règle : une composante apprise entre dans le bilan comme un flux borné, jamais comme une correction libre de la quantité conservée.
+
+La pile d'incertitude par perturbation (bruit de paramètres et concrete dropout) : abandonnée au profit de la tête de régression quantile, plus simple, dont la médiane reste la simulation physique et dont la couverture se vérifie hors échantillon. Règle : l'incertitude se calibre et se mesure, elle ne se postule pas.
+
+Les ancrages empruntés au calage d'Hydrotel (coefficients d'évapotranspiration et de fonte des plateformes régionales) : gains réels sur leur territoire de calage, échecs nets ailleurs (jusqu'à des effondrements en zone boréale). Règle : les valeurs calées d'Hydrotel servent de littérature (initialisations, cibles de prior), jamais de paramètres imposés ; la régionalisation doit venir des attributs.
+
+Le transplant de scalaires calés hors structure (les taux de fonte optimisés sur un banc externe, injectés tels quels dans la colonne) : dégradation immédiate, car la correspondance paramètre-effet diffère entre structures. Règle : la donnée entre par la fonction de perte (supervision), pas par les paramètres.
+
+Le débiaisage par prior doux : un prior de correction sur le coefficient cultural a été systématiquement défait par l'entraînement, le gradient sur le climat passé préférant la solution biaisée. Règle : une correction de biais de donnée doit être structurelle, appliquée à l'intrant, hors de portée de l'optimisation.
+
+Le forçage quebec.zarr (grille SIMAT ré-échantillonnée) : artefacts d'interpolation (yeux de bœuf) et frontière nord qui affame les bassins boréaux ; rejeté comme source unique au profit d'une règle par classe de région (hybride stations-réanalyse au sud, réanalyse corrigée au nord) et d'un pipeline de krigeage reproductible depuis les stations publiques. Règle : auditer le produit météo par bilan annuel et par validation croisée aux stations avant d'y entraîner quoi que ce soit.
+
+Les fausses pistes de routage : deux campagnes ont accusé le canal (constante de Muskingum, célérité variable) avant qu'un banc d'impulsion d'une milliseconde ne montre que le routage n'ajoutait aucun retard ; les vrais coupables étaient dans le sol (perméabilité de surface sur-estimée par le prior, seuils de fonte hors du graphe de calcul, drainage profond verrouillé par un scalaire enterré). Règle : isoler chaque mécanisme par réponse impulsionnelle avant tout réentraînement ; un paramètre absent du graphe différentiable est causalement mort et doit y être branché.
+
+L'entraînement conjoint multi-régions : cinq pilotes ont dégradé toutes les régions par rapport aux modèles régionaux, alors même que le transfert zero-shot fonctionne (le champion gaspésien égale au Saguenay le modèle qui y a été entraîné). Ce paradoxe innocente le modèle et accuse la procédure d'optimisation partagée (rotation des régions, état de l'optimiseur, échelles de perte) ; le conjoint est relégué en question de recherche, le déploiement passant par le transfert. Règle : quand un modèle généralise mais que son entraînement joint échoue, instrumenter l'optimisation avant de toucher au modèle.
 
 # Limites connues {#sec-limites}
 
