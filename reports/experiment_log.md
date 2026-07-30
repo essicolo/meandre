@@ -412,3 +412,7 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Débiaisage ET mesuré (ratio bilan/MOD16) + k_gw de queue : GASP 0.7489 (> Hydrotel brut 0.744, ex-parité 0.742) ; SAGU 0.7053 (record, gap restant = régulation Lac-Saint-Jean).
 - ÉTAT FINAL 3 RÉGIONS (priors tous mesurés, zéro emprunt) : GASP 0.749 BAT Hydrotel | SAGU 0.705 record | MONT 0.624 quasi-parité (0.637). Il y a 9 jours : 0.586/0.621/0.601 avec ancrages empruntés.
 - Recette canonique : ET apprise MOD16 × débiais bilan régional + fonte w_snow MOD10 + K_sat 0.04 + aquifère (krec 5e-5, k_gw = queue de récession régionale) + forçage CaSR/hyb. SUITE : conjoint provincial.
+
+## CERTIFICATION PHYSIQUE MACRO (checkpoint gasp-ds), 2026-07-30
+- Bilan : P 1015 = ETR 452 (45%) + runoff 551 (54%) + dS +13 (1.3%) — fermeture OK. ETR dans le bilan P-Q mesuré. Partition baseflow 15% (légèrement sous la cible 20-40, seul ambre, non bloquant). Tous les champs NeRF dans leurs plages physiques ET spatialement VIVANTS (T_melt [-0.45,+1.53], C_f [1.9,4.4], k_gw 0.048 ~ queue mesurée 0.052 ; fini les collapses).
+- FEU VERT pour le conjoint provincial avec la recette canonique.
