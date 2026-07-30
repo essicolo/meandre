@@ -436,3 +436,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - gasp 0.720 | sagu 0.718 | cndd 0.821 | cndc 0.710 | abit 0.701 | slno 0.630 | cnde 0.614 | mont 0.559 | slso 0.551 | outm 0.522 | cnda 0.470 | labi 0.339 | cndb 0.310 | outv 0.272 (vaud à vérifier).
 - BAT la médiane d'ensemble Hydrotel sur cndd/cndc/abit ; parité proche gasp/sagu ; DÉCROCHAGES corrélés aux ds CONTAMINÉS : labi/cndb/outv ont ds 1.07-1.10 issus de bilans P-Q faussés par la régulation/dérivations (flaggés dès la vérif du 21/07) — le débiaisage y AUGMENTE l'ET à tort. Fix : ds=1 (ou borne <=1) pour les bassins au bilan non fiable, re-sweep 30 min.
 - slso 0.551 : champion sur forçage -hyb vs champion slso historique 0.689 (7 canaux corr + z_n + quantile) — écart de recette, pas de transfert.
+
+## CARTE v2 : le boréal réparé par la règle de forçage (hyb affamait le nord), 2026-07-30
+- La grille SIMAT s'arrête à 53.3N : les -hyb boréaux perdaient 12-27% de P (cndb 854 vs 1175 mm/an). Sur budyko + ds neutre : labi 0.339->0.601, cndb 0.310->0.746 (BAT l'ensemble 0.547), outv 0.272->0.512, cnda 0.470->0.490 ; betas ~1 partout.
+- RÈGLE DE FORÇAGE PAR CLASSE actée : hybride SIMAT+CaSR au sud/est de la grille ; CaSR-budyko au boréal/nord. Carte v2 médiane provinciale ~0.62 en zero-shot pur.
+- Zero-shot BAT la médiane d'ensemble sur cndd/cndc/abit/cndb ; talonne gasp/sagu/labi ; fine-tune phase 5 : slso (parité de recette 7 canaux+z_n+quantile), mont, outm/outv/slno.
