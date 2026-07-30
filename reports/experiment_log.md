@@ -416,3 +416,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 ## CERTIFICATION PHYSIQUE MACRO (checkpoint gasp-ds), 2026-07-30
 - Bilan : P 1015 = ETR 452 (45%) + runoff 551 (54%) + dS +13 (1.3%) — fermeture OK. ETR dans le bilan P-Q mesuré. Partition baseflow 15% (légèrement sous la cible 20-40, seul ambre, non bloquant). Tous les champs NeRF dans leurs plages physiques ET spatialement VIVANTS (T_melt [-0.45,+1.53], C_f [1.9,4.4], k_gw 0.048 ~ queue mesurée 0.052 ; fini les collapses).
 - FEU VERT pour le conjoint provincial avec la recette canonique.
+
+## PILOTE5 (conjoint recette canonique) : ÉCHEC net vs monos — le pooling reste le problème ouvert, 2026-07-30
+- gasp 0.444 / sagu 0.623 / mont 0.541 held-out vs monos records 0.749 / 0.705 / 0.624. La recette canonique ne survit PAS au partage d'un seul NeRF+colonne entre 3 régions (GASP s'effondre en particulier).
+- Confonds à instruire AVANT tout re-run : 15 epochs sans autopilot (monos = 30 + autopilot), k_gw prior GLOBAL 0.07 (monos : par région 0.052/0.051/0.138 — la variabilité régionale mesurée est écrasée par le prior partagé), pondération jauges.
+- DÉCISION STRATÉGIQUE pour Essi : (a) flotte de MONOS avec la recette canonique par région (chemin PROUVÉ : 3/3 records, priors régionaux mesurés scriptables pour les 15 régions) vs (b) instruire le conjoint (priors par région DANS le conjoint, plus d'epochs+garde-fous). Le produit provincial n'exige pas le conjoint — la recette portable EST la régionalisation.
