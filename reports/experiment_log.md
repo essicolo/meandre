@@ -426,3 +426,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Vérifié : chaque duckdb régional stocke les features z-scorées sur SES stats (mean 0/std 0.92 partout). Le NeRF partagé reçoit des entrées incompatibles entre régions (+1σ sable = sols différents) -> ne peut pas apprendre de règle attributs->paramètres commune -> compromis mou, instabilité MONT, 5 échecs conjoints (pilote3->5) expliqués d'un coup. Le pooling n'a JAMAIS été testé proprement.
 - FIX avant tout re-run conjoint : renormalisation GLOBALE provinciale des features dans joint_data (exige les stats brutes — vérifier si récupérables des DB ou rebuild territorial). Probable gain aussi pour et_bench (même biais, atténué car la météo domine).
 - Les monos records restent valides (normalisation cohérente en intra-région).
+
+## TRANSFERT ZERO-SHOT : la régionalisation marche DÉJÀ, le conjoint est inutile, 2026-07-30
+- Hypothèse normalisation RÉFUTÉE proprement (A/B : z-local 0.706 = brut aligné 0.707 sur gasp->sagu ; les stats régionales se ressemblent, le NeRF est peu sensible à l'écart).
+- DÉCOUVERTE (intuition Essi « je ne vois pas pourquoi méandre échouerait ») : le NeRF GASP transfère en ZERO-SHOT : SAGU 0.706 (= mono 0.705 !), MONT 0.568 (91% du mono 0.624, classe opposée). Le modèle EST déjà régional ; c'est la PROCÉDURE d'entraînement conjoint qui casse (optimiseur partagé/rotation/pondération), pas la transférabilité.
+- Voie provinciale recommandée : UN champion (gasp-ds) + demand-scale et k_gw régionaux mesurés -> carte 15 régions en inférences (minutes/région) ; fine-tune court par région si besoin (sud). Conjoint = R&D non bloquante.
