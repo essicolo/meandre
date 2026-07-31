@@ -39,16 +39,6 @@ def measure():
         lat_col = 0 if 40 < float(np.nanmean(nc[:, 0])) < 62 else 1
         north = float(np.quantile(nc[:, lat_col], 0.9))
         hyb = D["forcage_hyb"].format(reg=reg)
-        # la couverture du forçage hybride se VÉRIFIE (les nœuds hors grille krigée
-        # reçoivent une pluie tronquée), elle ne se suppose pas : on compare le volume
-        # annuel hyb vs budyko et on rejette hyb s'il ampute (>5% de déficit).
-        # SÉLECTION PAR VALIDATION CROISÉE : on ne devine pas quel produit météo convient,
-        # on prend celui dont la pluie de bassin reproduit le mieux le bilan hydrologique
-        # observé aux jauges (P doit couvrir Q + ET). Critère : |P - (Q + ET_MOD16)| minimal,
-        # médiane sur les stations à longue série. Mesuré, tracé, réfutable.
-        use_hyb = os.path.exists(hyb)
-        prov["forcage"] = "hyb" if use_hyb else "budyko"
-        prov["forcage_motif"] = f"q90_lat={north:.2f} vs grille_max={lat_max:.2f}" + ("" if os.path.exists(hyb) else " (hyb absent)")
         con = duckdb.connect(dbp(reg), read_only=True)
         st = con.execute("select station_id, node_idx from stations").fetchdf()
         e = con.execute("select src, dst from edges").fetchdf()
@@ -65,38 +55,59 @@ def measure():
                         seen.add(x); stk.append(x)
             return list(seen)
 
-        fx = hyb if use_hyb else D["forcage_budyko"].format(reg=reg)
-        if not os.path.exists(fx):
-            fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
-        prov["forcage_fichier"] = os.path.basename(fx)
-        if reg == "slso":
-            fx = "D:/meandre-data/slso/forcing-casr-corr.nc"
-        dsx = xr.open_dataset(fx); Pmm = dsx["forcing"].values[:, :, 0]
-        times = pd.to_datetime(dsx["time"].values); dsx.close()
         et = None
         try:
             et = cache.load_modis_et("2001-01-01", "2024-12-31", device="cpu").numpy()
         except Exception:
             pass
-        ratios, used = [], []
-        min_d = P["debias_et_stations_min_annees"] * 365
-        for _, rr in st.iterrows():
-            o = con.execute(f"select date, discharge from observations where station_id={rr.station_id}").fetchdf()
-            if len(o) < min_d or et is None:
-                continue
-            a = anc(int(rr.node_idx)); akm = area[a].sum()
-            if akm < 100:
-                continue
-            q_mm = float(np.nanmean(o["discharge"])) * 86400 * 365.25 / (akm * 1e6) * 1000
-            w = area[a] / area[a].sum()
-            p_mm = float((Pmm[:, a] * w).sum(axis=1).mean()) * 365.25
-            etn = et[:, a]; land = np.isfinite(etn).sum(axis=0) >= 200
-            if land.sum() == 0:
-                continue
-            wl = area[a][land] / area[a][land].sum()
-            et16 = float((np.nanmean(etn[:, land], axis=0) * 365.25 * wl).sum())
-            if et16 > 50:
-                ratios.append((p_mm - q_mm) / et16); used.append(int(rr.station_id))
+
+        def bilan_stats(path):
+            """Écart de fermeture |P-(Q+ET)|/P (médiane stations) + ratios (P-Q)/ET."""
+            if not os.path.exists(path) or et is None:
+                return None, [], []
+            dsl = xr.open_dataset(path); Pl = dsl["forcing"].values[:, :, 0]; dsl.close()
+            errs, rat, usd = [], [], []
+            for _, rr2 in st.iterrows():
+                o2 = con.execute(f"select discharge from observations where station_id={rr2.station_id}").fetchdf()
+                if len(o2) < P["debias_et_stations_min_annees"] * 365:
+                    continue
+                a2 = anc(int(rr2.node_idx)); akm2 = area[a2].sum()
+                if akm2 < 100:
+                    continue
+                q2 = float(np.nanmean(o2["discharge"])) * 86400 * 365.25 / (akm2 * 1e6) * 1000
+                w2 = area[a2] / area[a2].sum()
+                p2 = float((Pl[:, a2] * w2).sum(axis=1).mean()) * 365.25
+                etn2 = et[:, a2]; land2 = np.isfinite(etn2).sum(axis=0) >= 200
+                if land2.sum() == 0:
+                    continue
+                wl2 = area[a2][land2] / area[a2][land2].sum()
+                e2 = float((np.nanmean(etn2[:, land2], axis=0) * 365.25 * wl2).sum())
+                if e2 > 50:
+                    errs.append(abs(p2 - (q2 + e2)) / max(p2, 1))
+                    rat.append((p2 - q2) / e2); usd.append(int(rr2.station_id))
+            return (float(np.median(errs)) if errs else None), rat, usd
+
+        # SÉLECTION MESURÉE du produit météo : celui dont la pluie ferme le mieux le
+        # bilan hydrologique observé (P ~ Q + ET). Aucune règle géographique supposée
+        # (les règles latitude/volume ont été réfutées : couverture réelle = 100%).
+        cands = {"-hyb": hyb, "-budyko": D["forcage_budyko"].format(reg=reg),
+                 "casr": (D["forcage_casr_slso"] if reg == "slso" else f"D:/meandre-data/quebec/forcing-{reg}.nc")}
+        scores = {}
+        for tag, path in cands.items():
+            err, _, _ = bilan_stats(path)
+            if err is not None:
+                scores[tag] = round(err * 100, 1)
+        best_tag = min(scores, key=scores.get) if scores else "casr"
+        fx = cands[best_tag]
+        if not os.path.exists(fx):
+            fx = next(pp for pp in cands.values() if os.path.exists(pp))
+        prov["forcage"] = best_tag
+        prov["forcage_fichier"] = os.path.basename(fx)
+        prov["forcage_ecarts_bilan_pct"] = scores
+        _, ratios_sel, used_sel = bilan_stats(fx)
+        dsx = xr.open_dataset(fx); Pmm = dsx["forcing"].values[:, :, 0]
+        times = pd.to_datetime(dsx["time"].values); dsx.close()
+        ratios, used = ratios_sel, used_sel
         lo, hi = P["debias_et_bornes"]
         ds_val = float(np.clip(np.median(ratios), lo, hi)) if ratios else 1.0
         # (le choix de produit ci-dessus est confirmé ou infirmé par le bilan : voir
@@ -149,11 +160,8 @@ def infer(adapters):
     rows = []
     for reg in REGIONS:
         ad = adapters[reg]
-        _f = ad.get("forcage_fichier", "")
-        if "-hyb" in _f: _sfx = "-hyb"
-        elif "-budyko" in _f: _sfx = "-budyko"
-        else: _sfx = "-none"   # forcing-{reg}.nc : joint_data retombe dessus si absent
-        os.environ["JOINT_FX_SUFFIX"] = _sfx
+        _t = ad.get("forcage", "casr")
+        os.environ["JOINT_FX_SUFFIX"] = "-none" if _t == "casr" else _t
         from importlib import reload
         import joint_data
         reload(joint_data)
