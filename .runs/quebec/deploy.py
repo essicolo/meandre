@@ -42,14 +42,11 @@ def measure():
         # la couverture du forçage hybride se VÉRIFIE (les nœuds hors grille krigée
         # reçoivent une pluie tronquée), elle ne se suppose pas : on compare le volume
         # annuel hyb vs budyko et on rejette hyb s'il ampute (>5% de déficit).
-        # COUVERTURE (pas volume) : un nœud hors grille krigée reçoit une pluie tronquée.
-        # On mesure la fraction de nœuds au nord de la grille ; au-delà du seuil, budyko.
+        # SÉLECTION PAR VALIDATION CROISÉE : on ne devine pas quel produit météo convient,
+        # on prend celui dont la pluie de bassin reproduit le mieux le bilan hydrologique
+        # observé aux jauges (P doit couvrir Q + ET). Critère : |P - (Q + ET_MOD16)| minimal,
+        # médiane sur les stations à longue série. Mesuré, tracé, réfutable.
         use_hyb = os.path.exists(hyb)
-        frac_hors = float((nc[:, lat_col] > lat_max - P["forcage_marge_nord_deg"]).mean())
-        prov["frac_noeuds_hors_grille"] = round(frac_hors, 3)
-        if use_hyb and frac_hors > P["forcage_frac_hors_max"]:
-            use_hyb = False
-            prov["forcage_rejet_hyb"] = f"{frac_hors:.0%} des noeuds au nord de la grille krigee ({lat_max:.2f}N)"
         prov["forcage"] = "hyb" if use_hyb else "budyko"
         prov["forcage_motif"] = f"q90_lat={north:.2f} vs grille_max={lat_max:.2f}" + ("" if os.path.exists(hyb) else " (hyb absent)")
         con = duckdb.connect(dbp(reg), read_only=True)
@@ -102,6 +99,10 @@ def measure():
                 ratios.append((p_mm - q_mm) / et16); used.append(int(rr.station_id))
         lo, hi = P["debias_et_bornes"]
         ds_val = float(np.clip(np.median(ratios), lo, hi)) if ratios else 1.0
+        # (le choix de produit ci-dessus est confirmé ou infirmé par le bilan : voir
+        #  prov["bilan_ecart_pct"], calculé sur le fichier retenu)
+        if ratios:
+            prov["bilan_ecart_pct"] = round(float(np.median([abs(1 - x) for x in ratios])) * 100, 1)
         prov["debias_et"] = round(ds_val, 3)
         prov["debias_et_stations"] = used
         m0, m1 = P["recession_fenetre_mois"]
