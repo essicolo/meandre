@@ -1,0 +1,15 @@
+region,kge_med,n,forcage,debias_et
+gasp,0.6766,15,casr,0.776
+sagu,0.6448,19,casr,0.967
+mont,0.5521,23,-budyko,0.843
+labi,0.4597,1,-hyb,0.927
+abit,0.6971,3,casr,1.02
+cnda,0.5635,1,-hyb,0.872
+cndb,0.7386,2,-budyko,1.1
+cndc,0.7163,2,casr,0.835
+cndd,0.7505,1,casr,0.719
+cnde,0.7295,2,casr,0.7
+outm,0.4981,3,-budyko,0.7
+outv,0.5385,16,casr,0.963
+slno,0.6599,27,casr,1.038
+slso,0.5316,29,casr,0.854

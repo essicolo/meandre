@@ -1,0 +1,352 @@
+{
+ "gasp": {
+  "region": "gasp",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-gasp.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 17.4,
+   "-budyko": 12.6,
+   "casr": 11.6
+  },
+  "bilan_ecart_pct": 22.4,
+  "debias_et": 0.776,
+  "debias_et_stations": [
+   20602,
+   11003,
+   21702,
+   11707,
+   21407,
+   22003,
+   22301,
+   10802,
+   21601,
+   22513,
+   22507,
+   11204,
+   11509,
+   10902,
+   20404,
+   21916
+  ],
+  "k_recession_queue": 0.0521,
+  "k_recession_n_stations": 16
+ },
+ "sagu": {
+  "region": "sagu",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-sagu.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 12.6,
+   "-budyko": 6.0,
+   "casr": 5.7
+  },
+  "bilan_ecart_pct": 14.5,
+  "debias_et": 0.967,
+  "debias_et_stations": [
+   61024,
+   61901,
+   60704,
+   60102,
+   60901,
+   61905,
+   62102,
+   61801,
+   61307,
+   61909,
+   62114,
+   62701,
+   61502,
+   61028,
+   61020,
+   62803,
+   61022,
+   64101
+  ],
+  "k_recession_queue": 0.0506,
+  "k_recession_n_stations": 22
+ },
+ "mont": {
+  "region": "mont",
+  "forcage": "-budyko",
+  "forcage_fichier": "forcing-mont-budyko.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-budyko": 8.3,
+   "casr": 18.3
+  },
+  "bilan_ecart_pct": 15.7,
+  "debias_et": 0.843,
+  "debias_et_stations": [
+   30421,
+   30423,
+   30345,
+   30424,
+   30348,
+   30415,
+   30314,
+   30905,
+   30340,
+   30353,
+   30420,
+   30907,
+   30921,
+   30304,
+   30316,
+   30919
+  ],
+  "k_recession_queue": 0.1382,
+  "k_recession_n_stations": 28
+ },
+ "labi": {
+  "region": "labi",
+  "forcage": "-hyb",
+  "forcage_fichier": "forcing-labi-hyb.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 3.6,
+   "-budyko": 10.5,
+   "casr": 23.4
+  },
+  "bilan_ecart_pct": 7.3,
+  "debias_et": 0.927,
+  "debias_et_stations": [
+   89907
+  ],
+  "k_recession_queue": 0.1036,
+  "k_recession_n_stations": 1
+ },
+ "abit": {
+  "region": "abit",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-abit.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-budyko": 3.3,
+   "casr": 1.3
+  },
+  "bilan_ecart_pct": 3.0,
+  "debias_et": 1.02,
+  "debias_et_stations": [
+   80106,
+   80707,
+   80101
+  ],
+  "k_recession_queue": 0.0291,
+  "k_recession_n_stations": 3
+ },
+ "cnda": {
+  "region": "cnda",
+  "forcage": "-hyb",
+  "forcage_fichier": "forcing-cnda-hyb.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 6.1,
+   "-budyko": 10.7,
+   "casr": 21.4
+  },
+  "bilan_ecart_pct": 12.8,
+  "debias_et": 0.872,
+  "debias_et_stations": [
+   70204
+  ],
+  "k_recession_queue": 0.0527,
+  "k_recession_n_stations": 1
+ },
+ "cndb": {
+  "region": "cndb",
+  "forcage": "-budyko",
+  "forcage_fichier": "forcing-cndb-budyko.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 26.0,
+   "-budyko": 9.2,
+   "casr": 15.5
+  },
+  "bilan_ecart_pct": 29.1,
+  "debias_et": 1.1,
+  "debias_et_stations": [
+   71801,
+   71401
+  ],
+  "k_recession_queue": 0.0542,
+  "k_recession_n_stations": 2
+ },
+ "cndc": {
+  "region": "cndc",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-cndc.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 13.3,
+   "-budyko": 16.7,
+   "casr": 6.3
+  },
+  "bilan_ecart_pct": 16.5,
+  "debias_et": 0.835,
+  "debias_et_stations": [
+   72301,
+   73503
+  ],
+  "k_recession_queue": 0.024,
+  "k_recession_n_stations": 2
+ },
+ "cndd": {
+  "region": "cndd",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-cndd.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 11.7,
+   "-budyko": 18.9,
+   "casr": 10.7
+  },
+  "bilan_ecart_pct": 28.1,
+  "debias_et": 0.719,
+  "debias_et_stations": [
+   73801,
+   74903
+  ],
+  "k_recession_queue": 0.0283,
+  "k_recession_n_stations": 2
+ },
+ "cnde": {
+  "region": "cnde",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-cnde.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 18.1,
+   "-budyko": 19.6,
+   "casr": 11.5
+  },
+  "bilan_ecart_pct": 33.4,
+  "debias_et": 0.7,
+  "debias_et_stations": [
+   75705,
+   76601
+  ],
+  "k_recession_queue": 0.0398,
+  "k_recession_n_stations": 2
+ },
+ "outm": {
+  "region": "outm",
+  "forcage": "-budyko",
+  "forcage_fichier": "forcing-outm-budyko.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 29.1,
+   "-budyko": 21.9,
+   "casr": 24.1
+  },
+  "bilan_ecart_pct": 49.7,
+  "debias_et": 0.7,
+  "debias_et_stations": [
+   43030,
+   41902,
+   43012
+  ],
+  "k_recession_queue": 0.033,
+  "k_recession_n_stations": 4
+ },
+ "outv": {
+  "region": "outv",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-outv.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 11.3,
+   "-budyko": 2.6,
+   "casr": 2.1
+  },
+  "bilan_ecart_pct": 3.7,
+  "debias_et": 0.963,
+  "debias_et_stations": [
+   40406,
+   40204,
+   46709,
+   40840,
+   40238,
+   40110,
+   40122,
+   40129,
+   40841,
+   40830,
+   40624
+  ],
+  "k_recession_queue": 0.0645,
+  "k_recession_n_stations": 16
+ },
+ "slno": {
+  "region": "slno",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-slno.nc",
+  "forcage_ecarts_bilan_pct": {
+   "-hyb": 13.3,
+   "-budyko": 5.9,
+   "casr": 4.9
+  },
+  "bilan_ecart_pct": 12.1,
+  "debias_et": 1.038,
+  "debias_et_stations": [
+   50409,
+   52805,
+   50135,
+   50119,
+   50144,
+   50904,
+   52228,
+   52233,
+   52212,
+   50304,
+   50801,
+   52606,
+   50702,
+   51001,
+   52401,
+   51005,
+   52219,
+   52601,
+   51502,
+   50408
+  ],
+  "k_recession_queue": 0.0631,
+  "k_recession_n_stations": 31
+ },
+ "slso": {
+  "region": "slso",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-casr-corr.nc",
+  "forcage_ecarts_bilan_pct": {
+   "casr": 7.4
+  },
+  "bilan_ecart_pct": 14.9,
+  "debias_et": 0.854,
+  "debias_et_stations": [
+   30215,
+   30282,
+   23402,
+   23432,
+   30262,
+   23004,
+   24003,
+   23401,
+   30106,
+   22601,
+   30299,
+   23429,
+   23702,
+   23303,
+   23422,
+   24013,
+   30103,
+   24014,
+   30234,
+   22704,
+   30101,
+   23106,
+   23448
+  ],
+  "k_recession_queue": 0.1181,
+  "k_recession_n_stations": 39
+ },
+ "vaud": {
+  "region": "vaud",
+  "forcage": "casr",
+  "forcage_fichier": "forcing-vaud.nc",
+  "forcage_ecarts_bilan_pct": {},
+  "debias_et": 1.0,
+  "debias_et_stations": [],
+  "k_recession_queue": null,
+  "k_recession_n_stations": 0
+ }
+}
