@@ -87,23 +87,16 @@ def measure():
                     rat.append((p2 - q2) / e2); usd.append(int(rr2.station_id))
             return (float(np.median(errs)) if errs else None), rat, usd
 
-        # SÉLECTION MESURÉE du produit météo : celui dont la pluie ferme le mieux le
-        # bilan hydrologique observé (P ~ Q + ET). Aucune règle géographique supposée
-        # (les règles latitude/volume ont été réfutées : couverture réelle = 100%).
-        cands = {"-hyb": hyb, "-budyko": D["forcage_budyko"].format(reg=reg),
-                 "casr": (D["forcage_casr_slso"] if reg == "slso" else f"D:/meandre-data/quebec/forcing-{reg}.nc")}
-        scores = {}
-        for tag, path in cands.items():
-            err, _, _ = bilan_stats(path)
-            if err is not None:
-                scores[tag] = round(err * 100, 1)
-        best_tag = min(scores, key=scores.get) if scores else "casr"
-        fx = cands[best_tag]
-        if not os.path.exists(fx):
-            fx = next(pp for pp in cands.values() if os.path.exists(pp))
-        prov["forcage"] = best_tag
+        # PRODUIT MÉTÉO : CaSR BRUT partout (décision Essi 2026-07-31). Un seul produit,
+        # zéro prétraitement, zéro règle de sélection à défendre. Les variantes (SIMAT
+        # hybride, CaSR corrigé budyko) restent dans le dépôt mais ne sont plus utilisées :
+        # trois critères de sélection ont été essayés et réfutés ou jugés non concluants
+        # (latitude, volume, fermeture du bilan) — cf. journal 2026-07-31.
+        fx = D["forcage_casr_slso"] if reg == "slso" else D["forcage_casr"].format(reg=reg)
+        prov["forcage"] = "casr_brut"
         prov["forcage_fichier"] = os.path.basename(fx)
-        prov["forcage_ecarts_bilan_pct"] = scores
+        err_bilan, _, _ = bilan_stats(fx)
+        prov["bilan_ecart_pct"] = round(err_bilan * 100, 1) if err_bilan is not None else None
         _, ratios_sel, used_sel = bilan_stats(fx)
         dsx = xr.open_dataset(fx); Pmm = dsx["forcing"].values[:, :, 0]
         times = pd.to_datetime(dsx["time"].values); dsx.close()

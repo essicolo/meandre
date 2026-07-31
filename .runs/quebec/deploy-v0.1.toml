@@ -11,6 +11,7 @@ bases = "D:/meandre-data/quebec/{reg}.duckdb"
 base_slso = ".runs/slso/data/slso.duckdb"
 forcage_hyb = "D:/meandre-data/quebec/forcing-{reg}-hyb.nc"
 forcage_budyko = "D:/meandre-data/quebec/forcing-{reg}-budyko.nc"
+forcage_casr = "D:/meandre-data/quebec/forcing-{reg}.nc"
 forcage_casr_slso = "D:/meandre-data/slso/forcing-casr-corr.nc"
 grille_krigee = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 
