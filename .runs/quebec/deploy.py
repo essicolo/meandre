@@ -42,16 +42,14 @@ def measure():
         # la couverture du forçage hybride se VÉRIFIE (les nœuds hors grille krigée
         # reçoivent une pluie tronquée), elle ne se suppose pas : on compare le volume
         # annuel hyb vs budyko et on rejette hyb s'il ampute (>5% de déficit).
-        use_hyb = (north <= lat_max - P["forcage_marge_nord_deg"]) and os.path.exists(hyb)
-        if use_hyb:
-            bud = D["forcage_budyko"].format(reg=reg)
-            if os.path.exists(bud):
-                import xarray as _xr
-                _a = _xr.open_dataset(hyb); _pa = float(_a["forcing"].values[:, :, 0].mean()); _a.close()
-                _b = _xr.open_dataset(bud); _pb = float(_b["forcing"].values[:, :, 0].mean()); _b.close()
-                if _pa < 0.95 * _pb:
-                    use_hyb = False
-                    prov["forcage_rejet_hyb"] = f"P_hyb={_pa*365.25:.0f} < 95% de P_budyko={_pb*365.25:.0f} mm/an"
+        # COUVERTURE (pas volume) : un nœud hors grille krigée reçoit une pluie tronquée.
+        # On mesure la fraction de nœuds au nord de la grille ; au-delà du seuil, budyko.
+        use_hyb = os.path.exists(hyb)
+        frac_hors = float((nc[:, lat_col] > lat_max - P["forcage_marge_nord_deg"]).mean())
+        prov["frac_noeuds_hors_grille"] = round(frac_hors, 3)
+        if use_hyb and frac_hors > P["forcage_frac_hors_max"]:
+            use_hyb = False
+            prov["forcage_rejet_hyb"] = f"{frac_hors:.0%} des noeuds au nord de la grille krigee ({lat_max:.2f}N)"
         prov["forcage"] = "hyb" if use_hyb else "budyko"
         prov["forcage_motif"] = f"q90_lat={north:.2f} vs grille_max={lat_max:.2f}" + ("" if os.path.exists(hyb) else " (hyb absent)")
         con = duckdb.connect(dbp(reg), read_only=True)
