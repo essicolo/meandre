@@ -1,0 +1,25 @@
+# Release de déploiement provincial méandre v0.1 — AUCUNE valeur d'adaptateur ici :
+# tout est DÉRIVÉ des données par deploy.py (étape measure), avec provenance.
+[champion]
+checkpoint = ".runs/quebec/checkpoints/best-gasp-etl-ds.pt"
+# reproductible par : JOINT_FX_SUFFIX=-hyb ETL_REGION=gasp ETL_EPOCHS=30 ETL_WET=0
+#   ETL_KSAT1=0.04 ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 ETL_KGW=0.052 ETL_DEMAND_SCALE=0.81 ETL_TAG=-ds
+region_entrainement = "gasp"
+
+[donnees]
+bases = "D:/meandre-data/quebec/{reg}.duckdb"
+base_slso = ".runs/slso/data/slso.duckdb"
+forcage_hyb = "D:/meandre-data/quebec/forcing-{reg}-hyb.nc"
+forcage_budyko = "D:/meandre-data/quebec/forcing-{reg}-budyko.nc"
+grille_krigee = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+
+[protocole]
+# Choix de méthode ASSUMÉS (justifications : PoC, sections Phase 2 et Stratégies écartées)
+debias_et_stations_min_annees = 8       # bilan P-Q par station : séries d'au moins 8 ans
+debias_et_bornes = [0.7, 1.1]           # borne le ratio bilan/MOD16 (bassins régulés = bilan non fiable)
+recession_fenetre_mois = [7, 11]        # décrues hors fonte et hors gel
+recession_segment_min_jours = 5
+recession_queue = "sous_debit_median"   # queue de baseflow : segments démarrant sous le débit médian
+forcage_marge_nord_deg = 0.3            # une région bascule en budyko si ses nœuds dépassent la grille krigée
+heldout = ["2022-01-01", "2024-12-31"]
+spinup_debut = "2021-01-01"
