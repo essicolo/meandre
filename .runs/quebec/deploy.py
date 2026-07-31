@@ -39,7 +39,19 @@ def measure():
         lat_col = 0 if 40 < float(np.nanmean(nc[:, 0])) < 62 else 1
         north = float(np.quantile(nc[:, lat_col], 0.9))
         hyb = D["forcage_hyb"].format(reg=reg)
+        # la couverture du forçage hybride se VÉRIFIE (les nœuds hors grille krigée
+        # reçoivent une pluie tronquée), elle ne se suppose pas : on compare le volume
+        # annuel hyb vs budyko et on rejette hyb s'il ampute (>5% de déficit).
         use_hyb = (north <= lat_max - P["forcage_marge_nord_deg"]) and os.path.exists(hyb)
+        if use_hyb:
+            bud = D["forcage_budyko"].format(reg=reg)
+            if os.path.exists(bud):
+                import xarray as _xr
+                _a = _xr.open_dataset(hyb); _pa = float(_a["forcing"].values[:, :, 0].mean()); _a.close()
+                _b = _xr.open_dataset(bud); _pb = float(_b["forcing"].values[:, :, 0].mean()); _b.close()
+                if _pa < 0.95 * _pb:
+                    use_hyb = False
+                    prov["forcage_rejet_hyb"] = f"P_hyb={_pa*365.25:.0f} < 95% de P_budyko={_pb*365.25:.0f} mm/an
         prov["forcage"] = "hyb" if use_hyb else "budyko"
         prov["forcage_motif"] = f"q90_lat={north:.2f} vs grille_max={lat_max:.2f}" + ("" if os.path.exists(hyb) else " (hyb absent)")
         con = duckdb.connect(dbp(reg), read_only=True)
@@ -61,6 +73,7 @@ def measure():
         fx = hyb if use_hyb else D["forcage_budyko"].format(reg=reg)
         if not os.path.exists(fx):
             fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
+        prov["forcage_fichier"] = os.path.basename(fx)
         if reg == "slso":
             fx = "D:/meandre-data/slso/forcing-casr-corr.nc"
         dsx = xr.open_dataset(fx); Pmm = dsx["forcing"].values[:, :, 0]
@@ -137,7 +150,11 @@ def infer(adapters):
     rows = []
     for reg in REGIONS:
         ad = adapters[reg]
-        os.environ["JOINT_FX_SUFFIX"] = "-hyb" if ad["forcage"] == "hyb" else ""
+        _f = ad.get("forcage_fichier", "")
+        if "-hyb" in _f: _sfx = "-hyb"
+        elif "-budyko" in _f: _sfx = "-budyko"
+        else: _sfx = "-none"   # forcing-{reg}.nc : joint_data retombe dessus si absent
+        os.environ["JOINT_FX_SUFFIX"] = _sfx
         from importlib import reload
         import joint_data
         reload(joint_data)

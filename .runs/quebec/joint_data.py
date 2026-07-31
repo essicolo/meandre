@@ -26,7 +26,8 @@ DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
 def _paths(reg):
     db = DBS.get(reg, f"D:/meandre-data/quebec/{reg}.duckdb")
-    sfx = os.environ.get("JOINT_FX_SUFFIX")   # p.ex. "-hyb" (krigé MELCCFP + énergie CaSR)
+    sfx = os.environ.get("JOINT_FX_SUFFIX")
+    if sfx == "-none": sfx = None
     if sfx:
         fx = f"D:/meandre-data/quebec/forcing-{reg}{sfx}.nc"
         if os.path.exists(fx):
