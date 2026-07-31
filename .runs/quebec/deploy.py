@@ -51,7 +51,7 @@ def measure():
                 _b = _xr.open_dataset(bud); _pb = float(_b["forcing"].values[:, :, 0].mean()); _b.close()
                 if _pa < 0.95 * _pb:
                     use_hyb = False
-                    prov["forcage_rejet_hyb"] = f"P_hyb={_pa*365.25:.0f} < 95% de P_budyko={_pb*365.25:.0f} mm/an
+                    prov["forcage_rejet_hyb"] = f"P_hyb={_pa*365.25:.0f} < 95% de P_budyko={_pb*365.25:.0f} mm/an"
         prov["forcage"] = "hyb" if use_hyb else "budyko"
         prov["forcage_motif"] = f"q90_lat={north:.2f} vs grille_max={lat_max:.2f}" + ("" if os.path.exists(hyb) else " (hyb absent)")
         con = duckdb.connect(dbp(reg), read_only=True)
