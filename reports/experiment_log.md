@@ -459,3 +459,11 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Constat honnête : le meilleur bilan annuel ne garantit pas le meilleur KGE journalier (gasp casr ferme mieux le bilan mais l'hybride simule mieux le débit : timing vs volume). Le critère de sélection reste un CHOIX DE PROTOCOLE à assumer ; le pipeline le rend explicite et interchangeable, c'est ce qui compte.
 - CARTE v0.1 (bilan) : cndd 0.750 | cndb 0.739 | cnde 0.730 | cndc 0.716 | abit 0.697 | gasp 0.677 | slno 0.660 | sagu 0.645 | cnda 0.563 | mont 0.552 | outv 0.539 | slso 0.532 | outm 0.498 | labi 0.460. Médiane ~0.65.
 - SUITE proposée : critère de sélection par KGE sur une fenêtre de VALIDATION (2019-21, jamais le test) — c'est la sélection de modèle standard, mesurée et sans fuite. vaud : forçage à construire.
+
+## CONTRÔLE DÉCISIF : le transfert porte le NIVEAU de calibration, pas la DIFFÉRENCIATION régionale, 2026-07-31
+- Question d'Essi : pourquoi transférer un modèle gaspésien plutôt que partir de la littérature krigée ? Contrôle (même physique, mêmes adaptateurs mesurés, même forçage CaSR brut, seule différence = poids chargés ou init littérature) :
+  gasp 0.677 vs 0.344 | slno 0.660 vs 0.486 | mont 0.571 vs 0.471 | labi 0.610 vs 0.535 | outv 0.539 vs 0.542.
+- Le transfert apporte +0.08 à +0.33 partout sauf OUTV (nul). Ma conclusion précédente (« le transfert n'apporte rien hors domaine ») est RÉFUTÉE.
+- Réconciliation avec l'autre mesure du jour (paramètres quasi identiques entre régions : K_sat 0.0362-0.0369, k_gw 0.0451-0.0475) : le champion transporte un NIVEAU de calibration global très supérieur à la littérature, mais peu de DIFFÉRENCIATION régionale (cause : attributs z-scorés par région -> le nœud médian de chaque région arrive à ~0).
+- CONSÉQUENCE : le déficit face à Hydrotel (calé région par région) est un déficit de RÉGIONALISATION, pas de calibration. D'où le plan reports/design_regionalisation_amortie.md : garder le niveau (champions) + ajouter la différenciation (XGBoost/GP sur les paramètres calibrés de plusieurs régions, validation leave-one-region-out, critère de succès pré-enregistré).
+- Prérequis technique confirmé : dénormaliser les attributs (extraction brute via load_hydrotel(normalise=False), déjà validée).
