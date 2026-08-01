@@ -488,3 +488,14 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - REFORMULATION : le modèle d'expérience est un CHAMP SPATIAL de correction ; validation correcte = blocs spatiaux INTERNES à un domaine couvert, pas régions entières isolées. Les calages régionaux deviennent les points d'ancrage du krigeage des paramètres ; densifier = améliorer l'interpolation ; les bassins non jaugés héritent d'une interpolation avec incertitude (problème classique de régionalisation, voie différentiable).
 - ACQUIS TECHNIQUE : normalisation globale provinciale câblée (JOINT_GLOBAL_NORM=1) + attributs bruts des 15 régions (28035 nœuds) prêts.
 - SUITE : (a) forçage de l'ouest (OUTV : 3 produits en inférence, 10 min — levier le plus probable des 0.19 d'écart avec Hydrotel) ; (b) validation du champ spatial par blocs internes.
+
+## OUTV : le forçage n'explique PAS l'écart — le suspect devient la RÉGULATION, 2026-08-01
+- Checkpoint OUTV entraîné, rejoué sur 3 produits : CaSR brut 0.567 (r 0.644) | CaSR corrigé 0.567 | SIMAT+CaSR 0.469 (r 0.682). Hydrotel 0.753.
+- Le meilleur r vient de SIMAT (0.682) mais son KGE est le pire : le produit station améliore le TIMING et dégrade le volume. Aucun produit ne referme les 0.19.
+- Les 4 hypothèses testées sur OUTV sont donc toutes réfutées : transfert (0.539), littérature (0.542), calage local (0.566), forçage (0.469-0.567). Reste la RÉGULATION : l'Outaouais est le bassin le plus aménagé du Québec (réservoirs Dozois/Cabonga/Baskatong, gestion coordonnée) et méandre n'a AUCUNE règle de barrage, alors qu'Hydrotel a été calé SUR des débits déjà régulés (il absorbe la régulation dans ses paramètres).
+- Vérification proposée (gratuite) : croiser le KGE par station OUTV avec la capacité de retenue amont (table dams déjà ingérée) — si les stations sous influence portent tout le déficit, l'hypothèse est confirmée et le chantier devient DamData/règles de gestion, pas l'hydrologie.
+
+## SYNTHÈSE DE FIN DE SESSION (2026-08-01)
+- ACQUIS : GASP 0.749 > Hydrotel 0.744 (entraîné, forçage adéquat) ; physique certifiée ; robustesse de régime résolue (aquifère) ; pipeline reproductible en 1 commande (deploy.py + provenance) ; CaSR brut partout (décision Essi).
+- NÉGATIFS UTILES : conjoint < monos même avec normalisation globale (mais différenciation spatiale enfin obtenue) ; modèle d'expérience non extrapolable (reformulé en champ spatial à interpoler, GP plutôt que XGBoost pour la régularité + incertitude) ; ouest = ni transfert, ni calage, ni forçage.
+- PROCHAINS PAS : (1) diagnostic régulation OUTV (gratuit) ; (2) GP spatial des paramètres, validation par blocs internes, ancré sur les régions calibrées ; (3) densifier les ancrages en calibrant d'autres régions.
