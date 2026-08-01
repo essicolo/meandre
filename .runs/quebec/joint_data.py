@@ -11,6 +11,32 @@ import torch
 import duckdb
 import xarray as xr
 from meandre.data.basin_cache import BasinCache
+from meandre.spatial.territorial import TerritorialFeatures
+
+_QC_RAW = "D:/meandre-data/quebec/territorial-raw-QC.parquet"
+_QC_STATS = "reports/territorial_stats_QC.csv"
+
+
+def _territorial_global(reg, fallback, device):
+    """Attributs normalisés sur les stats PROVINCIALES (et non par région).
+    Sans ça, le nœud médian de CHAQUE région arrive au NeRF avec des attributs ~0 :
+    le modèle ne peut pas différencier les régions (diagnostic 2026-07-31, cause des
+    5 échecs conjoints). Retombe sur la normalisation locale si le brut est absent."""
+    if not (os.path.exists(_QC_RAW) and os.path.exists(_QC_STATS)):
+        return fallback
+    try:
+        raw = pd.read_parquet(_QC_RAW)
+        raw = raw[raw["region"] == reg]
+        if len(raw) != fallback.data.shape[0]:
+            return fallback
+        stats = pd.read_csv(_QC_STATS, index_col=0)
+        cols = list(fallback.columns)
+        arr = np.stack([((raw[c].values - stats.loc[c, "mean"]) / (stats.loc[c, "std"] + 1e-9))
+                        for c in cols], axis=1).astype(np.float32)
+        return TerritorialFeatures(data=torch.tensor(arr, device=device), columns=cols,
+                                   physical=fallback.physical)
+    except Exception:
+        return fallback
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.training.trainer import TrainingData
 from meandre.training.loss import HydroLoss
@@ -43,6 +69,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     cache = BasinCache(db_path)
     h = cache.load(device=device)
     graph, territorial = h["graph"], h["territorial"]
+    if os.environ.get("JOINT_GLOBAL_NORM", "0") == "1":
+        territorial = _territorial_global(reg, territorial, device)
     node_coords, n_nodes, node_ids = h["node_coords"], h["n_nodes"], h["node_ids"]
 
     d = xr.open_dataset(fx_path)
