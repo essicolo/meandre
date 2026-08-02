@@ -163,6 +163,24 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
             getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
     print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
 model.vertical_column.etp_channel = 6
+if os.environ.get("ETL_KGW_FIELD", "0") == "1":
+    # CHAMP k_gw provincial (GP sur les récessions de 127 stations, R2 blocs 0.62,
+    # incertitude calibrée) : remplace le k_gw régional constant par un champ continu
+    # par nœud. Le NeRF module autour ; le champ fixe le niveau local mesuré.
+    import pandas as _pd
+    _cf = _pd.read_parquet("D:/meandre-data/quebec/champ_kgw_QC.parquet")
+    _cf = _cf[_cf.region == REG].sort_values("node_idx")
+    if len(_cf) == n_nodes:
+        _kv = torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE)
+        _o_se = model.spatial_encoder.forward
+        def _se_kgw(*a, _o=_o_se, _k=_kv, **kw):
+            sp = _o(*a, **kw); sp.k_gw = _k
+            return sp
+        model.spatial_encoder.forward = _se_kgw
+        print(f"[etl] champ k_gw appliqué : méd {float(_kv.median()):.4f} | q10-q90 "
+              f"{float(_kv.quantile(0.1)):.4f}-{float(_kv.quantile(0.9)):.4f}")
+    else:
+        print(f"[etl] champ k_gw ignoré ({len(_cf)} vs {n_nodes} nœuds)")
 if "ETL_KREC" in os.environ:
     import math as _mk
     _kv = float(os.environ["ETL_KREC"])
