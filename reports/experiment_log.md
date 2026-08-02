@@ -528,3 +528,10 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - A/B entraîné : GASP 0.633 (vs 0.677 avec k_gw constant mesuré) ; OUTV 0.567 (vs 0.566, identique). Le champ ne dégrade pas OUTV et coûte 0.04 sur GASP.
 - LECTURE : cohérent avec l'audit de leviers du 25/07 (k_gw était classé « ~optimum », insensible). Le champ k_gw est scientifiquement meilleur (mesuré, continu, avec incertitude, utilisable en bassin non jaugé) mais le KGE n'y est pas sensible : la récession de queue pèse peu dans un critère dominé par les crues. À conserver comme produit de régionalisation, pas comme levier de performance.
 - Acquis réutilisable : la chaîne signatures -> GP -> champ par nœud -> injection dans le modèle fonctionne de bout en bout (ETL_KGW_FIELD=1). Elle s'appliquera telle quelle aux signatures qui PÈSENT sur le KGE (timing du freshet, coefficient d'orage) dès qu'on saura les mesurer par station.
+
+## SIGNATURES DE TIMING : le freshet se krige (R2 0.62) — la cible qui PÈSE sur le KGE, 2026-08-02
+- 126 stations, 3 signatures de timing (reports/signatures_timing.csv) : centre de masse du freshet (jour julien), durée de montée, rapport pic/base hivernal.
+- Krigeage GP, validation par blocs spatiaux : cm_freshet R2 0.620 (couverture 0.78) | duree_montee 0.321 (0.93) | ratio_pic_base 0.283 (0.89).
+- Le CENTRE DE MASSE DU FRESHET est prédictible spatialement ET a un contraste régional énorme : 107 (17 avril, Montérégie) à 144 (24 mai, Côte-Nord C), soit 37 jours. C'est exactement la quantité qui gouverne le r (donc le KGE) sur des rivières nivales, et exactement ce que le modèle rate quand il décroche (banc freshet 2026-07-24 : fonte déclenchée ~2 semaines trop tard).
+- PROCHAIN LEVIER IDENTIFIÉ : champ spatial du cm_freshet -> contrainte de timing de fonte par nœud (le T_melt/C_f du NeRF est ajusté pour que le centre de masse simulé colle au champ observé). Contrairement à k_gw (insensible), cette signature pèse directement sur le score.
+- Couverture 0.78 sur cm_freshet = intervalles trop serrés (le GP sous-estime son incertitude sur cette signature) ; à corriger avant usage opérationnel.
