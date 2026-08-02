@@ -499,3 +499,8 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - ACQUIS : GASP 0.749 > Hydrotel 0.744 (entraîné, forçage adéquat) ; physique certifiée ; robustesse de régime résolue (aquifère) ; pipeline reproductible en 1 commande (deploy.py + provenance) ; CaSR brut partout (décision Essi).
 - NÉGATIFS UTILES : conjoint < monos même avec normalisation globale (mais différenciation spatiale enfin obtenue) ; modèle d'expérience non extrapolable (reformulé en champ spatial à interpoler, GP plutôt que XGBoost pour la régularité + incertitude) ; ouest = ni transfert, ni calage, ni forçage.
 - PROCHAINS PAS : (1) diagnostic régulation OUTV (gratuit) ; (2) GP spatial des paramètres, validation par blocs internes, ancré sur les régions calibrées ; (3) densifier les ancrages en calibrant d'autres régions.
+
+## Faisceau d'indices RÉGULATION (à confirmer par station), 2026-08-01
+- Capacité de retenue amont mappée (table dams) vs performance : GASP 1.3 km3 (méandre BAT Hydrotel) | ABIT 20 km3 (bat) | OUTV 117 km3 (déficit 0.19) | SAGU 288 km3 (déficit 0.12). Direction cohérente : plus le bassin est aménagé, plus méandre décroche — il n'a AUCUNE règle de gestion, Hydrotel a été calé SUR des débits déjà régulés.
+- Contre-exemple à instruire : CNDB 425 km3 où méandre gagne (mais n=2 stations, échantillon faible).
+- TEST PROPRE à refaire (le script patché n'a pas pris) : KGE par station OUTV croisé avec la capacité amont de CHAQUE station ; si les stations sous influence portent le déficit et montrent un gamma déséquilibré, l'hypothèse est confirmée et le chantier devient DamData/règles de gestion (module existant, jamais alimenté).
