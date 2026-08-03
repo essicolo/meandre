@@ -1,13 +1,8 @@
 {
  "gasp": {
   "region": "gasp",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-gasp.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 17.4,
-   "-budyko": 12.6,
-   "casr": 11.6
-  },
   "bilan_ecart_pct": 22.4,
   "debias_et": 0.776,
   "debias_et_stations": [
@@ -33,13 +28,8 @@
  },
  "sagu": {
   "region": "sagu",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-sagu.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 12.6,
-   "-budyko": 6.0,
-   "casr": 5.7
-  },
   "bilan_ecart_pct": 14.5,
   "debias_et": 0.967,
   "debias_et_stations": [
@@ -67,14 +57,10 @@
  },
  "mont": {
   "region": "mont",
-  "forcage": "-budyko",
-  "forcage_fichier": "forcing-mont-budyko.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-budyko": 8.3,
-   "casr": 18.3
-  },
-  "bilan_ecart_pct": 15.7,
-  "debias_et": 0.843,
+  "forcage": "casr_brut",
+  "forcage_fichier": "forcing-mont.nc",
+  "bilan_ecart_pct": 30.7,
+  "debias_et": 0.7,
   "debias_et_stations": [
    30421,
    30423,
@@ -98,15 +84,10 @@
  },
  "labi": {
   "region": "labi",
-  "forcage": "-hyb",
-  "forcage_fichier": "forcing-labi-hyb.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 3.6,
-   "-budyko": 10.5,
-   "casr": 23.4
-  },
-  "bilan_ecart_pct": 7.3,
-  "debias_et": 0.927,
+  "forcage": "casr_brut",
+  "forcage_fichier": "forcing-labi.nc",
+  "bilan_ecart_pct": 63.0,
+  "debias_et": 1.1,
   "debias_et_stations": [
    89907
   ],
@@ -115,12 +96,8 @@
  },
  "abit": {
   "region": "abit",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-abit.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-budyko": 3.3,
-   "casr": 1.3
-  },
   "bilan_ecart_pct": 3.0,
   "debias_et": 1.02,
   "debias_et_stations": [
@@ -133,15 +110,10 @@
  },
  "cnda": {
   "region": "cnda",
-  "forcage": "-hyb",
-  "forcage_fichier": "forcing-cnda-hyb.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 6.1,
-   "-budyko": 10.7,
-   "casr": 21.4
-  },
-  "bilan_ecart_pct": 12.8,
-  "debias_et": 0.872,
+  "forcage": "casr_brut",
+  "forcage_fichier": "forcing-cnda.nc",
+  "bilan_ecart_pct": 60.4,
+  "debias_et": 1.1,
   "debias_et_stations": [
    70204
   ],
@@ -150,14 +122,9 @@
  },
  "cndb": {
   "region": "cndb",
-  "forcage": "-budyko",
-  "forcage_fichier": "forcing-cndb-budyko.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 26.0,
-   "-budyko": 9.2,
-   "casr": 15.5
-  },
-  "bilan_ecart_pct": 29.1,
+  "forcage": "casr_brut",
+  "forcage_fichier": "forcing-cndb.nc",
+  "bilan_ecart_pct": 52.7,
   "debias_et": 1.1,
   "debias_et_stations": [
    71801,
@@ -168,13 +135,8 @@
  },
  "cndc": {
   "region": "cndc",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-cndc.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 13.3,
-   "-budyko": 16.7,
-   "casr": 6.3
-  },
   "bilan_ecart_pct": 16.5,
   "debias_et": 0.835,
   "debias_et_stations": [
@@ -186,13 +148,8 @@
  },
  "cndd": {
   "region": "cndd",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-cndd.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 11.7,
-   "-budyko": 18.9,
-   "casr": 10.7
-  },
   "bilan_ecart_pct": 28.1,
   "debias_et": 0.719,
   "debias_et_stations": [
@@ -204,13 +161,8 @@
  },
  "cnde": {
   "region": "cnde",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-cnde.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 18.1,
-   "-budyko": 19.6,
-   "casr": 11.5
-  },
   "bilan_ecart_pct": 33.4,
   "debias_et": 0.7,
   "debias_et_stations": [
@@ -222,14 +174,9 @@
  },
  "outm": {
   "region": "outm",
-  "forcage": "-budyko",
-  "forcage_fichier": "forcing-outm-budyko.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 29.1,
-   "-budyko": 21.9,
-   "casr": 24.1
-  },
-  "bilan_ecart_pct": 49.7,
+  "forcage": "casr_brut",
+  "forcage_fichier": "forcing-outm.nc",
+  "bilan_ecart_pct": 53.7,
   "debias_et": 0.7,
   "debias_et_stations": [
    43030,
@@ -241,13 +188,8 @@
  },
  "outv": {
   "region": "outv",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-outv.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 11.3,
-   "-budyko": 2.6,
-   "casr": 2.1
-  },
   "bilan_ecart_pct": 3.7,
   "debias_et": 0.963,
   "debias_et_stations": [
@@ -268,13 +210,8 @@
  },
  "slno": {
   "region": "slno",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-slno.nc",
-  "forcage_ecarts_bilan_pct": {
-   "-hyb": 13.3,
-   "-budyko": 5.9,
-   "casr": 4.9
-  },
   "bilan_ecart_pct": 12.1,
   "debias_et": 1.038,
   "debias_et_stations": [
@@ -304,11 +241,8 @@
  },
  "slso": {
   "region": "slso",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-casr-corr.nc",
-  "forcage_ecarts_bilan_pct": {
-   "casr": 7.4
-  },
   "bilan_ecart_pct": 14.9,
   "debias_et": 0.854,
   "debias_et_stations": [
@@ -341,9 +275,9 @@
  },
  "vaud": {
   "region": "vaud",
-  "forcage": "casr",
+  "forcage": "casr_brut",
   "forcage_fichier": "forcing-vaud.nc",
-  "forcage_ecarts_bilan_pct": {},
+  "bilan_ecart_pct": null,
   "debias_et": 1.0,
   "debias_et_stations": [],
   "k_recession_queue": null,

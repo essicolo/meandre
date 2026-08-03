@@ -535,3 +535,79 @@ DT_eff (Hortonien) n'ajoute rien (mécanisme dégrade r). Le goulot météo est 
 - Le CENTRE DE MASSE DU FRESHET est prédictible spatialement ET a un contraste régional énorme : 107 (17 avril, Montérégie) à 144 (24 mai, Côte-Nord C), soit 37 jours. C'est exactement la quantité qui gouverne le r (donc le KGE) sur des rivières nivales, et exactement ce que le modèle rate quand il décroche (banc freshet 2026-07-24 : fonte déclenchée ~2 semaines trop tard).
 - PROCHAIN LEVIER IDENTIFIÉ : champ spatial du cm_freshet -> contrainte de timing de fonte par nœud (le T_melt/C_f du NeRF est ajusté pour que le centre de masse simulé colle au champ observé). Contrairement à k_gw (insensible), cette signature pèse directement sur le score.
 - Couverture 0.78 sur cm_freshet = intervalles trop serrés (le GP sous-estime son incertitude sur cette signature) ; à corriger avant usage opérationnel.
+
+## 2026-08-02 — Champ de timing de fonte : le gradient nord-sud est comprimé de 40 %
+
+**Champ construit.** GP (Matern 3/2 sur lon/lat/log-aire) sur le centre de masse du freshet de 126 stations -> 28035 nœuds. `D:/meandre-data/quebec/champ_freshet_QC.parquet`. Longueurs de corrélation 3.36° en lon contre 1.83° en lat : la date de crue varie deux fois plus vite vers le nord que vers l'est, signature thermique et non artefact de lissage. Médianes régionales j106 (mont, 15 avr) à j138 (cndc, 17 mai), sd par nœud 4-8 j.
+
+**Sensibilité mesurée (banc `freshet_bench.py`, gasp, inférence pure).** T_melt -1 °C -> centre de masse simulé -3.0 j. Le levier répond : la conversion champ -> décalage de seuil est légitime à 3 j/°C.
+
+**Biais de date, champion gaspésien transféré (base only) :**
+
+| région | CM obs | CM sim | biais | n |
+|---|---|---|---|---|
+| mont | j106.0 | j108.5 | +3.1 | 22 |
+| slso | j112.9 | j116.8 | +4.4 | 30 |
+| outv | j121.4 | j121.9 | +1.2 | 13 |
+| gasp | j129.3 | j128.8 | -1.0 | 15 |
+| sagu | j133.0 | j127.2 | -5.6 | 20 |
+| cnda | j134.1 | j125.8 | -8.3 | 1 |
+
+**Diagnostic.** Le signe est systématique : sud en retard, nord en avance. L'observé s'étale sur 28 jours, le simulé sur 17. Le champion transféré COMPRIME le gradient spatial de timing d'environ 40 % — il impose un régime de fonte trop nordique au sud et trop méridional au nord.
+
+**OUTV : sixième hypothèse éliminée.** La pire région est à l'heure (+1.2 j). Son déficit n'est pas un problème de timing de fonte (après transfert, littérature, entraînement local, forçage, régulation).
+
+**Calibration dérivée des données (`freshet_calib.py`).** Par nœud : dT = clamp((CM_champ - CM_simulé)/3.0, ±2 °C). Aucune constante choisie ; provenance dans `reports/freshet_calib_provenance.json`. A/B en INFÉRENCE PURE, held-out 2022-2024 :
+
+- mont : KGE 0.4086 -> 0.4554 (**+0.047**), dT méd -1.51 °C (p10 -2.00, la borne mord)
+
+Suite (slso, sagu, gasp, outv) en cours. gasp et outv servent de TÉMOINS : déjà à l'heure, le gain doit y être nul ; un gain y serait le signe d'un artefact.
+
+## 2026-08-02 (soir) — La « loi des ancrages » était un diagnostic incomplet
+
+**Contexte.** Question d'Essi : pourquoi méandre est-il déclassé alors qu'il a une meilleure météo, une meilleure ET et le même solveur ? Deux objections justes de sa part : (1) Hydrotel est calé sur SIMAT, donc ses paramètres ne transfèrent pas tels quels sur CaSR ; (2) les échecs d'ancrage du sol (MONT-v3 le 16 juillet à -0.31, MONT-v9 le 17 à 0.125) PRÉCÈDENT l'aquifère (28 juillet), or l'explication écrite à l'époque était justement que le NeRF compensait par le sol les divergences structurelles, aquifère en tête.
+
+**Ce que le calage Hydrotel MONT contient réellement** (vérifié en lisant bv3c.csv via load_calibrated_soil, validation isolée jamais faite jusqu'ici — TODO du log du 16 juillet enfin coché) :
+- épaisseurs z1/z2/z3 = 0.219 / 0.157 / 2.650 m, **identiques sur TOUS les nœuds** : ce n'est pas un champ calibré, c'est une colonne unique de 3 m appliquée partout ;
+- `coef_recharge` = 0 partout et `krec` = 1.29e-7 : Hydrotel n'a **aucune voie profonde**, toute l'eau ressort latéralement ;
+- seules la texture (ks, thetas, psis, b) et la pente varient spatialement.
+
+**Correctifs de mécanisme** (le mode d'ancrage était inutilisable en partiel) :
+- `set_calibrated_soil` REMPLAÇAIT p_soil en bloc -> passé en FUSION, une clé absente garde la valeur du NeRF ;
+- `_calib_z` = None quand les z ne sont pas ancrés (sinon ETR/gel restaient figés sur des z absents) ;
+- hooks `ETL_SOIL_CALIB`, `ETL_SOIL_CALIB_FULL`, `ETL_SOIL_CALIB_TEXTURE` dans etl_run.py. 150 tests passent.
+
+**Résultats MONT (aquifère ACTIF dans les deux cas, partition verticale libre) :**
+
+| ancrage | kge_med val époque 0 | r | beta | gamma | tendance |
+|---|---|---|---|---|---|
+| complet (texture + épaisseurs) | -0.059 | 0.404 | 0.711 | 0.585 | val PLATE sur 4 époques |
+| texture seule (épaisseurs libres) | +0.245 | 0.627 | 0.753 | 0.603 | monotone |
+
+**Conclusion.** Le goulot n'est pas « le sol » ni l'absence d'aquifère : c'est la GÉOMÉTRIE. Une colonne uniforme de 3 m sans drainage profond amortit tout (volume -30 %, variabilité -40 %). La texture, elle, est compatible et informative. La loi des ancrages interdisait le tout à cause d'une seule composante non informative ; elle doit être reformulée en : hériter des processus scalaires régionaux ET de la texture, jamais des épaisseurs.
+
+**Conséquence pour la carte de départ Hydrotel** demandée par Essi : côté sol, il y a beaucoup moins à hériter qu'espéré, puisque la géométrie n'a aucune structure spatiale. Ce qui reste utile est ce qu'on utilisait déjà (coefficient ETP Linacre, taux et seuils de fonte) plus la texture.
+
+**Non fait / réserves.** Aucun chargeur des paramètres de ROUTAGE d'Hydrotel (onde_cinematique*.csv) : un test de fidélité tronçon-par-tronçon mélangerait pour l'instant divergence verticale et divergence de routage. Le vrai test de fidélité reste à faire, à météo COMMUNE (celle d'Hydrotel), contre `<projet>/simulation/simulation/resultat/debit_aval.nc` qui porte exactement le même maillage (idtroncon = node_id).
+
+**Correction de mémoire.** Il n'existe aucune liste de « 9 divergences » dans le dépôt (le journal commence le 3 juillet). Les divergences documentées sont 4, toutes délibérées : aquifère restituant, UH de versant, ruissellement par saturation, coefficient cultural saisonnier (docs/architecture.md).
+
+## 2026-08-03 — Carte provinciale : la règle simple bat la sélection, médiane 0.671
+
+**Mesure du jour : la calibration locale ne rapporte qu'à partir d'une dizaine de jauges.**
+
+| région | n stations | transfert gaspésien | calibration locale | verdict |
+|---|---|---|---|---|
+| slso | 39 | 0.532 | **0.631** | local +0.099 |
+| mont | 28 | 0.571 | **0.624** | local +0.053 |
+| sagu | 22 | 0.645 | **0.705** | local +0.060 |
+| gasp | 16 | 0.677 | **0.749** | local +0.072 |
+| outv | 16 | 0.539 | **0.572** | local +0.033 |
+| slno | 31 | **0.660** | 0.645 | transfert (exception) |
+| abit | 3 | **0.697** | 0.478 | transfert +0.219 |
+
+**Sélection de champion sur validation : RÉFUTÉE.** 6 champions essayés en inférence pure sur chaque région pauvre en jauges, choix sur la validation 2019-2021 seule. Résultat : la carte ainsi construite fait 0.627 de médiane, PIRE que le transfert gaspésien uniforme (0.653). Avec 1 à 4 stations la validation ne classe pas les candidats, elle les mélange (abit : val préfère sagu 0.621 alors que gasp donne 0.720 ; cndc : val préfère sagu 0.612 alors que gasp donne 0.716). Le choix du champion COMPTE (0.485-0.720 d'écart sur abit) mais aucun critère basé sur le débit ne le trouve à ce nombre de stations.
+
+**Carte retenue (règle la plus simple, décidée a priori) :** calibration locale si n_stations >= 10, sinon transfert du champion global (gasp, le seul qui batte Hydrotel). Médiane held-out 2022-2024 = **0.671** (moyenne 0.651), contre 0.653 pour la carte tout-transfert. 6 régions locales, 7 transférées, vaud sans forçage. Détail dans `reports/carte_provinciale.csv`.
+
+**Restes.** vaud n'a pas de fichier de forçage. cnda (0.453) et outm (0.498) plafonnent bas avec 1 et 4 stations. outv reste réfractaire : 7 hypothèses tombées (transfert, littérature, entraînement local, forçage, régulation, timing de fonte, calibration locale à 0.572 contre Hydrotel 0.753).

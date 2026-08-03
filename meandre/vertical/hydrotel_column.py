@@ -212,8 +212,10 @@ class HydrotelColumn(nn.Module):
         params_from_nerf l'utilise À LA PLACE du sol NeRF (reproduce). Optionnel.
         Mémorise aussi les z médians pour rendre ETR/gel cohérents avec ces z."""
         self._calib_soil = p_soil
+        # z absents = ancrage partiel (texture seule) : les épaisseurs restent au NeRF,
+        # donc pas de mémorisation qui les figerait pour l'ETR et le gel.
         self._calib_z = (float(p_soil["z1"].median()), float(p_soil["z2"].median()),
-                         float(p_soil["z3"].median()))
+                         float(p_soil["z3"].median())) if "z1" in p_soil else None
 
     # ── Seam NeRF/territorial → params (Phase A) ────────────────────────
     def params_from_nerf(self, sp, territorial, node_coords):
@@ -319,7 +321,12 @@ class HydrotelColumn(nn.Module):
         # Ancrage Hydrotel (reproduce) : remplace le sol NeRF par la calibration
         # par nœud si fournie. Optionnel — retiré pour découpler.
         if self._calib_soil is not None:
-            p_soil = {k: v.to(like.device).to(like.dtype) for k, v in self._calib_soil.items()}
+            # FUSION et non remplacement : une clé absente du calage garde la valeur du
+            # NeRF. Permet d'hériter de la géométrie et de l'hydraulique calibrées par
+            # Hydrotel tout en laissant libre la partition verticale (krec), qu'Hydrotel
+            # étrangle faute d'aquifère et dont méandre, lui, se sert.
+            p_soil = {**p_soil, **{k: v.to(like.device).to(like.dtype)
+                                   for k, v in self._calib_soil.items()}}
 
         # ETR : thetacc/thetapf du NeRF (couche 1), alpha global ; classes dispo
         alpha = torch.exp(self.log_etr_alpha)
@@ -340,7 +347,7 @@ class HydrotelColumn(nn.Module):
             et_classes.append((fsa, _JBP, _LEAF["default"], _ROOT["default"]))
         # z des couches : calibrés Hydrotel si ancré (cohérence ETR/gel/sol), sinon NeRF
         z11, z22, z33 = self.z1, float(sp.Z2.mean()), float(sp.Z3.mean())
-        if self._calib_soil is not None:
+        if self._calib_soil is not None and self._calib_z is not None:
             z11, z22, z33 = self._calib_z
         # K_c (coefficient cultural) par nœud, prédit par le NeRF (borné [0.3,1.5],
         # prior vers 0.85). Multiplie l'ETP → corrige la sur-évaporation McGuinness

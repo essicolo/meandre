@@ -14,8 +14,10 @@ from meandre.data.basin_cache import BasinCache
 from meandre.data.modis_loader import fetch_modis_et_8day
 
 REG = sys.argv[1].lower()
-BASIN_DB = f"D:/meandre-data/quebec/{REG}.duckdb"
-CACHE_DIR = "D:/meandre-data/modis8"
+import platform
+_D = "/mnt/d" if platform.system() == "Linux" else "D:"
+BASIN_DB = f"{_D}/meandre-data/quebec/{REG}.duckdb"
+CACHE_DIR = f"{_D}/meandre-data/modis8"
 YEAR_START, YEAR_END = 2000, 2024
 
 cache = BasinCache(BASIN_DB)

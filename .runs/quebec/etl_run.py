@@ -163,6 +163,38 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
             getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
     print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
 model.vertical_column.etp_channel = 6
+if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
+    # ANCRAGE DU SOL SUR LE CALAGE HYDROTEL (bv3c.csv + textures, agrégé UHRH->tronçon).
+    # Réfuté deux fois en juillet (MONT-v3 -0.31, MONT-v9 0.125) d'où la « loi des
+    # ancrages ». Mais ces deux essais précèdent l'AQUIFÈRE (28 juillet) : l'explication
+    # écrite à l'époque était justement que le NeRF compensait par le sol les divergences
+    # structurelles de la colonne, aquifère manquant en tête. Hypothèse d'Essi (2 août) :
+    # avec le réservoir souterrain actif, geler le sol devrait passer. Test rejoué ici.
+    from meandre.data.hydrotel_calib import load_calibrated_soil
+    _pd_ = os.environ.get("ETL_SOIL_DIR",
+        f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020")
+    _z1 = float(getattr(model.vertical_column, "z1", 0.15))
+    _calib = load_calibrated_soil(_pd_, r["node_ids"], _z1, device=DEVICE)
+    # Le calage Hydrotel porte coef_recharge = 0 et krec ~ 1.3e-7 (vérifié sur MONT) :
+    # Hydrotel n'a PAS de voie profonde, toute l'eau ressort latéralement. Geler ces
+    # deux-là éteindrait l'aquifère de méandre et saborderait le test. Par défaut on
+    # hérite donc de ce qu'Hydrotel a réellement calibré (géométrie + hydraulique des
+    # couches) et on laisse libre la PARTITION verticale, qui est notre extension.
+    if os.environ.get("ETL_SOIL_CALIB_FULL", "0") != "1":
+        for _k in ("krec", "coef_recharge"):
+            _calib.pop(_k, None)
+        print("[etl] partition verticale (krec, coef_recharge) laissée LIBRE (aquifère)")
+    if os.environ.get("ETL_SOIL_CALIB_TEXTURE", "0") == "1":
+        # GEOMETRIE LIBRE : les épaisseurs du calage MONT sont UNIFORMES (0.22/0.16/2.65 m
+        # sur tous les nœuds) — ce n'est pas un champ calibré mais une colonne unique de
+        # 3 m appliquée partout, qui amortit tout (val bloquée, beta 0.71, gamma 0.58,
+        # run mont-ancresol du 2 août). On n'hérite donc que de la TEXTURE, qui elle varie
+        # spatialement et qu'Hydrotel a réellement calée.
+        for _k in ("z1", "z2", "z3"):
+            _calib.pop(_k, None)
+        print("[etl] épaisseurs de couches laissées LIBRES (calage uniforme, non informatif)")
+    model.vertical_column.set_calibrated_soil(_calib)
+    print(f"[etl] sol ANCRÉ sur le calage Hydrotel : {_pd_}")
 if os.environ.get("ETL_KGW_FIELD", "0") == "1":
     # CHAMP k_gw provincial (GP sur les récessions de 127 stations, R2 blocs 0.62,
     # incertitude calibrée) : remplace le k_gw régional constant par un champ continu
@@ -181,6 +213,27 @@ if os.environ.get("ETL_KGW_FIELD", "0") == "1":
               f"{float(_kv.quantile(0.1)):.4f}-{float(_kv.quantile(0.9)):.4f}")
     else:
         print(f"[etl] champ k_gw ignoré ({len(_cf)} vs {n_nodes} nœuds)")
+if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
+    # CHAMP DE TIMING DE FONTE : le centre de masse observé du freshet (GP sur 126
+    # stations, R2 blocs 0.62, contraste 32 jours du sud-ouest au nord-est) est converti
+    # en décalage du seuil de fonte par nœud, via la sensibilité ΔCM/ΔT_melt mesurée au
+    # banc (.runs/quebec/freshet_bench.py). Le NeRF module autour ; le champ fixe la DATE.
+    import pandas as _pd
+    _sens = float(os.environ.get("ETL_FRESHET_SENS", "0"))  # jours de CM par +1 °C de T_melt
+    _cf = _pd.read_parquet("D:/meandre-data/quebec/champ_freshet_QC.parquet")
+    _cf = _cf[_cf.region == REG].sort_values("node_idx")
+    if len(_cf) == n_nodes and abs(_sens) > 1e-6:
+        _cm = torch.tensor(_cf.cm_freshet.values, dtype=torch.float32, device=DEVICE)
+        _dT = ((_cm - _cm.median()) / _sens).clamp(-2.0, 2.0)  # écart AU CHAMP, pas niveau absolu
+        _o_se = model.spatial_encoder.forward
+        def _se_freshet(*a, _o=_o_se, _d=_dT, **kw):
+            sp = _o(*a, **kw); sp.T_melt = sp.T_melt + _d
+            return sp
+        model.spatial_encoder.forward = _se_freshet
+        print(f"[etl] champ freshet appliqué : CM méd j{float(_cm.median()):.0f} | "
+              f"ΔT_melt {float(_dT.min()):+.2f} à {float(_dT.max()):+.2f} °C (sens {_sens:.2f} j/°C)")
+    else:
+        print(f"[etl] champ freshet ignoré ({len(_cf)} vs {n_nodes} nœuds, sens={_sens})")
 if "ETL_KREC" in os.environ:
     import math as _mk
     _kv = float(os.environ["ETL_KREC"])
