@@ -611,3 +611,26 @@ Suite (slso, sagu, gasp, outv) en cours. gasp et outv servent de TÉMOINS : déj
 **Carte retenue (règle la plus simple, décidée a priori) :** calibration locale si n_stations >= 10, sinon transfert du champion global (gasp, le seul qui batte Hydrotel). Médiane held-out 2022-2024 = **0.671** (moyenne 0.651), contre 0.653 pour la carte tout-transfert. 6 régions locales, 7 transférées, vaud sans forçage. Détail dans `reports/carte_provinciale.csv`.
 
 **Restes.** vaud n'a pas de fichier de forçage. cnda (0.453) et outm (0.498) plafonnent bas avec 1 et 4 stations. outv reste réfractaire : 7 hypothèses tombées (transfert, littérature, entraînement local, forçage, régulation, timing de fonte, calibration locale à 0.572 contre Hydrotel 0.753).
+
+## 2026-08-03 — TEST DE CAPACITÉ : le plafond CaSR n'est PAS dans les paramètres
+
+**Question d'Essi.** « Si les paramètres ne s'ajustent pas à la météo, simat ou casr, c'est qu'il y a un problème. » Et : « Hydrotel, mal foutu numériquement, encaisse la pluie SIMAT sans problème. »
+
+**Diagnostic préalable (vrai sur les faits, FAUX sur les conséquences).** Sur les 37 paramètres du champion GASP, la moitié sort du NeRF rigoureusement uniforme sur les 3917 nœuds (CV 0.002-0.005) et EXACTEMENT à l'init littérature : f_vert 0.50/0.60/0.70, manning_n 0.0997, interception 1.50, frost_alpha 0.50, vg_n 1.50, rain_hours 12.0, T_snow 1.0. Cause : `init_from_literature` multiplie les poids de fc_out par 0.1 ; les paramètres à fort gradient remontent (||w|| ~1.0), les autres restent au plancher (||w|| ~0.054, facteur 20).
+
+**Test de capacité (`ETL_CAPACITE=1`).** Tout gelé SAUF les codes latents additifs = décalage LIBRE par nœud sur les 37 paramètres (144 929 params), w_prior = 0, w_latent_reg = 0, départ à chaud du champion, CaSR BRUT, 15 époques. C'est du surajustement volontaire : on mesure le PLAFOND, pas la généralisation.
+
+| modèle | entraînement 2001-2018 | validation | tenu 2022-2024 |
+|---|---|---|---|
+| champion (NeRF + prior) | KGE 0.7398, r 0.818 | 0.7373, r 0.797 | 0.7023, r 0.841 |
+| capacité (libre, non régularisé) | KGE **0.7419**, r **0.821** | 0.7385, r 0.798 | 0.7054, r 0.842 |
+
+**+0.002 de KGE et +0.003 de r sur la période d'ENTRAÎNEMENT, pour 145 000 degrés de liberté sans contrainte.** Le modèle ne peut pas mieux ajuster même les données qu'il a vues. Ni le NeRF, ni le prior, ni l'init écrasée ne sont le facteur limitant. Dégeler les paramètres figés ne rapporterait rien.
+
+**Ce qui bride est l'ENTRÉE.** Même modèle, même région, forçage dérivé de SIMAT : r 0.878 contre 0.795 (A/B du 3 août : gasp brut 0.686 / budyko 0.677 / hyb 0.738 en inférence, use_latent_codes=False). La structure est capable ; la corrélation dépend de la coïncidence entre le jour de la pluie dans le fichier et le jour de la crue dans la rivière, et aucun paramètre ne déplace une averse mal datée. Hydrotel n'« absorbe » pas SIMAT par calage : SIMAT assimile densément les stations du Québec et date mieux les événements.
+
+**Corriger CaSR par bilan (Budyko) : INUTILE.** La variante corrigée fait MOINS bien que le brut (0.677 vs 0.686) sur le modèle pourtant entraîné sur elle. CaSR brut confirmé comme forçage canonique, et le chargeur est corrigé : `JOINT_FX_SUFFIX=-none` chargeait en réalité `forcing-<reg>-budyko.nc` (repli silencieux). Toute la carte provinciale du 2 août tournait donc sur la variante corrigée, pas sur le brut. Le fichier chargé est désormais imprimé.
+
+**BUG D'ÉVALUATION à corriger.** `deploy.py`, `choix_champion.py`, `forcage_ab.py`, `freshet_bench.py` instancient le modèle avec `use_latent_codes=False` alors que les champions EN ONT. Mesure de l'écart sur gasp/CaSR brut : 0.686 (sans) contre 0.702 (avec). Tous les chiffres de la carte provinciale sont donc sous-estimés d'environ 0.016. À reprendre avant toute publication.
+
+**Règle fixée pour la suite (accord Essi).** Tout résidu spatialement structuré et non explicable par des paramètres libres va dans un champ de correction du FORÇAGE, validé contre les stations météo ECCC. Rien ne va dans un paramètre physique sans une observation qui contraigne ce paramètre-là : sinon le paramètre encode les défauts de la grille de pluie et l'argument de renaturalisation/scénarios s'effondre.

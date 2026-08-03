@@ -263,6 +263,26 @@ if _kms != 1.0:
         return sp
     model.spatial_encoder.forward = _fwd_kscale
     print(f"[etl] K_musk × {_kms} (célérité accélérée, routage opérateur préservé)")
+if "ETL_WARM_FROM" in os.environ:
+    model.load(os.environ["ETL_WARM_FROM"])
+    print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
+if os.environ.get("ETL_CAPACITE", "0") == "1":
+    # TEST DE CAPACITÉ (question d'Essi, 3 août) : « si les paramètres ne s'ajustent pas
+    # à la météo, il y a un problème ». On mesure le PLAFOND du modèle, pas sa
+    # généralisation : tout est gelé sauf les codes latents additifs, qui sont un décalage
+    # LIBRE par nœud sur les 37 paramètres, et la régularisation est coupée. C'est du
+    # surajustement volontaire sur la période d'entraînement. Si le KGE d'ENTRAÎNEMENT
+    # plafonne malgré cette liberté totale, la limite est dans la donnée ou la structure,
+    # pas dans l'optimisation ni dans le réseau spatial.
+    if not getattr(model.spatial_encoder, "use_latent_codes", False):
+        raise SystemExit("[etl] ETL_CAPACITE exige use_latent_codes=true (mode additif)")
+    _libre = []
+    for _n, _p in model.named_parameters():
+        _p.requires_grad = ("latent_codes" in _n)
+        if _p.requires_grad:
+            _libre.append((_n, _p.numel()))
+    print(f"[etl] CAPACITÉ : {sum(k for _, k in _libre):,} params libres ({[n for n, _ in _libre]}), "
+          f"tout le reste GELÉ, régularisation latente coupée")
 print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (demande apprise × K_c NeRF, init 1.0)")
 
 tconf = TrainingConfig(
@@ -271,7 +291,8 @@ tconf = TrainingConfig(
     chunk_steps=int(tcfg.get("chunk_steps", 45)),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
     grad_clip=float(tcfg.get("clip_grad_norm", 1.0)),
-    w_prior=float(tcfg.get("w_prior", 0.005)),
+    w_prior=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_prior", 0.005)),
+    w_latent_reg=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_latent_reg", 1e-3)),
     best_metric="kge_median",
     # autopilot du TOML : LR plateau + garde-fou régression (sans lui, GASP/MONT-etl
     # divergeaient après le pic epoch ~7-12, val -0.15 non rattrapée — bug 2026-07-22)

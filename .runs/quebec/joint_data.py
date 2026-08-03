@@ -51,9 +51,17 @@ DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
 
 def _paths(reg):
+    """Résout (base, forçage). JOINT_FX_SUFFIX = "-none" signifie CaSR BRUT, donc
+    forcing-<reg>.nc — et non le repli -budyko, qui faisait passer la variante corrigée
+    pour du brut dans toute la carte provinciale du 2 août (bug d'étiquette relevé par
+    Essi). Le fichier retenu est imprimé : on doit toujours savoir ce qu'on mesure."""
     db = DBS.get(reg, f"D:/meandre-data/quebec/{reg}.duckdb")
     sfx = os.environ.get("JOINT_FX_SUFFIX")
-    if sfx == "-none": sfx = None
+    if sfx == "-none":
+        fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
+        if not os.path.exists(fx):
+            raise FileNotFoundError(f"{reg}: CaSR brut demandé mais {fx} absent")
+        return db, fx
     if sfx:
         fx = f"D:/meandre-data/quebec/forcing-{reg}{sfx}.nc"
         if os.path.exists(fx):
@@ -73,6 +81,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         territorial = _territorial_global(reg, territorial, device)
     node_coords, n_nodes, node_ids = h["node_coords"], h["n_nodes"], h["node_ids"]
 
+    print(f"[forcage] {reg}: {os.path.basename(fx_path)}")
     d = xr.open_dataset(fx_path)
     F = d["forcing"].values[:, :, :6]  # (T, N, 6) — homogénéité (SLSO a 7 canaux)
     times = pd.to_datetime(d["time"].values); d.close()
