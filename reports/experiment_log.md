@@ -686,3 +686,41 @@ méandre bat la médiane d'ensemble sur 20/132 stations (15 %), le meilleur memb
 **Inéquité à nommer.** Méandre tourne ici sur CaSR, Hydrotel sur SIMAT, sa météo native, celle sur laquelle il a été calé. L'A/B du 3 août mesure 6 centièmes de corrélation d'écart entre les deux familles. Le duel à armes égales (méandre sur -hyb) est lancé ; son résultat sera consigné quel qu'il soit.
 
 **Leçon de méthode.** Comparer au membre le plus faible d'un ensemble équifinal, sur le forçage le plus favorable, produit une conclusion qui s'effondre dès qu'on élargit la comparaison. Le protocole correct est : tous les membres, toutes les stations, comptage par station, forçage explicite.
+
+## 2026-08-04 — LES LACS. Le déficit est localisé, et il survit au test par station
+
+**Duel à armes égales (méandre sur -hyb, forçage de la famille SIMAT comme Hydrotel), 132 stations :** méandre 0.641 contre 0.742 (médiane d'ensemble) et 0.805 (meilleur membre). Bat l'ensemble sur 23 % des stations (contre 15 % sur CaSR).
+
+| région | méandre | ensemble | écart |
+|---|---|---|---|
+| gasp | 0.769 | 0.795 | -0.026 |
+| mont | 0.693 | 0.720 | -0.027 |
+| slso | 0.642 | 0.655 | -0.013 |
+| sagu | 0.709 | 0.786 | -0.077 |
+| slno | 0.565 | 0.808 | -0.243 |
+| outv | 0.499 | 0.821 | -0.322 |
+
+**Hypothèse RÉGULATION : réfutée (2e fois).** Corrélation écart/nb de barrages hydroélectriques = -0.84 sur 6 RÉGIONS, mais +0.018 sur 132 STATIONS (15 stations seulement ont un ouvrage hydroélectrique en amont ; écart médian -0.097 contre -0.083 sans). L'artefact d'échelle régionale a failli déclencher la construction d'un module de régulation. Note : cette hypothèse avait DÉJÀ été écartée pour OUTV plus tôt dans la session (les jauges CEHQ mesurent des tributaires naturels) et je l'ai reconstruite sans m'en souvenir.
+
+**Que fait Hydrotel de spécial sur ces régions ? RIEN.** Les projets GASP et OUTV sont configurés à l'identique : mêmes sous-modèles, mêmes fichiers, seul le nom du fichier météo diffère. Le déficit n'est donc pas un mécanisme manquant côté méandre par rapport à Hydrotel : c'est méandre qui fait quelque chose de faux.
+
+**CAUSE LOCALISÉE : les lacs.** Fraction de nœuds-lacs par région : gasp 1.6 %, mont 1.9 %, slso 2.0 % (écarts -0.026/-0.027/-0.013) contre slno 11.5 %, outv 15.1 %, sagu 15.7 % (écarts -0.243/-0.322/-0.077). Test au niveau des STATIONS (fraction lacustre du bassin amont, n=132) :
+
+| fraction lacustre amont | n | écart médian |
+|---|---|---|
+| < 2 % | 76 | -0.038 |
+| 2-5 % | 10 | -0.023 |
+| 5-10 % | 20 | -0.215 |
+| 10-20 % | 20 | -0.218 |
+| > 20 % | 6 | -0.216 |
+
+Marche NETTE à 5 %, plateau au-delà, et AUCUN effet de taille de bassin (corrélation écart/log n_nœuds amont = +0.004). Corrélation écart/fraction lacustre = -0.350 par station.
+
+| groupe | n | méandre | ensemble | meilleur | > ensemble | > meilleur |
+|---|---|---|---|---|---|---|
+| peu lacustre (<5 %) | 86 | 0.663 | 0.718 | 0.775 | 31 % | 14 % |
+| lacustre (>=5 %) | 46 | 0.590 | 0.815 | 0.848 | 7 % | 0 % |
+
+**Lecture.** Le plateau au-delà du seuil ressemble à un défaut de TRAITEMENT (tout ou rien) et non à une insuffisance progressive de calibration. Cela rejoint la note jamais suivie d'effet sur les pseudo-lacs : des tronçons marqués « lac » par le découpage Hydrotel sans être de vrais plans d'eau, importés par méandre comme réservoirs actifs, qui ajoutent retard et lissage. L'effet y était annoncé comme critique sur SLNO.
+
+**PROCHAIN PAS (gratuit) :** neutraliser les pseudo-lacs en INFÉRENCE, sans réentraîner, et mesurer l'écart sur les 46 stations lacustres. Si le score remonte, cause et correctif sont acquis d'un coup.
