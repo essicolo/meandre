@@ -1,0 +1,16 @@
+region,origine,champion,latents,n,kge,r,beta,gamma
+gasp,local,best-gasp-etl-ds,True,15,0.7752,0.878,0.885,1.1
+sagu,local,best-sagu-etl-ds,True,19,0.7142,0.775,0.927,0.934
+mont,local,best-mont-etl-ds,True,23,0.6934,0.755,0.944,0.87
+labi,transfert,best-gasp-etl-ds,False,1,0.3763,0.702,0.572,0.658
+abit,transfert,best-gasp-etl-ds,False,3,0.4713,0.704,0.602,0.818
+cnda,transfert,best-gasp-etl-ds,False,1,0.4689,0.596,0.761,1.249
+cndb,transfert,best-gasp-etl-ds,False,2,0.3101,0.555,0.498,1.032
+cndc,transfert,best-gasp-etl-ds,False,2,0.631,0.828,0.702,1.126
+cndd,transfert,best-gasp-etl-ds,False,1,0.8085,0.891,0.873,1.092
+cnde,transfert,best-gasp-etl-ds,False,2,0.6144,0.626,1.021,0.95
+outm,transfert,best-gasp-etl-ds,False,3,0.5221,0.608,0.978,1.242
+outv,local,best-outv-etl-qc,True,16,0.4992,0.646,0.765,0.99
+slno,local,best-slno-etl-canon,True,27,0.565,0.703,0.698,1.059
+slso,local,best-slso-etl-canon,True,29,0.6394,0.754,0.902,0.845
+vaud,transfert,best-gasp-etl-ds,False,0,,,,

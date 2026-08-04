@@ -634,3 +634,28 @@ Suite (slso, sagu, gasp, outv) en cours. gasp et outv servent de TÉMOINS : déj
 **BUG D'ÉVALUATION à corriger.** `deploy.py`, `choix_champion.py`, `forcage_ab.py`, `freshet_bench.py` instancient le modèle avec `use_latent_codes=False` alors que les champions EN ONT. Mesure de l'écart sur gasp/CaSR brut : 0.686 (sans) contre 0.702 (avec). Tous les chiffres de la carte provinciale sont donc sous-estimés d'environ 0.016. À reprendre avant toute publication.
 
 **Règle fixée pour la suite (accord Essi).** Tout résidu spatialement structuré et non explicable par des paramètres libres va dans un champ de correction du FORÇAGE, validé contre les stations météo ECCC. Rien ne va dans un paramètre physique sans une observation qui contraigne ce paramètre-là : sinon le paramètre encode les défauts de la grille de pluie et l'argument de renaturalisation/scénarios s'effondre.
+
+## 2026-08-03 (soir) — Courbe de bascule météo, et arrêt du bricolage
+
+**Courbe de bascule (sans débit).** 236 stations ECCC tenues à l'écart, 2016-2019. Chaque station est estimée (a) par pondération inverse du carré de la distance depuis ses voisines et (b) par CaSR au nœud le plus proche, puis comparée à ses observations. Aucune donnée de débit n'entre dans ce calcul.
+
+| distance voisine | n | r stations | r CaSR | biais stations | biais CaSR |
+|---|---|---|---|---|---|
+| < 10 km | 55 | 0.840 | 0.785 | 0.89 | 1.11 |
+| 10-15 | 29 | 0.846 | 0.797 | 0.87 | 1.03 |
+| 15-20 | 29 | 0.815 | 0.726 | 0.82 | 1.05 |
+| 20-30 | 54 | 0.835 | 0.688 | 0.85 | 1.01 |
+| 30-40 | 23 | 0.848 | 0.678 | 0.90 | 1.04 |
+| 40-60 | 29 | 0.829 | 0.802 | 0.91 | 1.13 |
+| 60-100 | 8 | 0.764 | 0.818 | 0.93 | 1.13 |
+| > 100 | 5 | 0.589 | 0.914 | 0.88 | 1.31 |
+
+Croisement vers 55-60 km (réserve : 13 stations seulement au-delà de 60 km). Biais de volume OPPOSÉS et stables : les stations sous-estiment de 10-15 %, CaSR sur-estime de 3-13 % (jusqu'à 31 % très loin des stations).
+
+**Carte hybride (SIMAT) : médiane 0.590 contre 0.671 pour CaSR.** L'échec est un défaut de VOLUME, pas de datation : beta 0.57 (labi), 0.60 (abit), 0.50 (cndb), soit 40-50 % d'eau manquante là où le réseau est clairsemé. Gains au contraire dans le sud dense (mont +0.069, gasp +0.026). Champ de densité construit : `densite_stations.parquet` (9 km à vaud, 150 km en cnde).
+
+**Chiffres corrigés (effets aléatoires par nœud enfin activés quand le checkpoint en porte pour la bonne région, via `ckpt_util.a_des_latents`) :** GASP 0.7752 contre Hydrotel brut 0.744 ; MONT 0.6934 contre 0.637 ; SAGU 0.7142. Méandre passe donc devant Hydrotel sur les deux régions correctement calibrées, en tenu de côté 2022-2024.
+
+**ARRÊT (objection d'Essi, retenue).** Le produit mixte stations+CaSR a été écrit (`build_forcing_mix.py`, poids continu 1/(1+(d/55)^3), aucune frontière régionale) mais N'EST PAS lancé : mélanger une pluie interpolée dans CaSR casse la cohérence interne entre précipitation, température, rayonnement et humidité, qui est justement ce qu'une réanalyse apporte. Le modèle recevrait une pluie incohérente avec son énergie. Objection valide, non contournée. Observations ECCC 2000-2024 récupérées (25 tuiles, 0 échec) et conservées pour un usage ultérieur.
+
+**État réel.** Ce qui tient : le test de capacité (résultat scientifique, pas un réglage) et la parité-plus contre Hydrotel là où le modèle est calibré. Ce qui ne tient pas : l'objectif d'une carte provinciale homogène sur 15 régions dont 9 ont moins de 4 jauges. Reprendre par la question de fond (que doit démontrer ce modèle, et quel est le plus petit ensemble de mesures qui le démontre) plutôt que par le score.
