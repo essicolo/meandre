@@ -659,3 +659,30 @@ Croisement vers 55-60 km (réserve : 13 stations seulement au-delà de 60 km). B
 **ARRÊT (objection d'Essi, retenue).** Le produit mixte stations+CaSR a été écrit (`build_forcing_mix.py`, poids continu 1/(1+(d/55)^3), aucune frontière régionale) mais N'EST PAS lancé : mélanger une pluie interpolée dans CaSR casse la cohérence interne entre précipitation, température, rayonnement et humidité, qui est justement ce qu'une réanalyse apporte. Le modèle recevrait une pluie incohérente avec son énergie. Objection valide, non contournée. Observations ECCC 2000-2024 récupérées (25 tuiles, 0 échec) et conservées pour un usage ultérieur.
 
 **État réel.** Ce qui tient : le test de capacité (résultat scientifique, pas un réglage) et la parité-plus contre Hydrotel là où le modèle est calibré. Ce qui ne tient pas : l'objectif d'une carte provinciale homogène sur 15 régions dont 9 ont moins de 4 jauges. Reprendre par la question de fond (que doit démontrer ce modèle, et quel est le plus petit ensemble de mesures qui le démontre) plutôt que par le score.
+
+## 2026-08-04 — DUEL contre l'ENSEMBLE COMPLET : méandre est DERRIÈRE, correction d'une affirmation antérieure
+
+**Ce qui était affirmé et qui ne tient pas.** J'ai écrit plusieurs fois que méandre « bat Hydrotel » (GASP 0.749 puis 0.775 contre 0.744). Cette affirmation reposait sur UN membre (LN24HA) et sur le forçage hybride. Contre l'ENSEMBLE des 6 calages, station par station, elle ne tient pas.
+
+**Duel, méandre sur CaSR brut, 132 stations, held-out 2022-2024, jours communs :**
+
+| | médiane | moyenne |
+|---|---|---|
+| méandre | 0.621 | 0.603 |
+| médiane des 6 calages | 0.742 | 0.739 |
+| meilleur membre par station | 0.805 | |
+
+méandre bat la médiane d'ensemble sur 20/132 stations (15 %), le meilleur membre sur 8/132 (6 %).
+
+| région | n | méandre | ensemble | meilleur |
+|---|---|---|---|---|
+| gasp | 16 | 0.704 | 0.795 | 0.851 |
+| sagu | 20 | 0.686 | 0.786 | 0.828 |
+| slso | 30 | 0.625 | 0.655 | 0.731 |
+| slno | 27 | 0.621 | 0.808 | 0.834 |
+| mont | 23 | 0.600 | 0.720 | 0.776 |
+| outv | 16 | 0.552 | 0.821 | 0.854 |
+
+**Inéquité à nommer.** Méandre tourne ici sur CaSR, Hydrotel sur SIMAT, sa météo native, celle sur laquelle il a été calé. L'A/B du 3 août mesure 6 centièmes de corrélation d'écart entre les deux familles. Le duel à armes égales (méandre sur -hyb) est lancé ; son résultat sera consigné quel qu'il soit.
+
+**Leçon de méthode.** Comparer au membre le plus faible d'un ensemble équifinal, sur le forçage le plus favorable, produit une conclusion qui s'effondre dès qu'on élargit la comparaison. Le protocole correct est : tous les membres, toutes les stations, comptage par station, forçage explicite.
