@@ -773,3 +773,11 @@ OUTV passe de 0.4992 à 0.5256 sans réentraînement. Optimum NET à alpha = 1, 
 **Mais c'est l'argument qui manquait.** Le score est sensible à la différenciation des lacs (jusqu'à ±0.04 selon la région) ET la valeur qui convient dépend du bassin : c'est exactement ce qu'un paramètre APPRIS par nœud doit découvrir, et exactement ce que la tête de lac ne fait pas puisqu'elle n'a jamais quitté son initialisation. Le correctif de fond n'est donc pas un prior à la main mais le groupe d'optimisation dédié (`lake_lr_mult = 50`, wd = 0) ajouté aujourd'hui. Test : réentraîner OUTV et comparer à 0.4992.
 
 **Défaut de données repéré au passage :** le plus grand « lac » de GASP fait 13 114 km², ce qui est un nœud d'estuaire et non un plan d'eau. Sans conséquence ici (GASP a 63 lacs) mais à filtrer.
+
+**Réentraînement OUTV avec la tête de lac libérée (`lake_lr_mult = 50`, wd = 0), forçage -hyb, 12 époques.**
+
+- Mécaniquement, le correctif MARCHE : ||W fc_lake|| passe de 5.65e-2 à 2.43 (×43), k_lake se disperse d'un facteur 2.7 entre lacs (1.02e-4 à 2.72e-4) au lieu de 1.02, beta passe de 1.502 à 1.215. La tête n'est plus gelée.
+- Mais le tenu de côté ne bouge pas : **0.5011 contre 0.4992**, soit +0.002. La validation, elle, monte à 0.6166.
+- Et la direction apprise est l'INVERSE de celle qui aide : l'entraînement fait MONTER k (médiane 9.9e-5 -> 1.63e-4), alors que le banc en inférence montre que le BAISSER sur les grands lacs rapporte +0.026 sur le tenu de côté.
+
+**Lecture.** Un paramètre libre trouve sur 2000-2018 un optimum qui ne transfère pas ; la contrainte physique (k ∝ 1/A, exposant mesuré) transfère. C'est un argument POUR les priors physiques, pas un échec du correctif — et c'est cohérent avec la doctrine du reste du modèle (ancrer le processus, laisser le champ moduler autour). Prochain test : ancrer k sur la loi d'exutoire et laisser la tête moduler autour, au lieu de la laisser libre.
