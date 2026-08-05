@@ -796,3 +796,15 @@ Le seul cas qui gagne est celui où la contrainte est appliquée à un modèle D
 **Limite honnête :** la loi ne gagne qu'en OUTV (+0.026). Neutre sur SLNO et GASP, -0.012 sur SAGU. Ce n'est pas une correction provinciale mais un correctif local dont on ne sait pas prédire le domaine d'application. Fil clos en l'état.
 
 **Acquis conservés :** (1) le déficit contre l'ensemble Hydrotel est LACUSTRE et mesuré au niveau des stations ; (2) la tête de lac n'avait aucun groupe d'optimisation dédié et ne pouvait pas apprendre — corrigé, elle apprend maintenant (||W|| ×43) ; (3) le score EST sensible à la différenciation des lacs (±0.04 selon la région), donc le levier existe ; (4) mais l'entraînement sur la période de calage préfère systématiquement une solution qui ne transfère pas.
+
+## 2026-08-05 — SYNTHÈSE : le même mécanisme apparaît trois fois
+
+Trois expériences indépendantes de cette session pointent le même défaut, et c'est probablement le résultat le plus important de la semaine.
+
+1. **Prior doux sur K_c (juillet).** Posé comme cible de régularisation, il est DÉFAIT par l'entraînement : MONT retombe à 0.583 alors que le même K_c imposé en inférence donnait 0.617. Résolu en appliquant le débiaisage à la demande évaporative, hors de portée du gradient (0.624).
+2. **Test de capacité (3 août).** 145 000 paramètres libres sans régularisation ne gagnent que +0.002 de KGE sur la période d'ENTRAÎNEMENT elle-même. Le modèle est à son plafond ; ce qui reste n'est pas atteignable par optimisation.
+3. **Loi d'exutoire des lacs (5 août).** Imposée en inférence : +0.026 sur OUTV. Apprise librement : +0.002. Ancrée avec modulation apprise : -0.018. L'entraînement compense systématiquement la contrainte.
+
+**Le motif.** L'optimisation sur 2000-2018 trouve des solutions qui minimisent l'erreur de calage sans transférer à 2022-2024, et elle défait toute contrainte physique qu'on lui laisse contourner. Les contraintes qui TIENNENT sont celles qui sont hors d'atteinte du gradient : débiaisage structurel de la demande, ancrages scalaires régionaux (ETP Linacre, taux et seuils de fonte), lois physiques appliquées au déploiement.
+
+**Conséquence de conception.** Un paramètre ne devrait être laissé libre que si une observation le contraint DIRECTEMENT (récessions pour k_gw, MOD10 pour la fonte, MOD16 pour l'ET). Sinon il doit être fixé par une loi physique appliquée hors gradient. C'est une règle plus stricte que la « loi des ancrages » et elle explique ses trois succès comme ses trois échecs.
