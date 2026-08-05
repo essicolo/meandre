@@ -759,3 +759,17 @@ OUTV passe de 0.4992 à 0.5256 sans réentraînement. Optimum NET à alpha = 1, 
 **Réserves.** (1) La surface utilisée est celle du TRONÇON, pas celle du plan d'eau : `lake_fraction` et `f_water` existent dans les attributs et donneraient la vraie surface lacustre. (2) slno reste insensible, probablement parce que la référence prise à la médiane divise le k de son très grand lac (3666 km²) par plus de 160 et le colle à sa borne. (3) sagu recule légèrement. La formulation à tester ensuite n'agit QUE dans la direction utile (réduire k des grands lacs, ne pas augmenter celui des petits, la courbe saturant vers le haut).
 
 **Premier gain sur OUTV après 8 hypothèses réfutées** (transfert, littérature, entraînement local, forçage, régulation ×2, timing de fonte, neutralisation des lacs), et il vient d'un prior physique dont l'exposant est mesuré, pas d'un réglage.
+
+**Prior d'exutoire, formulation unilatérale (vraie surface lacustre, réduction seule, alpha=1).** La fraction lacustre des nœuds-lacs vaut 1 : la surface du tronçon EST la surface du plan d'eau, ma réserve précédente tombe.
+
+| seuil A_ref | outv | slno | sagu | gasp |
+|---|---|---|---|---|
+| 1 km² | -0.0437 | **+0.0165** | -0.0400 | +0.0077 |
+| 5 km² | -0.0016 | +0.0112 | -0.0183 | +0.0000 |
+| 20 km² | **+0.0256** | +0.0000 | -0.0117 | (en cours) |
+
+**Trois régions, trois optima différents.** OUTV veut qu'on ne réduise que ses plus grands lacs (seuil haut), SLNO veut qu'on réduise tout (seuil bas), SAGU ne veut aucune réduction. Il n'y a donc PAS de loi universelle en surface, et le prior fixé à la main ne peut pas réconcilier trois bassins qui demandent trois choses différentes.
+
+**Mais c'est l'argument qui manquait.** Le score est sensible à la différenciation des lacs (jusqu'à ±0.04 selon la région) ET la valeur qui convient dépend du bassin : c'est exactement ce qu'un paramètre APPRIS par nœud doit découvrir, et exactement ce que la tête de lac ne fait pas puisqu'elle n'a jamais quitté son initialisation. Le correctif de fond n'est donc pas un prior à la main mais le groupe d'optimisation dédié (`lake_lr_mult = 50`, wd = 0) ajouté aujourd'hui. Test : réentraîner OUTV et comparer à 0.4992.
+
+**Défaut de données repéré au passage :** le plus grand « lac » de GASP fait 13 114 km², ce qui est un nœud d'estuaire et non un plan d'eau. Sans conséquence ici (GASP a 63 lacs) mais à filtrer.
