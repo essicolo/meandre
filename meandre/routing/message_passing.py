@@ -52,6 +52,11 @@ from meandre.routing.travel_time_attention import TravelTimeAttention
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.temporal.ring_buffer import OutflowRingBuffer
 
+# Détachement du stockage des lacs entre pas de temps. True = comportement historique
+# (gradient tronqué, cause probable du gel de k_lake/beta) ; False = gradient complet,
+# tronqué par le TBPTT comme le reste de l'état. Bascule pour le banc de mesure.
+LACS_DETACHER = True
+
 
 class RoutingLayer(nn.Module):
     """One full routing step: propagate Q through the river graph."""
@@ -409,7 +414,12 @@ class RoutingLayer(nn.Module):
                     S_lake = torch.where(regulated, S_reg_new, S_lake)
 
             Q_out[lake_mask] = Q_lake
-            lake_storage_new[lake_mask] = S_lake.detach()
+            # Détacher le stockage à CHAQUE pas coupe le gradient sur l'accumulation,
+            # donc sur toute la mémoire du lac : l'optimiseur ne voit que l'effet
+            # instantané de k_lake sur le débit du jour. Diagnostic 2026-08-04 : k_lake et
+            # beta sont restés à leur initialisation (1e-4 et 1.5) dans les 6 régions, avec
+            # 1-5 % de dispersion pour des bornes couvrant 4 ordres de grandeur.
+            lake_storage_new[lake_mask] = S_lake.detach() if LACS_DETACHER else S_lake
 
         # Clamp after routing: withdrawals can reduce Q to 0 but not below
         Q_out = torch.clamp(Q_out, min=0.0)

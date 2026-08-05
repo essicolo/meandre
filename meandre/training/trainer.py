@@ -55,6 +55,10 @@ class TrainingConfig:
     # LR dédié élevé pour les codes latents (cold-start auto-décodeur : le NeRF
     # partagé soak le signal, les codes restent à 0 sans LR plus fort).
     latent_lr_mult: float = 50.0
+    # LR dédié pour la tête de lac : poids initialisés à zéro, sortie divisée par 2,
+    # bornes sur 4 ordres de grandeur — au LR de base elle ne quitte jamais son
+    # initialisation (constat sur les 6 régions entraînées, 2026-08-04).
+    lake_lr_mult: float = 50.0
 
     # Boundary regularization on raw network outputs.
     # Penalizes sigmoid saturation (params at clamp bounds) and L2-pulls
@@ -396,6 +400,24 @@ class Trainer:
                     "Discriminative LR: noise_head=%.1e (10×), wd=0 — fast sigma adaptation",
                     self.config.lr * 10.0,
                 )
+            # Tête de lac (k_lake, beta) : oubliée jusqu'ici, seule tête sans
+            # traitement particulier. Ses poids partent de ZÉRO exactement, sa sortie
+            # est divisée par 2 avant l'exponentielle, et ses bornes couvrent 4 ordres
+            # de grandeur (k_lake 1e-6 à 1e-2) : atteindre le haut demanderait une
+            # sortie brute de 9 en partant de 0. Diagnostic 2026-08-04 : k_lake vaut
+            # 1e-4 et beta 1.5 dans les 6 régions entraînées, soit l'initialisation, avec
+            # 1-5 % de dispersion. Or le déficit contre Hydrotel est LACUSTRE (-0.22 de
+            # KGE au-dessus de 5 % de nœuds-lacs en amont, contre -0.03 en dessous).
+            lake_params = [p for n, p in model.named_parameters() if "fc_lake" in n]
+            if lake_params:
+                _lk_ids = set(id(p) for p in lake_params)
+                base_params[:] = [p for p in base_params if id(p) not in _lk_ids]
+                groups.append({"params": lake_params,
+                               "lr": self.config.lr * self.config.lake_lr_mult,
+                               "weight_decay": 0.0})
+                logger.info("Discriminative LR: fc_lake=%.1e (%.0f×), wd=0",
+                            self.config.lr * self.config.lake_lr_mult,
+                            self.config.lake_lr_mult)
             # Codes latents (effet aléatoire spatial) : LR élevé pour escaper la
             # domination du NeRF partagé au cold-start (auto-décodeur). wd=0 :
             # le shrinkage est déjà géré par w_latent_reg.

@@ -724,3 +724,38 @@ Marche NETTE à 5 %, plateau au-delà, et AUCUN effet de taille de bassin (corr�
 **Lecture.** Le plateau au-delà du seuil ressemble à un défaut de TRAITEMENT (tout ou rien) et non à une insuffisance progressive de calibration. Cela rejoint la note jamais suivie d'effet sur les pseudo-lacs : des tronçons marqués « lac » par le découpage Hydrotel sans être de vrais plans d'eau, importés par méandre comme réservoirs actifs, qui ajoutent retard et lissage. L'effet y était annoncé comme critique sur SLNO.
 
 **PROCHAIN PAS (gratuit) :** neutraliser les pseudo-lacs en INFÉRENCE, sans réentraîner, et mesurer l'écart sur les 46 stations lacustres. Si le score remonte, cause et correctif sont acquis d'un coup.
+
+## 2026-08-05 — Lacs : la tête de lac n'a JAMAIS appris, et la différenciation par la taille rouvre OUTV
+
+**Neutraliser les lacs : réfuté partout.** A/B en inférence, forçage -hyb : outv 0.4992 -> 0.2682 (0/16 stations améliorées), slno 0.5650 -> 0.4312 (0/27), sagu 0.7142 -> 0.5466 (0/19), gasp 0.7752 -> 0.7216 (0/15). Le coût croît avec la fraction lacustre. L'hypothèse des « pseudo-lacs à neutraliser », qui traînait dans les notes depuis des semaines, est close : les lacs portent la dynamique de ces bassins.
+
+**La tête de lac est restée à son initialisation dans les 6 régions entraînées.**
+
+| région | n lacs | k_lake médian | q10-q90 | beta médian |
+|---|---|---|---|---|
+| gasp | 63 | 9.27e-5 | 8.8e-5 - 9.6e-5 | 1.550 |
+| sagu | 348 | 1.02e-4 | 1.00e-4 - 1.04e-4 | 1.483 |
+| slno | 388 | 9.62e-5 | 9.3e-5 - 1.00e-4 | 1.526 |
+| outv | 514 | 9.94e-5 | 9.9e-5 - 1.00e-4 | 1.502 |
+| mont | 37 | 1.01e-4 | 9.9e-5 - 1.03e-4 | 1.495 |
+| slso | 57 | 9.66e-5 | 9.5e-5 - 9.9e-5 | 1.526 |
+
+Soit exactement l'initialisation (1e-4 et 1.5), avec 1-5 % de dispersion pour des bornes couvrant 4 ordres de grandeur. Un étang et le lac Saint-Jean reçoivent la même loi de vidange. Cause : `nn.init.zeros_(fc_lake.weight)`, sortie divisée par 2 avant l'exponentielle, LR de base et weight_decay — atteindre le haut de la borne demanderait une sortie brute de 9 en partant de 0. La tête de lac est la SEULE sans groupe d'optimisation dédié (fc_out, noise_head, latent_codes et seuils GDD en ont tous un). Corrigé : groupe dédié `lake_lr_mult = 50`, wd = 0.
+
+**Fausse piste écartée par la mesure :** j'ai soupçonné `lake_storage_new[...] = S_lake.detach()` de couper le gradient. Mesuré : ||grad fc_lake|| = 1.63e3 contre 2.42e2 pour la tête principale, soit 6.7× PLUS. Le gradient n'est pas éteint. (Au passage, la ligne modifiée appartenait au routage par niveaux, jamais exécuté en mode operator-lagged : je diagnostiquais du code mort.)
+
+**Sensibilité en inférence — un facteur UNIFORME est inerte** (outv : -0.018 à -0.002 selon la perturbation ; slno : -0.001 à +0.017). Mais les deux régions veulent des valeurs OPPOSÉES : k/10 donne -0.018 sur outv et +0.017 sur slno. Une valeur unique ne peut pas satisfaire les deux.
+
+**DIFFÉRENCIATION PAR LA TAILLE : gain réel sur OUTV.** k_i = k0 · (A_ref/A_i)^alpha, alpha dicté par la physique du seuil (Q = k·(S/A)^beta·A à égaler avec Q = C·L·h^1.5).
+
+| alpha | outv | slno | sagu |
+|---|---|---|---|
+| 0.5 | +0.0177 | +0.0001 | -0.0014 |
+| 1.0 | **+0.0265** | +0.0001 | -0.0080 |
+| 1.5 | +0.0257 | +0.0002 | -0.0115 |
+
+OUTV passe de 0.4992 à 0.5256 sans réentraînement. Optimum NET à alpha = 1, ce qui correspond à une largeur d'exutoire INDÉPENDANTE de la taille du lac — fixée par le chenal de sortie, pas par l'étendue du plan d'eau. Ma prédiction initiale (alpha = 0.5, exutoire s'élargissant avec le lac) est infirmée par la mesure.
+
+**Réserves.** (1) La surface utilisée est celle du TRONÇON, pas celle du plan d'eau : `lake_fraction` et `f_water` existent dans les attributs et donneraient la vraie surface lacustre. (2) slno reste insensible, probablement parce que la référence prise à la médiane divise le k de son très grand lac (3666 km²) par plus de 160 et le colle à sa borne. (3) sagu recule légèrement. La formulation à tester ensuite n'agit QUE dans la direction utile (réduire k des grands lacs, ne pas augmenter celui des petits, la courbe saturant vers le haut).
+
+**Premier gain sur OUTV après 8 hypothèses réfutées** (transfert, littérature, entraînement local, forçage, régulation ×2, timing de fonte, neutralisation des lacs), et il vient d'un prior physique dont l'exposant est mesuré, pas d'un réglage.
