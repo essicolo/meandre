@@ -263,6 +263,25 @@ if _kms != 1.0:
         return sp
     model.spatial_encoder.forward = _fwd_kscale
     print(f"[etl] K_musk × {_kms} (célérité accélérée, routage opérateur préservé)")
+if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
+    # ANCRAGE D'EXUTOIRE : k_lake ancré sur k0*(A_ref/A), la tête module autour.
+    # Mesuré le 5 août : imposé en inférence, ce prior rapporte +0.026 sur OUTV ; la même
+    # tête laissée LIBRE apprend une direction opposée qui ne transfère pas (+0.002).
+    import pandas as _pdl
+    _rw = _pdl.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+    _rw = _rw[_rw.region == REG]
+    _A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
+    if len(_rw) == n_nodes:
+        _Alac = _A * _rw["lake_fraction"].values.clip(0, 1)
+        model.spatial_encoder.set_lake_anchor(
+            torch.tensor(_Alac, dtype=torch.float32),
+            a_ref_km2=float(os.environ.get("ETL_LAKE_AREF", "20")),
+            alpha=float(os.environ.get("ETL_LAKE_ALPHA", "1.0")))
+        _anc = model.spatial_encoder._lake_k_anchor
+        print(f"[etl] ancrage d'exutoire : k0*(A_ref/A) | ancre méd {float(_anc.median()):.2e} "
+              f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
+    else:
+        print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")

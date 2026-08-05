@@ -524,6 +524,19 @@ class SpatialFieldNetwork(nn.Module):
         h = torch.cat([h, x0], dim=-1)              # skip connection
         return self.drop2(self.act(self.fc2(h)))
 
+    def set_lake_anchor(self, area_lac_km2, a_ref_km2: float = 20.0, k0: float = 1e-4,
+                        alpha: float = 1.0):
+        """Ancre k_lake sur la loi d'exutoire : k0 * (a_ref / A)^alpha, jamais au-dessus
+        de k0 (la reponse SATURE vers le haut : k x10 et k x100 donnent le meme KGE, seule
+        la reduction des grands lacs porte de l'information). area_lac_km2 : (n_nodes,).
+        Poser None retire l'ancrage."""
+        if area_lac_km2 is None:
+            self._lake_k_anchor = None
+            return
+        import torch as _t
+        A = _t.clamp(_t.as_tensor(area_lac_km2, dtype=_t.float32), min=1e-3)
+        self._lake_k_anchor = k0 * _t.clamp((a_ref_km2 / A) ** alpha, max=1.0)
+
     def lake_params(self, coords: Tensor, territorial: Tensor) -> tuple[Tensor, Tensor]:
         """Paramètres de lac par nœud (k_lake, beta), bornés physiquement.
 
@@ -536,8 +549,17 @@ class SpatialFieldNetwork(nn.Module):
             raw = self.fc_lake_static.unsqueeze(0).expand(coords.shape[0], -1)
         else:
             raw = self.fc_lake(self._trunk(coords, territorial))
-        # k_lake : log-uniforme centré sur 1e-4 ; raw=0 → 1e-4
-        log_k = torch.clamp(raw[:, 0] * 0.5 + math.log(1e-4), min=math.log(1e-6), max=math.log(1e-2))
+        # k_lake : log-uniforme centré sur l'ANCRE ; raw=0 → ancre. Par défaut 1e-4
+        # (littérature). Avec set_lake_anchor(), l'ancre devient k0*(A_ref/A) : la loi du
+        # seuil Q = C*L*h^1.5, égalée à la forme implémentée Q = k*(S/A)^beta*A avec
+        # beta=1.5, donne k = C*L/A, et la mesure du 5 août désigne l'exposant 1, soit une
+        # largeur d'exutoire fixée par le chenal de sortie et non par l'étendue du lac.
+        # Motif : laissée LIBRE, la tête apprend sur 2000-2018 une direction qui ne
+        # transfère pas (+0.002 hors échantillon sur OUTV) alors que la même contrainte
+        # imposée en inférence rapporte +0.026. On ancre donc, et la tête module autour.
+        _anc = getattr(self, "_lake_k_anchor", None)
+        log_anc = math.log(1e-4) if _anc is None else torch.log(_anc.to(raw.device))
+        log_k = torch.clamp(raw[:, 0] * 0.5 + log_anc, min=math.log(1e-6), max=math.log(1e-2))
         k_lake = torch.exp(log_k)
         # beta : [1.0, 2.5], centré à 1.5 pour raw=0. 1.0 + 1.5*s = 1.5 → s=1/3,
         # donc décalage logit(1/3) = -log(2).

@@ -781,3 +781,18 @@ OUTV passe de 0.4992 à 0.5256 sans réentraînement. Optimum NET à alpha = 1, 
 - Et la direction apprise est l'INVERSE de celle qui aide : l'entraînement fait MONTER k (médiane 9.9e-5 -> 1.63e-4), alors que le banc en inférence montre que le BAISSER sur les grands lacs rapporte +0.026 sur le tenu de côté.
 
 **Lecture.** Un paramètre libre trouve sur 2000-2018 un optimum qui ne transfère pas ; la contrainte physique (k ∝ 1/A, exposant mesuré) transfère. C'est un argument POUR les priors physiques, pas un échec du correctif — et c'est cohérent avec la doctrine du reste du modèle (ancrer le processus, laisser le champ moduler autour). Prochain test : ancrer k sur la loi d'exutoire et laisser la tête moduler autour, au lieu de la laisser libre.
+
+**Ancrage d'exutoire pendant l'entraînement : ÉCHEC.** `set_lake_anchor` (k ancré sur k0*(A_ref/A), A_ref=20 km², alpha=1) + tête modulante, OUTV, -hyb, 12 époques.
+
+| configuration OUTV | tenu de côté 2022-2024 |
+|---|---|
+| champion original | 0.4992 |
+| loi d'exutoire imposée EN INFÉRENCE (sans réentraîner) | **0.5248** |
+| réentraîné, tête de lac libérée (lake_lr_mult=50) | 0.5011 |
+| réentraîné, ancré + tête modulante | 0.4811 |
+
+Le seul cas qui gagne est celui où la contrainte est appliquée à un modèle DÉJÀ entraîné, hors de portée du gradient. Dès qu'on réentraîne, la tête compense l'ancrage et retourne vers la solution qui optimise 2000-2018. Même phénomène qu'en juillet avec le prior doux sur K_c, défait par l'entraînement et finalement appliqué en débiaisage STRUCTUREL hors gradient (ETL_DEMAND_SCALE). Transposition ici : geler la tête après ancrage, ou appliquer la loi au déploiement.
+
+**Limite honnête :** la loi ne gagne qu'en OUTV (+0.026). Neutre sur SLNO et GASP, -0.012 sur SAGU. Ce n'est pas une correction provinciale mais un correctif local dont on ne sait pas prédire le domaine d'application. Fil clos en l'état.
+
+**Acquis conservés :** (1) le déficit contre l'ensemble Hydrotel est LACUSTRE et mesuré au niveau des stations ; (2) la tête de lac n'avait aucun groupe d'optimisation dédié et ne pouvait pas apprendre — corrigé, elle apprend maintenant (||W|| ×43) ; (3) le score EST sensible à la différenciation des lacs (±0.04 selon la région), donc le levier existe ; (4) mais l'entraînement sur la période de calage préfère systématiquement une solution qui ne transfère pas.
