@@ -808,3 +808,23 @@ Trois expériences indépendantes de cette session pointent le même défaut, et
 **Le motif.** L'optimisation sur 2000-2018 trouve des solutions qui minimisent l'erreur de calage sans transférer à 2022-2024, et elle défait toute contrainte physique qu'on lui laisse contourner. Les contraintes qui TIENNENT sont celles qui sont hors d'atteinte du gradient : débiaisage structurel de la demande, ancrages scalaires régionaux (ETP Linacre, taux et seuils de fonte), lois physiques appliquées au déploiement.
 
 **Conséquence de conception.** Un paramètre ne devrait être laissé libre que si une observation le contraint DIRECTEMENT (récessions pour k_gw, MOD10 pour la fonte, MOD16 pour l'ET). Sinon il doit être fixé par une loi physique appliquée hors gradient. C'est une règle plus stricte que la « loi des ancrages » et elle explique ses trois succès comme ses trois échecs.
+
+## 2026-08-06 — CORRECTION de la synthèse d'hier : c'est le DÉMARRAGE À FROID qui défait les contraintes, pas l'entraînement
+
+Objection d'Essi : « pourquoi le champ lacustre ne pourrait-il pas être ajusté avec la loss ? il part d'un champ crédible puis s'ajuste, c'est à ça que sert la rétropropagation ». Objection fondée : mes deux réentraînements étaient des démarrages À FROID, donc jamais le protocole décrit. Test refait correctement (départ à chaud depuis le champion, ancrage posé, lr 1e-4, 8 époques) :
+
+| configuration OUTV | tenu de côté 2022-2024 |
+|---|---|
+| champion original | 0.4992 |
+| loi d'exutoire imposée en inférence | 0.5248 |
+| réentraîné À FROID, tête de lac libre | 0.5011 |
+| réentraîné À FROID, ancré + modulant | 0.4811 |
+| **départ à CHAUD, ancré, affinage court** | **0.5251** |
+
+Le gain est intégralement conservé, et c'est le meilleur de la série. La synthèse d'hier (« l'optimisation défait toute contrainte qu'elle peut contourner ») est donc FAUSSE telle qu'écrite. L'énoncé correct : un entraînement à froid reconstruit tout le modèle autour de la contrainte et la contourne ; un affinage à faible LR depuis un état déjà cohérent la respecte.
+
+Nuance : l'affinage CONSERVE le gain sans l'augmenter (0.5251 contre 0.5248). La rétropropagation n'ajoute rien par-dessus la physique sur ce paramètre, mais ne détruit rien — ce qui suffit pour rendre le procédé utilisable et pour empiler plusieurs contraintes successives.
+
+**Le modèle d'expérience, recadré par Essi.** Le champ GP corégionalisé était conçu dès le départ comme DÉMARRAGE À CHAUD : non reproductible, mais gardant trace de ce qui fonctionne au fil des expériences. Cadre accepté, avec une seule discipline : la règle de mise à jour doit être MÉCANIQUE (intégrer systématiquement le dernier champion de chaque région), jamais choisie en regardant le tenu de côté — sinon le point de départ devient un canal de sélection sur le test, exactement le piège de la sélection de champions du 3 août. Sous cette règle, un départ à chaud est aussi légitime qu'une initialisation littérature et bien plus utile. Trois objets distincts à ne pas confondre : le point de contrôle entraîné (démarrage à chaud actuel), la loi analytique k0*(A_ref/A) (ancrage d'exutoire, aucune donnée), et les champs krigés d'observations (récessions, freshet).
+
+**Ce que le champ lacustre représente physiquement.** Q = k*(S/A)^beta*A : k porte la largeur et la rugosité du seuil de sortie (capacité d'évacuation), beta porte la forme de l'ouverture (1.5 déversoir libre, ~0.5 orifice noyé, plus élevé pour un chenal encaissé). C'est une description d'ouvrage naturel, d'où la légitimité d'un champ appris — et d'où l'intérêt de HydroLAKES (profondeur moyenne, volume, temps de séjour par plan d'eau), qui donnerait un champ d'exutoire fondé sur des mesures plutôt que sur une formule.

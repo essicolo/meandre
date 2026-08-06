@@ -306,7 +306,7 @@ print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | et
 
 tconf = TrainingConfig(
     n_epochs=N_EPOCHS,
-    lr=float(tcfg.get("lr", 5e-4)),
+    lr=float(os.environ.get("ETL_LR", tcfg.get("lr", 5e-4))),
     chunk_steps=int(tcfg.get("chunk_steps", 45)),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
     grad_clip=float(tcfg.get("clip_grad_norm", 1.0)),
