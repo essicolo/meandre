@@ -63,6 +63,19 @@ for REG in [a.lower() for a in sys.argv[1:]]:
     print(f"[{REG}] motifs (q10-q90) : K_sat {float(MOT['K_sat'].quantile(.1)):.2f}-{float(MOT['K_sat'].quantile(.9)):.2f} "
           f"| theta_fc {float(MOT['theta_fc'].quantile(.1)):.2f}-{float(MOT['theta_fc'].quantile(.9)):.2f}", flush=True)
 
+    # ancrage d'exutoire optionnel, pour mesurer la COMBINAISON des deux lois
+    _lac_fac = None
+    if os.environ.get("PEDO_LAC", "0") == "1":
+        _A = r["territorial"].get_physical("area_km2_local").to(DEVICE)
+        _Al = torch.clamp(_A * T(np.clip(rw["lake_fraction"].values, 0, 1)), min=1e-3)
+        _lac_fac = torch.clamp(float(os.environ.get("PEDO_LAC_AREF", "20")) / _Al, max=1.0)
+        _o_lp = m.spatial_encoder.lake_params
+        def _lp(*a, _o=_o_lp, _f=_lac_fac, **k):
+            kk, bb = _o(*a, **k)
+            return torch.clamp(kk * _f, 1e-6, 1e-2), bb
+        m.spatial_encoder.lake_params = _lp
+        print(f"[{REG}] ancrage d'exutoire actif (A_ref=20)", flush=True)
+
     def essai(force):
         def fwd(*a, _o=_orig, _f=force, **k):
             sp = _o(*a, **k)

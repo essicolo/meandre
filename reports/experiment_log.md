@@ -849,3 +849,20 @@ L'intensité partielle bat toujours la pleine (information partiellement redonda
 **Lecture, et elle vaut pour les deux priors physiques testés cette nuit.** Ces contraintes ne sont pas des améliorations universelles, ce sont des RATTRAPAGES : là où le réseau a bien appris sa structure spatiale (mont, sagu), les imposer casse ce qu'il a trouvé ; là où il a mal appris (outv), elles apportent la structure manquante. OUTV gagne avec DEUX contraintes indépendantes (exutoire +0.026, texture +0.065), ce qui accuse un champion mal calibré plutôt qu'un bassin intrinsèquement difficile — huitième hypothèse enfin remplacée par un diagnostic positif.
 
 **Conséquence de déploiement.** Le critère d'application ne peut pas être le score (sélection sur le test). Un critère a priori possible : appliquer les priors physiques là où la région manque de jauges ou là où l'entraînement n'a pas convergé, et s'abstenir là où le modèle est déjà bien calé. À formaliser.
+
+**OUTV, tableau complet des deux lois physiques (tenu de côté 2022-2024, forçage -hyb) :**
+
+| configuration | KGE |
+|---|---|
+| champion | 0.4992 |
+| exutoire seul, inférence | 0.5248 |
+| exutoire seul, affinage à chaud | 0.5251 |
+| exutoire + texture, affinage à chaud | 0.5542 |
+| exutoire + texture, inférence | 0.5613 |
+| **texture seule, inférence** | **0.5637** |
+
+**Deux conclusions nettes.** (1) Les deux lois ne s'ADDITIONNENT PAS : combinées, 0.5613, soit à peine moins que la texture seule. Elles corrigent le même défaut par deux chemins, l'ancrage d'exutoire n'apporte rien par-dessus la pédotransfert. (2) L'affinage coûte systématiquement ~0.01 par rapport à l'inférence pure — ici le réentraînement érode la contrainte au lieu de l'améliorer.
+
+**Meilleure configuration = la plus simple :** structure Saxton-Rawls à mi-intensité, appliquée au DÉPLOIEMENT sur le champion existant. **+0.064 sur la région la plus déficiente du Québec**, sans nouvelle donnée, sans réentraînement, sans paramètre ajusté sur le score, à partir d'une relation publiée et d'attributs déjà présents. L'écart OUTV contre l'ensemble Hydrotel passe de -0.322 à -0.258.
+
+**Question ouverte, à trancher AVANT de mesurer :** le critère d'application. Ces lois aident OUTV (+0.064) et GASP (+0.006) mais nuisent à SAGU (-0.038) et MONT (-0.079). Choisir où les appliquer d'après le score serait une sélection sur le tenu de côté. Critère a priori à formaliser (densité de jauges ? diagnostic de convergence ? écart entre la structure spatiale apprise et la structure texturale ?).
