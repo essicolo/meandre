@@ -866,3 +866,25 @@ L'intensité partielle bat toujours la pleine (information partiellement redonda
 **Meilleure configuration = la plus simple :** structure Saxton-Rawls à mi-intensité, appliquée au DÉPLOIEMENT sur le champion existant. **+0.064 sur la région la plus déficiente du Québec**, sans nouvelle donnée, sans réentraînement, sans paramètre ajusté sur le score, à partir d'une relation publiée et d'attributs déjà présents. L'écart OUTV contre l'ensemble Hydrotel passe de -0.322 à -0.258.
 
 **Question ouverte, à trancher AVANT de mesurer :** le critère d'application. Ces lois aident OUTV (+0.064) et GASP (+0.006) mais nuisent à SAGU (-0.038) et MONT (-0.079). Choisir où les appliquer d'après le score serait une sélection sur le tenu de côté. Critère a priori à formaliser (densité de jauges ? diagnostic de convergence ? écart entre la structure spatiale apprise et la structure texturale ?).
+
+## 2026-08-07 — La tête de lac n'apprend pas la physique, et le champ n'a que 8 dimensions
+
+**Question d'Essi : la tête de lac apprend-elle bien ?** Non. Une fois libérée (`lake_lr_mult=50`), elle étale k_lake d'un facteur 13.9 entre lacs — donc elle bouge — mais la corrélation entre ce qu'elle apprend et la surface du plan d'eau est NULLE (r = -0.001 sur les logs). Elle produit de la dispersion sans structure physique, c'est-à-dire du bruit par nœud ajusté sur la période de calage. D'où son gain de +0.002 hors échantillon contre +0.026 pour la loi imposée. À l'inverse, quand l'ancrage porte déjà la dépendance à la surface (run combo), la tête ne s'en écarte presque plus (étendue ×1.3) : elle ACCEPTE la contrainte, elle ne la RETROUVE pas.
+
+**Dimension effective du champ de paramètres** (ACP sur les 37 params par nœud, champions régionaux) :
+
+| région | dim. effective | 1 axe | 5 axes | 10 axes |
+|---|---|---|---|---|
+| mont | 6 | 52 % | 80 % | 92 % |
+| sagu | 7 | 42 % | 81 % | 92 % |
+| gasp | 8 | 39 % | 77 % | 91 % |
+| slno | 9 | 34 % | 76 % | 90 % |
+| outv | 10 | 29 % | 70 % | 86 % |
+
+Le champ vit sur ~8 axes, pas 37. Première mesure chiffrée de l'équifinalité que le projet postule depuis le début.
+
+**Où vit la physique par rapport à ce que le réseau a appris.** La perturbation texturale ne place que 11 % de son énergie sur les 5 axes principaux du champ appris (7 % pour l'exutoire) : ~90 % de l'information physique vit dans des directions que le réseau n'utilise presque pas. Cela explique les DEUX faces du résultat du 6 août — ces lois apportent de l'information réellement nouvelle (d'où le gain sur OUTV) et déplacent les régions bien calibrées hors de la variété sur laquelle elles étaient ajustées (d'où la perte sur MONT et SAGU).
+
+**Conséquence pour la réduction de dimension, à contre-intuition.** Réduire le champ à ses 8 axes APPRIS supprimerait précisément les directions où vit la physique : une ACP sur le modèle entraîné garde ses erreurs et jette ce qu'on veut lui apprendre. La réduction n'a de sens que sur une base choisie A PRIORI depuis les observations et les relations publiées (axe textural Saxton-Rawls, axe de mémoire souterraine depuis les récessions, axe de timing nival depuis MOD10, axe d'évaporation depuis MOD16, axe de géométrie d'exutoire depuis la surface des lacs), le réseau ne prédisant plus que la position de chaque nœud le long de ces axes interprétables.
+
+**Réserve honnête :** le cosinus nul mesuré entre les perturbations texture et exutoire est un ARTEFACT de ma représentation (le k_lake vit dans une tête séparée, je l'ai représenté par procuration sur K_musk et k_gw, donc coordonnées disjointes par construction). La non-additivité des deux lois mesurée le 6 août reste inexpliquée.
