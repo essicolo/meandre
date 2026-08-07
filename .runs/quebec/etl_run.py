@@ -282,6 +282,29 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
               f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
     else:
         print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
+if os.environ.get("ETL_LAKE_AREA", "0") == "1":
+    # CORRECTIF DE SURFACE DE LAC (bug trouve le 2026-08-07). Le module de lac calcule la
+    # hauteur d'eau comme S/A mais recevait l'aire de DRAINAGE du troncon, mediane 175x la
+    # surface reelle du plan d'eau. Q = k*(S/A)^beta*A varie comme A^(1-beta) : avec
+    # beta = 1.5, surestimer A d'un facteur 175 divise le debit sortant par ~13. La
+    # surface vient de HydroLAKES (Messager et al. 2016) la ou l'appariement existe,
+    # sinon de lake_fraction x aire locale.
+    import pandas as _pdl
+    _A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
+    _rwl = _pdl.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+    _rwl = _rwl[_rwl.region == REG]
+    _alac = _A * (_rwl["lake_fraction"].values.clip(0, 1) if len(_rwl) == n_nodes else 1.0)
+    try:
+        _hl = _pdl.read_parquet("D:/meandre-data/quebec/lacs_hydrolakes.parquet")
+        _hl = _hl[_hl.region == REG]
+        _alac[_hl.node_idx.values] = _hl["lake_area_km2"].values
+        _src = f"HydroLAKES ({len(_hl)} noeuds) + repli lake_fraction"
+    except Exception:
+        _src = "lake_fraction x aire locale"
+    model.set_lake_area(torch.tensor(_alac, dtype=torch.float32))
+    _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
+    print(f"[etl] surface de lac corrigee ({_src}) : med {float(_lm.median()):.2f} km2 "
+          f"contre {float(np.median(_A[td.graph.is_lake.bool().cpu().numpy()])):.1f} km2 d'aire de drainage")
 if os.environ.get("ETL_PEDO", "0") == "1":
     # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
     # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete

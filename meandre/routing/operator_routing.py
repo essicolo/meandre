@@ -294,7 +294,9 @@ def route_operator(
     # Mode lagged : toutes les sorties de lacs sont connues d'emblée
     if lagged and topo.lake_idx.numel() > 0 and lake_storage_new is not None:
         li = topo.lake_idx
-        area_l = area_km2[li] if area_km2 is not None else torch.ones_like(q_lat_m3s[li])
+        _la = getattr(layer, "_lake_area_km2", None)
+        area_l = (_la[li] if _la is not None else
+                  (area_km2[li] if area_km2 is not None else torch.ones_like(q_lat_m3s[li])))
         Q_lake = _lagged_lake_release(
             layer.lake, lake_storage_new[li], area_l,
             k_lake=lake_k_all[li] if lake_k_all is not None else None,
@@ -381,7 +383,9 @@ def route_operator(
                 )
             Q_in_total = lake_in[l_lo:l_hi] + q_lat_m3s[li] + net_W[li]
             zeros_l = q_lat_m3s.new_zeros(n_l)
-            area_l = area_km2[li] if area_km2 is not None else torch.ones_like(zeros_l)
+            _la = getattr(layer, "_lake_area_km2", None)
+            area_l = (_la[li] if _la is not None else
+                      (area_km2[li] if area_km2 is not None else torch.ones_like(zeros_l)))
             Q_lake, S_lake = layer.lake(
                 Q_in_total, lake_storage_new[li], area_l,
                 E_lake=zeros_l, P_lake=zeros_l, S_dead=zeros_l,

@@ -122,6 +122,12 @@ class RoutingLayer(nn.Module):
         # globaux du LakeModule (rétrocompat).
         self._lake_k = None
         self._lake_beta = None
+        # Surface d'EAU LIBRE des noeuds-lacs (km2). Le module de lac calcule la hauteur
+        # d'eau comme S/A : lui passer l'aire de DRAINAGE du troncon (mediane 175x la
+        # surface du plan d'eau, verifie sur HydroLAKES le 2026-08-07) fausse la loi de
+        # vidange, Q variant comme A^(1-beta). None = repli sur l'aire de drainage
+        # (comportement historique).
+        self._lake_area_km2 = None
 
     def forward(
         self,
@@ -389,7 +395,9 @@ class RoutingLayer(nn.Module):
             lake_mask = graph.is_lake
             n_lakes = int(lake_mask.sum())
             zeros_l = torch.zeros(n_lakes, device=device)
-            area_l = area_km2[lake_mask] if area_km2 is not None else torch.ones(n_lakes, device=device)
+            _la = getattr(self, "_lake_area_km2", None)
+            area_l = (_la[lake_mask] if _la is not None else
+                      (area_km2[lake_mask] if area_km2 is not None else torch.ones(n_lakes, device=device)))
 
             Q_lake, S_lake = self.lake(
                 Q_in_total[lake_mask],

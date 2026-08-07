@@ -382,6 +382,12 @@ class HydroModel(nn.Module):
         else:
             self.routing._lake_k = None
             self.routing._lake_beta = None
+        # Surface d'eau libre des lacs (km2, par noeud) si elle a ete posee par
+        # set_lake_area(). Sinon le routage retombe sur l'aire de drainage, qui est le
+        # comportement historique et qui FAUSSE la loi de vidange (cf. commentaire dans
+        # RoutingLayer.__init__).
+        _la = getattr(self, "_lake_area_km2", None)
+        self.routing._lake_area_km2 = _la.to(forcing.device) if _la is not None else None
 
         Q_all: list[Tensor] = []
         T_water_all: list[Tensor] = []
@@ -740,6 +746,20 @@ class HydroModel(nn.Module):
                 "use_hortonian": getattr(self.vertical_column, "use_hortonian", False),
             },
         }, path)
+
+    def set_lake_area(self, lake_area_km2) -> None:
+        """Pose la surface d'EAU LIBRE des noeuds-lacs (km2, tenseur de taille n_nodes).
+
+        Le module de lac calcule la hauteur d'eau comme S/A. Sans cet appel il recoit
+        l'aire de DRAINAGE du troncon, mediane 175x la surface reelle du plan d'eau
+        (verifie sur HydroLAKES, 3213 noeuds-lacs, 2026-08-07), ce qui fausse la loi
+        Q = k*(S/A)^beta*A. Poser None retablit le comportement historique.
+        """
+        if lake_area_km2 is None:
+            self._lake_area_km2 = None
+            return
+        import torch as _t
+        self._lake_area_km2 = _t.clamp(_t.as_tensor(lake_area_km2, dtype=_t.float32), min=1e-3)
 
     def load(self, path: str | Path) -> None:
         """Load weights and module flags into this model instance in-place."""

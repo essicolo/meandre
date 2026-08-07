@@ -907,3 +907,29 @@ Le champ vit sur ~8 axes, pas 37. Première mesure chiffrée de l'équifinalité
 **Critère a priori d'application des priors physiques : NON TROUVÉ.** Testé : accord entre le champ K_sat appris et celui qu'implique la texture (corrélation des logs). gasp -0.133 (gain +0.006), sagu +0.453 (-0.038), mont -0.119 (-0.079), outv -0.296 (+0.065). Corrélation -0.48 sur 4 points, cassée par mont. Le critère ne discrimine pas.
 
 **État réel du diagnostic.** Ce qui distingue les régions déficientes (outv -0.271, slno -0.257) des autres n'est identifié par aucun mécanisme. Le seul fait solide est que l'Outaouais gagne +0.064 avec une relation de pédotransfert générique, ce qui accuse la qualité de calibration de son champion plutôt qu'une propriété du bassin.
+
+## 2026-08-07 (suite) — Bug de surface de lac CORRIGÉ dans le code, et 17 paramètres sur 37 ne s'ajustent toujours pas
+
+**Correctif appliqué** (demande d'Essi : « il faut corriger le bug de surface »). Le module de lac calcule la hauteur d'eau comme S/A mais recevait `territorial.area_km2_physical`, l'aire de DRAINAGE du tronçon. Ajout d'une surface d'eau libre dédiée : `RoutingLayer._lake_area_km2`, `HydroModel.set_lake_area()`, utilisée par les deux chemins de routage (par niveaux et par opérateur), avec repli sur l'ancien comportement si absente. Source : HydroLAKES là où l'appariement existe, sinon lake_fraction × aire locale. Sur OUTV : 0.34 km² de surface d'eau contre 22.4 km² d'aire de drainage, facteur 66. Hook `ETL_LAKE_AREA=1`. 150 tests passent.
+
+**Effet, à comparaison ÉQUITABLE** (même forçage -hyb, même recette, cold start 12 époques) :
+
+| run OUTV | tenu de côté |
+|---|---|
+| champion (entraîné sur CaSR) | 0.4992 |
+| réentraîné -hyb, surface NON corrigée | 0.5011 |
+| **réentraîné -hyb, surface CORRIGÉE** | **0.5160** |
+
++0.015 par rapport au même entraînement sans le correctif. Contrairement aux priors imposés, ce gain SURVIT au réentraînement, parce qu'il vient de la physique du code et non d'une contrainte que l'optimisation peut contourner.
+
+**Vérification des paramètres (`verif_params.py`, nouveau, à passer après CHAQUE entraînement).**
+
+| checkpoint | params figés | tête de lac (étendue de k) | beta |
+|---|---|---|---|
+| best-outv-etl-qc | 17/37 | ×1.0 | 1.502 |
+| best-outv-etl-lacs | 17/37 | ×13.9 | 1.216 |
+| best-outv-etl-airelac | 17/37 | ×14.8 | 1.526 |
+
+La tête de lac est RÉPARÉE (×14.8 au lieu de ×1.0, aucune borne touchée). Mais **17 paramètres sur 37 restent figés à leur initialisation** dans les trois checkpoints : f_root_1/2/3, T_snow, interception_capacity, manning_n, frost_alpha, f_wetland, **f_vert_1/2/3** (la partition verticale du drainage, processus central), T_gw, K_atm, alpha_T, vg_n, rain_hours, vsa_b. Audit de sensibilité en cours pour savoir s'ils sont INSENSIBLES (auquel cas le gel est sans dommage) ou seulement BLOQUÉS (auquel cas c'est du gain laissé sur la table).
+
+**Test de transfert sur OUTV** (forçage -hyb, en inférence) : gasp 0.3756, sagu 0.5024, mont 0.4482, contre 0.4992 pour le champion local. Le saguenéen transféré ÉGALE le local sans même bénéficier des effets aléatoires par nœud — l'entraînement local sur 16 jauges n'apporte donc rien, ce qui est en soi anormal.

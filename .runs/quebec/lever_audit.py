@@ -29,7 +29,8 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     use_temporal=False, use_residual=False, use_travel_time_attn=False, use_frost_rankinen=True,
     column_theta_init_frac=0.9, param_mode="nerf", column_mode="hydrotel", et_mode="mcguinness",
     use_temperature=False, use_latent_codes=True, latent_mode="additive", spatial_melt=True,
-    routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False).to(DEVICE)
+    routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
+    use_aquifer=True).to(DEVICE)
 m.load(CKPT); m.eval(); m.vertical_column.etp_channel = 6
 _orig = m.spatial_encoder.forward
 
@@ -67,7 +68,20 @@ def shift(names, d):
         for nm in names: setattr(sp, nm, getattr(sp, nm) + d)
     return f
 
+# PARAMETRES FIGES (verif_params 2026-08-07 : 17/37 n'ont jamais quitte l'init dans les
+# 3 checkpoints outv). Sont-ils INSENSIBLES ou seulement BLOQUES ? Un levier insensible
+# peut rester fige sans dommage ; un levier sensible et fige est du gain laisse sur la table.
 LEVERS = [
+    ("f_vert_1 -0.2", shift(["f_vert_1"], -0.2)), ("f_vert_1 +0.2", shift(["f_vert_1"], 0.2)),
+    ("f_vert_3 -0.2", shift(["f_vert_3"], -0.2)), ("f_vert_3 +0.2", shift(["f_vert_3"], 0.2)),
+    ("manning x0.6", scale(["manning_n"], 0.6)), ("manning x1.6", scale(["manning_n"], 1.6)),
+    ("frost_alpha x0.5", scale(["frost_alpha"], 0.5)), ("frost_alpha x1.5", scale(["frost_alpha"], 1.5)),
+    ("rain_hours x0.5", scale(["rain_hours"], 0.5)), ("rain_hours x1.5", scale(["rain_hours"], 1.5)),
+    ("vsa_b x0.6", scale(["vsa_b"], 0.6)), ("vsa_b x1.6", scale(["vsa_b"], 1.6)),
+    ("interception x0.5", scale(["interception_capacity"], 0.5)),
+    ("T_snow -0.5", shift(["T_snow"], -0.5)), ("T_snow +0.5", shift(["T_snow"], 0.5)),
+]
+_LEVERS_ANCIENS = [
     ("K_sat_1 ×0.5", scale(["K_sat_1"], 0.5)), ("K_sat_1 ×2", scale(["K_sat_1"], 2.0)),
     ("K_sat_3 ×0.5", scale(["K_sat_3"], 0.5)), ("K_sat_3 ×2", scale(["K_sat_3"], 2.0)),
     ("Z2+Z3 ×0.5", scale(["Z2", "Z3"], 0.5)), ("Z2+Z3 ×2", scale(["Z2", "Z3"], 2.0)),
