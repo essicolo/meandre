@@ -933,3 +933,24 @@ Le champ vit sur ~8 axes, pas 37. Première mesure chiffrée de l'équifinalité
 La tête de lac est RÉPARÉE (×14.8 au lieu de ×1.0, aucune borne touchée). Mais **17 paramètres sur 37 restent figés à leur initialisation** dans les trois checkpoints : f_root_1/2/3, T_snow, interception_capacity, manning_n, frost_alpha, f_wetland, **f_vert_1/2/3** (la partition verticale du drainage, processus central), T_gw, K_atm, alpha_T, vg_n, rain_hours, vsa_b. Audit de sensibilité en cours pour savoir s'ils sont INSENSIBLES (auquel cas le gel est sans dommage) ou seulement BLOQUÉS (auquel cas c'est du gain laissé sur la table).
 
 **Test de transfert sur OUTV** (forçage -hyb, en inférence) : gasp 0.3756, sagu 0.5024, mont 0.4482, contre 0.4992 pour le champion local. Le saguenéen transféré ÉGALE le local sans même bénéficier des effets aléatoires par nœud — l'entraînement local sur 16 jauges n'apporte donc rien, ce qui est en soi anormal.
+
+**Pourquoi 17 paramètres sont figés : ils sont MORTS.** Audit du code (2026-08-07) : **19 des 37 paramètres produits par le réseau ne sont lus par AUCUN module de la physique active** — theta_fc_2/3, theta_wp_2/3, f_root_1/2/3, T_snow, interception_capacity, manning_n, frost_alpha, f_wetland, f_vert_1/2/3, alpha_T, vg_n, rain_hours, vsa_b. Ce sont des vestiges de l'ancienne colonne (`column.py` / `soil.py`, dont il ne reste que les .pyc) remplacée par `hydrotel_column.py`. Le réseau les calcule, personne ne les consomme.
+
+La liste recouvre 15 des 17 paramètres figés : ils ne bougent pas parce qu'ils n'ont AUCUN gradient, faute d'effet. Ce n'est pas un défaut d'apprentissage, c'est de la dette technique. Les deux exceptions, T_gw et K_atm, sont lues mais seulement par le module de température de rivière, absent de la fonction de coût.
+
+Vérification par l'audit de sensibilité : f_vert_1 ±0.2 et f_vert_3 -0.2 donnent exactement +0.000 sur le KGE, ce qui est la signature d'un paramètre non consommé plutôt que d'une insensibilité physique.
+
+**Conséquence.** Le modèle a **18 paramètres actifs**, pas 37. La dimension effective de 8 mesurée le 7 août correspond donc à un facteur 2 de redondance parmi les paramètres vivants, et non à un facteur 5 — l'équifinalité est réelle mais bien moins sévère que je ne l'ai écrit. À faire : retirer les sorties mortes de `SpatialParams` (ou rebrancher celles qui devraient l'être, notamment f_vert qui portait la partition verticale du drainage et vsa_b le ruissellement sur aire contributive).
+
+**Transfert de champions sur OUTV, comparaison équitable** (même banc, sans effets aléatoires pour tous) :
+
+| champion | validation | tenu de côté |
+|---|---|---|
+| slno-etl-canon | 0.5831 | **0.5731** |
+| outv-etl-qc (local) | 0.5827 | 0.5116 |
+| sagu-etl-ds | 0.5666 | 0.5024 |
+| mont-etl-ds | 0.4229 | 0.4482 |
+| slso-etl-canon | 0.5040 | 0.4398 |
+| gasp-etl-ds | 0.5137 | 0.3756 |
+
+En validation le local et celui du Lac-Saint-Jean sont indiscernables (4 dix-millièmes) ; en tenu de côté l'écart est de 62 millièmes en faveur du transfert. La conclusion défendable n'est donc pas « prendre le champion slno » (ce serait sélectionner sur le test) mais : **l'entraînement local d'OUTV, avec 16 jauges, ne produit rien de mieux qu'un modèle entraîné ailleurs et généralise moins bien** — sa validation le flatte, son tenu de côté le contredit. Signature d'un sur-ajustement à la période de calage, cohérente avec tout le reste de la session.
