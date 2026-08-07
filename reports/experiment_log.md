@@ -828,3 +828,24 @@ Nuance : l'affinage CONSERVE le gain sans l'augmenter (0.5251 contre 0.5248). La
 **Le modèle d'expérience, recadré par Essi.** Le champ GP corégionalisé était conçu dès le départ comme DÉMARRAGE À CHAUD : non reproductible, mais gardant trace de ce qui fonctionne au fil des expériences. Cadre accepté, avec une seule discipline : la règle de mise à jour doit être MÉCANIQUE (intégrer systématiquement le dernier champion de chaque région), jamais choisie en regardant le tenu de côté — sinon le point de départ devient un canal de sélection sur le test, exactement le piège de la sélection de champions du 3 août. Sous cette règle, un départ à chaud est aussi légitime qu'une initialisation littérature et bien plus utile. Trois objets distincts à ne pas confondre : le point de contrôle entraîné (démarrage à chaud actuel), la loi analytique k0*(A_ref/A) (ancrage d'exutoire, aucune donnée), et les champs krigés d'observations (récessions, freshet).
 
 **Ce que le champ lacustre représente physiquement.** Q = k*(S/A)^beta*A : k porte la largeur et la rugosité du seuil de sortie (capacité d'évacuation), beta porte la forme de l'ouverture (1.5 déversoir libre, ~0.5 orifice noyé, plus élevé pour un chenal encaissé). C'est une description d'ouvrage naturel, d'où la légitimité d'un champ appris — et d'où l'intérêt de HydroLAKES (profondeur moyenne, volume, temps de séjour par plan d'eau), qui donnerait un champ d'exutoire fondé sur des mesures plutôt que sur une formule.
+
+## 2026-08-06 — Pédotransfert Saxton-Rawls : un RATTRAPAGE, pas une amélioration universelle
+
+**Implémenté** `meandre/data/pedotransfert.py` (Saxton & Rawls 2006) : sable + argile -> porosité, capacité au champ, point de flétrissement, conductivité. Relation publiée, appliquée nœud par nœud, hors gradient. Motif : la texture est DÉJÀ dans les attributs et varie fortement (sable médian 0.34 en abit contre 0.92 sur la Côte-Nord) alors que `init_from_literature` applique un unique loam moyen à toute la province ; 12 des 37 paramètres sont concernés.
+
+**Cohérence de la relation :** porosité 0.46 (littérature du modèle : 0.46), capacité au champ 0.084-0.305 selon la texture (littérature : 0.30 uniforme), conductivité 0.13-3.27 m/j. Cette dernière est 40-80× au-dessus du K_sat effectif du modèle, ce qui est ATTENDU : Saxton-Rawls donne une conductivité de matrice au point, le modèle utilise une conductivité effective au pas journalier et à l'échelle du tronçon, déjà réduite (facteur Beven) puis MESURÉE (recalage 0.04). On n'importe donc que la STRUCTURE spatiale, normalisée à médiane 1.
+
+**A/B en inférence pure (forçage -hyb, tenu de côté 2022-2024) :**
+
+| région | intensité 0.5 | intensité 1.0 | contraste du motif (K_sat q10-q90) |
+|---|---|---|---|
+| outv | **+0.0645** | -0.0037 | 1.00-2.71 |
+| gasp | +0.0055 | -0.0154 | 0.44-1.18 |
+| sagu | -0.0382 | -0.0749 | 0.46-1.25 |
+| mont | -0.0791 | -0.2454 | 0.20-2.71 |
+
+L'intensité partielle bat toujours la pleine (information partiellement redondante avec ce que le NeRF a déjà appris de la texture, qu'il reçoit en entrée).
+
+**Lecture, et elle vaut pour les deux priors physiques testés cette nuit.** Ces contraintes ne sont pas des améliorations universelles, ce sont des RATTRAPAGES : là où le réseau a bien appris sa structure spatiale (mont, sagu), les imposer casse ce qu'il a trouvé ; là où il a mal appris (outv), elles apportent la structure manquante. OUTV gagne avec DEUX contraintes indépendantes (exutoire +0.026, texture +0.065), ce qui accuse un champion mal calibré plutôt qu'un bassin intrinsèquement difficile — huitième hypothèse enfin remplacée par un diagnostic positif.
+
+**Conséquence de déploiement.** Le critère d'application ne peut pas être le score (sélection sur le test). Un critère a priori possible : appliquer les priors physiques là où la région manque de jauges ou là où l'entraînement n'a pas convergé, et s'abstenir là où le modèle est déjà bien calé. À formaliser.

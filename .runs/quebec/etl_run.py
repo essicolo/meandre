@@ -282,6 +282,40 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
               f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
     else:
         print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
+if os.environ.get("ETL_PEDO", "0") == "1":
+    # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
+    # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete
+    # mesure (recalage K_sat_1 = 0.04) et la conductivite de Saxton-Rawls est une valeur de
+    # matrice au point, 40-80x au-dessus de la conductivite effective journaliere.
+    # Mesure du 6 aout en inference : a mi-intensite, outv +0.065, gasp +0.006, sagu -0.038,
+    # mont -0.079 -> ce n'est pas une amelioration universelle mais un RATTRAPAGE, utile la
+    # ou le reseau a mal appris sa structure spatiale. ETL_PEDO_F regle l'intensite.
+    import pandas as _pdp
+    from meandre.data.pedotransfert import saxton_rawls as _sr
+    _rwp = _pdp.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+    _rwp = _rwp[_rwp.region == REG]
+    if len(_rwp) == n_nodes:
+        _f = float(os.environ.get("ETL_PEDO_F", "0.5"))
+        _p = _sr(_rwp.f_sand.values, _rwp.f_clay.values)
+        _mot = {}
+        for _b, _k in [("K_sat", "k_sat"), ("porosity", "theta_s"),
+                       ("theta_fc", "theta_fc"), ("theta_wp", "theta_wp")]:
+            _v = _p[_k] / float(np.median(_p[_k]))
+            _mot[_b] = torch.tensor(1.0 + _f * (_v - 1.0), dtype=torch.float32, device=DEVICE)
+        _o_pd = model.spatial_encoder.forward
+        def _fwd_pedo(*a, _o=_o_pd, _m=_mot, **k):
+            sp = _o(*a, **k)
+            for _b, _fac in _m.items():
+                for _i in (1, 2, 3):
+                    _nm = f"{_b}_{_i}"
+                    if hasattr(sp, _nm):
+                        setattr(sp, _nm, getattr(sp, _nm) * _fac)
+            return sp
+        model.spatial_encoder.forward = _fwd_pedo
+        print(f"[etl] structure pedotransfert appliquee (intensite {_f}) : "
+              f"K_sat q10-q90 {float(_mot['K_sat'].quantile(.1)):.2f}-{float(_mot['K_sat'].quantile(.9)):.2f}")
+    else:
+        print(f"[etl] pedotransfert ignoree ({len(_rwp)} vs {n_nodes} noeuds)")
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
