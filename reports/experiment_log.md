@@ -954,3 +954,28 @@ Vérification par l'audit de sensibilité : f_vert_1 ±0.2 et f_vert_3 -0.2 donn
 | gasp-etl-ds | 0.5137 | 0.3756 |
 
 En validation le local et celui du Lac-Saint-Jean sont indiscernables (4 dix-millièmes) ; en tenu de côté l'écart est de 62 millièmes en faveur du transfert. La conclusion défendable n'est donc pas « prendre le champion slno » (ce serait sélectionner sur le test) mais : **l'entraînement local d'OUTV, avec 16 jauges, ne produit rien de mieux qu'un modèle entraîné ailleurs et généralise moins bien** — sa validation le flatte, son tenu de côté le contredit. Signature d'un sur-ajustement à la période de calage, cohérente avec tout le reste de la session.
+
+**SLNO, même test (forçage -hyb, même banc pour tous) :**
+
+| champion | validation | tenu de côté |
+|---|---|---|
+| sagu-etl-ds | **0.6910** | **0.6215** |
+| gasp-etl-ds | 0.5894 | 0.6009 |
+| slno-etl-canon (local) | 0.5539 | 0.5456 |
+| mont-etl-ds | 0.5327 | 0.4995 |
+| slso-etl-canon | 0.4819 | 0.4706 |
+
+Ici la sélection sur VALIDATION est sans ambiguïté (sagu devance de 0.10 le suivant) et désigne aussi le meilleur en tenu de côté. Cohérent géographiquement : Saguenay et Lac-Saint-Jean forment le même système hydrographique.
+
+**GAIN NET ET DÉFENDABLE sur les deux régions déficientes**, par sélection de champion sur validation seule :
+
+| région | champion local | champion sélectionné | gain |
+|---|---|---|---|
+| slno | 0.5456 | 0.6215 (sagu) | +0.076 |
+| outv | 0.5116 | 0.5731 (slno) | +0.062 |
+
+Réserve sur OUTV : la validation ne distingue pas le local (0.5827) du sélectionné (0.5831), 4 dix-millièmes — le choix y est arbitraire même s'il tombe juste. Sur SLNO il est net.
+
+**Réconciliation avec le 3 août**, où la sélection de champion sur validation faisait PIRE que pas de sélection (médiane 0.627 contre 0.653). Ce jour-là les régions testées avaient 1 à 4 stations : la validation n'y mesure rien. Ici, 16 et 27 stations. La règle défendable est donc : **sélectionner le champion sur validation là où la région a assez de jauges (~10), prendre le champion global ailleurs** — même seuil que celui déjà établi pour décider entre calibration locale et transfert.
+
+**Le fil conducteur de la session.** Ce modèle sur-ajuste sa période de calage, et cela se voit maintenant par trois chemins indépendants : le test de capacité (145k params libres ne gagnent que +0.002 sur la période d'entraînement), les priors physiques défaits par le réentraînement à froid, et le transfert (un champion étranger généralise mieux que le local sur les deux régions déficientes, alors que la validation ne les distingue pas). La validation, contiguë à la période d'entraînement, est elle-même trop optimiste pour arbitrer.
