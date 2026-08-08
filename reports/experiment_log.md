@@ -1006,3 +1006,19 @@ Réserve sur OUTV : la validation ne distingue pas le local (0.5827) du sélecti
 SAGU subit la dérive la PLUS violente (-30 % de débit) et son champion local fonctionne bien ; SLNO n'a presque aucune dérive et son champion échoue. Aucune relation.
 
 **Hypothèses écartées sur OUTV, par ordre chronologique :** transfert gaspésien, littérature, entraînement local, forçage, régulation (×2, dont une reconstruite par erreur), timing de fonte, neutralisation des lacs, paramétrage des lacs (7 variantes), non-stationnarité climatique. Ce qui MARCHE : la pédotransfert (+0.064) et le transfert d'un champion sélectionné sur validation (+0.074) — deux moyens de ne PAS utiliser ce que l'entraînement local a appris.
+
+## 2026-08-08 — APPARIEMENT MODULE PAR MODULE avec Hydrotel (états internes, sans réexécution)
+
+Hydrotel écrit dans `etat/` l'état interne de chaque sous-modèle (bilan_vertical, fonte_neige, acheminement_riviere) à des dates données ; l'acheminement est PAR TRONÇON et de même cardinalité que les nœuds méandre (3412 sur OUTV) — correspondance directe. Harnais : `.runs/quebec/apparier_hydrotel.py`. Date disponible dans le tenu de côté : 2023-08-01 (étiage d'été).
+
+**OUTV, 2023-08-01, champion local vs Hydrotel LN24HA :**
+
+| étage | Hydrotel | méandre | rapport | corr spatiale |
+|---|---|---|---|---|
+| theta1 (méd) | 0.325 | 0.299 | 0.92 | |
+| theta2 (méd) | 0.352 | 0.327 | 0.93 | |
+| theta3 (méd) | 0.434 | 0.391 | 0.90 | |
+| apport latéral (méd, m³/s) | 0.262 | 0.103 | **0.39** | +0.56 |
+| débit aval (méd, m³/s) | 0.898 | 0.427 | **0.48** | +0.98 |
+
+**Lecture.** Les sols sont presque aussi humides (90-93 %) mais la colonne livre MOITIÉ MOINS d'eau à la rivière en été. La corrélation spatiale du débit aval (0.98) montre que l'accumulation le long du réseau est cohérente : le déficit est dans la GÉNÉRATION estivale, pas dans le routage. Piste physique : à teneur en eau légèrement plus sèche, l'écoulement hypodermique non linéaire chute fortement — ou l'ET estivale de méandre est trop forte, ou le drainage profond (krec/aquifère) soutient mal l'étiage. Un seul instantané : le test d'ensemble sur les séries complètes (reseau_compare.py, en cours) dira si le déficit est saisonnier ou permanent.

@@ -114,7 +114,13 @@ model = HydroModel(
     use_travel_time_attn=False,
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
-    param_mode="nerf",
+    # ETL_STATIC : parametres GLOBAUX (37 scalaires) au lieu d'un champ spatial, comme
+    # Hydrotel. Argument d'Essi (2026-08-08) : Hydrotel est cale sur les MEMES jauges et
+    # atteint 0.82 en tenu de cote sur OUTV la ou meandre plafonne a 0.50 ; les observations
+    # ne sont donc pas en cause. Ce qui differe est le nombre de degres de liberte : une
+    # poignee de coefficients globaux chez Hydrotel contre un champ spatial + un effet
+    # aleatoire par noeud chez meandre, pour 16 jauges. Test de parcimonie.
+    param_mode=("static" if os.environ.get("ETL_STATIC", "0") == "1" else "nerf"),
     column_mode="hydrotel",
     et_mode="mcguinness",   # court-circuité par etp_channel
     use_temperature=False,
