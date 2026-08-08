@@ -1,0 +1,13 @@
+region,champion,n,val,heldout
+outv,gasp-etl-ds,16,0.5137,0.3756
+outv,sagu-etl-ds,16,0.5666,0.5024
+outv,mont-etl-ds,16,0.4229,0.4482
+outv,slso-etl-canon,16,0.504,0.4398
+outv,slno-etl-canon,16,0.5831,0.5731
+outv,outv-etl-qc,16,0.5827,0.5116
+slno,gasp-etl-ds,27,0.5894,0.6009
+slno,sagu-etl-ds,27,0.691,0.6215
+slno,mont-etl-ds,27,0.5327,0.4995
+slno,slso-etl-canon,27,0.4819,0.4706
+slno,slno-etl-canon,27,0.5539,0.5456
+slno,outv-etl-qc,27,0.5618,0.4894

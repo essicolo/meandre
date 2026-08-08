@@ -979,3 +979,30 @@ Réserve sur OUTV : la validation ne distingue pas le local (0.5827) du sélecti
 **Réconciliation avec le 3 août**, où la sélection de champion sur validation faisait PIRE que pas de sélection (médiane 0.627 contre 0.653). Ce jour-là les régions testées avaient 1 à 4 stations : la validation n'y mesure rien. Ici, 16 et 27 stations. La règle défendable est donc : **sélectionner le champion sur validation là où la région a assez de jauges (~10), prendre le champion global ailleurs** — même seuil que celui déjà établi pour décider entre calibration locale et transfert.
 
 **Le fil conducteur de la session.** Ce modèle sur-ajuste sa période de calage, et cela se voit maintenant par trois chemins indépendants : le test de capacité (145k params libres ne gagnent que +0.002 sur la période d'entraînement), les priors physiques défaits par le réentraînement à froid, et le transfert (un champion étranger généralise mieux que le local sur les deux régions déficientes, alors que la validation ne les distingue pas). La validation, contiguë à la période d'entraînement, est elle-même trop optimiste pour arbitrer.
+
+**OUTV, tableau final de la session** (tenu de côté 2022-2024, forçage -hyb) :
+
+| configuration | KGE |
+|---|---|
+| **transfert PUR du champion slno** | **0.5731** |
+| pédotransfert sur le champion local | 0.5637 |
+| transfert slno + affinage local (8 ép., lr 1e-4) | 0.5626 |
+| champion local, surface de lac corrigée | 0.5160 |
+| champion local | 0.4992 |
+
+**Un modèle qui n'a JAMAIS vu l'Outaouais y fait mieux que tous ceux qui y ont été entraînés**, et même un affinage court depuis ce modèle perd 0.010. Toute forme d'entraînement sur les données de cette région dégrade le tenu de côté.
+
+**Non-stationnarité climatique : écartée comme explication** (9e hypothèse). Dérive calage 2001-2018 -> test 2022-2024 :
+
+| région | ΔP | ΔT | ΔQ | écart vs ensemble |
+|---|---|---|---|---|
+| outv | +2.1 % | +0.97 °C | -9.4 % | -0.271 |
+| sagu | -8.4 % | +1.75 °C | -30.1 % | -0.102 |
+| gasp | -4.2 % | +1.06 °C | -9.2 % | -0.059 |
+| mont | +3.6 % | +0.88 °C | +4.5 % | -0.032 |
+| slso | +0.7 % | +0.92 °C | -5.1 % | -0.021 |
+| slno | -0.1 % | +1.01 °C | -0.8 % | -0.257 |
+
+SAGU subit la dérive la PLUS violente (-30 % de débit) et son champion local fonctionne bien ; SLNO n'a presque aucune dérive et son champion échoue. Aucune relation.
+
+**Hypothèses écartées sur OUTV, par ordre chronologique :** transfert gaspésien, littérature, entraînement local, forçage, régulation (×2, dont une reconstruite par erreur), timing de fonte, neutralisation des lacs, paramétrage des lacs (7 variantes), non-stationnarité climatique. Ce qui MARCHE : la pédotransfert (+0.064) et le transfert d'un champion sélectionné sur validation (+0.074) — deux moyens de ne PAS utiliser ce que l'entraînement local a appris.

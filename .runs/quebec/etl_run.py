@@ -118,7 +118,11 @@ model = HydroModel(
     column_mode="hydrotel",
     et_mode="mcguinness",   # court-circuité par etp_channel
     use_temperature=False,
-    use_latent_codes=bool(mcfg.get("use_latent_codes", True)),
+    # ETL_NO_LATENT : les codes latents sont par NOEUD, donc non transferables entre
+    # regions (dimensions differentes). A desactiver pour un depart a chaud depuis le
+    # champion d'une AUTRE region.
+    use_latent_codes=(os.environ.get("ETL_NO_LATENT", "0") != "1"
+                      and bool(mcfg.get("use_latent_codes", True))),
     latent_mode="additive",
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
