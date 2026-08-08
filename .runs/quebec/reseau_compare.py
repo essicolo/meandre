@@ -87,22 +87,41 @@ for u in topo:
         Acum[v] += Acum[u]
 
 lac = td.graph.is_lake.bool().cpu().numpy()
+# lissages : si r remonte fortement en hebdomadaire, la decorrelation quotidienne vient
+# du FORCAGE (pluie datee differemment) ; si elle reste basse, elle est STRUCTURELLE.
+def lisse(X, w):
+    c = np.cumsum(np.vstack([np.zeros((1, X.shape[1])), X]), axis=0)
+    return (c[w:] - c[:-w]) / w
+QH7, QM7 = lisse(QH, 7), lisse(QM, 7)
+QH30, QM30 = lisse(QH, 30), lisse(QM, 30)
+# saisons pour le rapport de volume
+mois = pd.DatetimeIndex(pd.date_range(T0, periods=QH.shape[0], freq="D")).month
+ete = np.isin(mois, [6, 7, 8, 9]); hiver = np.isin(mois, [1, 2, 3])
 res = []
 for j in range(n):
     h, mn = QH[:, j], QM[:, j]
     v = np.isfinite(h) & np.isfinite(mn)
     if v.sum() < 300 or h[v].std() < 1e-9: continue
     rr = float(np.corrcoef(h[v], mn[v])[0, 1])
+    r7 = float(np.corrcoef(QH7[:, j], QM7[:, j])[0, 1])
+    r30 = float(np.corrcoef(QH30[:, j], QM30[:, j])[0, 1])
     beta = float(mn[v].mean() / max(h[v].mean(), 1e-9))
-    res.append((j, Acum[j], bool(lac[j]), rr, beta))
-d = pd.DataFrame(res, columns=["node", "aire_cum", "lac", "r", "beta"])
+    be = float(mn[ete].mean() / max(h[ete].mean(), 1e-9))
+    bh = float(mn[hiver].mean() / max(h[hiver].mean(), 1e-9))
+    res.append((j, Acum[j], bool(lac[j]), rr, r7, r30, beta, be, bh))
+d = pd.DataFrame(res, columns=["node", "aire_cum", "lac", "r", "r7", "r30", "beta", "beta_ete", "beta_hiver"])
 d.to_csv(f"reports/reseau_{REG}.csv", index=False)
 print(f"\n=== {REG} : meandre vs Hydrotel sur {len(d)} troncons (2022-2024) ===")
 print(f"correlation mediane {d.r.median():.3f} | rapport de volume median {d.beta.median():.3f}")
 d["classe"] = pd.cut(d.aire_cum, [0, 10, 50, 200, 1000, 5000, 1e9],
                      labels=["<10", "10-50", "50-200", "200-1k", "1k-5k", ">5k"])
 g = d.groupby("classe", observed=True).agg(n=("node", "size"), r_med=("r", "median"),
-                                           beta_med=("beta", "median")).round(3)
+                                           r7=("r7", "median"), r30=("r30", "median"),
+                                           beta_med=("beta", "median"),
+                                           b_ete=("beta_ete", "median"),
+                                           b_hiver=("beta_hiver", "median")).round(3)
 print("\npar aire drainee cumulee (km2) :"); print(g.to_string())
-g2 = d.groupby("lac").agg(n=("node", "size"), r_med=("r", "median"), beta_med=("beta", "median")).round(3)
+g2 = d.groupby("lac").agg(n=("node", "size"), r_med=("r", "median"), r7=("r7", "median"),
+                          r30=("r30", "median"), beta_med=("beta", "median"),
+                          b_ete=("beta_ete", "median")).round(3)
 print("\nlac vs riviere :"); print(g2.to_string())

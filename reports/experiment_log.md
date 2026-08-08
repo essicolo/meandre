@@ -1022,3 +1022,20 @@ Hydrotel écrit dans `etat/` l'état interne de chaque sous-modèle (bilan_verti
 | débit aval (méd, m³/s) | 0.898 | 0.427 | **0.48** | +0.98 |
 
 **Lecture.** Les sols sont presque aussi humides (90-93 %) mais la colonne livre MOITIÉ MOINS d'eau à la rivière en été. La corrélation spatiale du débit aval (0.98) montre que l'accumulation le long du réseau est cohérente : le déficit est dans la GÉNÉRATION estivale, pas dans le routage. Piste physique : à teneur en eau légèrement plus sèche, l'écoulement hypodermique non linéaire chute fortement — ou l'ET estivale de méandre est trop forte, ou le drainage profond (krec/aquifère) soutient mal l'étiage. Un seul instantané : le test d'ensemble sur les séries complètes (reseau_compare.py, en cours) dira si le déficit est saisonnier ou permanent.
+
+## 2026-08-08 — L'ERREUR STRUCTURELLE, par confrontation des deux codes sources
+
+Demande d'Essi : investiguer le code de méandre comparativement au C++ d'Hydrotel (dépôt INRS local). Deux lecteurs en parallèle, rapports cités au fichier et à la ligne. Confrontés au test d'ensemble (r médian méandre/Hydrotel 0.335 sur 3412 tronçons, 0.27-0.31 en tête de bassin montant à 0.73 au-delà de 5000 km², volume stable ~0.85), le tableau est complet.
+
+**1. LE VERSANT : Hydrotel étale sur ≤10 jours, méandre sur 0.**
+- Hydrotel (`onde_cinematique.cpp`) : la production verticale de BV3C est convoluée par un HYDROGRAMME UNITAIRE GÉOMORPHOLOGIQUE précalculé par UHRH (onde cinématique de Manning résolue pixel par pixel, `CalculeHgm()` l.1166-1781), mémoire maxdeb = 240 h / pas = **10 jours**, queue tronquée à 5 % du volume. Les 10 valeurs "DEBITS" du fichier d'état sont la file d'attente de cette convolution. Surface, hypodermique et base subissent LE MÊME étalement (`_oc_surf = _oc_hypo = _oc_base = _oc_zone`, l.1110-1156). Le lissage principal d'Hydrotel est AU VERSANT.
+- méandre (`hydrotel_column.py:662`) : `prod = ps_surf + ph + pb` livré au tronçon LE JOUR MÊME. `use_hillslope_uh=False` par défaut (l.94) ; même activé, c'est une cascade de Nash courte (0.3 j / 2.5 j) qui ne route PAS le baseflow. Et pour un tronçon de tête avec K ≲ 7.5 h, le clamp c2>=0 du Muskingum donne une injection à 100 % le jour même (kinematic.py:60-61).
+- CONSÉQUENCE : deux séries de même volume, l'une étalée sur ~10 j, l'autre pas du tout -> décorrélation quotidienne massive en tête de bassin, réconciliation par agrégation vers l'aval. C'est EXACTEMENT la signature mesurée. Le diagnostic du 15 juin (« Hydrotel lisse au VERSANT ») était juste, le correctif codé, jamais activé.
+
+**2. LES LACS : les paramètres calibrés d'Hydrotel sont dans troncon.trl DEPUIS TOUJOURS, et méandre les jette.**
+- C++ `troncons.cpp::LectureLac` (l.321-348) : chaque tronçon-lac porte `longueur, surface (km²), c, k` — la loi de tarage calibrée Q = c·h^k (k = 1.5 partout sur OUTV, déversoir), routée en réservoir de niveau à surface constante (`TransfertLac`, implicite trapézoïdal Newton).
+- méandre `physitel_loader.py::_parse_troncon` (l.325-333) : lit ces champs mais les nomme `length, width, v3, v4` — il prend la SURFACE pour une largeur et JETTE c et k. Vérifié sur OUTV : tronçon 2 = 41.55 km², c=73.5, k=1.5.
+- Correspondance EXACTE avec la loi de méandre Q = k_lake·(S/A)^beta·A : beta = k, A = surface·1e6, **k_lake = c/A**. Sur OUTV : k_lake médian ~2-4e-6 /s, JUSTE au-dessus du plancher [1e-6] du modèle — les vraies valeurs sont au bord du domaine, c'est pourquoi l'apprentissage n'a jamais pu les trouver.
+- Écarts restants de méandre : sortie du lac sur le stockage de la VEILLE en mode lagged (1 j de déphasage, operator_routing.py:35-39), stockage initial S=0 (temps de remplissage), aire de drainage au lieu de la surface d'eau (corrigé le 7 août, opt-in).
+
+**Tests en cours :** (a) r à 7 et 30 jours de lissage (départage forçage vs structure) ; (b) import direct des lacs trl (`lacs_trl.py`) en inférence.
