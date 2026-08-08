@@ -1039,3 +1039,24 @@ Demande d'Essi : investiguer le code de méandre comparativement au C++ d'Hydrot
 - Écarts restants de méandre : sortie du lac sur le stockage de la VEILLE en mode lagged (1 j de déphasage, operator_routing.py:35-39), stockage initial S=0 (temps de remplissage), aire de drainage au lieu de la surface d'eau (corrigé le 7 août, opt-in).
 
 **Tests en cours :** (a) r à 7 et 30 jours de lissage (départage forçage vs structure) ; (b) import direct des lacs trl (`lacs_trl.py`) en inférence.
+
+**Test réseau LISSÉ (OUTV, 3412 tronçons, 2022-2024) : la décorrélation est un phénomène de courte échelle temporelle.**
+
+| aire cumulée | r quotidien | r 7 j | r 30 j | beta été | beta hiver |
+|---|---|---|---|---|---|
+| <10 km² | 0.314 | 0.559 | 0.762 | 0.834 | 0.882 |
+| 10-50 | 0.266 | 0.508 | 0.743 | 0.909 | 1.108 |
+| 50-200 | 0.325 | 0.508 | 0.729 | 0.918 | 1.090 |
+| 200-1k | 0.443 | 0.552 | 0.721 | 0.901 | 1.092 |
+| 1k-5k | 0.641 | 0.679 | 0.788 | 0.875 | 1.140 |
+| >5k | 0.726 | 0.747 | 0.819 | 0.852 | 0.966 |
+| lacs | 0.202 | 0.411 | 0.675 | 0.923 | |
+| rivières | 0.357 | 0.564 | 0.760 | 0.890 | |
+
+Au pas MENSUEL, la dépendance à l'échelle disparaît (0.72-0.82 partout) : la décorrélation quotidienne est bien un défaut de FORME temporelle de la réponse rapide, exactement ce qu'un noyau d'étalement présent d'un côté (≤10 j) et absent de l'autre produit. Les lacs restent les pires à TOUTES les échelles (défaut propre). Et la saisonnalité du volume est inversée : méandre produit trop l'hiver (+9 à +14 %) et pas assez l'été (-8 à -15 %).
+
+**LE NOYAU D'HYDROTEL EST RÉCUPÉRABLE TEL QUEL.** Le cache `<projet>/hgm/hydrogramme_24H_*.hgm` est un fichier texte contenant, par UHRH, les 10 poids DISTRI de l'hydrogramme unitaire. Sur OUTV : en médiane seulement 45 % de l'eau arrive au jour 0, l'étalement touche 3390 nœuds sur 3412. Implémenté :
+- `meandre/data/hgm_loader.py::lire_hgm` — noyau (n_nodes, 10), agrégation UHRH->tronçon pondérée par l'aire, lignes vides (UHRH-lacs) = Dirac au jour 0 comme le C++ ;
+- `HydroModel.set_hgm_kernel()` + file de convolution glissante dans simulate() (mécanisme identique à onde_cinematique.cpp:806-886), opt-in, 150 tests passent.
+
+Bancs en cours : lacs trl seuls (3 régions), puis ref / hgm / hgm+trl sur OUTV avec double mesure (KGE jauges + r contre Hydrotel sur le réseau et les têtes <50 km²).

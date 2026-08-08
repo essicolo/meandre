@@ -382,6 +382,8 @@ class HydroModel(nn.Module):
         else:
             self.routing._lake_k = None
             self.routing._lake_beta = None
+        # File de convolution de l'hydrogramme geomorphologique (None si inactif)
+        hgm_queue = None
         # Surface d'eau libre des lacs (km2, par noeud) si elle a ete posee par
         # set_lake_area(). Sinon le routage retombe sur l'aire de drainage, qui est le
         # comportement historique et qui FAUSSE la loi de vidange (cf. commentaire dans
@@ -538,6 +540,25 @@ class HydroModel(nn.Module):
                 )
 
             lateral_inflow = vc_out.lateral_inflow
+
+            # 4bis. HYDROGRAMME GÉOMORPHOLOGIQUE D'HYDROTEL (opt-in, set_hgm_kernel).
+            # Hydrotel étale TOUTE la production (surface + hypodermique + base) par une
+            # convolution avec un hydrogramme unitaire précalculé par UHRH (mémoire
+            # <= 10 jours, onde cinématique pixel par pixel). Méandre livrait l'eau du
+            # jour J au tronçon le jour J : les têtes de bassin décorrélaient (r 0.27-0.31
+            # quotidien contre Hydrotel, remontant à 0.74 en mensuel — test réseau du
+            # 2026-08-08). Ici : file d'attente glissante identique au C++
+            # (onde_cinematique.cpp:806-886), noyau lu du cache .hgm du projet.
+            _hgm_k = getattr(self, "_hgm_kernel", None)
+            if _hgm_k is not None:
+                if hgm_queue is None:
+                    hgm_queue = torch.zeros(self.n_nodes, _hgm_k.shape[1],
+                                            device=lateral_inflow.device,
+                                            dtype=lateral_inflow.dtype)
+                hgm_queue = hgm_queue + _hgm_k.to(lateral_inflow.device) * lateral_inflow.unsqueeze(1)
+                lateral_inflow = hgm_queue[:, 0]
+                hgm_queue = torch.cat([hgm_queue[:, 1:],
+                                       torch.zeros_like(hgm_queue[:, :1])], dim=1)
 
             # 4. Temperature lateral heat load
             H_lateral = None
@@ -746,6 +767,18 @@ class HydroModel(nn.Module):
                 "use_hortonian": getattr(self.vertical_column, "use_hortonian", False),
             },
         }, path)
+
+    def set_hgm_kernel(self, kernel) -> None:
+        """Pose le noyau de l'hydrogramme geomorphologique d'Hydrotel, (n_nodes, L),
+        chaque ligne sommant a 1 (forme temporelle seulement, le volume est conserve).
+        None = comportement historique (livraison le jour meme)."""
+        if kernel is None:
+            self._hgm_kernel = None
+            return
+        import torch as _t
+        k = _t.as_tensor(kernel, dtype=_t.float32)
+        k = k / k.sum(dim=1, keepdim=True).clamp(min=1e-12)
+        self._hgm_kernel = k
 
     def set_lake_area(self, lake_area_km2) -> None:
         """Pose la surface d'EAU LIBRE des noeuds-lacs (km2, tenseur de taille n_nodes).
