@@ -1060,3 +1060,22 @@ Au pas MENSUEL, la dépendance à l'échelle disparaît (0.72-0.82 partout) : la
 - `HydroModel.set_hgm_kernel()` + file de convolution glissante dans simulate() (mécanisme identique à onde_cinematique.cpp:806-886), opt-in, 150 tests passent.
 
 Bancs en cours : lacs trl seuls (3 régions), puis ref / hgm / hgm+trl sur OUTV avec double mesure (KGE jauges + r contre Hydrotel sur le réseau et les têtes <50 km²).
+
+## 2026-08-08 (suite) — BANC DE ROUTAGE VALIDÉ (x20 plus rapide) et premiers verdicts
+
+**Banc `banc_routage.py`** (demande d'Essi : tester plus vite que des simulations longues) : la colonne est simulée UNE fois, sa production latérale mise en cache, chaque variante ne rejoue que le routage (~2 min au lieu de ~20). Deux bugs de ma part trouvés par la validation obligatoire contre la simulation complète : le rejeu passait K_musk en HEURES là où simulate le convertit en SECONDES (model.py:371) — l'opérateur n'atténuait plus rien. Après correctif : écart rejeu/simulate NUL (médiane et p95 à 0.0000), référence 0.4992 reproduite exactement. LEÇON : tout banc rapide doit reproduire la référence avant d'être cru (la première salve de résultats, fausse, a failli être consignée).
+
+**Verdicts OUTV (inférence pure, champion inchangé) :**
+
+| variante | KGE jauges | r réseau vs Hydrotel | r têtes <50 km² | r lacs |
+|---|---|---|---|---|
+| référence | 0.4992 | 0.335 | 0.278 | 0.202 |
+| noyau HGM versant | **0.5262** | 0.470 | 0.424 | 0.315 |
+| lacs troncon.trl | 0.4640 | 0.484 | 0.338 | **0.669** |
+| HGM + lacs trl | 0.4844 | **0.595** | **0.493** | **0.708** |
+
+- Le NOYAU DE VERSANT gagne sur les DEUX tableaux : +0.027 aux jauges ET fidélité à Hydrotel en forte hausse partout. Structure physique gratuite (cache .hgm), zéro paramètre appris. C'est la confirmation du diagnostic : l'étalement au versant était le chaînon manquant.
+- Les LACS trl triplent la fidélité des tronçons-lacs (0.202 -> 0.669) mais coûtent -0.035 aux jauges : le champion a calibré le reste autour de ses propres lacs (motif désormais familier). Remède connu : départ à chaud + affinage court.
+- La COMBINAISON porte r réseau de 0.335 à 0.595 : la structure de méandre se rapproche massivement de celle d'Hydrotel avec deux imports de données.
+
+Suite : simulation complète du meilleur candidat cumulatif (noyau HGM + pédotransfert 0.5, cette dernière vivant dans la colonne donc hors banc rapide).
