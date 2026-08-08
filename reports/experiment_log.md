@@ -1079,3 +1079,7 @@ Bancs en cours : lacs trl seuls (3 régions), puis ref / hgm / hgm+trl sur OUTV 
 - La COMBINAISON porte r réseau de 0.335 à 0.595 : la structure de méandre se rapproche massivement de celle d'Hydrotel avec deux imports de données.
 
 Suite : simulation complète du meilleur candidat cumulatif (noyau HGM + pédotransfert 0.5, cette dernière vivant dans la colonne donc hors banc rapide).
+
+**Combo en inférence (OUTV) : noyau HGM + pédotransfert NE S'ADDITIONNENT PAS.** 0.5527 contre 0.5637 pour la texture seule (r monte à 0.662 mais beta reste 0.766). Le champion avait calibré son routage pour compenser l'étalement manquant : lui ajouter le noyau par-dessus la texture sur-lisse. Classement OUTV inférence : transfert slno 0.5731 > texture 0.5637 > combo 0.5527 > noyau seul 0.5262 > champion 0.4992.
+
+**Test décisif lancé :** entraînement OUTV avec la STRUCTURE corrigée dès le départ (`ETL_HGM=1` noyau de versant actif pendant l'apprentissage, `ETL_LAKE_TRL=1` lacs troncon.trl imposés hors gradient + surface d'eau vraie, + recette canonique). Question : avec la bonne structure, l'entraînement local sur 16 jauges bat-il enfin le transfert (0.5731) ? Hooks ajoutés à etl_run.py.

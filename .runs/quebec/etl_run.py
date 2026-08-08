@@ -349,6 +349,52 @@ if os.environ.get("ETL_PEDO", "0") == "1":
               f"K_sat q10-q90 {float(_mot['K_sat'].quantile(.1)):.2f}-{float(_mot['K_sat'].quantile(.9)):.2f}")
     else:
         print(f"[etl] pedotransfert ignoree ({len(_rwp)} vs {n_nodes} noeuds)")
+if os.environ.get("ETL_HGM", "0") == "1":
+    # NOYAU DE VERSANT D'HYDROTEL (cache .hgm du projet) : etale la production laterale
+    # comme le C++ (convolution <=10 j, onde cinematique pixel par pixel precalculee).
+    # Sans lui, l'eau du jour J arrive au troncon le jour J et les tetes de bassin
+    # decorrelaient d'Hydrotel (r 0.27-0.31 quotidien). En inference sur le champion :
+    # +0.027 aux jauges. Ici : ACTIF PENDANT L'ENTRAINEMENT, pour que le reseau
+    # n'apprenne plus a compenser l'etalement manquant.
+    from meandre.data.hgm_loader import lire_hgm
+    _projh = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _K = lire_hgm(_projh, r["node_ids"])
+    model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
+    import numpy as _nph
+    print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={_K.shape[1]}")
+if os.environ.get("ETL_LAKE_TRL", "0") == "1":
+    # LACS D'HYDROTEL depuis troncon.trl : surface d'eau + loi de tarage calibree
+    # Q = c*h^k (le parseur historique JETAIT c et k et lisait la surface comme une
+    # largeur). k_lake = c/A, beta = k. Impose HORS gradient (surcharge de lake_params).
+    from pathlib import Path as _Pl
+    _pt = _Pl(f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020/physitel/troncon.trl")
+    _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
+    _dl = {}
+    for _l in _lgn[3:]:
+        _t = _l.split()
+        if int(_t[1]) != 1:
+            _ptr = 4 + int(_t[3])
+            _dl[int(_t[0])] = (float(_t[_ptr+1]), float(_t[_ptr+2]), float(_t[_ptr+3]))
+    _idxl = {int(i): j for j, i in enumerate(r["node_ids"])}
+    import numpy as _npl
+    _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
+    for _tid, (_s2, _c2, _k2) in _dl.items():
+        if _tid in _idxl:
+            _surf[_idxl[_tid]], _c[_idxl[_tid]], _k[_idxl[_tid]] = _s2, _c2, _k2
+    _lacb = td.graph.is_lake.bool().cpu().numpy()
+    _cv = _npl.isfinite(_surf) & _lacb & (_surf > 0)
+    _cvt = torch.tensor(_cv, device=DEVICE)
+    _ktl = torch.tensor(_npl.nan_to_num(_npl.where(_cv, _c / _npl.clip(_surf*1e6, 1, None), _npl.nan), nan=1e-4),
+                        dtype=torch.float32, device=DEVICE)
+    _btl = torch.tensor(_npl.nan_to_num(_k, nan=1.5), dtype=torch.float32, device=DEVICE)
+    _olp = model.spatial_encoder.lake_params
+    def _lp_trl(*a, _o=_olp, **kw):
+        kk3, bb3 = _o(*a, **kw)
+        return torch.where(_cvt, _ktl, kk3), torch.where(_cvt, _btl, bb3)
+    model.spatial_encoder.lake_params = _lp_trl
+    model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
+    print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lacb.sum())} | "
+          f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
