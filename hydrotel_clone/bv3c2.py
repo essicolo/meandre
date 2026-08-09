@@ -254,6 +254,32 @@ class BV3C2Clone(torch.nn.Module):
                 if bool((tr <= 1e-7).all()):
                     break
 
+        # CONSERVATION DE LA MASSE (bug trouvé le 2026-08-09). Le C++ boucle JUSQU'À
+        # tr=0 (while, onde TriCoucheOct97) ; le clone plafonne à n_substep itérations
+        # pour le GPU. Quand le gel/la crue force l'échelle de Courant à DT_H/1152, un
+        # jour exige ~1152 sous-pas : le plafond (48) tombait après ~1 h de journée et
+        # le temps restant DISPARAISSAIT avec sa pluie — fuite mesurée de 210 mm/an
+        # (21 % de P) sur OUTV, concentrée en mars-avril et oct-déc, nulle l'été.
+        # L'eau du temps non traité RUISSELLE, NETTE de l'évapotranspiration de ce même
+        # temps (l'ETR du jour est comptée en entier par le module d'ET en amont : sans
+        # cette déduction le bilan sur-corrige exactement de l'ETR non prélevée, mesuré
+        # +199 mm/an). Ces situations sont celles du sol gelé ou saturé, où le C++
+        # produit lui aussi du ruissellement.
+        # Fermeture EXACTE en deux écritures, comme si le C++ avait continué sa boucle :
+        # (1) la pluie du temps restant ruisselle (sol gelé/saturé) ; (2) l'évapo-
+        # transpiration du temps restant est RETIRÉE DU STOCK — le module d'ET la
+        # déclare en entier au bilan, mais la boucle plafonnée ne la prélevait qu'au
+        # prorata du temps traité : l'eau « évaporée » restait dans le sol et
+        # ressortait plus tard en débordement (sur-correction mesurée +199 puis +130
+        # mm/an avec les fermetures naïves). Négativité refoulée comme dans la boucle.
+        lruis = lruis + prec * tr
+        t1 = t1 - e1 * tr / z1
+        t2 = t2 - e2 * tr / z2
+        t3 = t3 - e3 * tr / z3
+        neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
+        neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
+        t3 = torch.clamp(t3, min=0.0)
+
         # ── CalculeUHRH (l.820) : production avec split occupation du sol ──
         # leau = (pluie − ET) sur fraction EAU ; lprec = pluie sur IMPERMÉABLE
         # fractions eau/imperméable : apport TOTAL (le hortonien ne les concerne pas)

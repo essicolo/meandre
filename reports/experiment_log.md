@@ -1100,3 +1100,16 @@ P 970 | ETP 482 | ETR 480 | apport latéral 285 | **résidu +204 (21 % de P)** |
 - La fuite est donc entre l'apport au sol et la production. Bilan scindé neige/sol en cours (apport = pluie+fonte livrée au sol, sauvegardé).
 
 **Décision d'exécution :** routeur fidèle (fidelite2) TUÉ après 14 h — la forme séquentielle du C++ (48 sous-pas × 126 niveaux × 1460 jours) est impraticable sur GPU ; il ne servait qu'à la validation, le bilan de masse ne l'exige pas. Hydrotel instrumenté toujours en cours dans WSL (8 h CPU, normal pour 6 ans × 8821 UHRH × 8 sorties).
+
+## 2026-08-09 — LA FUITE EST COLMATÉE : bilan fermé à 2 mm/an près
+
+**Cause exacte.** Le C++ (TriCoucheOct97) boucle JUSQU'À épuiser le pas de temps ; le clone plafonne à n_substep=48 itérations pour le GPU. Sous gel ou crue, l'échelle de Courant descend à DT_H/1152 (~75 s) : le plafond tombait après ~1 h de journée traitée et le reste disparaissait avec sa pluie. Fuite mesurée : 211 mm/an (21 % de P) sur OUTV, profil mensuel culminant en mars (+52 mm) et avril (+34), fort d'oct. à déc., nul en été — la signature du gel.
+
+**Fermeture correcte, trouvée en 3 itérations mesurées (chacune ~20 min, journal complet) :**
+1. `lruis += prec·tr` seul : sur-correction +199 (la pluie brute du temps restant fait 410 mm/an, pas 211) ;
+2. déduction d'ET plafonnée terme à terme : encore +130 (le plancher ne retire qu'un tiers de l'ET) ;
+3. **VERSION RETENUE** : la pluie du temps restant ruisselle ET l'évapotranspiration du temps restant est RETIRÉE DU STOCK (le module d'ET la déclarait en entier au bilan mais la boucle plafonnée ne la prélevait qu'au prorata — l'eau « évaporée » restait dans le sol et ressortait en débordement). Négativité refoulée comme dans la boucle.
+
+**Bilan final (OUTV, colonne figée, 2021-2024) : P 970 -> apport 977 -> ETR 473 + latéral 502, résidu +2 mm/an, coefficient d'écoulement 0.518** (fourchette Hydrotel 0.5-0.6). 150 tests passent.
+
+**Portée.** TOUS les entraînements passés ont appris sur une colonne qui jetait ~20 % de la pluie au moment des crues. À requalifier : déficit de ruissellement de juin (RC 0.55 vs 0.63), déficit d'été, beta ~0.85 généralisé, partie du plafond attribué au forçage. Réentraînement OUTV lancé avec la colonne réparée.
