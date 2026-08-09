@@ -21,7 +21,12 @@ Mécanismes clés (que le portage précédent ratait) :
 Unités internes = celles d'Hydrotel : m, m/h, dt en HEURES (24 = journalier).
 """
 from __future__ import annotations
+import os
 import torch
+
+# Fermeture de masse (2026-08-09) debrayable pour test temoin : BV3C_FERMETURE=0
+# reproduit le comportement historique (fuite du temps non traite).
+_FERMETURE_MASSE = os.environ.get("BV3C_FERMETURE", "1") == "1"
 from torch import Tensor
 
 # Table proprietehydrolique.sol (Hydrotel) — thetas, thetacc, thetapf, ks(m/h), psis(m), lambda
@@ -272,13 +277,14 @@ class BV3C2Clone(torch.nn.Module):
         # prorata du temps traité : l'eau « évaporée » restait dans le sol et
         # ressortait plus tard en débordement (sur-correction mesurée +199 puis +130
         # mm/an avec les fermetures naïves). Négativité refoulée comme dans la boucle.
-        lruis = lruis + prec * tr
-        t1 = t1 - e1 * tr / z1
-        t2 = t2 - e2 * tr / z2
-        t3 = t3 - e3 * tr / z3
-        neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
-        neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
-        t3 = torch.clamp(t3, min=0.0)
+        if _FERMETURE_MASSE:
+            lruis = lruis + prec * tr
+            t1 = t1 - e1 * tr / z1
+            t2 = t2 - e2 * tr / z2
+            t3 = t3 - e3 * tr / z3
+            neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
+            neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
+            t3 = torch.clamp(t3, min=0.0)
 
         # ── CalculeUHRH (l.820) : production avec split occupation du sol ──
         # leau = (pluie − ET) sur fraction EAU ; lprec = pluie sur IMPERMÉABLE

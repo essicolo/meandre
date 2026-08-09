@@ -417,7 +417,9 @@ if os.environ.get("ETL_CAPACITE", "0") == "1":
           f"tout le reste GELÉ, régularisation latente coupée")
 print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (demande apprise × K_c NeRF, init 1.0)")
 
+_lake_lr = float(os.environ.get("ETL_LAKE_LR", "50"))
 tconf = TrainingConfig(
+    lake_lr_mult=_lake_lr,
     n_epochs=N_EPOCHS,
     lr=float(os.environ.get("ETL_LR", tcfg.get("lr", 5e-4))),
     chunk_steps=int(tcfg.get("chunk_steps", 45)),
