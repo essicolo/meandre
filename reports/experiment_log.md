@@ -1089,3 +1089,14 @@ Suite : simulation complète du meilleur candidat cumulatif (noyau HGM + pédotr
 **Entraînement OUTV à froid avec ETL_HGM=1 + ETL_LAKE_TRL=1** (noyau de versant actif pendant l'apprentissage, lacs d'Hydrotel imposés hors gradient) + recette canonique : tenu de côté **0.4740**, SOUS le champion sans structure (0.4992) et loin du transfert slno (0.5731). Même avec le versant et les lacs corrects, l'apprentissage local sur 16 jauges dégrade. Conclusion consolidée : le déficit d'OUTV est un problème d'APPRENTISSAGE (sur-ajustement à la période de calage), pas de structure ni d'observations ; la règle du transfert tient.
 
 **Fidélité v1 (paramètres FIGÉS bv3c complet + Linacre calé + fonte calée + lacs trl + noyau HGM, Muskingum, météo -hyb) :** theta1/2/3 à 0.93/0.92/0.995 d'Hydrotel — les états du sol COLLENT — mais beta médian réseau 0.584 et apport latéral d'août à 0.131. Et la pluie n'explique RIEN : la météo du projet (977 mm/an) est même 2 % SOUS notre grille (997). Entrée équivalente + états équivalents + sortie à moitié = l'eau disparaît DANS la colonne, seul suspect capable : l'ÉVAPOTRANSPIRATION (Linacre×coeff appliqué différemment ?). Juge de paix lancé : réexécution d'Hydrotel (WSL rétabli) sur une COPIE instrumentée du projet OUTV avec 8 sorties internes activées (ETP, ETR_TOTAL, THETA1-3, APPORT, APPORT LATERAL, COUVERT_NIVAL) — comparaison directe de l'ETR des deux modèles à venir.
+
+## 2026-08-09 — FUITE DE MASSE : 21 % de la pluie disparaît dans la colonne figée
+
+**Bilan de masse de la colonne FIGÉE (OUTV, 2021-2024, moyennes spatiales, mm/an) :**
+P 970 | ETP 482 | ETR 480 | apport latéral 285 | **résidu +204 (21 % de P)** | coefficient d'écoulement 0.294 (Hydrotel ~0.5-0.6).
+
+- L'ETR est INNOCENTÉE : 480 mm/an = exactement la fourchette des tours de flux boréales (400-500). Le suspect « Linacre trop fort » tombe.
+- Écartés par la mesure : somme des fractions fsa+fse+fsi = 1.0 exactement partout ; dérive du stock de neige -6.6 mm/an ; interception par la canopée : N'EXISTE PAS dans la colonne clone (aucun code), donc ne peut ni évaporer ni fuir — mais noter que 204/970 = 21 % est précisément la fraction d'interception forestière canonique, À REVOIR côté C++ (Hydrotel intercepte-t-il ?).
+- La fuite est donc entre l'apport au sol et la production. Bilan scindé neige/sol en cours (apport = pluie+fonte livrée au sol, sauvegardé).
+
+**Décision d'exécution :** routeur fidèle (fidelite2) TUÉ après 14 h — la forme séquentielle du C++ (48 sous-pas × 126 niveaux × 1460 jours) est impraticable sur GPU ; il ne servait qu'à la validation, le bilan de masse ne l'exige pas. Hydrotel instrumenté toujours en cours dans WSL (8 h CPU, normal pour 6 ans × 8821 UHRH × 8 sorties).
