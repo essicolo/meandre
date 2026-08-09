@@ -1113,3 +1113,15 @@ P 970 | ETP 482 | ETR 480 | apport latéral 285 | **résidu +204 (21 % de P)** |
 **Bilan final (OUTV, colonne figée, 2021-2024) : P 970 -> apport 977 -> ETR 473 + latéral 502, résidu +2 mm/an, coefficient d'écoulement 0.518** (fourchette Hydrotel 0.5-0.6). 150 tests passent.
 
 **Portée.** TOUS les entraînements passés ont appris sur une colonne qui jetait ~20 % de la pluie au moment des crues. À requalifier : déficit de ruissellement de juin (RC 0.55 vs 0.63), déficit d'été, beta ~0.85 généralisé, partie du plafond attribué au forçage. Réentraînement OUTV lancé avec la colonne réparée.
+
+## 2026-08-09 (suite) — Le correctif de masse et le noyau de versant sont COUPLÉS
+
+**Réentraînements sur colonne réparée (recette canonique inchangée, -hyb) :**
+- OUTV : 0.5048 contre 0.4992 (+0.006). Le colmatage ne change presque rien : le champion fuyant avait déjà appris à compenser l'eau manquante (leçon récurrente : la calibration absorbe les erreurs structurelles). Rectification demandée par Essi et acceptée : en SCORE, ce bug est mineur ; sa gravité est la CONSERVATION (scénarios, renaturalisation), pas la performance.
+- GASP : **0.5599 contre 0.7489 (-0.19), régression massive.** Volume sain (beta 0.854) mais corrélation effondrée (r 0.743 contre 0.878).
+
+**Lecture.** L'eau récupérée par le colmatage est celle des jours de gel et de crue ; sans hydrogramme de versant elle arrive à la rivière LE JOUR MÊME, en pointes que rien n'étale -> r s'effondre. La colonne fuyante servait accidentellement de FILTRE PASSE-BAS en supprimant l'eau la plus impulsive. Les deux corrections sont donc couplées : conservation de la masse SANS étalement du versant = pire que la fuite. Test en cours : GASP avec colonne réparée + noyau HGM (`ETL_HGM=1`).
+
+**Réserve méthodologique actée (objection d'Essi) :** toutes les comparaisons croisées méandre/Hydrotel faites à météos différentes (fidélité v1, rapports d'étages, r réseau) mélangent code et forçage. SEUL le bilan de masse (comptabilité interne d'une même simulation) y échappe. Le test d'intégrité définitif = colonne figée + météo Thiessen du PROJET + confrontation aux sorties instrumentées d'Hydrotel (réexécution WSL en cours, ~16 h CPU), mêmes nombres des deux côtés.
+
+**Requalification aussi des adaptateurs mesurés :** ETL_DEMAND_SCALE (ratio bilan/MOD16) a été dérivé sur un bilan qui INCLUAIT la fuite — à re-mesurer avec la colonne fermée.
