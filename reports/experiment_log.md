@@ -1342,3 +1342,24 @@ Repères : Hydrotel ~0.82, champion méandre ENTRAÎNÉ 30 époques 0.4992 sur c
 **Reproductibilité du champion** : avec `ETL_WET=0`, 0.6871 contre 0.5504 — le terme MODIS vaut donc bien ~0.14 de KGE à lui seul. Il reste 0.062 d'écart au 0.7489, attribuable à la variance entre exécutions ou à un changement de défaut depuis le 29 juillet. Chasse abandonnée : ce socle est périmé par les correctifs d'assemblage.
 
 **Bifurcations restantes, dans l'ordre** : avril à 0.797 (crue de fonte encore trop faible, alors que mars et mai sont justes) ; excès d'été résiduel de 30 à 40 % ; ligne de base GRACE calculée par tronçon de séquence ; seuil de fonte à symétriser avec le taux (ancrage + écart appris borné) ; 13 sorties mortes du champ spatial à retirer.
+
+### Couverture de tests : elle ne couvrait RIEN de ce qui a cassé
+
+Question d'Essi : les tests de compatibilité sont-ils complets ? Non, et le signal était sous nos yeux : les 150 tests passaient sans broncher après CHAQUE correctif majeur du 10 août. Audit :
+
+| correctif du jour | test qui le couvrait |
+|---|---|
+| conservation de masse BV3C2 | aucun |
+| conservation de l'apport latéral Muskingum | aucun |
+| seuil pluie/neige calibré | aucun |
+| occupation du sol atteignant la physique | aucun |
+| milieux humides isolés | 2 fichiers `smoke_*` NON COLLECTÉS par pytest (motif `test_*`) |
+| ETR sur toute la fraction perméable | aucun |
+| appariement 8 jours de MODIS | aucun |
+| bornes de K_musk | aucun |
+
+`tests/test_entrees_statiques.py` ajouté : 17 tests, dont la conservation du Muskingum sur 9 combinaisons de K et de sous-pas (attrapait 0.50 et 1.85), l'appariement des composites, la priorité de `set_land_cover`, la couverture de l'ETR sur toute la fraction perméable, et trois chargeurs confrontés au vrai projet Hydrotel (ignorés proprement s'il est absent). Suite complète : **167 tests**.
+
+La moyenne glissante a été extraite de la boucle de perte en fonction nommée `moyenne_glissante`, précisément pour être testable : le correctif était enfoui dans un bloc conditionnel où rien ne pouvait l'atteindre.
+
+Tentative de récupérer les deux `smoke_*` en les renommant : ABANDONNÉE. Ce sont des scripts autonomes qui changent le répertoire courant à l'import, ce qui faisait tomber 16 tests sans rapport. À réécrire proprement plus tard ; leurs invariants sont désormais couverts côté projet Hydrotel.

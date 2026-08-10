@@ -601,6 +601,22 @@ class CompositeKGELoss(nn.Module):
         return loss, components
 
 
+def moyenne_glissante(x, fenetre: int):
+    """Moyenne glissante causale sur l'axe TEMPS (axe 0), fenêtre en pas de temps.
+
+    Sert à apparier l'ETR simulée AUX COMPOSITES MOD16A2GF, qui sont des moyennes sur
+    8 jours posées sur le seul jour de début de composite (bug d'appariement corrigé le
+    2026-08-10 : on comparait une moyenne de 8 jours à une valeur journalière). Les
+    `fenetre - 1` premiers pas sont laissés tels quels faute d'historique.
+    """
+    if fenetre <= 1 or x.dim() < 1 or x.shape[0] < fenetre:
+        return x
+    c = torch.nn.functional.avg_pool1d(
+        x.transpose(0, -1).unsqueeze(0), kernel_size=fenetre, stride=1,
+        padding=0, count_include_pad=False).squeeze(0).transpose(0, -1)
+    return torch.cat([x[:fenetre - 1], c], dim=0)[:x.shape[0]]
+
+
 class HydroLoss(nn.Module):
     """Multi-objective loss function.
 
@@ -934,13 +950,7 @@ class HydroLoss(nn.Module):
             # de 8 jours à une valeur journalière ajoute du bruit pur et fausse toute
             # statistique de variance. On moyenne donc le simulé sur la même fenêtre.
             # `et_window` = 8 par défaut ; 1 restaure l'ancien comportement.
-            _w = int(getattr(self, "et_window", 8))
-            if _w > 1 and et_sim.dim() >= 1 and et_sim.shape[0] >= _w:
-                _c = torch.nn.functional.avg_pool1d(
-                    et_sim.transpose(0, -1).unsqueeze(0), kernel_size=_w,
-                    stride=1, padding=0, count_include_pad=False).squeeze(0).transpose(0, -1)
-                _pad = et_sim[:_w - 1]
-                et_sim = torch.cat([_pad, _c], dim=0)[:et_sim.shape[0]]
+            et_sim = moyenne_glissante(et_sim, int(getattr(self, "et_window", 8)))
             valid = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
             if valid.any():
                 L_et = ((et_obs[valid] - et_sim[valid]) ** 2).mean()
