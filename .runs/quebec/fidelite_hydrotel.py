@@ -172,6 +172,27 @@ for s_, d_ in zip(e["src"].values, e["dst"].values):
 for u in td.graph.topo_order.cpu().numpy():
     for v2 in enf.get(int(u), []):
         Acum[v2] += Acum[u]
+# ── OÙ ET QUAND ÇA BIFURQUE : décomposition des 3 flux + cycle saisonnier ──
+print("\n=== DÉCOMPOSITION de la production (mm/an, moyennes réseau) ===")
+_hdt = torch.tensor(hd, device=DEVICE)
+for _nm in ("prod_surf", "prod_hypo", "prod_base"):
+    _v = getattr(diag, _nm, None)
+    if _v is None:
+        print(f"  {_nm:10s} absent")
+        continue
+    print(f"  {_nm:10s} {_v[_hdt].mean().item() * 365.25:7.1f} mm/an")
+print(f"  {'total':10s} {diag.lateral_mm[_hdt].mean().item() * 365.25:7.1f} mm/an")
+
+print("\n=== CYCLE SAISONNIER du débit réseau : méandre / Hydrotel ===")
+_mois = pd.DatetimeIndex(tt[hd][:nT]).month
+print(f"  {'mois':>5s} {'méandre':>9s} {'hydrotel':>9s} {'rapport':>8s}")
+for _m in range(1, 13):
+    _k = _mois == _m
+    if _k.sum() < 10:
+        continue
+    _qm = float(np.nanmean(QM[_k])); _qh = float(np.nanmean(QH[_k]))
+    print(f"  {_m:5d} {_qm:9.2f} {_qh:9.2f} {_qm / max(_qh, 1e-9):8.3f}")
+
 print(f"\n  débit aval vs Hydrotel (2022-2024, {int(np.isfinite(rs).sum())} tronçons) :")
 print(f"  r médian {np.nanmedian(rs):.3f} | beta médian {np.nanmedian(be):.3f}")
 for lo, hi, lib in [(0, 50, 'têtes <50'), (50, 1000, '50-1000'), (1000, 1e9, '>1000 km²')]:

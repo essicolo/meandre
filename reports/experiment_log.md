@@ -1261,3 +1261,21 @@ Ces deux-là n'ont pas été promus parce que chacun a été mesuré contre un s
 - Loi de tarage des lacs (fidélité ×3 mais entraînement pire), assèchement du forçage (découvert ce soir), `lake_lr_mult=50` actif par défaut depuis le 5 août sans validation sur un socle propre.
 
 **Confirmation régionale du déficit de pluie :** SAGU, 19 jauges : P 1011 | Q 678 | P−Q = 341 | MODIS 469, écart +123 mm/an (+36 %), MODIS > P−Q sur 18/19. Le motif de GASP se répète.
+
+## 2026-08-10 — FIDÉLITÉ À INTRANTS IDENTIQUES : l'assemblage réparé change tout
+
+Recadrage d'Essi : identifier les zones de BIFURCATION méandre/Hydrotel, sur une base saine, avant toute amélioration. Entraînement en file annulé. Test refait avec la **météo du PROJET Hydrotel** (Thiessen, mêmes intrants des deux côtés), tous paramètres FIGÉS depuis le projet, assemblage réparé (fermeture de masse + noyau HGM + surface d'eau libre + loi de tarage des lacs).
+
+| mesure (OUTV, 2022-2024, 3412 tronçons) | fidélité v1 (7 août) | aujourd'hui |
+|---|---|---|
+| r médian réseau | 0.368 | **0.576** |
+| beta médian (volume) | 0.584 | **1.018** |
+| r têtes < 50 km² | 0.278 | **0.482** |
+| r lacs | 0.202 | **0.668** |
+| KGE aux jauges | 0.087 | **0.557** |
+
+**Le volume annuel colle maintenant à Hydrotel (beta 1.018 contre 0.584).** Et un méandre SANS AUCUN ENTRAÎNEMENT, paramètres figés, obtient 0.557 aux jauges — mieux que le champion entraîné (0.4992). La base est saine.
+
+**Surface convertie disculpée par mesure directe** : somme des aires locales de méandre 83202 km² contre 83198 km² pour les 8821 UHRH d'Hydrotel (rapport 1.000). Ce n'était pas un facteur d'aire. (L'aire dite « physique » vaut 64.6× le total : c'est l'aire cumulée, exactement le facteur 66 du bug de lac déjà corrigé.)
+
+**BIFURCATION RÉSIDUELLE, unique et nette : l'apport latéral du 1er août ne vaut que 0.265 de celui d'Hydrotel (contre 0.131 avant) alors que le volume ANNUEL est juste.** Le total est bon, la répartition saisonnière ne l'est pas : il manque de l'eau en été. Mesure en cours avec la décomposition nouvellement exposée (surface / hypodermique / base) et le cycle saisonnier du débit réseau, pour dire QUEL flux décroche et QUAND.
