@@ -265,7 +265,8 @@ class HydrotelColumn(nn.Module):
         f_conif_raw = gp("f_forest_conifer_raw")
         if f_conif_raw is not None:        # disponible après rebuild → split fidèle
             pct_conif = f_conif_raw
-            pct_feu = gp("f_forest_deciduous_raw") + (gp("f_forest_mixed_raw") or 0.0)
+            _mix = gp("f_forest_mixed_raw")
+            pct_feu = gp("f_forest_deciduous_raw") + (_mix if _mix is not None else 0.0)
         else:                               # fallback OD : toute la forêt en feuillus
             pct_conif = torch.zeros_like(like); pct_feu = f_forest
         sp_ = torch.nn.functional.softplus

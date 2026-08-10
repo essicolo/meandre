@@ -1279,3 +1279,28 @@ Recadrage d'Essi : identifier les zones de BIFURCATION méandre/Hydrotel, sur un
 **Surface convertie disculpée par mesure directe** : somme des aires locales de méandre 83202 km² contre 83198 km² pour les 8821 UHRH d'Hydrotel (rapport 1.000). Ce n'était pas un facteur d'aire. (L'aire dite « physique » vaut 64.6× le total : c'est l'aire cumulée, exactement le facteur 66 du bug de lac déjà corrigé.)
 
 **BIFURCATION RÉSIDUELLE, unique et nette : l'apport latéral du 1er août ne vaut que 0.265 de celui d'Hydrotel (contre 0.131 avant) alors que le volume ANNUEL est juste.** Le total est bon, la répartition saisonnière ne l'est pas : il manque de l'eau en été. Mesure en cours avec la décomposition nouvellement exposée (surface / hypodermique / base) et le cycle saisonnier du débit réseau, pour dire QUEL flux décroche et QUAND.
+
+## 2026-08-10 — LA BIFURCATION PRINCIPALE : l'occupation du sol n'atteignait JAMAIS la physique
+
+Les colonnes `f_forest`, `f_water`, `f_urban`, `f_wetland` de la base du Québec sont **centrées-réduites** (f_forest va de -3.67 à +1.27, moyenne nulle) et les colonnes brutes `f_*_raw` — les seules que `get_physical` expose (convention `DEFAULT_PHYSICAL_COLUMNS` + suffixe `_raw`) — **n'ont jamais été écrites par le constructeur de régions**. `hydrotel_column._static_params` retombait donc sur ses défauts : **méandre simulait l'Outaouais comme 100 % de sol nu DÉCOUVERT, sans forêt, sans eau libre, sans imperméable, sans milieu humide**, là où Hydrotel a 67.7 % de forêt (35.8 feuillus + 31.9 conifères), 9.4 % d'eau et 2.4 % d'imperméable.
+
+Propagation : le découvert est la classe de neige la plus fondante (Hydrotel y porte 52 mm d'équivalent en eau contre 136 sous conifères) ; `fse = 0` supprime le ruissellement direct sur l'eau libre ; `fsi = 0` supprime le ruissellement imperméable ; la phénologie de l'ETR travaille sur la mauvaise végétation.
+
+**Correctif** : `load_occupation_sol()` lit `physitel/occupation_sol.cla` (9 classes) et l'agrège par tronçon au prorata des aires d'UHRH ; `HydrotelColumn.set_land_cover()` la fait primer sur le territorial. Chargé sur OUTV : forêt 0.742 (conif 0.319), eau 0.093, imperméable 0.018, humide 0.054. Bug dormant corrigé au passage (`gp(...) or 0.0` sur un tenseur, invisible tant que la fraction restait nulle).
+
+**Effet, à intrants identiques et paramètres entièrement figés (OUTV, 2022-2024, 3412 tronçons) :**
+
+| mesure | v1 (7 août) | sans occupation | **avec occupation** |
+|---|---|---|---|
+| r médian réseau | 0.368 | 0.526 | **0.896** |
+| r têtes < 50 km² | 0.278 | 0.448 | **0.874** |
+| r lacs | 0.202 | 0.614 | **0.921** |
+| theta1 / theta2 | 0.92 / 0.90 | 0.92 / 0.90 | **0.978 / 0.968** |
+| apport latéral (1er août) | 0.131 | 0.259 | **0.514** (corr 0.874) |
+| **KGE aux jauges, ZÉRO entraînement** | 0.087 | 0.482 | **0.7486** |
+
+Repères : Hydrotel ~0.82, champion méandre ENTRAÎNÉ 0.4992. **Un méandre sans aucun entraînement dépasse de 0.25 le meilleur modèle entraîné de la série.**
+
+**Bifurcation suivante, désormais isolée : l'ÉVAPOTRANSPIRATION D'ÉTÉ.** beta passe de 1.019 à 1.147 (excès de volume) et le profil saisonnier montre où : janvier-mai à ±12 % d'Hydrotel, mais juin 1.32, juillet 1.55, août 1.56, septembre 1.65, octobre 1.55. Production 624 mm/an contre ~545 pour Hydrotel, soit une ETR de ~355 chez nous contre ~434 chez lui. Le modèle n'évapore pas assez pendant la saison de croissance.
+
+**Leçon de méthode, la plus importante de la session** : ce trou a survécu des mois parce que tous les diagnostics portaient sur les paramètres APPRIS (dispersion, collapse, bornes) et jamais sur les ENTRÉES STATIQUES effectivement reçues par la physique. Une seule ligne de contrôle — imprimer les fractions d'occupation vues par la colonne — l'aurait révélé immédiatement. À ajouter en garde-fou de démarrage.
