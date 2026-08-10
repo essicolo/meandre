@@ -1154,3 +1154,17 @@ Différence de configuration que j'avais introduite sans la voir : `ETL_DEMAND_S
 | Muskingum méandre K=48 h (borne haute) | 4.67 | **−53 %** |
 
 Le déficit de pic n'est donc pas une hypothèse tirée de la lecture du C++ : il est CHIFFRÉ au niveau du module. Hydrotel translate, méandre diffuse, et comme le K appris dérive vers le haut (documenté), le modèle s'auto-condamne à raboter ses crues. Le levier n'est pas un paramètre à recaler, c'est le SCHÉMA.
+
+## 2026-08-09 (nuit) — DIAGNOSTIC CAUSAL du rabotage : ce sont les BORNES de K, pas l'apprentissage
+
+Essi : « une observation, pas un diagnostic causal qui permet une correction ciblée ». Juste. Chaîne établie, chaque maillon MESURÉ au banc de modules (secondes) :
+
+1. **Hypothèse d'abord testée et INFIRMÉE** : « le rabotage est la réponse optimale à une erreur de calage temporel » (double peine quadratique sur un pic mal daté). Faux : avec une référence bien spécifiée, la perte d'entraînement retrouve exactement le bon K (4 h) pour TOUTE largeur d'événement (0.5 à 10 j) et TOUT décalage (0 à 5 j). La perte ne pousse PAS au lissage.
+2. **Fait vérifié, contre ma propre mémoire** : le K appris n'est PAS gonflé par l'entraînement. Champion gasp : init 26 h -> appris **23.7 h** (p10 19.4, p90 27.2, 0 % au-dessus de 40 h). Le modèle descend, il ne monte pas.
+3. **Le K physique, calculé par Manning sur la géométrie réelle de troncon.trl** (longueur médiane 4.3 km OUTV / 3.6 km GASP, vitesse ~2 m/s, célérité 5/3·v) : **médiane 0.2-0.35 h, et 100 % des tronçons sont SOUS l'ancienne borne basse de 4 h.** Le K appris valait donc 60-100× le temps de parcours réel.
+4. **Pourquoi l'optimiseur ne corrige pas** : la perte est quasi plate en K (écart K=4 h contre K=20 h : 0.0479 contre 0.0458, soit 4 % de la perte). Faible identifiabilité -> K reste collé à son initialisation.
+5. **Effet mesuré** : à K=24 h un tronçon atténue un événement court de **27 %** et l'étale sur 4 jours ; à 48 h, −53 % sur 8 jours ; à K physique (<= 8 h) le pic passe INTACT (10.00 contre 10.61 pour le clone de l'onde cinématique) et l'étalement tombe à 1 jour. L'effet se COMPOSE le long de la chaîne topologique.
+
+**Conclusion causale : le rabotage était imposé par les bornes et l'initialisation de K_musk, pas choisi par l'apprentissage.** Cela referme le diagnostic de juin : Hydrotel étale au VERSANT (hydrogramme géomorphologique) puis translate dans le canal ; méandre n'avait pas d'étalement au versant et compensait par un canal ultra-diffusif. Le noyau HGM et le K physique forment la paire cohérente à tester ensemble.
+
+**Correction ciblée appliquée** : bornes et init de K_musk configurables par `MEANDRE_KMUSK="min,max,init"` (défaut historique 4,48,24 conservé pour ne pas réinterpréter les checkpoints existants). 150 tests passent. Le mode opérateur reste sain à petit K (c2=0 -> translation pure) ; le mode message-passing exige K >= 4 h avec n_substeps=2.

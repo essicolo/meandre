@@ -17,7 +17,14 @@ import math
 from dataclasses import dataclass
 from typing import ClassVar
 
+import os
 import torch
+
+# Bornes du temps de transfert Muskingum (heures). Défaut historique [4, 48] avec init
+# 24 ; MEANDRE_KMUSK="min,max,init" permet de descendre au temps de parcours PHYSIQUE
+# (~0.2-0.35 h mesuré par Manning sur troncon.trl). Voir le commentaire dans forward().
+_kmb = os.environ.get("MEANDRE_KMUSK", "4,48,24").split(",")
+_KMUSK_MIN, _KMUSK_MAX, _KMUSK_INIT = (float(_kmb[0]), float(_kmb[1]), float(_kmb[2]))
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -346,7 +353,7 @@ class SpatialFieldNetwork(nn.Module):
             # van Genuchten n — loam ~1.5
             "vg_n": 1.5,
             # Muskingum
-            "K_musk_hours": 24.0, "x_musk": 0.20,
+            "K_musk_hours": _KMUSK_INIT, "x_musk": 0.20,
             # ETP scaling — défaut 1.0 (FAO-56 reference comme Hydrotel PM).
             "K_c": 1.0,
             # Sub-daily storm duration — 12h par défaut (vs 6h hardcodé avant).
@@ -434,7 +441,7 @@ class SpatialFieldNetwork(nn.Module):
         # f_vert_2: bounded [0, 1]
         raw[i] = inv_bounded(d["f_vert_2"], 0.0, 1.0); i += 1
         # K_musk_hours: bounded [4, 48]
-        raw[i] = inv_bounded(d["K_musk_hours"], 4.0, 48.0); i += 1
+        raw[i] = inv_bounded(d["K_musk_hours"], _KMUSK_MIN, _KMUSK_MAX); i += 1
         # x_musk: bounded [0.01, 0.49]
         raw[i] = inv_bounded(d["x_musk"], 0.01, 0.49); i += 1
         # K_c: bounded [0.3, 1.5]
@@ -661,11 +668,20 @@ class SpatialFieldNetwork(nn.Module):
         constrained.append(bounded(cols[i], 1.3, 2.7)); i += 1
         # f_vert_2: partition layer 2 vertical/lateral, (0, 1)
         constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
-        # K_musk_hours: Muskingum travel time [4, 48] hours.
-        # Stabilité numérique avec n_substeps=2 (sub_dt=12h) requiert K ≥ ~6h;
-        # bound 4 conservé comme défaut. Bornes étendues à 0.5 nécessitent
-        # n_substeps ≥ 24 (cf message_passing.py) — pas activé par défaut.
-        constrained.append(bounded(cols[i], 4.0, 48.0)); i += 1
+        # K_musk_hours: temps de transfert Muskingum, bornes CONFIGURABLES.
+        # MESURE 2026-08-09 (banc de modules, Manning sur la géométrie réelle du trl) :
+        # le temps de parcours PHYSIQUE des tronçons vaut ~0.2-0.35 h (longueur médiane
+        # 3.6-4.3 km, vitesse ~2 m/s) et 100 % des tronçons sont sous l'ancienne borne
+        # basse de 4 h. Le K appris (23.7 h sur le champion gasp) valait donc 60-100×
+        # le temps de parcours réel : chaque tronçon se comportait en réservoir d'un
+        # jour, atténuant un événement court de 27 % et l'étalant sur 4 jours, effet
+        # composé le long de la chaîne topologique. L'optimiseur ne pouvait pas le
+        # corriger (borne + perte quasi plate en K, mesurée à 4 % de la perte totale).
+        # À K physique le même code reproduit la translation d'Hydrotel (pic 10.00
+        # contre 10.61 pour le clone de l'onde cinématique).
+        # Stabilité : en mode opérateur un petit K donne c2=0, soit translation pure,
+        # numériquement sain. En mode message-passing (n_substeps=2) garder K >= 4.
+        constrained.append(bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX)); i += 1
         # x_musk: Muskingum weighting factor [0.01, 0.49]
         constrained.append(bounded(cols[i], 0.01, 0.49)); i += 1
         # K_c: ETP scaling [0.3, 1.5]. Default ~1.0 (FAO-56 reference).

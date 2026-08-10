@@ -49,3 +49,11 @@ for ck in CKS:
     plancher = float((kk < 1.5e-6).mean() * 100); plafond = float((kk > 6.7e-3).mean() * 100)
     print(f"tete de lac : k med {np.median(kk):.3e} | etendue x{kk.max()/max(kk.min(),1e-30):.1f} | "
           f"beta med {np.median(bb):.3f} | {plancher:.1f} % au plancher, {plafond:.1f} % au plafond")
+    # K_musk / x_musk : le routage est-il poussé vers la diffusion ? (question d'Essi)
+    km0 = sp0.K_musk_hours.double().numpy(); km = sp.K_musk_hours.double().numpy()
+    xm = sp.x_musk.double().numpy()
+    riv = (~lac).numpy()
+    print(f"K_musk (h)  init {np.median(km0):5.1f} -> appris med {np.median(km[riv]):5.1f} "
+          f"| p10 {np.percentile(km[riv],10):4.1f} | p90 {np.percentile(km[riv],90):4.1f} "
+          f"| {100*(km[riv]>40).mean():.1f} % au-dessus de 40 h, {100*(km[riv]<8).mean():.1f} % sous 8 h")
+    print(f"x_musk      appris med {np.median(xm[riv]):.3f} (0.5 = advection pure, 0 = diffusion max)")
