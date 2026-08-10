@@ -1192,3 +1192,19 @@ Essi : « peux-tu tester encore cette hypothèse ? pourquoi l'avions-nous manqu�
 La cause 2 est la seule généralisable : ajouter au contrôle de paramètres une confrontation à une grandeur physique indépendante (Manning pour K, pédotransfert pour K_sat, récessions pour k_gw), pas seulement une statistique de dispersion.
 
 Test suivant (en cours) : chaîner le CLONE de l'onde cinématique N fois. Je n'avais mesuré sa réponse que sur UN tronçon ; si le schéma d'Hydrotel accumule lui aussi du stockage le long d'une chaîne, l'estimation par Manning est simplement hors sujet et l'étalement observé est celui du réseau, pas d'un paramètre.
+
+### Balayage complet de K sur le vrai réseau (OUTV, banc de routage, avec noyau HGM)
+
+| K_musk | KGE aux jauges | r réseau vs Hydrotel |
+|---|---|---|
+| 0.35 h (Manning) | 0.395 | 0.373 |
+| 23.7 h (appris) | **0.526** | 0.470 |
+| 48 h (borne haute) | 0.480 | 0.550 |
+| 120 h (hors bornes) | 0.191 | **0.616** |
+
+**DISSOCIATION MAJEURE : la fidélité à Hydrotel croît de façon MONOTONE avec K, alors que l'accord aux OBSERVATIONS culmine au K appris (~24 h) et s'effondre au-delà.** Deux conséquences.
+
+1. **Le K appris est déjà à son optimum vis-à-vis des observations.** L'entraînement fait ce qu'il peut ; le routage est innocenté, cette fois par un BALAYAGE de paramètre et non par un échange de schémas (la faiblesse de la ronde de juin).
+2. **Ressembler structurellement à Hydrotel REND MOINS BON contre le réel.** Hydrotel est à la fois très diffusif ET précis (0.82 aux jauges sur OUTV) ; méandre diffusif est mauvais. Donc l'avantage d'Hydrotel n'est PAS son routage : sa diffusion n'est bonne que parce qu'elle est nourrie par une production différente. Le levier restant est la GÉNÉRATION, ce que concluait déjà juin — désormais établi par un balayage quantifié.
+
+**Erreur de banc corrigée au passage :** ma mesure « Hydrotel translate sans atténuer » était fausse parce que j'injectais l'impulsion en apport LATÉRAL dans les deux schémas. Le clone traite très différemment l'eau latérale (traverse quasi intacte) et l'eau d'AMONT (−43 % de pic PAR tronçon, −97 % après 40). Le réseau réel propage surtout de l'eau d'amont : Hydrotel est donc BEAUCOUP plus diffusif que méandre, l'inverse de ce que j'avais écrit. Leçon de conception de banc : tester un opérateur sur le canal d'entrée qui domine réellement, pas sur le plus commode.
