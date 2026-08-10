@@ -27,7 +27,8 @@ import tomllib, numpy as np, pandas as pd, torch, xarray as xr
 from meandre.model import HydroModel
 from meandre.utils.state import HydroState
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes,
-                                         load_melt_nodes, load_passage_pluie_neige)
+                                         load_melt_nodes, load_passage_pluie_neige,
+                                         load_occupation_sol)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
@@ -124,6 +125,13 @@ m.set_lake_area(torch.tensor(np.where(couv, surf, 1.0), dtype=torch.float32))
 _seuil = load_passage_pluie_neige(PROJ)
 m.vertical_column.t_neige_seuil = _seuil
 print(f"[fidelite] seuil pluie/neige du projet : {_seuil:+.4f} °C (méandre codait 0.0)")
+# 4c. OCCUPATION DU SOL brute de PHYSITEL (la base du Québec ne porte que des
+# colonnes centrées-réduites : méandre voyait 0 % de forêt et 0 % d'eau)
+_lc = load_occupation_sol(PROJ, node_ids, device=DEVICE)
+m.vertical_column.set_land_cover(_lc)
+print(f"[fidelite] occupation PHYSITEL : forêt {float(_lc['f_forest_raw'].mean()):.3f} "
+      f"(conif {float(_lc['f_forest_conifer_raw'].mean()):.3f}) | eau {float(_lc['f_water_raw'].mean()):.3f} "
+      f"| imperméable {float(_lc['f_urban_raw'].mean()):.3f} | humide {float(_lc['f_wetland_raw'].mean()):.3f}")
 # 5. noyau de versant
 m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
 print(f"[fidelite] {REG} : sol+linacre+fonte+lacs+hgm figés depuis {PROJ}", flush=True)

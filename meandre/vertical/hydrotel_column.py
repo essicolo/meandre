@@ -226,7 +226,13 @@ class HydrotelColumn(nn.Module):
         split conif/feuillus brut manque — voir _raw_keep / rebuild).
         Pose le résultat via set_static() et retourne (p_snow, p_soil, p_etr)."""
         like = sp.porosity_1
-        gp = territorial.get_physical
+        # OCCUPATION DU SOL : les fractions posées par set_land_cover() (PHYSITEL brut)
+        # priment sur le territorial, dont les colonnes `f_*` de la base du Québec sont
+        # CENTRÉES-RÉDUITES et dont les `f_*_raw` n'existent pas — voir
+        # meandre.data.hydrotel_calib.load_occupation_sol.
+        _lc = getattr(self, "_land_cover", None)
+        _gp0 = territorial.get_physical
+        gp = (lambda k: (_lc[k] if (_lc is not None and k in _lc) else _gp0(k)))
         z = lambda k, d: (gp(k) if gp(k) is not None else torch.full_like(like, d))
 
         # occupation brute
@@ -510,6 +516,13 @@ class HydrotelColumn(nn.Module):
         for nm, v in [("lin_lat", lat), ("lin_alti", alti), ("lin_tfroid", t_froid),
                       ("lin_tchaud", t_chaud), ("lin_albedo", albedo), ("lin_coeff", coeff)]:
             self.register_buffer(nm, torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
+
+    def set_land_cover(self, lc: dict | None):
+        """Fractions d'occupation du sol BRUTES par nœud (clés `f_*_raw`), en général
+        chargées de PHYSITEL par load_occupation_sol(). Priment sur le territorial dans
+        _static_params : classes de neige (conifères / feuillus / découvert), split
+        fsa/fse/fsi, phénologie de l'ETR."""
+        self._land_cover = lc
 
     def set_melt_params(self, mp: dict):
         """Params fonte RÉGIONAUX par nœud (degre_jour_modifie.csv du calage

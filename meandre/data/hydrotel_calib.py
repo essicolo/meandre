@@ -192,3 +192,78 @@ def load_passage_pluie_neige(project_dir, defaut: float = 0.0) -> float:
     if not col:
         return defaut
     return float(_np.median(d[col[0]].values))
+
+
+def load_occupation_sol(project_dir, node_ids, device="cpu"):
+    """OCCUPATION DU SOL brute de PHYSITEL (physitel/occupation_sol.cla), agrégée par
+    tronçon au prorata des aires d'UHRH, en FRACTIONS (somme = 1).
+
+    BIFURCATION TROUVÉE LE 2026-08-10, la plus lourde de la série. Les colonnes
+    d'occupation de la base du Québec sont CENTRÉES-RÉDUITES (f_forest va de -3.67 à
+    +1.27, moyenne nulle) et les colonnes brutes `f_*_raw` n'ont jamais été écrites par
+    le constructeur de régions. `get_physical("f_forest_raw")` renvoie donc None et la
+    colonne retombe sur son défaut 0.0 : méandre simulait l'Outaouais comme 100 % de sol
+    nu DÉCOUVERT, sans forêt, sans eau libre, sans imperméable — là où Hydrotel a 67.7 %
+    de forêt (35.8 feuillus + 31.9 conifères) et 9.4 % d'eau. Or le découvert est la
+    classe de neige qui fond le plus vite : Hydrotel y porte 52 mm d'équivalent en eau
+    contre 136 sous conifères. D'où un manteau deux fois trop maigre, une fonte
+    d'un mois trop précoce (rapports 1.37 et 1.47 contre Hydrotel en février-mars) et
+    une crue de printemps amputée (0.86 et 0.79 en avril-mai).
+
+    Retourne un dict de tenseurs (n_nodes,) prêt pour ``HydrotelColumn.set_land_cover``.
+    """
+    from pathlib import Path
+    import numpy as np
+    import pandas as pd
+    import torch
+    from meandre.data.physitel_loader import _parse_troncon
+
+    proj = Path(project_dir)
+    lignes = [l.split() for l in
+              (proj / "physitel" / "occupation_sol.cla").read_text(encoding="latin-1").splitlines()
+              if l.strip()]
+    noms = [x.strip('"') for x in lignes[2][1:]]
+    ids = np.array([int(r[0]) for r in lignes[3:]])
+    A = np.array([[float(x) for x in r[1:]] for r in lignes[3:]], dtype=np.float64)
+    tot = np.clip(A.sum(axis=1, keepdims=True), 1e-9, None)
+    frac = A / tot                                   # fraction de pixels par UHRH
+    par_uhrh = {int(i): frac[k] for k, i in enumerate(ids)}
+
+    def col(motifs):
+        return [k for k, nm in enumerate(noms) if any(m in nm.lower() for m in motifs)]
+    idx = {
+        "f_water_raw": col(["eau"]),
+        "f_urban_raw": col(["impermeable"]),
+        "f_wetland_raw": col(["tourbiere", "milieu_humide"]),
+        "f_forest_conifer_raw": col(["conifere"]),
+        "f_forest_deciduous_raw": col(["feuillu"]),
+        "f_agriculture_raw": col(["agricole"]),
+        "f_bare_raw": col(["sol_nu"]),
+    }
+    tr = {t["id"]: t for t in _parse_troncon(proj / "physitel" / "troncon.trl")}
+    uh = pd.read_csv(proj / "physitel" / "uhrh.csv", sep=";", skiprows=1)
+    col_aire = next((c for c in uh.columns if "superficie" in c.lower() or "aire" in c.lower()), None)
+    aires = dict(zip(uh[uh.columns[0]].astype(int), uh[col_aire].astype(float)))
+
+    n = len(node_ids)
+    out = {k: np.zeros(n, dtype=np.float32) for k in idx}
+    for j, nid in enumerate(node_ids):
+        t = tr.get(int(nid))
+        if t is None:
+            continue
+        acc = np.zeros(len(noms)); wtot = 0.0
+        for uid in t["uhrh_ids"]:
+            f = par_uhrh.get(abs(int(uid)))
+            if f is None:
+                continue
+            w = aires.get(abs(int(uid)), 1.0)
+            acc += w * f; wtot += w
+        if wtot <= 0:
+            continue
+        acc /= wtot
+        for k, cols in idx.items():
+            out[k][j] = float(acc[cols].sum()) if cols else 0.0
+    res = {k: torch.tensor(v, dtype=torch.float32, device=device) for k, v in out.items()}
+    res["f_forest_raw"] = res["f_forest_conifer_raw"] + res["f_forest_deciduous_raw"]
+    res["f_forest_mixed_raw"] = torch.zeros_like(res["f_forest_raw"])
+    return res
