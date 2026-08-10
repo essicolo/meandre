@@ -344,6 +344,21 @@ class HydrotelColumn(nn.Module):
             et_classes.append((pct_conif, _JBP, _LEAF["conifers"], _ROOT["conifers"]))
         if f_wet.sum() > 0:
             et_classes.append((f_wet, _JBP, _LEAF["humides"], _ROOT["humides"]))
+        # DÉFICIT D'ETR D'ÉTÉ (corrigé le 2026-08-10) : seules forêt et milieu humide
+        # recevaient une classe de végétation, soit 79.6 % du territoire sur OUTV.
+        # L'agriculture (12 %) et le sol nu ne transpiraient PAS DU TOUT, alors que les
+        # profils existent dans _LEAF/_ROOT. Il en résultait ~12 % de production
+        # excédentaire, concentrée en juillet-octobre (rapports 1.48 à 1.59 contre
+        # Hydrotel). On ajoute l'agriculture puis on verse le RÉSIDU de la fraction
+        # perméable en classe ouverte, pour que l'ETR couvre bien tout fsa.
+        pct_agri = z("f_agriculture_raw", 0.0)
+        if pct_agri.sum() > 0:
+            et_classes.append((pct_agri, _JBP, _LEAF["agri"], _ROOT["agri"]))
+        if et_classes:
+            _couvert = pct_feu + pct_conif + f_wet + pct_agri
+            _reste = torch.clamp(fsa - _couvert, min=0.0)
+            if _reste.sum() > 0:
+                et_classes.append((_reste, _JBP, _LEAF["ouverts"], _ROOT["ouverts"]))
         # DÉGRADATION GRACIEUSE : sans descriptif d'occupation (ex réseau PHYSITEL,
         # qui ne porte pas les fractions par classe), l'ET ne doit PAS tomber à 0.
         # Classe végétation par défaut sur la fraction perméable (LAI/racines

@@ -1323,3 +1323,22 @@ Même famille que l'occupation du sol : une entrée demandée en brut, absente d
 **Température de fonte** : `T_melt` EXISTE dans le champ spatial et est lu, mais seulement si `spatial_melt`, et l'ancrage régional écrase le seuil. Le TAUX a déjà la forme ancrage × modulation apprise bornée ; le SEUIL n'a pas d'équivalent. Correction proposée : symétriser (seuil ancré + écart appris borné ±1.5 °C, régularisé vers zéro). `T_snow` (partition pluie/neige) est MORT dans le champ ; il est désormais chargé du `thiessen.csv`.
 
 **Deux bugs dans l'ingestion des données molles** : (a) MODIS fournit une moyenne 8 jours posée sur un seul jour du calendrier, comparée à l'ETR simulée de CE jour — bruit pur, et pollution de toute variance servant à standardiser ; (b) la ligne de base GRACE est calculée par tronçon de séquence alors que le code documente une ligne de base longue durée. Enfin le `w_et` est une MSE brute en mm²/j² non normalisée, alors que débit et TWS sont réduits : le poids 1.0 n'a pas d'échelle comparable.
+
+### Réparations en chaîne du 10 août : le modèle FIGÉ dépasse le champion ENTRAÎNÉ
+
+| étape (OUTV, intrants identiques, paramètres FIGÉS) | r réseau | r têtes | r lacs | beta | KGE jauges |
+|---|---|---|---|---|---|
+| v1 du 7 août | 0.368 | 0.278 | 0.202 | 0.584 | 0.087 |
+| + fermeture de masse, HGM, lacs trl, surface d'eau | 0.576 | 0.482 | 0.668 | 1.018 | 0.557 |
+| + seuil pluie/neige du projet (thiessen.csv) | 0.526 | 0.448 | 0.614 | 1.019 | 0.482 |
+| **+ occupation du sol PHYSITEL** | 0.896 | 0.874 | 0.921 | 1.147 | **0.749** |
+| + milieux humides isolés | 0.915 | 0.896 | 0.940 | 1.098 | 0.741 |
+| **+ ETR sur TOUTE la fraction perméable** | **0.922** | **0.903** | **0.944** | **1.069** | **0.7514** |
+
+Repères : Hydrotel ~0.82, champion méandre ENTRAÎNÉ 30 époques 0.4992 sur cette configuration, 0.7489 sur la recette du 29 juillet. **Un méandre à paramètres entièrement figés, sans une seule époque, dépasse désormais le meilleur modèle entraîné de la série.**
+
+**Dernier correctif : l'ETR ne couvrait que 79.6 % du territoire.** Seules les classes forêt et milieu humide recevaient un profil de végétation ; l'agriculture (12 % sur OUTV) et le sol nu ne transpiraient PAS, alors que les profils `agri` et `ouverts` existent dans `_LEAF`/`_ROOT` depuis toujours. Correctif : classe agricole ajoutée, puis résidu de la fraction perméable versé en classe ouverte. Effet mesuré : production 601 -> 568 mm/an, excès d'été de 1.49 à 1.34 en juillet, de 1.59 à 1.39 en septembre.
+
+**Reproductibilité du champion** : avec `ETL_WET=0`, 0.6871 contre 0.5504 — le terme MODIS vaut donc bien ~0.14 de KGE à lui seul. Il reste 0.062 d'écart au 0.7489, attribuable à la variance entre exécutions ou à un changement de défaut depuis le 29 juillet. Chasse abandonnée : ce socle est périmé par les correctifs d'assemblage.
+
+**Bifurcations restantes, dans l'ordre** : avril à 0.797 (crue de fonte encore trop faible, alors que mars et mai sont justes) ; excès d'été résiduel de 30 à 40 % ; ligne de base GRACE calculée par tronçon de séquence ; seuil de fonte à symétriser avec le taux (ancrage + écart appris borné) ; 13 sorties mortes du champ spatial à retirer.
