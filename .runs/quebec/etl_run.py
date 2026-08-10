@@ -277,6 +277,28 @@ if "ETL_MELT_DIR" in os.environ:
     print(f"[etl] fonte régionale ancrée ({os.environ['ETL_MELT_DIR'].split('/')[-1]}) | "
           f"taux méd {float(_mp['taux_c'].median()):.1f}/{float(_mp['taux_f'].median()):.1f}/{float(_mp['taux_d'].median()):.1f}")
 
+# OCCUPATION DU SOL de PHYSITEL (défaut ON depuis le 2026-08-10). Sans elle, la
+# physique reçoit 0 % de forêt, 0 % d'eau libre, 0 % d'imperméable et 0 % de milieu
+# humide : tout le Québec en classe DÉCOUVERT (la plus fondante), fse=fsi=0, et une
+# phénologie unique. Mesuré sur OUTV à intrants identiques et paramètres figés :
+# r réseau 0.526 -> 0.896, KGE aux jauges 0.482 -> 0.749. ETL_OCCUPATION=0 pour l'ancien
+# comportement (comparaisons historiques).
+if os.environ.get("ETL_OCCUPATION", "1") == "1":
+    _plat = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA"
+    _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
+    try:
+        from meandre.data.hydrotel_calib import load_occupation_sol
+        _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
+        model.vertical_column.set_land_cover(_lc)
+        print(f"[etl] occupation PHYSITEL : forêt {float(_lc['f_forest_raw'].mean()):.3f} "
+              f"(conif {float(_lc['f_forest_conifer_raw'].mean()):.3f}) | "
+              f"eau {float(_lc['f_water_raw'].mean()):.3f} | "
+              f"imperméable {float(_lc['f_urban_raw'].mean()):.3f} | "
+              f"humide {float(_lc['f_wetland_raw'].mean()):.3f}")
+    except Exception as _e:
+        print(f"[etl] AVERTISSEMENT occupation du sol NON chargée ({type(_e).__name__}: {_e}) "
+              f"-> la physique verra 0 % de forêt et 0 % d'eau")
+
 # CÉLÉRITÉ : le K_musk appris collapse à 24h/tronçon (init) -> retard cumulé 6j du pic
 # (diag GASP). Facteur d'échelle sur K_musk_hours (célérité de base plus rapide), en
 # gardant le routage opérateur rapide (contrairement à dq_celerity qui le casse).
