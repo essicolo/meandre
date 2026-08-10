@@ -1208,3 +1208,13 @@ Test suivant (en cours) : chaîner le CLONE de l'onde cinématique N fois. Je n'
 2. **Ressembler structurellement à Hydrotel REND MOINS BON contre le réel.** Hydrotel est à la fois très diffusif ET précis (0.82 aux jauges sur OUTV) ; méandre diffusif est mauvais. Donc l'avantage d'Hydrotel n'est PAS son routage : sa diffusion n'est bonne que parce qu'elle est nourrie par une production différente. Le levier restant est la GÉNÉRATION, ce que concluait déjà juin — désormais établi par un balayage quantifié.
 
 **Erreur de banc corrigée au passage :** ma mesure « Hydrotel translate sans atténuer » était fausse parce que j'injectais l'impulsion en apport LATÉRAL dans les deux schémas. Le clone traite très différemment l'eau latérale (traverse quasi intacte) et l'eau d'AMONT (−43 % de pic PAR tronçon, −97 % après 40). Le réseau réel propage surtout de l'eau d'amont : Hydrotel est donc BEAUCOUP plus diffusif que méandre, l'inverse de ce que j'avais écrit. Leçon de conception de banc : tester un opérateur sur le canal d'entrée qui domine réellement, pas sur le plus commode.
+
+### Le champion n'était pas reproductible — et la cause est UNE ligne
+
+Reproduction à configuration « identique » : **0.5504 contre 0.7489**. Diff des bannières des deux journaux : une seule ligne d'écart, `[etl] w_et override = 0.0`. **Le champion du 29 juillet tournait avec la contrainte d'évapotranspiration MODIS DÉSACTIVÉE** (`ETL_WET=0`) ; toutes mes reproductions du 9 août l'avaient active (w_et = 1.0 du fichier de configuration).
+
+Conséquence immédiate : **tout ce que j'ai attribué aujourd'hui à la fermeture de masse, au noyau HGM, au nombre d'époques ou au taux d'apprentissage des lacs portait en réalité sur un terme de perte différent.** Les comparaisons À 12 ÉPOQUES entre elles restent valides (toutes avaient w_et actif) ; les comparaisons AU CHAMPION ne l'étaient pas, aucune.
+
+Enseignement de méthode, le plus cher de la journée : la configuration d'un run doit être reconstituée depuis SON journal, pas depuis la mémoire de la recette. Un simple `diff` des bannières, fait au premier écart inexpliqué, aurait économisé six entraînements de 1 à 3.5 h. À automatiser : bannière complète de toutes les variables ETL_* en tête de journal, et comparaison automatique à la meilleure exécution connue.
+
+Deuxième question ouverte, importante en soi : si w_et = 1.0 coûte 0.20 en tenu de côté sur GASP, le multi-objectif MODIS — présenté comme un pilier de l'identifiabilité — est à réexaminer sur toutes les régions.
