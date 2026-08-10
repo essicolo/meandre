@@ -1304,3 +1304,22 @@ Repères : Hydrotel ~0.82, champion méandre ENTRAÎNÉ 0.4992. **Un méandre sa
 **Bifurcation suivante, désormais isolée : l'ÉVAPOTRANSPIRATION D'ÉTÉ.** beta passe de 1.019 à 1.147 (excès de volume) et le profil saisonnier montre où : janvier-mai à ±12 % d'Hydrotel, mais juin 1.32, juillet 1.55, août 1.56, septembre 1.65, octobre 1.55. Production 624 mm/an contre ~545 pour Hydrotel, soit une ETR de ~355 chez nous contre ~434 chez lui. Le modèle n'évapore pas assez pendant la saison de croissance.
 
 **Leçon de méthode, la plus importante de la session** : ce trou a survécu des mois parce que tous les diagnostics portaient sur les paramètres APPRIS (dispersion, collapse, bornes) et jamais sur les ENTRÉES STATIQUES effectivement reçues par la physique. Une seule ligne de contrôle — imprimer les fractions d'occupation vues par la colonne — l'aurait révélé immédiatement. À ajouter en garde-fou de démarrage.
+
+### Audit complet des entrées statiques muettes (3 agents parallèles, 2026-08-10)
+
+Même famille que l'occupation du sol : une entrée demandée en brut, absente du cache, repli silencieux sur un défaut.
+
+1. **Classes de neige** (déjà corrigé) : 100 % du Québec en classe découvert.
+2. **Partition fsa/fse/fsi** (corrigé par le même chargeur) : `fse = 0` et `fsi = 0`, donc aucune pluie-sur-lac directe ni ruissellement imperméable, sur des tronçons à 9 % d'eau.
+3. **Phénologie de l'ETR** (corrigé) : sans fractions, `et_classes` restait vide et le code repliait sur une classe végétale unique — LAI et profondeur racinaire uniformes sur toute la province.
+4. **MILIEU HUMIDE ISOLÉ : module ENTIÈREMENT DÉSACTIVÉ, non corrigé.** `wet_a_raw` absent -> `_wetland_from_territorial` renvoie None -> `wetland=None`, et `wet_vol` reste 0. Aucun laminage par milieu humide nulle part, pour 7.6 % de superficie humide moyenne. Silencieux : aucun log. Les paramètres existent pourtant dans le projet Hydrotel (`simulation/simulation/milieux_humides_isoles.csv` et `_riverains.csv`).
+5. **`depth_to_bedrock_m` écrit en zéros constants** par les deux constructeurs, et exclu du NeRF puisque déclaré physique : canal mort des deux côtés.
+6. **`reach_length_m`** déclaré physique mais jamais écrit par le chemin PHYSITEL.
+7. **Piège armé** : `mean_slope_pct_raw` retomberait sur 4 % partout ; masqué aujourd'hui parce que `slope_fraction` existe.
+8. **Risque de corruption par normalisation** : `sin_aspect`/`cos_aspect` sont lus dans le tenseur NORMALISÉ. Restés bruts sur le chemin PHYSITEL (vérifié, min/max ±1), mais le chemin `basin_builder` z-score toutes les colonnes : un `atan2` de deux variables standardisées séparément donne un azimut faux, silencieusement.
+
+**Carte d'usage du champ spatial (37 sorties)** : 13 ACTIVES, 5 conditionnelles (dont 2 inactives au Québec), 6 lues seulement par les pertes de régularisation et la tête probabiliste, **13 MORTES**. Les 17 paramètres « figés » signalés depuis des jours sont exactement les morts et les décoratifs ; aucun paramètre actif n'est figé. L'entraînement porte en réalité sur 13 champs.
+
+**Température de fonte** : `T_melt` EXISTE dans le champ spatial et est lu, mais seulement si `spatial_melt`, et l'ancrage régional écrase le seuil. Le TAUX a déjà la forme ancrage × modulation apprise bornée ; le SEUIL n'a pas d'équivalent. Correction proposée : symétriser (seuil ancré + écart appris borné ±1.5 °C, régularisé vers zéro). `T_snow` (partition pluie/neige) est MORT dans le champ ; il est désormais chargé du `thiessen.csv`.
+
+**Deux bugs dans l'ingestion des données molles** : (a) MODIS fournit une moyenne 8 jours posée sur un seul jour du calendrier, comparée à l'ETR simulée de CE jour — bruit pur, et pollution de toute variance servant à standardiser ; (b) la ligne de base GRACE est calculée par tronçon de séquence alors que le code documente une ligne de base longue durée. Enfin le `w_et` est une MSE brute en mm²/j² non normalisée, alors que débit et TWS sont réduits : le poids 1.0 n'a pas d'échelle comparable.
