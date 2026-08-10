@@ -158,7 +158,8 @@ def test_to_dict_keys():
     assert core.issubset(keys), f"Missing keys: {core - keys}"
     # T_water/swe conditionnels ; theta1/2/3 + stockages (canopy/s_gw/wetland) =
     # diagnostics d'état exposés par SimDiagnostics.
-    allowed_extra = {"T_water", "swe", "theta1", "theta2", "theta3", "canopy", "s_gw", "wetland"}
+    allowed_extra = {"T_water", "swe", "theta1", "theta2", "theta3", "canopy", "s_gw", "wetland",
+                         "prod_surf", "prod_hypo", "prod_base"}
     assert keys - core <= allowed_extra, f"Unexpected keys: {keys - core - allowed_extra}"
 
 

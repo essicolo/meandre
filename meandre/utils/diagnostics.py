@@ -73,6 +73,12 @@ class SimDiagnostics:
     s_gw: Tensor | None = None     # (T, N) mm — groundwater storage (aquifer)
     canopy: Tensor | None = None   # (T, N) mm — canopy interception storage
     wetland: Tensor | None = None  # (T, N) mm — wetland storage
+    # Décomposition de lateral_mm (mm/jour) : surface (ruissellement + débordement de
+    # saturation), hypodermique (drainage latéral couche 2), base (recharge q3). Sert à
+    # localiser la bifurcation avec Hydrotel étage par étage plutôt qu'au total.
+    prod_surf: Tensor | None = None
+    prod_hypo: Tensor | None = None
+    prod_base: Tensor | None = None
 
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled
@@ -92,6 +98,9 @@ class SimDiagnostics:
             "etr": self.etr,
             "snowmelt": self.snowmelt,
             "lateral_mm": self.lateral_mm,
+            **({"prod_surf": self.prod_surf} if self.prod_surf is not None else {}),
+            **({"prod_hypo": self.prod_hypo} if self.prod_hypo is not None else {}),
+            **({"prod_base": self.prod_base} if self.prod_base is not None else {}),
             "recharge": self.recharge,
             "q_baseflow": self.q_baseflow,
             "q_lateral": self.q_lateral,
