@@ -292,7 +292,10 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
               f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
     else:
         print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
-if os.environ.get("ETL_LAKE_AREA", "0") == "1":
+# ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
+# DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
+# tenu de côté, gain survivant au réentraînement. Désactivable par ETL_LAKE_AREA=0.
+if os.environ.get("ETL_LAKE_AREA", "1") == "1":
     # CORRECTIF DE SURFACE DE LAC (bug trouve le 2026-08-07). Le module de lac calcule la
     # hauteur d'eau comme S/A mais recevait l'aire de DRAINAGE du troncon, mediane 175x la
     # surface reelle du plan d'eau. Q = k*(S/A)^beta*A varie comme A^(1-beta) : avec
@@ -349,7 +352,11 @@ if os.environ.get("ETL_PEDO", "0") == "1":
               f"K_sat q10-q90 {float(_mot['K_sat'].quantile(.1)):.2f}-{float(_mot['K_sat'].quantile(.9)):.2f}")
     else:
         print(f"[etl] pedotransfert ignoree ({len(_rwp)} vs {n_nodes} noeuds)")
-if os.environ.get("ETL_HGM", "0") == "1":
+# ASSEMBLAGE (promu par défaut le 2026-08-09) : Hydrotel étale la production au VERSANT
+# par son hydrogramme géomorphologique (<=10 j) avant le canal ; méandre livrait tout le
+# jour même. Mesuré : r réseau contre Hydrotel 0.335 -> 0.470, +0.027 aux jauges en
+# inférence pure. Désactivable par ETL_HGM=0.
+if os.environ.get("ETL_HGM", "1") == "1":
     # NOYAU DE VERSANT D'HYDROTEL (cache .hgm du projet) : etale la production laterale
     # comme le C++ (convolution <=10 j, onde cinematique pixel par pixel precalculee).
     # Sans lui, l'eau du jour J arrive au troncon le jour J et les tetes de bassin
@@ -362,7 +369,10 @@ if os.environ.get("ETL_HGM", "0") == "1":
     model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
     import numpy as _nph
     print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={_K.shape[1]}")
-if os.environ.get("ETL_LAKE_TRL", "0") == "1":
+# ASSEMBLAGE (promu par défaut le 2026-08-09) : loi de tarage Q = c·h^k calibrée du
+# troncon.trl, que le lecteur PHYSITEL jetait. Fidélité des tronçons-lacs 0.202 -> 0.669.
+# Désactivable par ETL_LAKE_TRL=0.
+if os.environ.get("ETL_LAKE_TRL", "1") == "1":
     # LACS D'HYDROTEL depuis troncon.trl : surface d'eau + loi de tarage calibree
     # Q = c*h^k (le parseur historique JETAIT c et k et lisait la surface comme une
     # largeur). k_lake = c/A, beta = k. Impose HORS gradient (surcharge de lake_params).

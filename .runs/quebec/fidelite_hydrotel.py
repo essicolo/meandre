@@ -40,6 +40,42 @@ cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
 r = load_region(REG, dict(cfg["loss"]), device=DEVICE)
 td = r["train_data"]; n = r["n_nodes"]; node_ids = r["node_ids"]
 
+# ── MÊMES INTRANTS DES DEUX CÔTÉS (exigence d'Essi) : la météo du PROJET Hydrotel
+# (Thiessen sur <REG>.nc, ce que simulation.csv déclare) remplace CaSR. Sans ça on
+# compare deux forçages en croyant comparer deux codes. FIDELITE_METEO=casr pour
+# revenir au forçage du run.
+if os.environ.get("FIDELITE_METEO", "projet") == "projet":
+    import xarray as _xr
+    from scipy.spatial import cKDTree as _KD
+    _tt0 = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
+    _dm = _xr.open_dataset(f"{PROJ}/meteo/{REG.upper()}.nc")
+    _tm = pd.to_datetime(_dm["time"].values)
+    _ncrd = td.node_coords.cpu().numpy()
+    _latcol = 0 if 40 < float(_ncrd[:, 0].mean()) < 62 else 1
+    _lat0 = float(_ncrd[:, _latcol].mean())
+    def _proj(lon, lat):
+        return np.c_[np.asarray(lon) * 111.32 * np.cos(np.radians(_lat0)), np.asarray(lat) * 110.57]
+    _sx, _sy = _dm["x"].values, _dm["y"].values
+    if np.nanmax(np.abs(_sx)) > 360:
+        raise SystemExit("meteo du projet en coordonnees projetees : adapter")
+    _, _jn = _KD(_proj(_sx, _sy)).query(_proj(_ncrd[:, 1 - _latcol], _ncrd[:, _latcol]), k=1)
+    _comm = _tt0.intersection(_tm)
+    _if = _tt0.get_indexer(_comm); _im = _tm.get_indexer(_comm)
+    _forc = td.forcing[:, :, :6].clone()
+    for _c, _v in [(0, "pr"), (1, "tasmin"), (2, "tasmax")]:
+        _V = _dm[_v].values
+        _forc[torch.tensor(_if, device=DEVICE), :, _c] = torch.tensor(
+            _V[_im][:, _jn], dtype=torch.float32, device=DEVICE)
+    _dm.close()
+    _pm = float(_forc[:, :, 0].mean()) * 365.25
+    _pc = float(td.forcing[:, :, 0].mean()) * 365.25
+    print(f"[meteo] PROJET Hydrotel (Thiessen) : {len(_comm)} jours | P {_pm:.0f} mm/an "
+          f"(CaSR du run : {_pc:.0f})", flush=True)
+    FORC = _forc
+else:
+    FORC = td.forcing[:, :, :6]
+    print(f"[meteo] forçage du run (CaSR)", flush=True)
+
 m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6,
     use_temporal=False, use_residual=False, use_travel_time_attn=False,
     use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
@@ -88,7 +124,7 @@ m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
 print(f"[fidelite] {REG} : sol+linacre+fonte+lacs+hgm figés depuis {PROJ}", flush=True)
 
 with torch.no_grad():
-    Q, _, diag = m.simulate(forcing=td.forcing[:, :, :6], initial_state=HydroState.zeros(n, device=DEVICE),
+    Q, _, diag = m.simulate(forcing=FORC, initial_state=HydroState.zeros(n, device=DEVICE),
                             graph=td.graph, node_coords=td.node_coords, territorial=r["territorial"],
                             withdrawals=td.withdrawals, day_of_year=td.day_of_year,
                             return_diagnostics=True)
