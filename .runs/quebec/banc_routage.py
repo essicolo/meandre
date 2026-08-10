@@ -72,6 +72,12 @@ with torch.no_grad():
     m.routing._lake_k, m.routing._lake_beta = m.spatial_encoder.lake_params(
         td.node_coords, r["territorial"].data)
 K_musk = sp.K_musk_hours * 3600.0; x_musk = sp.x_musk   # simulate convertit en SECONDES (model.py:371)
+# BANC_K : force le temps de transfert (heures) pour tester la plage PHYSIQUE (~0.3 h,
+# Manning sur troncon.trl) contre la plage du modèle (bornes [4,48], appris ~24 h).
+if os.environ.get("BANC_K"):
+    _kh = float(os.environ["BANC_K"])
+    K_musk = torch.full_like(K_musk, _kh * 3600.0)
+    print(f"[banc] K_musk FORCÉ à {_kh} h (physique Manning ~0.3 h ; appris ~23.7 h)", flush=True)
 area_local = r["territorial"].get_physical("area_km2_local").to(DEVICE)
 area_cum = (r["territorial"].area_km2_physical.to(DEVICE)
             if r["territorial"].area_km2_physical is not None else area_local)

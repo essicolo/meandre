@@ -1168,3 +1168,27 @@ Essi : « une observation, pas un diagnostic causal qui permet une correction ci
 **Conclusion causale : le rabotage était imposé par les bornes et l'initialisation de K_musk, pas choisi par l'apprentissage.** Cela referme le diagnostic de juin : Hydrotel étale au VERSANT (hydrogramme géomorphologique) puis translate dans le canal ; méandre n'avait pas d'étalement au versant et compensait par un canal ultra-diffusif. Le noyau HGM et le K physique forment la paire cohérente à tester ensemble.
 
 **Correction ciblée appliquée** : bornes et init de K_musk configurables par `MEANDRE_KMUSK="min,max,init"` (défaut historique 4,48,24 conservé pour ne pas réinterpréter les checkpoints existants). 150 tests passent. Le mode opérateur reste sain à petit K (c2=0 -> translation pure) ; le mode message-passing exige K >= 4 h avec n_substeps=2.
+
+## 2026-08-09 (nuit, suite) — HYPOTHÈSE DES BORNES DE K : RÉFUTÉE par mesure directe
+
+Essi : « peux-tu tester encore cette hypothèse ? pourquoi l'avions-nous manquée ? »
+
+**Test décisif** (banc de routage, vrai réseau OUTV, production latérale en cache, K forcé par `BANC_K`) :
+
+| K_musk | KGE jauges (ref) | r réseau vs Hydrotel | KGE jauges (+HGM) | r réseau (+HGM) |
+|---|---|---|---|---|
+| 23.7 h (appris) | 0.4992 | 0.335 | 0.5262 | 0.470 |
+| **0.35 h (physique Manning)** | **0.1518** | **0.209** | **0.3951** | **0.373** |
+
+**Tout se dégrade, y compris la fidélité au réseau d'Hydrotel** — métrique qui ne récompense pas la calibration aux jauges. La diffusion à ~24 h fait donc un travail NÉCESSAIRE : elle n'est pas le défaut. Hypothèse réfutée. (Réserve : le champion a calibré le reste autour de son K, motif déjà vu sur les lacs trl ; mais la chute est ici 5× plus grande, et elle touche aussi la métrique structurelle.)
+
+**Ce qui reste vrai et acquis :** le K appris n'est pas gonflé par l'entraînement (23.7 h depuis une init à 26 h, mesuré) ; la perte est quasi plate en K (4 %) ; le temps de parcours par Manning vaut ~0.2-0.35 h. Ces trois faits tiennent — c'est leur INTERPRÉTATION (« donc le modèle sur-diffuse par construction ») qui est fausse. Le modèle a besoin de plus d'étalement que le transfert de canal physique n'en fournit, et le noyau de versant seul ne comble pas l'écart.
+
+**Pourquoi l'angle mort, trois causes cumulées :**
+1. **Héritage non réexaminé** : la borne basse de 4 h vient d'une contrainte de stabilité du routage par message-passing (n_substeps=2, sub_dt=12 h), écrite dans le commentaire du code. Le passage au mode opérateur, qui n'a pas cette contrainte, ne l'a jamais remise en question.
+2. **Le contrôle de paramètres ne teste aucune plausibilité physique** : `verif_params.py` demande si un paramètre bouge, s'effondre ou touche ses bornes — jamais si sa PLAGE est physiquement crédible. Un paramètre confortablement installé au milieu d'un intervalle faux passe tous les contrôles.
+3. **Le banc du 8 août comparait des SCHÉMAS à K CONSTANT** (noyau, lacs, combinaison) : le paramètre suspect était tenu fixe dans toutes les variantes, ce qui garantissait que le routage paraisse innocent — la conclusion de juin après 9 expériences.
+
+La cause 2 est la seule généralisable : ajouter au contrôle de paramètres une confrontation à une grandeur physique indépendante (Manning pour K, pédotransfert pour K_sat, récessions pour k_gw), pas seulement une statistique de dispersion.
+
+Test suivant (en cours) : chaîner le CLONE de l'onde cinématique N fois. Je n'avais mesuré sa réponse que sur UN tronçon ; si le schéma d'Hydrotel accumule lui aussi du stockage le long d'une chaîne, l'estimation par Manning est simplement hors sujet et l'étalement observé est celui du réseau, pas d'un paramètre.
