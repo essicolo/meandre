@@ -24,6 +24,7 @@ DÉCISIONS Phase A (paramètres du constructeur) :
     → alimente la porte gel du sol (remplace le frost.py problématique).
 """
 from __future__ import annotations
+import os
 
 from dataclasses import dataclass
 
@@ -139,6 +140,13 @@ class HydrotelColumn(nn.Module):
         # Boucle de sous-pas static = résultats IDENTIQUES au mode break (vérifié).
         self.compile_column = bool(compile_column)
         soil_static = bool(compile_soil or compile_column)
+        # Plafond de sous-pas de Courant, réglable par MEANDRE_NSUBSTEP. Le C++ boucle
+        # JUSQU'À épuiser le pas de temps ; le plafond est une concession au GPU. Plus le
+        # sol est PERMÉABLE, plus la condition de Courant exige de sous-pas : sur GASP
+        # (ks 4.6× celui d'OUTV) le plafond mord bien plus, l'eau du temps non traité part
+        # au ruissellement par la fermeture de masse, et le sol s'assèche (theta1/theta2
+        # à 0.63/0.55 d'Hydrotel contre 0.96/0.95 sur OUTV).
+        soil_n_substep = int(os.environ.get("MEANDRE_NSUBSTEP", soil_n_substep))
         self.soil = BV3C2Clone(n_substep=soil_n_substep, static=soil_static,
                                frozen_gate_continuous=frozen_gate_continuous,
                                horton_precomputed=horton_precomputed)

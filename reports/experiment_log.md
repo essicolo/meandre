@@ -1394,3 +1394,20 @@ Réserve importante : GASP est une région où méandre allait DÉJÀ bien. Le t
 - Le ROUTAGE est fidèle : corrélations de 0.985 à 0.997 sur les débits amont ET aval, et les rapports amont et aval sont du même ordre, donc **le transfert n'ajoute aucun biais** — ce qui clôt définitivement la piste routage, ouverte et refermée trois fois cette semaine.
 
 **La divergence résiduelle est ENTIÈREMENT dans la répartition saisonnière de la production** : cycle mensuel méandre/Hydrotel = 1.08, 1.12, 1.01, **0.80**, 1.03, 1.18, **1.35, 1.29, 1.39, 1.31**, 1.17, 1.14. Trop peu en avril, 30 à 40 % de trop de juillet à octobre, sur un volume annuel excédentaire de 7 %. La décomposition indique où regarder : surface 370, hypodermique 219, base 0.3 mm/an. Le débit de base est nul, donc l'étiage est porté par l'hypodermique seul, et l'eau de fonte d'avril part en stockage au lieu de s'écouler.
+
+### Compatibilité GASP : la neige et le routage tiennent, le SOL diverge (deuxième cause)
+
+`compat_hydrotel.py` sur GASP, mêmes conditions : **neige exacte à 3 ‰** (141.80 contre 141.39 mm, corr 0.991) — le module de neige est donc validé sur DEUX régions et deux textures de couvert. Routage fidèle (corr 0.96-0.98). Volume annuel juste (beta 0.997). r réseau 0.903.
+
+**Divergence propre à GASP : les deux couches actives du sol sont trop SÈCHES** (theta1 0.634, theta2 0.550 d'Hydrotel) alors que la couche profonde colle (0.986) et que les corrélations spatiales restent hautes (0.89 / 0.80). Cycle saisonnier en miroir de celui d'OUTV : déficit d'hiver (0.77, 0.74) et excès d'été (1.23, 1.21).
+
+**Première cause identifiée et confirmée : le PLAFOND DE SOUS-PAS de Courant.** GASP a un sol 4.6× plus perméable qu'OUTV (ks médian 0.0611 contre 0.0132 m/h, texture sableuse dominante) et des pentes plus fortes (0.082 contre 0.061). Or c'est la perméabilité qui fixe le nombre de sous-pas exigé par Courant : le plafond de 48 mord beaucoup plus en Gaspésie, et la fermeture de masse évacue alors au ruissellement l'eau du temps non traité. Plafond porté à 300 (`MEANDRE_NSUBSTEP`, nouveau) :
+
+| | 48 sous-pas | 300 sous-pas |
+|---|---|---|
+| r médian réseau | 0.903 | **0.930** |
+| r lacs | 0.958 | **0.968** |
+| janvier / février | 0.77 / 0.74 | **0.97 / 0.94** |
+| theta1 / theta2 | 0.634 / 0.550 | 0.666 / 0.584 |
+
+Le déficit d'hiver est réparé, la fidélité structurelle progresse nettement. **Mais le sol reste sec : il existe une SECONDE cause**, un décalage systématique de niveau sur les deux couches actives, à corrélation spatiale conservée. À isoler.
