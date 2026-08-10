@@ -28,7 +28,7 @@ from meandre.model import HydroModel
 from meandre.utils.state import HydroState
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes,
                                          load_melt_nodes, load_passage_pluie_neige,
-                                         load_occupation_sol)
+                                         load_occupation_sol, load_milieux_humides)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
@@ -128,7 +128,15 @@ print(f"[fidelite] seuil pluie/neige du projet : {_seuil:+.4f} °C (méandre cod
 # 4c. OCCUPATION DU SOL brute de PHYSITEL (la base du Québec ne porte que des
 # colonnes centrées-réduites : méandre voyait 0 % de forêt et 0 % d'eau)
 _lc = load_occupation_sol(PROJ, node_ids, device=DEVICE)
+_mh = load_milieux_humides(PROJ, node_ids, device=DEVICE)
+_lc.update(_mh)
 m.vertical_column.set_land_cover(_lc)
+if _mh:
+    _wa = _mh["wet_a_raw"]
+    print(f"[fidelite] milieux humides isolés : {int((_wa > 0).sum())}/{n} tronçons | "
+          f"aire méd {float(_wa[_wa > 0].median()):.2f} km²")
+else:
+    print("[fidelite] AVERTISSEMENT : milieux humides NON chargés")
 print(f"[fidelite] occupation PHYSITEL : forêt {float(_lc['f_forest_raw'].mean()):.3f} "
       f"(conif {float(_lc['f_forest_conifer_raw'].mean()):.3f}) | eau {float(_lc['f_water_raw'].mean()):.3f} "
       f"| imperméable {float(_lc['f_urban_raw'].mean()):.3f} | humide {float(_lc['f_wetland_raw'].mean()):.3f}")

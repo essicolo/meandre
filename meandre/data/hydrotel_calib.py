@@ -267,3 +267,59 @@ def load_occupation_sol(project_dir, node_ids, device="cpu"):
     res["f_forest_raw"] = res["f_forest_conifer_raw"] + res["f_forest_deciduous_raw"]
     res["f_forest_mixed_raw"] = torch.zeros_like(res["f_forest_raw"])
     return res
+
+
+def load_milieux_humides(project_dir, node_ids, device="cpu"):
+    """MILIEUX HUMIDES ISOLÉS du projet Hydrotel
+    (simulation/simulation/milieux_humides_isoles.csv), agrégés par tronçon.
+
+    BUG TROUVÉ LE 2026-08-10 : `_wetland_from_territorial` renvoie None dès que
+    `wet_a_raw` manque, et cette colonne n'existe dans AUCUN cache du Québec. Le module
+    de milieu humide n'a donc JAMAIS été instancié, sans le moindre message : aucun
+    laminage nulle part, pour 7.6 % de superficie humide moyenne.
+
+    Aires sommées sur les UHRH du tronçon, paramètres moyennés au prorata des aires.
+    """
+    from pathlib import Path
+    import numpy as np
+    import pandas as pd
+    import torch
+    from meandre.data.physitel_loader import _parse_troncon
+
+    proj = Path(project_dir)
+    f = proj / "simulation" / "simulation" / "milieux_humides_isoles.csv"
+    if not f.exists():
+        return {}
+    d = pd.read_csv(f, sep=";")
+    d.columns = [c.strip() for c in d.columns]
+    col = {c.split("(")[0].strip().lower(): c for c in d.columns}
+    uid = d[col["uhrhid"]].astype(int).values
+    par = {}
+    for k, nm in (("wet_a", "wet_a"), ("wet_dra_fr", "wet_dra_fr"), ("frac", "frac"),
+                  ("wetdnor", "wetdnor"), ("wetdmax", "wetdmax"), ("ksat_bs", "ksat_bs"),
+                  ("c_ev", "c_ev"), ("c_prod", "c_prod")):
+        if nm in col:
+            par[k] = dict(zip(uid, pd.to_numeric(d[col[nm]], errors="coerce").fillna(0.0).values))
+    if "wet_a" not in par:
+        return {}
+
+    tr = {t["id"]: t for t in _parse_troncon(proj / "physitel" / "troncon.trl")}
+    n = len(node_ids)
+    out = {k: np.zeros(n, dtype=np.float32) for k in par}
+    for j, nid in enumerate(node_ids):
+        t = tr.get(int(nid))
+        if t is None:
+            continue
+        ids = [abs(int(u)) for u in t["uhrh_ids"] if abs(int(u)) in par["wet_a"]]
+        if not ids:
+            continue
+        a = np.array([par["wet_a"][u] for u in ids], dtype=np.float64)
+        out["wet_a"][j] = float(a.sum())          # les AIRES s'additionnent
+        w = a if a.sum() > 0 else np.ones_like(a)  # les PARAMÈTRES se moyennent
+        for k in par:
+            if k == "wet_a":
+                continue
+            v = np.array([par[k][u] for u in ids], dtype=np.float64)
+            out[k][j] = float((v * w).sum() / w.sum())
+    return {f"{k}_raw": torch.tensor(v, dtype=torch.float32, device=device)
+            for k, v in out.items()}

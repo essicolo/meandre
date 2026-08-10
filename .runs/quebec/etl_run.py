@@ -287,9 +287,15 @@ if os.environ.get("ETL_OCCUPATION", "1") == "1":
     _plat = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA"
     _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
     try:
-        from meandre.data.hydrotel_calib import load_occupation_sol
+        from meandre.data.hydrotel_calib import load_occupation_sol, load_milieux_humides
         _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
+        _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
+        _lc.update(_mh)
         model.vertical_column.set_land_cover(_lc)
+        if _mh:
+            _wa = _mh["wet_a_raw"]
+            print(f"[etl] milieux humides isolés : {int((_wa > 0).sum())} tronçons | "
+                  f"aire méd {float(_wa[_wa > 0].median()):.2f} km² (module jamais actif avant le 10 août)")
         print(f"[etl] occupation PHYSITEL : forêt {float(_lc['f_forest_raw'].mean()):.3f} "
               f"(conif {float(_lc['f_forest_conifer_raw'].mean()):.3f}) | "
               f"eau {float(_lc['f_water_raw'].mean()):.3f} | "

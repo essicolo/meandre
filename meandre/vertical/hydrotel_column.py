@@ -380,7 +380,12 @@ class HydrotelColumn(nn.Module):
         géométrie (wet_a_raw absent). Les nœuds sans MH sont masqués (wmask) et reçoivent
         une géométrie factice positive pour éviter log10(0)=NaN dans le gradient."""
         from hydrotel_clone.milieu_humide import wetland_geom_vec
-        gp = territorial.get_physical
+        # même priorité que _static_params : les entrées posées par set_land_cover()
+        # (chargées du projet Hydrotel) priment sur le territorial, dont AUCUN cache du
+        # Québec ne porte wet_a_raw — d'où un module de milieu humide jamais instancié.
+        _lc = getattr(self, "_land_cover", None)
+        _gp0 = territorial.get_physical
+        gp = (lambda k: (_lc[k] if (_lc is not None and k in _lc) else _gp0(k)))
         wet_a = gp("wet_a_raw")
         if wet_a is None:
             return None

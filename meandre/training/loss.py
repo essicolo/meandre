@@ -928,6 +928,19 @@ class HydroLoss(nn.Module):
                 components["snow_loss"] = L_snow
 
         if self.w_et > 0 and et_obs is not None and et_sim is not None:
+            # APPARIEMENT TEMPOREL (corrigé le 2026-08-10). MOD16A2GF fournit une MOYENNE
+            # sur 8 jours, que le chargeur pose sur le SEUL jour de début de composite ;
+            # on la comparait à l'ETR simulée de CE jour précis. Confronter une moyenne
+            # de 8 jours à une valeur journalière ajoute du bruit pur et fausse toute
+            # statistique de variance. On moyenne donc le simulé sur la même fenêtre.
+            # `et_window` = 8 par défaut ; 1 restaure l'ancien comportement.
+            _w = int(getattr(self, "et_window", 8))
+            if _w > 1 and et_sim.dim() >= 1 and et_sim.shape[0] >= _w:
+                _c = torch.nn.functional.avg_pool1d(
+                    et_sim.transpose(0, -1).unsqueeze(0), kernel_size=_w,
+                    stride=1, padding=0, count_include_pad=False).squeeze(0).transpose(0, -1)
+                _pad = et_sim[:_w - 1]
+                et_sim = torch.cat([_pad, _c], dim=0)[:et_sim.shape[0]]
             valid = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
             if valid.any():
                 L_et = ((et_obs[valid] - et_sim[valid]) ** 2).mean()
