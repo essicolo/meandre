@@ -166,3 +166,29 @@ def load_melt_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
     if n_missing:
         print(f"[melt] {n_missing}/{len(node_ids)} troncons sans UHRH -> défauts")
     return {k: torch.tensor(cols[k], dtype=dtype, device=device) for k in names}
+
+
+def load_passage_pluie_neige(project_dir, defaut: float = 0.0) -> float:
+    """Seuil de PARTITION PLUIE/NEIGE calibré du projet Hydrotel (thiessen.csv,
+    colonne PASSAGE PLUIE NEIGE, °C). Uniforme par région dans les projets du Québec
+    (OUTV/SAGU/SLNO -2.2168, GASP -3.0672).
+
+    BIFURCATION TROUVÉE LE 2026-08-10 : méandre codait 0 °C en dur pour toutes les
+    régions. Avec un seuil à 0 au lieu de -2.2, toute précipitation entre les deux
+    tombe en PLUIE chez méandre et en NEIGE chez Hydrotel — d'où un excès d'écoulement
+    en février-mars (rapports 1.33 et 1.43 contre Hydrotel) et une crue de fonte
+    amputée en avril-mai (0.89 et 0.83), signature mesurée sur OUTV à intrants
+    identiques et paramètres figés.
+    """
+    from pathlib import Path
+    p = Path(project_dir) / "simulation" / "simulation" / "thiessen.csv"
+    if not p.exists():
+        return defaut
+    import pandas as _pd
+    import numpy as _np
+    d = _pd.read_csv(p, sep=";", skiprows=4)
+    d.columns = [c.strip() for c in d.columns]
+    col = [c for c in d.columns if "PASSAGE" in c.upper()]
+    if not col:
+        return defaut
+    return float(_np.median(d[col[0]].values))

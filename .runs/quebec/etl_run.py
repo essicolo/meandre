@@ -28,6 +28,22 @@ REG = os.environ.get("ETL_REGION", "gasp").lower()
 N_EPOCHS = int(os.environ.get("ETL_EPOCHS", "12"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"
+# GARDE-FOU DE CONTENTION (2026-08-10) : deux entraînements simultanés sur la même carte
+# passent de 450 s/époque à 4000-11000 s/époque (mesuré : un job de 3.5 h en prend 85).
+# `pgrep` depuis un shell POSIX NE VOIT PAS les processus Windows — d'où le lancement en
+# parallèle qui a coûté une nuit. Vérification par tasklist, contournable par ETL_FORCE=1.
+if os.environ.get("ETL_FORCE", "0") != "1":
+    import subprocess as _sp
+    try:
+        _out = _sp.run(["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV"],
+                       capture_output=True, text=True, timeout=20).stdout
+        _n = sum(1 for _l in _out.splitlines() if _l.lower().startswith('"python.exe"'))
+    except Exception:
+        _n = 0
+    if _n > 2:
+        raise SystemExit(f"[etl] REFUS : {_n} processus python déjà actifs (contention GPU). "
+                         f"Attendre, ou forcer avec ETL_FORCE=1.")
+
 CKPT = f".runs/quebec/checkpoints/best-{REG}-etl{os.environ.get('ETL_TAG', '')}.pt"   # ETL_TAG évite d'écraser les checkpoints de diagnostic
 ETB = "D:/meandre-data/quebec/checkpoints-etbench"
 

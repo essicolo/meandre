@@ -26,7 +26,8 @@ from pathlib import Path
 import tomllib, numpy as np, pandas as pd, torch, xarray as xr
 from meandre.model import HydroModel
 from meandre.utils.state import HydroState
-from meandre.data.hydrotel_calib import load_calibrated_soil, load_linacre_nodes, load_melt_nodes
+from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes,
+                                         load_melt_nodes, load_passage_pluie_neige)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
@@ -119,6 +120,10 @@ def lp(*a, _o=_olp, **kw):
     return torch.where(couv_t, kt, k2), torch.where(couv_t, bt, b2)
 m.spatial_encoder.lake_params = lp
 m.set_lake_area(torch.tensor(np.where(couv, surf, 1.0), dtype=torch.float32))
+# 4b. seuil de partition pluie/neige calibré (thiessen.csv) — jamais lu jusqu'au 10 août
+_seuil = load_passage_pluie_neige(PROJ)
+m.vertical_column.t_neige_seuil = _seuil
+print(f"[fidelite] seuil pluie/neige du projet : {_seuil:+.4f} °C (méandre codait 0.0)")
 # 5. noyau de versant
 m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
 print(f"[fidelite] {REG} : sol+linacre+fonte+lacs+hgm figés depuis {PROJ}", flush=True)
