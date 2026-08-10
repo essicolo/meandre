@@ -1373,3 +1373,24 @@ Comparaison honnête : contre la REPRODUCTION de la recette du champion (0.6871,
 Réserve importante : GASP est une région où méandre allait DÉJÀ bien. Le test qui décide est OUTV, qui plafonnait à 0.4992 entraîné et où le modèle FIGÉ atteint maintenant 0.7514.
 
 **La mesure la plus solide de la journée reste celle à paramètres figés**, parce qu'elle ne souffre d'aucune variance d'optimisation : sur OUTV, à intrants identiques, r réseau 0.368 -> 0.922 et KGE aux jauges 0.087 -> 0.7514.
+
+## 2026-08-10 — COMPATIBILITÉ ÉTABLIE : neige, sol et routage sont FIDÈLES ; il reste la répartition saisonnière de la production
+
+`compat_hydrotel.py` sur OUTV, tout figé depuis le projet Hydrotel, météo du projet sur sa fenêtre complète (2020-2026, 2242 j), prélèvements nuls des deux côtés, zéro entraînement.
+
+| étage | mesure | rapport | corrélation |
+|---|---|---|---|
+| **1. NEIGE** stock pondéré par couvert, 2026-02-19 | 108.09 contre 108.14 mm | **1.000** | **+0.994** |
+| **2. SOL** theta1 / theta2 / theta3, 2023-08-01 | 0.964 / 0.948 / 0.999 | | +0.981 / +0.935 / +0.999 |
+| 2. SOL theta1 / theta2 / theta3, 2026-02-19 | 1.008 / 0.978 / 0.996 | | +0.991 / +0.974 / +0.993 |
+| **3. PRODUCTION** apport latéral, 2 dates | 0.528 et 0.695 | | +0.794 / +0.752 |
+| **4. ROUTAGE** débit amont, 2 dates | 0.919 et 0.689 | | **+0.986 / +0.997** |
+| 4. ROUTAGE débit aval, 2 dates | 0.826 et 0.838 | | **+0.985 / +0.997** |
+| **5. SÉRIE** 2022-2024, 3412 tronçons | beta 1.069 | | **r 0.922** (lacs 0.944) |
+
+**Trois étages sont validés, deux d'entre eux pour la PREMIÈRE FOIS.**
+- La NEIGE est exacte au millième près, avec une corrélation de 0.994 sur 3412 tronçons. Elle n'avait jamais été comparée faute de date d'état enneigée dans notre fenêtre de forçage. Conséquence directe : **le déficit de crue d'avril (0.80) n'est PAS un problème de neige** — à manteau identique, notre sol restitue moins d'eau de fonte.
+- Le SOL colle à 5 % près sur les couches actives et à 0.1 % sur la couche profonde, aux deux saisons.
+- Le ROUTAGE est fidèle : corrélations de 0.985 à 0.997 sur les débits amont ET aval, et les rapports amont et aval sont du même ordre, donc **le transfert n'ajoute aucun biais** — ce qui clôt définitivement la piste routage, ouverte et refermée trois fois cette semaine.
+
+**La divergence résiduelle est ENTIÈREMENT dans la répartition saisonnière de la production** : cycle mensuel méandre/Hydrotel = 1.08, 1.12, 1.01, **0.80**, 1.03, 1.18, **1.35, 1.29, 1.39, 1.31**, 1.17, 1.14. Trop peu en avril, 30 à 40 % de trop de juillet à octobre, sur un volume annuel excédentaire de 7 %. La décomposition indique où regarder : surface 370, hypodermique 219, base 0.3 mm/an. Le débit de base est nul, donc l'étiage est porté par l'hypodermique seul, et l'eau de fonte d'avril part en stockage au lieu de s'écouler.
