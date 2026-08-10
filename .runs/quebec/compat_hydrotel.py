@@ -56,9 +56,7 @@ for c, v in [(0, "pr"), (1, "tasmin"), (2, "tasmax")]:
     forc[:, :, c] = torch.tensor(dm[v].values[:, jn], dtype=torch.float32, device=DEVICE)
 dm.close()
 doy = torch.tensor(tm.dayofyear.values, dtype=torch.long, device=DEVICE)
-wdr = WithdrawalData.zeros(T, n)
-if hasattr(wdr, "to"):
-    wdr = wdr.to(DEVICE)
+wdr = WithdrawalData.zeros(T, n, device=DEVICE)
 print(f"[compat] {REG} : météo du PROJET {tm[0].date()} -> {tm[-1].date()} ({T} j), "
       f"P {float(forc[:, :, 0].mean()) * 365.25:.0f} mm/an | prélèvements NULS des deux côtés",
       flush=True)

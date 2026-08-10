@@ -1363,3 +1363,13 @@ Question d'Essi : les tests de compatibilité sont-ils complets ? Non, et le sig
 La moyenne glissante a été extraite de la boucle de perte en fonction nommée `moyenne_glissante`, précisément pour être testable : le correctif était enfoui dans un bloc conditionnel où rien ne pouvait l'atteindre.
 
 Tentative de récupérer les deux `smoke_*` en les renommant : ABANDONNÉE. Ce sont des scripts autonomes qui changent le répertoire courant à l'import, ce qui faisait tomber 16 tests sans rapport. À réécrire proprement plus tard ; leurs invariants sont désormais couverts côté projet Hydrotel.
+
+### Entraînement GASP avec tous les correctifs d'assemblage
+
+`ETL_TAG=-repare`, 30 époques, `ETL_WET=0`, occupation + milieux humides actifs (forêt 0.803 dont 0.462 de conifères ; 2414 tronçons porteurs de milieu humide) : **tenu de côté 0.7236**.
+
+Comparaison honnête : contre la REPRODUCTION de la recette du champion (0.6871, même code sans les correctifs), les correctifs valent **+0.037**. Contre le champion historique du 29 juillet (0.7489), on reste 0.025 en dessous, mais ce chiffre n'a jamais pu être reproduit (écart inexpliqué de 0.062 sur la même recette), donc il ne constitue pas une référence utilisable.
+
+Réserve importante : GASP est une région où méandre allait DÉJÀ bien. Le test qui décide est OUTV, qui plafonnait à 0.4992 entraîné et où le modèle FIGÉ atteint maintenant 0.7514.
+
+**La mesure la plus solide de la journée reste celle à paramètres figés**, parce qu'elle ne souffre d'aucune variance d'optimisation : sur OUTV, à intrants identiques, r réseau 0.368 -> 0.922 et KGE aux jauges 0.087 -> 0.7514.
