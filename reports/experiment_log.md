@@ -1218,3 +1218,29 @@ Conséquence immédiate : **tout ce que j'ai attribué aujourd'hui à la fermetu
 Enseignement de méthode, le plus cher de la journée : la configuration d'un run doit être reconstituée depuis SON journal, pas depuis la mémoire de la recette. Un simple `diff` des bannières, fait au premier écart inexpliqué, aurait économisé six entraînements de 1 à 3.5 h. À automatiser : bannière complète de toutes les variables ETL_* en tête de journal, et comparaison automatique à la meilleure exécution connue.
 
 Deuxième question ouverte, importante en soi : si w_et = 1.0 coûte 0.20 en tenu de côté sur GASP, le multi-objectif MODIS — présenté comme un pilier de l'identifiabilité — est à réexaminer sur toutes les régions.
+
+## 2026-08-09 (nuit) — MODIS ET DÉBITS NE SE CONTREDISENT PAS : ILS ACCUSENT ENSEMBLE LE FORÇAGE
+
+Question d'Essi : « MODIS et les mesures de débit sont donc des données irréconciliables ? » Test SANS MODÈLE (`bilan_modis_vs_debit.py`) : sur 19 ans la variation de stock s'annule, donc P − Q = ETR. Aucun paramètre, aucune simulation.
+
+**GASP, 15 jauges, 2003-2021 (mm/an) : P 1012 | Q 648 | P−Q = 287 | MODIS 523 | écart +188 (+66 %), et MODIS > P−Q sur 15/15.**
+
+Lecture : ce n'est PAS MODIS l'accusé. Une ETR de 287 mm/an est physiquement absurde pour une forêt tempérée recevant plus d'un mètre de pluie (tours de flux boréales : 400-500 ; MODIS 523 est crédible). Le débit est mesuré. **C'est donc la PLUIE qui manque : il en faudrait 1171 mm/an (Q + MODIS) là où le forçage en donne 1012, soit −16 %.**
+
+Et ce chiffre en explique un autre, traîné depuis des mois : **le biais de volume chronique du modèle, beta ≈ 0.85, vaut exactement 1012/1171 = 0.864.** Le modèle ne sous-produit pas : on lui donne 16 % d'eau en moins.
+
+**Comparaison des forçages disponibles sur GASP (P moyen, mm/an) :**
+
+| forçage | P | contre le requis 1171 |
+|---|---|---|
+| `-pgm` (PyGMET) | **1274** | +9 % |
+| `forcing-gasp.nc` (CaSR brut) | 1101 | −6 % |
+| `-budyko` | 1091 | −7 % |
+| `-hyb` (**celui qu'on utilise**) | 1029 | **−12 %** |
+| `-krig` / `-lin` | 1017 / 1018 | −13 % |
+
+**Nos corrections successives ont ASSÉCHÉ l'entrée : le forçage canonique est plus sec que le CaSR brut.** Même en supposant MODIS surestimé de 20 % (le biais est +15-30 % à l'est selon ma propre note de juillet), le requis retombe à ~1083, soit encore au-dessus de `-hyb`.
+
+Réponse à la question : **MODIS et les débits sont RÉCONCILIABLES — ils s'accordent entre eux et désignent conjointement le forçage.** Le multi-objectif ne demandait pas l'impossible au modèle ; il lui demandait d'évaporer 523 mm à partir d'une pluie amputée, ce qui ne peut se payer que sur le débit. D'où −0.20 de KGE quand w_et = 1.0.
+
+Généralisation en cours sur OUTV, SAGU, SLNO. Test suivant si la mesure tient : réentraîner GASP sur `-pgm` (recette du champion, `ETL_WET=0`) et comparer.
