@@ -86,7 +86,7 @@ class MuskingumCunge(nn.Module):
         c0 = c0 * scale
         c1 = c1 * scale
 
-        Q_out = (c0 + c1) * Q_in + c2 * Q_out_prev + q_lateral
+        Q_out = (c0 + c1) * Q_in + c2 * Q_out_prev + (1.0 - c2) * q_lateral
         return torch.clamp(Q_out, min=0.0)
 
     @staticmethod
@@ -98,7 +98,7 @@ class MuskingumCunge(nn.Module):
         c2: Tensor,
     ) -> Tensor:
         """Muskingum step with precomputed coefficients (3 ops vs 12)."""
-        return torch.clamp(c01 * Q_in + c2 * Q_out_prev + q_lateral_sub, min=0.0)
+        return torch.clamp(c01 * Q_in + c2 * Q_out_prev + (1.0 - c2) * q_lateral_sub, min=0.0)
 
     def forward_cached(
         self,
@@ -109,10 +109,15 @@ class MuskingumCunge(nn.Module):
         c2: Tensor,
     ) -> Tensor:
         """Routing step using precomputed coefficients (fast path)."""
-        q_lat_sub = q_lateral / self.n_substeps
+        # CONSERVATION (corrigé 2026-08-09) : l'apport latéral est un DÉBIT ENTRANT,
+        # pondéré comme tel par (1−c2), et NON divisé par le nombre de sous-pas.
+        # L'ancienne forme (q_lat/n ajouté brut) donnait, à l'équilibre,
+        # Q = q_lat/(n(1−c2)) : perte de (n−1)/n de l'eau quand c2→0 (K petit) et
+        # FABRICATION d'eau quand c2 est grand (K=48 h → ×1.85). Mesuré au banc de
+        # modules sur 400 tronçons. Le mode opérateur (production) était déjà correct.
         Q_out = Q_out_prev
         for _ in range(self.n_substeps):
-            Q_out = self._step_cached(Q_in, Q_out, q_lat_sub, c01, c2)
+            Q_out = self._step_cached(Q_in, Q_out, q_lateral, c01, c2)
         return Q_out
 
     def forward(
@@ -138,12 +143,8 @@ class MuskingumCunge(nn.Module):
         """
         n = self.n_substeps
         dt_sub = self.dt / n
-        # Lateral inflow is a rate (m³/s) added once per full timestep.
-        # Divide by n_substeps so the total contribution over all sub-steps
-        # equals q_lateral (otherwise it is counted n times).
-        q_lat_sub = q_lateral / n
-
+        # voir forward_cached : apport latéral pondéré (1−c2), non divisé par n.
         Q_out = Q_out_prev
         for _ in range(n):
-            Q_out = self._muskingum_step(Q_in, Q_out, q_lat_sub, K, x, dt_sub)
+            Q_out = self._muskingum_step(Q_in, Q_out, q_lateral, K, x, dt_sub)
         return Q_out

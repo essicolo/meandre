@@ -1135,3 +1135,22 @@ P 970 | ETP 482 | ETR 480 | apport latéral 285 | **résidu +204 (21 % de P)** |
 Différence de configuration que j'avais introduite sans la voir : `ETL_DEMAND_SCALE` 0.776 dans mes runs contre **0.81** dans le champion (débiaisage ET bilan/MOD16). Moins d'ET = plus d'eau, cumulé avec le colmatage qui en ajoute encore.
 
 **Discipline appliquée : reproduction exacte du champion lancée avant toute autre interprétation** (0.81, fermeture OFF, sans HGM, 30 époques). Sans socle reproductible, aucune comparaison de facteur n'est lisible. Tant que ce socle n'est pas retombé sur 0.7489, les verdicts « le colmatage aide » (+0.035) et « le noyau aide » (+0.075) restent PROVISOIRES : ils ont été mesurés à 12 époques contre un témoin lui aussi à 12 époques, donc entre eux ils sont valides, mais pas contre le champion.
+
+## 2026-08-09 (soir) — BANC DE MODULES : des centaines de tests en secondes, sans Hydrotel
+
+**Reproche d'Essi, fondé et accepté :** je relançais des entraînements régionaux de 3 h là où des tests de module en secondes étaient disponibles. J'avais même rendu le banc de micro-routage dépendant de la réexécution d'Hydrotel, alors que comparer deux SCHÉMAS entre eux ne demande aucune sortie externe — juste une impulsion et la géométrie réelle des tronçons.
+
+`banc_modules.py` : 400 rivières + 400 lacs échantillonnés dans troncon.trl, impulsion de 10 m³/s, mesure de la fonction de réponse (retard du pic, atténuation, masse rendue, demi-vidange). **Durée : quelques secondes.**
+
+**BUG TROUVÉ (dormant) : le module `MuskingumCunge` ne conserve pas la masse, et l'erreur DÉPEND de K, qui est un paramètre APPRIS.** L'apport latéral était ajouté brut à la sortie (`+ q_lateral`) au lieu d'être pondéré comme un débit entrant, et divisé par le nombre de sous-pas. À l'équilibre : Q = q_lat/(n(1−c2)). Mesuré (n_substeps=2, x=0.2) : K=4 h -> masse 0.50 (l'eau est DÉTRUITE), K=24 h -> 1.05, K=48 h -> **1.85 (l'eau est FABRIQUÉE)**. Un réseau pouvait donc créer ou détruire de l'eau en ajustant un temps de transfert.
+**Portée réelle, sans surinterprétation : ce chemin de code n'est PAS celui de la production.** Toutes les configs Québec sont en `operator-lagged`, et le mode opérateur — vérifié numériquement pour K de 4 à 48 h — conserve la masse EXACTEMENT (son `beta = 1−gamma` est la bonne pondération). Le bug est réel mais dormant. Corrigé quand même (apport latéral pondéré (1−c2), non divisé) : masse 1.0000 pour tout K, 150 tests passent.
+
+**LA MESURE QUE LE BANC APPORTE (même géométrie, même impulsion, masse maintenant exacte des deux côtés) :**
+
+| schéma | pic restitué | atténuation |
+|---|---|---|
+| clone onde cinématique Hydrotel | 10.61 m³/s | AUCUNE (translation quasi pure, +6 % numérique) |
+| Muskingum méandre K=24 h (init) | 7.26 | −27 % |
+| Muskingum méandre K=48 h (borne haute) | 4.67 | **−53 %** |
+
+Le déficit de pic n'est donc pas une hypothèse tirée de la lecture du C++ : il est CHIFFRÉ au niveau du module. Hydrotel translate, méandre diffuse, et comme le K appris dérive vers le haut (documenté), le modèle s'auto-condamne à raboter ses crues. Le levier n'est pas un paramètre à recaler, c'est le SCHÉMA.
