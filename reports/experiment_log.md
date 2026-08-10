@@ -1244,3 +1244,20 @@ Et ce chiffre en explique un autre, traîné depuis des mois : **le biais de vol
 Réponse à la question : **MODIS et les débits sont RÉCONCILIABLES — ils s'accordent entre eux et désignent conjointement le forçage.** Le multi-objectif ne demandait pas l'impossible au modèle ; il lui demandait d'évaporer 523 mm à partir d'une pluie amputée, ce qui ne peut se payer que sur le débit. D'où −0.20 de KGE quand w_et = 1.0.
 
 Généralisation en cours sur OUTV, SAGU, SLNO. Test suivant si la mesure tient : réentraîner GASP sur `-pgm` (recette du champion, `ETL_WET=0`) et comparer.
+
+### Inventaire honnête : quels écarts ont RÉELLEMENT été corrigés (question d'Essi)
+
+**Appliqué par défaut, validé :**
+- Fuite de masse BV3C2 (`BV3C_FERMETURE=1` par défaut) : bilan fermé à +2 mm/an, coefficient d'écoulement 0.518, 150 tests.
+- Conservation de `MuskingumCunge` (chemin dormant, la production est en mode opérateur).
+
+**Trouvé, mesuré POSITIF, mais TOUJOURS EN OPTION (donc absent de tous les runs) :**
+- Noyau HGM de versant (`ETL_HGM=0` par défaut) : +0.027 en inférence, r réseau 0.335 -> 0.470.
+- Surface d'eau libre des lacs (`ETL_LAKE_AREA=0` par défaut) : +0.015 en tenu de côté, tête de lac réparée.
+Ces deux-là n'ont pas été promus parce que chacun a été mesuré contre un socle qui s'est révélé non reproductible (confusion `w_et`). Promotion à refaire sur le socle correct.
+
+**Trouvé, PAS corrigé du tout :**
+- **19 des 37 sorties du NeRF ne sont lues par aucun module actif ; 17 paramètres restent figés à l'initialisation.** Vérifié à nouveau ce soir : `f_vert`, `vsa_b`, `interception_capacity` n'apparaissent que dans des commentaires, le chargeur MODIS et la tête de bruit — jamais dans la colonne active. **Conséquence rétrospective grave : le « décollapse de f_vert ×6-8 » du 28 mai, présenté comme la preuve d'identifiabilité du multi-objectif, portait sur un paramètre que la colonne clone actuelle N'UTILISE PAS.** Les conclusions de mai-juin sur la partition verticale ne transfèrent pas à l'architecture d'aujourd'hui.
+- Loi de tarage des lacs (fidélité ×3 mais entraînement pire), assèchement du forçage (découvert ce soir), `lake_lr_mult=50` actif par défaut depuis le 5 août sans validation sur un socle propre.
+
+**Confirmation régionale du déficit de pluie :** SAGU, 19 jauges : P 1011 | Q 678 | P−Q = 341 | MODIS 469, écart +123 mm/an (+36 %), MODIS > P−Q sur 18/19. Le motif de GASP se répète.
