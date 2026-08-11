@@ -97,6 +97,7 @@ class HydrotelColumn(nn.Module):
                  use_hortonian: bool = False, frozen_gate_continuous: bool = False,
                  horton_precomputed: bool = False, spatial_melt: bool = False) -> None:
         super().__init__()
+        soil_n_substep = int(os.environ.get("MEANDRE_NSUBSTEP", soil_n_substep))
         self.et_mode = str(et_mode)
         # Fonte SPATIALE : module les facteurs de fonte par classe avec le C_f du
         # NeRF (borné [0.5, 8], cible littérature 4.5 -> échelle neutre 1.0). Le
@@ -138,6 +139,14 @@ class HydrotelColumn(nn.Module):
         #    (sans break) mais PAS compilé séparément (le compile externe l'inline).
         #  - compile_soil : compile seulement le sol (sous-ensemble de l'effet).
         # Boucle de sous-pas static = résultats IDENTIQUES au mode break (vérifié).
+        # La compilation DÉROULE la boucle de sous-pas : au-delà de ~64 itérations le
+        # graphe explose (RecursionError dans l'inductor, mesuré à 300). On désactive
+        # alors la compilation plutôt que de brider la physique.
+        if soil_n_substep > 64 and (compile_column or compile_soil):
+            print(f"[colonne] compilation DÉSACTIVÉE : {soil_n_substep} sous-pas "
+                  f"dérouleraient un graphe trop profond (limite ~64)")
+            compile_column = False
+            compile_soil = False
         self.compile_column = bool(compile_column)
         soil_static = bool(compile_soil or compile_column)
         # Plafond de sous-pas de Courant, réglable par MEANDRE_NSUBSTEP. Le C++ boucle
@@ -146,7 +155,6 @@ class HydrotelColumn(nn.Module):
         # (ks 4.6× celui d'OUTV) le plafond mord bien plus, l'eau du temps non traité part
         # au ruissellement par la fermeture de masse, et le sol s'assèche (theta1/theta2
         # à 0.63/0.55 d'Hydrotel contre 0.96/0.95 sur OUTV).
-        soil_n_substep = int(os.environ.get("MEANDRE_NSUBSTEP", soil_n_substep))
         self.soil = BV3C2Clone(n_substep=soil_n_substep, static=soil_static,
                                frozen_gate_continuous=frozen_gate_continuous,
                                horton_precomputed=horton_precomputed)
