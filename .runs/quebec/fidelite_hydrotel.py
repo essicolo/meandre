@@ -34,7 +34,12 @@ from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+# MEMBRE d'ancrage. Hydrotel est un ENSEMBLE de 6 calages équifinaux, et sur OUTV
+# LN24HA est le PLUS FAIBLE des six (0.7531 contre 0.8299 pour MG24HK, mesuré le
+# 2026-08-11). Or c'est celui qu'on ancre depuis le début : méandre hérite donc du
+# moins bon calage. FIDELITE_MEMBRE=MG24HK pour ancrer sur le meilleur.
+MEMBRE = os.environ.get("FIDELITE_MEMBRE", "LN24HA")
+PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/{MEMBRE}/{REG.upper()}_{MEMBRE}_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 T0, T1 = "2022-01-01", "2024-12-31"
 DATE_ETAT = "2023-08-01"
@@ -155,20 +160,30 @@ tt = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
 
 # ETAGE 1 : etats internes au 2023-08-01
 tag = DATE_ETAT.replace("-", "") + "00"
-bv = pd.read_csv(f"{PROJ}/etat/bilan_vertical_{tag}.csv", sep=";", skiprows=3)
-ach = pd.read_csv(f"{PROJ}/etat/acheminement_riviere_{tag}.csv", sep=";", skiprows=3)
-ach.columns = [c.strip() for c in ach.columns]
-i = int(np.flatnonzero(tt == pd.Timestamp(DATE_ETAT))[0])
-print(f"\n=== {REG} {DATE_ETAT} (paramètres FIGÉS, zéro entraînement) ===")
-for j, nm in enumerate(["theta1", "theta2", "theta3"], start=1):
-    hv = np.median(bv[f"THETA {j}"].values)
-    mv = float(getattr(diag, nm)[i].median())
-    print(f"  {nm:14s} hydrotel {hv:.4f} | meandre {mv:.4f} | rapport {mv/max(hv,1e-9):.3f}")
-al_h = ach["APPORT"].values
-al_m = diag.q_lateral[i].cpu().numpy()
-v = np.isfinite(al_h) & np.isfinite(al_m)
-print(f"  apport latéral  hydrotel méd {np.median(al_h[v]):.4f} | meandre {np.median(al_m[v]):.4f} "
-      f"| rapport {np.median(al_m[v])/max(np.median(al_h[v]),1e-9):.3f} | corr {np.corrcoef(al_h[v], al_m[v])[0,1]:+.3f}")
+# Les fichiers d'état ne sont produits que par les plateformes où les sorties internes
+# ont été activées : ailleurs on saute cet étage plutôt que de faire échouer tout le
+# banc avant même d'imprimer le score aux jauges.
+_ETATS_OK = (Path(f"{PROJ}/etat/bilan_vertical_{tag}.csv").exists()
+             and Path(f"{PROJ}/etat/acheminement_riviere_{tag}.csv").exists())
+if not _ETATS_OK:
+    print(f"\n=== {REG} : pas de fichiers d'état pour {MEMBRE}, étage interne sauté ===")
+bv = pd.read_csv(f"{PROJ}/etat/bilan_vertical_{tag}.csv", sep=";", skiprows=3) if _ETATS_OK else None
+ach = pd.read_csv(f"{PROJ}/etat/acheminement_riviere_{tag}.csv", sep=";", skiprows=3) if _ETATS_OK else None
+if _ETATS_OK:
+    ach.columns = [c.strip() for c in ach.columns]
+if _ETATS_OK:
+    i = int(np.flatnonzero(tt == pd.Timestamp(DATE_ETAT))[0])
+    print(f"\n=== {REG} {DATE_ETAT} (paramètres FIGÉS, zéro entraînement) ===")
+    for j, nm in enumerate(["theta1", "theta2", "theta3"], start=1):
+        hv = np.median(bv[f"THETA {j}"].values)
+        mv = float(getattr(diag, nm)[i].median())
+        print(f"  {nm:14s} hydrotel {hv:.4f} | meandre {mv:.4f} | rapport {mv/max(hv,1e-9):.3f}")
+    al_h = ach["APPORT"].values
+    al_m = diag.q_lateral[i].cpu().numpy()
+    v = np.isfinite(al_h) & np.isfinite(al_m)
+    print(f"  apport latéral  hydrotel méd {np.median(al_h[v]):.4f} | meandre {np.median(al_m[v]):.4f} "
+          f"| rapport {np.median(al_m[v])/max(np.median(al_h[v]),1e-9):.3f} "
+          f"| corr {np.corrcoef(al_h[v], al_m[v])[0,1]:+.3f}")
 
 # ETAGE 2 : debit aval, series completes
 dht = xr.open_dataset(f"{PROJ}/simulation/simulation/resultat/debit_aval.nc")
