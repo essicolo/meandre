@@ -969,7 +969,23 @@ class Trainer:
                         _g = _tws_chunk[_vt]
                         # σ = incertitude GRACE typique (~25 mm) → z-score, L_tws~O(1)
                         # (sinon mm² ~800 écrase Q). "fit à l'incertitude GRACE près".
-                        L_tws = tws_anomaly_loss(_s, _g, _s.mean().detach(), _g.mean(), sigma=25.0)
+                        # LIGNE DE BASE LONGUE DURÉE (corrigée le 2026-08-10). Les deux
+                        # lignes de base étaient calculées DANS le tronçon de séquence
+                        # (`_s.mean()`, `_g.mean()`), alors que loss.tws_anomaly_loss
+                        # documente une référence longue durée : on retirait donc une
+                        # partie du signal saisonnier que la contrainte prétend imposer.
+                        # Côté observation : moyenne de la série ENTIÈRE, calculée une
+                        # fois. Côté simulation : moyenne mobile exponentielle détachée,
+                        # puisque la valeur longue durée n'est pas connue d'avance.
+                        _gb = getattr(self, "_tws_obs_base", None)
+                        if _gb is None:
+                            _ao = data.tws_obs[~torch.isnan(data.tws_obs)]
+                            _gb = _ao.mean() if _ao.numel() else torch.zeros((), device=_s.device)
+                            self._tws_obs_base = _gb
+                        _sb = _s.mean().detach()
+                        _pb = getattr(self, "_tws_sim_base", None)
+                        self._tws_sim_base = _sb if _pb is None else (0.98 * _pb + 0.02 * _sb)
+                        L_tws = tws_anomaly_loss(_s, _g, self._tws_sim_base, _gb, sigma=25.0)
                         loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                         all_components["tws_loss"] = (
                             all_components.get("tws_loss", 0.0) + float(L_tws.detach()))

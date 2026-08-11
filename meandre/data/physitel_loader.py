@@ -660,6 +660,12 @@ def _build_territorial(
     lc_urban = np.zeros(n_nodes)
     lc_wetland = np.zeros(n_nodes)
     lc_water = np.zeros(n_nodes)
+    # Split conifères/feuillus et sol nu : le clone a besoin des classes SÉPARÉES pour
+    # la neige (les 3 couverts d'Hydrotel n'ont ni le même taux de fonte ni le même
+    # stock) et pour la phénologie de l'ETR.
+    lc_conif = np.zeros(n_nodes)
+    lc_decid = np.zeros(n_nodes)
+    lc_bare = np.zeros(n_nodes)
 
     sand = np.zeros(n_nodes)
     silt = np.zeros(n_nodes)
@@ -723,6 +729,9 @@ def _build_territorial(
             lc_urban[ni] = lc_total[6] / non_nodata
             lc_wetland[ni] = (lc_total[7] + lc_total[8]) / non_nodata
             lc_water[ni] = lc_total[1] / non_nodata
+            lc_decid[ni] = lc_total[3] / non_nodata
+            lc_conif[ni] = lc_total[5] / non_nodata
+            lc_bare[ni] = lc_total[2] / non_nodata
 
         lake_frac[ni] = 1.0 if t["type"] == 2 else lc_water[ni]
 
@@ -803,6 +812,20 @@ def _build_territorial(
         "sin_aspect": _t_noscale(sin_asp),       # already [-1,1], no z-score
         "cos_aspect": _t_noscale(cos_asp),
         "f_forest": _t(lc_forest),
+        # COLONNES BRUTES (2026-08-10). Les colonnes ci-dessus sont CENTRÉES-RÉDUITES
+        # par _t() et donc invisibles pour la physique, qui interroge get_physical() —
+        # lequel n'expose que DEFAULT_PHYSICAL_COLUMNS et le suffixe `_raw`. Résultat
+        # jusqu'ici : la colonne recevait 0 % de forêt et 0 % d'eau sur tout le Québec.
+        # On écrit désormais les fractions BRUTES à côté, sans normalisation.
+        "f_forest_raw": _t_noscale(lc_forest),
+        "f_forest_conifer_raw": _t_noscale(lc_conif),
+        "f_forest_deciduous_raw": _t_noscale(lc_decid),
+        "f_agriculture_raw": _t_noscale(lc_agri),
+        "f_urban_raw": _t_noscale(lc_urban),
+        "f_wetland_raw": _t_noscale(lc_wetland),
+        "f_water_raw": _t_noscale(lc_water),
+        "f_bare_raw": _t_noscale(lc_bare),
+        "lake_fraction_raw": _t_noscale(lake_frac),
         "f_agriculture": _t(lc_agri),
         "f_urban": _t(lc_urban),
         "f_wetland": _t(lc_wetland),

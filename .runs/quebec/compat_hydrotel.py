@@ -55,6 +55,17 @@ forc = torch.zeros(T, n, 6, device=DEVICE)
 for c, v in [(0, "pr"), (1, "tasmin"), (2, "tasmax")]:
     forc[:, :, c] = torch.tensor(dm[v].values[:, jn], dtype=torch.float32, device=DEVICE)
 dm.close()
+# COMPAT_METEO=casr : on remplace la météo du projet par NOTRE forçage (CaSR -hyb) sur
+# la fenêtre commune, tout le reste identique. La différence entre les deux exécutions
+# est alors la PÉNALITÉ DE FORÇAGE pure, séparée de toute question de code.
+if os.environ.get("COMPAT_METEO", "projet") == "casr":
+    tt0 = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
+    comm = tm.intersection(tt0)
+    ic, io = tm.get_indexer(comm), tt0.get_indexer(comm)
+    forc[torch.tensor(ic, device=DEVICE), :, :3] = td.forcing[torch.tensor(io, device=DEVICE), :, :3]
+    print(f"[compat] météo CaSR substituée sur {len(comm)} j "
+          f"(P {float(td.forcing[torch.tensor(io, device=DEVICE), :, 0].mean()) * 365.25:.0f} mm/an)",
+          flush=True)
 doy = torch.tensor(tm.dayofyear.values, dtype=torch.long, device=DEVICE)
 wdr = WithdrawalData.zeros(T, n, device=DEVICE)
 print(f"[compat] {REG} : météo du PROJET {tm[0].date()} -> {tm[-1].date()} ({T} j), "
