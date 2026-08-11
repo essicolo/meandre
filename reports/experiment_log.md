@@ -1427,3 +1427,14 @@ Le déficit d'hiver est réparé, la fidélité structurelle progresse nettement
 Subtilité de lecture : les deux fichiers n'ont pas la même grille de jours (1/158/188/299/365 contre 1/160/190/260/365), interpolation sur la grille réunie.
 
 **État de la compatibilité** : neige exacte sur 2 régions, sol à 3-4 % sur OUTV, routage à 0.99, r réseau 0.93. **Résidu unique : un excès de volume de 7 % concentré en juillet-octobre (1.25 à 1.36), plus un déficit d'avril propre à OUTV (0.76).** Pour trancher l'excès d'été il faut l'ETR d'Hydrotel jour par jour, que seule la réexécution instrumentée peut fournir — elle en est à **52 h de CPU sans avoir écrit un seul fichier**.
+
+### Le FORÇAGE est innocenté par mesure directe (COMPAT_METEO)
+
+Substitution de la météo du projet Hydrotel par notre forçage `-hyb`, tout le reste identique (même code, mêmes paramètres figés, même fenêtre) : **résultats identiques au millième** — r réseau 0.930, beta 1.069, cycle mensuel inchangé mois par mois.
+
+Explication mesurée : sur la fenêtre commune, `-hyb` donne 988 mm/an contre 959 pour la météo du projet, soit **+3.1 %**, avec une corrélation journalière de **0.990** sur la pluie et de **0.999** sur les températures (écarts moyens -0.62 et -0.23 °C). Notre forçage canonique est donc, à 3 % près, la même chose que l'interpolation de stations d'Hydrotel.
+
+Trois conséquences.
+1. **La pénalité de forçage est nulle** dans la comparaison à Hydrotel : tout écart résiduel est du CODE, pas de la météo. Le banc de compatibilité peut donc tourner indifféremment avec l'une ou l'autre.
+2. Le CaSR BRUT, lui, donne 1109 mm/an sur la même fenêtre, soit **+16 % par rapport à la météo d'Hydrotel** : ce sont nos corrections qui ont ramené le forçage au niveau des stations, pas l'inverse. La lecture d'hier soir (« nos corrections ont asséché l'entrée sous le CaSR brut ») était juste sur le fait et fausse sur le jugement : elles l'ont aligné sur la référence station.
+3. La question « faut-il un multiplicateur de précipitation appris par région » reste ouverte mais change de nature : il ne s'agirait plus de corriger un biais par rapport à Hydrotel, mais de trancher entre les stations (959-988) et le bilan hydrique, qui en réclamait davantage. Or Hydrotel atteint 0.82 aux jauges avec 959. À trancher par la mesure, pas par le bilan seul.
