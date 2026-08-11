@@ -5,7 +5,9 @@ v4 de la région ; baselines GASP : v4 0.489 / v7 (ancrages) 0.577 held-out.
 
   ETL_REGION=gasp ETL_EPOCHS=12 python .runs/quebec/etl_run.py
 """
-import os, sys
+import os
+import sys
+from dataclasses import replace as _dc_replace
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.getcwd())
 sys.path.insert(0, os.path.join(os.getcwd(), ".runs/quebec"))
@@ -478,6 +480,25 @@ if os.environ.get("ETL_CAPACITE", "0") == "1":
 print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (demande apprise × K_c NeRF, init 1.0)")
 
 _lake_lr = float(os.environ.get("ETL_LAKE_LR", "50"))
+# ── VALIDATION CROISÉE SPATIALE (ETL_FOLD="k/K") ────────────────────────────
+# Retire les jauges du pli k de l'ENTRAÎNEMENT (leur q_obs passe à NaN, donc elles ne
+# pèsent ni dans la perte ni dans la validation) et rapporte le tenu de côté SUR ELLES.
+# Mesure ce que le champ spatial produit là où il n'a JAMAIS vu de débit — question
+# devenue centrale le 2026-08-11, la physique ancrée battant la physique apprise de
+# 0.134 sur les bassins jaugés. Découpage déterministe (indices modulo K).
+_FOLD = os.environ.get("ETL_FOLD")
+_fold_test = None
+if _FOLD:
+    _k, _K = (int(x) for x in _FOLD.split("/"))
+    _ns = int(td.q_obs.shape[1])
+    _fold_test = [i for i in range(_ns) if i % _K == _k]
+    _qo = td.q_obs.clone()
+    _qo[:, _fold_test] = float("nan")
+    td = _dc_replace(td, q_obs=_qo)
+    r["train_data"] = td
+    print(f"[etl] PLI SPATIAL {_k}/{_K} : {len(_fold_test)}/{_ns} jauges RETIRÉES de "
+          f"l'entraînement (indices {_fold_test})")
+
 tconf = TrainingConfig(
     lake_lr_mult=_lake_lr,
     n_epochs=N_EPOCHS,
@@ -523,4 +544,15 @@ for s in range(Qs.shape[1]):
     ks.append(float(kge_fn(qo_test[v, s], Qs[v, s])))
 ks = np.array(ks)
 print(f"\n[etl] HELD-OUT 2022-2024 {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
+if _fold_test is not None:
+    kf = []
+    for _s in _fold_test:
+        v = ~torch.isnan(qo_test[:, _s]) & ~torch.isnan(Qs[:, _s])
+        if v.sum() < 60:
+            continue
+        kf.append(float(kge_fn(qo_test[v, _s], Qs[v, _s])))
+    if kf:
+        kf = np.array(kf)
+        print(f"[etl] PLI {_FOLD} - jauges JAMAIS VUES : n={len(kf)} | "
+              f"median {np.median(kf):.4f} | mean {kf.mean():.4f}")
 print("[etl] DONE")
