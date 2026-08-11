@@ -1478,3 +1478,25 @@ Deux lectures, toutes deux importantes.
 1. Départ à chaud DEPUIS l'ancré + affinage court avec régularisation forte vers l'ancré (l'ancrage pendant l'entraînement avait échoué le 4 août, mais sur la base cassée : à refaire).
 2. Validation croisée par bassin (laisser des jauges dehors) pour mesurer ce que le champ apporte réellement en non jaugé, contre l'ancré et contre le transfert.
 3. Plan à 4 cases forçage × contrainte ET, qui tranche l'identifiabilité pluie/évaporation (stations 959-988 avec ETR 311, ou CaSR brut 1109 avec ETR 461 : les deux donnent le bon débit, seul le second a une ETR crédible).
+
+## 2026-08-11 — LE « 0.82 D'HYDROTEL » ÉTAIT UN FANTÔME : méandre ancré est à PARITÉ sur OUTV
+
+Essi conteste l'utilité du modèle : « méandre fait 0.605 alors qu'Hydrotel le déclasse à 0.82 ». Deux corrections, la seconde étant une faute de ma part.
+
+1. Le 0.605 est méandre ENTRAÎNÉ (son propre calage). Le modèle qui emprunte le calage d'Hydrotel fait 0.7389.
+2. **Le « 0.82 » n'a jamais été mesuré.** C'était une chaîne de caractères écrite dans mes scripts de diagnostic et répétée pendant des jours. Deuxième chiffre fantôme du projet après le 0.75 de juillet, et celui-là je l'ai introduit moi-même.
+
+**Mesure réelle** (Hydrotel LN24HA, `debit_aval.nc` du projet, MÊMES 16 jauges, MÊME période 2022-2024, MÊME formule KGE) :
+
+| modèle | KGE médian tenu de côté |
+|---|---|
+| **Hydrotel LN24HA** | **0.7531** (moyenne 0.7645 ; par station de 0.549 à 0.842) |
+| **méandre ANCRÉ sur le calage Hydrotel** | **0.7389** |
+| méandre entraîné (base saine) | 0.6051 |
+| ancien champion méandre | 0.4992 |
+
+**Méandre ancré est donc à 0.014 d'Hydrotel : c'est la parité**, sur la région la PLUS difficile de la province, avec une chaîne entièrement réécrite en PyTorch différentiable.
+
+Ce que cela ne change pas : le constat d'Essi sur l'ENTRAÎNEMENT reste entier. La version qui cale elle-même est 0.148 derrière Hydrotel et 0.134 derrière sa propre version ancrée. Le problème n'est pas la physique, c'est l'optimisation.
+
+**Réserve posée immédiatement** : 0.7531 est le membre LN24HA SEUL. La règle du projet est de comparer à l'ENSEMBLE des 6 calages (posttraitement_{LN24HA,MG24Hx}.zarr), ce qui sera plus sévère. À faire avant toute communication de ce résultat.
