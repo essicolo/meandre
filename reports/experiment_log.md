@@ -1454,3 +1454,27 @@ L'essentiel du gain se joue AU-DELÀ de la limite compilable : 64 ne récupère 
 **Vrai correctif à faire** : compiler un BLOC de K sous-pas (K <= 32) et l'appeler N/K fois depuis Python en passant l'état de boucle (t1/t2/t3, tr, lruis/lhyp/lbase). Profondeur de graphe K, nombre total de sous-pas libre. Refactoring d'une quarantaine de lignes dans le clone le plus délicat du dépôt, à faire à tête reposée et à valider contre le C++ avant adoption.
 
 En attendant : entraînement à 64 (compilé), diagnostics de compatibilité à 300.
+
+## 2026-08-11 — RÉSULTAT CHARNIÈRE : sur OUTV, la physique ANCRÉE bat la physique APPRISE de 0.134
+
+Comparaison à réglage strictement identique (OUTV, `-hyb`, 64 sous-pas, tenu de côté 2022-2024, mêmes 16 jauges) :
+
+| modèle | KGE médian tenu de côté |
+|---|---|
+| champion historique (base cassée, 30 époques) | 0.4992 |
+| meilleur transfert d'une autre région | 0.5731 |
+| **entraîné 30 époques sur la base saine** | **0.6051** |
+| **FIGÉ sur le calage Hydrotel, zéro époque** | **0.7389** |
+| Hydrotel lui-même | ~0.82 |
+
+Deux lectures, toutes deux importantes.
+
+1. **Les correctifs d'assemblage valent +0.106 en entraînement** (0.4992 -> 0.6051) sur la région la plus déficiente, et font passer devant le meilleur transfert (0.5731) — ce qui n'était jamais arrivé.
+2. **Mais l'entraînement PERD 0.134 contre les paramètres simplement ancrés sur le calage d'Hydrotel.** Et le journal montre le mécanisme sans ambiguïté : à la dernière époque, validation Nash 0.804 et KGE 0.834, pour un tenu de côté à 0.605. **Écart de généralisation de 0.23.** Le modèle apprend très bien sa période et généralise mal ; le jeu ancré n'a pas ce défaut par construction.
+
+**Conséquence sur le rôle de l'apprentissage.** Là où une calibration Hydrotel existe, l'optimisation s'éloigne d'un optimum qui généralise mieux qu'elle. La valeur du champ spatial ne se mesure donc PAS en gain de score sur les régions déjà calées : elle se mesure en régions NON JAUGÉES (produire un jeu de paramètres là où il n'y en a pas) et sur les questions qu'un modèle calé ne peut pas traiter (renaturalisation, scénarios d'occupation, prélèvements). C'est aussi la réponse à la question sur la couche d'expérience : son utilité doit être jugée hors des bassins jaugés.
+
+**Trois expériences qui découlent directement, par ordre :**
+1. Départ à chaud DEPUIS l'ancré + affinage court avec régularisation forte vers l'ancré (l'ancrage pendant l'entraînement avait échoué le 4 août, mais sur la base cassée : à refaire).
+2. Validation croisée par bassin (laisser des jauges dehors) pour mesurer ce que le champ apporte réellement en non jaugé, contre l'ancré et contre le transfert.
+3. Plan à 4 cases forçage × contrainte ET, qui tranche l'identifiabilité pluie/évaporation (stations 959-988 avec ETR 311, ou CaSR brut 1109 avec ETR 461 : les deux donnent le bon débit, seul le second a une ETR crédible).
