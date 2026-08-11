@@ -1438,3 +1438,19 @@ Trois conséquences.
 1. **La pénalité de forçage est nulle** dans la comparaison à Hydrotel : tout écart résiduel est du CODE, pas de la météo. Le banc de compatibilité peut donc tourner indifféremment avec l'une ou l'autre.
 2. Le CaSR BRUT, lui, donne 1109 mm/an sur la même fenêtre, soit **+16 % par rapport à la météo d'Hydrotel** : ce sont nos corrections qui ont ramené le forçage au niveau des stations, pas l'inverse. La lecture d'hier soir (« nos corrections ont asséché l'entrée sous le CaSR brut ») était juste sur le fait et fausse sur le jugement : elles l'ont aligné sur la référence station.
 3. La question « faut-il un multiplicateur de précipitation appris par région » reste ouverte mais change de nature : il ne s'agirait plus de corriger un biais par rapport à Hydrotel, mais de trancher entre les stations (959-988) et le bilan hydrique, qui en réclamait davantage. Or Hydrotel atteint 0.82 aux jauges avec 959. À trancher par la mesure, pas par le bilan seul.
+
+### Le plafond de sous-pas se heurte à la compilation : arbitrage à trancher
+
+| n_substep | compilation | r réseau GASP | hiver (jan/fév) | coût |
+|---|---|---|---|---|
+| 48 (historique) | oui | 0.903 | 0.77 / 0.74 | référence |
+| 64 (max compilable) | oui | 0.902 | 0.83 / 0.80 | ~= |
+| **300** | **NON** (RecursionError dans l'inductor : la boucle est DÉROULÉE) | **0.930** | **0.97 / 0.94** | inférence ~1.5× ; **entraînement > 30 h par région, ingérable** |
+
+L'essentiel du gain se joue AU-DELÀ de la limite compilable : 64 ne récupère qu'un quart de la réparation d'hiver et rien sur r. Compilation auto-désactivée au-delà de 64 (garde-fou ajouté) plutôt que de brider la physique en silence.
+
+**Nature du problème, qui mérite une phrase dans le papier** : le C++ boucle jusqu'à épuiser le pas de temps parce qu'il tourne en séquentiel sur processeur, où une itération de plus ne coûte presque rien. Le portage différentiable impose de dérouler la boucle pour compiler le graphe, donc de la borner. **L'écart n'est pas seulement physique, il est une conséquence de l'architecture de calcul.**
+
+**Vrai correctif à faire** : compiler un BLOC de K sous-pas (K <= 32) et l'appeler N/K fois depuis Python en passant l'état de boucle (t1/t2/t3, tr, lruis/lhyp/lbase). Profondeur de graphe K, nombre total de sous-pas libre. Refactoring d'une quarantaine de lignes dans le clone le plus délicat du dépôt, à faire à tête reposée et à valider contre le C++ avant adoption.
+
+En attendant : entraînement à 64 (compilé), diagnostics de compatibilité à 300.
