@@ -323,3 +323,61 @@ def load_milieux_humides(project_dir, node_ids, device="cpu"):
             out[k][j] = float((v * w).sum() / w.sum())
     return {f"{k}_raw": torch.tensor(v, dtype=torch.float32, device=device)
             for k, v in out.items()}
+
+
+def load_phenologie(project_dir):
+    """PHÉNOLOGIE du projet Hydrotel : indice foliaire (physio/ind_fol.def) et
+    profondeur racinaire (physio/pro_rac.def), par classe d'occupation et par jour.
+
+    BUG TROUVÉ LE 2026-08-10 : méandre code ces profils EN DUR (_LEAF/_ROOT, repris du
+    bassin DELISLE) alors qu'Hydrotel les lit dans le projet, et les écarts sont
+    importants sur OUTV : conifères 1.531 m de racines contre 1.0 chez nous, milieux
+    humides 1.531 contre 0.75, agriculture 0.108 contre jusqu'à 0.8 ; feuillus à indice
+    foliaire NUL en hiver et culminant à 6, contre un plancher à 3 chez nous. Des
+    racines trop courtes prélèvent moins d'eau : moins d'ETR, plus d'écoulement, ce qui
+    correspond à l'excès d'été mesuré sur les deux régions (1.25 à 1.39).
+
+    Retourne {classe_meandre: (jours, indice_foliaire, profondeur_racinaire)}.
+    """
+    from pathlib import Path
+    proj = Path(project_dir) / "physio"
+
+    def lire(f):
+        li = [l for l in (proj / f).read_text(encoding="latin-1").splitlines() if l.strip()]
+        noms = li[3].split()[1:]
+        jours, vals = [], []
+        for l in li[4:]:
+            t = l.split()
+            if not t[0].lstrip("-").isdigit():
+                continue
+            jours.append(int(t[0])); vals.append([float(x) for x in t[1:]])
+        return noms, jours, vals
+
+    try:
+        nf, jf, vf = lire("ind_fol.def")
+        nr, jr, vr = lire("pro_rac.def")
+    except (FileNotFoundError, IndexError):
+        return {}
+    # Les deux fichiers n'ont PAS la même grille de jours (OUTV : 1/158/188/299/365 pour
+    # le feuillage, 1/160/190/260/365 pour les racines). On interpole linéairement les
+    # deux sur la grille RÉUNIE, ce que fait aussi le C++ entre ses points de rupture.
+    import numpy as _np
+    jours = sorted(set(jf) | set(jr))
+
+    def col(noms, motifs):
+        return [k for k, nm in enumerate(noms) if any(m in nm.lower() for m in motifs)]
+
+    corresp = {"feuillus": ["feuillu"], "conifers": ["conifere"],
+               "agri": ["agricole"], "humides": ["tourbiere", "milieu_humide"],
+               "ouverts": ["sol_nu"]}
+    out = {}
+    for cl, motifs in corresp.items():
+        cf, cr = col(nf, motifs), col(nr, motifs)
+        if not cf or not cr:
+            continue
+        lai_pts = [sum(v[k] for k in cf) / len(cf) for v in vf]
+        rac_pts = [sum(v[k] for k in cr) / len(cr) for v in vr]
+        lai = list(_np.interp(jours, jf, lai_pts))
+        rac = list(_np.interp(jours, jr, rac_pts))
+        out[cl] = (list(jours), lai, rac)
+    return out

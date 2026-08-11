@@ -1411,3 +1411,19 @@ Réserve importante : GASP est une région où méandre allait DÉJÀ bien. Le t
 | theta1 / theta2 | 0.634 / 0.550 | 0.666 / 0.584 |
 
 Le déficit d'hiver est réparé, la fidélité structurelle progresse nettement. **Mais le sol reste sec : il existe une SECONDE cause**, un décalage systématique de niveau sur les deux couches actives, à corrélation spatiale conservée. À isoler.
+
+### Plafond de sous-pas porté à 300, phénologie du projet lue : bilan
+
+**Plafond de Courant (`MEANDRE_NSUBSTEP`, défaut historique 48)** — le C++ boucle jusqu'à épuiser la journée, le plafond est une concession au GPU. Effet mesuré à 300, coût ~1.5× en temps (la boucle sort tôt quand elle a fini, donc le plafond ne coûte QUE là où il servait) :
+
+| | OUTV 48 | OUTV 300 | GASP 48 | GASP 300 |
+|---|---|---|---|---|
+| r médian réseau | 0.922 | **0.932** | 0.903 | **0.930** |
+| beta | 1.069 | **1.052** | 0.997 | 0.992 |
+| theta1 / theta2 | 0.964 / 0.948 | 0.968 / 0.960 | 0.634 / 0.550 | 0.666 / 0.584 |
+| hiver (jan/fév) | 1.07 / 1.14 | 1.07 / 1.14 | 0.77 / 0.74 | **0.97 / 0.94** |
+
+**PHÉNOLOGIE DU PROJET (`physio/ind_fol.def`, `pro_rac.def`) : lue et branchée, effet NUL.** Les profils étaient codés en dur depuis DELISLE, avec des écarts réels (racines conifères 1.531 m sur OUTV et 1.26 sur GASP contre 1.0 en dur ; milieux humides 1.531 contre 0.75 ; agriculture 0.108 contre 0.8 ; indice foliaire des feuillus nul en hiver et culminant à 6 contre un plancher à 3 et un maximum de 5). Résultat : r 0.932 -> 0.930, cycle d'été inchangé. **Correctif de FIDÉLITÉ, pas de performance** : à ces profondeurs de sol, 1.0 m atteignait déjà la couche 3, donc la répartition de l'extraction change à peine. Conservé quand même, et consigné comme tel pour ne pas le recompter plus tard comme un gain.
+Subtilité de lecture : les deux fichiers n'ont pas la même grille de jours (1/158/188/299/365 contre 1/160/190/260/365), interpolation sur la grille réunie.
+
+**État de la compatibilité** : neige exacte sur 2 régions, sol à 3-4 % sur OUTV, routage à 0.99, r réseau 0.93. **Résidu unique : un excès de volume de 7 % concentré en juillet-octobre (1.25 à 1.36), plus un déficit d'avril propre à OUTV (0.76).** Pour trancher l'excès d'été il faut l'ETR d'Hydrotel jour par jour, que seule la réexécution instrumentée peut fournir — elle en est à **52 h de CPU sans avoir écrit un seul fichier**.

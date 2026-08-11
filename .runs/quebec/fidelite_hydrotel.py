@@ -28,7 +28,8 @@ from meandre.model import HydroModel
 from meandre.utils.state import HydroState
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes,
                                          load_melt_nodes, load_passage_pluie_neige,
-                                         load_occupation_sol, load_milieux_humides)
+                                         load_occupation_sol, load_milieux_humides,
+                                         load_phenologie)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
@@ -131,6 +132,7 @@ _lc = load_occupation_sol(PROJ, node_ids, device=DEVICE)
 _mh = load_milieux_humides(PROJ, node_ids, device=DEVICE)
 _lc.update(_mh)
 m.vertical_column.set_land_cover(_lc)
+m.vertical_column.set_phenology(load_phenologie(PROJ) or None)
 if _mh:
     _wa = _mh["wet_a_raw"]
     print(f"[fidelite] milieux humides isolés : {int((_wa > 0).sum())}/{n} tronçons | "

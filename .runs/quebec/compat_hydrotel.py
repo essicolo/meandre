@@ -27,7 +27,7 @@ from meandre.utils.state import HydroState
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes, load_melt_nodes,
                                          load_passage_pluie_neige, load_occupation_sol,
-                                         load_milieux_humides)
+                                         load_milieux_humides, load_phenologie)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
@@ -78,6 +78,12 @@ m.vertical_column.t_neige_seuil = load_passage_pluie_neige(PROJ)
 lc = load_occupation_sol(PROJ, node_ids, device=DEVICE)
 lc.update(load_milieux_humides(PROJ, node_ids, device=DEVICE))
 m.vertical_column.set_land_cover(lc)
+_ph = load_phenologie(PROJ)
+m.vertical_column.set_phenology(_ph or None)
+if _ph:
+    print(f"[compat] phénologie du projet : {len(_ph)} classes | racines conifères "
+          f"{_ph['conifers'][2][0]:.2f} m (codé en dur : 1.00) | LAI feuillus max "
+          f"{max(_ph['feuillus'][1]):.1f} (codé en dur : 5.0)", flush=True)
 m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
 
 lignes = [l.split() for l in (Path(PROJ) / "physitel" / "troncon.trl").read_text(encoding="latin-1").splitlines()[3:] if l.strip()]

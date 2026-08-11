@@ -345,13 +345,23 @@ class HydrotelColumn(nn.Module):
 
         # ETR : thetacc/thetapf du NeRF (couche 1), alpha global ; classes dispo
         alpha = torch.exp(self.log_etr_alpha)
+        # PHÉNOLOGIE : profils du PROJET Hydrotel (physio/ind_fol.def et pro_rac.def)
+        # s'ils ont été posés par set_phenology(), sinon les tables codées en dur.
+        # Écarts mesurés sur OUTV : racines des conifères 1.531 m contre 1.0 chez nous,
+        # milieux humides 1.531 contre 0.75, agriculture 0.108 contre 0.8 ; feuillus à
+        # indice foliaire nul en hiver contre un plancher à 3.
+        _ph = getattr(self, "_pheno", None)
+        def _prof(cl):
+            if _ph is not None and cl in _ph:
+                return _ph[cl]
+            return _JBP, _LEAF[cl], _ROOT[cl]
         et_classes = []
         if pct_feu.sum() > 0:
-            et_classes.append((pct_feu, _JBP, _LEAF["feuillus"], _ROOT["feuillus"]))
+            et_classes.append((pct_feu, *_prof("feuillus")))
         if pct_conif.sum() > 0:
-            et_classes.append((pct_conif, _JBP, _LEAF["conifers"], _ROOT["conifers"]))
+            et_classes.append((pct_conif, *_prof("conifers")))
         if f_wet.sum() > 0:
-            et_classes.append((f_wet, _JBP, _LEAF["humides"], _ROOT["humides"]))
+            et_classes.append((f_wet, *_prof("humides")))
         # DÉFICIT D'ETR D'ÉTÉ (corrigé le 2026-08-10) : seules forêt et milieu humide
         # recevaient une classe de végétation, soit 79.6 % du territoire sur OUTV.
         # L'agriculture (12 %) et le sol nu ne transpiraient PAS DU TOUT, alors que les
@@ -361,12 +371,12 @@ class HydrotelColumn(nn.Module):
         # perméable en classe ouverte, pour que l'ETR couvre bien tout fsa.
         pct_agri = z("f_agriculture_raw", 0.0)
         if pct_agri.sum() > 0:
-            et_classes.append((pct_agri, _JBP, _LEAF["agri"], _ROOT["agri"]))
+            et_classes.append((pct_agri, *_prof("agri")))
         if et_classes:
             _couvert = pct_feu + pct_conif + f_wet + pct_agri
             _reste = torch.clamp(fsa - _couvert, min=0.0)
             if _reste.sum() > 0:
-                et_classes.append((_reste, _JBP, _LEAF["ouverts"], _ROOT["ouverts"]))
+                et_classes.append((_reste, *_prof("ouverts")))
         # DÉGRADATION GRACIEUSE : sans descriptif d'occupation (ex réseau PHYSITEL,
         # qui ne porte pas les fractions par classe), l'ET ne doit PAS tomber à 0.
         # Classe végétation par défaut sur la fraction perméable (LAI/racines
@@ -545,6 +555,12 @@ class HydrotelColumn(nn.Module):
         for nm, v in [("lin_lat", lat), ("lin_alti", alti), ("lin_tfroid", t_froid),
                       ("lin_tchaud", t_chaud), ("lin_albedo", albedo), ("lin_coeff", coeff)]:
             self.register_buffer(nm, torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
+
+    def set_phenology(self, ph: dict | None):
+        """Profils phénologiques par classe, {classe: (jours, indice_foliaire,
+        profondeur_racinaire)}, en général chargés du projet Hydrotel par
+        load_phenologie(). Priment sur les tables codées en dur _LEAF/_ROOT."""
+        self._pheno = ph
 
     def set_land_cover(self, lc: dict | None):
         """Fractions d'occupation du sol BRUTES par nœud (clés `f_*_raw`), en général

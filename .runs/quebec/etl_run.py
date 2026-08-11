@@ -287,11 +287,17 @@ if os.environ.get("ETL_OCCUPATION", "1") == "1":
     _plat = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA"
     _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
     try:
-        from meandre.data.hydrotel_calib import load_occupation_sol, load_milieux_humides
+        from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+                                                 load_phenologie)
         _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
         _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
         _lc.update(_mh)
         model.vertical_column.set_land_cover(_lc)
+        _ph = load_phenologie(_pl)
+        model.vertical_column.set_phenology(_ph or None)
+        if _ph:
+            print(f"[etl] phénologie du projet : {len(_ph)} classes "
+                  f"(racines conifères {_ph['conifers'][2][0]:.2f} m, codé en dur 1.00)")
         if _mh:
             _wa = _mh["wet_a_raw"]
             print(f"[etl] milieux humides isolés : {int((_wa > 0).sum())} tronçons | "
