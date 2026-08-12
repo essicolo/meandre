@@ -1500,3 +1500,15 @@ Essi conteste l'utilité du modèle : « méandre fait 0.605 alors qu'Hydrotel l
 Ce que cela ne change pas : le constat d'Essi sur l'ENTRAÎNEMENT reste entier. La version qui cale elle-même est 0.148 derrière Hydrotel et 0.134 derrière sa propre version ancrée. Le problème n'est pas la physique, c'est l'optimisation.
 
 **Réserve posée immédiatement** : 0.7531 est le membre LN24HA SEUL. La règle du projet est de comparer à l'ENSEMBLE des 6 calages (posttraitement_{LN24HA,MG24Hx}.zarr), ce qui sera plus sévère. À faire avant toute communication de ce résultat.
+
+### Duel contre l'ENSEMBLE, et ce que l'ancrage transmet vraiment
+
+**Trois appariements ratés avant d'obtenir le bon chiffre**, ce qui mérite d'être noté : le stockage provincial indexe par un RANG (`troncon_idx`, 0..28034) et porte les identifiants dans une COORDONNÉE `troncon_id` de la forme "REG#####". Comparer des entiers a donné des KGE de -0.25 (absurdes, donc détectés) ; comparer des chaînes au rang n'a rien apparié. Le dépôt manipule trois numérotations de tronçons et chaque script refait la conversion à la main — dette à supprimer par une fonction unique.
+
+**Ensemble Hydrotel sur OUTV** (6 membres, 16 jauges, 2022-2024) : membres à 0.7531 (LN24HA), 0.7616, 0.8003, 0.8299 (MG24HK), 0.7934, 0.8151. **Ensemble médian par station 0.7711**, meilleur membre par station 0.8543. Le banc est validé par recoupement : LN24HA y donne 0.7531, exactement la valeur obtenue indépendamment depuis `debit_aval.nc`.
+
+**Correction de ma propre correction** : j'avais annoncé la parité une heure plus tôt. Elle ne valait que contre le membre le PLUS FAIBLE. Méandre ancré (0.7389) est sous les six membres et 0.032 sous l'ensemble médian. La formulation initiale d'Essi était plus juste que ma correction.
+
+**L'ANCRAGE NE TRANSMET PAS LA QUALITÉ DU CALAGE.** Ancré sur MG24HK (0.8299, le meilleur) : méandre fait **0.7424**, contre 0.7389 ancré sur LN24HA (0.7531, le plus faible). **+0.077 à la source donnent +0.0035 à l'arrivée.** Le volume, lui, s'améliore nettement (beta 1.081 -> 1.005). Conclusion : **méandre a son propre plafond, ~0.74 sur OUTV, indépendant de la calibration injectée.** L'écart résiduel à l'ensemble est le NÔTRE — l'excès d'été et le déficit d'avril — pas un défaut de calage hérité.
+
+Corollaire pratique : produire notre propre ensemble à 6 membres ne servirait à rien tant que ce plafond tient, puisque les six ancrages donneraient à peu près le même résultat. L'idée est écartée pour l'instant.
