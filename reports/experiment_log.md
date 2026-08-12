@@ -1512,3 +1512,22 @@ Ce que cela ne change pas : le constat d'Essi sur l'ENTRAÎNEMENT reste entier. 
 **L'ANCRAGE NE TRANSMET PAS LA QUALITÉ DU CALAGE.** Ancré sur MG24HK (0.8299, le meilleur) : méandre fait **0.7424**, contre 0.7389 ancré sur LN24HA (0.7531, le plus faible). **+0.077 à la source donnent +0.0035 à l'arrivée.** Le volume, lui, s'améliore nettement (beta 1.081 -> 1.005). Conclusion : **méandre a son propre plafond, ~0.74 sur OUTV, indépendant de la calibration injectée.** L'écart résiduel à l'ensemble est le NÔTRE — l'excès d'été et le déficit d'avril — pas un défaut de calage hérité.
 
 Corollaire pratique : produire notre propre ensemble à 6 membres ne servirait à rien tant que ce plafond tient, puisque les six ancrages donneraient à peu près le même résultat. L'idée est écartée pour l'instant.
+
+### O1, pli 0/4 : le champ spatial perd 0.071 en régionalisation, et reste dominé par l'ancrage
+
+OUTV, 4 jauges retirées de l'entraînement ET de la validation, évaluées sur 2022-2024 :
+
+| | KGE médian |
+|---|---|
+| 4 jauges **jamais vues** | **0.5239** (moyenne 0.5495) |
+| 12 jauges vues, même entraînement | 0.5946 |
+| 16 jauges, entraînement complet | 0.6051 |
+| **paramètres ANCRÉS, zéro entraînement** | **0.7389** |
+
+Deux lectures, la seconde étant la plus lourde.
+1. La régionalisation coûte **0.071** : le champ ne s'effondre pas sur des bassins qu'il n'a jamais vus (0.52 reste loin devant un modèle nul), mais il perd sensiblement.
+2. **Le champ appris est dominé par l'ancrage MÊME LÀ OÙ IL A LES OBSERVATIONS** : 0.595 contre 0.739 sur les jauges vues. Le problème n'est donc pas la régionalisation, c'est l'apprentissage lui-même.
+
+Réserve : 4 jauges, donc bruité. Les plis 1 à 3 sont en file (une nuit).
+
+Premier essai perdu : masquer `q_obs` retirait bien les jauges de l'entraînement mais les rendait INÉVALUABLES, donc le pli ne rapportait rien. Correctif : copie intacte des observations réservée à l'évaluation.
