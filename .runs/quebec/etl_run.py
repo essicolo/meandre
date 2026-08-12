@@ -492,6 +492,9 @@ if _FOLD:
     _k, _K = (int(x) for x in _FOLD.split("/"))
     _ns = int(td.q_obs.shape[1])
     _fold_test = [i for i in range(_ns) if i % _K == _k]
+    _qo_full = td.q_obs.clone()   # COPIE INTACTE pour l'évaluation : masquer q_obs
+    # retire les jauges de l'entraînement ET les rend inévaluables si on ne garde pas
+    # l'original (erreur commise au premier essai : le pli ne rapportait rien).
     _qo = td.q_obs.clone()
     _qo[:, _fold_test] = float("nan")
     td = _dc_replace(td, q_obs=_qo)
@@ -536,7 +539,8 @@ sl = (times >= "2022-01-01") & (times <= "2024-12-31")
 slt = torch.tensor(sl.values if hasattr(sl, "values") else sl, device=DEVICE)
 Qs = Q[slt][:, td.station_idx].cpu()
 t0 = td.train_slice.start
-qo_test = td.q_obs[np.flatnonzero(sl)[0] - t0 : np.flatnonzero(sl)[-1] - t0 + 1].cpu()
+_qo_eval = _qo_full if _fold_test is not None else td.q_obs
+qo_test = _qo_eval[np.flatnonzero(sl)[0] - t0 : np.flatnonzero(sl)[-1] - t0 + 1].cpu()
 ks = []
 for s in range(Qs.shape[1]):
     v = ~torch.isnan(qo_test[:, s]) & ~torch.isnan(Qs[:, s])
@@ -555,4 +559,13 @@ if _fold_test is not None:
         kf = np.array(kf)
         print(f"[etl] PLI {_FOLD} - jauges JAMAIS VUES : n={len(kf)} | "
               f"median {np.median(kf):.4f} | mean {kf.mean():.4f}")
+    _vus = [i for i in range(qo_test.shape[1]) if i not in _fold_test]
+    kv = []
+    for _s in _vus:
+        v = ~torch.isnan(qo_test[:, _s]) & ~torch.isnan(Qs[:, _s])
+        if v.sum() >= 60:
+            kv.append(float(kge_fn(qo_test[v, _s], Qs[v, _s])))
+    if kv:
+        print(f"[etl] PLI {_FOLD} - jauges VUES a l'entrainement : n={len(kv)} | "
+              f"median {np.median(kv):.4f}")
 print("[etl] DONE")
