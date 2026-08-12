@@ -56,7 +56,7 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 
 | # | Question | Test défini | État |
 |---|---|---|---|
-| O1 | Le champ spatial sert-il en NON JAUGÉ ? | validation croisée spatiale 4 plis sur OUTV | **pli 0 (n=4, provisoire)** : jamais vues 0.524, vues 0.595 (-0.071), ancré 0.739. Le champ régionalise imparfaitement ET reste dominé par l'ancrage MÊME sur les jauges vues. Plis 1-3 en file |
+| O1 | Le champ spatial sert-il en NON JAUGÉ ? | validation croisée spatiale 4 plis sur OUTV | **plis 0 et 1, cohérents** : jamais vues 0.524 / 0.537, vues 0.595 / 0.601, écart -0.071 / -0.064 ; ancré 0.739 partout. Le champ régionalise avec un coût STABLE d'environ 0.07, et reste dominé par l'ancrage MÊME sur les jauges vues. Plis 2-3 en file |
 | O2 | D'où vient l'excès d'été de 25-40 % ? | ETR d'Hydrotel jour par jour (réexécution instrumentée, 78 h CPU sans écriture) ou bilan ETR par classe | bloqué |
 | O3 | D'où vient le déficit d'avril (0.76 sur OUTV) ? | neige EXACTE (E1), donc c'est la restitution de l'eau de fonte par le sol | non commencé |
 | O4 | Pluie ou évaporation : qui a tort ? | plan 4 cases forçage (stations / CaSR brut) × contrainte ET (off / on). Stations 959 -> ETR 311 (trop bas) ; CaSR brut 1109 -> ETR 461 (crédible) | non commencé |
