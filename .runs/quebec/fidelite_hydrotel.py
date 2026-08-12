@@ -249,4 +249,9 @@ for s in range(Qs.shape[1]):
     rr = np.corrcoef(o[v], si[v])[0, 1]; b = si[v].mean() / o[v].mean()
     g = (si[v].std() / si[v].mean()) / (o[v].std() / o[v].mean())
     ks.append(1 - np.sqrt((rr - 1) ** 2 + (b - 1) ** 2 + (g - 1) ** 2))
-print(f"\n  KGE aux jauges (repère, obs) : {np.median(ks):.4f} (Hydrotel ~0.82, champion méandre 0.4992)")
+# REPÈRES MESURÉS (2026-08-11, mêmes 16 jauges, même période, même formule KGE). Le
+# « Hydrotel ~0.82 » qui figurait ici était une chaîne JAMAIS mesurée, répétée pendant
+# des jours : deuxième chiffre fantôme du projet, et celui-là de mon fait.
+print(f"\n  KGE aux jauges : {np.median(ks):.4f}")
+print("  repères MESURÉS outv 2022-2024 : ensemble Hydrotel (6 membres) 0.771 | "
+      "membres 0.753 à 0.830 | meilleur par station 0.854 | méandre entraîné 0.6051")
