@@ -96,6 +96,27 @@ for lib, a, b in PERIODES:
     ks = np.array([x for x in ks if np.isfinite(x)])
     res[lib] = np.median(ks)
     print(f"  {lib:14s} ({a[:4]}-{b[:4]}) : n={len(ks)} | médian {np.median(ks):.4f}")
+# FENÊTRE GLISSANTE (idée d'Essi : « est-ce qu'on pourrait prendre un autre hold-out
+# que 2022-2024 ? »). Le modèle ANCRÉ n'a rien appris, donc son score par fenêtre de
+# 3 ans mesure la DIFFICULTÉ INTRINSÈQUE de chaque période, sans aucun sur-ajustement
+# possible. Si 2022-2024 y ressort comme une période anormalement dure, le tenu de côté
+# actuel est un juge biaisé et il faut en changer.
+print(f"\n=== difficulté par fenêtre de 3 ans ({nom}) ===")
+for a0 in range(2001, 2023, 3):
+    a1 = a0 + 2
+    msk = np.asarray((tt >= f"{a0}-01-01") & (tt <= f"{a1}-12-31"))
+    if msk.sum() < 300:
+        continue
+    ks = []
+    for k in range(len(sid)):
+        o, s_ = qo_all[msk, k], Qs_all[msk, k]
+        v = np.isfinite(o) & np.isfinite(s_)
+        if v.sum() >= 60:
+            ks.append(kge(o[v], s_[v]))
+    ks = np.array([x for x in ks if np.isfinite(x)])
+    if len(ks):
+        print(f"  {a0}-{a1} : n={len(ks):2d} | médian {np.median(ks):.4f}")
+
 if len(res) == 2:
     d = res["tenu de côté"] - res["validation"]
     print(f"\n  CHUTE validation -> tenu de côté : {d:+.4f}")
