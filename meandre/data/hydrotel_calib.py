@@ -381,3 +381,45 @@ def load_phenologie(project_dir):
         rac = list(_np.interp(jours, jr, rac_pts))
         out[cl] = (list(jours), lai, rac)
     return out
+
+
+# ── IDENTITÉ DES TRONÇONS ───────────────────────────────────────────────────
+# Le dépôt manipule TROIS numérotations et chaque script refaisait la conversion à la
+# main. Le 2026-08-11 cela a produit trois appariements ratés d'affilée, dont un qui
+# rendait des KGE de -0.25 : des nombres faux, pas une erreur. D'où ces fonctions,
+# à utiliser partout plutôt que de reconstruire l'appariement sur place.
+#
+#   1. ENTIER LOCAL      : identifiant du tronçon dans le troncon.trl de la région
+#                          (1..n_troncons). C'est ce que porte `node_ids`.
+#   2. CHAÎNE PROVINCIALE: "REG#####" (ex "OUTV00123"), coordonnée `troncon_id` des
+#                          stockages provinciaux de post-traitement.
+#   3. RANG              : position dans le tableau provincial (`troncon_idx`, 0..28034).
+#                          N'a AUCUN sens hydrologique, c'est un indice de stockage.
+
+def id_provincial(region: str, troncon_local: int) -> str:
+    """Entier local -> chaîne provinciale ("OUTV", 123) -> "OUTV00123"."""
+    return f"{region.upper()}{int(troncon_local):05d}"
+
+
+def id_local(id_prov: str) -> tuple[str, int]:
+    """Chaîne provinciale -> (région, entier local). "OUTV00123" -> ("OUTV", 123)."""
+    s = str(id_prov)
+    return s[:4].upper(), int(s[4:])
+
+
+def appariement_provincial(region: str, troncons_locaux, ids_provinciaux):
+    """Rangs, dans un tableau provincial, des tronçons locaux demandés.
+
+    `ids_provinciaux` : la coordonnée `troncon_id` du stockage (chaînes "REG#####").
+    Retourne une liste de rangs, `None` pour les tronçons absents. LÈVE une erreur si
+    AUCUN ne s'apparie : un appariement vide est toujours un bug de convention, jamais
+    un résultat, et le laisser passer produit des scores absurdes silencieux.
+    """
+    pos = {str(t): k for k, t in enumerate(ids_provinciaux)}
+    rangs = [pos.get(id_provincial(region, t)) for t in troncons_locaux]
+    if all(r is None for r in rangs):
+        raise ValueError(
+            f"aucun tronçon apparié pour {region.upper()} : les identifiants fournis "
+            f"ressemblent à {str(ids_provinciaux[0])!r}, on cherchait "
+            f"{id_provincial(region, troncons_locaux[0])!r}")
+    return rangs

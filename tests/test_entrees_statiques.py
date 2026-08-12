@@ -153,3 +153,21 @@ def test_bornes_kmusk_par_defaut():
     MEANDRE_KMUSK n'est pas posé (les checkpoints existants en dépendent)."""
     from meandre.spatial import field_network as fn
     assert (fn._KMUSK_MIN, fn._KMUSK_MAX, fn._KMUSK_INIT) == (4.0, 48.0, 24.0)
+
+
+# ── IDENTITÉ DES TRONÇONS ───────────────────────────────────────────────────
+def test_conversion_identifiants_troncons():
+    """Trois numérotations coexistent (entier local, chaîne provinciale, rang de
+    stockage) et leur confusion a produit des KGE de -0.25 le 2026-08-11 : des nombres
+    faux, pas une erreur visible."""
+    from meandre.data.hydrotel_calib import id_provincial, id_local, appariement_provincial
+    assert id_provincial("outv", 123) == "OUTV00123"
+    assert id_local("OUTV00123") == ("OUTV", 123)
+    assert appariement_provincial("OUTV", [2, 1, 9], ["OUTV00001", "OUTV00002"]) == [1, 0, None]
+
+
+def test_appariement_vide_leve_une_erreur():
+    """Un appariement vide est TOUJOURS un bug de convention, jamais un résultat."""
+    from meandre.data.hydrotel_calib import appariement_provincial
+    with pytest.raises(ValueError):
+        appariement_provincial("OUTV", [1, 2], ["GASP00001", "GASP00002"])

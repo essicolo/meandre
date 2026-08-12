@@ -12,6 +12,7 @@ import os, sys
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.getcwd()); sys.path.insert(0, ".runs/quebec")
 import tomllib, numpy as np, pandas as pd, torch, xarray as xr
+from meandre.data.hydrotel_calib import appariement_provincial
 from joint_data import load_region
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
@@ -55,11 +56,9 @@ for mem in MEMBRES:
     # pas par l'entier local de la région. Comparer les entiers apparie des tronçons
     # sans rapport et donne des KGE absurdes (-0.25 mesuré avant correction, alors que
     # le MÊME membre lu dans le fichier régional donne 0.7531).
-    idz = np.asarray(z[idvar].values).astype(str)
-    pos = {t: k for k, t in enumerate(idz)}
-    cols = [pos.get(f"{REG.upper()}{t:05d}") for t in tro]
-    if all(c is None for c in cols):
-        print(f"  {mem} : aucun tronçon apparié"); z.close(); continue
+    # conversion CENTRALISÉE (voir hydrotel_calib) : lève si rien ne s'apparie, plutôt
+    # que de rendre des scores absurdes en silence.
+    cols = appariement_provincial(REG, tro, np.asarray(z[idvar].values).astype(str))
     # L'ordre des dimensions varie d'un stockage à l'autre (ici tronçon en PREMIER) :
     # on laisse xarray sélectionner et transposer plutôt que d'indexer à la main.
     sel = z[var].sel({dimt: slice(T0, T1)}).transpose(dimt, dimn)
