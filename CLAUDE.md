@@ -73,7 +73,11 @@ meandre/
 hydrotel_clone/   # Faithful C++ ports + validate_*.py harnesses (per-UHRH vs binary)
 .runs/slso/       # SLSO case: slso.py (training script), config/, data builders
 .runs/quebec/     # Quebec scale-up: 15 regions, fleet + eval scripts
-reports/          # experiment_log.md (ALL runs + verdicts), RAPPORT_QUEBEC.md
+reports/          # registre_hypotheses.md = ÉTAT COURANT, statut par hypothèse
+                  #   (établi / réfuté / caduc / ouvert). À LIRE AVANT de citer un
+                  #   chiffre, et à RÉVISER à chaque verdict. Le journal ci-dessous
+                  #   raconte l'histoire, le registre dit ce qui est vrai aujourd'hui.
+                  # experiment_log.md (journal chronologique), RAPPORT_QUEBEC.md
 tests/            # Mirrors meandre/ structure
 ```
 
