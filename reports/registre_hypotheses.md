@@ -67,7 +67,9 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 
 ## 5. Dette technique qui PRODUIT des fantômes
 
-1. **Trois numérotations de tronçons** (entier local, rang provincial, chaîne "REG#####") converties à la main dans chaque script. A produit 3 appariements ratés d'affilée le 11 août, dont un donnant des KGE de -0.25 qui auraient pu être consignés comme un triomphe.
-2. **Repères écrits en dur dans les sorties** au lieu d'être calculés. Source directe de R1.
-3. **Entrées statiques à repli silencieux** : `get_physical` renvoie None et le code prend un défaut, sans message. Source de 7 bugs de la semaine.
-4. **Journal chronologique sans statut** : ce registre est la réponse, à maintenir à chaque verdict.
+1. ~~**Trois numérotations de tronçons**~~ **RÉGLÉ 08-12** : conversions centralisées dans `hydrotel_calib` (`id_provincial`, `id_local`, `appariement_provincial`), un appariement vide LÈVE une erreur au lieu de rendre des nombres. 2 tests.
+2. ~~**Repères écrits en dur dans les sorties**~~ **RÉGLÉ 08-11** : le « Hydrotel ~0.82 » retiré, remplacé par les valeurs mesurées de l'ensemble.
+3. ~~**Entrées statiques à repli silencieux**~~ **RÉGLÉ 08-12** : la colonne imprime UNE FOIS l'occupation qu'elle reçoit et AVERTIT si elle est nulle. Test dédié. Les colonnes `f_*_raw` sont par ailleurs désormais écrites à la source par `physitel_loader` (effectif à la reconstruction des caches).
+4. **Journal chronologique sans statut** : ce registre est la réponse, à maintenir à chaque verdict. EN COURS, à réviser à chaque résultat de la file.
+5. **13 sorties MORTES du champ spatial** sur 37 (f_root, T_snow, interception, manning_n, f_wetland, rain_hours, vsa_b, theta_fc_2/3, theta_wp_2/3) : capacité gaspillée et diagnostics brouillés. À retirer, mais casse la compatibilité des points de reprise — à faire au moment de la reconstruction des caches.
+6. **`pgrep` et `ps` du shell POSIX ne voient PAS les processus Windows** : cause de 4 incidents de contention en 3 jours, dont une nuit perdue et trois copies d'une même file prêtes à démarrer ensemble. Toute vérification de processus doit passer par PowerShell ou `tasklist`.

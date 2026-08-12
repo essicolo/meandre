@@ -258,6 +258,22 @@ class HydrotelColumn(nn.Module):
         fse = torch.clamp(f_water + f_lake, 0.0, 1.0)
         fsi = torch.clamp(f_urban, 0.0, 1.0)
         fsa = torch.clamp(1.0 - fse - fsi, 0.0, 1.0)
+        # GARDE-FOU D'ENTRÉES (dette #3 du registre). `get_physical` renvoie None quand
+        # la colonne demandée n'existe pas, et le code prend alors un DÉFAUT sans le
+        # moindre message : c'est ainsi que méandre a simulé le Québec avec 0 % de forêt
+        # et 0 % d'eau libre pendant des mois. On imprime UNE FOIS ce que la physique
+        # reçoit réellement, et on avertit si l'occupation est manifestement absente.
+        if not getattr(self, "_entrees_verifiees", False):
+            self._entrees_verifiees = True
+            _ff, _fw = float(f_forest.mean()), float(f_water.mean())
+            _fu, _fwe = float(f_urban.mean()), float(f_wet.mean())
+            print(f"[colonne] occupation reçue : forêt {_ff:.3f} | eau {_fw:.3f} | "
+                  f"imperméable {_fu:.3f} | humide {_fwe:.3f} | fsa {float(fsa.mean()):.3f}")
+            if _ff + _fw + _fu + _fwe < 1e-6:
+                print("[colonne] AVERTISSEMENT : occupation du sol TOUTE NULLE. Le "
+                      "territoire sera traité comme du sol nu découvert (classe de neige "
+                      "la plus fondante, aucun ruissellement sur l'eau libre). Vérifier "
+                      "que les colonnes `f_*_raw` existent, ou poser set_land_cover().")
         # pente = géométrie universelle. Priorité : slope_fraction (présent dans le
         # cache PHYSITEL, déjà en fraction), sinon mean_slope_pct_raw/100, sinon défaut.
         slope_frac = gp("slope_fraction")

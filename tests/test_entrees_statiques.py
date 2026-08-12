@@ -171,3 +171,28 @@ def test_appariement_vide_leve_une_erreur():
     from meandre.data.hydrotel_calib import appariement_provincial
     with pytest.raises(ValueError):
         appariement_provincial("OUTV", [1, 2], ["GASP00001", "GASP00002"])
+
+
+def test_garde_fou_occupation_nulle(capsys):
+    """La colonne doit DIRE ce qu'elle reçoit, et avertir si l'occupation est nulle.
+    Sans ce message, méandre a simulé le Québec avec 0 % de forêt pendant des mois."""
+    import torch as _t
+    from meandre.model import HydroModel
+    from meandre.routing.graph import synthetic_linear_graph
+    from meandre.routing.withdrawals import WithdrawalData
+    from meandre.utils.state import HydroState
+
+    n, T = 6, 12
+    m = HydroModel(n_nodes=n, use_temporal=False, use_residual=False,
+                   use_travel_time_attn=False, column_mode="hydrotel")
+    terr = TerritorialFeatures.zeros(n_nodes=n, n_features=17)
+    terr.physical["area_km2_local"] = _t.ones(n) * 2
+    terr.physical["area_km2_physical"] = _t.ones(n) * 10
+    f = _t.zeros(T, n, 6); f[:, :, 0] = 2.0; f[:, :, 1] = 1.0; f[:, :, 2] = 9.0
+    with _t.no_grad():
+        m.simulate(forcing=f, initial_state=HydroState.zeros(n), graph=synthetic_linear_graph(n, tau_days=1),
+                   node_coords=_t.zeros(n, 2), territorial=terr,
+                   withdrawals=WithdrawalData.zeros(T, n), day_of_year=_t.ones(T, dtype=_t.long))
+    sortie = capsys.readouterr().out
+    assert "occupation reçue" in sortie, "la colonne doit annoncer ce qu'elle reçoit"
+    assert "AVERTISSEMENT" in sortie, "occupation nulle : l'avertissement doit se déclencher"
