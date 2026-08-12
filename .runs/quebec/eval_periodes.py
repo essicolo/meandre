@@ -1,0 +1,104 @@
+"""L'ENTRAÎNEMENT sur-ajuste-t-il, ou la PÉRIODE de test est-elle simplement différente ?
+
+Question d'Essi (2026-08-12) : « si l'apprentissage détériore, c'est que la fonction de
+perte est mauvaise ». Peut-être, mais trois causes donnent la même signature (validation
+0.834, tenu de côté 0.605) et appellent des remèdes opposés :
+  a) la perte vise la mauvaise cible,
+  b) le modèle sur-ajuste sa période de calage,
+  c) la période 2022-2024 est climatiquement différente (mesuré en juin : pluie estivale
+     +28 %, hivers +1.5 °C), et TOUT modèle y perd.
+
+Un seul test les sépare : évaluer le modèle ANCRÉ (zéro paramètre appris, donc incapable
+de sur-ajuster quoi que ce soit) sur LES DEUX périodes, et comparer sa chute à celle de
+l'entraîné.
+  - si l'ancré chute autant : cause (c), la perte est innocente, il faut une évaluation
+    multi-périodes et non une nouvelle perte ;
+  - si l'ancré reste stable : cause (a) ou (b), et le chantier est bien l'apprentissage.
+
+  PYTHONIOENCODING=utf-8 JOINT_FX_SUFFIX=-hyb python .runs/quebec/eval_periodes.py outv [checkpoint]
+"""
+import os, sys
+os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.getcwd()); sys.path.insert(0, ".runs/quebec")
+from pathlib import Path
+import tomllib, numpy as np, pandas as pd, torch
+from meandre.model import HydroModel
+from meandre.utils.state import HydroState
+from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes, load_melt_nodes,
+                                         load_passage_pluie_neige, load_occupation_sol,
+                                         load_milieux_humides, load_phenologie)
+from meandre.data.hgm_loader import lire_hgm
+from joint_data import load_region
+
+REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
+CKPT = sys.argv[2] if len(sys.argv) > 2 else None      # None = modèle ANCRÉ
+MEMBRE = os.environ.get("FIDELITE_MEMBRE", "LN24HA")
+PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/{MEMBRE}/{REG.upper()}_{MEMBRE}_2020"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+PERIODES = [("validation", "2019-01-01", "2021-12-31"), ("tenu de côté", "2022-01-01", "2024-12-31")]
+
+cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
+r = load_region(REG, dict(cfg["loss"]), device=DEVICE)
+td = r["train_data"]; n = r["n_nodes"]; node_ids = r["node_ids"]
+tt = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
+
+m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6,
+    use_temporal=False, use_residual=False, use_travel_time_attn=False,
+    use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
+    column_mode="hydrotel", et_mode="linacre", use_temperature=False,
+    use_latent_codes=False, latent_mode="additive", spatial_melt=False,
+    routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
+    use_aquifer=False).to(DEVICE)
+m.eval(); m.spatial_encoder.init_from_literature({})
+m.vertical_column.compile_column = False
+if CKPT:
+    m.load(CKPT)
+    print(f"[periodes] checkpoint {Path(CKPT).name}", flush=True)
+else:
+    m.vertical_column.set_calibrated_soil(load_calibrated_soil(PROJ, node_ids, 0.15, device=DEVICE))
+    m.vertical_column.set_linacre_params(*load_linacre_nodes(PROJ, node_ids, device=DEVICE))
+    m.vertical_column.set_melt_params(load_melt_nodes(PROJ, node_ids, device=DEVICE))
+    m.vertical_column.t_neige_seuil = load_passage_pluie_neige(PROJ)
+    _lc = load_occupation_sol(PROJ, node_ids, device=DEVICE)
+    _lc.update(load_milieux_humides(PROJ, node_ids, device=DEVICE))
+    m.vertical_column.set_land_cover(_lc)
+    m.vertical_column.set_phenology(load_phenologie(PROJ) or None)
+    m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
+    print(f"[periodes] modèle ANCRÉ sur {MEMBRE} (zéro paramètre appris)", flush=True)
+
+with torch.no_grad():
+    Q, _, _ = m.simulate(forcing=td.forcing[:, :, :6], initial_state=HydroState.zeros(n, device=DEVICE),
+                         graph=td.graph, node_coords=td.node_coords, territorial=r["territorial"],
+                         withdrawals=td.withdrawals, day_of_year=td.day_of_year)
+
+def kge(o, s):
+    if o.std() < 1e-9 or s.std() < 1e-9 or o.mean() <= 0 or s.mean() <= 0:
+        return np.nan
+    rr = np.corrcoef(o, s)[0, 1]
+    b = s.mean() / o.mean()
+    g = (s.std() / s.mean()) / (o.std() / o.mean())
+    return 1.0 - np.sqrt((rr - 1) ** 2 + (b - 1) ** 2 + (g - 1) ** 2)
+
+sid = td.station_idx.cpu().numpy()
+qo_all = td.q_obs.cpu().numpy()
+Qs_all = Q[:, td.station_idx].cpu().numpy()
+nom = Path(CKPT).name if CKPT else f"ANCRÉ({MEMBRE})"
+print(f"\n=== {nom} sur {REG.upper()}, mêmes stations, même formule ===")
+res = {}
+for lib, a, b in PERIODES:
+    msk = np.asarray((tt >= a) & (tt <= b))
+    ks = []
+    for k in range(len(sid)):
+        o, s = qo_all[msk, k], Qs_all[msk, k]
+        v = np.isfinite(o) & np.isfinite(s)
+        if v.sum() >= 60:
+            ks.append(kge(o[v], s[v]))
+    ks = np.array([x for x in ks if np.isfinite(x)])
+    res[lib] = np.median(ks)
+    print(f"  {lib:14s} ({a[:4]}-{b[:4]}) : n={len(ks)} | médian {np.median(ks):.4f}")
+if len(res) == 2:
+    d = res["tenu de côté"] - res["validation"]
+    print(f"\n  CHUTE validation -> tenu de côté : {d:+.4f}")
+    print("  repère : le modèle ENTRAÎNÉ chute de 0.834 (val, métrique d'entraînement) "
+          "à 0.6051. Si l'ANCRÉ chute autant, la période est en cause et la perte est "
+          "innocente ; s'il reste stable, le chantier est bien l'apprentissage.")
