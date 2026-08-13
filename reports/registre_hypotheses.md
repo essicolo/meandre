@@ -37,6 +37,7 @@ Dernière révision : 2026-08-12.
 | R6 | Nos corrections ont asséché le forçage sous le CaSR brut | Fait juste, jugement faux : elles l'ont ALIGNÉ sur les stations (CaSR brut est à +16 %) | 08-11 |
 | R7 | Le déficit lacustre est une propriété des bassins à lacs | Confusion régionale : corr -0.35 globale mais -0.11 à région fixée | 08-06 |
 | R8 | La régression GASP du 9 août venait d'un correctif | C'était `w_et` : le champion tournait avec la contrainte MODIS DÉSACTIVÉE, moi non | 08-10 |
+| R9 | La chute validation -> tenu de côté vient du CLIMAT de 2022-2024 | Le modèle ANCRÉ, incapable de sur-ajuster, fait 0.7711 en validation et **0.7748** en tenu de côté, et reste entre 0.731 et 0.803 sur les 8 fenêtres de 3 ans de 2001 à 2024. Aucune anomalie de période : c'est bien l'APPRENTISSAGE. Hypothèse posée puis réfutée par moi-même le même jour | 08-13 |
 
 ## 3. Conclusions CADUQUES — mesurées sur la base cassée, à refaire
 

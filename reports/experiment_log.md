@@ -1574,3 +1574,24 @@ Ce prior a été adopté le 21 juillet pour « fermer le déficit de r sur GASP 
 Cohérence de l'ensemble : un champ quasi uniforme ne peut pas sur-ajuster (d'où E10, O1 et O6 qui pointaient tous dans ce sens), mais un champ quasi uniforme MAL PLACÉ explique très bien un score médiocre stable. Le remède n'est ni le lissage ni la régularisation vers la moyenne, c'est le rétrécissement vers des valeurs PHYSIQUES — ce que fait l'ancrage du sol, déjà en file.
 
 **Test immédiat ajouté** : le même entraînement sans le prior faux (`ETL_KSAT1` retiré, donc init littérature) et avec le prior texture.
+
+## 2026-08-13 — La PÉRIODE est innocentée : le modèle ancré est stable sur 24 ans
+
+Essi : « si l'apprentissage détériore, c'est que la fonction de perte est mauvaise ». J'avais opposé une troisième cause possible, la différence climatique de 2022-2024 (mesurée : pluie estivale +30 % contre la période de validation, +1.0 °C, pics observés plus bas). **Test : le modèle ANCRÉ, qui n'apprend rien et ne peut donc rien sur-ajuster.**
+
+| fenêtre | KGE médian, modèle ancré |
+|---|---|
+| 2001-2003 | 0.7313 |
+| 2004-2006 | 0.7337 |
+| 2007-2009 | 0.7450 |
+| 2010-2012 | 0.7362 |
+| 2013-2015 | 0.8033 |
+| 2016-2018 | 0.7707 |
+| **2019-2021 (validation)** | **0.7711** |
+| **2022-2024 (tenu de côté)** | **0.7748** |
+
+**Le modèle ancré ne chute pas : +0.0038 de la validation au tenu de côté, et une amplitude de 0.07 seulement sur 24 ans.** La période 2022-2024 n'a rien d'anormalement difficile — sa pluie estivale supplémentaire ne gêne pas un modèle correctement paramétré.
+
+**Mon hypothèse climatique est donc RÉFUTÉE**, posée et tombée le même jour. Restent les deux causes qu'Essi désignait : la perte vise la mauvaise cible, ou le modèle sur-ajuste sa période. Et comme le champ est quasi plat (dispersion 0.054 contre 0.740 pour Hydrotel) et collé à son prior, « sur-ajuster » ne peut pas vouloir dire « mémoriser du détail spatial » : il s'agit d'un NIVEAU effectif ajusté à une période.
+
+Conséquence pratique : le découpage temporel reste utilisable tel quel, la configurabilité ajoutée aujourd'hui (JOINT_SPLIT, ETL_HELDOUT) servira à la robustesse, pas à corriger un biais.
