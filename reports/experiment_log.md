@@ -1550,3 +1550,27 @@ Premier essai perdu : masquer `q_obs` retirait bien les jauges de l'entraînemen
 **O6 — la couche d'expérience (codes latents par nœud)** : avec 0.6051, **sans 0.6106**. Elle ne rapporte RIEN, et coûte un paramètre par nœud plus la non-reproductibilité d'un départ à chaud. **À retirer.** Elle compensait bien les entrées fausses, comme supposé : une fois l'occupation du sol, les milieux humides et l'ETR réparés, son apport disparaît.
 
 **Ce qui reste vrai et dominant** : l'ancré fait 0.7389 là où l'entraîné plafonne à 0.605, jauges vues comprises. Le chantier est l'apprentissage, pas la régionalisation.
+
+## 2026-08-13 — POURQUOI l'entraîné perd : le champ est COLLÉ à un prior faux de 8 à 23×
+
+Essi propose : Hydrotel gagne parce qu'il est contraint, méandre perd par excès de malléabilité ; faut-il lisser davantage le champ ? **Trois mesures disent l'inverse, et une quatrième donne la vraie cause.**
+
+**Le champ appris n'est pas trop souple, il est presque PLAT.** Dispersion globale de K_sat couche 1 : **0.054 pour l'appris contre 0.740 pour le calage Hydrotel** — quatorze fois moins. Méandre applique quasiment la même conductivité aux 3412 tronçons là où Hydrotel distingue les textures (facteur 5 du sable au loam). Localement l'appris ondule un peu entre voisins (0.02) quand Hydrotel est exactement constant par classe de sol. Ajouter du lissage aggraverait donc le défaut.
+
+**La vraie cause : les NIVEAUX.**
+
+| paramètre | appris | Hydrotel | rapport |
+|---|---|---|---|
+| K_sat 1 (m/j) | 0.0373 | 0.3168 | **0.12** |
+| K_sat 2 | 0.0440 | 0.3168 | 0.14 |
+| K_sat 3 | 0.0140 | 0.3168 | **0.04** |
+| Z3 (m) | 0.891 | 2.650 | 0.34 |
+| porosité 1 | 0.449 | 0.434 | 1.03 |
+
+**Le champ n'a pratiquement pas bougé de son initialisation** : on impose `ETL_KSAT1=0.04` et il finit à 0.0373. Or 0.04 m/j vaut 0.0017 m/h, quand la table des textures donne 0.0132 m/h pour le loam — **notre prior est 8× sous la valeur physique**, et il est appliqué UNIFORMÉMENT là où la texture varie d'un facteur 5.
+
+Ce prior a été adopté le 21 juillet pour « fermer le déficit de r sur GASP », c'est-à-dire pour compenser un modèle qui, on le sait depuis le 10 août, perdait 21 % de sa pluie en crue et n'évaporait que sur 80 % du territoire. **C'est une compensation d'une pathologie aujourd'hui corrigée : CADUC.**
+
+Cohérence de l'ensemble : un champ quasi uniforme ne peut pas sur-ajuster (d'où E10, O1 et O6 qui pointaient tous dans ce sens), mais un champ quasi uniforme MAL PLACÉ explique très bien un score médiocre stable. Le remède n'est ni le lissage ni la régularisation vers la moyenne, c'est le rétrécissement vers des valeurs PHYSIQUES — ce que fait l'ancrage du sol, déjà en file.
+
+**Test immédiat ajouté** : le même entraînement sans le prior faux (`ETL_KSAT1` retiré, donc init littérature) et avec le prior texture.
