@@ -42,7 +42,20 @@ from meandre.training.trainer import TrainingData
 from meandre.training.loss import HydroLoss
 
 DATE_START, DATE_END = "2000-01-01", "2024-12-31"
-TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
+# DÉCOUPAGE TEMPOREL, configurable par JOINT_SPLIT="fin_train,debut_val,fin_val".
+# Mesuré le 2026-08-12 : le découpage historique sélectionne sur la période la plus
+# SÈCHE en été (val 2019-2021 : 1062 mm de pluie JJA) et teste sur la plus HUMIDE
+# (2022-2024 : 1384 mm, +30 %), avec en prime +1.0 °C de moyenne annuelle et des pics
+# observés PLUS BAS malgré la pluie. Le juge est donc biaisé, et pas dans un sens
+# anodin : c'est exactement le régime où méandre est le plus faible (excès d'été de
+# 25-40 % contre Hydrotel). Pouvoir déplacer les trois fenêtres est la condition pour
+# vérifier ce que le tenu de côté doit à la période plutôt qu'au modèle.
+_SPLIT = os.environ.get("JOINT_SPLIT")
+if _SPLIT:
+    TRAIN_END, VAL_START, VAL_END = (x.strip() for x in _SPLIT.split(","))
+    print(f"[joint] découpage NON STANDARD : train -> {TRAIN_END} | val {VAL_START}..{VAL_END}")
+else:
+    TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
 
 FORCINGS = {
     "slso": "D:/meandre-data/slso/forcing-casr-corr.nc",

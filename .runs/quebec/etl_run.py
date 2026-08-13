@@ -535,7 +535,12 @@ with torch.no_grad():
                           graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
                           withdrawals=td.withdrawals, day_of_year=td.day_of_year)
 times = r["times"]
-sl = (times >= "2022-01-01") & (times <= "2024-12-31")
+# Le tenu de côté suit le découpage : par défaut ce qui suit la validation
+# (2022-2024), sinon ETL_HELDOUT="debut,fin". Voir joint_data : la fenêtre historique
+# est un juge biaisé (été 30 % plus humide que la période de sélection).
+_HO = os.environ.get("ETL_HELDOUT", "2022-01-01,2024-12-31").split(",")
+sl = (times >= _HO[0].strip()) & (times <= _HO[1].strip())
+print(f"[etl] tenu de côté : {_HO[0].strip()} .. {_HO[1].strip()}")
 slt = torch.tensor(sl.values if hasattr(sl, "values") else sl, device=DEVICE)
 Qs = Q[slt][:, td.station_idx].cpu()
 t0 = td.train_slice.start
