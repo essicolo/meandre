@@ -67,7 +67,7 @@ else:
     print(f"[periodes] modèle ANCRÉ sur {MEMBRE} (zéro paramètre appris)", flush=True)
 
 with torch.no_grad():
-    Q, _, _ = m.simulate(forcing=td.forcing[:, :, :6], initial_state=HydroState.zeros(n, device=DEVICE),
+    Q, _ = m.simulate(forcing=td.forcing[:, :, :6], initial_state=HydroState.zeros(n, device=DEVICE),
                          graph=td.graph, node_coords=td.node_coords, territorial=r["territorial"],
                          withdrawals=td.withdrawals, day_of_year=td.day_of_year)
 
