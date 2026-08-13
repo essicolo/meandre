@@ -1531,3 +1531,22 @@ Deux lectures, la seconde étant la plus lourde.
 Réserve : 4 jauges, donc bruité. Les plis 1 à 3 sont en file (une nuit).
 
 Premier essai perdu : masquer `q_obs` retirait bien les jauges de l'entraînement mais les rendait INÉVALUABLES, donc le pli ne rapportait rien. Correctif : copie intacte des observations réservée à l'évaluation.
+
+## 2026-08-13 — O1 et O6 tranchées : la régionalisation est quasi gratuite, la couche d'expérience ne sert plus
+
+**O1 — validation croisée spatiale, 4 plis sur OUTV** (chaque jauge retirée exactement une fois) :
+
+| pli | jauges jamais vues (n=4) | jauges vues (n=12) |
+|---|---|---|
+| 0 | 0.5239 (moy 0.5495) | 0.5946 |
+| 1 | 0.5367 (moy 0.5558) | 0.6010 |
+| 2 | **0.7098** (moy 0.6828) | 0.5627 |
+| 3 | 0.5318 (moy 0.5763) | 0.6450 |
+
+**En groupant les 16 jauges : moyenne 0.5911, contre 0.6043 pour l'entraînement complet. Coût de régionalisation : -0.013.** Le champ spatial prédit donc presque aussi bien sur une jauge qu'il n'a jamais vue que sur une jauge dont il a les observations. C'est le premier argument SOLIDE en faveur du champ, et il porte sur ce qui compte : le non jaugé.
+
+**Correction de ma propre lecture** : après les plis 0 et 1 j'avais annoncé un coût stable de 0.07. Prématuré. À n=4 par pli la variance est énorme — le pli 2 donne les jauges RETIRÉES meilleures que les vues (0.710 contre 0.563). Deux plis concordants ne font pas une tendance ; c'est la troisième fois cette semaine que je conclus trop tôt.
+
+**O6 — la couche d'expérience (codes latents par nœud)** : avec 0.6051, **sans 0.6106**. Elle ne rapporte RIEN, et coûte un paramètre par nœud plus la non-reproductibilité d'un départ à chaud. **À retirer.** Elle compensait bien les entrées fausses, comme supposé : une fois l'occupation du sol, les milieux humides et l'ETR réparés, son apport disparaît.
+
+**Ce qui reste vrai et dominant** : l'ancré fait 0.7389 là où l'entraîné plafonne à 0.605, jauges vues comprises. Le chantier est l'apprentissage, pas la régionalisation.

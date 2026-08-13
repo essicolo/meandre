@@ -56,12 +56,12 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 
 | # | Question | Test défini | État |
 |---|---|---|---|
-| O1 | Le champ spatial sert-il en NON JAUGÉ ? | validation croisée spatiale 4 plis sur OUTV | **plis 0 et 1, cohérents** : jamais vues 0.524 / 0.537, vues 0.595 / 0.601, écart -0.071 / -0.064 ; ancré 0.739 partout. Le champ régionalise avec un coût STABLE d'environ 0.07, et reste dominé par l'ancrage MÊME sur les jauges vues. Plis 2-3 en file |
+| O1 | Le champ spatial sert-il en NON JAUGÉ ? | validation croisée spatiale, 4 plis, OUTV | **RÉPONDU (4 plis)** : en groupant les 16 jauges (chacune retirée une fois), moyenne **0.5911** contre 0.6043 pour l'entraînement complet, soit **-0.013**. La régionalisation est donc quasi GRATUITE. Mon verdict après 2 plis (-0.07) était prématuré : à n=4 par pli, un pli a même donné les jauges retirées MEILLEURES que les vues (0.710 contre 0.563) |
 | O2 | D'où vient l'excès d'été de 25-40 % ? | ETR d'Hydrotel jour par jour (réexécution instrumentée, 78 h CPU sans écriture) ou bilan ETR par classe | bloqué |
 | O3 | D'où vient le déficit d'avril (0.76 sur OUTV) ? | neige EXACTE (E1), donc c'est la restitution de l'eau de fonte par le sol | non commencé |
 | O4 | Pluie ou évaporation : qui a tort ? | plan 4 cases forçage (stations / CaSR brut) × contrainte ET (off / on). Stations 959 -> ETR 311 (trop bas) ; CaSR brut 1109 -> ETR 461 (crédible) | non commencé |
 | O5 | Peut-on récupérer l'ancrage par départ à chaud + régularisation ? | warm start depuis l'ancré, affinage court, prior fort vers l'ancré | non commencé |
-| O6 | La couche d'expérience apporte-t-elle encore quelque chose ? | A/B avec et sans, base saine | non commencé |
+| O6 | La couche d'expérience apporte-t-elle encore quelque chose ? | A/B avec et sans, base saine | **RÉPONDU : NON.** avec 0.6051, sans **0.6106**. Elle ne rapporte rien et coûte un paramètre par nœud plus la non-reproductibilité. À RETIRER |
 | O7 | Linacre ancrée ou module ET appris ? | A/B sur tenu de côté, base saine | non commencé |
 | O8 | Combien coûte le plafond de sous-pas en entraînement ? | bloc compilé de K sous-pas appelé N/K fois (refactoring du clone) | conçu, non fait |
 
