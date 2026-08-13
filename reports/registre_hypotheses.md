@@ -24,6 +24,8 @@ Dernière révision : 2026-08-12.
 | E8 | L'entraînement PERD 0.134 contre l'ancrage sur OUTV | 0.6051 contre 0.7389, écart validation/tenu de côté de 0.23 | 08-11 |
 | E9 | Le plafond de sous-pas de Courant mord d'autant plus que le sol est perméable | GASP (ks 4.6× OUTV) : hiver 0.77 -> 0.97 en passant de 48 à 300 sous-pas | 08-10 |
 | E10 | La capacité n'est pas le facteur limitant | 145k paramètres libres non régularisés ne gagnent que +0.002 | 08-05 |
+| E11 | L'entraîné est battu par l'ancré sur SA PROPRE période d'entraînement | 0.58-0.67 contre 0.73-0.80 sur 2001-2018 ; ce n'est pas du sur-ajustement mais une optimisation qui n'atteint pas la solution physique | 08-13 |
+| E12 | La sélection sur validation gonfle la fenêtre de sélection d'environ 0.05 | l'entraîné culmine à 0.7103 sur 2019-2021 contre 0.60-0.67 sur les fenêtres voisines | 08-13 |
 
 ## 2. Hypothèses RÉFUTÉES
 
@@ -73,4 +75,5 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 3. ~~**Entrées statiques à repli silencieux**~~ **RÉGLÉ 08-12** : la colonne imprime UNE FOIS l'occupation qu'elle reçoit et AVERTIT si elle est nulle. Test dédié. Les colonnes `f_*_raw` sont par ailleurs désormais écrites à la source par `physitel_loader` (effectif à la reconstruction des caches).
 4. **Journal chronologique sans statut** : ce registre est la réponse, à maintenir à chaque verdict. EN COURS, à réviser à chaque résultat de la file.
 5. **13 sorties MORTES du champ spatial** sur 37 (f_root, T_snow, interception, manning_n, f_wetland, rain_hours, vsa_b, theta_fc_2/3, theta_wp_2/3) : capacité gaspillée et diagnostics brouillés. À retirer, mais casse la compatibilité des points de reprise — à faire au moment de la reconstruction des caches.
-6. **`pgrep` et `ps` du shell POSIX ne voient PAS les processus Windows** : cause de 4 incidents de contention en 3 jours, dont une nuit perdue et trois copies d'une même file prêtes à démarrer ensemble. Toute vérification de processus doit passer par PowerShell ou `tasklist`.
+6. **Un POINT DE REPRISE ne définit pas un modèle** : occupation du sol, milieux humides, phénologie, noyau de versant et lois de lac sont posés à l'EXÉCUTION et absents du fichier. Le même checkpoint vaut 0.6051 avec eux et 0.4449 sans, sans aucune erreur. Stocker les réglages (ou leur empreinte) dans le point de reprise.
+7. **`pgrep` et `ps` du shell POSIX ne voient PAS les processus Windows** : cause de 4 incidents de contention en 3 jours, dont une nuit perdue et trois copies d'une même file prêtes à démarrer ensemble. Toute vérification de processus doit passer par PowerShell ou `tasklist`.

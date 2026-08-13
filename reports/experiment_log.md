@@ -1595,3 +1595,27 @@ Essi : « si l'apprentissage détériore, c'est que la fonction de perte est mau
 **Mon hypothèse climatique est donc RÉFUTÉE**, posée et tombée le même jour. Restent les deux causes qu'Essi désignait : la perte vise la mauvaise cible, ou le modèle sur-ajuste sa période. Et comme le champ est quasi plat (dispersion 0.054 contre 0.740 pour Hydrotel) et collé à son prior, « sur-ajuster » ne peut pas vouloir dire « mémoriser du détail spatial » : il s'agit d'un NIVEAU effectif ajusté à une période.
 
 Conséquence pratique : le découpage temporel reste utilisable tel quel, la configurabilité ajoutée aujourd'hui (JOINT_SPLIT, ETL_HELDOUT) servira à la robustesse, pas à corriger un biais.
+
+## 2026-08-13 — L'ENTRAÎNÉ EST BATTU PAR L'ANCRÉ SUR SA PROPRE PÉRIODE D'ENTRAÎNEMENT
+
+Comparaison enfin valide (mêmes réglages d'exécution des deux côtés, mêmes 16 jauges, même formule) :
+
+| fenêtre | ANCRÉ (0 époque) | ENTRAÎNÉ (30 époques) | écart |
+|---|---|---|---|
+| 2001-2003 | 0.7313 | 0.6396 | -0.092 |
+| 2004-2006 | 0.7337 | 0.6347 | -0.099 |
+| 2007-2009 | 0.7450 | 0.5836 | -0.161 |
+| 2010-2012 | 0.7362 | 0.6056 | -0.131 |
+| 2013-2015 | 0.8033 | 0.6446 | -0.159 |
+| 2016-2018 | 0.7707 | 0.6704 | -0.100 |
+| **2019-2021 (sélection)** | 0.7711 | **0.7103** | -0.061 |
+| **2022-2024 (tenu de côté)** | 0.7748 | 0.6051 | -0.170 |
+
+**Deux faits, et le premier est le plus lourd.**
+
+1. **L'entraîné est battu par l'ancré sur TOUTES les fenêtres, y compris 2000-2018 sur lesquelles il a été ENTRAÎNÉ** (0.58-0.67 contre 0.73-0.80). Ce n'est donc PAS du sur-ajustement au sens classique : un modèle qui sur-ajuste excelle au moins sur ses données. Celui-ci est moins bon partout, sur ses propres données comprises. **La conclusion d'Essi est la bonne : l'optimisation ne converge pas vers une solution que la physique atteint sans apprendre. Soit l'optimum de la perte n'est pas la bonne solution, soit l'optimiseur ne peut pas l'atteindre.**
+2. Le profil de l'entraîné culmine EXACTEMENT sur la fenêtre de sélection (0.7103, contre 0.60-0.67 sur les voisines) : la sélection sur validation gonfle ce point d'environ 0.05. Une part de la chute annoncée (-0.105) est donc un artefact de sélection, pas une dégradation réelle.
+
+**Rappel du mécanisme mesuré plus tôt** : le champ reste collé à son initialisation (K_sat appris 0.0373 pour un prior à 0.04) et ce prior est 8× sous la valeur physique. L'optimiseur ne peut donc pas atteindre la solution ancrée — elle est à un facteur 8 de son point de départ, avec un gradient de débit qui déplace la dispersion de 0.0017 à 0.054 en 30 époques quand il en faudrait 0.74.
+
+**Piège de reproductibilité inscrit à la dette** : un point de reprise ne définit PAS un modèle. Occupation du sol, milieux humides, phénologie, noyau de versant et lois de lac sont posés à l'exécution et absents du fichier. Évalué sans eux, le même checkpoint tombe de 0.6051 à 0.4449 — 0.16 d'écart, sans la moindre erreur. À corriger en stockant ces réglages (ou leur empreinte) dans le point de reprise.
