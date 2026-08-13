@@ -838,3 +838,61 @@ class SpatialFieldNetwork(nn.Module):
             loss = loss + torch.clamp(cv_target - cv, min=0.0)
             n += 1
         return loss / max(n, 1)
+
+
+    def ajuster_sur_champ(self, node_coords, territorial_data, cibles: dict,
+                          n_iter: int = 3000, lr: float = 3e-3, log_keys=("K_sat_1", "K_sat_2",
+                          "K_sat_3", "k_gw"), verbeux: bool = True):
+        """Ajuste le champ par RÉGRESSION sur des valeurs cibles PAR NŒUD.
+
+        Proposition d'Essi (2026-08-13) : « pourquoi ne pas démarrer le NeRF sur le champ
+        Hydrotel puis optimiser ? ». C'est le seul départ qui donne à la fois le NIVEAU et
+        le CONTRASTE tout en laissant le champ LIBRE ensuite :
+          - `init_from_literature` pose un champ constant (dispersion mesurée 0.0017) ;
+          - `set_calibrated_soil` COURT-CIRCUITE la sortie du réseau, qui n'apprend alors
+            plus rien sur le sol ;
+          - le motif de pédotransfert donne le contraste sans le niveau.
+        Mesuré le 2026-08-13 sur OUTV : le champ appris reste collé à son initialisation
+        (K_sat 0.0373 pour un prior à 0.04) alors que la valeur calibrée vaut 0.317, et en
+        30 époques le gradient du débit ne porte la dispersion que de 0.0017 à 0.054 quand
+        il en faudrait 0.74. Le point de départ est donc le verrou, pas la capacité.
+
+        cibles : {nom_du_champ: tenseur (n_nodes,)} — les noms sont ceux de SpatialParams.
+        log_keys : champs ajustés en log (grandeurs positives couvrant des ordres de
+        grandeur) ; les autres en linéaire.
+        """
+        import torch as _t
+        cibles = {k: _t.as_tensor(v, dtype=_t.float32).to(node_coords.device).detach()
+                  for k, v in cibles.items()}
+        opt = _t.optim.Adam(self.parameters(), lr=lr)
+        n0 = None
+        for it in range(n_iter):
+            opt.zero_grad()
+            sp = self(node_coords, territorial_data)
+            perte = 0.0
+            for k, cible in cibles.items():
+                pred = getattr(sp, k)
+                if k in log_keys:
+                    perte = perte + ((_t.log(pred.clamp(min=1e-9))
+                                      - _t.log(cible.clamp(min=1e-9))) ** 2).mean()
+                else:
+                    ech = cible.abs().mean().clamp(min=1e-6)
+                    perte = perte + (((pred - cible) / ech) ** 2).mean()
+            perte.backward()
+            opt.step()
+            if n0 is None:
+                n0 = float(perte)
+            if verbeux and (it % max(n_iter // 4, 1) == 0 or it == n_iter - 1):
+                print(f"    [ajust] iter {it:5d} | perte {float(perte):.5f}")
+        if verbeux:
+            with _t.no_grad():
+                sp = self(node_coords, territorial_data)
+            print(f"    [ajust] perte {n0:.5f} -> {float(perte):.5f}")
+            for k, cible in cibles.items():
+                p = getattr(sp, k).detach()
+                cv_p = float(p.std() / p.abs().mean().clamp(min=1e-12))
+                cv_c = float(cible.std() / cible.abs().mean().clamp(min=1e-12))
+                print(f"    [ajust] {k:14s} médiane {float(p.median()):.4f} "
+                      f"(cible {float(cible.median()):.4f}) | dispersion {cv_p:.3f} "
+                      f"(cible {cv_c:.3f})")
+        return self

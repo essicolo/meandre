@@ -191,6 +191,34 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
             getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
     print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
 model.vertical_column.etp_channel = 6
+if os.environ.get("ETL_INIT_HYDROTEL", "0") == "1":
+    # DÉPART SUR LE CHAMP D'HYDROTEL puis optimisation libre (proposition d'Essi,
+    # 2026-08-13). Différence essentielle avec ETL_SOIL_CALIB : celui-ci COURT-CIRCUITE
+    # la sortie du réseau, qui n'apprend alors plus rien sur le sol. Ici on AJUSTE le
+    # réseau par régression sur les valeurs calibrées par nœud, puis on le laisse
+    # entièrement libre. Mesuré : le réseau reproduit le champ à 2 % près, dispersion
+    # 0.741 contre 0.740 pour la cible — la capacité n'était pas le verrou, le point de
+    # départ l'était (champ initial plat à 0.0017 de dispersion, K_sat 8× trop bas).
+    from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs
+    _plh = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _cs = _lcs(_plh, r["node_ids"], 0.15, device=DEVICE)
+    _cib = {"K_sat_1": _cs["ks1"].float() * 24, "K_sat_2": _cs["ks2"].float() * 24,
+            "K_sat_3": _cs["ks3"].float() * 24, "porosity_1": _cs["thetas1"].float(),
+            "porosity_2": _cs["thetas2"].float(), "porosity_3": _cs["thetas3"].float(),
+            "Z2": _cs["z2"].float(), "Z3": _cs["z3"].float()}
+    print(f"[etl] départ sur le champ Hydrotel ({os.path.basename(_plh)}) : ajustement du NeRF")
+    model.spatial_encoder.ajuster_sur_champ(
+        td.node_coords, r["territorial"].data, _cib,
+        n_iter=int(os.environ.get("ETL_INIT_ITER", "2000")))
+    # Le prior ne contraint que la MOYENNE du champ : si sa cible reste la valeur
+    # littérature (K_sat 0.04) il ramènerait le champ ajusté (0.32) vers le bas. On
+    # réaligne donc les cibles du prior sur les médianes calibrées.
+    _pt = getattr(model.spatial_encoder, "_prior_targets", None) or {}
+    for _k, _v in _cib.items():
+        _pt[_k] = float(_v.median())
+    model.spatial_encoder._prior_targets = _pt
+    print(f"[etl] cibles du prior réalignées sur le calage (K_sat_1 -> {_pt['K_sat_1']:.4f} m/j)")
+
 if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
     # ANCRAGE DU SOL SUR LE CALAGE HYDROTEL (bv3c.csv + textures, agrégé UHRH->tronçon).
     # Réfuté deux fois en juillet (MONT-v3 -0.31, MONT-v9 0.125) d'où la « loi des
