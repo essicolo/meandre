@@ -608,7 +608,15 @@ tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
 tr.fit()
 
 # ── held-out 2022-2024 (best checkpoint) ─────────────────────────────────────
-model.load(CKPT); model.eval()
+# ETL_EPOCHS=0 ne sauvegarde aucun point de reprise : on évalue alors le modèle EN
+# MÉMOIRE. C'est le contrôle le moins cher qui soit — il mesure ce que vaut une
+# initialisation AVANT le moindre pas de gradient, et il aurait évité plusieurs
+# entraînements de 4 h lancés sur une initialisation jamais vérifiée.
+if os.path.exists(CKPT):
+    model.load(CKPT)
+else:
+    print(f"[etl] pas de point de reprise ({N_EPOCHS} époque(s)) : évaluation du modèle EN MÉMOIRE")
+model.eval()
 with torch.no_grad():
     Q, _ = model.simulate(forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
                           graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
