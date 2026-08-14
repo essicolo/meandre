@@ -213,6 +213,30 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") == "1":
     # Le prior ne contraint que la MOYENNE du champ : si sa cible reste la valeur
     # littérature (K_sat 0.04) il ramènerait le champ ajusté (0.32) vers le bas. On
     # réaligne donc les cibles du prior sur les médianes calibrées.
+    # COURBE DE RÉTENTION : l'exposant de Campbell et le potentiel matriciel sont des
+    # scalaires GLOBAUX de la colonne, pas des sorties du champ, donc l'ajustement du
+    # champ ne les touche pas. Or méandre a b=2.65 contre 3.97 pour Hydrotel, ce qui
+    # rend la conductivité EFFECTIVE 4× trop forte à humidité réaliste (K ∝ ω^(2b+3)) :
+    # premier essai du 14 août, sol à la bonne perméabilité saturée mais à la mauvaise
+    # forme, score effondré à 0.40. On pose donc aussi les paramètres de courbe.
+    import math as _mh2
+    def _inv_sig(v, bornes):
+        _x = min(max((float(v) - bornes[0]) / (bornes[1] - bornes[0]), 1e-6), 1 - 1e-6)
+        return _mh2.log(_x / (1.0 - _x))
+    _vc = model.vertical_column
+    with torch.no_grad():
+        for _i in (1, 2, 3):
+            for _nm, _cal, _bnd in [(f"b{_i}_raw", f"b{_i}", "_b_bounds"),
+                                    (f"psis{_i}_raw", f"psis{_i}", "_psis_bounds")]:
+                if hasattr(_vc, _nm) and _cal in _cs:
+                    _t2 = float(_cs[_cal].median())
+                    getattr(_vc, _nm).copy_(torch.tensor(_inv_sig(_t2, getattr(_vc, _bnd))))
+        if hasattr(_vc, "krec_raw") and "krec" in _cs:
+            _vc.krec_raw.copy_(torch.tensor(_inv_sig(float(_cs["krec"].median()),
+                                                     _vc._krec_bounds)))
+    print(f"[etl] courbe de rétention posée sur le calage : b {float(_vc._sig(_vc.b1_raw, _vc._b_bounds)):.3f} "
+          f"| psis {float(_vc._sig(_vc.psis1_raw, _vc._psis_bounds)):.4f} m")
+
     _pt = getattr(model.spatial_encoder, "_prior_targets", None) or {}
     for _k, _v in _cib.items():
         _pt[_k] = float(_v.median())
