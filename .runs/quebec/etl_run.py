@@ -197,6 +197,18 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
 # sol en inférence pure donne 0.7748. La différence entre les deux situations n'est pas
 # l'entraînement mais l'ETP : on mariait le sol d'Hydrotel à l'évaporation de méandre.
 # Une calibration est un PAQUET co-adapté ; en prendre la moitié casse l'équilibre.
+# SEUIL PLUIE/NEIGE calibré (thiessen.csv) : présent dans la configuration ancrée à
+# 0.7748, ABSENT du chemin d'entraînement jusqu'au 2026-08-14 — trouvé par un diff
+# systématique des deux configurations, après deux expériences ratées à deviner la pièce
+# manquante une par une.
+if os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
+    from meandre.data.hydrotel_calib import load_passage_pluie_neige as _lppn
+    _pls = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _sn = _lppn(_pls)
+    if _sn != 0.0:
+        model.vertical_column.t_neige_seuil = _sn
+        print(f"[etl] seuil pluie/neige du projet : {_sn:+.4f} °C (méandre codait 0.0)")
+
 if os.environ.get("ETL_ETP", "appris") == "linacre":
     from meandre.data.hydrotel_calib import load_linacre_nodes as _lln
     _pll = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
