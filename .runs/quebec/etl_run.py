@@ -190,7 +190,22 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
         for nm, v in [("sp_fonte_conif", 4.5), ("sp_fonte_feu", 9.0), ("sp_fonte_dec", 18.0)]:
             getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
     print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
-model.vertical_column.etp_channel = 6
+# ETP : par défaut la demande APPRISE injectée en 7e canal. ETL_ETP=linacre bascule sur
+# la formule Linacre CALÉE du projet, celle qu'utilise la configuration ancrée à 0.7748.
+# Motif (2026-08-14) : ancrer le sol d'Hydrotel pendant l'entraînement EFFONDRE le score
+# (0.349 sol complet, 0.542 texture seule, contre 0.605 sans ancrage), alors que le MÊME
+# sol en inférence pure donne 0.7748. La différence entre les deux situations n'est pas
+# l'entraînement mais l'ETP : on mariait le sol d'Hydrotel à l'évaporation de méandre.
+# Une calibration est un PAQUET co-adapté ; en prendre la moitié casse l'équilibre.
+if os.environ.get("ETL_ETP", "appris") == "linacre":
+    from meandre.data.hydrotel_calib import load_linacre_nodes as _lln
+    _pll = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    model.vertical_column.et_mode = "linacre"
+    model.vertical_column.set_linacre_params(*_lln(_pll, r["node_ids"], device=DEVICE))
+    model.vertical_column.etp_channel = None
+    print(f"[etl] ETP : Linacre CALÉE du projet (paquet cohérent avec le sol ancré)")
+else:
+    model.vertical_column.etp_channel = 6
 if os.environ.get("ETL_INIT_HYDROTEL", "0") == "1":
     # DÉPART SUR LE CHAMP D'HYDROTEL puis optimisation libre (proposition d'Essi,
     # 2026-08-13). Différence essentielle avec ETL_SOIL_CALIB : celui-ci COURT-CIRCUITE
