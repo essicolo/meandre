@@ -28,7 +28,7 @@ lancer() {
   # Les affectations de l'APPELANT viennent en DERNIER : env applique de gauche à
   # droite, donc elles doivent pouvoir écraser les valeurs communes (sans quoi le run
   # prévu à 5 époques en ferait 30).
-  env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-hyb ETL_EPOCHS=30 ETL_WET=0 ETL_FORCE=1 \
+  env MEANDRE_ABANDON=4:0.55 MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-hyb ETL_EPOCHS=30 ETL_WET=0 ETL_FORCE=1 \
       ETL_REGION=outv ETL_KSAT1=0.04 ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 \
       ETL_KGW=0.0645 ETL_DEMAND_SCALE=0.963 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \

@@ -12,7 +12,7 @@ lancer() {
   local tag="$1"; shift
   attendre
   echo "[paquet] $(date +%H:%M) demarrage $tag"
-  env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-hyb ETL_WET=0 ETL_FORCE=1 ETL_REGION=outv \
+  env MEANDRE_ABANDON=4:0.55 MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-hyb ETL_WET=0 ETL_FORCE=1 ETL_REGION=outv \
       ETL_WSNOW=0.3 ETL_AQUIFER=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_SEUIL_NEIGE=1 \
       ETL_EPOCHS=30 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \

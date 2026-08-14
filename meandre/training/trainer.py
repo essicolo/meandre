@@ -714,6 +714,29 @@ class Trainer:
                     epoch, last_val_metrics, epochs_without_improvement,
                 )
 
+            # ABANDON PRÉCOCE SUR SEUIL (2026-08-14). Un run de 30 époques coûte 4 à 8 h
+            # et son verdict est souvent lisible dès les premières : inutile d'attendre
+            # la fin pour constater qu'on plafonne à 0.3 quand la cible est 0.77.
+            # MEANDRE_ABANDON="époque:seuil" (ex "5:0.55") : au-delà de cette époque, si
+            # la métrique de sélection reste sous le seuil, on arrête.
+            _ab = os.environ.get("MEANDRE_ABANDON")
+            if _ab and last_val_metrics:
+                try:
+                    _ae, _as = _ab.split(":")
+                    _ae, _as = int(_ae), float(_as)
+                except ValueError:
+                    _ae, _as = None, None
+                if _ae is not None and epoch >= _ae:
+                    _cur = self._best_val_metric
+                    if _cur is not None and float(_cur) < _as:
+                        logger.info(
+                            f"ABANDON à l'époque {epoch} : meilleure métrique "
+                            f"{float(_cur):.4f} sous le seuil {_as} — le verdict est "
+                            f"acquis, on n'attend pas la fin.")
+                        print(f"[trainer] ABANDON époque {epoch} : {float(_cur):.4f} "
+                              f"< seuil {_as}", flush=True)
+                        break
+
             # Early stopping
             if (self.config.patience > 0
                     and epochs_without_improvement >= self.config.patience):
