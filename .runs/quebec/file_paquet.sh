@@ -13,7 +13,8 @@ lancer() {
   attendre
   echo "[paquet] $(date +%H:%M) demarrage $tag"
   env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-hyb ETL_WET=0 ETL_FORCE=1 ETL_REGION=outv \
-      ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KGW=0.0645 ETL_ETP=linacre ETL_EPOCHS=30 "$@" \
+      ETL_WSNOW=0.3 ETL_AQUIFER=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_SEUIL_NEIGE=1 \
+      ETL_EPOCHS=30 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
       > "/d/meandre-data/quebec/log-${tag}.txt" 2>&1
   echo "[paquet] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${tag}.txt" | tr '\n' ' ')"
