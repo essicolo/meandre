@@ -25,6 +25,9 @@ Dernière révision : 2026-08-12.
 | E9 | Le plafond de sous-pas de Courant mord d'autant plus que le sol est perméable | GASP (ks 4.6× OUTV) : hiver 0.77 -> 0.97 en passant de 48 à 300 sous-pas | 08-10 |
 | E10 | La capacité n'est pas le facteur limitant | 145k paramètres libres non régularisés ne gagnent que +0.002 | 08-05 |
 | E11 | L'entraîné est battu par l'ancré sur SA PROPRE période d'entraînement | 0.58-0.67 contre 0.73-0.80 sur 2001-2018 ; ce n'est pas du sur-ajustement mais une optimisation qui n'atteint pas la solution physique | 08-13 |
+| E13 | Le champ spatial porte K_sat et les porosités SANS PERTE | tout imposer sauf elles donne 0.7389, égal au sol entièrement imposé (0.7368) ; les 0.145 manquants venaient des épaisseurs, fractions de surface et pente, qui sont des DONNÉES | 08-14 |
+| E14 | Ajusté sur le champ d'Hydrotel, le réseau s'appuie sur la TEXTURE, pas sur les coordonnées | sensibilité de K_sat à f_sand 0.471 et f_silt 0.399, contre moins de 0.035 pour tous les autres descripteurs (0.0032 avant ajustement) : la relation est transférable | 08-14 |
+| E15 | La pédologie vient de PHYSITEL et n'a que 4 classes sur OUTV | loam 52 %, sable loameux 40 %, deux classes marginales ; jamais comparée à SoilGrids ni à l'IRDA (vérification REPORTÉE, priorité à bien modéliser sur PHYSITEL) | 08-14 |
 | E12 | La sélection sur validation gonfle la fenêtre de sélection d'environ 0.05 | l'entraîné culmine à 0.7103 sur 2019-2021 contre 0.60-0.67 sur les fenêtres voisines | 08-13 |
 
 ## 2. Hypothèses RÉFUTÉES
@@ -63,7 +66,7 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 | O2 | D'où vient l'excès d'été de 25-40 % ? | ETR d'Hydrotel jour par jour (réexécution instrumentée, 78 h CPU sans écriture) ou bilan ETR par classe | bloqué |
 | O3 | D'où vient le déficit d'avril (0.76 sur OUTV) ? | neige EXACTE (E1), donc c'est la restitution de l'eau de fonte par le sol | non commencé |
 | O4 | Pluie ou évaporation : qui a tort ? | plan 4 cases forçage (stations / CaSR brut) × contrainte ET (off / on). Stations 959 -> ETR 311 (trop bas) ; CaSR brut 1109 -> ETR 461 (crédible) | non commencé |
-| O5 | Peut-on récupérer l'ancrage par départ à chaud + régularisation ? | warm start depuis l'ancré, affinage court, prior fort vers l'ancré | non commencé |
+| O5 | L'entraînement depuis le socle à la référence améliore-t-il, tient-il, ou dégrade-t-il ? | socle mesuré à 0.7389 (contre 0.6051 pour la recette précédente) ; 30 époques en cours, époque 1 à kge_sta 0.7229 donc pas de fuite immédiate | **EN COURS** |
 | O6 | La couche d'expérience apporte-t-elle encore quelque chose ? | A/B avec et sans, base saine | **RÉPONDU : NON.** avec 0.6051, sans **0.6106**. Elle ne rapporte rien et coûte un paramètre par nœud plus la non-reproductibilité. À RETIRER |
 | O7 | Linacre ancrée ou module ET appris ? | A/B sur tenu de côté, base saine | non commencé |
 | O8 | Combien coûte le plafond de sous-pas en entraînement ? | bloc compilé de K sous-pas appelé N/K fois (refactoring du clone) | conçu, non fait |
