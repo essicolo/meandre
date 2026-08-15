@@ -1663,3 +1663,21 @@ Entraînement 30 époques depuis le SOCLE (tout imposé sauf K_sat et porosités
 Ce qui a rendu ce résultat possible, dans l'ordre : réparation des sept entrées muettes (10-11 août), diff systématique des deux configurations plutôt que devinettes successives, et surtout la discipline de contrôle à zéro époque qui a permis de localiser en cinq essais de 20 minutes ce que huit entraînements de 4 h n'avaient pas trouvé.
 
 **À faire avant toute communication** : confirmer sur une deuxième région (contrôles à zéro époque déjà en file pour GASP, SAGU, SLNO, MONT), et vérifier que les deux divergences physiques connues (excès d'été, déficit d'avril) n'ont pas simplement été compensées par les paramètres libres.
+
+### Le socle se transpose : 0.71 à 0.77 sur quatre régions SANS AUCUN entraînement
+
+Contrôles à zéro époque (20 min chacun), socle identique, tenu de côté 2022-2024 :
+
+| région | socle, 0 époque | meilleur modèle ENTRAÎNÉ précédent |
+|---|---|---|
+| GASP | **0.7749** | 0.7489 (champion) |
+| OUTV | 0.7389 (**0.7810** après 30 époques) | 0.4992 |
+| SAGU | 0.7517 | — |
+| SLNO | **0.7106** | 0.546 |
+| MONT | 0.4869 | — |
+
+**Sur ces régions, la configuration correcte SANS apprentissage bat les modèles qu'on entraînait depuis des semaines.** Le Lac-Saint-Jean passe de 0.546 à 0.7106 sans un seul pas de gradient ; la Gaspésie dépasse son champion de 0.026.
+
+MONT décroche à 0.4869 : à diagnostiquer séparément (fichiers de calage ? occupation ? régime ?), et c'est justement le genre de cas que le contrôle à 20 minutes permet d'isoler avant d'y consacrer 4 h.
+
+30 époques lancées sur les trois régions qui passent.
