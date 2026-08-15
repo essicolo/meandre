@@ -85,7 +85,21 @@ print(f"\n=== ENSEMBLE {REG.upper()} ({len(res)} membres, {T0}..{T1}) ===")
 print(f"  médiane des médianes de membre : {np.nanmedian([np.nanmedian(v) for v in res.values()]):.4f}")
 print(f"  ENSEMBLE médian par station    : {np.nanmedian(med_par_station):.4f}")
 print(f"  MEILLEUR membre par station    : {np.nanmedian(best_par_station):.4f}")
-print(f"\n  repères méandre mêmes jauges/période : ancré 0.7389 | entraîné 0.6051")
+# PAS DE REPÈRE EN DUR (leçon du 0.82 fantôme, 11 août) : les valeurs de méandre
+# dépendent de la région et un chiffre recopié devient une donnée fausse. On lit le
+# journal des runs si un résultat existe pour CETTE région, sinon on ne dit rien.
+import glob as _gl
+_ms = []
+for _f in _gl.glob(f"D:/meandre-data/quebec/log-{REG}-socle*.txt"):
+    for _l in open(_f, encoding="utf-8", errors="ignore"):
+        if "HELD-OUT" in _l and "médian" in _l:
+            _ms.append((os.path.basename(_f), _l.split("médian")[1].split("|")[0].strip()))
+if _ms:
+    print("\n  repères méandre MESURÉS sur cette région :")
+    for _n, _v in _ms:
+        print(f"    {_n:34s} {_v}")
+else:
+    print("\n  (aucun run méandre trouvé pour cette région : pas de repère affiché)")
 np.savez_compressed(f"D:/meandre-data/quebec/duel_ensemble_{REG}.npz",
                     membres=np.array(list(res.keys())), kge=M,
                     med=med_par_station, best=best_par_station,
