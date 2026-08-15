@@ -1681,3 +1681,23 @@ Contrôles à zéro époque (20 min chacun), socle identique, tenu de côté 202
 MONT décroche à 0.4869 : à diagnostiquer séparément (fichiers de calage ? occupation ? régime ?), et c'est justement le genre de cas que le contrôle à 20 minutes permet d'isoler avant d'y consacrer 4 h.
 
 30 époques lancées sur les trois régions qui passent.
+
+## 2026-08-15 — BILAN SUR QUATRE RÉGIONS, contre l'ensemble Hydrotel mesuré
+
+Socle identique partout (tout imposé sauf K_sat et porosités, ETP Linacre calée, pas d'aquifère, pas de codes latents, seuil pluie/neige posé), tenu de côté 2022-2024, mêmes jauges, même formule KGE.
+
+| région | méandre 0 époque | méandre 30 époques | ENSEMBLE Hydrotel (médian/station) | écart | meilleur membre |
+|---|---|---|---|---|---|
+| OUTV | 0.7389 | **0.7810** | 0.7711 | **+0.010** | 0.8543 |
+| GASP | 0.7749 | **0.7766** | 0.7730 | **+0.004** | 0.8502 |
+| SAGU | 0.7517 | 0.7587 | 0.7933 | **-0.035** | 0.8302 |
+| MONT | 0.4869 | (non lancé) | 0.6631 | -0.176 | 0.7763 |
+| SLNO | 0.7106 | en cours | à mesurer | | |
+
+**Deux régions au-dessus de l'ensemble médian, deux en dessous.** L'énoncé honnête est la parité sur OUTV et GASP, un retard net sur SAGU, et un décrochage sur MONT.
+
+**Ce que l'apprentissage ajoute dépend du point de départ** : +0.042 sur OUTV (parti de 0.7389), +0.007 sur SAGU, +0.002 sur GASP (parti de 0.7749). Les trois atterrissent entre 0.759 et 0.781 malgré des calages et des régimes différents — cohérent avec un PLAFOND COMMUN autour de 0.78, qui ne viendrait ni des paramètres (les calages diffèrent) ni de l'optimisation (les points de départ diffèrent). À tester en changeant le forçage.
+
+**MONT diagnostiqué** : ce n'est pas l'assemblage des paramètres de départ (tous les chargeurs fonctionnent, et la région partage EXACTEMENT les paramètres de fonte de GASP qui, elle, atteint 0.7749). C'est un bassin **hyper-régulé** : 2273 barrages pour 1916 nœuds, plus d'un par tronçon, cinq fois la densité gaspésienne, et seulement 37 nœuds-lacs (2 %) donc les réservoirs ne sont pas dans le routage. Hydrotel y plafonne aussi (0.6631 contre 0.77 ailleurs). Processus manquant, pas défaut de paramétrage — le corriger demanderait des données d'exploitation qu'on n'a pas.
+
+Réserve maintenue : le MEILLEUR membre par station reste à 0.83-0.85 partout, mais c'est une borne inaccessible sans connaître les observations d'avance.
