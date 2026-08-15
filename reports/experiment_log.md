@@ -1638,3 +1638,28 @@ Détail qui compte : z1 était codé en dur à 0.15 m alors que le calage donne 
 **On tient donc, pour la première fois, une configuration ENTRAÎNABLE qui démarre à la référence** (0.7389, contre 0.6051 pour la recette précédente). Entraînement lancé, abandon automatique si la validation reste sous 0.60 à l'époque 4.
 
 Chemin parcouru, et ce qui l'a rendu possible : cinq contrôles à zéro époque en deux heures là où les trois jours précédents avaient consommé huit entraînements de 4 h pour des verdicts moins nets. La règle est désormais explicite : valider une initialisation à zéro époque, cribler à quatre avec abandon, n'engager trente que sur un candidat qui a passé les deux.
+
+## 2026-08-15 — PREMIER GAIN RÉEL DE L'APPRENTISSAGE : 0.7810 sur OUTV, au-dessus de l'ensemble médian
+
+Entraînement 30 époques depuis le SOCLE (tout imposé sauf K_sat et porosités, ETP Linacre calée, pas d'aquifère, pas de codes latents, seuil pluie/neige posé), OUTV, 16 jauges, tenu de côté 2022-2024 :
+
+| référence | KGE médian |
+|---|---|
+| ancien champion méandre | 0.4992 |
+| recette précédente sur base saine | 0.6051 |
+| Hydrotel LN24HA (le membre qu'on ancre) | 0.7531 |
+| **ENSEMBLE Hydrotel, médian par station** | **0.7711** |
+| socle, ZÉRO époque | 0.7389 |
+| physique ancrée (inférence pure) | 0.7748 |
+| **socle + 30 époques** | **0.7810** |
+| médiane des médianes de membre | 0.7968 |
+| meilleur membre par station | 0.8543 |
+
+**Trois faits, énoncés sans extrapoler.**
+1. **L'apprentissage APPORTE pour la première fois** : +0.042 sur sa propre initialisation (0.7389 -> 0.7810). Toutes les tentatives précédentes en RETIRAIENT (jusqu'à -0.134).
+2. **Le modèle dépasse la physique ancrée** (0.7748) et **l'ensemble médian par station** (0.7711), sur la région la PLUS difficile de la province.
+3. **Il ne dépasse PAS** la médiane des médianes de membre (0.7968), ni les quatre meilleurs membres (0.800 à 0.830), ni le meilleur par station (0.854). Il bat 2 membres sur 6.
+
+Ce qui a rendu ce résultat possible, dans l'ordre : réparation des sept entrées muettes (10-11 août), diff systématique des deux configurations plutôt que devinettes successives, et surtout la discipline de contrôle à zéro époque qui a permis de localiser en cinq essais de 20 minutes ce que huit entraînements de 4 h n'avaient pas trouvé.
+
+**À faire avant toute communication** : confirmer sur une deuxième région (contrôles à zéro époque déjà en file pour GASP, SAGU, SLNO, MONT), et vérifier que les deux divergences physiques connues (excès d'été, déficit d'avril) n'ont pas simplement été compensées par les paramètres libres.
