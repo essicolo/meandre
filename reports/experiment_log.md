@@ -1619,3 +1619,22 @@ Comparaison enfin valide (mêmes réglages d'exécution des deux côtés, mêmes
 **Rappel du mécanisme mesuré plus tôt** : le champ reste collé à son initialisation (K_sat appris 0.0373 pour un prior à 0.04) et ce prior est 8× sous la valeur physique. L'optimiseur ne peut donc pas atteindre la solution ancrée — elle est à un facteur 8 de son point de départ, avec un gradient de débit qui déplace la dispersion de 0.0017 à 0.054 en 30 époques quand il en faudrait 0.74.
 
 **Piège de reproductibilité inscrit à la dette** : un point de reprise ne définit PAS un modèle. Occupation du sol, milieux humides, phénologie, noyau de versant et lois de lac sont posés à l'exécution et absents du fichier. Évalué sans eux, le même checkpoint tombe de 0.6051 à 0.4449 — 0.16 d'écart, sans la moindre erreur. À corriger en stockant ces réglages (ou leur empreinte) dans le point de reprise.
+
+## 2026-08-14 — SOCLE ENTRAÎNABLE À LA RÉFÉRENCE : le champ peut porter K_sat et les porosités
+
+Bissection à ZÉRO époque (20 min par point au lieu de 4 h, grâce à `ETL_EPOCHS=0` qui évalue le modèle en mémoire), configuration alignée sur celle qui vaut 0.7748 en inférence (ETP Linacre calée, pas d'aquifère, pas de codes latents, seuil pluie/neige posé) :
+
+| ce qui est imposé | reste au champ | KGE tenu de côté |
+|---|---|---|
+| tout le sol (25 champs) | rien | **0.7368** |
+| **tout SAUF K_sat et porosités** | **K_sat, porosités** | **0.7389** |
+| courbe de rétention seule (18 champs) | K_sat, porosités, épaisseurs | 0.5921 |
+| rien (champ ajusté seul + courbe globale) | tout | 0.5629 |
+
+**Le champ spatial porte K_sat et les porosités sans perdre un centième.** Les 0.145 manquants venaient des SEPT autres champs : épaisseurs z1/z2/z3, fractions fsa/fse/fsi et pente. Ce sont des DONNÉES, pas des paramètres à calibrer — les imposer est correct, pas une triche.
+
+Détail qui compte : z1 était codé en dur à 0.15 m alors que le calage donne 0.219 m, et ce n'est même pas une sortie du champ.
+
+**On tient donc, pour la première fois, une configuration ENTRAÎNABLE qui démarre à la référence** (0.7389, contre 0.6051 pour la recette précédente). Entraînement lancé, abandon automatique si la validation reste sous 0.60 à l'époque 4.
+
+Chemin parcouru, et ce qui l'a rendu possible : cinq contrôles à zéro époque en deux heures là où les trois jours précédents avaient consommé huit entraînements de 4 h pour des verdicts moins nets. La règle est désormais explicite : valider une initialisation à zéro époque, cribler à quatre avec abandon, n'engager trente que sur un candidat qui a passé les deux.

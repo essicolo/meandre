@@ -218,7 +218,7 @@ if os.environ.get("ETL_ETP", "appris") == "linacre":
     print(f"[etl] ETP : Linacre CALÉE du projet (paquet cohérent avec le sol ancré)")
 else:
     model.vertical_column.etp_channel = 6
-if os.environ.get("ETL_INIT_HYDROTEL", "0") == "1":
+if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
     # DÉPART SUR LE CHAMP D'HYDROTEL puis optimisation libre (proposition d'Essi,
     # 2026-08-13). Différence essentielle avec ETL_SOIL_CALIB : celui-ci COURT-CIRCUITE
     # la sortie du réseau, qui n'apprend alors plus rien sur le sol. Ici on AJUSTE le
@@ -246,6 +246,31 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") == "1":
     # rend la conductivité EFFECTIVE 4× trop forte à humidité réaliste (K ∝ ω^(2b+3)) :
     # premier essai du 14 août, sol à la bonne perméabilité saturée mais à la mauvaise
     # forme, score effondré à 0.40. On pose donc aussi les paramètres de courbe.
+    # COURBE PAR NŒUD (ETL_INIT_HYDROTEL=courbe). Mesuré le 14 août par un contrôle à
+    # ZÉRO époque : le champ ajusté vaut 0.5629 quand l'ancrage complet vaut 0.7748.
+    # L'écart ne vient pas de l'optimiseur (0 et 1 époque donnent la même chose) mais des
+    # paramètres NON transférables : b, psis, krec, cin sont des SCALAIRES GLOBAUX dans
+    # notre colonne, un par région, alors qu'Hydrotel les définit par classe de TEXTURE.
+    # Le réseau n'a aucune sortie pour eux, donc le modèle ajusté est structurellement
+    # incapable de représenter ce sol. Correctif minimal : imposer PAR NŒUD la seule
+    # courbe de rétention (propriété de texture), en laissant au champ les conductivités,
+    # porosités et épaisseurs.
+    _mode_init = os.environ.get("ETL_INIT_HYDROTEL")
+    if _mode_init in ("courbe", "sauf_ks"):
+        if _mode_init == "sauf_ks":
+            # Tout imposer SAUF ce qu'on veut laisser apprendre (conductivités et
+            # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
+            # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
+            # fractions de surface, pente et recharge sont les candidats restants.
+            _courbe = {k: v for k, v in _cs.items()
+                       if not k.startswith(("ks", "thetas"))}
+        else:
+            _courbe = {k: v for k, v in _cs.items()
+                       if k.startswith(("b", "psis", "omegpi", "mm", "nn"))
+                       or k in ("krec", "cin", "coef_recharge")}
+        model.vertical_column.set_calibrated_soil(_courbe)
+        print(f"[etl] courbe de rétention imposée PAR NŒUD ({len(_courbe)} champs) ; "
+              f"K_sat, porosités et épaisseurs restent au champ appris")
     import math as _mh2
     def _inv_sig(v, bornes):
         _x = min(max((float(v) - bornes[0]) / (bornes[1] - bornes[0]), 1e-6), 1 - 1e-6)
