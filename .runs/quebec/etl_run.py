@@ -56,6 +56,12 @@ if "ETL_WSNOW" in os.environ:
     # = 2 semaines de retard ; la donnée entre par la loss, leçon pilote4b/4c)
     lcfg["w_snow"] = float(os.environ["ETL_WSNOW"])
     print(f"[etl] w_snow = {lcfg['w_snow']} (fonte supervisée MOD10)")
+if "ETL_WTWS" in os.environ:
+    # GRACE (anomalie de stockage total). Actif par défaut à 0.2 via le fichier de
+    # config ; on l'expose pour pouvoir mesurer ce qu'il apporte OU coûte, sa ligne de
+    # base ayant été corrigée le 2026-08-10 (elle était calculée par tronçon de séquence).
+    lcfg["w_tws"] = float(os.environ["ETL_WTWS"])
+    print(f"[etl] w_tws override = {lcfg['w_tws']} (GRACE)")
 if "ETL_WET" in os.environ:
     # mode appris : w_et(MOD16) est un DOUBLE ancrage (le module encode déjà MOD16,
     # biaisé +15-30 % à l'est vs bilan) — il poussait K_c à 1.07 malgré beta 0.78 (etl2)
