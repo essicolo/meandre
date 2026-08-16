@@ -44,7 +44,10 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     use_temporal=False, use_residual=False, use_travel_time_attn=False,
     use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
     column_mode="hydrotel", et_mode="linacre", use_temperature=False,
-    use_latent_codes=False, latent_mode="additive", spatial_melt=False,
+    # spatial_melt=true dans la config, donc le point de reprise PORTE ces poids :
+    # les omettre fait chuter le même checkpoint de 0.781 à 0.735 (4e occurrence de
+    # « un point de reprise ne définit pas un modèle », dette #6 du registre).
+    use_latent_codes=False, latent_mode="additive", spatial_melt=True,
     routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
     use_aquifer=False).to(DEVICE)
 m.eval(); m.spatial_encoder.init_from_literature({})

@@ -1701,3 +1701,33 @@ Socle identique partout (tout imposé sauf K_sat et porosités, ETP Linacre cal�
 **MONT diagnostiqué** : ce n'est pas l'assemblage des paramètres de départ (tous les chargeurs fonctionnent, et la région partage EXACTEMENT les paramètres de fonte de GASP qui, elle, atteint 0.7749). C'est un bassin **hyper-régulé** : 2273 barrages pour 1916 nœuds, plus d'un par tronçon, cinq fois la densité gaspésienne, et seulement 37 nœuds-lacs (2 %) donc les réservoirs ne sont pas dans le routage. Hydrotel y plafonne aussi (0.6631 contre 0.77 ailleurs). Processus manquant, pas défaut de paramétrage — le corriger demanderait des données d'exploitation qu'on n'a pas.
 
 Réserve maintenue : le MEILLEUR membre par station reste à 0.83-0.85 partout, mais c'est une borne inaccessible sans connaître les observations d'avance.
+
+## 2026-08-16 — OÙ EST L'ÉCART AU MEILLEUR MEMBRE : un DÉFICIT HIVERNAL, pas l'excès d'été
+
+Diagnostic sur le socle OUTV contre MG24HK (le meilleur membre, 0.830), mêmes stations, tenu de côté.
+
+| | r | beta | gamma | KGE |
+|---|---|---|---|---|
+| méandre socle | 0.883 | **0.919** | **1.040** | 0.756 |
+| Hydrotel MG24HK | 0.899 | 0.950 | 0.967 | 0.830 |
+
+**Biais mensuel (simulé/observé)** — le plus gros écart n'est PAS en été :
+
+| mois | méandre | Hydrotel |
+|---|---|---|
+| janvier | **0.803** | 1.293 |
+| **février** | **0.655** | 1.235 |
+| mars | 0.925 | 1.114 |
+| avril | 0.883 | 0.891 |
+| juillet | 0.856 | 0.742 |
+| décembre | 1.346 | 1.236 |
+
+**En février nous ne produisons que 65 % du débit observé.** Hydrotel fait l'erreur INVERSE (1.24) : aucun des deux n'a raison, mais nous manquons un tiers de l'écoulement hivernal.
+
+**Coût par saison** (KGE recalculé en excluant une saison) : sans été +0.021, sans hiver +0.019, sans automne +0.014, **sans printemps -0.222**. Le printemps porte le score, les trois autres saisons coûtent chacune environ 0.02.
+
+**Hypothèse (testée) : l'AQUIFÈRE manquant.** L'eau de janvier au Québec vient de la nappe, et le socle tourne avec `ETL_AQUIFER=0` — je l'avais coupé pour aligner la configuration sur celle d'Hydrotel, qui n'en a pas, mais Hydrotel compense par son sol calibré. Les composantes concordent : déficit de volume (beta 0.919) ET excès de variabilité (gamma 1.040), soit exactement la signature d'une base manquante.
+
+**Correction de ma priorité** : je désignais l'excès d'été comme levier principal. Le corriger vaudrait ~0.02, autant que l'hiver, et le vrai retard est diffus (les trois composantes sont derrière). Un seul défaut ne comblera pas les 0.074 qui nous séparent de MG24HK.
+
+Réserve de méthode : la première version de ce diagnostic donnait 0.735 au lieu de 0.756 parce que mon script omettait `spatial_melt`, présent dans le point de reprise. **Quatrième occurrence** de « un point de reprise ne définit pas un modèle » — la dette #6 du registre doit être traitée.
