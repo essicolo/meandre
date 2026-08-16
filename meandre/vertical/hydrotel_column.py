@@ -580,6 +580,15 @@ class HydrotelColumn(nn.Module):
                       ("lin_tchaud", t_chaud), ("lin_albedo", albedo), ("lin_coeff", coeff)]:
             self.register_buffer(nm, torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
 
+    def set_mcguinness_coeff(self, coeff):
+        """Coefficient multiplicatif d'optimisation de l'ETP McGuinness, par nœud
+        (etp-mc-guiness.csv de la plateforme). Voir load_mcguinness_nodes."""
+        if coeff is None:
+            self.mcg_coeff = None
+        else:
+            self.register_buffer("mcg_coeff", torch.as_tensor(coeff, dtype=torch.get_default_dtype()),
+                                 persistent=False)
+
     def set_phenology(self, ph: dict | None):
         """Profils phénologiques par classe, {classe: (jours, indice_foliaire,
         profondeur_racinaire)}, en général chargés du projet Hydrotel par
@@ -615,7 +624,11 @@ class HydrotelColumn(nn.Module):
                                t_froid=self.lin_tfroid, t_chaud=self.lin_tchaud,
                                albedo=self.lin_albedo, coeff=self.lin_coeff)
         if self.et_mode == "mcguinness":
-            return mcguinness_etp(tmin_j, tmax_j, lat, doy)
+            # COEFFICIENT D'OPTIMISATION de la plateforme (etp-mc-guiness.csv) : 0.600
+            # sur MG24HK, 0.850 sur MG24HS. Sans lui l'ETP est jusqu'à 67 % trop forte.
+            _cmg = getattr(self, "mcg_coeff", None)
+            _e = mcguinness_etp(tmin_j, tmax_j, lat, doy)
+            return _e if _cmg is None else _e * _cmg
         if self.et_mode == "hydro_quebec":
             return hydro_quebec_etp(tmin_j, tmax_j)
         if self.et_mode == "oudin":

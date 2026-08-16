@@ -207,17 +207,38 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
 # 0.7748, ABSENT du chemin d'entraînement jusqu'au 2026-08-14 — trouvé par un diff
 # systématique des deux configurations, après deux expériences ratées à deviner la pièce
 # manquante une par une.
+# PLATEFORME D'ANCRAGE. Hydrotel est un ENSEMBLE de 6 plateformes qui different par
+# leurs PARAMETRES *et* par leurs FONCTIONS : les prefixes l'encodent, LN = Linacre
+# (une seule, LN24HA) et MG = McGuinness (les cinq autres). Notre socle etait ancre sur
+# LN24HA, la seule Linacre et la MOINS BONNE des six (0.7531 contre 0.8299 pour MG24HK).
+# ETL_MEMBRE choisit la plateforme ; l'ETP suit automatiquement sa formule.
+_MEMBRE = os.environ.get("ETL_MEMBRE", "LN24HA")
+_PLATB = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel"
+_PROJ_M = f"{_PLATB}/{_MEMBRE}/{REG.upper()}_{_MEMBRE}_2020"
+if _MEMBRE != "LN24HA":
+    os.environ.setdefault("ETL_MELT_DIR", _PROJ_M)
+    print(f"[etl] plateforme d'ancrage : {_MEMBRE} ({_PROJ_M.split('/')[-1]})")
+
 if os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
     from meandre.data.hydrotel_calib import load_passage_pluie_neige as _lppn
-    _pls = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _pls = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _sn = _lppn(_pls)
     if _sn != 0.0:
         model.vertical_column.t_neige_seuil = _sn
         print(f"[etl] seuil pluie/neige du projet : {_sn:+.4f} °C (méandre codait 0.0)")
 
-if os.environ.get("ETL_ETP", "appris") == "linacre":
+if os.environ.get("ETL_ETP", "appris") == "mcguinness":
+    from meandre.data.hydrotel_calib import load_mcguinness_nodes as _lmg
+    model.vertical_column.et_mode = "mcguinness"
+    _cmg = _lmg(_PROJ_M, r["node_ids"], device=DEVICE)
+    model.vertical_column.set_mcguinness_coeff(_cmg)
+    model.vertical_column.etp_channel = None
+    print(f"[etl] ETP : McGuinness CALÉE de {_MEMBRE} "
+          f"(coefficient méd {float(_cmg.median()):.3f})" if _cmg is not None
+          else "[etl] ETP : McGuinness SANS coefficient (fichier absent)")
+elif os.environ.get("ETL_ETP", "appris") == "linacre":
     from meandre.data.hydrotel_calib import load_linacre_nodes as _lln
-    _pll = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _pll = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     model.vertical_column.et_mode = "linacre"
     model.vertical_column.set_linacre_params(*_lln(_pll, r["node_ids"], device=DEVICE))
     model.vertical_column.etp_channel = None
@@ -233,7 +254,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
     # 0.741 contre 0.740 pour la cible — la capacité n'était pas le verrou, le point de
     # départ l'était (champ initial plat à 0.0017 de dispersion, K_sat 8× trop bas).
     from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs
-    _plh = os.environ.get("ETL_MELT_DIR") or         f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _plh = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _cs = _lcs(_plh, r["node_ids"], 0.15, device=DEVICE)
     _cib = {"K_sat_1": _cs["ks1"].float() * 24, "K_sat_2": _cs["ks2"].float() * 24,
             "K_sat_3": _cs["ks3"].float() * 24, "porosity_1": _cs["thetas1"].float(),
@@ -310,7 +331,7 @@ if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
     # avec le réservoir souterrain actif, geler le sol devrait passer. Test rejoué ici.
     from meandre.data.hydrotel_calib import load_calibrated_soil
     _pd_ = os.environ.get("ETL_SOIL_DIR",
-        f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020")
+        _PROJ_M)
     _z1 = float(getattr(model.vertical_column, "z1", 0.15))
     _calib = load_calibrated_soil(_pd_, r["node_ids"], _z1, device=DEVICE)
     # Le calage Hydrotel porte coef_recharge = 0 et krec ~ 1.3e-7 (vérifié sur MONT) :
@@ -526,7 +547,7 @@ if os.environ.get("ETL_HGM", "1") == "1":
     # +0.027 aux jauges. Ici : ACTIF PENDANT L'ENTRAINEMENT, pour que le reseau
     # n'apprenne plus a compenser l'etalement manquant.
     from meandre.data.hgm_loader import lire_hgm
-    _projh = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+    _projh = _PROJ_M
     _K = lire_hgm(_projh, r["node_ids"])
     model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
     import numpy as _nph

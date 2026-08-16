@@ -423,3 +423,44 @@ def appariement_provincial(region: str, troncons_locaux, ids_provinciaux):
             f"ressemblent à {str(ids_provinciaux[0])!r}, on cherchait "
             f"{id_provincial(region, troncons_locaux[0])!r}")
     return rangs
+
+
+def load_mcguinness_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
+                          device="cpu"):
+    """Coefficient multiplicatif d'optimisation de l'ETP McGuinness
+    (etp-mc-guiness.csv), agrégé UHRH -> tronçon au prorata des superficies.
+
+    TROUVÉ LE 2026-08-16, remarque d'Essi : CINQ plateformes sur six utilisent
+    McGuinness et une seule Linacre — les préfixes l'encodent (MG contre LN). Or notre
+    socle était ancré sur LN24HA, la seule Linacre ET la moins bonne des six (0.7531
+    contre 0.830 pour MG24HK). Pire, `mcguinness_etp` était appelé SANS ce coefficient,
+    qui vaut 0.600 sur MG24HK et 0.850 sur MG24HS : notre ETP McGuinness était donc
+    jusqu'à 67 % trop forte. Neuvième fichier de calage présent et jamais lu.
+    """
+    from pathlib import Path
+    import numpy as np
+    import torch as _t
+    proj = load_project(str(project_dir), sim_subdir)
+    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    uhrh = proj["uhrh"]
+    f = Path(project_dir) / sim_subdir / "etp-mc-guiness.csv"
+    if not f.exists():
+        return None
+    coef = {}
+    for ln in f.read_text(encoding="latin-1").splitlines():
+        t = [x.strip() for x in ln.split(";")]
+        if len(t) >= 2 and t[0].isdigit():
+            coef[int(t[0])] = float(t[1])
+    if not coef:
+        return None
+    out = np.ones(len(node_ids), dtype=np.float32)
+    for j, nid in enumerate(node_ids):
+        vs, ws = [], []
+        for u in t2u.get(int(nid), []):
+            u = abs(int(u))
+            if u in coef:
+                vs.append(coef[u]); ws.append(max(uhrh.get(u, {}).get("area_km2", 1.0), 1e-9))
+        if vs:
+            out[j] = float(np.average(vs, weights=ws))
+    return _t.tensor(out, dtype=_t.float32, device=device)
