@@ -285,12 +285,22 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
     _mode_init = os.environ.get("ETL_INIT_HYDROTEL")
     if _mode_init in ("courbe", "sauf_ks"):
         if _mode_init == "sauf_ks":
+            # CONFLIT AQUIFÈRE/CALAGE (2026-08-17). La courbe imposée comprend krec,
+            # la recharge profonde du calage Hydrotel (~1e-7 m/h) — une valeur quasi
+            # NULLE par construction, puisque chez Hydrotel c'est une fuite jamais
+            # restituée que son calage étrangle. Notre aquifère est alimenté par ce
+            # même terme : réservoir branché en aval d'un robinet fermé, d'où un gain
+            # hivernal minuscule (février 0.655 -> 0.688 seulement). Quand l'aquifère
+            # est actif, krec et coef_recharge restent donc LIBRES (init ETL_KREC).
+            _aq_actif = os.environ.get("ETL_AQUIFER", "0") == "1"
             # Tout imposer SAUF ce qu'on veut laisser apprendre (conductivités et
             # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
             # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
             # fractions de surface, pente et recharge sont les candidats restants.
+            _exclus = ("ks", "thetas") if not _aq_actif else ("ks", "thetas")
             _courbe = {k: v for k, v in _cs.items()
-                       if not k.startswith(("ks", "thetas"))}
+                       if not k.startswith(_exclus)
+                       and not (_aq_actif and k in ("krec", "coef_recharge"))}
         else:
             _courbe = {k: v for k, v in _cs.items()
                        if k.startswith(("b", "psis", "omegpi", "mm", "nn"))

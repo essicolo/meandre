@@ -22,3 +22,7 @@ run "mgk-lr2" ETL_TAG="-mgk-lr2" ETL_MEMBRE=MG24HK ETL_ETP=mcguinness ETL_LR=2e-
 run "ln-lr2"  ETL_TAG="-ln-lr2"  ETL_ETP=linacre ETL_LR=2e-4
 run "mgk-lr1" ETL_TAG="-mgk-lr1" ETL_MEMBRE=MG24HK ETL_ETP=mcguinness ETL_LR=1e-4
 echo "[dx] $(date +%H:%M) TERMINE"
+# ajout 17 aout : aquifere NOURRI (krec libre, init 5e-5 mesuree) au lieu d'etrangle
+# par le krec calibre quasi nul d'Hydrotel. Attendu : l'hiver remonte vraiment.
+run "aq-nourri" ETL_TAG="-aq-nourri" ETL_ETP=linacre ETL_AQUIFER=1 ETL_KREC=5e-5 ETL_KGW=0.0645 ETL_LR=2e-4
+echo "[dx] $(date +%H:%M) TERMINE aq-nourri"
