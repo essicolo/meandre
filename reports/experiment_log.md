@@ -1731,3 +1731,25 @@ Diagnostic sur le socle OUTV contre MG24HK (le meilleur membre, 0.830), mêmes s
 **Correction de ma priorité** : je désignais l'excès d'été comme levier principal. Le corriger vaudrait ~0.02, autant que l'hiver, et le vrai retard est diffus (les trois composantes sont derrière). Un seul défaut ne comblera pas les 0.074 qui nous séparent de MG24HK.
 
 Réserve de méthode : la première version de ce diagnostic donnait 0.735 au lieu de 0.756 parce que mon script omettait `spatial_melt`, présent dans le point de reprise. **Quatrième occurrence** de « un point de reprise ne définit pas un modèle » — la dette #6 du registre doit être traitée.
+
+## 2026-08-16 — TOUS LES LEVIERS MESURÉS : le socle Linacre entraîné reste le champion
+
+Chaque essai = UN changement contre le socle (OUTV, tenu de côté, référence 0.7810) :
+
+| levier | 0 époque | 30 époques | verdict |
+|---|---|---|---|
+| **socle LN24HA (référence)** | 0.7389 | **0.7810** | champion |
+| ancrage MG24HK + McGuinness calée (0.600) | **0.7562** | 0.7547 | meilleur départ, l'entraînement ne suit PAS |
+| ancrage MG24HS + McGuinness calée (0.850) | 0.6632 | — | écarté |
+| MODIS ET rallumé (w=0.3, appariement corrigé) | — | 0.7744 | -0.007 : ni poison ni levier |
+| GRACE retiré | — | 0.7616 | **GRACE APPORTE ~0.02** (premier chiffre sur son utilité) |
+| aquifère rallumé (contrôle) | 0.7432 | en cours | +0.004 au départ |
+| ETP apprise (MLP distillé de MOD16) | — | 0.7443 | -0.037 : hérite le biais de niveau de MODIS |
+| CaSR brut | — | 0.7277 | -0.053 : nos corrections d'alignement valent leur coût |
+
+**Trois enseignements.**
+1. **Le paradoxe MG24HK** : son paquet partait 17 millièmes AU-DESSUS du socle LN24HA (0.7562 contre 0.7389) mais l'entraînement le fait légèrement RECULER (0.7547) là où le même entraînement gagnait +0.042 depuis le socle Linacre. Le calage 0.830 ne se transmet ni par ancrage (déjà vu, E7) ni par apprentissage : ce qui rend MG24HK bon chez Hydrotel n'est pas transportable pièce par pièce.
+2. **GRACE justifie enfin sa place** (+0.02 mesuré par retrait), MODIS corrigé est neutre (-0.007) — le rallumer n'est plus dangereux mais ne rapporte rien en jaugé.
+3. La hiérarchie complète, du meilleur au pire : socle Linacre entraîné 0.7810 > MODIS on 0.7744 > GRACE off 0.7616 > MG24HK 0.7547 > ETP MLP 0.7443 > CaSR brut 0.7277. **Tout ce qu'on change au socle le dégrade, sauf l'entraînement lui-même.**
+
+Écart restant au meilleur membre : 0.049 (0.7810 contre 0.8299). Les leviers de configuration sont épuisés ; restent les processus (aquifère 30 ép. en cours ; hiver à 0.655 de l'observé) et la vitesse (GPU utilisé à ~25 %, profilage à faire).
