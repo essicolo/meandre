@@ -690,8 +690,26 @@ class HydroModel(nn.Module):
     # ---- Persistence ----
 
     def save(self, path: str | Path) -> None:
+        # FICHE D'EXÉCUTION (dette #6 du registre, traitée le 2026-08-17). Un point de
+        # reprise ne définissait PAS un modèle : occupation du sol, milieux humides,
+        # phénologie, noyau de versant, lacs, aquifère et ETP sont posés par le script
+        # d'entraînement et n'étaient pas sauvegardés — cinq évaluations faussées en
+        # quatre jours (0.6051 mesuré 0.4449, 0.781 mesuré 0.735...). load() compare
+        # désormais la fiche à l'état du modèle et avertit sur chaque écart.
+        fiche = {
+            "et_mode": getattr(self.vertical_column, "et_mode", None),
+            "etp_channel": getattr(self.vertical_column, "etp_channel", None),
+            "t_neige_seuil": float(getattr(self.vertical_column, "t_neige_seuil", 0.0)),
+            "land_cover": getattr(self.vertical_column, "_land_cover", None) is not None,
+            "phenology": getattr(self.vertical_column, "_pheno", None) is not None,
+            "calib_soil": getattr(self.vertical_column, "_calib_soil", None) is not None,
+            "hgm": getattr(self, "_hgm_kernel", None) is not None,
+            "lake_area": getattr(self, "_lake_area_km2", None) is not None,
+            "mcg_coeff": getattr(self.vertical_column, "mcg_coeff", None) is not None,
+        }
         torch.save({
             "state_dict": self.state_dict(),
+            "fiche_execution": fiche,
             "use_temporal": self.temporal_encoder is not None,
             "use_residual": self.residual_corrector is not None,
             "use_tta": hasattr(self.routing, "tta") and self.routing.tta is not None,
@@ -808,6 +826,24 @@ class HydroModel(nn.Module):
         """Load weights and module flags into this model instance in-place."""
         device = next(self.parameters()).device
         checkpoint = torch.load(path, map_location=device)
+        _f = checkpoint.get("fiche_execution") if isinstance(checkpoint, dict) else None
+        if _f:
+            _act = {
+                "et_mode": getattr(self.vertical_column, "et_mode", None),
+                "etp_channel": getattr(self.vertical_column, "etp_channel", None),
+                "t_neige_seuil": float(getattr(self.vertical_column, "t_neige_seuil", 0.0)),
+                "land_cover": getattr(self.vertical_column, "_land_cover", None) is not None,
+                "phenology": getattr(self.vertical_column, "_pheno", None) is not None,
+                "calib_soil": getattr(self.vertical_column, "_calib_soil", None) is not None,
+                "hgm": getattr(self, "_hgm_kernel", None) is not None,
+                "lake_area": getattr(self, "_lake_area_km2", None) is not None,
+                "mcg_coeff": getattr(self.vertical_column, "mcg_coeff", None) is not None,
+            }
+            for _k, _v in _act.items():
+                if _k in _f and _f[_k] != _v:
+                    print(f"[load] AVERTISSEMENT fiche d'exécution : le point de reprise "
+                          f"attendait {_k}={_f[_k]}, le modèle a {_v} — scores FAUX si "
+                          f"ce n'est pas volontaire")
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             sd = checkpoint["state_dict"]
             # Backward compatibility: pad fc_out if old checkpoint had fewer params

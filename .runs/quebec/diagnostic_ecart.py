@@ -49,7 +49,10 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     # « un point de reprise ne définit pas un modèle », dette #6 du registre).
     use_latent_codes=False, latent_mode="additive", spatial_melt=True,
     routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
-    use_aquifer=False).to(DEVICE)
+    # DIAG_AQUIFER=1 pour les points de reprise entraînés AVEC aquifère (aq30 et
+    # suivants). Cinquième occurrence évitée du piège « un point de reprise ne définit
+    # pas un modèle » : ce script le construisait toujours sans.
+    use_aquifer=os.environ.get("DIAG_AQUIFER", "0") == "1").to(DEVICE)
 m.eval(); m.spatial_encoder.init_from_literature({})
 m.vertical_column.compile_column = False
 # mêmes réglages d'exécution que l'entraînement du socle (un point de reprise ne définit
