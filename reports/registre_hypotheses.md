@@ -62,6 +62,15 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 
 ## 4. Questions OUVERTES, avec le test qui les tranche
 
+NOTE D'ENJEU (Essi, 2026-08-17) : la RECHARGE n'est pas un simple bouton de calage, c'est un
+LIVRABLE du projet (cartes de recharge, gestion de l'eau souterraine, scénarios). Or le débit
+seul la préfère quasi NULLE (balayage R11 : monotone décroissant), alors que la recharge réelle
+du Québec méridional se compte en dizaines à centaines de mm/an. C'est un problème
+d'identifiabilité au sens strict : Q ne contraint pas la partition drainage/recharge, il faut
+une contrainte indépendante (GRACE, récessions d'étiage, cartes piézométriques) pour que la
+valeur PHYSIQUE de la recharge soit crédible. Toute future calibration devra arbitrer
+explicitement entre le score de débit et le réalisme de la recharge, pas l'optimiser en silence.
+
 | # | Question | Test défini | État |
 |---|---|---|---|
 | O1 | Le champ spatial sert-il en NON JAUGÉ ? | validation croisée spatiale, 4 plis, OUTV | **RÉPONDU (4 plis)** : en groupant les 16 jauges (chacune retirée une fois), moyenne **0.5911** contre 0.6043 pour l'entraînement complet, soit **-0.013**. La régionalisation est donc quasi GRATUITE. Mon verdict après 2 plis (-0.07) était prématuré : à n=4 par pli, un pli a même donné les jauges retirées MEILLEURES que les vues (0.710 contre 0.563) |
