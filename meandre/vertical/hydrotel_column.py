@@ -221,6 +221,18 @@ class HydrotelColumn(nn.Module):
                  c_prod,hru_ha,wet_fr) ou None si aucun.
         n_depth: nombre de nœuds du profil de gel."""
         self._static = dict(snow=p_snow, soil=p_soil, etr=p_etr, wetland=wetland, n_depth=n_depth)
+        # Les breakpoints de phénologie sont convertis en tenseurs ICI, une fois par
+        # simulate, et NON dans forward. La conversion (torch.as_tensor sur une liste
+        # de tenseurs 0-d) est de la préparation de données : dans le pas, elle rendait
+        # la colonne incompilable (dynamo échoue à tracer as_tensor sur des faux
+        # tenseurs, mesuré le 2026-08-19) alors que la colonne est ~80 % du temps.
+        _ref = p_soil.get("ks1")
+        if _ref is None:
+            _ref = next((v for v in p_soil.values() if torch.is_tensor(v)), None)
+        self._pheno_cache = None
+        self._pheno_cache_key = None
+        if _ref is not None and p_etr.get("classes"):
+            self._pheno_tensors(p_etr["classes"], _ref)
 
     def set_calibrated_soil(self, p_soil: dict):
         """Ancre le sol sur la calibration Hydrotel (params par nœud). Quand posé,
@@ -707,7 +719,9 @@ class HydrotelColumn(nn.Module):
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
         # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro
         # float(doy) par pas de temps. Résultats identiques (interp linéaire clampé).
-        pheno = self._pheno_tensors(pe["classes"], P)
+        pheno = getattr(self, "_pheno_cache", None)
+        if pheno is None:   # chemin set_static construit a la main, hors entrainement
+            pheno = self._pheno_tensors(pe["classes"], P)
         d = doy_t.reshape(-1)[0]                  # jour julien scalaire (tenseur, sans synchro)
         etp_classes, roots, leaves = [], [], []
         for (pct, jbp_t, leaf_t, root_t) in pheno:
