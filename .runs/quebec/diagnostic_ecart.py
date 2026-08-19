@@ -27,6 +27,7 @@ from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_node
                                          appariement_provincial)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
+from recette import poser_surface_lac
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 CKPT = sys.argv[2] if len(sys.argv) > 2 else f".runs/quebec/checkpoints/best-{REG}-etl-socle.pt"
@@ -67,6 +68,7 @@ _lc.update(load_milieux_humides(PROJ, node_ids, device=DEVICE))
 m.vertical_column.set_land_cover(_lc)
 m.vertical_column.set_phenology(load_phenologie(PROJ) or None)
 m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
+poser_surface_lac(m, REG, r["territorial"].get_physical("area_km2_local"), n)
 m.load(CKPT)
 print(f"[diag] {Path(CKPT).name} sur {REG.upper()}", flush=True)
 

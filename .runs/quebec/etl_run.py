@@ -293,7 +293,14 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
             # même terme : réservoir branché en aval d'un robinet fermé, d'où un gain
             # hivernal minuscule (février 0.655 -> 0.688 seulement). Quand l'aquifère
             # est actif, krec et coef_recharge restent donc LIBRES (init ETL_KREC).
-            _aq_actif = os.environ.get("ETL_AQUIFER", "0") == "1"
+            # RÉGRESSION SILENCIEUSE (trouvée le 2026-08-19). Libérer krec DÈS QUE
+            # l'aquifère est actif faisait tomber le champion aq30 de 0.7880 à 0.4912
+            # en évaluation pure : la recharge part alors à 5e-5, la nappe fournit 69 %
+            # du débit et février passe de 0.688 à 1.40. Le champion du 17 août a tourné
+            # AVANT ce correctif, donc avec krec IMPOSÉ. On revient au comportement qui
+            # tient le record, et la libération devient EXPLICITE (ETL_KREC_LIBRE=1),
+            # à n'utiliser qu'avec une valeur choisie et gelée (ETL_KREC + ETL_KREC_GEL).
+            _aq_actif = os.environ.get("ETL_KREC_LIBRE", "0") == "1"
             # Tout imposer SAUF ce qu'on veut laisser apprendre (conductivités et
             # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
             # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
@@ -493,32 +500,17 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
               f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
     else:
         print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
-# ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
-# DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
-# tenu de côté, gain survivant au réentraînement. Désactivable par ETL_LAKE_AREA=0.
 if os.environ.get("ETL_LAKE_AREA", "1") == "1":
-    # CORRECTIF DE SURFACE DE LAC (bug trouve le 2026-08-07). Le module de lac calcule la
-    # hauteur d'eau comme S/A mais recevait l'aire de DRAINAGE du troncon, mediane 175x la
-    # surface reelle du plan d'eau. Q = k*(S/A)^beta*A varie comme A^(1-beta) : avec
-    # beta = 1.5, surestimer A d'un facteur 175 divise le debit sortant par ~13. La
-    # surface vient de HydroLAKES (Messager et al. 2016) la ou l'appariement existe,
-    # sinon de lake_fraction x aire locale.
-    import pandas as _pdl
-    _A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
-    _rwl = _pdl.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
-    _rwl = _rwl[_rwl.region == REG]
-    _alac = _A * (_rwl["lake_fraction"].values.clip(0, 1) if len(_rwl) == n_nodes else 1.0)
-    try:
-        _hl = _pdl.read_parquet("D:/meandre-data/quebec/lacs_hydrolakes.parquet")
-        _hl = _hl[_hl.region == REG]
-        _alac[_hl.node_idx.values] = _hl["lake_area_km2"].values
-        _src = f"HydroLAKES ({len(_hl)} noeuds) + repli lake_fraction"
-    except Exception:
-        _src = "lake_fraction x aire locale"
-    model.set_lake_area(torch.tensor(_alac, dtype=torch.float32))
+    # ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
+    # DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
+    # tenu de côté, gain survivant au réentraînement. Désactivable par ETL_LAKE_AREA=0.
+    # La pièce vit dans recette.py pour que les DIAGNOSTICS l'appliquent aussi : ils ne
+    # le faisaient pas, et le champion y ressortait à 0.7591 au lieu de 0.7880.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from recette import poser_surface_lac
+    poser_surface_lac(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
     _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
-    print(f"[etl] surface de lac corrigee ({_src}) : med {float(_lm.median()):.2f} km2 "
-          f"contre {float(np.median(_A[td.graph.is_lake.bool().cpu().numpy()])):.1f} km2 d'aire de drainage")
+    print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
 if os.environ.get("ETL_PEDO", "0") == "1":
     # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
     # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete
@@ -684,6 +676,18 @@ tr.fit()
 # entraînements de 4 h lancés sur une initialisation jamais vérifiée.
 if os.path.exists(CKPT):
     model.load(CKPT)
+    # Le point de reprise RESTAURE krec_raw : sans ce rappel, ETL_KREC n'a aucun effet
+    # en évaluation pure et un balayage de recharge mesure onze fois la même chose
+    # (mesuré le 2026-08-19). Quand la recharge est GELÉE, elle vaut la valeur choisie
+    # de bout en bout, y compris après le chargement.
+    if os.environ.get("ETL_KREC_GEL", "0") == "1" and "ETL_KREC" in os.environ:
+        import math as _mk2
+        _kv2 = float(os.environ["ETL_KREC"])
+        _lo2, _hi2 = model.vertical_column._krec_bounds
+        _x2 = min(max((_kv2 - _lo2) / (_hi2 - _lo2), 1e-6), 1 - 1e-6)
+        with torch.no_grad():
+            model.vertical_column.krec_raw.copy_(torch.tensor(_mk2.log(_x2 / (1 - _x2))))
+        print(f"[etl] krec ré-imposé après chargement : {_kv2:.1e} (gelé)")
 else:
     print(f"[etl] pas de point de reprise ({N_EPOCHS} époque(s)) : évaluation du modèle EN MÉMOIRE")
 model.eval()
