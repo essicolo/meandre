@@ -23,6 +23,7 @@ from meandre.utils.state import HydroState
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes, load_melt_nodes,
                                          load_passage_pluie_neige, load_occupation_sol,
                                          load_milieux_humides, load_phenologie,
+                                         courbe_retention_imposee,
                                          appariement_provincial)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
@@ -57,8 +58,7 @@ m.eval(); m.spatial_encoder.init_from_literature({})
 # mêmes réglages d'exécution que l'entraînement du socle (un point de reprise ne définit
 # pas un modèle : voir la dette #6 du registre)
 _cs = load_calibrated_soil(PROJ, node_ids, 0.15, device=DEVICE)
-m.vertical_column.set_calibrated_soil({k: v for k, v in _cs.items()
-                                       if not k.startswith(("ks", "thetas"))})
+m.vertical_column.set_calibrated_soil(courbe_retention_imposee(_cs, os.environ.get("DIAG_AQUIFER", "0") == "1"))
 m.vertical_column.set_linacre_params(*load_linacre_nodes(PROJ, node_ids, device=DEVICE))
 m.vertical_column.set_melt_params(load_melt_nodes(PROJ, node_ids, device=DEVICE))
 m.vertical_column.t_neige_seuil = load_passage_pluie_neige(PROJ)

@@ -542,6 +542,12 @@ class HydrotelColumn(nn.Module):
         # +ajout (recharge artificielle/rejet), −retrait (pompage), cohérent avec
         # WithdrawalData/AquiferModule. forward() (validé décimale) reste intouché.
         pb = diag["prod_base"]
+        # La RECHARGE est le drainage profond de la couche 3 AVANT l'aquifère : c'est
+        # un livrable du projet (la réalité québécoise se compte en dizaines à centaines
+        # de mm/an), pas un sous-produit. Elle était rendue à ZÉRO EN DUR plus bas, si
+        # bien qu'un diagnostic pouvait afficher 0 mm/an pendant que la nappe fournissait
+        # 27 % du débit (mesuré le 2026-08-19).
+        recharge_mm = pb
         if self.use_aquifer:
             # AQUIFÈRE RESTITUANT : le drainage L3 (pb) RECHARGE un réservoir linéaire
             # au lieu de sortir instantanément. Soutien d'étiage + prélèvement souterrain
@@ -567,7 +573,7 @@ class HydrotelColumn(nn.Module):
             cold_content=state.cold_content, gdd_cum=state.gdd_cum)
         return ColumnOutput(
             lateral_inflow=prod, state=new_state, snowmelt=diag["apport"],
-            recharge=torch.zeros_like(prod), Q_baseflow=diag["prod_base"],
+            recharge=recharge_mm, Q_baseflow=diag["prod_base"],
             diag=(diag if return_diagnostics else None))
 
     # ── Split de phase pluie/neige FIDÈLE (THIESSEN::PassagePluieNeige, thiessen1.cpp:259-279) ──

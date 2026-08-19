@@ -254,6 +254,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
     # 0.741 contre 0.740 pour la cible — la capacité n'était pas le verrou, le point de
     # départ l'était (champ initial plat à 0.0017 de dispersion, K_sat 8× trop bas).
     from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs
+    from meandre.data.hydrotel_calib import courbe_retention_imposee
     _plh = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _cs = _lcs(_plh, r["node_ids"], 0.15, device=DEVICE)
     _cib = {"K_sat_1": _cs["ks1"].float() * 24, "K_sat_2": _cs["ks2"].float() * 24,
@@ -297,10 +298,9 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
             # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
             # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
             # fractions de surface, pente et recharge sont les candidats restants.
-            _exclus = ("ks", "thetas") if not _aq_actif else ("ks", "thetas")
-            _courbe = {k: v for k, v in _cs.items()
-                       if not k.startswith(_exclus)
-                       and not (_aq_actif and k in ("krec", "coef_recharge"))}
+            # La règle est dans courbe_retention_imposee() pour que les diagnostics
+            # appliquent EXACTEMENT la même (ils en divergeaient, cf. sa docstring).
+            _courbe = courbe_retention_imposee(_cs, _aq_actif)
         else:
             _courbe = {k: v for k, v in _cs.items()
                        if k.startswith(("b", "psis", "omegpi", "mm", "nn"))
@@ -411,6 +411,14 @@ if "ETL_KREC" in os.environ:
     with torch.no_grad():
         model.vertical_column.krec_raw.copy_(torch.tensor(_mk.log(_x / (1 - _x))))
     print(f"[etl] krec init -> {_kv:.0e} (drainage profond, banc partition)")
+    # ETL_KREC_GEL=1 : la recharge est un LIVRABLE, pas un bouton de calage. Le débit
+    # seul la pousse aux extrêmes (banc du 2026-08-19 : à 5e-5 la nappe fournit 69 % du
+    # débit et le KGE tombe à 0.589 ; à 1e-4 il devient négatif). Quand on la pose à une
+    # valeur choisie pour des raisons PHYSIQUES, il faut la geler, sinon l'apprentissage
+    # la déplace et on ne sait plus ce qu'on a mesuré.
+    if os.environ.get("ETL_KREC_GEL", "0") == "1":
+        model.vertical_column.krec_raw.requires_grad_(False)
+        print(f"[etl] krec GELÉ à {_kv:.1e} (exclu de l'apprentissage)")
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
     # A/B inférence 2026-07-25 : +0.149 KGE sur checkpoint gasp (v7 : +0.088 entraîné).

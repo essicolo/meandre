@@ -92,6 +92,31 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
     return p
 
 
+def courbe_retention_imposee(cs: dict, use_aquifer: bool) -> dict:
+    """Sous-ensemble du sol calibré à IMPOSER au modèle (mode d'ancrage sauf_ks).
+
+    Tout est imposé SAUF les conductivités et porosités, qui restent au champ appris
+    (loi des ancrages : ancrer les processus scalaires, jamais figer le sol en bloc).
+
+    ET, quand l'aquifère restituant est actif, SAUF krec et coef_recharge. Le calage
+    Hydrotel porte une recharge quasi nulle (~1e-7 m/h) parce que chez lui c'est une
+    fuite jamais restituée, que son calage étrangle. L'imposer à notre aquifère revient
+    à brancher le réservoir en aval d'un robinet fermé : la recharge tombe à zéro et
+    toute variation de krec devient sans effet.
+
+    Cette fonction existe pour que le PILOTE d'entraînement et les DIAGNOSTICS ne
+    puissent plus diverger sur ce point. Ils avaient divergé (2026-08-19) : le balayage
+    recharge x vidange mesurait un champion à 0.7591 au lieu de 0.7880, avec une
+    recharge nulle partout et un krec inopérant, parce que le diagnostic imposait krec
+    et le pilote non. Sixième occurrence de « la recette d'exécution ne se déduit pas
+    du point de reprise ».
+    """
+    exclus_prefixes = ("ks", "thetas")
+    exclus_cles = ("krec", "coef_recharge") if use_aquifer else ()
+    return {k: v for k, v in cs.items()
+            if not k.startswith(exclus_prefixes) and k not in exclus_cles}
+
+
 def load_linacre_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
                        device="cpu", dtype=None):
     """Params Linacre par NŒUD (troncon) : lat/alti (uhrh.csv) + linacre.csv
