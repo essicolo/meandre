@@ -43,7 +43,6 @@ for REG in [a.lower() for a in sys.argv[1:]]:
             routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
             use_aquifer=True).to(DEVICE)
         m.load(ck); m.eval(); m.vertical_column.etp_channel = 6
-        m.vertical_column.compile_column = False
         with torch.no_grad():
             Q, _ = m.simulate(forcing=f7, initial_state=HydroState.zeros(n, device=DEVICE),
                               graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,

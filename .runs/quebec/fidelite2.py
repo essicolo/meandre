@@ -68,7 +68,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
     use_aquifer=False).to(DEVICE)
 m.eval(); m.spatial_encoder.init_from_literature({})
-m.vertical_column.compile_column = False
 m.vertical_column.set_calibrated_soil(load_calibrated_soil(PROJ, node_ids, 0.15, device=DEVICE))
 m.vertical_column.set_linacre_params(*load_linacre_nodes(PROJ, node_ids, device=DEVICE))
 m.vertical_column.set_melt_params(load_melt_nodes(PROJ, node_ids, device=DEVICE))

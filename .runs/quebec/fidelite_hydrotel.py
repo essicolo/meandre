@@ -93,7 +93,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     use_aquifer=False).to(DEVICE)
 m.eval()
 m.spatial_encoder.init_from_literature({})
-m.vertical_column.compile_column = False
 
 # 1. sol COMPLET du calage (épaisseurs, textures, krec, coef_recharge)
 soil = load_calibrated_soil(PROJ, node_ids, 0.15, device=DEVICE)

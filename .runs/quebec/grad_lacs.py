@@ -41,7 +41,7 @@ def essai(detacher):
         use_aquifer=True).to(DEVICE)
     m.load(".runs/quebec/checkpoints/best-outv-etl-qc.pt" if REG == "outv"
            else f".runs/quebec/checkpoints/best-{REG}-etl-ds.pt")
-    m.train(); m.vertical_column.etp_channel = 6; m.vertical_column.compile_column = False
+    m.train(); m.vertical_column.etp_channel = 6
     mp.LACS_DETACHER = detacher
     Q, _ = m.simulate(forcing=f7, initial_state=HydroState.zeros(n, device=DEVICE),
                       graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,

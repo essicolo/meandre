@@ -92,7 +92,7 @@ class HydrotelColumn(nn.Module):
                  frost_fs: float = 2.35, frost_kt: float = 0.8,
                  frost_cs: float = 1.0e6, frost_cice: float = 4.0e6,
                  t_neige_seuil: float = 0.0, compile_soil: bool = False,
-                 compile_column: bool = False, use_hillslope_uh: bool = False,
+                 use_hillslope_uh: bool = False,
                  melt_mode: str = "degree_day", use_aquifer: bool = False,
                  use_hortonian: bool = False, frozen_gate_continuous: bool = False,
                  horton_precomputed: bool = False, spatial_melt: bool = False) -> None:
@@ -132,23 +132,23 @@ class HydrotelColumn(nn.Module):
         self.snow = DegreJourModifie(pas_de_temps=24)
         self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
                               frost_kt, frost_cs, frost_cice, pas_de_temps=24)
-        # Deux modes de compilation (le wall-clock est CPU-dispatch-bound sur la
-        # boucle par jour, GPU ~0% en eager) :
-        #  - compile_column : compile TOUT le compute du pas (snow+gel+ET+sol) en
-        #    peu de kernels/jour → réduit le dispatch Python. Le sol est static
-        #    (sans break) mais PAS compilé séparément (le compile externe l'inline).
-        #  - compile_soil : compile seulement le sol (sous-ensemble de l'effet).
+        # compile_soil : torch.compile du sol, le seul poste qui compte. Le temps
+        # mural est dominé par le pilotage CPU de la boucle de sous-pas (banc OUTV
+        # 2026-08-19 : colonne 98 % du pas, routage 1,7 %), et fondre cette boucle
+        # vaut x17,6 sur avant+arrière (157,5 -> 9,0 min/époque, 3412 nœuds).
         # Boucle de sous-pas static = résultats IDENTIQUES au mode break (vérifié).
         # La compilation DÉROULE la boucle de sous-pas : au-delà de ~64 itérations le
         # graphe explose (RecursionError dans l'inductor, mesuré à 300). On désactive
         # alors la compilation plutôt que de brider la physique.
-        if soil_n_substep > 64 and (compile_column or compile_soil):
+        # (Un mode compile_column, qui compilait TOUT le pas, a été retiré le
+        # 2026-08-19 : sa compilation échouait et retombait en eager en silence,
+        # pour un résultat 1,5x PLUS LENT que l'eager franc — il forçait le sol
+        # static, donc les 64 sous-pas s'exécutaient tous sans sortie anticipée.)
+        if soil_n_substep > 64 and compile_soil:
             print(f"[colonne] compilation DÉSACTIVÉE : {soil_n_substep} sous-pas "
                   f"dérouleraient un graphe trop profond (limite ~64)")
-            compile_column = False
             compile_soil = False
-        self.compile_column = bool(compile_column)
-        soil_static = bool(compile_soil or compile_column)
+        soil_static = bool(compile_soil)
         # Plafond de sous-pas de Courant, réglable par MEANDRE_NSUBSTEP. Le C++ boucle
         # JUSQU'À épuiser le pas de temps ; le plafond est une concession au GPU. Plus le
         # sol est PERMÉABLE, plus la condition de Courant exige de sous-pas : sur GASP
@@ -158,9 +158,8 @@ class HydrotelColumn(nn.Module):
         self.soil = BV3C2Clone(n_substep=soil_n_substep, static=soil_static,
                                frozen_gate_continuous=frozen_gate_continuous,
                                horton_precomputed=horton_precomputed)
-        if compile_soil and not compile_column:
+        if compile_soil:
             self.soil = torch.compile(self.soil, dynamic=False)
-        self._fwd_compiled = None
         # Ancrage OPTIONNEL sur la calibration Hydrotel (reproduce). None = init
         # NeRF/littérature (objectif ultime : découplé). Posé via set_calibrated_soil.
         self._calib_soil = None
@@ -662,27 +661,6 @@ class HydrotelColumn(nn.Module):
 
     def forward(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
                 tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None, etp_ext=None) -> tuple[Tensor, HydrotelColumnState, dict]:
-        """Dispatcher : appelle le forward compilé (compile_column) ou eager.
-        Le compilé fond le compute par jour en peu de kernels (le wall-clock est
-        dominé par le dispatch Python de la boucle par jour, GPU sinon ~0%).
-        sw_in : courte longueur d'onde incidente (W/m²) pour la fonte ETI.
-        storm_hours : durée effective d'orage (h, daily) pour l'hortonien sous-journalier."""
-        if getattr(self, "compile_column", False):
-            if getattr(self, "_fwd_compiled", None) is None:
-                try:
-                    self._fwd_compiled = torch.compile(self._forward_impl, dynamic=False)
-                except Exception:
-                    self._fwd_compiled = self._forward_impl   # fallback eager
-            try:
-                return self._fwd_compiled(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours, etp_ext)
-            except Exception:
-                # compile échoue à l'exécution → bascule eager définitivement
-                self._fwd_compiled = self._forward_impl
-                return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours, etp_ext)
-        return self._forward_impl(P, tmin, tmax, Rn, u2, ea, doy, state, tmin_j, tmax_j, sw_in, storm_hours, etp_ext)
-
-    def _forward_impl(self, P, tmin, tmax, Rn, u2, ea, doy, state: HydrotelColumnState,
-                      tmin_j=None, tmax_j=None, sw_in=None, storm_hours=None, etp_ext=None) -> tuple[Tensor, HydrotelColumnState, dict]:
         """Un pas de temps. P/tmin/tmax/Rn/u2/ea : forçage (n_nodes,). doy : jour
         julien (scalaire ou n_nodes). Retourne (prod_totale_mm, new_state, diag)."""
         assert self._static is not None, "appeler set_static() avant forward()"

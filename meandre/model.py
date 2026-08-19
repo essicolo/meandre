@@ -32,6 +32,19 @@ from meandre.utils.state import HydroState
 # uniquement quand column_mode != "hydrotel" (découplage du clone Hydrotel).
 
 
+# Clés d'init RETIRÉES du code mais présentes dans les points de reprise déjà
+# écrits : les filtrer au rejeu, sinon tout checkpoint antérieur devient illisible.
+#   compile_column (retiré le 2026-08-19) : compilait tout le pas de la colonne ; la
+#   compilation échouait et retombait en eager en silence, pour 1,5x plus lent que
+#   l'eager franc (banc OUTV : 240,7 contre 157,5 min/époque).
+CLES_INIT_OBSOLETES = ("compile_column",)
+
+
+def purger_kwargs_obsoletes(kw: dict) -> dict:
+    """Copie de kw sans les clés d'init supprimées du code."""
+    return {k: v for k, v in kw.items() if k not in CLES_INIT_OBSOLETES}
+
+
 class HydroModel(nn.Module):
     """End-to-end differentiable hydrological model.
 
@@ -100,7 +113,6 @@ class HydroModel(nn.Module):
         column_theta_init_frac: float = 0.9,  # theta init = frac·thetas (init Hydrotel validé) en mode hydrotel ; 0 = garder la theta du cache
         use_frost_rankinen: bool = True,
         compile_soil: bool = False,   # mode hydrotel : torch.compile du sol seul
-        compile_column: bool = False,   # mode hydrotel : torch.compile de TOUT le pas (snow+gel+ET+sol)
         use_overland_uh: bool = False,
         use_hillslope_uh: bool = False,
         melt_mode: str = "degree_day",   # "degree_day" (clone fidèle) ou "eti" (fonte radiation réelle CaSR)
@@ -188,7 +200,6 @@ class HydroModel(nn.Module):
         self._build_et_mode = str(et_mode)
         self._build_use_frost_rankinen = bool(use_frost_rankinen)
         self._build_compile_soil = bool(compile_soil)
-        self._build_compile_column = bool(compile_column)
         # Colonne native (VerticalColumn/soil.py/aquifer.py) RETIRÉE 2026-06-27
         # (ETP/baseflow déficients). Seule la HydrotelColumn fidèle subsiste.
         if self.column_mode != "hydrotel":
@@ -200,7 +211,6 @@ class HydroModel(nn.Module):
             et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman", "oudin", "linacre") else "mcguinness"),
             use_frost=use_frost_rankinen,
             compile_soil=bool(compile_soil),
-            compile_column=bool(compile_column),
             use_hillslope_uh=bool(use_hillslope_uh),
             melt_mode=str(melt_mode),
             use_aquifer=bool(use_aquifer),
@@ -784,7 +794,6 @@ class HydroModel(nn.Module):
                 "et_mode": getattr(self, "_build_et_mode", "penman"),
                 "use_frost_rankinen": getattr(self, "_build_use_frost_rankinen", True),
                 "compile_soil": getattr(self, "_build_compile_soil", False),
-                "compile_column": getattr(self, "_build_compile_column", False),
                 "column_mode": getattr(self, "column_mode", "meandre"),
                 "column_theta_init_frac": getattr(self, "column_theta_init_frac", 0.9),
                 "use_overland_uh": getattr(self.vertical_column, "use_overland_uh", False),
@@ -949,7 +958,7 @@ class HydroModel(nn.Module):
         """
         checkpoint = torch.load(path, map_location="cpu")
         if isinstance(checkpoint, dict) and "init_kwargs" in checkpoint:
-            stored = checkpoint["init_kwargs"]
+            stored = purger_kwargs_obsoletes(checkpoint["init_kwargs"])
             stored.update(kwargs)  # caller overrides win
             model = cls(**stored)
         else:

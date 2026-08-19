@@ -96,7 +96,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
 m.eval(); m.spatial_encoder.init_from_literature({})
 if CKPT:
     m.vertical_column.etp_channel = 6
-m.vertical_column.compile_column = False
 if CKPT:
     m.load(CKPT)
     # PIÈGE (rencontré le 2026-08-13) : l'occupation du sol, les milieux humides, la

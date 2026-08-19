@@ -16,7 +16,7 @@ import pandas as pd
 import torch
 import xarray as xr
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel
+from meandre.model import HydroModel, purger_kwargs_obsoletes
 from meandre.utils.state import HydroState
 
 CFG = ".runs/slso-od/config/slso-od-mini-hydrotel-pm.toml"
@@ -26,7 +26,7 @@ DB = ".runs/slso-od/" + cfg["paths"]["basin_db"]
 cache = BasinCache(DB); h = cache.load(device="cpu"); n = h["n_nodes"]
 
 ck = torch.load(CKPT, map_location="cpu", weights_only=False)
-kw = dict(ck["init_kwargs"]); kw["n_coord_freqs"] = cfg["model"].get("n_coord_freqs", 6)
+kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["n_coord_freqs"] = cfg["model"].get("n_coord_freqs", 6)
 m = HydroModel(**kw); m.routing.routing_mode = "operator-lagged"; m.temperature = None
 m.load_state_dict(ck["state_dict"]); m.eval()
 print(f"modèle calé chargé : column_mode={kw.get('column_mode')} et_mode={kw.get('et_mode')} "

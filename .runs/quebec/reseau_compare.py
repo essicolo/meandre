@@ -56,7 +56,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
     use_aquifer=True).to(DEVICE)
 m.load(ck); m.eval(); m.vertical_column.etp_channel = 6
-m.vertical_column.compile_column = False
 with torch.no_grad():
     Q, _ = m.simulate(forcing=f7, initial_state=HydroState.zeros(n, device=DEVICE),
                       graph=td.graph, node_coords=td.node_coords, territorial=r["territorial"],

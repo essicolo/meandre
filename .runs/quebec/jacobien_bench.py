@@ -33,7 +33,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
     use_aquifer=True).to(DEVICE)
 m.load(CKPT); m.eval(); m.vertical_column.etp_channel = 6
-m.vertical_column.compile_column = False
 _orig = m.spatial_encoder.forward
 times = pd.to_datetime(r["times"]); t0 = td.train_slice.start
 tt = pd.DatetimeIndex(times[t0:])

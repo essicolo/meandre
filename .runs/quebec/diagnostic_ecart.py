@@ -54,7 +54,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     # pas un modèle » : ce script le construisait toujours sans.
     use_aquifer=os.environ.get("DIAG_AQUIFER", "0") == "1").to(DEVICE)
 m.eval(); m.spatial_encoder.init_from_literature({})
-m.vertical_column.compile_column = False
 # mêmes réglages d'exécution que l'entraînement du socle (un point de reprise ne définit
 # pas un modèle : voir la dette #6 du registre)
 _cs = load_calibrated_soil(PROJ, node_ids, 0.15, device=DEVICE)

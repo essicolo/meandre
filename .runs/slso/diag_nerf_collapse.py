@@ -9,7 +9,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, torch
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel
+from meandre.model import HydroModel, purger_kwargs_obsoletes
 
 DB = ".runs/slso/data/slso.duckdb"
 CKPTS = sys.argv[1:3] if len(sys.argv) >= 3 else [
@@ -19,7 +19,7 @@ h = BasinCache(DB).load(device="cpu")
 
 def params_cv(ckpt):
     ck = torch.load(ckpt, map_location="cpu", weights_only=False)
-    kw = dict(ck["init_kwargs"]); kw["compile_soil"] = False; kw["compile_column"] = False
+    kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["compile_soil"] = False
     m = HydroModel(**kw); m.load_state_dict(ck["state_dict"], strict=False); m.eval()
     with torch.no_grad():
         sp = m.spatial_encoder(h["node_coords"], h["territorial"].to_tensor())

@@ -8,7 +8,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr, torch
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel
+from meandre.model import HydroModel, purger_kwargs_obsoletes
 from meandre.utils.state import HydroState
 
 DB = ".runs/slso/data/slso.duckdb"; FORC = ".runs/slso/data/forcing.nc"
@@ -17,7 +17,7 @@ T0, T1 = "2023-01-01", "2023-06-30"   # hiver/printemps : neige + MODIS dispo
 
 cache = BasinCache(DB); h = cache.load(device="cpu"); n = h["n_nodes"]
 ck = torch.load(CKPT, map_location="cpu", weights_only=False)
-kw = dict(ck["init_kwargs"]); kw["compile_soil"] = False; kw["compile_column"] = False
+kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["compile_soil"] = False
 m = HydroModel(**kw); m.load_state_dict(ck["state_dict"], strict=False); m.train()
 
 # sp_fonte dans les params ?

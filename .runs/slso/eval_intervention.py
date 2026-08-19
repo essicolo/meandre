@@ -22,7 +22,7 @@ sys.path.insert(0, os.getcwd())
 import math, tomllib
 import numpy as np, pandas as pd, xarray as xr, torch
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel
+from meandre.model import HydroModel, purger_kwargs_obsoletes
 from meandre.utils.state import HydroState
 from meandre.routing.withdrawals import WithdrawalData
 
@@ -36,7 +36,7 @@ dev = "cuda" if torch.cuda.is_available() else "cpu"
 
 cache = BasinCache(DB); h = cache.load(device=dev); n = h["n_nodes"]
 ck = torch.load(CKPT, map_location=dev, weights_only=False)
-kw = dict(ck["init_kwargs"]); kw["compile_soil"] = False; kw["compile_column"] = False  # pas de Triton Windows
+kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["compile_soil"] = False   # pas de Triton Windows
 m = HydroModel(**kw).to(dev)
 m.load_state_dict(ck["state_dict"], strict=False); m.eval()
 

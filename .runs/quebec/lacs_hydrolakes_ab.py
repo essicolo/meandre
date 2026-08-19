@@ -51,7 +51,6 @@ for REG in [a.lower() for a in sys.argv[1:]]:
         routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
         use_aquifer=True).to(DEVICE)
     m.load(ck); m.eval(); m.vertical_column.etp_channel = 6
-    m.vertical_column.compile_column = False
     tt = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
     hd = np.asarray((tt >= "2022-01-01") & (tt <= "2024-12-31"))
     qo = td.q_obs.cpu().numpy()[:len(tt)][hd]

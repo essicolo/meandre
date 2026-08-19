@@ -73,7 +73,6 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
     routing_mode="operator-lagged", predict_lake_params=True, compile_soil=False,
     use_aquifer=True).to(DEVICE)
 m.load(ck); m.eval(); m.vertical_column.etp_channel = 6
-m.vertical_column.compile_column = False
 tt = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
 hd = np.asarray((tt >= T0) & (tt <= T1))
 qo = td.q_obs.cpu().numpy()[:len(tt)][hd]

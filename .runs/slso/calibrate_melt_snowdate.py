@@ -10,7 +10,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr, torch
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel
+from meandre.model import HydroModel, purger_kwargs_obsoletes
 from meandre.utils.state import HydroState
 
 DB = ".runs/slso/data/slso.duckdb"; FORC = ".runs/slso/data/forcing.nc"
@@ -22,7 +22,7 @@ SWE_GONE = 10.0   # mm : manteau "disparu" sous ce seuil
 
 cache = BasinCache(DB); h = cache.load(device="cpu"); n = h["n_nodes"]
 ck = torch.load(CKPT, map_location="cpu", weights_only=False)
-kw = dict(ck["init_kwargs"]); kw["compile_soil"] = False; kw["compile_column"] = False
+kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["compile_soil"] = False
 
 ds = xr.open_dataset(FORC); times = pd.to_datetime(ds["time"].values).normalize()
 w0 = int(np.searchsorted(times, np.datetime64(SPIN0))); w1 = int(np.searchsorted(times, np.datetime64(END)))+1

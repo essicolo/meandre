@@ -61,7 +61,7 @@ for REG in [a.lower() for a in sys.argv[1:]]:
         except Exception as ex:
             print(f"[{REG}] {cand} : chargement impossible ({type(ex).__name__})", flush=True)
             del m; torch.cuda.empty_cache(); continue
-        m.eval(); m.vertical_column.etp_channel = 6; m.vertical_column.compile_column = False
+        m.eval(); m.vertical_column.etp_channel = 6
         with torch.no_grad():
             Q, _ = m.simulate(forcing=f7, initial_state=HydroState.zeros(n, device=DEVICE),
                               graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
