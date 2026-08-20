@@ -1004,6 +1004,85 @@ class BasinCache:
         finally:
             con.close()
 
+    # ── CanSWE : neige MESUREE, appariee aux noeuds (patron stations/observations) ──
+    def import_canswe(self, sites: "pd.DataFrame", mesures: "pd.DataFrame") -> int:
+        """Importe les sites nivometriques et leurs mesures d'EEN.
+
+        Suit le patron des jauges de debit (stations + observations) et non celui de
+        MODIS (grille par noeud) : ce sont des mesures PONCTUELLES appariees, et
+        ecraser l'information de site (distance au noeud, ecart d'altitude, methode
+        de mesure) rendrait tout desaccord ininterpretable.
+        """
+        import duckdb, pandas as pd
+        mesures = mesures.copy()
+        mesures["date"] = pd.to_datetime(mesures["date"]).dt.normalize()
+        con = duckdb.connect(str(self.path))
+        try:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS snow_sites (
+                    swe_station_id TEXT    NOT NULL,
+                    node_idx       INTEGER NOT NULL,
+                    lat            DOUBLE,
+                    lon            DOUBLE,
+                    elevation_m    DOUBLE,
+                    source         TEXT,
+                    type_mes       TEXT,
+                    dist_km        FLOAT,
+                    elev_diff_m    FLOAT,
+                    PRIMARY KEY (swe_station_id)
+                )
+            """)
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS snow_obs (
+                    swe_station_id TEXT  NOT NULL,
+                    date           DATE  NOT NULL,
+                    swe_mm         FLOAT,
+                    snow_depth_m   FLOAT,
+                    quality_ok     BOOLEAN,
+                    PRIMARY KEY (swe_station_id, date)
+                )
+            """)
+            con.execute("INSERT OR REPLACE INTO snow_sites SELECT * FROM sites")
+            con.execute("INSERT OR REPLACE INTO snow_obs SELECT * FROM mesures")
+            n = len(mesures)
+        finally:
+            con.close()
+        print(f"[import_canswe] {len(sites):,} sites, {n:,} mesures")
+        return n
+
+    def load_canswe(self, date_start: str, date_end: str, qualite_seule: bool = True):
+        """Charge (mesures, sites) : DataFrame long des mesures + table des sites.
+
+        Volontairement pas de tenseur (T, n_noeuds) ici : plusieurs sites peuvent
+        pointer le meme noeud, et les agreger d'office detruirait la dispersion
+        intra-noeud, qui est justement une mesure de l'incertitude de representativite.
+        """
+        import duckdb, pandas as pd
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            if "snow_obs" not in tables:
+                return None, None
+            cond = " AND quality_ok = TRUE" if qualite_seule else ""
+            mesures = con.execute(
+                "SELECT o.swe_station_id, o.date, o.swe_mm, o.snow_depth_m, s.node_idx "
+                "FROM snow_obs o JOIN snow_sites s USING (swe_station_id) "
+                "WHERE o.date >= CAST(? AS DATE) AND o.date <= CAST(? AS DATE)" + cond +
+                " ORDER BY o.date", [date_start, date_end]).df()
+            sites = con.execute("SELECT * FROM snow_sites").df()
+        finally:
+            con.close()
+        return mesures, sites
+
+    def has_canswe(self) -> bool:
+        import duckdb
+        con = duckdb.connect(str(self.path), read_only=True)
+        try:
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+            return "snow_obs" in tables and                 int(con.execute("SELECT COUNT(*) FROM snow_obs").fetchone()[0]) > 0
+        finally:
+            con.close()
+
     def import_modis_ndvi(self, df: "pd.DataFrame") -> int:
         """Import MOD13A2 NDVI into ``modis_ndvi`` table."""
         import duckdb, pandas as pd
