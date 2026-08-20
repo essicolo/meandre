@@ -20,7 +20,12 @@ class SimDiagnostics:
     -----------------
     etp        Potential evapotranspiration (Penman-Monteith).
     etr        Actual evapotranspiration: canopy + soil layers 1-3.
-    snowmelt   Snow melt flux (mm/day).  Zero when no snow.
+    snowmelt   MAL NOMME : c'est l'APPORT TOTAL au sol (mm/day), pas la fonte.
+               La colonne y met diag['apport'], qui vaut la PLUIE en l'absence
+               de couvert nival (snow.py l.255) et la sortie du manteau sinon.
+               Piege verifie le 2026-08-20 : un cumul hivernal lu comme une
+               fonte donnait 1741 % du pic de neige. Pour une vraie perte de
+               manteau, sommer les BAISSES de swe.
     lateral_mm Effective lateral runoff reaching the river network (mm/day).
                = R_direct + Q_wetland + interflow + Q_baseflow.
                Same signal as Q_sim but before the Muskingum routing delay,
@@ -53,7 +58,7 @@ class SimDiagnostics:
     # Vertical fluxes
     etp: Tensor        # (T, N) mm/day
     etr: Tensor        # (T, N) mm/day
-    snowmelt: Tensor   # (T, N) mm/day
+    snowmelt: Tensor   # (T, N) mm/day -- APPORT TOTAL au sol, PAS la fonte
     lateral_mm: Tensor # (T, N) mm/day
 
     # Groundwater

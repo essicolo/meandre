@@ -837,6 +837,73 @@ if _VEUT_NEIGE:
                   f"{_dm:12d} {_ds:12d} {_ds-_dm if _dm>0 and _ds>0 else 0:+6d}")
         print("[etl] lecture : ratio de pic < 1 = masse manquante ; ecart de "
               "disparition > 0 = fonte TARDIVE (en jours juliens)")
+        # NOS PERTES HIVERNALES SONT-ELLES EXCESSIVES ? Reference MESUREE sur CanSWE
+        # seul : un manteau REEL perd 24.6 % de ce qu'il accumule entre decembre et
+        # fevrier (15 719 intervalles d'OUTV). On imprime ici la meme quantite pour le
+        # modele. Sans cette reference, "notre manteau est trop leger" ne se juge pas.
+        # On somme les BAISSES de SWE, exactement comme la reference CanSWE, et sur la
+        # MEME fenetre que le reste de l'evaluation. Ne PAS utiliser _DIAG.snowmelt :
+        # ce champ est mal nomme, il contient l'apport TOTAL au sol (donc la pluie hors
+        # saison nivale), et le lire comme une fonte donnait 1741 % du pic.
+        # APPARIEMENT STRICT : on differencie le simule AUX MEMES DATES que les releves,
+        # site par site, exactement comme la mesure. Differencier la serie quotidienne
+        # complete donnait 46.7 % contre 24.6 % mesures, mais un echantillonnage plus
+        # fin capte plus d'oscillations : le confondant valait a lui seul un facteur
+        # proche de 2. Ici il est elimine, il ne reste que point contre moyenne de
+        # troncon (2026-08-20).
+        _gs = _ps = _gm = _pm2 = 0.0
+        _nint = 0
+        for _sid, _g in _m.sort_values("date").groupby("swe_station_id"):
+            _dt = _pdm.DatetimeIndex(_g["date"])
+            _vs, _vm = _g["sim"].values, _g["swe_mm"].values
+            for _k in range(1, len(_g)):
+                _nj = (_dt[_k] - _dt[_k - 1]).days
+                if not (1 <= _nj <= 31) or _dt[_k].month not in (12, 1, 2):
+                    continue
+                _ds, _dm = float(_vs[_k] - _vs[_k - 1]), float(_vm[_k] - _vm[_k - 1])
+                _gs += max(_ds, 0.0); _ps += max(-_ds, 0.0)
+                _gm += max(_dm, 0.0); _pm2 += max(-_dm, 0.0)
+                _nint += 1
+        # OU PASSE LA NEIGE ENTRE LA CHUTE ET LE MANTEAU ? Les deux mesures precedentes
+        # encadrent cette etape sans la couvrir : l'apport est ample (la regle fournit
+        # 1.14 a 1.24 fois l'accumulation mesuree) et la perte APRES accumulation est
+        # normale (25.2 % contre 22.9 %), mais le manteau simule n'accumule que 59 % du
+        # mesure. On cumule donc, sur LES MEMES intervalles, la neige que la regle
+        # produit au noeud du site (2026-08-20).
+        _neige_reg = 0.0
+        _sr = 3.0                                  # marge : jours de l'intervalle
+        for _sid, _g in _m.sort_values("date").groupby("swe_station_id"):
+            _dt = _pdm.DatetimeIndex(_g["date"]); _nd0 = int(_g["node_idx"].iloc[0])
+            for _k in range(1, len(_g)):
+                _nj = (_dt[_k] - _dt[_k - 1]).days
+                if not (1 <= _nj <= 31) or _dt[_k].month not in (12, 1, 2):
+                    continue
+                _i0 = _pos.get(_pdm.Timestamp(_dt[_k - 1]).normalize())
+                _i1 = _pos.get(_pdm.Timestamp(_dt[_k]).normalize())
+                if _i0 is None or _i1 is None or _i1 <= _i0:
+                    continue
+                _tn = f7[_i0 + 1:_i1 + 1, _nd0, 1].cpu().numpy()
+                _tx = f7[_i0 + 1:_i1 + 1, _nd0, 2].cpu().numpy()
+                _pp = f7[_i0 + 1:_i1 + 1, _nd0, 0].cpu().numpy()
+                _sseuil = float(model.vertical_column.t_neige_seuil)
+                _r = np.clip((_tx - _sseuil) / (_tx - _tn + 1e-6), 0.0, 1.0)
+                _r = np.where(_tx < _sseuil, 0.0, _r)
+                _r = np.where(_tn >= _sseuil, 1.0, _r)
+                _neige_reg += float(np.nansum(_pp * (1.0 - _r)))
+        if _nint:
+            print(f"[etl] neige tombee selon la regle sur ces memes intervalles : "
+                  f"{_neige_reg:.0f} mm")
+
+        if _nint:
+            print(f"[etl] neige, pertes dec-fev sur {_nint} intervalles APPARIES "
+                  f"(memes dates, memes sites) :")
+            print(f"        simule : hausses {_gs:7.0f} mm | baisses {_ps:7.0f} mm | "
+                  f"perte {_ps / max(_gs, 1e-9):5.1%}")
+            print(f"        mesure : hausses {_gm:7.0f} mm | baisses {_pm2:7.0f} mm | "
+                  f"perte {_pm2 / max(_gm, 1e-9):5.1%}")
+        print("[etl] reference MESUREE (CanSWE seul) : un manteau reel perd 24.6 % de "
+              "ce qu'il accumule de decembre a fevrier")
+
         # LE DEFICIT DE MASSE EST-IL REEL, OU EST-CE LA REPRESENTATIVITE DU SITE ?
         # Un site nivometrique est souvent en clairiere alors que le troncon porte sa
         # foret, et la canopee intercepte : la litterature donne 20-40 % d'ecart en
