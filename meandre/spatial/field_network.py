@@ -32,6 +32,14 @@ from torch import Tensor
 from meandre.spatial.positional_encoding import FourierPositionalEncoding
 
 
+# Recharge de reference (m/h). Le banc du 2026-08-19 place ce reglage a ~27 % du debit
+# porte par la nappe, soit de l'ordre de 150 mm/an sur OUTV -- coherent avec les ordres
+# de grandeur publies pour le Quebec meridional (100 a 400 mm/an selon les regions).
+# Le debit SEUL prefere une recharge quasi nulle : c'est un arbitrage assume, pas un
+# optimum de score (voir la note d'enjeu au registre).
+KREC_REF = 2e-5
+
+
 @dataclass
 class SpatialParams:
     """Per-node hydrological parameters output by the spatial field network.
@@ -126,7 +134,16 @@ class SpatialParams:
 
     vsa_b: Tensor           # exposant aire-source-variable (ruissellement) [0.5, 5.0]
 
-    N_PARAMS: ClassVar[int] = 37
+    # RECHARGE PROFONDE, par noeud (2026-08-20). Elle etait un SCALAIRE GLOBAL de la
+    # colonne : une seule valeur pour toute une region. C'est bloquant pour ce que le
+    # projet doit livrer -- une recharge qui ne varie pas dans l'espace ne peut ni
+    # suivre la geologie, ni repondre a l'urbanisation d'un territoire agricole, ni
+    # etre confrontee a une carte regionale qui va de 0 a 400 mm/an sur quelques
+    # dizaines de kilometres. Sortie du champ spatial, elle recoit les descripteurs
+    # territoriaux, dont l'occupation du sol.
+    krec: Tensor            # drainage profond L3 -> aquifere (m/h) [1e-7, 1e-4]
+
+    N_PARAMS: ClassVar[int] = 38
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -363,6 +380,7 @@ class SpatialFieldNetwork(nn.Module):
             "Z2": 0.70,
             "Z3": 1.00,
             "vsa_b": 2.5,
+            "krec": KREC_REF,
         }
         if targets:
             d.update(targets)
@@ -454,6 +472,8 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["Z2"], self.soil_bounds["z2_min"], self.soil_bounds["z2_max"]); i += 1
         raw[i] = inv_bounded(d["Z3"], self.soil_bounds["z3_min"], self.soil_bounds["z3_max"]); i += 1
         raw[i] = inv_bounded(d["vsa_b"], 0.5, 5.0); i += 1
+        # krec: exp(clamp(raw*0.3 + log(KREC_REF)))
+        raw[i] = (math.log(d["krec"]) - math.log(KREC_REF)) / 0.3; i += 1
 
         return raw
 
@@ -701,9 +721,51 @@ class SpatialFieldNetwork(nn.Module):
         constrained.append(bounded(cols[i], z3_min, z3_max)); i += 1
         # vsa_b: exposant de l'aire-source-variable (ruissellement de crue).
         constrained.append(bounded(cols[i], 0.5, 5.0)); i += 1
+        # krec: drainage profond L3 -> aquifere (m/h), log-normal CENTRE sur la
+        # reference. raw = 0 rend exactement KREC_REF : c'est ce qui rend inoffensif
+        # le remplissage par zeros des anciens points de reprise (le padding de fc_out
+        # met poids ET biais a zero). Meme construction que k_gw.
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(KREC_REF),
+                               min=math.log(1e-7), max=math.log(1e-4))
+        constrained.append(torch.exp(exponent)); i += 1
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
+
+    # ── Recharge : poser ou geler le champ ────────────────────────────────────
+    _IDX_KREC = SpatialParams.N_PARAMS - 1   # krec est la DERNIERE sortie
+
+    def poser_krec_uniforme(self, valeur: float) -> None:
+        """Force la recharge a une valeur UNIFORME (m/h) sur tous les noeuds.
+
+        Mode DEGRADE, a n'utiliser que pour les bancs : il annule la variation
+        spatiale, qui est justement la raison d'etre du champ. Concretement on met a
+        zero les poids de la sortie krec et on porte la valeur dans son biais.
+        """
+        import math as _m
+        i = self._IDX_KREC
+        with torch.no_grad():
+            self.fc_out.weight[i].zero_()
+            self.fc_out.bias[i] = (_m.log(valeur) - _m.log(KREC_REF)) / 0.3
+
+    def geler_krec(self) -> None:
+        """Exclut la recharge de l'apprentissage, sans geler le reste du champ.
+
+        fc_out est UN seul parametre : on ne peut pas y mettre requires_grad par
+        ligne. On annule donc le gradient de la ligne krec par un crochet. Motif : la
+        recharge est un LIVRABLE, et le debit seul la pousse aux extremes (banc du
+        2026-08-19 : a 5e-5 la nappe fournit 69 % du debit et le KGE tombe a 0.589).
+        Quand elle est posee pour des raisons PHYSIQUES, elle doit le rester.
+        """
+        i = self._IDX_KREC
+
+        def _coupe(g):
+            g = g.clone()
+            g[i] = 0.0
+            return g
+
+        self.fc_out.weight.register_hook(_coupe)
+        self.fc_out.bias.register_hook(_coupe)
 
     def boundary_regularization(
         self,

@@ -351,7 +351,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
                 if hasattr(_vc, _nm) and _cal in _cs:
                     _t2 = float(_cs[_cal].median())
                     getattr(_vc, _nm).copy_(torch.tensor(_inv_sig(_t2, getattr(_vc, _bnd))))
-        if hasattr(_vc, "krec_raw") and "krec" in _cs:
+        if False and "krec" in _cs:   # krec vient du CHAMP depuis 2026-08-20
             _vc.krec_raw.copy_(torch.tensor(_inv_sig(float(_cs["krec"].median()),
                                                      _vc._krec_bounds)))
     print(f"[etl] courbe de rétention posée sur le calage : b {float(_vc._sig(_vc.b1_raw, _vc._b_bounds)):.3f} "
@@ -437,19 +437,17 @@ if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
 if "ETL_KREC" in os.environ:
     import math as _mk
     _kv = float(os.environ["ETL_KREC"])
-    _lo, _hi = model.vertical_column._krec_bounds
-    _x = min(max((_kv - _lo) / (_hi - _lo), 1e-6), 1 - 1e-6)
-    with torch.no_grad():
-        model.vertical_column.krec_raw.copy_(torch.tensor(_mk.log(_x / (1 - _x))))
-    print(f"[etl] krec init -> {_kv:.0e} (drainage profond, banc partition)")
+    model.spatial_encoder.poser_krec_uniforme(_kv)
+    print(f"[etl] krec pose UNIFORME -> {_kv:.0e} m/h (mode degrade : annule la "
+          f"variation spatiale du champ, reserve aux bancs)")
     # ETL_KREC_GEL=1 : la recharge est un LIVRABLE, pas un bouton de calage. Le débit
     # seul la pousse aux extrêmes (banc du 2026-08-19 : à 5e-5 la nappe fournit 69 % du
     # débit et le KGE tombe à 0.589 ; à 1e-4 il devient négatif). Quand on la pose à une
     # valeur choisie pour des raisons PHYSIQUES, il faut la geler, sinon l'apprentissage
     # la déplace et on ne sait plus ce qu'on a mesuré.
     if os.environ.get("ETL_KREC_GEL", "0") == "1":
-        model.vertical_column.krec_raw.requires_grad_(False)
-        print(f"[etl] krec GELÉ à {_kv:.1e} (exclu de l'apprentissage)")
+        model.spatial_encoder.geler_krec()
+        print(f"[etl] krec GELÉ à {_kv:.1e} (sortie exclue de l'apprentissage)")
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
     # A/B inférence 2026-07-25 : +0.149 KGE sur checkpoint gasp (v7 : +0.088 entraîné).
@@ -705,13 +703,9 @@ if os.path.exists(CKPT):
     # (mesuré le 2026-08-19). Quand la recharge est GELÉE, elle vaut la valeur choisie
     # de bout en bout, y compris après le chargement.
     if os.environ.get("ETL_KREC_GEL", "0") == "1" and "ETL_KREC" in os.environ:
-        import math as _mk2
         _kv2 = float(os.environ["ETL_KREC"])
-        _lo2, _hi2 = model.vertical_column._krec_bounds
-        _x2 = min(max((_kv2 - _lo2) / (_hi2 - _lo2), 1e-6), 1 - 1e-6)
-        with torch.no_grad():
-            model.vertical_column.krec_raw.copy_(torch.tensor(_mk2.log(_x2 / (1 - _x2))))
-        print(f"[etl] krec ré-imposé après chargement : {_kv2:.1e} (gelé)")
+        model.spatial_encoder.poser_krec_uniforme(_kv2)
+        print(f"[etl] krec ré-imposé après chargement : {_kv2:.1e} (gelé, uniforme)")
 else:
     print(f"[etl] pas de point de reprise ({N_EPOCHS} époque(s)) : évaluation du modèle EN MÉMOIRE")
 model.eval()
@@ -842,10 +836,19 @@ if _VEUT_NEIGE:
         # foret boreale, soit exactement l'ampleur mesuree. Si le deficit SUIT la
         # fraction forestiere, c'est l'interception et il n'y a rien a corriger ;
         # s'il est UNIFORME, la masse manque vraiment.
+        # f_forest est une colonne NORMALISEE du tenseur territorial ; get_physical()
+        # ne rend que les quelques colonnes de-normalisees. On lit donc la valeur BRUTE
+        # dans la base. Et on imprime l'echec au lieu de l'avaler : la premiere version
+        # de ce bloc ne s'est jamais executee, sans un mot (2026-08-20).
+        _ff = None
         try:
-            _ff = td.territorial.get_physical("f_forest").cpu().numpy()
-        except Exception:
-            _ff = None
+            import duckdb as _dd
+            _cf = _dd.connect(_db, read_only=True)
+            _ff = _cf.execute(
+                "SELECT f_forest FROM territorial ORDER BY node_idx").df()["f_forest"].values
+            _cf.close()
+        except Exception as _e:
+            print(f"[etl] neige : fraction forestiere indisponible ({type(_e).__name__}: {_e})")
         if _ff is not None:
             _m["f_foret"] = _ff[_m["node_idx"].values]
             _hiver = _m[_pdm.DatetimeIndex(_m["date"]).month.isin([1, 2, 3])]

@@ -176,7 +176,6 @@ class HydrotelColumn(nn.Module):
         for i in (1, 2, 3):
             setattr(self, f"b{i}_raw", nn.Parameter(_inv(1.0 / tx["lam"], *self._b_bounds)))
             setattr(self, f"psis{i}_raw", nn.Parameter(_inv(tx["psis"], *self._psis_bounds)))
-        self.krec_raw = nn.Parameter(_inv(1e-6, *self._krec_bounds))
         self.log_etr_alpha = nn.Parameter(torch.tensor(_m.log(4.5)))      # assèchement ETR
         # fonte degré-jour par classe (softplus pour positivité), init Hydrotel 12/14/16
         self.sp_fonte_conif = nn.Parameter(torch.tensor(_m.log(_m.exp(12.0) - 1)))
@@ -364,7 +363,15 @@ class HydrotelColumn(nn.Module):
                       ks1=sp.K_sat_1 / 24.0, ks2=sp.K_sat_2 / 24.0, ks3=sp.K_sat_3 / 24.0,
                       b1=ob(b1), b2=ob(b2), b3=ob(b3), psis1=ob(ps1), psis2=ob(ps2), psis3=ob(ps3),
                       omegpi1=ob(o1), omegpi2=ob(o2), omegpi3=ob(o3), mm1=ob(m1), mm2=ob(m2), mm3=ob(m3),
-                      nn1=ob(n1), nn2=ob(n2), nn3=ob(n3), krec=ob(self._sig(self.krec_raw, self._krec_bounds)),
+                      nn1=ob(n1), nn2=ob(n2), nn3=ob(n3),
+                      # RECHARGE : CHAMP par noeud, sortie du NeRF depuis le
+                      # 2026-08-20. C'etait un scalaire global -- une seule valeur pour
+                      # toute une region -- ce qui interdisait de suivre la geologie, de
+                      # repondre a l'urbanisation d'un territoire agricole, ou d'etre
+                      # confronte a une carte regionale allant de 0 a 400 mm/an. Le
+                      # scalaire krec_raw est RETIRE : le laisser en repli en aurait
+                      # fait une quatorzieme sortie morte (dette #5 du registre).
+                      krec=sp.krec,
                       slope=slope, cin=torch.full_like(like, 0.03),
                       fsa=fsa, fse=fse, fsi=fsi, coef_recharge=torch.zeros_like(like))
 
