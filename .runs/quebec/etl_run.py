@@ -7,6 +7,20 @@ v4 de la région ; baselines GASP : v4 0.489 / v7 (ancrages) 0.577 held-out.
 """
 import os
 import sys
+
+# GRAINE (2026-08-19). Les poids du NeRF etaient tires au HASARD a chaque
+# entrainement : init_from_literature ne biaise que la derniere couche. Deux runs de
+# la MEME recette ne partaient donc pas du meme modele. Mesure : la recette du champion
+# rejouee rend 0.7283 a l'initialisation contre 0.7432 le 16 aout, soit 0.015 d'ecart
+# AVANT le moindre pas de gradient. Toute experience tranchee sur un ecart plus petit
+# que ce bruit ne vaut rien. ETL_SEED change le tirage pour mesurer la dispersion.
+import random as _rnd
+import numpy as _npseed
+import torch as _tseed
+_GRAINE = int(os.environ.get("ETL_SEED", "1234"))
+_rnd.seed(_GRAINE); _npseed.random.seed(_GRAINE)
+_tseed.manual_seed(_GRAINE); _tseed.cuda.manual_seed_all(_GRAINE)
+print(f"[etl] graine = {_GRAINE}")
 from dataclasses import replace as _dc_replace
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.getcwd())
@@ -740,6 +754,64 @@ for _m in range(1, 13):
     _rap.append(float(np.nanmedian(_num / _den)))
 print("[etl] simule/observe par mois : " + " ".join(
     f"{_m:02d}={_r:.3f}" for _m, _r in zip(range(1, 13), _rap)))
+
+# DECOMPOSITION du KGE : correlation, biais de volume, rapport de variabilite.
+# Un score agrege ne dit pas OU l'on perd. Ajoute le 2026-08-20 : le biais mensuel a
+# montre que nous et Hydrotel nous trompons en sens OPPOSES tout en etant separes de
+# 0.042, donc l'ecart n'est pas dans le volume mensuel mais ailleurs.
+def _composantes(_o, _s):
+    _r, _b, _g = [], [], []
+    for _k in range(_s.shape[1]):
+        _v = np.isfinite(_o[:, _k]) & np.isfinite(_s[:, _k])
+        if _v.sum() < 60: continue
+        _oo, _ss = _o[_v, _k], _s[_v, _k]
+        if _oo.std() < 1e-9 or _ss.std() < 1e-9 or _oo.mean() <= 0 or _ss.mean() <= 0: continue
+        _r.append(np.corrcoef(_oo, _ss)[0, 1])
+        _b.append(_ss.mean() / _oo.mean())
+        _g.append((_ss.std() / _ss.mean()) / (_oo.std() / _oo.mean()))
+    return np.median(_r), np.median(_b), np.median(_g)
+_cr, _cb, _cg = _composantes(_qo_np, _qs_np)
+print(f"[etl] composantes medianes : r={_cr:.4f} beta={_cb:.4f} gamma={_cg:.4f}")
+
+# COMPARAISON AU MEMBRE HYDROTEL, memes stations, memes jours, meme protocole.
+# ETL_CMP_HYDROTEL=MG24HK. Sert a repondre a UNE question : un ecart mensuel est-il
+# NOTRE defaut ou un defaut PARTAGE (donc du forcage) ? Sans ce cote a cote, on repare
+# a l'aveugle. Ajoute le 2026-08-20 apres constat d'un retard d'un mois sur la crue.
+if os.environ.get("ETL_CMP_HYDROTEL"):
+    import xarray as _xrh
+    from meandre.data.hydrotel_calib import appariement_provincial as _appm
+    _mb = os.environ["ETL_CMP_HYDROTEL"]
+    try:
+        _z = _xrh.open_zarr("C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data/"
+                            f"06_posttraitement/posttraitement_{_mb}.zarr")
+        _cols = _appm(REG, [int(r["node_ids"][int(_i)]) for _i in td.station_idx.cpu().numpy()],
+                      np.asarray(_z["troncon_id"].values).astype(str))
+        _t0h, _t1h = str(times[np.flatnonzero(sl)[0]])[:10], str(times[np.flatnonzero(sl)[-1]])[:10]
+        _qh = _z["Dis"].sel(time=slice(_t0h, _t1h)).transpose("time", "troncon_idx").values[
+            :, [_c if _c is not None else 0 for _c in _cols]]
+        _z.close()
+        _nT = min(len(_qo_np), len(_qh))
+        _raph, _kh = [], []
+        for _m in range(1, 13):
+            _k = _mo[:_nT] == _m
+            if _k.sum() < 10:
+                _raph.append(float("nan")); continue
+            _raph.append(float(np.nanmedian(np.nansum(_qh[:_nT][_k], 0)
+                                            / np.clip(np.nansum(_qo_np[:_nT][_k], 0), 1e-9, None))))
+        for _s in range(_qh.shape[1]):
+            _v = ~np.isnan(_qo_np[:_nT, _s]) & ~np.isnan(_qh[:_nT, _s])
+            if _v.sum() < 60: continue
+            _kh.append(float(kge_fn(torch.tensor(_qo_np[:_nT, _s][_v]), torch.tensor(_qh[:_nT, _s][_v]))))
+        print(f"[etl] Hydrotel {_mb} : KGE median {np.median(_kh):.4f}")
+        print(f"[etl] Hydrotel {_mb} par mois : " + " ".join(
+            f"{_m:02d}={_rr:.3f}" for _m, _rr in zip(range(1, 13), _raph)))
+        _hr, _hb, _hg = _composantes(_qo_np[:_nT], _qh[:_nT])
+        print(f"[etl] Hydrotel {_mb} composantes : r={_hr:.4f} beta={_hb:.4f} gamma={_hg:.4f}")
+        print(f"[etl] ecart NOUS-EUX composantes : r={_cr - _hr:+.4f} beta={_cb - _hb:+.4f} gamma={_cg - _hg:+.4f}")
+        print("[etl] ecart NOUS-EUX par mois  : " + " ".join(
+            f"{_m:02d}={_a - _b:+.3f}" for _m, (_a, _b) in enumerate(zip(_rap, _raph), 1)))
+    except Exception as _e:
+        print(f"[etl] comparaison Hydrotel impossible : {type(_e).__name__}: {_e}")
 if _fold_test is not None:
     kf = []
     for _s in _fold_test:

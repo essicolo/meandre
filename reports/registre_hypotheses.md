@@ -34,6 +34,12 @@ Dernière révision : 2026-08-12.
 
 **Le taux de vidange souterrain mesuré est 0.0273 /j** (résidence 37 j), sur 1316 récessions hivernales PURES des jauges d'OUTV (segments décroissants >= 5 jours avec Tmax < 0, donc sans fonte ni pluie). Le champion tourne à 0.0645 : 2,4 fois trop rapide, et 7 fois trop rapide que la composante lente (centile 10 à 0.0090, soit 111 j). Forte variabilité entre stations (9,6 à 66 j) : ce taux doit rester un CHAMP, pas un scalaire.
 
+**LA RÉSOLUTION DE L'INSTRUMENT EST ~0.025** (mesuré 2026-08-20). Les poids du NeRF étaient tirés au HASARD à chaque entraînement (`init_from_literature` ne biaise que la dernière couche) : aucune graine globale n'existait. Quatre tirages de la recette du champion, à zéro époque, donnent 0.7443 / 0.7389 / 0.7271 / 0.7191 — étendue 0.025, écart-type 0.011. Le 0.7432 du 16 août tombe dans cette fourchette : il n'y avait aucune régression, seulement un tirage favorable.
+
+CONSÉQUENCES. (1) Toute comparaison NON APPARIÉE tranchée sur moins de ~0.025 ne vaut rien, y compris le +0.007 de l'aquifère (16 août) et le +0.004 du seuil pluie/neige (19 août). (2) Le repère qui porte l'enjeu, 0.7880 contre 0.7711 pour l'ensemble Hydrotel, est un écart de 0.017 mesuré sur UN tirage : il n'est pas réfuté, il n'est pas encore démontré. Il faut au moins 3 graines. (3) Le remède est gratuit : à GRAINE FIXÉE la comparaison devient appariée, le bruit de tirage disparaît et un écart de 0.005 redevient lisible.
+
+RÈGLE. Une graine (`ETL_SEED`, défaut 1234) est désormais posée par le pilote et le déterminisme est vérifié (deux runs de la même graine : 0.7389 et 0.7389, identiques). Tout A/B se fait à graine fixée, un seul changement. Toute annonce de record se fait sur au moins 3 graines, avec la dispersion.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
