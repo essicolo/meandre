@@ -82,7 +82,7 @@ Sur SLSO, contre le champion à 0.688 : forçage fusionné 0.6717 (neutre), occu
 
 ## 4. Ce qui reste ouvert, avec le test qui tranche
 
-1. **Déficit hivernal** (février à 0.69 de l'observé, plus gros écart mensuel ; Hydrotel fait l'erreur inverse à 1.24). L'aquifère n'en a comblé qu'une fraction, la recharge est réfutée comme levier. Piste restante : le taux de vidange k_gw, ou une nappe régionale absente des deux modèles.
+1. ~~**Déficit hivernal**~~ **CORRIGÉ le 2026-08-20 : c'était un artefact de mesure.** Le « février à 0.69 » venait d'un script de diagnostic qui ne reproduisait pas le pilote. Mesuré dans le protocole de référence, février vaut 0.896 et le plus gros écart est **avril à 0.729**, avec décembre en excès à 1.207. Le défaut réel est la crue printanière plus un relâchement prématuré en début d'hiver, signature d'un partage pluie-neige ou d'une fonte trop précoce. Le chantier aquifère est clos sur un négatif (R15) : alimenter la nappe coûte 0.02 à 0.07 de KGE, greffée comme entraînée.
 2. **Excès d'été résiduel** (juillet à 0.87). Vaut ~0.02 d'après le test saisonnier.
 3. **Vitesse** : la carte n'est utilisée qu'à 20-25 %, le goulot est le pilotage Python (9132 pas × ~100 niveaux topologiques). Gain potentiel ×3-4 sur le débit d'expériences, supérieur à tout levier de score restant. Profilage à faire.
 4. **MODIS en tendance** : implémenté et testé (5 tests verts), jamais smoké. Aujourd'hui l'ET est ancrée en NIVEAU alors que MODIS est biaisé de +30 % contre les tours de flux.

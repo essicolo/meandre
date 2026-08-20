@@ -714,6 +714,23 @@ for s in range(Qs.shape[1]):
     ks.append(float(kge_fn(qo_test[v, s], Qs[v, s])))
 ks = np.array(ks)
 print(f"\n[etl] HELD-OUT 2022-2024 {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
+
+# BIAIS MENSUEL dans le protocole de REFERENCE. Le score seul ne dit pas OU le modele
+# se trompe, et les rapports mensuels vivaient jusqu'ici dans des scripts de diagnostic
+# qui ne reproduisaient pas le pilote. Fevrier est le plus gros ecart connu du champion
+# (0.688 de l'observe, quand Hydrotel fait l'erreur inverse a 1.235).
+import pandas as _pdm
+_mo = _pdm.DatetimeIndex(times[np.flatnonzero(sl)[0]:np.flatnonzero(sl)[-1] + 1]).month
+_qs_np = Qs.numpy(); _qo_np = qo_test.numpy()
+_rap = []
+for _m in range(1, 13):
+    _k = _mo == _m
+    if _k.sum() < 10:
+        _rap.append(float("nan")); continue
+    _num = np.nansum(_qs_np[_k], 0); _den = np.clip(np.nansum(_qo_np[_k], 0), 1e-9, None)
+    _rap.append(float(np.nanmedian(_num / _den)))
+print("[etl] simule/observe par mois : " + " ".join(
+    f"{_m:02d}={_r:.3f}" for _m, _r in zip(range(1, 13), _rap)))
 if _fold_test is not None:
     kf = []
     for _s in _fold_test:

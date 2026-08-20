@@ -1753,3 +1753,32 @@ Chaque essai = UN changement contre le socle (OUTV, tenu de côté, référence 
 3. La hiérarchie complète, du meilleur au pire : socle Linacre entraîné 0.7810 > MODIS on 0.7744 > GRACE off 0.7616 > MG24HK 0.7547 > ETP MLP 0.7443 > CaSR brut 0.7277. **Tout ce qu'on change au socle le dégrade, sauf l'entraînement lui-même.**
 
 Écart restant au meilleur membre : 0.049 (0.7810 contre 0.8299). Les leviers de configuration sont épuisés ; restent les processus (aquifère 30 ép. en cours ; hiver à 0.655 de l'observé) et la vitesse (GPU utilisé à ~25 %, profilage à faire).
+
+## 2026-08-18 — MERGE CaSR x SIMAT (ratio mensuel par nœud) : NEUTRE en KGE, casr-corr reste canonique sur SLSO
+
+Contexte : enquête SIMAT (reports/enquete_simat.md) — la GCQ est un krigeage ordinaire pur de stations, sans covariable hydrologique ; le désaccord CaSR vs SIMAT est surtout HIVERNAL (DJF ratio 1.28 brut, mesuré par .runs/slso/_cmp_simat.py) et spatialisé, invisible au facteur global de casr-corr.
+
+Méthode (meandre/data/forcing_correction.py, nouveau module du package, 12 tests) : ratio mensuel climatologique par nœud CaSR-corr -> quebec.zarr, borné [0.5, 2.0] (0 % de nœuds saturés), volume final recalé bilan flux-tower 1147 (structure des stations, volume du bilan). Timing/dé-crachinage intacts (vérifié : lag 0 médian 0.878 vs 0.877, spatial 0.673 vs 0.672). Builder : .runs/slso/build_casr_merge.py. Config : slso-casr-merge.toml.
+
+Test gradué (AVERTISSEMENT commun aux deux côtés : occupation du sol TOUTE NULLE sur SLSO — le correctif d'occupation du 10 août n'a jamais été appliqué à ce cas ; comparaison A/B valide, niveaux absolus affectés) :
+- Palier 1, champion zn FIGÉ sur merge : held-out médian 0.6648 / pooled 0.8145 (réf. corr : 0.688 / 0.814). Baisse médiane mécanique (poids co-adaptés aux volumes corr).
+- Palier 2, warm-start (interrompu ép. 5/8, best à l'ép. 0, val 0.7749 = parité champion 0.7758, puis érosion — la trajectoire était jouée) : held-out médian 0.6717 / pooled 0.8235.
+- VERDICT : NEUTRE — pooled meilleur (+0.009), médian sous le champion (-0.016). Pas de palier 3. Argument identifiabilité (Essi) : les yeux de bœuf de SIMAT sont stationnaires, donc importables par le ratio ; casr-corr auto-référencé reste le forçage canonique SLSO.
+
+GARDÉ pour le scale-up : le mécanisme (module package + attenuate_ratio/confidence_from_uncertainty pondéré par l'incertitude PyGMET — la GCQ s'arrête ~2019 et extrapole hors Québec sans stations US : sur SLSO, 137 nœuds < 45°N où SIMAT et CaSR sont en désaccord de SIGNE sur le gradient transfrontalier, 1127 vs 1085 contre 1185 vs 1231 mm/an). À réévaluer sur les régions à fort biais hivernal sans flux-tower. lapse_rate_adjust (0,5 °C/100 m, style GCQ) livré aussi, en attente de l'orographie CaSR.
+
+Ménage : 25 fichiers rejetés supprimés (corr2 spatial, qm/qmcasr, eti, fused/hydro, hortonian precalc, dst) — chaîne météo restante : riox -> corrected -> (merge optionnel) -> zn/zn-quantile.
+
+## 2026-08-18 — OCCUPATION DU SOL SLSO (chantier gate) : correctif porté, A/B figé NEUTRE, réentraînement lancé
+
+Le correctif du 10 août n'existait que dans etl_run.py (Québec) ; slso.py ne chargeait JAMAIS l'occupation -> toute l'histoire SLSO (champion 0.688 compris) roulait en 100 % sol nu découvert. Porté dans slso.py (bloc SLSO_OCCUPATION, défaut ON, SLSO_OCCUPATION=0 pour l'historique). PHYSITEL SLSO réel : forêt 0.582, eau 0.022, imperméable 0.038, humide 0.067, fsa 0.940.
+
+A/B à paramètres FIGÉS (champion zn, casr-corr, config slso-casr-occ.toml) : held-out médian 0.6824 / pooled 0.8071, contre 0.688 / 0.814 sans occupation -> QUASI NEUTRE, contrairement à OUTV (0.482 -> 0.749). Lecture : le NeRF SLSO a déjà absorbé l'absence d'occupation dans ses compensations (fonte, K_c) ; le gain attendu du correctif est un DÉNOUEMENT des compensations au réentraînement (identifiabilité), pas un bond immédiat.
+
+Incident méthodo consigné en mémoire : faux zombie (trampoline uv à 0 CPU éternel) + vrai zombie GPU (6.3 Go orphelins) ; protocole de vie des runs établi (CPU de l'interpréteur uv + croissance du log + nvidia-smi).
+
+## 2026-08-18 — BUG DE SÉLECTION DE CHECKPOINT corrigé : la marge de tolérance s'appliquait aussi aux métriques higher-is-better
+
+Symptôme (run zn-occ, ép. 4) : kge_median 0.7587 > best 0.7551 et pourtant [no save]. Cause : `best_metric_tolerance` (0.005, pensée pour les loss/NLL monotones, doc explicite « For higher-is-better metrics like KGE... set to 0.0 ») était appliquée aux DEUX sens dans trainer.py : marge = 0.005 x |best| ~ 0.0038 à KGE 0.75. Effets : (1) le checkpoint sauvé n'est pas le vrai best (toute amélioration < 0.4 % jetée), (2) no_improve gonflé -> coupes LR autopilote et early-stop prématurés. Portée : TOUS les runs kge_median historiques (SLSO et flotte Québec) sous-estiment légèrement leur best ; les classements relatifs restent probablement valides (biais commun), mais les trajectoires « plateau » étaient en partie un artefact de comptage. Correctif : marge uniquement lower-is-better (NLL garde sa tolérance absolue), comparaison stricte pour KGE/NSE, conforme à la doc. 26 tests training verts.
+
+Run zn-occ (occupation) : INTERROMPU à l'ép. 4/30 (intervention externe), best ép. 2 val 0.7551, beta 0.947->0.928 et gamma 0.912->0.927 en mouvement — dénouement des compensations en cours, à REPRENDRE (warm-start depuis best-physitel-hydrotel-casr-zn-occ.pt) ; le correctif de sélection s'appliquera à la reprise.
