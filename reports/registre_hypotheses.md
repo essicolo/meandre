@@ -60,6 +60,8 @@ Masse du manteau : pic simulé sur pic mesuré de 0.59 à 0.80 selon l'année, r
 
 Décomposition du KGE, tenue de côté 2022-2024 : méandre r=0.8908 beta=0.9269 gamma=0.9199 ; Hydrotel MG24HK r=0.8990 beta=0.9497 gamma=0.9672. **Notre corrélation égale celle d'un modèle opérationnel calibré à 0.008 près.** L'écart de 0.042 est porté par le RAPPORT DE VARIABILITÉ (-0.047), puis le volume (-0.023). Le chantier n'est donc ni le timing des événements ni la fonte : c'est un débit TROP LISSÉ, le rabotage des pics, désormais chiffré comme l'essentiel de l'écart au meilleur membre.
 
+**LE DÉFICIT DE NEIGE EST RÉEL, ET IL N'EST PAS UN ARTEFACT DE SITE** (mesuré 2026-08-20). Le manteau simulé contient 20 à 40 % d'eau de moins que le mesuré (pic simulé/mesuré 0.59 à 0.80). L'explication commode -- site en clairière contre tronçon forestier, interception par la canopée -- est RÉFUTÉE : le déficit AUGMENTE quand la forêt DIMINUE (rapport 0.58 au quartile le moins boisé, 0.77 au plus boisé), soit l'inverse exact de l'interception. Mécanisme cohérent avec le reste : le seuil de partage pluie/neige du projet (-2.2168 °C) compte comme pluie tout ce qui est au-dessus ; les tronçons les moins boisés sont les plus bas et les plus chauds, donc ceux où le plus d'événements tombent près du seuil. Cela explique aussi l'excès de débit de décembre (1.207) sur la même période. Chantier ouvert : le partage de phase, désormais arbitrable par une mesure INDÉPENDANTE du débit.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |

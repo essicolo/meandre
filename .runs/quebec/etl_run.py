@@ -846,6 +846,15 @@ if _VEUT_NEIGE:
             _cf = _dd.connect(_db, read_only=True)
             _ff = _cf.execute(
                 "SELECT f_forest FROM territorial ORDER BY node_idx").df()["f_forest"].values
+            # La colonne de la base est NORMALISEE (elle va de -3.7 a 1.0 sur OUTV),
+            # comme mean_elevation_m. Les quartiles restent valides -- une
+            # normalisation est croissante -- mais les bornes affichees seraient
+            # illisibles. On revient donc aux fractions REELLES du parquet provincial.
+            import pandas as _pdf
+            _rwf = _pdf.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+            _rwf = _rwf[_rwf.region == REG]
+            if len(_rwf) == len(_ff):
+                _ff = _rwf["f_forest"].values
             _cf.close()
         except Exception as _e:
             print(f"[etl] neige : fraction forestiere indisponible ({type(_e).__name__}: {_e})")
