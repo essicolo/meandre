@@ -40,6 +40,18 @@ CONSÉQUENCES. (1) Toute comparaison NON APPARIÉE tranchée sur moins de ~0.025
 
 RÈGLE. Une graine (`ETL_SEED`, défaut 1234) est désormais posée par le pilote et le déterminisme est vérifié (deux runs de la même graine : 0.7389 et 0.7389, identiques). Tout A/B se fait à graine fixée, un seul changement. Toute annonce de record se fait sur au moins 3 graines, avec la dispersion.
 
+**LIGNES ROUGES DE CIRCULARITÉ** (documenté 2026-08-20, Leonardini et al., Symposium Ouranos 2025, `docs/papers/04_Leonardini_*.pdf`). Un produit qui a vu nos débits ne peut servir ni de forçage, ni de cible, ni de contrainte : il rendrait toute évaluation circulaire (même mécanisme que l'enquête SIMAT).
+
+| produit | a-t-il vu nos débits ? | usage |
+|---|---|---|
+| **CaSR-Rivers** | OUI — **1704 jauges HYDAT + USGS assimilées** | INTERDIT |
+| Cartes de recharge PACES / HydroBudget / HELP | OUI — calage sur le débit de base séparé des jauges | comparaison en discussion seulement, JAMAIS cible |
+| **CaSR-Land** | **NON** — simulation hors-ligne SVS, aucune assimilation (tableau p17) | contrainte de TENDANCE (SWE, humidité profonde) |
+| Niveaux RSESQ | NON — mesures directes de hauteur d'eau | contrainte de TENDANCE (dynamique de nappe) |
+| GRACE, MODIS ET | NON | contrainte de TENDANCE (déjà câblées) |
+
+Champs de surface de CaSR lui-même : à écarter aussi. Sa version ISBA surestime le débit d'été d'un FACTEUR DIX et son assimilation CaLDAS-Screen est jugée inappropriée pour l'hydrologie par ses propres auteurs (p4-5) ; c'est la raison d'être de CaSR-Land. Nous n'utilisons que ses champs météorologiques.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |

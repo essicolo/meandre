@@ -18,9 +18,10 @@ from __future__ import annotations
 
 import pandas as pd
 import torch
+from meandre import chemins as _ch
 
-RAW_QC = "D:/meandre-data/quebec/territorial-raw-QC.parquet"
-HYDROLAKES = "D:/meandre-data/quebec/lacs_hydrolakes.parquet"
+RAW_QC = f"{_ch.DATA}/quebec/territorial-raw-QC.parquet"
+HYDROLAKES = f"{_ch.DATA}/quebec/lacs_hydrolakes.parquet"
 
 
 def poser_surface_lac(model, reg: str, area_km2_local, n_nodes: int, bavard: bool = True):

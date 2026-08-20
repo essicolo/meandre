@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging, os, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
+from meandre import chemins as _ch
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ CSR_MASCON_URL = ("https://download.csr.utexas.edu/outgoing/grace/RL0603_mascons
 CM_TO_MM = 10.0
 
 
-def fetch_grace_csr(bbox, date_start, date_end, cache_dir="D:/meandre-data/grace"):
+def fetch_grace_csr(bbox, date_start, date_end, cache_dir=f"{_ch.DATA}/grace"):
     """Télécharge (cache) le mascon CSR grillé, sous-échantillonne le bbox, retourne
     un df mensuel [date, tws_mm]. lon en 0-360 ou -180-180 géré."""
     os.makedirs(cache_dir, exist_ok=True)

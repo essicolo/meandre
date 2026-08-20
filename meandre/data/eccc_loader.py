@@ -12,9 +12,10 @@ from __future__ import annotations
 import os, sys, io, json, time, urllib.request, urllib.parse
 from pathlib import Path
 import numpy as np, pandas as pd
+from meandre import chemins as _ch
 
 API = "https://api.weather.gc.ca/collections"
-CACHE = "D:/meandre-data/eccc"
+CACHE = f"{_ch.DATA}/eccc"
 
 
 def _get(url, tries=4):
@@ -80,7 +81,7 @@ def fetch_daily(bbox, year_start, year_end, cache_dir=CACHE):
 if __name__ == "__main__":
     from meandre.data.basin_cache import BasinCache
     reg = sys.argv[1].lower()
-    db = ".runs/slso/data/slso.duckdb" if reg == "slso" else f"D:/meandre-data/quebec/{reg}.duckdb"
+    db = ".runs/slso/data/slso.duckdb" if reg == "slso" else f"{_ch.DATA}/quebec/{reg}.duckdb"
     nc = BasinCache(db).load(device="cpu")["node_coords"].numpy()
     bbox = (round(float(nc[:, 0].min()) - 0.3, 1), round(float(nc[:, 1].min()) - 0.3, 1),
             round(float(nc[:, 0].max()) + 0.3, 1), round(float(nc[:, 1].max()) + 0.3, 1))

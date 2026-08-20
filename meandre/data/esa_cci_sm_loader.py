@@ -14,13 +14,14 @@ from __future__ import annotations
 import os, zipfile, glob, logging
 from pathlib import Path
 import numpy as np, pandas as pd
+from meandre import chemins as _ch
 
 logger = logging.getLogger(__name__)
 DATASET = "satellite-soil-moisture"
 
 
 def fetch_esa_cci_sm(bbox, years, aggregation="month_average",
-                     cache_dir="D:/meandre-data/esa_cci_sm"):
+                     cache_dir=f"{_ch.DATA}/esa_cci_sm"):
     """Télécharge l'humidité du sol de surface ESA CCI (combiné) pour `years`,
     sous-échantillonne le bbox, retourne df [date, sm_surface (m³/m³), n_obs].
     aggregation : "month_average" (léger) ou "day_average" (lourd, ingestion finale).

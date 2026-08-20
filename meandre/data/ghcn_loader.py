@@ -14,13 +14,14 @@ from __future__ import annotations
 import os, io, logging, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
+from meandre import chemins as _ch
 
 logger = logging.getLogger(__name__)
 BASE = "https://www.ncei.noaa.gov/pub/data/ghcn/daily"
 ACCESS = "https://www.ncei.noaa.gov/data/global-historical-climatology-network-daily/access"
 
 
-def fetch_ghcn_stations(bbox, cache_dir="D:/meandre-data/ghcn"):
+def fetch_ghcn_stations(bbox, cache_dir=f"{_ch.DATA}/ghcn"):
     """Inventaire des stations dans le bbox (lon_min,lat_min,lon_max,lat_max)."""
     os.makedirs(cache_dir, exist_ok=True)
     fp = Path(cache_dir) / "ghcnd-stations.txt"
@@ -39,7 +40,7 @@ def fetch_ghcn_stations(bbox, cache_dir="D:/meandre-data/ghcn"):
     return pd.DataFrame(rows)
 
 
-def fetch_ghcn_precip(bbox, date_start, date_end, cache_dir="D:/meandre-data/ghcn"):
+def fetch_ghcn_precip(bbox, date_start, date_end, cache_dir=f"{_ch.DATA}/ghcn"):
     """Précipitation journalière (mm) de toutes les stations GHCN du bbox, période
     donnée. Retourne un long df [station_id, lat, lon, date, prcp_mm] (jours mesurés)."""
     st = fetch_ghcn_stations(bbox, cache_dir)

@@ -12,8 +12,9 @@ import duckdb
 import xarray as xr
 from meandre.data.basin_cache import BasinCache
 from meandre.spatial.territorial import TerritorialFeatures
+from meandre import chemins as _ch
 
-_QC_RAW = "D:/meandre-data/quebec/territorial-raw-QC.parquet"
+_QC_RAW = f"{_ch.DATA}/quebec/territorial-raw-QC.parquet"
 _QC_STATS = "reports/territorial_stats_QC.csv"
 
 
@@ -58,7 +59,7 @@ else:
     TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
 
 FORCINGS = {
-    "slso": "D:/meandre-data/slso/forcing-casr-corr.nc",
+    "slso": f"{_ch.DATA}/slso/forcing-casr-corr.nc",
 }
 DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
@@ -68,18 +69,18 @@ def _paths(reg):
     forcing-<reg>.nc — et non le repli -budyko, qui faisait passer la variante corrigée
     pour du brut dans toute la carte provinciale du 2 août (bug d'étiquette relevé par
     Essi). Le fichier retenu est imprimé : on doit toujours savoir ce qu'on mesure."""
-    db = DBS.get(reg, f"D:/meandre-data/quebec/{reg}.duckdb")
+    db = DBS.get(reg, f"{_ch.DATA}/quebec/{reg}.duckdb")
     sfx = os.environ.get("JOINT_FX_SUFFIX")
     if sfx == "-none":
-        fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
+        fx = f"{_ch.DATA}/quebec/forcing-{reg}.nc"
         if not os.path.exists(fx):
             raise FileNotFoundError(f"{reg}: CaSR brut demandé mais {fx} absent")
         return db, fx
     if sfx:
-        fx = f"D:/meandre-data/quebec/forcing-{reg}{sfx}.nc"
+        fx = f"{_ch.DATA}/quebec/forcing-{reg}{sfx}.nc"
         if os.path.exists(fx):
             return db, fx
-    fx = FORCINGS.get(reg, f"D:/meandre-data/quebec/forcing-{reg}-budyko.nc")
+    fx = FORCINGS.get(reg, f"{_ch.DATA}/quebec/forcing-{reg}-budyko.nc")
     return db, fx
 
 
@@ -155,7 +156,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         w_nse=lcfg.get("w_nse", 0.0), w_kge=lcfg.get("w_kge", 0.0), w_pbias=lcfg.get("w_pbias", 0.0),
         w_mse=lcfg.get("w_mse", 0.0), w_nrmse=lcfg.get("w_nrmse", 0.0),
         w_log_nse=lcfg.get("w_log_nse", 0.0), w_log_mse=lcfg.get("w_log_mse", 0.0),
-        w_et=lcfg.get("w_et", 0.0), w_tws=lcfg.get("w_tws", 0.0),
+        w_et=lcfg.get("w_et", 0.0), et_mode=lcfg.get("et_mode", "level"),
+        w_tws=lcfg.get("w_tws", 0.0),
         w_snow=lcfg.get("w_snow", 0.0),
         w_peak=lcfg.get("w_peak", 0.0),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
