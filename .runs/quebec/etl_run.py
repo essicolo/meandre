@@ -814,7 +814,14 @@ if _VEUT_NEIGE:
               f"{'dispar. mes':>12s} {'dispar. sim':>12s} {'ecart':>6s}")
         for _an, _g in _m.groupby("an"):
             _j = _pdm.DatetimeIndex(_g["date"]).dayofyear
-            _pm, _ps = float(_g.swe_mm.max()), float(_g.sim.max())
+            # PIC : mediane des pics PAR SITE, et non maximum global. Comparer deux
+            # maxima revient a comparer des sites et des jours differents ; la premiere
+            # version de ce bloc le faisait (2026-08-20), et une variante encore pire
+            # comparait un maximum de site a une precipitation MOYENNE de domaine, ce
+            # qui suggerait a tort un forcage insuffisant.
+            _pp = _g.groupby("swe_station_id").agg(mes=("swe_mm", "max"), sim=("sim", "max"))
+            _pp = _pp[(_pp.mes > 0) & (_pp.sim >= 0)]
+            _pm, _ps = float(_pp.mes.median()), float(_pp.sim.median())
             _hiv = _g[(_j >= 60) & (_j <= 180)]
             if _hiv.empty:
                 continue
