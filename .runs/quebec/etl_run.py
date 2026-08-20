@@ -715,10 +715,21 @@ if os.path.exists(CKPT):
 else:
     print(f"[etl] pas de point de reprise ({N_EPOCHS} époque(s)) : évaluation du modèle EN MÉMOIRE")
 model.eval()
+# ETL_CMP_NEIGE=1 demande aussi les diagnostics pour comparer le manteau simule aux
+# releves CanSWE. La comparaison vit ICI, dans le pilote, et non dans un script annexe :
+# les diagnostics qui vivaient a cote ont fini par mesurer un autre modele que le
+# champion (fevrier annonce a 0.688 alors qu'il vaut 0.896).
+_VEUT_NEIGE = os.environ.get("ETL_CMP_NEIGE", "0") == "1"
 with torch.no_grad():
-    Q, _ = model.simulate(forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
-                          graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
-                          withdrawals=td.withdrawals, day_of_year=td.day_of_year)
+    if _VEUT_NEIGE:
+        Q, _, _DIAG = model.simulate(
+            forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
+            graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
+            withdrawals=td.withdrawals, day_of_year=td.day_of_year, return_diagnostics=True)
+    else:
+        Q, _ = model.simulate(forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
+                              graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
+                              withdrawals=td.withdrawals, day_of_year=td.day_of_year)
 times = r["times"]
 # Le tenu de côté suit le découpage : par défaut ce qui suit la validation
 # (2022-2024), sinon ETL_HELDOUT="debut,fin". Voir joint_data : la fenêtre historique
@@ -773,6 +784,78 @@ def _composantes(_o, _s):
     return np.median(_r), np.median(_b), np.median(_g)
 _cr, _cb, _cg = _composantes(_qo_np, _qs_np)
 print(f"[etl] composantes medianes : r={_cr:.4f} beta={_cb:.4f} gamma={_cg:.4f}")
+
+# ── NEIGE MESUREE : le manteau simule contre les releves CanSWE ──────────────
+# Question tranchee ici : la crue printaniere arrive avec un mois de retard (avril
+# 0.729, mai 1.07-1.42). Est-ce que le manteau FOND TROP TARD, ou n'a-t-il jamais eu
+# la BONNE MASSE ? Le debit ne peut pas repondre, il est deja la variable ajustee.
+# CanSWE est une MESURE : aucune circularite. Contrainte de TENDANCE et de TIMING,
+# jamais de NIVEAU (un site est souvent en clairiere, le troncon porte sa foret).
+if _VEUT_NEIGE:
+    from meandre.data.basin_cache import BasinCache as _BC
+    from joint_data import _paths as _jp
+    _db = _jp(REG)[0]
+    _mes, _sit = _BC(_db).load_canswe(_HO[0].strip(), _HO[1].strip())
+    if _mes is None or _mes.empty:
+        print("[etl] neige : aucune mesure CanSWE dans la fenetre")
+    else:
+        _swe = _DIAG.swe.cpu().numpy()                      # (T, n_noeuds), mm
+        _tt = _pdm.DatetimeIndex(times)
+        _pos = {d: k for k, d in enumerate(_tt.normalize())}
+        _m = _mes.copy()
+        _m["t"] = _m["date"].map(lambda x: _pos.get(_pdm.Timestamp(x).normalize()))
+        _m = _m[_m["t"].notna()]
+        _m["t"] = _m["t"].astype(int)
+        _m["sim"] = _swe[_m["t"].values, _m["node_idx"].values]
+        _m = _m[np.isfinite(_m["sim"]) & np.isfinite(_m["swe_mm"])]
+        print(f"[etl] neige : {len(_m):,} couples simule/mesure sur "
+              f"{_m.swe_station_id.nunique()} sites")
+        _m["mois"] = _pdm.DatetimeIndex(_m["date"]).month
+        print("[etl] neige, simule/mesure par mois :", " ".join(
+            f"{_mo:02d}={_g.sim.sum()/max(_g.swe_mm.sum(), 1e-9):.2f}"
+            for _mo, _g in _m.groupby("mois") if len(_g) >= 20))
+        # MASSE : rapport des pics annuels. TIMING : date de disparition (< 10 mm).
+        _m["an"] = _pdm.DatetimeIndex(_m["date"]).year
+        print(f"{'annee':>6s} {'pic mes':>8s} {'pic sim':>8s} {'ratio':>6s} "
+              f"{'dispar. mes':>12s} {'dispar. sim':>12s} {'ecart':>6s}")
+        for _an, _g in _m.groupby("an"):
+            _j = _pdm.DatetimeIndex(_g["date"]).dayofyear
+            _pm, _ps = float(_g.swe_mm.max()), float(_g.sim.max())
+            _hiv = _g[(_j >= 60) & (_j <= 180)]
+            if _hiv.empty:
+                continue
+            _jm = _pdm.DatetimeIndex(_hiv["date"]).dayofyear
+            _vm = _hiv.groupby(_jm)["swe_mm"].mean()
+            _vs = _hiv.groupby(_jm)["sim"].mean()
+            def _fin(serie):
+                _apres = serie[serie.index >= serie.idxmax()]
+                _sous = _apres[_apres < 10.0]
+                return int(_sous.index[0]) if len(_sous) else -1
+            _dm, _ds = _fin(_vm), _fin(_vs)
+            print(f"{_an:6d} {_pm:8.0f} {_ps:8.0f} {_ps/max(_pm,1e-9):6.2f} "
+                  f"{_dm:12d} {_ds:12d} {_ds-_dm if _dm>0 and _ds>0 else 0:+6d}")
+        print("[etl] lecture : ratio de pic < 1 = masse manquante ; ecart de "
+              "disparition > 0 = fonte TARDIVE (en jours juliens)")
+        # LE DEFICIT DE MASSE EST-IL REEL, OU EST-CE LA REPRESENTATIVITE DU SITE ?
+        # Un site nivometrique est souvent en clairiere alors que le troncon porte sa
+        # foret, et la canopee intercepte : la litterature donne 20-40 % d'ecart en
+        # foret boreale, soit exactement l'ampleur mesuree. Si le deficit SUIT la
+        # fraction forestiere, c'est l'interception et il n'y a rien a corriger ;
+        # s'il est UNIFORME, la masse manque vraiment.
+        try:
+            _ff = td.territorial.get_physical("f_forest").cpu().numpy()
+        except Exception:
+            _ff = None
+        if _ff is not None:
+            _m["f_foret"] = _ff[_m["node_idx"].values]
+            _hiver = _m[_pdm.DatetimeIndex(_m["date"]).month.isin([1, 2, 3])]
+            _q = _pdm.qcut(_hiver["f_foret"], 4, duplicates="drop")
+            print(f"{'fraction forestiere':>22s} {'n':>6s} {'sim/mes':>8s}")
+            for _b, _g in _hiver.groupby(_q, observed=True):
+                print(f"{str(_b):>22s} {len(_g):6d} "
+                      f"{_g.sim.sum()/max(_g.swe_mm.sum(), 1e-9):8.2f}")
+            print("[etl] lecture : ratio qui DECROIT avec la foret = interception "
+                  "(attendu, rien a corriger) ; ratio PLAT = masse reellement manquante")
 
 # COMPARAISON AU MEMBRE HYDROTEL, memes stations, memes jours, meme protocole.
 # ETL_CMP_HYDROTEL=MG24HK. Sert a repondre a UNE question : un ecart mensuel est-il
