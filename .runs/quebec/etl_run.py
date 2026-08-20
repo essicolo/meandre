@@ -219,7 +219,16 @@ if _MEMBRE != "LN24HA":
     os.environ.setdefault("ETL_MELT_DIR", _PROJ_M)
     print(f"[etl] plateforme d'ancrage : {_MEMBRE} ({_PROJ_M.split('/')[-1]})")
 
-if os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
+# ETL_SEUIL_VALEUR impose un seuil EXPLICITE (en °C) au lieu de celui du projet.
+# Motif (2026-08-20) : le profil mensuel du champion montre decembre en EXCES (1.207)
+# et avril en DEFICIT (0.729), signature d'eau relachee en debut d'hiver au lieu d'etre
+# stockee jusqu'a la crue. Le seuil du projet est a -2.2168 °C, donc tout ce qui est
+# au-dessus compte comme PLUIE : un seuil aussi bas fabrique de la pluie en decembre.
+if "ETL_SEUIL_VALEUR" in os.environ:
+    _sv = float(os.environ["ETL_SEUIL_VALEUR"])
+    model.vertical_column.t_neige_seuil = _sv
+    print(f"[etl] seuil pluie/neige IMPOSE : {_sv:+.4f} °C")
+elif os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
     from meandre.data.hydrotel_calib import load_passage_pluie_neige as _lppn
     _pls = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _sn = _lppn(_pls)
