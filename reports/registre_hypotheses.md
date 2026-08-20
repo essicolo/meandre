@@ -60,6 +60,12 @@ Masse du manteau : pic simulé sur pic mesuré de 0.59 à 0.80 selon l'année, r
 
 Décomposition du KGE, tenue de côté 2022-2024 : méandre r=0.8908 beta=0.9269 gamma=0.9199 ; Hydrotel MG24HK r=0.8990 beta=0.9497 gamma=0.9672. **Notre corrélation égale celle d'un modèle opérationnel calibré à 0.008 près.** L'écart de 0.042 est porté par le RAPPORT DE VARIABILITÉ (-0.047), puis le volume (-0.023). Le chantier n'est donc ni le timing des événements ni la fonte : c'est un débit TROP LISSÉ, le rabotage des pics, désormais chiffré comme l'essentiel de l'écart au meilleur membre.
 
+**CaSR NE SOUS-CAPTE PAS LA NEIGE, ET LA GRILLE EST DISCULPÉE** (mesuré 2026-08-20, test FLUX contre FLUX sans simulation). Sur 175 intervalles franchement froids d'OUTV (Tmax < -2 °C sur TOUT l'intervalle, donc aucune fonte possible, 3 à 31 jours, hausse > 5 mm), le manteau gagne 3647 mm d'EEN pendant que CaSR annonce 4018 mm : **rapport 0.91**, médiane par intervalle 0.90, 38 % des intervalles au-dessus de 1 (dispersion, pas biais). Les 9 % manquants s'expliquent par la sublimation, le transport par le vent et le bruit. L'hypothèse de sous-captation de 10 à 50 % (Kochendorfer et al. 2017), que j'avais avancée le même jour, est RÉFUTÉE sur ce domaine.
+
+Propriété du test : une VARIATION contre une VARIATION, même intervalle, même lieu. Il ne dépend d'aucun niveau ni datum, donc la représentativité du site s'y annule en bonne partie -- contrairement à la comparaison de niveaux de SWE, abandonnée le même jour.
+
+CONSÉQUENCE PAR ÉLIMINATION. La grille fournit le bon volume annuel (beta 0.978 à l'initialisation ancrée) ET la bonne neige en période froide (0.91). Ne restent que deux causes possibles au déficit d'avril : (1) les événements PRÈS DU SEUIL, entre -2.2168 et 0 °C, que le modèle compte en pluie -- ce test les exclut délibérément ; (2) des pertes internes au modèle après la chute. Dans les deux cas c'est un PARAMÈTRE DE MODÈLE, pas une propriété de la grille : aucune correction empirique du forçage n'est requise.
+
 **LE PARTAGE PLUIE/NEIGE EST SUSPECT, MAIS NON DÉMONTRÉ** (2026-08-20 ; conclusion AFFAIBLIE le même jour après objection d'Essi, voir la réserve en fin d'entrée). En fraction de la précipitation cumulée depuis le 1er novembre, au nœud de chaque site, médiane sur les sites :
 
 | année | manteau OBSERVÉ | notre APPORT de neige | notre PIC |
