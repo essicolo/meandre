@@ -47,7 +47,8 @@ def wetland_geom_vec(wet_a_km2, wetdmax, frac, wetdnor):
 
 
 def calcul_milieu_humide_isole(wet_vol, apport_mm, evp_mm, prod_mm, hru_ha, wet_fr,
-                               A, B, wetnvol, wetmxvol, wet_k, c_ev, c_prod, pdt=24):
+                               A, B, wetnvol, wetmxvol, wet_k, c_ev, c_prod, pdt=24,
+                               conservatif=False):
     """Un pas de temps (bv3c2.cpp:1460). wet_vol [m3] = volume au DÉBUT du pas.
     apport_mm = apport (neige) DÉJÀ ×wetfr ; evp_mm = ETP totale ; prod_mm =
     production sol (surf+hypo+base) ; hru_ha = aire UHRH [ha] ; wet_fr = fraction
@@ -59,8 +60,20 @@ def calcul_milieu_humide_isole(wet_vol, apport_mm, evp_mm, prod_mm, hru_ha, wet_
     wetsa = B * wet_vol.pow(A) / 10000.0                  # surface [ha]
     wetev = 10.0 * c_ev * evp_mm * wetsa
     wetsep = wet_k * wetsa * (pdt * 10.0)
-    wetpcp = apport_mm * wetsa * 10.0
-    wetflwi = prod_mm * 10.0 * (hru_ha * wet_fr - wetsa)
+    if conservatif:
+        # VARIANTE CONSERVATIVE (opt-in, 2026-08-20). Le reservoir recoit EXACTEMENT ce
+        # que le troncon lui retire (prod x wet_fr), et la precipitation directe sur sa
+        # surface disparait : le sol a deja traite cette eau sur tout le troncon, la
+        # recrediter la compte deux fois. La formulation d'Hydrotel retire
+        # prod x wet_fr mais ne credite que prod x (wet_fr - wetsa/hru), et compense par
+        # wetpcp : la difference (apport - prod) x wetsa/hru est creee ou detruite, et
+        # vaut 1.38 % de la precipitation sur OUTV. Ici le bilan ferme, les seules
+        # pertes etant l'evaporation (atmospherique) et le stock.
+        wetpcp = torch.zeros_like(wetsep)
+        wetflwi = prod_mm * 10.0 * hru_ha * wet_fr
+    else:
+        wetpcp = apport_mm * wetsa * 10.0
+        wetflwi = prod_mm * 10.0 * (hru_ha * wet_fr - wetsa)
 
     wet_vol = wet_vol - wetsep - wetev + wetflwi + wetpcp
 
