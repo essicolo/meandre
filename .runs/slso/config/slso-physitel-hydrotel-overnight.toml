@@ -123,7 +123,17 @@ grad_clip = 1.0
 tbptt_steps = 365
 chunk_steps = 45            # reduit pour la colonne hydrotel sur GPU 8GB (boucle sous-pas = graphe autograd lourd)
 val_every = 1              # validation every epoch (required by autopilot)
-patience = 50             # long — autopilot manages LR and restarts
+patience = 8              # ARRET ANTICIPE, mesure le 2026-08-21 sur 37 runs et 263
+                          # ameliorations : l'intervalle MEDIAN entre deux progres est
+                          # de 1 epoque, et la queue apres le dernier progres vaut 476
+                          # epoques sur 940, soit 51 % du calcul. Une amelioration qui
+                          # arrive apres 3 a 5 epoques de creux peut valoir 0.0297,
+                          # au-dessus du bruit du modele (0.025) ; au-dela de 6 epoques
+                          # le gain maximal observe tombe a 0.0184 et, apres 11 epoques,
+                          # a 0.0037 -- sept fois sous le seuil de detection. Une
+                          # patience de 8 preserve donc tout ce qui est mesurable et
+                          # economise 28 % du calcul. La valeur de 50 ne se declenchait
+                          # JAMAIS sur des runs de 30 epoques.
 best_metric = "kge_median" # Checkpoint on pooled KGE (published hydro convention). Options: "nse", "kge", "kge_station", "kge_median"
 warm_start = false   # cold : checkpoint cleanh = colonne native incompatible avec hydrotel
 # warm_start_from desactive (cold start colonne hydrotel)

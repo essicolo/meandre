@@ -4,16 +4,16 @@
 # Supported formats: .zarr, .nc, .grib/.grib2/.grb
 
 [paths]
-basin_db = "/home/essi/slso-data/slso.duckdb"
+basin_db = "data/slso.duckdb"
 basin_db_pc = "data/slso-pc.duckdb"   # Planetary Computer version
 #weather_grid   = "/home/essi/Documents/quebec.zarr"
 weather_grid = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
 #weather_grid   = "/mnt/c/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
-forcing_cache = "/home/essi/slso-data/forcing-casr-fused.nc"  # CaSR 7 canaux (+ DT_eff durée d'orage)
-checkpoint = "checkpoints/best-physitel-hydrotel-casr-fused-dqcel.pt"
-fields_nc = "results/fields-physitel-hydrotel-casr-fused-dqcel.nc"
-reach_parquet = "results/reach-physitel-hydrotel-casr-fused-dqcel.parquet"
-runs_db = "/home/essi/slso-data/runs.duckdb"
+forcing_cache = "D:/meandre-data/slso/forcing-casr-merge.nc"  # merge : structure mensuelle stations + volume bilan
+checkpoint = "checkpoints/best-physitel-hydrotel-casr-merge.pt"
+fields_nc = "results/fields-physitel-hydrotel-casr-merge.nc"
+reach_parquet = "results/reach-physitel-hydrotel-casr-merge.parquet"
+runs_db = "data/runs-win.duckdb"
 
 [basin]
 prefix = "SLSO"
@@ -34,10 +34,8 @@ date_end = "2024-12-31"   # forcing window end
 
 [model]
 routing_mode = "operator-lagged"
-# CÉLÉRITÉ DÉPENDANTE DU DÉBIT (onde cinématique) : les PICS voyagent plus vite
-# (K_eff = K·(Qref/(Q+Qref))^dq_beta), le baseflow reste lent. Corrige le pic
-# hortonien décalé de +2j (réel +1j). Nuisait sur flux amorti, devrait aider sur pic pointu.
-discharge_dependent_celerity = true
+# Célérité dépendante du débit : pics plus rapides (corrige le pic hortonien +2j vs réel +1j).
+discharge_dependent_celerity = false
 dq_beta = 0.5
 use_temperature = false
 n_forcing = 7      # P, T_min, T_max, R_n, u2, e_a, DT_eff (durée effective d'orage, hortonien)
@@ -76,12 +74,14 @@ column_mode = "hydrotel"
 # réelle (DT_eff, canal 6). Génère le quickflow d'orage d'été que le pas journalier
 # DT_H=24 écrasait (cause racine du déficit d'été + baseflow excédentaire, diag 2026-06-30).
 # Capacité d'infiltration = ks1·DT_eff ; apprenable. Le ksat0.5 reste (abaisse ks1).
-use_hortonian = true
+use_hortonian = false
 use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
 column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
-compile_soil = true               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
+compile_soil = true  # triton-windows tcc OK sur Windows natif (test 2026-07-02)               # ~1.5x plus rapide qu_eager (17 vs 26+ min/epoch), prouve complete
 # ── RECETTE FRESHET (sweep eval 2026-06-26 : melt0.4+ksat0.3 = parité Hydrotel 0.759) ──
 melt_factor_scale = 0.4          # fonte ÷2.5 : 12/14/16 trop fort → freshet précoce. Aligne r/timing.
+use_latent_codes = true
+latent_mode = "additive"
 ksat_scale = 1.0                 # PAS de rustine : l'Hortonien EST le levier de génération de quickflow
                                  # (ks1·DT_eff réaliste). ksat0.5 par-dessus = double comptage qui casse r.
                                  # plus humide -> amortit les pics flashy, vise gamma 1.13 -> ~1.0 (attribution 2026-06-29)
@@ -129,7 +129,7 @@ rain_hours_min = 2.0       # h (intense convective storms)
 rain_hours_max = 8.0      # h (long frontal rains)
 
 [training]
-n_epochs = 25   # MULTI-OBJ : recette + routage fixe + MODIS ET (ancre ET/volume, corrige derive beta) + GRACE TWS.
+n_epochs = 8   # affinage court (palier 2) ; palier 3 = 30 si gain confirme
 lr = 5e-4
 lr_finetune = 2e-4
 lr_new_features_mult = 10.0   # fc1/fc2 get 10x the base LR when fine-tuning with new features
@@ -138,9 +138,19 @@ grad_clip = 1.0
 tbptt_steps = 365
 chunk_steps = 45            # reduit pour la colonne hydrotel sur GPU 8GB (boucle sous-pas = graphe autograd lourd)
 val_every = 1              # validation every epoch (required by autopilot)
-patience = 50             # long — autopilot manages LR and restarts
+patience = 8              # ARRET ANTICIPE, mesure le 2026-08-21 sur 37 runs et 263
+                          # ameliorations : l'intervalle MEDIAN entre deux progres est
+                          # de 1 epoque, et la queue apres le dernier progres vaut 476
+                          # epoques sur 940, soit 51 % du calcul. Une amelioration qui
+                          # arrive apres 3 a 5 epoques de creux peut valoir 0.0297,
+                          # au-dessus du bruit du modele (0.025) ; au-dela de 6 epoques
+                          # le gain maximal observe tombe a 0.0184 et, apres 11 epoques,
+                          # a 0.0037 -- sept fois sous le seuil de detection. Une
+                          # patience de 8 preserve donc tout ce qui est mesurable et
+                          # economise 28 % du calcul. La valeur de 50 ne se declenchait
+                          # JAMAIS sur des runs de 30 epoques.
 best_metric = "kge_median" # Checkpoint on pooled KGE (published hydro convention). Options: "nse", "kge", "kge_station", "kge_median"
-warm_start = false   # cold : checkpoint cleanh = colonne native incompatible avec hydrotel
+warm_start = true   # palier 2 : affinage court depuis le champion zn (le .pt merge part copie du zn)
 # warm_start_from desactive (cold start colonne hydrotel)
 compile_modules = false  # Triton missing on Windows → torch.compile crashes on first forward
 
@@ -181,12 +191,12 @@ tta_warmup_epochs = 10
 # Autonomous calibration — adjusts hyperparameters based on validation
 # metrics. Designed for long unsupervised runs.
 autopilot = true
-autopilot_grace_epochs = 15     # warm-start: react fast to a collapse
-autopilot_beta_threshold = 1.00  # disabled (unreachable threshold) — beta drift is structural, not overfitting
+autopilot_grace_epochs = 8      # 15 couvrait le pic
+autopilot_beta_threshold = 0.10  # 1.0 neutralisait la détection (revue autopilote 2026-07-02)
 autopilot_beta_penalty = 0.005 # w_residual increment per epoch
 autopilot_gamma_threshold = 0.20  # |γ-1| > 0.20 → bump w_residual
 autopilot_gamma_penalty = 0.003
-autopilot_lr_patience = 15     # epochs without improvement → LR × 0.5
+autopilot_lr_patience = 6      # réduire LR plus tôt
 autopilot_lr_factor = 0.5
 autopilot_lr_min = 1e-5
 autopilot_restart_regression = 0.05 # 5% regression + drift → restart
