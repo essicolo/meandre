@@ -113,6 +113,16 @@ Les écarts NE SE COMPENSENT PAS : le total annuel est de -6.5 %, et avril en po
 
 CONSÉQUENCE : il faut chercher une PERTE, pas un déplacement. Quatre candidats : l'eau n'entre jamais, elle entre et reste stockée, elle s'évapore, ou elle disparaît par une fuite numérique (cf. dette #42, jamais requalifiée). L'audit de FERMETURE DU BILAN tranche, avec une règle nette : il ferme à la précision machine ou il ne ferme pas.
 
+**LE COUPLAGE CONSERVATIF FERME LE BILAN SUR TOUTES LES RÉGIONS TESTÉES** (2026-08-21) :
+
+| région | fraction de milieux humides | formulation d'Hydrotel | couplage conservatif |
+|---|---|---|---|
+| OUTV | 5.4 % | +1.38 % | **+0.01 %** |
+| LABI | 25.4 % | +3.44 % | **+0.01 %** |
+| ABIT | 35.5 % | +3.77 % | **+0.01 %** |
+
+Mon extrapolation linéaire à partir d'OUTV (9.1 % attendus sur ABIT) SURESTIMAIT d'un facteur 2.4 : la relation est fortement SOUS-LINÉAIRE, 6.6 fois plus de milieux humides ne donnant que 2.7 fois plus de fuite. Logique, puisque la fuite dépend de la surface d'eau libre du milieu humide, qui sature, et non de sa fraction de territoire. Ampleur réelle de la requalification : de ~0.2 % (Côte-Nord) à 3.8 % (Abitibi). Substantielle, pas catastrophique.
+
 **LE BILAN D'EAU FERME PARTOUT SAUF AU COUPLAGE DU MILIEU HUMIDE** (mesuré 2026-08-20, audit `ETL_BILAN=1`, règle posée AVANT la mesure : <0.1 % = ferme, >1 % = fuite).
 
 | configuration | erreur de fermeture |
