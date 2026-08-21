@@ -133,6 +133,21 @@ if _ds != 1.0:
     print(f"[etl] demande ET débiaisée × {_ds} (bilan/MOD16 régional)")
 f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
 
+# ETL_SANS_PRELEV=1 : met les prelevements et rejets a ZERO. C'est le protocole de
+# RENATURALISATION en miniature, et le seul moyen de comparer proprement avec/sans
+# dans le code du jour -- comparer a un chiffre historique serait non apparie, le code
+# ayant change entre-temps (conservation de la masse, graine, etc.).
+# Rappel : pour que la renaturalisation ait un sens, le modele doit avoir ete CALE
+# AVEC les prelevements. Sinon ses parametres les ont absorbes et les mettre a zero ne
+# renaturalise rien.
+_SANS_PRELEV = os.environ.get("ETL_SANS_PRELEV", "0") == "1"
+
+
+def _sans_prelev(d):
+    """Retourne une copie de d dont les prelevements sont nuls."""
+    from meandre.routing.withdrawals import WithdrawalData
+    return _dc_replace(d, withdrawals=WithdrawalData.zeros_like(d.withdrawals))
+
 
 def with_forcing(d):
     return TrainingData(forcing=f7, q_obs=d.q_obs, station_mask=d.station_mask,
@@ -143,6 +158,13 @@ def with_forcing(d):
 
 
 td, vd = with_forcing(td), with_forcing(vd)
+if _SANS_PRELEV:
+    td, vd = _sans_prelev(td), _sans_prelev(vd)
+    print("[etl] PRELEVEMENTS ET REJETS MIS A ZERO (renaturalisation)")
+else:
+    _wsum = float(td.withdrawals.net.abs().sum()) if hasattr(td.withdrawals, "net") else None
+    print(f"[etl] prelevements et rejets ACTIFS"
+          + (f" (somme des |termes| = {_wsum:.0f})" if _wsum is not None else ""))
 
 model = HydroModel(
     n_nodes=n_nodes,

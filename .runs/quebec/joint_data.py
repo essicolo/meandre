@@ -12,9 +12,9 @@ import duckdb
 import xarray as xr
 from meandre.data.basin_cache import BasinCache
 from meandre.spatial.territorial import TerritorialFeatures
-from meandre.utils import paths as _paths
+from meandre.utils import paths as _mpaths
 
-_QC_RAW = f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
+_QC_RAW = f"{_mpaths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
 _QC_STATS = "reports/territorial_stats_QC.csv"
 
 
@@ -59,7 +59,7 @@ else:
     TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
 
 FORCINGS = {
-    "slso": f"{_paths.DATA_ROOT}/slso/forcing-casr-corr.nc",
+    "slso": f"{_mpaths.DATA_ROOT}/slso/forcing-casr-corr.nc",
 }
 DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
@@ -69,18 +69,18 @@ def _paths(reg):
     forcing-<reg>.nc — et non le repli -budyko, qui faisait passer la variante corrigée
     pour du brut dans toute la carte provinciale du 2 août (bug d'étiquette relevé par
     Essi). Le fichier retenu est imprimé : on doit toujours savoir ce qu'on mesure."""
-    db = DBS.get(reg, f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb")
+    db = DBS.get(reg, f"{_mpaths.DATA_ROOT}/quebec/{reg}.duckdb")
     sfx = os.environ.get("JOINT_FX_SUFFIX")
     if sfx == "-none":
-        fx = f"{_paths.DATA_ROOT}/quebec/forcing-{reg}.nc"
+        fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}.nc"
         if not os.path.exists(fx):
             raise FileNotFoundError(f"{reg}: CaSR brut demandé mais {fx} absent")
         return db, fx
     if sfx:
-        fx = f"{_paths.DATA_ROOT}/quebec/forcing-{reg}{sfx}.nc"
+        fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}{sfx}.nc"
         if os.path.exists(fx):
             return db, fx
-    fx = FORCINGS.get(reg, f"{_paths.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
+    fx = FORCINGS.get(reg, f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
     return db, fx
 
 
