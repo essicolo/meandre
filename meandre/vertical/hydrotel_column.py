@@ -797,7 +797,7 @@ class HydrotelColumn(nn.Module):
             wet_vol_n, wsep, wflwi, wflwo, wprod, wev = calcul_milieu_humide_isole(
                 vol_in, apport_w, etp, prod, w["hru_ha"], w["wet_dra_fr"],
                 w["A"], w["B"], w["wetnvol"], w["wetmxvol"], w["wet_k"], w["c_ev"], w["c_prod"],
-                conservatif=getattr(self, "mh_conservatif", False))
+                conservatif=getattr(self, "mh_conservatif", True))
             prod_w = prod * (1.0 - w["wet_dra_fr"]) + wprod
             prod = torch.where(w["wmask"], prod_w, prod)
             wet_vol = torch.where(w["wmask"], wet_vol_n, state.wet_vol)

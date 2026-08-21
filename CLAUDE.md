@@ -91,6 +91,14 @@ TOML configs in `.runs/slso/config/` and `.runs/quebec/config/`. Key sections:
 - `[loss]`: MSE/log-MSE/PBIAS/peak weights, w_et/w_tws, nll_distribution/quantile_taus
 - `[literature_prior]`: optional overrides for init_from_literature() targets
 
+## Conservation de la masse
+
+Le bilan d'eau de la colonne FERME à la précision numérique (audit `ETL_BILAN=1`, +0.01 % de la précipitation). Un audit du 2026-08-20 a montré que la seule anomalie venait du **couplage du milieu humide au tronçon**, porté fidèlement de `bv3c2.cpp` : la colonne retirait `prod × wet_fr` de la production mais ne créditait au réservoir que `prod × (wet_fr − wetsa/hru)`, en compensant par la précipitation directe sur la surface du milieu humide, eau déjà traitée par le sol. Perte mesurée : 1.38 % de la précipitation sur OUTV, proportionnelle à la fraction de milieux humides.
+
+**Le couplage conservatif est désormais le DÉFAUT** (décision d'Essi, 2026-08-20) : le réservoir reçoit exactement ce que le tronçon lui retire, et `wetpcp` disparaît. `ETL_MH_FIDELE=1` restitue la formulation d'Hydrotel, à utiliser pour les comparaisons module par module avec le binaire C++. C'est le premier écart ASSUMÉ à la fidélité, et il porte sur une non-conservation, pas sur un choix de paramétrisation.
+
+Deux termes de la physique du milieu humide n'étaient exposés nulle part et rendaient le bilan infermable : `etr_mh` (évaporation) et `wet_vol` (stock). Ils sont maintenant dans `SimDiagnostics`. Attention, `SimDiagnostics.snowmelt` est MAL NOMMÉ : il contient l'apport total au sol, pas la fonte.
+
 ## Training safeguards
 
 - **Divergence guard**: rollback to best checkpoint if loss > 3x EMA (max 3 rollbacks)

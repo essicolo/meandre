@@ -479,10 +479,12 @@ if os.environ.get("ETL_OCCUPATION", "1") == "1":
         # creee ou detruite. Le reservoir lui-meme conserve EXACTEMENT sa masse (teste
         # sur 4 regimes) : c'est le couplage, porte fidelement de bv3c2.cpp, qui ne
         # ferme pas. Cet interrupteur mesure sa contribution a l'erreur de bilan.
-        if os.environ.get("ETL_MH_CONSERVATIF", "0") == "1":
-            model.vertical_column.mh_conservatif = True
-            print("[etl] milieu humide CONSERVATIF : le reservoir recoit exactement ce "
-                  "que le troncon lui retire (la formulation d'Hydrotel perd 1.38 %)")
+        # Couplage conservatif par DEFAUT depuis le 2026-08-20. ETL_MH_FIDELE=1
+        # restitue la formulation d'Hydrotel, qui perd 1.38 % de la precipitation, pour
+        # les comparaisons module par module avec le binaire C++.
+        if os.environ.get("ETL_MH_FIDELE", "0") == "1":
+            model.vertical_column.mh_conservatif = False
+            print("[etl] milieu humide FIDELE a Hydrotel (perd 1.38 % de la precipitation)")
         if os.environ.get("ETL_SANS_MH", "0") == "1":
             _mh = {}
             print("[etl] MILIEUX HUMIDES DESACTIVES (diagnostic de bilan)")
