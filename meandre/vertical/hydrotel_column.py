@@ -793,12 +793,23 @@ class HydrotelColumn(nn.Module):
             # clamp wet_vol>0 : évite 0^A=NaN dans le gradient (volume physique, pas
             # de masquage ; les vrais nœuds MH ont wet_vol>0, ce plancher est négligeable)
             vol_in = torch.clamp(state.wet_vol, min=1e-9)
-            wet_vol_n, wsep, wflwi, wflwo, wprod = calcul_milieu_humide_isole(
+            wet_vol_n, wsep, wflwi, wflwo, wprod, wev = calcul_milieu_humide_isole(
                 vol_in, apport_w, etp, prod, w["hru_ha"], w["wet_dra_fr"],
                 w["A"], w["B"], w["wetnvol"], w["wetmxvol"], w["wet_k"], w["c_ev"], w["c_prod"])
             prod_w = prod * (1.0 - w["wet_dra_fr"]) + wprod
             prod = torch.where(w["wmask"], prod_w, prod)
             wet_vol = torch.where(w["wmask"], wet_vol_n, state.wet_vol)
+            # DEUX TERMES qui manquaient au diagnostic (2026-08-20). L'evaporation du
+            # milieu humide est une perte atmospherique reelle, jamais declaree ; et le
+            # volume du reservoir est un STOCK, jamais expose. Sans eux, un audit de
+            # fermeture lit une fuite de 1.97 % de la precipitation, correlee a 0.48
+            # avec la fraction de milieux humides. La physique ne change pas : on
+            # publie ce qui existait deja.
+            _ha10 = torch.clamp(w["hru_ha"] * 10.0, min=1e-9)
+            diag["etr_mh_mm"] = torch.where(w["wmask"], wev / _ha10,
+                                            torch.zeros_like(prod))
+            diag["wet_vol_mm"] = torch.where(w["wmask"], wet_vol / _ha10,
+                                             torch.zeros_like(prod))
 
         new_state = HydrotelColumnState(t1, t2, t3, snow_new, frost_profile, wet_vol,
                                         uh1n, uh2n, uh3n, uh4n)

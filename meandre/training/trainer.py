@@ -679,8 +679,17 @@ class Trainer:
                 # Use absolute tolerance scaled by |best| so we handle negative
                 # metrics correctly (NLL can be negative — a relative-tolerance
                 # comparison flips sign and asks for a worse score).
-                _margin = _tol * abs(self._best_val_metric)
-                if not math.isfinite(_margin):
+                # MARGE UNIQUEMENT lower-is-better (bug corrigé 2026-08-18) : la doc de
+                # best_metric_tolerance dit « For higher-is-better metrics like KGE...
+                # set to 0.0 » mais la marge s'appliquait aux deux sens ; à 0.005 elle
+                # jetait de vraies améliorations (ex. zn-occ ép. 4 : 0.7587 > best
+                # 0.7551 refusé, marge 0.0038) et gonflait no_improve -> coupes LR
+                # autopilote prématurées. KGE/NSE : comparaison stricte, comme documenté.
+                if self._best_metric_lower_is_better:
+                    _margin = _tol * abs(self._best_val_metric)
+                    if not math.isfinite(_margin):
+                        _margin = 0.0
+                else:
                     _margin = 0.0
                 if self._best_metric_lower_is_better:
                     is_improvement = _cur < self._best_val_metric - _margin
@@ -824,6 +833,29 @@ class Trainer:
         )
         return Q_sim, final_state
 
+    def _center_et(self, et_sim: Tensor, et_obs: Tensor, data: TrainingData) -> tuple[Tensor, Tensor]:
+        """Centrage ET pour ``loss_fn.et_mode == "anomaly"`` (TENDANCE, pas niveau).
+
+        Même discipline que la TWS (corrigée le 2026-08-10) : lignes de base LONGUE
+        DURÉE, jamais intra-tronçon (sinon on retire le signal saisonnier qu'on
+        prétend imposer). Côté observation : moyenne par nœud de la série MODIS
+        entière, calculée une fois. Côté simulation : moyenne mobile exponentielle
+        par nœud, détachée (la moyenne long-terme n'est pas connue d'avance).
+        Retourne (et_sim_centré, et_obs_centré) ; identité en mode "level".
+        """
+        if getattr(self.loss_fn, "et_mode", "level") != "anomaly":
+            return et_sim, et_obs
+        base_obs = getattr(self, "_et_obs_base", None)
+        if base_obs is None:
+            eo = data.et_obs
+            cnt = (~torch.isnan(eo)).sum(dim=0).clamp(min=1)
+            base_obs = torch.nan_to_num(eo, nan=0.0).sum(dim=0) / cnt  # (n_nodes,)
+            self._et_obs_base = base_obs
+        cur = et_sim.mean(dim=0).detach()  # (n_nodes,)
+        prev = getattr(self, "_et_sim_base", None)
+        self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
+        return et_sim - self._et_sim_base, et_obs - base_obs
+
     def _train_epoch(self) -> tuple[Tensor, dict[str, Tensor]]:
         """One training epoch: simulate -> loss -> backward -> step.
 
@@ -945,6 +977,7 @@ class Trainer:
                     et_obs_chunk = data.et_obs[obs_offset + burnin:obs_offset + chunk_len]
                     if self.loss_fn.w_nll_et > 0 and hasattr(self.model, "noise_head_et"):
                         log_sigma_et_chunk = self.model.noise_head_et(et_sim_chunk.detach())
+                    et_sim_chunk, et_obs_chunk = self._center_et(et_sim_chunk, et_obs_chunk, data)
 
                 # Neige : fraction de couverture simulée vs MODIS snow_frac.
                 scf_sim_chunk = snow_obs_chunk = None
@@ -1386,12 +1419,16 @@ class Trainer:
                 if et_sim is not None and hasattr(self.model, "noise_head_et"):
                     log_sigma_et_sim = self.model.noise_head_et(et_sim.detach())
 
+            _et_obs_train = data.et_obs[:n_train] if data.et_obs is not None else None
+            if et_sim is not None and _et_obs_train is not None:
+                et_sim, _et_obs_train = self._center_et(et_sim, _et_obs_train, data)
+
             loss, components = self.loss_fn(
                 q_obs=q_obs_train,
                 q_sim=Q_sim,
                 station_mask=data.station_mask,
                 log_sigma_sim=log_sigma_sim,
-                et_obs=data.et_obs[:n_train] if data.et_obs is not None else None,
+                et_obs=_et_obs_train,
                 et_sim=et_sim,
                 log_sigma_et_sim=log_sigma_et_sim,
                 residual_gate_logits=(

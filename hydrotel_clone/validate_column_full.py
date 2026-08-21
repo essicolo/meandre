@@ -93,7 +93,7 @@ def main():
             prodOld = surf + hyp + base
             ap_wet = T(apC, i) * wetfr
             evp = T(etpC, i)
-            wet_vol_new, sep, flwi, flwo, wetprod = calcul_milieu_humide_isole(
+            wet_vol_new, sep, flwi, flwo, wetprod, _wev = calcul_milieu_humide_isole(
                 torch.clamp(wet_vol, min=1e-9), ap_wet, evp, prodOld, hru_ha, wetdrafr,
                 A, B, wetnvol, wetmxvol, ksat_bs, c_ev, c_prod, pdt=24)
             prod_new = prodOld * (1.0 - wetdrafr) + wetprod

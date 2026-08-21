@@ -412,7 +412,8 @@ class HydroModel(nn.Module):
                              "q_baseflow", "T_water", "swe",
                              "theta1", "theta2", "theta3",
                              "s_gw", "canopy", "wetland",
-                             "prod_surf", "prod_hypo", "prod_base")}
+                             "prod_surf", "prod_hypo", "prod_base",
+                             "etr_mh_mm", "wet_vol_mm")}
             if return_diagnostics else {}
         )
         outflow_buffer = OutflowRingBuffer(
@@ -617,6 +618,9 @@ class HydroModel(nn.Module):
                 diag_lists["etp"].append(vc_out.diag["etp"])
                 diag_lists["etr"].append(vc_out.diag["etr"])
                 diag_lists["snowmelt"].append(vc_out.diag["snowmelt"])
+                for _k in ("etr_mh_mm", "wet_vol_mm"):
+                    if _k in vc_out.diag:
+                        diag_lists[_k].append(vc_out.diag[_k])
                 for _k in ("prod_surf", "prod_hypo", "prod_base"):
                     if _k in vc_out.diag:
                         diag_lists[_k].append(vc_out.diag[_k])
@@ -674,6 +678,10 @@ class HydroModel(nn.Module):
             etr=torch.stack(diag_lists["etr"], dim=0),
             snowmelt=torch.stack(diag_lists["snowmelt"], dim=0),
             lateral_mm=torch.stack(diag_lists["lateral_mm"], dim=0),
+            etr_mh=(torch.stack(diag_lists["etr_mh_mm"], dim=0)
+                    if diag_lists.get("etr_mh_mm") else None),
+            wet_vol=(torch.stack(diag_lists["wet_vol_mm"], dim=0)
+                     if diag_lists.get("wet_vol_mm") else None),
             prod_surf=(torch.stack(diag_lists["prod_surf"], dim=0)
                        if diag_lists["prod_surf"] else None),
             prod_hypo=(torch.stack(diag_lists["prod_hypo"], dim=0)

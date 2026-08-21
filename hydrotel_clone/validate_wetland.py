@@ -50,7 +50,7 @@ for i in range(1, N):
     wetsa = B * float(vol0) ** A / 10000.0
     denom = 10.0 * (HRU_HA * WET_DRA_FR - wetsa)
     prod_mm = Wetflwi[i] / denom if denom != 0 else 0.0
-    v, sep, flwi, flwo, wprod = calcul_milieu_humide_isole(
+    v, sep, flwi, flwo, wprod, _wev = calcul_milieu_humide_isole(
         vol0, T(Apport[i]), T(Evp[i]), T(prod_mm), HRU_HA, WET_DRA_FR,
         A, B, WETNVOL, WETMXVOL, KSAT_BS, C_EV, C_PROD, pdt=24)
     vol_c[i] = float(v); sep_c[i] = float(sep); flwo_c[i] = float(flwo); prod_c[i] = float(wprod)

@@ -52,7 +52,10 @@ def calcul_milieu_humide_isole(wet_vol, apport_mm, evp_mm, prod_mm, hru_ha, wet_
     apport_mm = apport (neige) DÉJÀ ×wetfr ; evp_mm = ETP totale ; prod_mm =
     production sol (surf+hypo+base) ; hru_ha = aire UHRH [ha] ; wet_fr = fraction
     drainée (wetdrafr) ; wet_k = ksat_bs [mm/h] ; pdt = pas [h].
-    Retourne (wet_vol_new, wetsep, wetflwi, wetflwo, wetprod_mm)."""
+    Retourne (wet_vol_new, wetsep, wetflwi, wetflwo, wetprod_mm, wetev).
+    wetev [m3] est une perte ATMOSPHERIQUE reelle : elle n'etait pas retournee, donc
+    jamais declaree au bilan, et un audit de fermeture la lisait comme une fuite
+    (2026-08-20). La physique est inchangee, seul le diagnostic l'ignorait."""
     wetsa = B * wet_vol.pow(A) / 10000.0                  # surface [ha]
     wetev = 10.0 * c_ev * evp_mm * wetsa
     wetsep = wet_k * wetsa * (pdt * 10.0)
@@ -82,4 +85,4 @@ def calcul_milieu_humide_isole(wet_vol, apport_mm, evp_mm, prod_mm, hru_ha, wet_
     wet_vol = torch.where(above & ~under_max, torch.as_tensor(wetmxvol, dtype=wet_vol.dtype), wet_vol)
 
     wetprod_mm = wetflwo / (hru_ha * 10.0) + wetsep / (hru_ha * 10.0)
-    return wet_vol, wetsep, wetflwi, wetflwo, wetprod_mm
+    return wet_vol, wetsep, wetflwi, wetflwo, wetprod_mm, wetev

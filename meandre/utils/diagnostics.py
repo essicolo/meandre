@@ -81,6 +81,11 @@ class SimDiagnostics:
     # Décomposition de lateral_mm (mm/jour) : surface (ruissellement + débordement de
     # saturation), hypodermique (drainage latéral couche 2), base (recharge q3). Sert à
     # localiser la bifurcation avec Hydrotel étage par étage plutôt qu'au total.
+    # Milieu humide : deux termes qui existaient dans la physique mais n'etaient
+    # exposes NULLE PART, si bien qu'un bilan d'eau ne pouvait pas fermer et lisait
+    # une fuite de 1.97 % de la precipitation (2026-08-20).
+    etr_mh: Tensor | None = None    # (T, N) mm/day -- evaporation du milieu humide
+    wet_vol: Tensor | None = None   # (T, N) mm -- STOCK du reservoir de milieu humide
     prod_surf: Tensor | None = None
     prod_hypo: Tensor | None = None
     prod_base: Tensor | None = None

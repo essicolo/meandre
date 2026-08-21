@@ -758,6 +758,83 @@ for _m in range(1, 13):
         _rap.append(float("nan")); continue
     _num = np.nansum(_qs_np[_k], 0); _den = np.clip(np.nansum(_qo_np[_k], 0), 1e-9, None)
     _rap.append(float(np.nanmedian(_num / _den)))
+# ── AUDIT DE FERMETURE DU BILAN D'EAU (ETL_BILAN=1) ──────────────────────────
+# Le depot teste la conservation de masse du ROUTAGE mais PAS celle de la colonne
+# verticale. Or le deficit de debit est de -6.5 % par an, dont 86 % en avril, et les
+# ecarts mensuels NE SE COMPENSENT PAS : il faut chercher une PERTE. Regle de decision
+# ecrite AVANT la mesure : erreur < 0.1 % de la precipitation = ferme (bruit numerique),
+# > 1 % = fuite reelle, entre les deux = suspect. Dette #42 du registre.
+if os.environ.get("ETL_BILAN", "0") == "1":
+    if not _VEUT_NEIGE:
+        print("[etl] bilan : ETL_BILAN=1 exige ETL_CMP_NEIGE=1 (diagnostics requis)")
+    else:
+        _st = model.vertical_column._static["soil"]
+        def _mmv(x):
+            return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+        _z1, _z2, _z3 = _mmv(_st["z1"]), _mmv(_st["z2"]), _mmv(_st["z3"])
+        _P_tot = f7[:, :, 0].cpu().numpy()
+        _etr = _DIAG.etr.cpu().numpy()
+        _lat = _DIAG.lateral_mm.cpu().numpy()
+        # ATTENTION : _DIAG.wetland est un champ MORT en mode hydrotel (recopie tel quel
+        # d'un pas a l'autre). Le vrai stock du milieu humide est _DIAG.wet_vol, expose
+        # le 2026-08-20 ; son evaporation est _DIAG.etr_mh. Sans ces deux termes, le
+        # bilan lisait une fuite de 1.97 % correlee a 0.48 avec la fraction de MH.
+        _mh_st = (_DIAG.wet_vol.cpu().numpy() if _DIAG.wet_vol is not None else 0.0)
+        _mh_ev = (_DIAG.etr_mh.cpu().numpy() if _DIAG.etr_mh is not None else None)
+        _stock = (_DIAG.swe.cpu().numpy()
+                  + 1000.0 * (_DIAG.theta1.cpu().numpy() * _z1
+                              + _DIAG.theta2.cpu().numpy() * _z2
+                              + _DIAG.theta3.cpu().numpy() * _z3)
+                  + _DIAG.canopy.cpu().numpy() + _mh_st
+                  + _DIAG.s_gw.cpu().numpy())
+        _dS = _stock[-1] - _stock[0]
+        _ent = _P_tot.sum(axis=0)
+        _evmh = (_mh_ev.sum(axis=0) if _mh_ev is not None else np.zeros_like(_etr[0]))
+        _sor = _etr.sum(axis=0) + _lat.sum(axis=0) + _evmh
+        _err = _ent - _sor - _dS
+        _rel = _err / np.clip(_ent, 1e-9, None)
+        print("[etl] BILAN D'EAU de la colonne, cumul sur toute la simulation (mm) :")
+        print(f"        precipitation      {np.nanmean(_ent):10.0f}")
+        print(f"        ETR                {np.nanmean(_etr.sum(axis=0)):10.0f}")
+        print(f"        production         {np.nanmean(_lat.sum(axis=0)):10.0f}")
+        print(f"        evap. milieu humide{np.nanmean(_evmh):10.0f}")
+        print(f"        variation de stock {np.nanmean(_dS):10.0f}")
+        print(f"        ERREUR             {np.nanmean(_err):10.0f}  "
+              f"({100*np.nanmean(_rel):+.2f} % de la precipitation)")
+        print(f"        par noeud : q10 {100*np.nanpercentile(_rel,10):+.2f} % | "
+              f"med {100*np.nanmedian(_rel):+.2f} % | q90 {100*np.nanpercentile(_rel,90):+.2f} %")
+        _abs = abs(float(np.nanmean(_rel)))
+        # LA FUITE SUIT-ELLE LES FRACTIONS D'OCCUPATION ? Prediction : prod_surf pondere
+        # lruis par fsa, leau par fse (eau libre) et lprec par fsi (impermeable), avec
+        # leau = clamp(apport - etp, 0). L'ETR declaree au bilan est celle du noeud
+        # ENTIER. Si les fractions ne somment pas a 1, ou si le plancher mord sur l'eau
+        # libre, de l'eau se cree ou disparait. La fuite devrait alors suivre f_water
+        # et f_urban.
+        try:
+            import pandas as _pdb
+            _rwb = _pdb.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+            _rwb = _rwb[_rwb.region == REG]
+            if len(_rwb) == len(_rel):
+                for _col in ("f_water", "f_urban", "f_wetland", "f_forest"):
+                    _x = _rwb[_col].values
+                    _ok = np.isfinite(_x) & np.isfinite(_rel)
+                    _c = float(np.corrcoef(_x[_ok], _rel[_ok])[0, 1])
+                    print(f"        correlation fuite / {_col:10s} : {_c:+.3f}")
+                _q = _pdb.qcut(_rwb["f_water"].values, 4, duplicates="drop")
+                print(f"        fuite par quartile de f_water :")
+                for _b in sorted(set(_q)):
+                    _k = (_q == _b)
+                    print(f"          {str(_b):>18s} n={_k.sum():5d} "
+                          f"{100*np.nanmean(_rel[_k]):+6.2f} %")
+            else:
+                print(f"        (fractions indisponibles : {len(_rwb)} vs {len(_rel)} noeuds)")
+        except Exception as _eb:
+            print(f"        (correlation impossible : {type(_eb).__name__}: {_eb})")
+        _verdict = ("FERME (bruit numerique)" if _abs < 0.001 else
+                    "FUITE REELLE" if _abs > 0.01 else "SUSPECT")
+        print(f"        VERDICT : {_verdict}  (regle posee avant la mesure : "
+              f"<0.1 % ferme, >1 % fuite)")
+
 # ECART EN VOLUME, mois par mois. Un RAPPORT ne dit rien du volume qu'il represente :
 # 27 % du volume d'avril, mois de crue, pese bien plus que 20 % de celui de decembre.
 # Sans cette table on croit voir un deplacement d'eau la ou il y a une perte nette

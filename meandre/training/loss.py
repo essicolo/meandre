@@ -656,6 +656,7 @@ class HydroLoss(nn.Module):
         w_flatness: float = 0.0,
         w_snow: float = 0.0,
         w_et: float = 0.0,
+        et_mode: str = "level",
         w_tws: float = 0.0,
         w_quantile: float = 0.0,
         w_mixture: float = 0.0,
@@ -691,6 +692,15 @@ class HydroLoss(nn.Module):
         self.flatness_bandwidth = flatness_bandwidth
         self.w_snow = w_snow
         self.w_et = w_et
+        # et_mode : "level" (MSE absolu, historique) ou "anomaly" (TENDANCE : les deux
+        # séries sont centrées par nœud sur une ligne de base longue durée AVANT
+        # d'arriver ici — centrage fait dans le trainer, qui détient l'état, comme
+        # pour la TWS corrigée le 2026-08-10). Motivation : MOD16 sur-estime le NIVEAU
+        # (~593 vs 450 mm/an aux tours de flux) ; en mode anomaly on ne contraint que
+        # la saisonnalité, la phase et l'interannuel, pas le niveau biaisé.
+        if et_mode not in ("level", "anomaly"):
+            raise ValueError(f"et_mode inconnu : {et_mode!r} (attendu 'level' ou 'anomaly')")
+        self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
         self.w_quantile = w_quantile  # Régression quantile (calculée dans le trainer)
         self.w_mixture = w_mixture    # MDN (option 2b — calculée dans le trainer)
