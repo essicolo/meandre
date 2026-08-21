@@ -100,6 +100,19 @@ En 2023 le manteau observé DÉPASSE toute la neige que le modèle reçoit : imp
 
 **LE DÉFICIT DE NEIGE EST RÉEL, ET IL N'EST PAS UN ARTEFACT DE SITE** (mesuré 2026-08-20). Le manteau simulé contient 20 à 40 % d'eau de moins que le mesuré (pic simulé/mesuré 0.59 à 0.80). L'explication commode -- site en clairière contre tronçon forestier, interception par la canopée -- est RÉFUTÉE : le déficit AUGMENTE quand la forêt DIMINUE (rapport 0.58 au quartile le moins boisé, 0.77 au plus boisé), soit l'inverse exact de l'interception. Mécanisme cohérent avec le reste : le seuil de partage pluie/neige du projet (-2.2168 °C) compte comme pluie tout ce qui est au-dessus ; les tronçons les moins boisés sont les plus bas et les plus chauds, donc ceux où le plus d'événements tombent près du seuil. Cela explique aussi l'excès de débit de décembre (1.207) sur la même période. Chantier ouvert : le partage de phase, désormais arbitrable par une mesure INDÉPENDANTE du débit.
 
+**L'EAU NE a pas déplacée : ELLE MANQUE, ET C'EST AVRIL** (mesuré 2026-08-20, protocole du pilote, écarts en VOLUME et non en rapport). Sur la tenue de côté, en m3/s-jours sommés sur les 16 stations et les 3 ans :
+
+| mois | écart | part du total annuel |
+|---|---|---|
+| **avril** | **-31 973** | **-5.6 %** |
+| octobre | -7 271 | -1.3 % |
+| décembre | +7 996 | +1.4 % |
+| **ANNÉE** | **-37 098** | **-6.5 %** |
+
+Les écarts NE SE COMPENSENT PAS : le total annuel est de -6.5 %, et avril en porte 86 %. L'excédent de décembre ne vaut que le quart du déficit d'avril. RÉFUTE mon énoncé du même jour selon lequel le modèle relâcherait en décembre l'eau d'avril : un RAPPORT mensuel ne dit rien du VOLUME qu'il représente, et 27 % du volume d'avril, mois de crue, pèse quatre fois 20 % de celui de décembre. Le pilote imprime désormais les deux tables.
+
+CONSÉQUENCE : il faut chercher une PERTE, pas un déplacement. Quatre candidats : l'eau n'entre jamais, elle entre et reste stockée, elle s'évapore, ou elle disparaît par une fuite numérique (cf. dette #42, jamais requalifiée). L'audit de FERMETURE DU BILAN tranche, avec une règle nette : il ferme à la précision machine ou il ne ferme pas.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |

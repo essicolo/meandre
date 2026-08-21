@@ -758,6 +758,31 @@ for _m in range(1, 13):
         _rap.append(float("nan")); continue
     _num = np.nansum(_qs_np[_k], 0); _den = np.clip(np.nansum(_qo_np[_k], 0), 1e-9, None)
     _rap.append(float(np.nanmedian(_num / _den)))
+# ECART EN VOLUME, mois par mois. Un RAPPORT ne dit rien du volume qu'il represente :
+# 27 % du volume d'avril, mois de crue, pese bien plus que 20 % de celui de decembre.
+# Sans cette table on croit voir un deplacement d'eau la ou il y a une perte nette
+# (confusion commise le 2026-08-20 : "il relache l'eau d'avril en decembre").
+_vol_o = np.zeros(12); _vol_s = np.zeros(12)
+for _m in range(1, 13):
+    _k = _mo == _m
+    if _k.sum() < 10:
+        continue
+    _vo = np.nansum(_qo_np[_k]); _vs = np.nansum(_qs_np[_k])
+    _vol_o[_m - 1], _vol_s[_m - 1] = _vo, _vs
+_tot_o = _vol_o.sum()
+print("[etl] ecart en VOLUME par mois (somme sur stations et annees, m3/s-jours) :")
+print(f"        {'mois':>5s} {'observe':>10s} {'simule':>10s} {'ecart':>10s} {'% du total annuel':>18s}")
+for _m in range(12):
+    if _vol_o[_m] == 0:
+        continue
+    _e = _vol_s[_m] - _vol_o[_m]
+    print(f"        {_m+1:5d} {_vol_o[_m]:10.0f} {_vol_s[_m]:10.0f} {_e:+10.0f} "
+          f"{100*_e/max(_tot_o,1e-9):17.1f} %")
+_en = _vol_s.sum() - _tot_o
+print(f"        {'ANNEE':>5s} {_tot_o:10.0f} {_vol_s.sum():10.0f} {_en:+10.0f} "
+      f"{100*_en/max(_tot_o,1e-9):17.1f} %")
+print("[etl] lecture : si les ecarts mensuels se COMPENSENT (total ~0), l'eau est")
+print("      deplacee dans le temps. S'ils s'additionnent, il en manque vraiment.")
 print("[etl] simule/observe par mois : " + " ".join(
     f"{_m:02d}={_r:.3f}" for _m, _r in zip(range(1, 13), _rap)))
 
