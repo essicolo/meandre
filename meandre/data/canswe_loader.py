@@ -28,9 +28,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from meandre import chemins as _ch
+from meandre.utils import paths as _paths
 
-FICHIER_DEFAUT = f"{_ch.DATA}/canswe/CanSWE-CanEEN_1928-2025_v8.nc"
+DEFAULT_FILE = f"{_paths.DATA_ROOT}/canswe/CanSWE-CanEEN_1928-2025_v8.nc"
 
 # data_flag_snw : '' propre, R revise, B releve hors periode nominale (mesure valide,
 # seul son calendrier deroge), T trace. On ECARTE M (manquant), A et C (problemes
@@ -40,7 +40,7 @@ _DATA_FLAGS_OK = {"", "R", "B", "T"}
 _QC_FLAGS_OK = {""}
 
 
-def _texte(a):
+def _as_text(a):
     """Normalise en texte un tableau CanSWE. Les drapeaux et identifiants sont stockes
     en OCTETS (dtype |S1) : un str() naif rend "b''" au lieu de "", et tout filtre de
     qualite rejette alors 100 % des mesures (bug du 2026-08-20, 45 037 mesures ecartees
@@ -68,7 +68,7 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * R * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
 
 
-def charger_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = None,
+def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = None,
                    marge_deg: float = 0.25, dist_max_km: float = 25.0,
                    date_debut: str = "1980-01-01", date_fin: str = "2025-07-31"):
     """Selectionne les sites CanSWE d'une region et les apparie au noeud le plus proche.
@@ -85,7 +85,7 @@ def charger_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None 
     """
     import xarray as xr
 
-    d = xr.open_dataset(chemin or FICHIER_DEFAUT)
+    d = xr.open_dataset(chemin or DEFAULT_FILE)
     lat_s = d["lat"].values.astype(float)
     lon_s = d["lon"].values.astype(float)
 
@@ -113,7 +113,7 @@ def charger_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None 
         return pd.DataFrame(), pd.DataFrame()
 
     def _txt(nom):
-        return _texte(d[nom].values[idx_s])
+        return _as_text(d[nom].values[idx_s])
 
     elev_s = d["elevation"].values[idx_s].astype(float)
     ediff = (elev_s - np.asarray(elev_noeuds, dtype=float)[node_idx]
@@ -146,7 +146,7 @@ def charger_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None 
         return sites, pd.DataFrame()
 
     def _plat(a):
-        return _texte(a[si, ti])
+        return _as_text(a[si, ti])
 
     ok = np.isin(_plat(dfl), list(_DATA_FLAGS_OK)) & np.isin(_plat(qfl), list(_QC_FLAGS_OK))
     mesures = pd.DataFrame({

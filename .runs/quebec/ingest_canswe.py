@@ -7,9 +7,9 @@ import os, sys
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.getcwd())
 import duckdb, numpy as np
-from meandre import chemins as _ch
+from meandre.utils import paths as _paths
 from meandre.data.basin_cache import BasinCache
-from meandre.data.canswe_loader import charger_canswe
+from meandre.data.canswe_loader import read_canswe
 
 REGIONS = (["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
             "outm", "outv", "sagu", "slno", "slso", "vaud"]
@@ -17,7 +17,7 @@ REGIONS = (["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mon
            else [(sys.argv[1] if len(sys.argv) > 1 else "outv").lower()])
 
 for reg in REGIONS:
-    db = f"{_ch.DATA}/quebec/{reg}.duckdb"
+    db = f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb"
     if not os.path.exists(db):
         print(f"[canswe] {reg}: base absente, ignore")
         continue
@@ -32,7 +32,7 @@ for reg in REGIONS:
     elev_n = None
     try:
         import pandas as pd
-        rw = pd.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+        rw = pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
         rw = rw[rw.region == reg]
         if len(rw) == len(noeuds):
             elev_n = rw["mean_elevation_m"].values
@@ -41,7 +41,7 @@ for reg in REGIONS:
     except Exception as e:
         print(f"[canswe] {reg}: altitudes brutes indisponibles ({type(e).__name__})")
 
-    sites, mesures = charger_canswe(noeuds["lat"].values, noeuds["lon"].values, elev_n)
+    sites, mesures = read_canswe(noeuds["lat"].values, noeuds["lon"].values, elev_n)
     if sites.empty:
         print(f"[canswe] {reg}: aucun site dans l'emprise")
         continue

@@ -34,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from meandre import chemins as _ch
+from meandre.utils import paths as _paths
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ def fetch_modis_snow_daily(
     date_end: str,
     node_coords: np.ndarray,
     node_indices: np.ndarray,
-    cache_dir: str | Path = f"{_ch.DATA}/modis10",
+    cache_dir: str | Path = f"{_paths.DATA_ROOT}/modis10",
     token_path: str = "~/.edl_token",
 ) -> pd.DataFrame:
     """Fetch MOD10A1.061 NDSI Snow Cover QUOTIDIEN via NASA Earthdata (même chemin

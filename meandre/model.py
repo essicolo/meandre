@@ -37,12 +37,12 @@ from meandre.utils.state import HydroState
 #   compile_column (retiré le 2026-08-19) : compilait tout le pas de la colonne ; la
 #   compilation échouait et retombait en eager en silence, pour 1,5x plus lent que
 #   l'eager franc (banc OUTV : 240,7 contre 157,5 min/époque).
-CLES_INIT_OBSOLETES = ("compile_column",)
+OBSOLETE_INIT_KEYS = ("compile_column",)
 
 
-def purger_kwargs_obsoletes(kw: dict) -> dict:
+def drop_obsolete_init_kwargs(kw: dict) -> dict:
     """Copie de kw sans les clés d'init supprimées du code."""
-    return {k: v for k, v in kw.items() if k not in CLES_INIT_OBSOLETES}
+    return {k: v for k, v in kw.items() if k not in OBSOLETE_INIT_KEYS}
 
 
 class HydroModel(nn.Module):
@@ -966,7 +966,7 @@ class HydroModel(nn.Module):
         """
         checkpoint = torch.load(path, map_location="cpu")
         if isinstance(checkpoint, dict) and "init_kwargs" in checkpoint:
-            stored = purger_kwargs_obsoletes(checkpoint["init_kwargs"])
+            stored = drop_obsolete_init_kwargs(checkpoint["init_kwargs"])
             stored.update(kwargs)  # caller overrides win
             model = cls(**stored)
         else:

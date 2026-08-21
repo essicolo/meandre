@@ -9,7 +9,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr, torch
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel, purger_kwargs_obsoletes
+from meandre.model import HydroModel, drop_obsolete_init_kwargs
 from meandre.utils.state import HydroState
 
 CKPT = ".runs/slso/checkpoints/best-physitel-hydrotel-multiobj.pt"
@@ -28,7 +28,7 @@ for k, f in FORCS.items():
 
 cache = BasinCache(DB); h = cache.load(device=dev); n = h["n_nodes"]
 ck = torch.load(CKPT, map_location=dev, weights_only=False)
-kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["compile_soil"] = False
+kw = drop_obsolete_init_kwargs(ck["init_kwargs"]); kw["compile_soil"] = False
 m = HydroModel(**kw).to(dev); m.load_state_dict(ck["state_dict"], strict=False); m.eval()
 
 def run(forc):

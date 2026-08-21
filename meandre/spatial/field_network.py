@@ -735,7 +735,7 @@ class SpatialFieldNetwork(nn.Module):
     # ── Recharge : poser ou geler le champ ────────────────────────────────────
     _IDX_KREC = SpatialParams.N_PARAMS - 1   # krec est la DERNIERE sortie
 
-    def poser_krec_uniforme(self, valeur: float) -> None:
+    def set_uniform_krec(self, valeur: float) -> None:
         """Force la recharge a une valeur UNIFORME (m/h) sur tous les noeuds.
 
         Mode DEGRADE, a n'utiliser que pour les bancs : il annule la variation
@@ -748,7 +748,7 @@ class SpatialFieldNetwork(nn.Module):
             self.fc_out.weight[i].zero_()
             self.fc_out.bias[i] = (_m.log(valeur) - _m.log(KREC_REF)) / 0.3
 
-    def geler_krec(self) -> None:
+    def freeze_krec(self) -> None:
         """Exclut la recharge de l'apprentissage, sans geler le reste du champ.
 
         fc_out est UN seul parametre : on ne peut pas y mettre requires_grad par

@@ -30,3 +30,42 @@ def resolve_run_path(p: str | Path, run_dir: str | Path) -> Path:
     if pp.is_absolute():
         return pp
     return Path(run_dir) / pp
+
+
+# ── Data roots, overridable by environment ──────────────────────────────────
+# The repo carried 24 absolute paths hard-coded in source, making it impossible to
+# run anywhere else: another workstation, a rented compute node, a container. The
+# defaults are the values of the original machine, so nothing changes without an
+# explicit action.
+#
+#   MEANDRE_DATA         derived data (DuckDB caches, forcings, field parquets)
+#   MEANDRE_PLATEFORMES  Hydrotel platforms (PHYSITEL projects, calibrations)
+#   MEANDRE_RQH          RQH reference outputs (post-processing zarrs)
+#
+# Governance note: PLATFORMS_ROOT and RQH_ROOT point at INTERNAL data. If training is
+# offloaded to an external machine, those two must NOT follow -- the comparison to the
+# Hydrotel ensemble stays local.
+import os as _os
+
+DATA_ROOT = _os.environ.get("MEANDRE_DATA", "D:/meandre-data")
+PLATFORMS_ROOT = _os.environ.get(
+    "MEANDRE_PLATEFORMES",
+    "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+RQH_ROOT = _os.environ.get(
+    "MEANDRE_RQH",
+    "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data")
+
+
+def data_path(*parts: str) -> str:
+    """Path under the derived-data root."""
+    return str(Path(DATA_ROOT).joinpath(*parts)).replace("\\", "/")
+
+
+def platform_path(*parts: str) -> str:
+    """Path under the Hydrotel platforms root (INTERNAL data)."""
+    return str(Path(PLATFORMS_ROOT).joinpath(*parts)).replace("\\", "/")
+
+
+def rqh_path(*parts: str) -> str:
+    """Path under the RQH reference-output root (INTERNAL data)."""
+    return str(Path(RQH_ROOT).joinpath(*parts)).replace("\\", "/")

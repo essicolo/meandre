@@ -26,10 +26,10 @@ from meandre.utils.state import HydroState
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes, load_melt_nodes,
                                          load_passage_pluie_neige, load_occupation_sol,
                                          load_milieux_humides, load_phenologie,
-                                         courbe_retention_imposee)
+                                         imposed_retention_curve)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
-from recette import poser_surface_lac
+from recipe import set_lake_area_from_hydrolakes
 from meandre.utils.metrics import kge as kge_fn
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
@@ -61,9 +61,9 @@ _LIBRE = os.environ.get("SWEEP_KREC_LIBRE", "1") == "1"
 # donc avec krec IMPOSE (25 champs, regle sans aquifere) et un aquifere affame.
 # SWEEP_KREC_LIBRE=0 reproduit cette recette-la ; =1 libere la recharge (recette
 # actuelle du pilote, 23 champs).
-m.vertical_column.set_calibrated_soil(courbe_retention_imposee(_cs, _LIBRE))
+m.vertical_column.set_calibrated_soil(imposed_retention_curve(_cs, _LIBRE))
 print(f"[balayage] ancrage : krec {'LIBRE' if _LIBRE else 'IMPOSE (recette du champion)'} "
-      f"-> {len(courbe_retention_imposee(_cs, _LIBRE))} champs imposes", flush=True)
+      f"-> {len(imposed_retention_curve(_cs, _LIBRE))} champs imposes", flush=True)
 m.vertical_column.set_linacre_params(*load_linacre_nodes(PROJ, node_ids, device=DEV))
 m.vertical_column.set_melt_params(load_melt_nodes(PROJ, node_ids, device=DEV))
 m.vertical_column.t_neige_seuil = load_passage_pluie_neige(PROJ)
@@ -72,7 +72,7 @@ _lc.update(load_milieux_humides(PROJ, node_ids, device=DEV))
 m.vertical_column.set_land_cover(_lc)
 m.vertical_column.set_phenology(load_phenologie(PROJ) or None)
 m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEV))
-poser_surface_lac(m, REG, r["territorial"].get_physical("area_km2_local"), n)
+set_lake_area_from_hydrolakes(m, REG, r["territorial"].get_physical("area_km2_local"), n)
 m.load(CKPT)
 vc = m.vertical_column
 lo, hi = vc._krec_bounds

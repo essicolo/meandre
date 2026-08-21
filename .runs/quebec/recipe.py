@@ -10,7 +10,7 @@ que le champion :
   tenu de cote), les diagnostics ne le faisaient pas -> le champion aq30 ressortait a
   0.7591 au lieu de 0.7880.
   2026-08-19, courbe de retention : regle divergente sur krec (cf.
-  hydrotel_calib.courbe_retention_imposee).
+  hydrotel_calib.imposed_retention_curve).
 
 Toute piece de recette qui se retrouve dans DEUX fichiers doit atterrir ici.
 """
@@ -18,13 +18,13 @@ from __future__ import annotations
 
 import pandas as pd
 import torch
-from meandre import chemins as _ch
+from meandre.utils import paths as _paths
 
-RAW_QC = f"{_ch.DATA}/quebec/territorial-raw-QC.parquet"
-HYDROLAKES = f"{_ch.DATA}/quebec/lacs_hydrolakes.parquet"
+RAW_QC = f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
+HYDROLAKES = f"{_paths.DATA_ROOT}/quebec/lacs_hydrolakes.parquet"
 
 
-def poser_surface_lac(model, reg: str, area_km2_local, n_nodes: int, bavard: bool = True):
+def set_lake_area_from_hydrolakes(model, reg: str, area_km2_local, n_nodes: int, bavard: bool = True):
     """Corrige la surface des lacs (defaut du pilote depuis le 2026-08-09).
 
     Le module de lac calcule la hauteur d'eau comme S/A mais recevait l'aire de

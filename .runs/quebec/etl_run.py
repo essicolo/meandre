@@ -39,7 +39,7 @@ from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
 from meandre.utils.metrics import kge as kge_fn
 from meandre.utils.state import HydroState
 from joint_data import load_region
-from meandre import chemins as _ch
+from meandre.utils import paths as _paths
 
 REG = os.environ.get("ETL_REGION", "gasp").lower()
 N_EPOCHS = int(os.environ.get("ETL_EPOCHS", "12"))
@@ -62,7 +62,7 @@ if os.environ.get("ETL_FORCE", "0") != "1":
                          f"Attendre, ou forcer avec ETL_FORCE=1.")
 
 CKPT = f".runs/quebec/checkpoints/best-{REG}-etl{os.environ.get('ETL_TAG', '')}.pt"   # ETL_TAG évite d'écraser les checkpoints de diagnostic
-ETB = f"{_ch.DATA}/quebec/checkpoints-etbench"
+ETB = f"{_paths.DATA_ROOT}/quebec/checkpoints-etbench"
 
 cfg = tomllib.load(open(BASE_CFG, "rb"))
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
@@ -228,7 +228,7 @@ if os.environ.get("ETL_FONTE_LIT", "0") == "1":
 # LN24HA, la seule Linacre et la MOINS BONNE des six (0.7531 contre 0.8299 pour MG24HK).
 # ETL_MEMBRE choisit la plateforme ; l'ETP suit automatiquement sa formule.
 _MEMBRE = os.environ.get("ETL_MEMBRE", "LN24HA")
-_PLATB = f"{_ch.PLATEFORMES}"
+_PLATB = f"{_paths.PLATFORMS_ROOT}"
 _PROJ_M = f"{_PLATB}/{_MEMBRE}/{REG.upper()}_{_MEMBRE}_2020"
 if _MEMBRE != "LN24HA":
     os.environ.setdefault("ETL_MELT_DIR", _PROJ_M)
@@ -278,7 +278,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
     # 0.741 contre 0.740 pour la cible — la capacité n'était pas le verrou, le point de
     # départ l'était (champ initial plat à 0.0017 de dispersion, K_sat 8× trop bas).
     from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs
-    from meandre.data.hydrotel_calib import courbe_retention_imposee
+    from meandre.data.hydrotel_calib import imposed_retention_curve
     _plh = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _cs = _lcs(_plh, r["node_ids"], 0.15, device=DEVICE)
     _cib = {"K_sat_1": _cs["ks1"].float() * 24, "K_sat_2": _cs["ks2"].float() * 24,
@@ -329,9 +329,9 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
             # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
             # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
             # fractions de surface, pente et recharge sont les candidats restants.
-            # La règle est dans courbe_retention_imposee() pour que les diagnostics
+            # La règle est dans imposed_retention_curve() pour que les diagnostics
             # appliquent EXACTEMENT la même (ils en divergeaient, cf. sa docstring).
-            _courbe = courbe_retention_imposee(_cs, _aq_actif)
+            _courbe = imposed_retention_curve(_cs, _aq_actif)
         else:
             _courbe = {k: v for k, v in _cs.items()
                        if k.startswith(("b", "psis", "omegpi", "mm", "nn"))
@@ -400,7 +400,7 @@ if os.environ.get("ETL_KGW_FIELD", "0") == "1":
     # incertitude calibrée) : remplace le k_gw régional constant par un champ continu
     # par nœud. Le NeRF module autour ; le champ fixe le niveau local mesuré.
     import pandas as _pd
-    _cf = _pd.read_parquet(f"{_ch.DATA}/quebec/champ_kgw_QC.parquet")
+    _cf = _pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/champ_kgw_QC.parquet")
     _cf = _cf[_cf.region == REG].sort_values("node_idx")
     if len(_cf) == n_nodes:
         _kv = torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE)
@@ -420,7 +420,7 @@ if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
     # banc (.runs/quebec/freshet_bench.py). Le NeRF module autour ; le champ fixe la DATE.
     import pandas as _pd
     _sens = float(os.environ.get("ETL_FRESHET_SENS", "0"))  # jours de CM par +1 °C de T_melt
-    _cf = _pd.read_parquet(f"{_ch.DATA}/quebec/champ_freshet_QC.parquet")
+    _cf = _pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/champ_freshet_QC.parquet")
     _cf = _cf[_cf.region == REG].sort_values("node_idx")
     if len(_cf) == n_nodes and abs(_sens) > 1e-6:
         _cm = torch.tensor(_cf.cm_freshet.values, dtype=torch.float32, device=DEVICE)
@@ -437,7 +437,7 @@ if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
 if "ETL_KREC" in os.environ:
     import math as _mk
     _kv = float(os.environ["ETL_KREC"])
-    model.spatial_encoder.poser_krec_uniforme(_kv)
+    model.spatial_encoder.set_uniform_krec(_kv)
     print(f"[etl] krec pose UNIFORME -> {_kv:.0e} m/h (mode degrade : annule la "
           f"variation spatiale du champ, reserve aux bancs)")
     # ETL_KREC_GEL=1 : la recharge est un LIVRABLE, pas un bouton de calage. Le débit
@@ -446,7 +446,7 @@ if "ETL_KREC" in os.environ:
     # valeur choisie pour des raisons PHYSIQUES, il faut la geler, sinon l'apprentissage
     # la déplace et on ne sait plus ce qu'on a mesuré.
     if os.environ.get("ETL_KREC_GEL", "0") == "1":
-        model.spatial_encoder.geler_krec()
+        model.spatial_encoder.freeze_krec()
         print(f"[etl] krec GELÉ à {_kv:.1e} (sortie exclue de l'apprentissage)")
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
@@ -464,7 +464,7 @@ if "ETL_MELT_DIR" in os.environ:
 # r réseau 0.526 -> 0.896, KGE aux jauges 0.482 -> 0.749. ETL_OCCUPATION=0 pour l'ancien
 # comportement (comparaisons historiques).
 if os.environ.get("ETL_OCCUPATION", "1") == "1":
-    _plat = f"{_ch.PLATEFORMES}/LN24HA"
+    _plat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
     _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
     try:
         from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
@@ -525,7 +525,7 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
     # Mesuré le 5 août : imposé en inférence, ce prior rapporte +0.026 sur OUTV ; la même
     # tête laissée LIBRE apprend une direction opposée qui ne transfère pas (+0.002).
     import pandas as _pdl
-    _rw = _pdl.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+    _rw = _pdl.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
     _rw = _rw[_rw.region == REG]
     _A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
     if len(_rw) == n_nodes:
@@ -546,8 +546,8 @@ if os.environ.get("ETL_LAKE_AREA", "1") == "1":
     # La pièce vit dans recette.py pour que les DIAGNOSTICS l'appliquent aussi : ils ne
     # le faisaient pas, et le champion y ressortait à 0.7591 au lieu de 0.7880.
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from recette import poser_surface_lac
-    poser_surface_lac(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
+    from recipe import set_lake_area_from_hydrolakes
+    set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
     _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
     print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
 if os.environ.get("ETL_PEDO", "0") == "1":
@@ -560,7 +560,7 @@ if os.environ.get("ETL_PEDO", "0") == "1":
     # ou le reseau a mal appris sa structure spatiale. ETL_PEDO_F regle l'intensite.
     import pandas as _pdp
     from meandre.data.pedotransfert import saxton_rawls as _sr
-    _rwp = _pdp.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+    _rwp = _pdp.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
     _rwp = _rwp[_rwp.region == REG]
     if len(_rwp) == n_nodes:
         _f = float(os.environ.get("ETL_PEDO_F", "0.5"))
@@ -609,7 +609,7 @@ if os.environ.get("ETL_LAKE_TRL", "1") == "1":
     # Q = c*h^k (le parseur historique JETAIT c et k et lisait la surface comme une
     # largeur). k_lake = c/A, beta = k. Impose HORS gradient (surcharge de lake_params).
     from pathlib import Path as _Pl
-    _pt = _Pl(f"{_ch.PLATEFORMES}/LN24HA/{REG.upper()}_LN24HA_2020/physitel/troncon.trl")
+    _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020/physitel/troncon.trl")
     _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
     _dl = {}
     for _l in _lgn[3:]:
@@ -721,7 +721,7 @@ if os.path.exists(CKPT):
     # de bout en bout, y compris après le chargement.
     if os.environ.get("ETL_KREC_GEL", "0") == "1" and "ETL_KREC" in os.environ:
         _kv2 = float(os.environ["ETL_KREC"])
-        model.spatial_encoder.poser_krec_uniforme(_kv2)
+        model.spatial_encoder.set_uniform_krec(_kv2)
         print(f"[etl] krec ré-imposé après chargement : {_kv2:.1e} (gelé, uniforme)")
 else:
     print(f"[etl] pas de point de reprise ({N_EPOCHS} époque(s)) : évaluation du modèle EN MÉMOIRE")
@@ -829,7 +829,7 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         # et f_urban.
         try:
             import pandas as _pdb
-            _rwb = _pdb.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+            _rwb = _pdb.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
             _rwb = _rwb[_rwb.region == REG]
             if len(_rwb) == len(_rel):
                 for _col in ("f_water", "f_urban", "f_wetland", "f_forest"):
@@ -1044,7 +1044,7 @@ if _VEUT_NEIGE:
             # normalisation est croissante -- mais les bornes affichees seraient
             # illisibles. On revient donc aux fractions REELLES du parquet provincial.
             import pandas as _pdf
-            _rwf = _pdf.read_parquet(f"{_ch.DATA}/quebec/territorial-raw-QC.parquet")
+            _rwf = _pdf.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
             _rwf = _rwf[_rwf.region == REG]
             if len(_rwf) == len(_ff):
                 _ff = _rwf["f_forest"].values
@@ -1071,7 +1071,7 @@ if os.environ.get("ETL_CMP_HYDROTEL"):
     from meandre.data.hydrotel_calib import appariement_provincial as _appm
     _mb = os.environ["ETL_CMP_HYDROTEL"]
     try:
-        _z = _xrh.open_zarr(f"{_ch.RQH}/"
+        _z = _xrh.open_zarr(f"{_paths.RQH_ROOT}/"
                             f"06_posttraitement/posttraitement_{_mb}.zarr")
         _cols = _appm(REG, [int(r["node_ids"][int(_i)]) for _i in td.station_idx.cpu().numpy()],
                       np.asarray(_z["troncon_id"].values).astype(str))

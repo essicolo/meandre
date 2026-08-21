@@ -10,7 +10,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr, torch
 from meandre.data.basin_cache import BasinCache
-from meandre.model import HydroModel, purger_kwargs_obsoletes
+from meandre.model import HydroModel, drop_obsolete_init_kwargs
 from hydrotel_clone.snow import init_state as snow_init
 
 torch.set_default_dtype(torch.float32)
@@ -21,7 +21,7 @@ Y0, Y1 = "2018-08-01", "2021-07-31"   # 3 hivers
 
 h = BasinCache(DB).load(device="cpu"); n = h["n_nodes"]
 ck = torch.load(CKPT, map_location="cpu", weights_only=False)
-kw = purger_kwargs_obsoletes(ck["init_kwargs"]); kw["compile_soil"] = False
+kw = drop_obsolete_init_kwargs(ck["init_kwargs"]); kw["compile_soil"] = False
 m = HydroModel(**kw); m.load_state_dict(ck["state_dict"], strict=False); m.eval()
 col = m.vertical_column
 col._node_lat = h["node_coords"][:, 1]

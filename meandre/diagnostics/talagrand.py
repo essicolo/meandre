@@ -38,7 +38,7 @@ def compute_pit_data(cfg_path: str | Path, device: str | None = None) -> dict:
       - 'sigma': (T_val, n_stations) numpy
       - 'station_ids': list of station identifiers in column order
     """
-    from meandre.model import HydroModel, purger_kwargs_obsoletes
+    from meandre.model import HydroModel, drop_obsolete_init_kwargs
     from meandre.data.basin_cache import BasinCache
     from meandre.data.gridded_forcing import extract_forcing
     from meandre.utils.state import HydroState
@@ -64,7 +64,7 @@ def compute_pit_data(cfg_path: str | Path, device: str | None = None) -> dict:
 
     ckpt_path = _p("checkpoint")
     ckpt = torch.load(ckpt_path, map_location=dev, weights_only=False)
-    init_kw = purger_kwargs_obsoletes(ckpt["init_kwargs"])
+    init_kw = drop_obsolete_init_kwargs(ckpt["init_kwargs"])
     init_kw["concrete_dropout"] = cfg["model"].get("concrete_dropout", False)
     init_kw["concrete_init_p"] = cfg["model"].get("concrete_init_p", 0.05)
 

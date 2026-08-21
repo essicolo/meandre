@@ -23,11 +23,11 @@ from meandre.utils.state import HydroState
 from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_nodes, load_melt_nodes,
                                          load_passage_pluie_neige, load_occupation_sol,
                                          load_milieux_humides, load_phenologie,
-                                         courbe_retention_imposee,
+                                         imposed_retention_curve,
                                          appariement_provincial)
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
-from recette import poser_surface_lac
+from recipe import set_lake_area_from_hydrolakes
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 CKPT = sys.argv[2] if len(sys.argv) > 2 else f".runs/quebec/checkpoints/best-{REG}-etl-socle.pt"
@@ -59,7 +59,7 @@ m.eval(); m.spatial_encoder.init_from_literature({})
 # mêmes réglages d'exécution que l'entraînement du socle (un point de reprise ne définit
 # pas un modèle : voir la dette #6 du registre)
 _cs = load_calibrated_soil(PROJ, node_ids, 0.15, device=DEVICE)
-m.vertical_column.set_calibrated_soil(courbe_retention_imposee(_cs, os.environ.get("DIAG_AQUIFER", "0") == "1"))
+m.vertical_column.set_calibrated_soil(imposed_retention_curve(_cs, os.environ.get("DIAG_AQUIFER", "0") == "1"))
 m.vertical_column.set_linacre_params(*load_linacre_nodes(PROJ, node_ids, device=DEVICE))
 m.vertical_column.set_melt_params(load_melt_nodes(PROJ, node_ids, device=DEVICE))
 m.vertical_column.t_neige_seuil = load_passage_pluie_neige(PROJ)
@@ -68,7 +68,7 @@ _lc.update(load_milieux_humides(PROJ, node_ids, device=DEVICE))
 m.vertical_column.set_land_cover(_lc)
 m.vertical_column.set_phenology(load_phenologie(PROJ) or None)
 m.set_hgm_kernel(torch.tensor(lire_hgm(PROJ, node_ids), device=DEVICE))
-poser_surface_lac(m, REG, r["territorial"].get_physical("area_km2_local"), n)
+set_lake_area_from_hydrolakes(m, REG, r["territorial"].get_physical("area_km2_local"), n)
 m.load(CKPT)
 print(f"[diag] {Path(CKPT).name} sur {REG.upper()}", flush=True)
 

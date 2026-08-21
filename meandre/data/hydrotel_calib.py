@@ -92,7 +92,7 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
     return p
 
 
-def courbe_retention_imposee(cs: dict, use_aquifer: bool) -> dict:
+def imposed_retention_curve(cs: dict, use_aquifer: bool) -> dict:
     """Sous-ensemble du sol calibré à IMPOSER au modèle (mode d'ancrage sauf_ks).
 
     Tout est imposé SAUF les conductivités et porosités, qui restent au champ appris
