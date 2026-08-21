@@ -138,6 +138,27 @@ PORTÉE. Le commentaire du code indique un portage ligne-à-ligne de `bv3c2.cpp`
 
 EFFET SUR LE SCORE : sans milieu humide, tenue de côté 0.7929 contre 0.7880. Écart de 0.005, SOUS le bruit de 0.025 : la correction ne coûtera rien, mais ce n'est pas un gain non plus.
 
+**LE PASSAGE À L'ÉCHELLE DU QUÉBEC TOURNAIT SANS PRÉLÈVEMENTS NI REJETS** (constaté et corrigé 2026-08-21). Aucune des 15 bases régionales n'avait de table `withdrawals` ; seul le banc SLSO en avait une. La donnée existait pourtant dans le dépôt (`data/io-eau-meandre.parquet`, 1 082 964 lignes, 2001-2024 mensuel, tout le Québec méridional, avec `IDTRONCON` déjà apparié) et le chargeur aussi. Seule l'ingestion n'avait jamais été faite.
+
+Apport net anthropique après ingestion, contre le débit moyen aux jauges :
+
+| région | débit moyen | net anthropique | rapport |
+|---|---|---|---|
+| **MONT** | 11.0 m3/s | **+49.05** | **448 %** |
+| SLNO | 22.6 | +15.41 | 68 % |
+| SLSO | 19.3 | +6.67 | 35 % |
+| OUTV | 37.4 | +7.71 | 21 % |
+| GASP | 26.0 | +1.69 | 6 % |
+| ABIT | 164.5 | +0.78 | 0 % |
+
+Sur MONT le terme ignoré vaut QUATRE FOIS ET DEMIE le débit moyen d'une station. Or MONT est notre pire région (0.4869 contre 0.6631 pour Hydrotel), échec que j'attribuais à la régulation par barrages : l'explication la plus simple est qu'il manquait le terme dominant du bilan.
+
+CONSÉQUENCES. (1) Le champion a été AJUSTÉ sans ces flux : il les a absorbés dans ses paramètres, une conductivité ou une recharge compensant une prise d'eau. C'est exactement ce que l'identifiabilité, promesse centrale du projet, doit empêcher. (2) La comparaison à Hydrotel est faussée dans les régions habitées, puisque leurs plateformes les incluent vraisemblablement. (3) Tout run postérieur au 2026-08-21 les charge automatiquement : les résultats d'avant et d'après ne sont PAS comparables.
+
+RÉSERVE : le net est sommé sur tout le bassin alors que le débit moyen est celui d'une station, et toutes les stations ne sont pas en aval de tous les rejets. Le rapport situe un ordre de grandeur, il ne se lit pas comme une proportion exacte.
+
+MÉTHODE : appariement EXACT par `IDTRONCON` (format provincial) converti par `id_local`, et non par rattachement géographique. Le rattachement au nœud le plus proche à 10 km écartait 879 sites sur 1 661 et en plaçait d'autres à 6.7 km. Avec l'appariement exact : ZÉRO ligne perdue sur les 15 régions.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
