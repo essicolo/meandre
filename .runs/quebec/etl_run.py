@@ -471,6 +471,17 @@ if os.environ.get("ETL_OCCUPATION", "1") == "1":
                                                  load_phenologie)
         _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
         _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
+        # ETL_SANS_MH=1 : DIAGNOSTIC seulement. Le couplage du milieu humide au troncon
+        # est desequilibre (2026-08-20) : la colonne retire prod x wet_fr de la
+        # production mais le reservoir ne recoit que prod x (wet_fr - wetsa/hru), et il
+        # se voit crediter en echange la precipitation directe sur sa propre surface,
+        # eau que le sol a deja traitee. La difference (apport - prod) x wetsa/hru est
+        # creee ou detruite. Le reservoir lui-meme conserve EXACTEMENT sa masse (teste
+        # sur 4 regimes) : c'est le couplage, porte fidelement de bv3c2.cpp, qui ne
+        # ferme pas. Cet interrupteur mesure sa contribution a l'erreur de bilan.
+        if os.environ.get("ETL_SANS_MH", "0") == "1":
+            _mh = {}
+            print("[etl] MILIEUX HUMIDES DESACTIVES (diagnostic de bilan)")
         _lc.update(_mh)
         model.vertical_column.set_land_cover(_lc)
         _ph = load_phenologie(_pl)

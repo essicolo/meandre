@@ -113,6 +113,21 @@ Les écarts NE SE COMPENSENT PAS : le total annuel est de -6.5 %, et avril en po
 
 CONSÉQUENCE : il faut chercher une PERTE, pas un déplacement. Quatre candidats : l'eau n'entre jamais, elle entre et reste stockée, elle s'évapore, ou elle disparaît par une fuite numérique (cf. dette #42, jamais requalifiée). L'audit de FERMETURE DU BILAN tranche, avec une règle nette : il ferme à la précision machine ou il ne ferme pas.
 
+**LE BILAN D'EAU FERME PARTOUT SAUF AU COUPLAGE DU MILIEU HUMIDE** (mesuré 2026-08-20, audit `ETL_BILAN=1`, règle posée AVANT la mesure : <0.1 % = ferme, >1 % = fuite).
+
+| configuration | erreur de fermeture |
+|---|---|
+| avec milieu humide | **+1.38 %** de la précipitation (médiane par nœud +1.26 %, q90 +2.83 %) |
+| **sans milieu humide** | **+0.00 %** (1 mm sur 24 481 ; q90 +0.01 %) |
+
+Le reste de la colonne -- neige, gel, ETP/ETR, sol BV3C2, aquifère, canopée -- conserve la masse à la PRÉCISION NUMÉRIQUE. Et le réservoir de milieu humide conserve EXACTEMENT la sienne (testé sur 4 régimes : normal, débordement, étiage, vide ; écart nul). Le défaut est donc uniquement dans la SUBSTITUTION entre les deux.
+
+MÉCANISME, lu dans le code et vérifié sur la plus petite unité : la colonne retire de la production `prod x wet_fr`, mais le réservoir ne reçoit que `wetflwi = prod x (wet_fr - wetsa/hru)` -- la production de l'EMPREINTE PROPRE du milieu humide est retranchée sans être créditée. En compensation le réservoir reçoit `wetpcp = apport x wetsa`, la précipitation directe sur cette surface, eau que le sol a DÉJÀ traitée sur tout le tronçon. La différence `(apport - prod) x wetsa/hru` est créée ou détruite selon le signe. Sur l'exemple unitaire : 1.2000 mm retirés, 1.1765 mm crédités.
+
+PORTÉE. Le commentaire du code indique un portage ligne-à-ligne de `bv3c2.cpp` l.838-895 : c'est donc la comptabilité d'HYDROTEL, pas une erreur de notre portage. Si cela se confirme dans leur source, Hydrotel ne conserve pas la masse sur les tronçons à milieux humides, proportionnellement à leur fraction. Vérifiable, et à signaler à l'équipe qui le maintient. C'est aussi un exemple net de ce que la différentiabilité apporte : un bilan auditable terme à terme, là où un modèle compilé le rend invisible.
+
+EFFET SUR LE SCORE : sans milieu humide, tenue de côté 0.7929 contre 0.7880. Écart de 0.005, SOUS le bruit de 0.025 : la correction ne coûtera rien, mais ce n'est pas un gain non plus.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |

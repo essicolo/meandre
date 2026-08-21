@@ -787,6 +787,7 @@ class HydrotelColumn(nn.Module):
         # SWAT puis prod = prodOld·(1−wetdrafr) + wetprod. Vectorisé sur tous les nœuds,
         # masqué (wmask) pour que les nœuds sans MH soient un no-op EXACT.
         wet_vol = state.wet_vol
+        _etr_mh = _wvol_mm = None
         if self._static["wetland"] is not None:
             w = self._static["wetland"]
             apport_w = apport * w["wet_fr_area"]   # apport × fraction superficie wetland
@@ -806,10 +807,8 @@ class HydrotelColumn(nn.Module):
             # avec la fraction de milieux humides. La physique ne change pas : on
             # publie ce qui existait deja.
             _ha10 = torch.clamp(w["hru_ha"] * 10.0, min=1e-9)
-            diag["etr_mh_mm"] = torch.where(w["wmask"], wev / _ha10,
-                                            torch.zeros_like(prod))
-            diag["wet_vol_mm"] = torch.where(w["wmask"], wet_vol / _ha10,
-                                             torch.zeros_like(prod))
+            _etr_mh = torch.where(w["wmask"], wev / _ha10, torch.zeros_like(prod))
+            _wvol_mm = torch.where(w["wmask"], wet_vol / _ha10, torch.zeros_like(prod))
 
         new_state = HydrotelColumnState(t1, t2, t3, snow_new, frost_profile, wet_vol,
                                         uh1n, uh2n, uh3n, uh4n)
@@ -819,6 +818,12 @@ class HydrotelColumn(nn.Module):
                     prod_surf=ps_surf, prod_hypo=ph, prod_base=pb,
                     # clés attendues par model.py / SimDiagnostics
                     etr=etr_tot, snowmelt=apport, lateral_mm=prod)
+        # milieu humide : evaporation et STOCK, exposes le 2026-08-20 (ils existaient
+        # dans la physique mais n'etaient rendus par aucune sortie, ce qui rendait le
+        # bilan d'eau infermable)
+        if _etr_mh is not None:
+            diag["etr_mh_mm"] = _etr_mh
+            diag["wet_vol_mm"] = _wvol_mm
         return prod, new_state, diag
 
 
