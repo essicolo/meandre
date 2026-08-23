@@ -170,7 +170,22 @@ class BV3C2Clone(torch.nn.Module):
             k12 = torch.maximum(k1, k2); k23 = torch.maximum(k2, k3)
             qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)
             qq23 = k23 * (2.0 * (ps3 - ps2) / (z2 + z3) + 1.0)
-            q2 = k2 * sin_slope * z2; q3 = krec * z3 * t3
+            q2 = k2 * sin_slope * z2
+            # ── Drainage NON LINEAIRE de L3 (opt-in, 2026-08-22) ──
+            # Le drainage fidele est LINEAIRE en theta : q3 = krec*z3*t3. Consequence
+            # mesuree (R34/R37) : theta3 s'epingle a saturation, la recharge est
+            # constante, la nappe est plate, et la crue d'avril part en surface faute
+            # de place. La variante q3 = krec*z3*ths3*(t3/ths3)^n (n>1) draine au MEME
+            # plafond a saturation mais se coupe en dessous : L3 se vide quand les
+            # entrees faiblissent (hiver) et la fonte la re-remplit (printemps) --
+            # c'est la respiration que GRACE exige, et les deux constantes de temps
+            # des recessions mesurees (37 j et 111 j) emergent de la meme courbure
+            # (Wittenberg 1999 ; ici a la VANNE, pas a la nappe). n=1 == fidele exact.
+            _n3 = p.get("l3_drain_exp")
+            if _n3 is None:
+                q3 = krec * z3 * t3
+            else:
+                q3 = krec * z3 * ths3 * torch.clamp(t3 / ths3, min=0.0) ** _n3
             qq12 = qq12 * throttle; qq23 = qq23 * throttle; q2 = q2 * throttle
             q3 = torch.where(frozen, q3 * 0.5, q3)
             # CalculeRuisselement (l.2191-2201) sur t1 COURANT : si t1 saturé,

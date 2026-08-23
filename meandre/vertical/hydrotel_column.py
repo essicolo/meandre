@@ -128,6 +128,9 @@ class HydrotelColumn(nn.Module):
         # réservoir. k_gw par nœud (NeRF), contraint GRACE. OFF = clone Hydrotel fidèle.
         self.use_aquifer = bool(use_aquifer)
         self.aquifer = AquiferModule() if self.use_aquifer else None
+        # variante puissance de la nappe (opt-in via gw_power_law = (q_ref, b))
+        from meandre.vertical.aquifer import PowerLawAquifer
+        self._pl_aquifer = PowerLawAquifer() if self.use_aquifer else None
         self.t_neige_seuil = t_neige_seuil   # seuil pluie/neige (split de phase, TODO: règle Hydrotel exacte)
         self.snow = DegreJourModifie(pas_de_temps=24)
         self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
@@ -226,8 +229,11 @@ class HydrotelColumn(nn.Module):
         # la colonne incompilable (dynamo échoue à tracer as_tensor sur des faux
         # tenseurs, mesuré le 2026-08-19) alors que la colonne est ~80 % du temps.
         _ref = p_soil.get("ks1")
-        if _ref is None:
-            _ref = next((v for v in p_soil.values() if torch.is_tensor(v)), None)
+        if _ref is None or (torch.is_tensor(_ref) and _ref.dim() == 0):
+            # ignorer les scalaires 0-d (ex. un krec pose en tenseur scalaire par les
+            # bancs) : la cle de cache a besoin de n_nodes, donc d'un tenseur 1-d.
+            _ref = next((v for v in p_soil.values()
+                         if torch.is_tensor(v) and v.dim() >= 1), None)
         self._pheno_cache = None
         self._pheno_cache_key = None
         if _ref is not None and p_etr.get("classes"):
@@ -352,6 +358,11 @@ class HydrotelColumn(nn.Module):
                       melt_mode=self.melt_mode,
                       tf=sp_(self.sp_tf) * torch.ones_like(like),
                       srf=sp_(self.sp_srf) * torch.ones_like(like))
+        # Modulation saisonniere du facteur de fonte (R32, opt-in) : posee par le
+        # pilote via `melt_seasonal_amp` (float). None = clone fidele a l'identique.
+        _msa = getattr(self, "melt_seasonal_amp", None)
+        if _msa is not None:
+            p_snow["melt_seasonal_amp"] = float(_msa)
 
         # sol BV3C2 : NeRF (thetas/ks) + Campbell global
         b1 = self._sig(self.b1_raw, self._b_bounds); b2 = self._sig(self.b2_raw, self._b_bounds); b3 = self._sig(self.b3_raw, self._b_bounds)
@@ -374,6 +385,11 @@ class HydrotelColumn(nn.Module):
                       krec=sp.krec,
                       slope=slope, cin=torch.full_like(like, 0.03),
                       fsa=fsa, fse=fse, fsi=fsi, coef_recharge=torch.zeros_like(like))
+        # Drainage non lineaire de L3 (opt-in, R37) : posee par le pilote via
+        # `l3_drain_exp` (float). None = drainage lineaire fidele.
+        _l3n = getattr(self, "l3_drain_exp", None)
+        if _l3n is not None:
+            p_soil["l3_drain_exp"] = float(_l3n)
 
         # Ancrage Hydrotel (reproduce) : remplace le sol NeRF par la calibration
         # par nœud si fournie. Optionnel — retiré pour découpler.
@@ -561,7 +577,21 @@ class HydrotelColumn(nn.Module):
             # agissent sur la VRAIE réserve (cf. AquiferModule). k_gw par nœud, GRACE le
             # contraint. prod = ps_surf+ph+pb -> on remplace pb par le baseflow retardé.
             kgw = self._static.get("k_gw")
-            Q_bf, S_gw_new = self.aquifer(pb, state.S_gw, kgw, gw_withdrawal=gw_withdrawal_mm)
+            # NAPPE NON LINEAIRE (opt-in, R38/INT3, 2026-08-22). Le reservoir lineaire
+            # relache a taux fixe : avec une recharge devenue saisonniere (L3 qui
+            # respire), il etale la crue au lieu de la restituer -- INT3 : avril 0.59,
+            # mai 1.27, base plate a 22-29 mm/mois. Q = q_ref*(S/100)^b relache vite a
+            # stock plein (printemps) et lentement a stock bas (etiage) : les deux
+            # constantes de temps mesurees (37 j et 111 j) avec un seul jeu de params.
+            if getattr(self, "gw_power_law", None) is not None:
+                _qr, _b = self.gw_power_law
+                Q_bf, S_gw_new = self._pl_aquifer(
+                    pb, state.S_gw,
+                    q_ref=torch.full_like(pb, float(_qr)),
+                    b=torch.full_like(pb, float(_b)),
+                    gw_withdrawal=gw_withdrawal_mm)
+            else:
+                Q_bf, S_gw_new = self.aquifer(pb, state.S_gw, kgw, gw_withdrawal=gw_withdrawal_mm)
             prod = prod - pb + Q_bf
             diag["prod_base"] = Q_bf
             diag["lateral_mm"] = prod
@@ -584,12 +614,36 @@ class HydrotelColumn(nn.Module):
             diag=(diag if return_diagnostics else None))
 
     # ── Split de phase pluie/neige FIDÈLE (THIESSEN::PassagePluieNeige, thiessen1.cpp:259-279) ──
-    def _split_precip(self, P, tmin, tmax):
+    def _split_precip(self, P, tmin, tmax, ea=None):
         """Partition graduée pluie/neige au pas journalier. taux = fraction PLUIE :
         0 si tmax<seuil (tout neige), 1 si tmin>=seuil (tout pluie), sinon
         (tmax-seuil)/(tmax-tmin). Retourne (pluie, neige) en SWE (snow.py convertit
-        en hauteur en interne). Seuil = t_neige_seuil (DELISLE 0°C)."""
+        en hauteur en interne). Seuil = t_neige_seuil (DELISLE 0°C).
+
+        MODE BULBE HUMIDE (opt-in, `split_mode = "wet_bulb"`, 2026-08-22). Remarque
+        d'Essi sur R35 : un seuil AIR calibre par region (+0.3 sur OUTV) est un
+        parametre regional de plus, alors qu'on veut se defaire de la notion de
+        region. La variable physique du partage est la temperature du BULBE HUMIDE :
+        un flocon dans l'air sec refroidit par evaporation et survit a +2 ou +3
+        degres, dans l'air sature il fond des 0. Jennings et al. 2018 (Nat. Comm.)
+        mesurent des seuils AIR de 0.6 a 3.8 degres a travers l'hemisphere, dont la
+        variance est essentiellement l'humidite : un seuil unique en bulbe humide
+        absorbe la geographie SANS parametre regional. Verifie sur nos 6 regions :
+        le seuil Twb equivalent au +0.3 air d'OUTV tient dans [-1.0, -0.7] partout
+        (air : il varierait avec l'humidite). Twb par Stull 2011 (valide -20..50
+        degres, HR > 5 %), HR reconstruite de e_a deja present dans le forcage.
+        Les bornes tmin/tmax gardent leur role de partage INTRA-JOUR ; c'est le
+        SEUIL qui se deplace de l'air vers le bulbe humide : s_eff = seuil + (T - Twb),
+        ce qui revient a comparer Twb au seuil en gardant la graduation journaliere."""
         s = self.t_neige_seuil
+        if getattr(self, "split_mode", "air") == "wet_bulb" and ea is not None:
+            T = (tmin + tmax) / 2.0
+            es = 0.6108 * torch.exp(17.27 * T / (T + 237.3))          # kPa, sur eau
+            rh = torch.clamp(ea / es, 0.05, 1.0) * 100.0              # %
+            twb = (T * torch.atan(0.151977 * torch.sqrt(rh + 8.313659))
+                   + torch.atan(T + rh) - torch.atan(rh - 1.676331)
+                   + 0.00391838 * rh ** 1.5 * torch.atan(0.023101 * rh) - 4.686035)
+            s = s + (T - twb)     # comparer Twb au seuil == relever le seuil AIR de T-Twb
         taux = torch.clamp((tmax - s) / (tmax - tmin + 1e-6), 0.0, 1.0)   # fraction pluie
         taux = torch.where(tmax < s, torch.zeros_like(taux), taux)
         taux = torch.where(tmin >= s, torch.ones_like(taux), taux)
@@ -676,7 +730,8 @@ class HydrotelColumn(nn.Module):
         # n_nodes dans la clé : en entraînement CONJOINT multi-régions, la même
         # colonne sert plusieurs régions — sans ça, la cache resservait les pct
         # de la région précédente (mismatch de tailles).
-        key = (ref.device, ref.dtype, int(ref.shape[0]))
+        # ref 0-d tolere (bancs qui passent des scalaires) : n_nodes vaut alors 1.
+        key = (ref.device, ref.dtype, int(ref.shape[0]) if ref.dim() else 1)
         if getattr(self, "_pheno_cache_key", None) != key:
             T = lambda v: torch.as_tensor(v, dtype=ref.dtype, device=ref.device)
             self._pheno_cache = [(pct, T(jbp), T(leaf_bp), T(root_bp))
@@ -696,8 +751,36 @@ class HydrotelColumn(nn.Module):
                  else torch.tensor(float(doy), dtype=P.dtype, device=P.device))
 
         # 1. split pluie/neige → fonte neige → apport
-        pluie, neige = self._split_precip(P, tmin, tmax)
+        pluie, neige = self._split_precip(P, tmin, tmax, ea=ea)
         apport, snow_new = self.snow(tmin, tmax, pluie, neige, doy_t, state.snow, ps, sw_in=sw_in)
+
+        # ── SUBLIMATION du manteau (opt-in, R32, 2026-08-22) ─────────────────
+        # Kuzmin 1957, la parametrisation la plus simple de Raven (SUBLIM_KUZMIN) : elle
+        # ne demande que u2 et e_a, deja dans le forcage. C'est une SORTIE D'EAU VERS
+        # L'ATMOSPHERE : elle doit etre exposee au diagnostic (subl_mm), sinon l'audit
+        # de fermeture (ETL_BILAN) lirait une fuite -- exactement le piege du milieu
+        # humide (dette #12). La masse part de chaque classe au prorata du stock, et
+        # hauteur/chaleur/eau retenue partent dans la meme proportion (la densite et la
+        # temperature du manteau restant ne changent pas).
+        subl_mm = None
+        if getattr(self, "sublimation_mode", None) == "kuzmin":
+            from hydrotel_clone.snow import sublimation_kuzmin, DegreJourModifie as _DJM
+            t_air = (tmin + tmax) / 2.0
+            pot_m = sublimation_kuzmin(u2, ea, t_air) / 1000.0     # m/j potentiel
+            subl_tot = torch.zeros_like(pot_m)
+            for c in _DJM.CLASSES:
+                st, ha, ch, er = snow_new[c]
+                pris = torch.minimum(pot_m, st)                     # borne par le stock
+                frac = torch.where(st > 0, (st - pris) / st.clamp(min=1e-12),
+                                   torch.ones_like(st))
+                snow_new[c] = (st - pris, ha * frac, ch * frac, er * frac)
+                pct_c = ps["pct_" + c] if c != "decouver" else ps["pct_autres"]
+                subl_tot = subl_tot + pct_c * pris
+            snow_new["couvert_nival_mm"] = sum(
+                (ps[f"pct_{c}"] if c != "decouver" else ps["pct_autres"]) * snow_new[c][0]
+                for c in _DJM.CLASSES) * 1000.0
+            subl_mm = subl_tot * 1000.0
+
         # hauteur agrégée du couvert nival [m] pour le gel
         haut = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"] * snow_new[c][1]
                    for c in DegreJourModifie.CLASSES)
@@ -825,6 +908,9 @@ class HydrotelColumn(nn.Module):
         if _etr_mh is not None:
             diag["etr_mh_mm"] = _etr_mh
             diag["wet_vol_mm"] = _wvol_mm
+        if subl_mm is not None:
+            # sortie atmospherique : indispensable a la fermeture du bilan (ETL_BILAN)
+            diag["subl_mm"] = subl_mm
         return prod, new_state, diag
 
 

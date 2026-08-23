@@ -81,3 +81,67 @@ class AquiferModule(nn.Module):
         Q_baseflow = k * S_gw_new
 
         return Q_baseflow, S_gw_new
+
+
+class PowerLawAquifer(nn.Module):
+    """Reservoir souterrain NON LINEAIRE : Q = k * S^b, b > 1 (Wittenberg 1999).
+
+    Pourquoi il existe (R29, 2026-08-22). Les recessions hivernales pures des jauges
+    d'OUTV portent DEUX constantes de temps -- 37 jours en mediane, 111 jours pour la
+    composante lente (centile 10) -- et un reservoir lineaire n'en a qu'UNE : quel que
+    soit son k_gw, il vide trop vite l'etiage ou trop lentement la crue. La loi
+    puissance donne les deux avec un seul jeu de parametres : a stock plein la vidange
+    est rapide (S^b >> S), a stock bas elle s'etire d'elle-meme. C'est BASE_POWER_LAW
+    chez Raven ; Kirchner (2009) montre que la plupart des bassins reels sont dans ce
+    regime plutot que dans le lineaire.
+
+    Discretisation : pas de solution analytique pour b != 1, on integre par sous-pas
+    d'Euler implicites via une iteration de point fixe courte (5 iterations suffisent :
+    la fonction est contractante pour dt*k*b*S^(b-1) < 1, et on sous-pas si besoin).
+    Differentiable de bout en bout.
+
+    UNITES ET ECHELLE. Q = k * S^b avec S en mm : pour rester dimensionnellement
+    lisible, k est exprime via un DEBIT DE REFERENCE a un stock de reference :
+        Q = q_ref * (S / s_ref)^b
+    q_ref (mm/j) et b sont les parametres ; s_ref = 100 mm fixe. Ainsi q_ref garde le
+    sens physique d'un debit de base a stock moyen, et b module la courbure seule --
+    les deux ne se marchent pas dessus pendant l'apprentissage.
+    """
+
+    S_REF = 100.0     # mm, stock de reference (fixe : la courbure est portee par b)
+
+    def __init__(self, n_substeps: int = 4) -> None:
+        super().__init__()
+        self.n_substeps = int(n_substeps)
+
+    def forward(
+        self,
+        recharge: Tensor,
+        S_gw: Tensor,
+        q_ref: Tensor,
+        b: Tensor,
+        gw_withdrawal: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor]:
+        """Mise a jour sur un jour. recharge/S_gw en mm ; q_ref en mm/j ; b sans unite.
+
+        Retourne (Q_baseflow mm/j, S_gw_new mm). Conservation exacte du bilan
+        discretise : S_new = S + apports - Q_total, Q_total etant la somme des
+        sous-pas ; un test le verrouille.
+        """
+        dt = 1.0 / self.n_substeps
+        net = recharge if gw_withdrawal is None else recharge + gw_withdrawal
+        S = S_gw
+        Q_total = torch.zeros_like(S_gw)
+        for _ in range(self.n_substeps):
+            S_in = torch.clamp(S + net * dt, min=0.0)
+            # Euler implicite par point fixe : S1 = S_in - dt*Q(S1). Contractant tant
+            # que dt * dQ/dS < 1 ; 5 iterations donnent < 0.1 % d'erreur aux regimes
+            # concernes (q_ref <= 5 mm/j, b <= 3).
+            S1 = S_in
+            for _ in range(5):
+                Q = q_ref * torch.clamp(S1 / self.S_REF, min=0.0) ** b
+                S1 = torch.clamp(S_in - dt * Q, min=0.0)
+            Q_final = (S_in - S1) / dt          # ce qui est REELLEMENT sorti
+            Q_total = Q_total + Q_final * dt
+            S = S1
+        return Q_total, S

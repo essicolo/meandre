@@ -283,6 +283,24 @@ class DegreJourModifie(torch.nn.Module):
         ir = indice_radiation(p["lat"], p["ce1"], p["ce0"], jour, self.pas_de_temps)
         _mode = p.get("melt_mode", "degree_day")
         _tf, _srf = p.get("tf"), p.get("srf")
+        # ── Modulation SAISONNIERE du facteur de fonte (opt-in, 2026-08-22) ──
+        # Un facteur degre-jour constant absorbe implicitement le cycle annuel de la
+        # radiation ; cale sur la crue de printemps, il fond donc TROP en novembre-
+        # decembre quand la radiation est minimale. C'est exactement le deficit mesure
+        # (R32) : accumulation a 58 % de CanSWE, fonte de coeur d'hiver et date de
+        # disparition justes. Correctif classique : facteur sinusoidal, minimum au
+        # solstice d'hiver et maximum au solstice d'ete (Anderson SNOW-17 ; Hock 2003 ;
+        # POTMELT_HBV de Raven). s(j) = 1 + amp*sin(2*pi*(j-81)/365) -- maximum au jour
+        # 172 (21 juin), minimum au jour 355 (21 decembre), moyenne annuelle 1 donc le
+        # taux CALE reste le taux moyen. amp=0 restitue le clone fidele a l'identique.
+        # Sans effet en mode ETI, qui utilise la radiation reelle (tf/srf) et ignore
+        # coeff_fonte : les deux mecanismes ne se cumulent pas.
+        _amp = p.get("melt_seasonal_amp")
+        if _amp is not None:
+            _j = jour if torch.is_tensor(jour) else torch.as_tensor(float(jour))
+            _saison = 1.0 + _amp * torch.sin(2.0 * torch.pi * (_j - 81.0) / 365.0)
+        else:
+            _saison = None
         pluie_m = pluie_mm / 1000.0
         neige_m = neige_mm / 1000.0
         new_state = {}
@@ -292,9 +310,10 @@ class DegreJourModifie(torch.nn.Module):
         for c in self.CLASSES:
             st, ha, ch, er = state[c]
             alb = state["albedo_" + c]
+            _cf = p["coeff_fonte_" + c] if _saison is None else p["coeff_fonte_" + c] * _saison
             fonte, st2, ha2, ch2, er2, alb2 = calcule_fonte(
                 tmin, tmax, pluie_m, neige_m, ir, st, ha, ch, er, alb,
-                p["coeff_fonte_" + c], p["seuil_fonte_" + c], p["taux_fonte_geo"],
+                _cf, p["seuil_fonte_" + c], p["taux_fonte_geo"],
                 p["densite_max"], p["constante_tassement"], self.pas_de_temps,
                 melt_mode=_mode, sw_in=sw_in, tf=_tf, srf=_srf)
             new_state[c] = (st2, ha2, ch2, er2)
@@ -314,3 +333,32 @@ def init_state(n_nodes, device="cpu", dtype=torch.float64):
         s[c] = (z(), z(), z(), z())
         s["albedo_" + c] = z()
     return s
+
+
+def sublimation_kuzmin(u2, ea_kpa, t_snow_c):
+    """Sublimation POTENTIELLE du manteau (mm/j), formulation de Kuzmin (1957).
+
+    E = (0.18 + 0.098 * u10) * (e_s(T_neige) - e_a), E en mm/j et e en hPa (mb).
+    C'est la parametrisation la plus simple portee par Raven (SUBLIM_KUZMIN) : un terme
+    aerodynamique lineaire en vent multiplie par le deficit de vapeur a la surface du
+    manteau. Elle ne demande QUE la meteo deja presente dans le forcage (u2, e_a).
+
+    Pourquoi elle entre ici (R32, 2026-08-22) : sur 3203 intervalles apparies CanSWE,
+    31 % de la neige tombee n'atteint jamais le stock, hors seuil pluie-neige et hors
+    fonte (presque juste). La sublimation attendue en foret boreale est de 15 a 40 mm
+    par hiver -- une part du trou, pas sa totalite.
+
+    Unites et conventions :
+      u2       vent a 2 m (m/s) -- Kuzmin est ecrite pour u10 ; passer u2 SOUS-estime
+               legerement, ce qui est le bon cote de l'erreur pour un terme opt-in.
+      ea_kpa   pression de vapeur reelle (kPa, convention du forcage) -> hPa ici.
+      t_snow_c temperature de surface du manteau, approchee par min(T_air, 0) : un
+               manteau ne depasse pas 0 degre.
+    La saturation au-dessus de la GLACE suit Magnus-Tetens (constantes glace 21.87 /
+    265.5), pas la courbe eau liquide : a -20 degres l'ecart eau/glace atteint 20 %.
+    Retourne un POTENTIEL >= 0 ; l'appelant le borne par le stock disponible.
+    """
+    t = torch.clamp(t_snow_c, max=0.0)
+    es_hpa = 6.112 * torch.exp(21.87 * t / (t + 265.5))     # saturation sur glace, hPa
+    deficit = torch.clamp(es_hpa - ea_kpa * 10.0, min=0.0)
+    return (0.18 + 0.098 * u2) * deficit

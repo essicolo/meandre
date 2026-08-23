@@ -86,6 +86,9 @@ class SimDiagnostics:
     # une fuite de 1.97 % de la precipitation (2026-08-20).
     etr_mh: Tensor | None = None    # (T, N) mm/day -- evaporation du milieu humide
     wet_vol: Tensor | None = None   # (T, N) mm -- STOCK du reservoir de milieu humide
+    # Sublimation du manteau (Kuzmin, opt-in R32) : SORTIE ATMOSPHERIQUE, comptee par
+    # l'audit de fermeture au meme titre que l'ETR -- sans elle le bilan lirait une fuite.
+    sublimation: Tensor | None = None  # (T, N) mm/day
     prod_surf: Tensor | None = None
     prod_hypo: Tensor | None = None
     prod_base: Tensor | None = None

@@ -855,6 +855,32 @@ class SpatialFieldNetwork(nn.Module):
         # k_gw récession (log-espace)
         loss = loss + ((torch.log(params.k_gw + 1e-8).mean() - math.log(tg("k_gw", 0.02))) ** 2) * 0.3
 
+        # krec, drainage profond de la couche 3 (log-espace, comme k_gw).
+        #
+        # OPT-IN (`prior_on_krec`), et c'est délibéré : quand krec est imposé par le
+        # calage Hydrotel, la sortie du NeRF n'est PAS utilisée (le calage est fusionné
+        # par-dessus dans la colonne), donc l'ancrer tirerait un paramètre mort et
+        # changerait la perte sans changer la physique. Le drapeau n'est levé que quand
+        # krec est réellement libre.
+        #
+        # POURQUOI IL EN FAUT UN (Essi, 2026-08-22 : « krec devrait être dans le nerf »).
+        # krec EST une sortie du champ, mais rien ne l'ancrait : le prior tient k_gw et
+        # pas lui. Libre, il n'a donc que le débit pour juge, et le débit seul le pousse
+        # à zéro (R11) -- d'où le réflexe de le geler, qui est le mauvais remède : geler
+        # une propriété du sous-sol la rend uniforme sur toute une région, interdit de
+        # suivre la géologie et de répondre à un changement d'occupation du territoire.
+        # Ancrer la MOYENNE en laissant la variation spatiale libre est le même
+        # traitement que k_gw, et c'est ce que la forme (p.mean() - c)^2 permet.
+        #
+        # LA CIBLE. À saturation q3 = krec x z3 x theta ; avec z3 = 2.65 m et theta = 0.40,
+        # KREC_REF = 2e-5 m/h donne ~0.51 mm/j, soit ~34 % d'un écoulement de 549 mm/an.
+        # L'indice de débit de base des bassins boréaux québécois se situe entre 0.4 et
+        # 0.6, donc la cible est du bon ordre, légèrement conservatrice. À comparer au
+        # calage Hydrotel, 1.3e-7, qui donne 0.0036 mm/j : un robinet fermé.
+        if getattr(self, "prior_on_krec", False) and hasattr(params, "krec"):
+            loss = loss + ((torch.log(params.krec + 1e-12).mean()
+                            - math.log(tg("krec", KREC_REF))) ** 2) * 0.3
+
         # K_c (aligné sur la cible d'init, ex. 0.6 via [literature_prior])
         if hasattr(params, 'K_c'):
             loss = loss + ((params.K_c.mean() - tg("K_c", 1.0)) ** 2) * 0.2
