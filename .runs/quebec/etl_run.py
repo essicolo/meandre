@@ -291,6 +291,16 @@ if os.environ.get("ETL_SUBLIM", "0") == "1":
     # atmospherique exposee a diag.sublimation, comptee par ETL_BILAN.
     model.vertical_column.sublimation_mode = "kuzmin"
     print("[etl] SUBLIMATION du manteau : Kuzmin (u2, e_a du forcage)")
+if "ETL_WET_CPROD" in os.environ:
+    # Allonge la constante de vidange du reservoir de milieu humide (c_prod, en jours
+    # au-dessus du volume normal ; defaut SWAT 10 j). LE candidat rapide-lent de R39 :
+    # retenir la crue quelques SEMAINES -- le souterrain rend trop tard, le milieu
+    # humide est deja conservatif et sur le chemin de la crue. L'attribut est lu par
+    # la colonne AU MOMENT ou elle construit le bloc wetland (le dict n'existe pas
+    # encore ici : premiere version plantee sur _static None, corrigee).
+    model.vertical_column.c_prod_override = float(os.environ["ETL_WET_CPROD"])
+    print(f"[etl] milieu humide : c_prod impose a "
+          f"{float(os.environ['ETL_WET_CPROD']):.0f} jours (defaut 10)")
 if "ETL_GW_POWER" in os.environ:
     # Nappe non lineaire Q = q_ref*(S/100)^b (R38) : "q_ref,b", ex. "2.6,2.2" --
     # jeu qui reproduit les DEUX residences mesurees (37 j plein, 111 j bas).

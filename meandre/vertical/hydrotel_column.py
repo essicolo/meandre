@@ -485,6 +485,12 @@ class HydrotelColumn(nn.Module):
         wetdmax = z("wetdmax_raw", 0.3); frac = z("frac_raw", 0.8); wetdnor = z("wetdnor_raw", 0.2)
         wet_dra_fr = z("wet_dra_fr_raw", 0.0)
         wet_k = z("ksat_bs_raw", 0.5); c_ev = z("c_ev_raw", 0.6); c_prod = z("c_prod_raw", 10.0)
+        # Constante de vidange imposable (R39, voie rapide-lente) : c_prod est la
+        # duree de restitution du stock de crue au-dessus du volume normal (defaut
+        # SWAT 10 j). L'override permet de tester la retention de quelques semaines
+        # sans toucher aux donnees PHYSITEL. None = fidele.
+        if getattr(self, "c_prod_override", None) is not None:
+            c_prod = torch.full_like(like, float(self.c_prod_override))
         wmask = wet_a > 0.0
         # géométrie factice POSITIVE sur les nœuds sans MH (sinon log10(0)=−inf→NaN
         # dans wetland_geom_vec ; ces nœuds sont masqués en aval de toute façon).
