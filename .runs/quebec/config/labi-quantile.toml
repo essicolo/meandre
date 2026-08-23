@@ -236,8 +236,32 @@ w_kge = 1.0 # Per-station KGE — directly targets beta, r, gamma.
 w_pbias = 0.5 # reduit : l_ET ancre le volume physiquement (MODIS), plus besoin du pbias brut fort.
 # ── MULTI-OBJECTIF (tache #3) ──
 w_et = 1.0   # MSE(etr_sim, MODIS MOD16). Modele sous-evapore (491 vs 581 mm/an) -> ancre l_ET en haut,
+et_mode = "anomaly"  # MODIS pour la FORME, jamais pour le NIVEAU (R24, 2026-08-21).
+             # Le modele evapore 422 mm/an, dans la fourchette boreale 400-500 des tours a flux ;
+             # MOD16 impliquerait 539, au-dessus, et le registre note un biais haut de 15-30 % a
+             # l'est. En mode "level" la contrainte pousserait donc hors de la plage credible.
+             # En "anomaly" les deux cotes sont centres par noeud sur la serie entiere : il ne
+             # reste que la saisonnalite, ou MOD16 est informatif. Le residu centre dit que la
+             # saison d'evaporation du modele est EN RETARD (-0.59 juin, -0.53 juillet, +0.51
+             # septembre, +0.66 octobre), ce qui identifie le PhenologyModulator (K_c par GDD)
+             # plutot qu'un niveau global.
              # baisse le volume, CORRIGE la derive beta. Contraint K_c (identifiabilite). Couverture 2013-2024.
 w_tws = 0.2  # GRACE TWS mensuel (anomalie stockage total basin, sigma=25mm). Garde-fou stockage. 2002-2026.
+w_tws_clim = 0.05  # Biais saisonnier GRACE par mois calendaire (R23, 2026-08-21). Le terme
+             # ci-dessus juge chaque mois a l'incertitude d'UNE observation GRACE (25 mm) et se
+             # declare satisfait a 1.05 ecart-type, alors que 65 % du residu est un biais
+             # SYSTEMATIQUE (+44 mm mars, -47 mai sur le champion OUTV). Juge a l'incertitude de
+             # la climatologie (5.4 mm = 25/sqrt(21 ans)), ce meme residu vaut 4.8 ecarts-types.
+             # PREMIERE VALEUR JAMAIS ESSAYEE, a balayer : L_clim part a ~23, donc 0.05 le rend
+             # comparable au terme de debit (O(1)) sans le dominer.
+w_swe_mass = 0.0  # CanSWE : MASSE du manteau mesuree au sol (R24, 2026-08-21). A ZERO
+             # par defaut : la cible est cablee et testee mais jamais encore entrainee. w_snow
+             # (couverture MOD10) sature des qu'il y a un peu de neige et sous-estime sous
+             # couvert forestier, au point de demander au modele de fondre PLUS TOT alors qu'il
+             # a deja moitie moins de neige que le mesure (121 mm contre 238 sur OUTV). La masse
+             # n'a pas ce defaut. Echelle interne 100 mm ; filtres de representativite 15 km et
+             # 150 m dans build_swe_targets. Sites retenus : outv 97, sagu 37, slno 33, gasp 49,
+             # abit 12 ; mont et slso n'en ont aucun et le poids s'y eteint tout seul.
 w_mse = 0.1 # MSE (kept low to avoid flattening peaks; log_mse handles low flows)
 w_log_nse = 0.0 # NSE on log-flows. NOT chunk-safe.
 w_log_mse = 0.3 # MSE on log-flows. Chunk-safe. Emphasises baseflow.

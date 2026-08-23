@@ -71,12 +71,36 @@ if "ETL_WSNOW" in os.environ:
     # = 2 semaines de retard ; la donnée entre par la loss, leçon pilote4b/4c)
     lcfg["w_snow"] = float(os.environ["ETL_WSNOW"])
     print(f"[etl] w_snow = {lcfg['w_snow']} (fonte supervisée MOD10)")
+    if lcfg["w_snow"] > 0:
+        # R24 (2026-08-21). Cette contrainte n'avait JAMAIS ete active : `with_forcing`
+        # perdait `swe_obs` (dette #14). En la reparant on la rend effective, et l'audit
+        # dit qu'elle pousse DANS LE MAUVAIS SENS : le modele voit +0.47 de fraction de
+        # couverture de plus que MODIS en mars et +0.45 en avril, a 38 ecarts-times, donc
+        # le terme lui demanderait d'ENLEVER de la neige et de fondre plus tot. Or GRACE
+        # veut l'inverse (la reserve doit tenir jusqu'en mai) et CanSWE mesure un pic de
+        # 238 mm quand le modele en a 121. MODIS mesure une reflectance et sous-estime la
+        # neige sous couvert : OUTV est boise a 74 %, dont 32 % de coniferes.
+        print("[etl] ATTENTION w_snow > 0 : contrainte MODIS neige effective depuis le "
+              "correctif de with_forcing (dette #14).")
+        print("      R24 : elle tire vers MOINS de neige en mars-avril, contre GRACE et "
+              "CanSWE. Mettre ETL_WSNOW=0 tant que la cible n'est pas CanSWE (masse) "
+              "plutot que MOD10 (couverture).")
 if "ETL_WTWS" in os.environ:
     # GRACE (anomalie de stockage total). Actif par défaut à 0.2 via le fichier de
     # config ; on l'expose pour pouvoir mesurer ce qu'il apporte OU coûte, sa ligne de
     # base ayant été corrigée le 2026-08-10 (elle était calculée par tronçon de séquence).
     lcfg["w_tws"] = float(os.environ["ETL_WTWS"])
     print(f"[etl] w_tws override = {lcfg['w_tws']} (GRACE)")
+if "ETL_WSWE" in os.environ:
+    # CanSWE : masse du manteau mesuree au sol (R24). Cible distincte de MOD10, qui ne
+    # mesure qu'une couverture. Le pic simule vaut 121 mm sur OUTV contre 238 mesures.
+    lcfg["w_swe_mass"] = float(os.environ["ETL_WSWE"])
+    print(f"[etl] w_swe_mass = {lcfg['w_swe_mass']} (masse du manteau, CanSWE)")
+if "ETL_WTWSCLIM" in os.environ:
+    # Biais saisonnier GRACE par mois calendaire (R23). Premiere valeur jamais essayee
+    # a 0.05 dans les configs : ce levier existe pour la balayer.
+    lcfg["w_tws_clim"] = float(os.environ["ETL_WTWSCLIM"])
+    print(f"[etl] w_tws_clim override = {lcfg['w_tws_clim']} (biais saisonnier GRACE)")
 if "ETL_WET" in os.environ:
     # mode appris : w_et(MOD16) est un DOUBLE ancrage (le module encode déjà MOD16,
     # biaisé +15-30 % à l'est vs bilan) — il poussait K_c à 1.07 malgré beta 0.78 (etl2)
@@ -150,11 +174,12 @@ def _sans_prelev(d):
 
 
 def with_forcing(d):
-    return TrainingData(forcing=f7, q_obs=d.q_obs, station_mask=d.station_mask,
-                        station_idx=d.station_idx, graph=d.graph, node_coords=d.node_coords,
-                        territorial=d.territorial, withdrawals=d.withdrawals,
-                        day_of_year=d.day_of_year, train_slice=d.train_slice, val_slice=d.val_slice,
-                        et_obs=d.et_obs, tws_obs=d.tws_obs)
+    # `swe_obs` MANQUAIT ICI du 2026-07-21 au 2026-08-21 (dette #14). Le defaut du
+    # dataclass est None et `_need_snow` du trainer exige un tenseur, donc la perte
+    # neige ne s'est jamais evaluee dans le pilote quebecois alors qu'il annonce
+    # `w_snow = 0.3` a chaque run. Toute reconstruction manuelle d'un dataclass est un
+    # piege de ce genre : preferer `dataclasses.replace`, qui ne peut rien oublier.
+    return _dc_replace(d, forcing=f7)
 
 
 td, vd = with_forcing(td), with_forcing(vd)
@@ -261,6 +286,47 @@ if _MEMBRE != "LN24HA":
 # et avril en DEFICIT (0.729), signature d'eau relachee en debut d'hiver au lieu d'etre
 # stockee jusqu'a la crue. Le seuil du projet est a -2.2168 °C, donc tout ce qui est
 # au-dessus compte comme PLUIE : un seuil aussi bas fabrique de la pluie en decembre.
+if os.environ.get("ETL_SUBLIM", "0") == "1":
+    # Sublimation Kuzmin (R32) : 15-40 mm/hiver attendus en foret boreale. Sortie
+    # atmospherique exposee a diag.sublimation, comptee par ETL_BILAN.
+    model.vertical_column.sublimation_mode = "kuzmin"
+    print("[etl] SUBLIMATION du manteau : Kuzmin (u2, e_a du forcage)")
+if "ETL_GW_POWER" in os.environ:
+    # Nappe non lineaire Q = q_ref*(S/100)^b (R38) : "q_ref,b", ex. "2.6,2.2" --
+    # jeu qui reproduit les DEUX residences mesurees (37 j plein, 111 j bas).
+    _qr, _b = (float(x) for x in os.environ["ETL_GW_POWER"].split(","))
+    model.vertical_column.gw_power_law = (_qr, _b)
+    print(f"[etl] nappe NON LINEAIRE : q_ref {_qr} mm/j a 100 mm, exposant {_b}")
+if "ETL_KREC_PRIOR" in os.environ:
+    # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
+    # a krec ~5e-5..1e-4 avec la vanne non lineaire, pas a 2e-5). La moyenne du champ
+    # reste ancree, la variation spatiale reste libre.
+    _t = getattr(model.spatial_encoder, "_prior_targets", None) or {}
+    _t["krec"] = float(os.environ["ETL_KREC_PRIOR"])
+    model.spatial_encoder._prior_targets = _t
+    print(f"[etl] cible du prior krec -> {_t['krec']:.1e} m/h")
+if "ETL_L3_EXP" in os.environ:
+    # Drainage non lineaire de L3 (R37) : meme plafond a saturation, coupure en
+    # dessous -> L3 respire, la recharge devient saisonniere. n=1 == fidele.
+    model.vertical_column.l3_drain_exp = float(os.environ["ETL_L3_EXP"])
+    print(f"[etl] drainage L3 NON LINEAIRE : exposant {float(os.environ['ETL_L3_EXP'])}")
+if "ETL_SEUIL_TWB" in os.environ:
+    # Partage pluie-neige au BULBE HUMIDE (generalisation du seuil, remarque d'Essi
+    # sur R35) : un seuil unique en Twb remplace le seuil AIR par region. Sur nos 6
+    # regions, le Twb equivalent au +0.3 air d'OUTV tient dans [-1.0, -0.7].
+    model.vertical_column.split_mode = "wet_bulb"
+    model.vertical_column.t_neige_seuil = float(os.environ["ETL_SEUIL_TWB"])
+    print(f"[etl] partage pluie/neige au BULBE HUMIDE, seuil Twb "
+          f"{float(os.environ['ETL_SEUIL_TWB']):+.2f} degres (Stull 2011, e_a du forcage)")
+if "ETL_MELT_SAISON" in os.environ:
+    # Modulation saisonniere du facteur de fonte (R32). Un degre-jour constant absorbe
+    # le cycle annuel de radiation ; cale sur la crue, il fond trop en novembre-decembre
+    # -- le deficit mesure (accumulation 58 % de CanSWE, fonte de coeur d'hiver juste).
+    # s(j) = 1 + amp*sin(2*pi*(j-81)/365), moyenne annuelle 1. amp=0 = clone fidele.
+    _msa = float(os.environ["ETL_MELT_SAISON"])
+    model.vertical_column.melt_seasonal_amp = _msa
+    print(f"[etl] fonte SAISONNIERE : amplitude {_msa} "
+          f"(decembre x{1-_msa:.2f}, juin x{1+_msa:.2f}, moyenne annuelle inchangee)")
 if "ETL_SEUIL_VALEUR" in os.environ:
     _sv = float(os.environ["ETL_SEUIL_VALEUR"])
     model.vertical_column.t_neige_seuil = _sv
@@ -456,6 +522,17 @@ if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
               f"ΔT_melt {float(_dT.min()):+.2f} à {float(_dT.max()):+.2f} °C (sens {_sens:.2f} j/°C)")
     else:
         print(f"[etl] champ freshet ignoré ({len(_cf)} vs {n_nodes} nœuds, sens={_sens})")
+# krec LIBRE veut dire krec APPRIS PAR LE CHAMP, donc ancre comme les autres sorties
+# (Essi, 2026-08-22 : « krec devrait etre dans le nerf »). Sans ancrage il n'a que le
+# debit pour juge, et le debit seul le pousse a zero (R11). Le prior tient la MOYENNE du
+# champ en espace log et laisse la variation spatiale libre -- meme traitement que k_gw.
+# Inutile quand krec est impose : la sortie du NeRF n'est alors pas utilisee, le calage
+# etant fusionne par-dessus dans la colonne.
+if os.environ.get("ETL_KREC_LIBRE", "0") == "1" and "ETL_KREC_GEL" not in os.environ:
+    model.spatial_encoder.prior_on_krec = True
+    print("[etl] krec APPRIS par le champ, moyenne ancree par le prior physique "
+          "(cible 2e-5 m/h, ~34 % de debit de base ; le calage Hydrotel donne 1.3e-7)")
+
 if "ETL_KREC" in os.environ:
     import math as _mk
     _kv = float(os.environ["ETL_KREC"])
@@ -679,7 +756,15 @@ if os.environ.get("ETL_CAPACITE", "0") == "1":
             _libre.append((_n, _p.numel()))
     print(f"[etl] CAPACITÉ : {sum(k for _, k in _libre):,} params libres ({[n for n, _ in _libre]}), "
           f"tout le reste GELÉ, régularisation latente coupée")
-print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | etp_channel=6 (demande apprise × K_c NeRF, init 1.0)")
+# CE QUI EST IMPRIME DOIT ETRE CE QUI TOURNE. La ligne annoncait `etp_channel=6
+# (demande apprise)` EN DUR, donc y compris sous ETL_ETP=linacre|mcguinness qui posent
+# `etp_channel = None` : tous les journaux du chantier quebecois affirmaient que la
+# demande MLP etait active alors qu'elle etait ignoree par la colonne. Corrige le
+# 2026-08-21 -- on lit l'attribut. Meme famille que la dette #3.
+_ch = model.vertical_column.etp_channel
+print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | "
+      + (f"etp_channel={_ch} (demande apprise × K_c NeRF)" if _ch is not None
+         else f"ETP = {model.vertical_column.et_mode} (demande apprise CHARGEE MAIS IGNOREE)"))
 
 _lake_lr = float(os.environ.get("ETL_LAKE_LR", "50"))
 # ── VALIDATION CROISÉE SPATIALE (ETL_FOLD="k/K") ────────────────────────────
@@ -710,7 +795,10 @@ tconf = TrainingConfig(
     lr=float(os.environ.get("ETL_LR", tcfg.get("lr", 5e-4))),
     chunk_steps=int(tcfg.get("chunk_steps", 45)),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
-    grad_clip=float(tcfg.get("clip_grad_norm", 1.0)),
+    # la cle TOML s'appelle `grad_clip` ; `clip_grad_norm` (lu jusqu'au 2026-08-22)
+    # n'existe dans aucune config -- benin car la valeur egale le defaut (1.0),
+    # mais c'est le meme motif que la dette #16, attrape par le test de famille.
+    grad_clip=float(tcfg.get("grad_clip", 1.0)),
     w_prior=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_prior", 0.005)),
     w_latent_reg=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_latent_reg", 1e-3)),
     best_metric="kge_median",
@@ -724,8 +812,36 @@ tconf = TrainingConfig(
     autopilot_beta_threshold=float(tcfg.get("autopilot_beta_threshold", 0.10)),
     autopilot_restart_regression=float(tcfg.get("autopilot_restart_regression", 0.05)),
     autopilot_restart_max=int(tcfg.get("autopilot_restart_max", 3)),
+    # Dette #16 (2026-08-22) : cette cle MANQUAIT dans l'enumeration, donc patience
+    # restait au defaut 0 et l'arret anticipe ne s'est JAMAIS declenche dans le pilote
+    # quebecois -- les 53 configs portant `patience = 8` n'y changeaient rien, et le run
+    # aux-A a fait 10 epoques d'effondrement complet sans s'arreter. Troisieme instance
+    # du motif « construction par enumeration » (dettes #14, #15).
+    patience=int(tcfg.get("patience", 0)),
     val_every=1,
 )
+# CE QUI CONTRAINT REELLEMENT LE MODELE, lu dans l'objet de perte et dans les donnees,
+# jamais dans la config (dette #15 : une ligne codee en dur a fait croire pendant des
+# semaines que la demande ET apprise etait active alors que la colonne l'ignorait ;
+# dette #14 : `w_snow = 0.3` etait annonce alors que la cible avait ete perdue en route).
+# On imprime le poids ET la presence de la cible, cote a cote.
+_lf = r["loss_fn"]
+print("[etl] contraintes auxiliaires effectives :")
+for _nom, _poids, _cible in (
+        ("MODIS ET (MOD16)", getattr(_lf, "w_et", 0.0), td.et_obs),
+        ("  mode ET", getattr(_lf, "et_mode", "?"), None),
+        ("MODIS couverture nivale", getattr(_lf, "w_snow", 0.0), td.swe_obs),
+        ("CanSWE masse du manteau", getattr(_lf, "w_swe_mass", 0.0), td.swe_mass_obs),
+        ("GRACE TWS mensuel", getattr(_lf, "w_tws", 0.0), td.tws_obs),
+        ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs)):
+    if _nom == "  mode ET":
+        print(f"        {_nom:<26s} {_poids}")
+        continue
+    _etat = ("ACTIVE" if (_poids > 0 and _cible is not None)
+             else "eteinte" if _poids == 0 else "POIDS SANS CIBLE")
+    print(f"        {_nom:<26s} poids {_poids:<6g} cible "
+          f"{'presente' if _cible is not None else 'ABSENTE':<9s} -> {_etat}")
+
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
 tr.fit()
@@ -783,6 +899,58 @@ for s in range(Qs.shape[1]):
 ks = np.array(ks)
 print(f"\n[etl] HELD-OUT 2022-2024 {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
 
+# SCORE SUR LES JOURS REELLEMENT MESURES (R19, 2026-08-21).
+# Le CEHQ publie a cote de chaque debit une remarque, et deux de ses codes disent que la
+# valeur n'est pas une lecture de courbe de tarage : `E` (estimee) et `R` (corrigee pour
+# effet de refoulement, donc sous glace). Mesure sur les 16 stations d'OUTV en tenue de
+# cote : janvier 85.4 %, fevrier 87.3 %, mars 60.8 %, decembre 47.0 %, avril 9.5 %, zero
+# de mai a octobre -- 21.3 % de la periode entiere. Une part de ce qu'on appelle l'erreur
+# du modele en hiver est donc un desaccord avec la reconstruction d'un hydrologue.
+# Ce bloc rejoue le MEME score en ne gardant que les jours mesures. L'ecart entre les
+# deux chiffres est la part du classement qui repose sur des valeurs reconstruites.
+# Enveloppe : un diagnostic ne doit JAMAIS couter l'evaluation qui le precede.
+try:
+    import duckdb as _dqf
+    import pandas as _pdm   # aussi utilise par les blocs suivants
+    _cf = _dqf.connect(_paths.data_path("quebec", f"{REG}.duckdb"), read_only=True)
+    if "reconstructed" in [c[0] for c in _cf.execute("DESCRIBE observations").fetchall()]:
+        _fl = _cf.execute(
+            "SELECT station_id, date, reconstructed FROM observations "
+            "WHERE reconstructed IS NOT NULL").df()
+        _cf.close()
+        _sids = r.get("station_ids")
+        if _sids and len(_sids) == qo_test.shape[1] and len(_fl):
+            _fl["station_id"] = _fl.station_id.astype(str)
+            _piv = _fl.pivot_table(index="date", columns="station_id",
+                                   values="reconstructed", aggfunc="first")
+            _jours = _pdm.DatetimeIndex(
+                times[np.flatnonzero(sl)[0]:np.flatnonzero(sl)[-1] + 1]).normalize()
+            _piv.index = _pdm.DatetimeIndex(_piv.index).normalize()
+            _rec = _piv.reindex(index=_jours, columns=_sids).to_numpy()
+            _mes = (_rec == False)   # noqa: E712 -- NaN (pas de drapeau) exclu aussi
+            _ks2, _ksh = [], []
+            for _s in range(Qs.shape[1]):
+                _v = (~torch.isnan(qo_test[:, _s]) & ~torch.isnan(Qs[:, _s])).numpy()
+                _vm = _v & _mes[:, _s]
+                if _v.sum() >= 60:
+                    _ks2.append(float(kge_fn(qo_test[_v, _s], Qs[_v, _s])))
+                if _vm.sum() >= 60:
+                    _ksh.append(float(kge_fn(qo_test[_vm, _s], Qs[_vm, _s])))
+            if _ksh:
+                print(f"[etl] score sur les jours MESURES seulement (drapeaux CEHQ) : "
+                      f"n={len(_ksh)} | median {np.median(_ksh):.4f} "
+                      f"(contre {np.median(_ks2):.4f} tous jours confondus, "
+                      f"ecart {np.median(_ksh)-np.median(_ks2):+.4f})")
+                print(f"        jours reconstruits ecartes : "
+                      f"{100*(1-_mes.sum()/max(np.isfinite(_rec.astype(float)).sum(),1)):.1f} % "
+                      f"des jours drapeautes de la tenue de cote")
+    else:
+        _cf.close()
+        print("[etl] drapeaux CEHQ absents de la base "
+              "(lancer .runs/quebec/ingest_cehq_flags.py)")
+except Exception as _efl:
+    print(f"[etl] score sur jours mesures : impossible ({type(_efl).__name__}: {_efl})")
+
 # BIAIS MENSUEL dans le protocole de REFERENCE. Le score seul ne dit pas OU le modele
 # se trompe, et les rapports mensuels vivaient jusqu'ici dans des scripts de diagnostic
 # qui ne reproduisaient pas le pilote. Fevrier est le plus gros ecart connu du champion
@@ -829,7 +997,10 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         _dS = _stock[-1] - _stock[0]
         _ent = _P_tot.sum(axis=0)
         _evmh = (_mh_ev.sum(axis=0) if _mh_ev is not None else np.zeros_like(_etr[0]))
-        _sor = _etr.sum(axis=0) + _lat.sum(axis=0) + _evmh
+        # sublimation (opt-in) : sortie atmospherique au meme titre que l'ETR
+        _sub = (_DIAG.sublimation.cpu().numpy().sum(axis=0)
+                if getattr(_DIAG, "sublimation", None) is not None else 0.0)
+        _sor = _etr.sum(axis=0) + _lat.sum(axis=0) + _evmh + _sub
         _err = _ent - _sor - _dS
         _rel = _err / np.clip(_ent, 1e-9, None)
         print("[etl] BILAN D'EAU de la colonne, cumul sur toute la simulation (mm) :")
@@ -873,6 +1044,250 @@ if os.environ.get("ETL_BILAN", "0") == "1":
                     "FUITE REELLE" if _abs > 0.01 else "SUSPECT")
         print(f"        VERDICT : {_verdict}  (regle posee avant la mesure : "
               f"<0.1 % ferme, >1 % fuite)")
+
+# ── CYCLE SAISONNIER DES STOCKS (ETL_STOCKS=1) ───────────────────────────────
+# L'audit ci-dessus ferme le bilan sur le CUMUL : rien ne se perd sur la duree de la
+# simulation. Il ne dit pas OU l'eau attend entre-temps. Or le defaut du champion est
+# un DEPLACEMENT dans l'annee (avril a 0.729, decembre a 1.207) alors que le printemps
+# n'est pas limite par l'apport : l'ecoulement d'avril-mai vaut 0.31 a 0.45 de la neige
+# plus la pluie (R20). Le modele ne RETIENT donc pas en debut d'hiver ce qu'il devrait
+# relacher au printemps ; reste a savoir lequel de ses reservoirs se vide. On sort la
+# climatologie mensuelle de chaque stock et de chaque flux, en mm, moyennee sur les
+# noeuds -- une question de FORME, sans echelle, donc lisible malgre R19 (de decembre a
+# mars la cible observee est une interpolation a la main, pas une mesure).
+if os.environ.get("ETL_STOCKS", "0") == "1":
+    if not _VEUT_NEIGE:
+        print("[etl] stocks : ETL_STOCKS=1 exige ETL_CMP_NEIGE=1 (diagnostics requis)")
+    else:
+        _sts = model.vertical_column._static["soil"]
+        def _np1(x):
+            return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+        _sz1, _sz2, _sz3 = _np1(_sts["z1"]), _np1(_sts["z2"]), _np1(_sts["z3"])
+        _mois_tot = _pdm.DatetimeIndex(times).month.to_numpy()
+        _stocks = {
+            "manteau": _DIAG.swe.cpu().numpy(),
+            "canopee": _DIAG.canopy.cpu().numpy(),
+            "sol L1": 1000.0 * _DIAG.theta1.cpu().numpy() * _sz1,
+            "sol L2": 1000.0 * _DIAG.theta2.cpu().numpy() * _sz2,
+            "sol L3": 1000.0 * _DIAG.theta3.cpu().numpy() * _sz3,
+            "milieu humide": (_DIAG.wet_vol.cpu().numpy()
+                              if _DIAG.wet_vol is not None else None),
+            "nappe": _DIAG.s_gw.cpu().numpy(),
+        }
+        _stocks = {k: v for k, v in _stocks.items() if v is not None}
+        _flux = {
+            "precipitation": f7[:, :, 0].cpu().numpy(),
+            "apport au sol": _DIAG.snowmelt.cpu().numpy(),   # MAL NOMME : apport total
+            "ETR": _DIAG.etr.cpu().numpy(),
+            "production": _DIAG.lateral_mm.cpu().numpy(),
+        }
+        # PARTITION DE LA PRODUCTION (2026-08-21). La couche profonde n'a qu'UN exutoire
+        # dans bv3c2 : `q3 = krec * z3 * theta3`, qui alimente directement prod_base. Avec
+        # le krec uniforme du pilote (5e-5 m/h), z3 = 2.65 m et theta a saturation 0.433,
+        # ce debit plafonne a 1.38 mm/j, soit ~503 mm/an -- du meme ordre que la production
+        # TOTALE (549 mm/an). Deux lectures opposees en decoulent : ou bien L3 est un tuyau
+        # sature qui ne stocke rien, ou bien elle travaille a pleine capacite et porte
+        # l'essentiel de l'ecoulement. La partition tranche, le calcul ne le peut pas.
+        for _cle, _nom in (("prod_surf", "  dont surface"), ("prod_hypo", "  dont hypoderm."),
+                           ("prod_base", "  dont base")):
+            _v = getattr(_DIAG, _cle, None)
+            if _v is not None:
+                _flux[_nom] = _v.cpu().numpy()
+        if _DIAG.etr_mh is not None:
+            _flux["evap. milieu humide"] = _DIAG.etr_mh.cpu().numpy()
+        _n = len(_mois_tot)
+        print("\n[etl] STOCKS, niveau moyen par mois (mm sur le bassin, moyenne des noeuds) :")
+        print("        " + f"{'stock':>16s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
+        _cyc = {}
+        for _nom, _v in _stocks.items():
+            _c = np.array([np.nanmean(_v[:_n][_mois_tot == _m]) for _m in range(1, 13)])
+            _cyc[_nom] = _c
+            print("        " + f"{_nom:>16s}" + "".join(f"{_x:7.0f}" for _x in _c))
+        _tot = np.sum(list(_cyc.values()), axis=0)
+        print("        " + f"{'TOTAL':>16s}" + "".join(f"{_x:7.0f}" for _x in _tot))
+        print("\n[etl] FLUX, lame moyenne par mois (mm/mois, moyenne des noeuds) :")
+        print("        " + f"{'flux':>16s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
+        for _nom, _v in _flux.items():
+            _c = np.array([np.nansum(_v[:_n][_mois_tot == _m])
+                           / max((_mois_tot == _m).sum(), 1) * 30.4
+                           / max(_v.shape[1], 1) for _m in range(1, 13)])
+            print("        " + f"{_nom:>16s}" + "".join(f"{_x:7.1f}" for _x in _c))
+        print("\n[etl] VARIATION decembre -> avril, par stock (mm ; negatif = le")
+        print("      reservoir se VIDE pendant l'hiver au lieu de se remplir) :")
+        for _nom, _c in sorted(_cyc.items(), key=lambda kv: kv[1][3] - kv[1][11]):
+            print(f"        {_nom:>16s} : dec {_c[11]:8.0f} -> avr {_c[3]:8.0f}"
+                  f"   {_c[3]-_c[11]:+8.0f}")
+        print(f"        {'TOTAL':>16s} : dec {_tot[11]:8.0f} -> avr {_tot[3]:8.0f}"
+              f"   {_tot[3]-_tot[11]:+8.0f}")
+
+# ── AUDIT DES CONTRAINTES AUXILIAIRES (ETL_AUX=1) ────────────────────────────
+# Motif (R23, 2026-08-21) : GRACE etait branche depuis toujours (w_tws=0.2 dans la
+# config de base) et ne contraignait RIEN, parce que la perte juge des mois INDIVIDUELS
+# a sigma=25 mm -- l'incertitude d'UNE observation -- alors que l'erreur est un biais
+# saisonnier SYSTEMATIQUE moyenne sur vingt ans. Lu a la bonne echelle de bruit, le
+# meme residu passe de 1.05 a 4.8 ecarts-types. Avant de toucher a quoi que ce soit, on
+# pose la MEME question aux trois auxiliaires : quelle part du residu est un biais
+# saisonnier repetable, et la perte le voit-elle ?
+#
+# Decomposition, pour chaque auxiliaire : residu quotidien moyen-bassin r(t), sa
+# CLIMATOLOGIE mensuelle (partie systematique, celle qui ne s'efface pas en moyennant
+# les annees) et la dispersion interannuelle autour d'elle (le bruit). La significativite
+# du biais est systematique / (dispersion / sqrt(n_annees)). Un auxiliaire dont le biais
+# est significatif mais dont la perte est deja satisfaite est une contrainte gaspillee.
+if os.environ.get("ETL_AUX", "0") == "1":
+    if not _VEUT_NEIGE:
+        print("[etl] aux : ETL_AUX=1 exige ETL_CMP_NEIGE=1 (diagnostics requis)")
+    else:
+        _idx = _pdm.DatetimeIndex(times)
+        _an_t, _mo_t = _idx.year.to_numpy(), _idx.month.to_numpy()
+
+        def _audit(nom, sim, obs, unite, poids, sigma_perte, note=""):
+            """sim, obs : (T,) moyenne-bassin alignees sur `times`, NaN admis."""
+            _v = np.isfinite(sim) & np.isfinite(obs)
+            if _v.sum() < 200:
+                print(f"\n  {nom} : indisponible ({int(_v.sum())} pas valides)"); return
+            _r = np.where(_v, sim - obs, np.nan)
+            # climatologie mensuelle du residu = partie SYSTEMATIQUE
+            _sys = np.array([np.nanmean(_r[_mo_t == _m]) for _m in range(1, 13)])
+            # dispersion interannuelle autour de cette climatologie = BRUIT
+            _moy_am, _nan = [], []
+            for _m in range(1, 13):
+                _va = [np.nanmean(_r[(_mo_t == _m) & (_an_t == _a)])
+                       for _a in np.unique(_an_t)]
+                _va = np.array([x for x in _va if np.isfinite(x)])
+                _moy_am.append(_va.std() if len(_va) > 2 else np.nan)
+                _nan.append(len(_va))
+            _disp, _nann = np.array(_moy_am), np.array(_nan, float)
+            _rms_sys = float(np.sqrt(np.nanmean(_sys ** 2)))
+            _rms_tot = float(np.sqrt(np.nanmean(_r ** 2)))
+            _sig_clim = _disp / np.sqrt(np.clip(_nann, 1, None))
+            _z = np.abs(_sys) / np.clip(_sig_clim, 1e-9, None)
+            print(f"\n  ── {nom} ({unite}) | poids actif {poids}"
+                  + (f" | sigma de la perte {sigma_perte}" if sigma_perte else " | MSE brute, sans sigma")
+                  + (f"\n     {note}" if note else ""))
+            print("       mois " + "".join(f"{_m:>7d}" for _m in range(1, 13)))
+            print("     biais  " + "".join(f"{_x:7.2f}" for _x in _sys))
+            print("     ecart-t" + "".join(f"{_x:7.1f}" for _x in _z))
+            print(f"     residu total {_rms_tot:.3f} | part SYSTEMATIQUE {_rms_sys:.3f} "
+                  f"({100*_rms_sys/max(_rms_tot,1e-9):.0f} %) | reste = bruit")
+            print(f"     biais saisonnier a {np.nanmax(_z):.1f} ecarts-types au pire mois "
+                  f"(mois {int(np.nanargmax(_z))+1})")
+            if sigma_perte:
+                _lu = _rms_tot / float(sigma_perte)
+                print(f"     LA PERTE LIT : {_lu:.2f} ecart-type"
+                      + ("  -> DEJA SATISFAITE, ne pousse plus" if _lu < 1.5 else ""))
+
+        # DEMANDE OU OFFRE ? (remarque d'Essi, 2026-08-21). Un residu d'ET ne dit pas
+        # a lui seul d'ou il vient : la phenologie et la formule d'ETP fixent la DEMANDE,
+        # l'humidite du sol fixe l'OFFRE, et le forcage porte les deux. Le rapport
+        # ETR/ETP tranche : proche de 1, l'evaporation est bornee par la demande et le
+        # sol ne joue pas ; nettement sous 1, c'est le sol qui retient. On imprime aussi
+        # la saturation par couche, parce qu'un sol qui ne descend jamais sous ~0.9 de
+        # sa porosite ne peut pas etre limitant, quel que soit le rapport.
+        _etr_m = _DIAG.etr.cpu().numpy()
+        _etp_m = _DIAG.etp.cpu().numpy() if _DIAG.etp is not None else None
+        _sat = model.vertical_column._static["soil"]
+        def _n3(x):
+            return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+        print("\n[etl] DEMANDE OU OFFRE : rapport ETR/ETP et saturation du sol, par mois")
+        print("      (ETR/ETP proche de 1 = borne par la DEMANDE, le sol ne retient pas ;")
+        print("       saturation = theta / porosite, un sol au-dessus de ~0.9 n'est jamais limitant)")
+        _por = _n3(model.spatial_encoder(td.node_coords, td.territorial.to_tensor()).porosity_1) \
+            if hasattr(model, "spatial_encoder") else None
+        print("        " + f"{'':>14s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
+        if _etp_m is not None:
+            _r = [np.nansum(_etr_m[_mo_t == _m]) / max(np.nansum(_etp_m[_mo_t == _m]), 1e-9)
+                  for _m in range(1, 13)]
+            print("        " + f"{'ETR/ETP':>14s}" + "".join(f"{_x:7.2f}" for _x in _r))
+        for _nom, _th, _zz in (("sat. L1", _DIAG.theta1, "1"), ("sat. L2", _DIAG.theta2, "2"),
+                               ("sat. L3", _DIAG.theta3, "3")):
+            _t = _th.cpu().numpy()
+            _p = _n3(getattr(model.spatial_encoder(td.node_coords, td.territorial.to_tensor()),
+                             f"porosity_{_zz}"))
+            _s2 = _t / np.clip(_p, 1e-9, None)
+            print("        " + f"{_nom:>14s}"
+                  + "".join(f"{np.nanmean(_s2[_mo_t == _m]):7.2f}" for _m in range(1, 13)))
+            # UNE MOYENNE ARRONDIE A 1.00 NE DIT PAS SI LE SOL EST *EPINGLE* A SATURATION.
+            # La difference compte : un reservoir a 0.95 respire encore un peu, un
+            # reservoir epingle a la porosite est un tuyau et n'a aucune capacite. On
+            # imprime donc la valeur absolue et la part des cas colles a la borne.
+            print("        " + f"{'':>14s}   theta med {np.nanmedian(_t):.4f} | "
+                  f"porosite med {np.nanmedian(_p):.4f} | "
+                  f"epingle (>=0.999) {100*np.nanmean(_s2 >= 0.999):.1f} % "
+                  f"des couples noeud-jour")
+
+        print("\n[etl] AUDIT DES CONTRAINTES AUXILIAIRES")
+        print("      biais = climatologie mensuelle du residu simule-observe (partie qui")
+        print("      ne s'efface PAS en moyennant les annees) ; ecart-t = sa significativite")
+        print("      contre la dispersion interannuelle, dispersion/sqrt(n annees).")
+        # ET : MOD16, moyenne 8 jours des deux cotes (meme appariement que la perte)
+        # MOYENNE-BASSIN QUI IGNORE LES MANQUANTS. `.mean(dim=1)` propage : MODIS a des
+        # trous PAR NOEUD, donc un seul noeud absent suffit a rendre NaN la moyenne du
+        # jour entier, et l'audit lisait 0 pas valide sur 9000.
+        def _moy_bassin(x):
+            a = x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+            return np.nanmean(np.where(np.isfinite(a), a, np.nan), axis=1)
+
+        def _cale(serie_t0):
+            """place une serie qui demarre a t0 sur l'axe complet `times`."""
+            out = np.full(len(times), np.nan)
+            out[t0:t0 + len(serie_t0)] = serie_t0
+            return out
+
+        _eo = getattr(td, "et_obs", None)
+        if _eo is not None:
+            _audit("MODIS ET (MOD16)", _moy_bassin(_DIAG.etr), _cale(_moy_bassin(_eo)),
+                   "mm/j", lcfg.get("w_et", 0.0), None,
+                   "w_et=0 dans la recette du champion : contrainte DEBRANCHEE")
+        else:
+            print("\n  MODIS ET : non charge")
+        # Neige : fraction de couverture, meme transformation que la perte.
+        # LU DIRECTEMENT EN BASE : `with_forcing` (l.152) reconstruit TrainingData sans
+        # recopier `swe_obs`, donc td.swe_obs est None dans tout le pilote quebecois et
+        # `_need_snow` du trainer est toujours faux. On mesure la contrainte telle
+        # qu'elle SERAIT, sans rien changer au comportement d'entrainement.
+        _so = getattr(td, "swe_obs", None)
+        if _so is None:
+            try:
+                from meandre.data.basin_cache import BasinCache as _BC
+                _so = _BC(_paths.data_path("quebec", f"{REG}.duckdb")).load_modis_snow(
+                    times[0], times[-1], device="cpu")
+                if _so is not None:
+                    print("\n  (neige relue en base : td.swe_obs est None, voir with_forcing l.152)")
+            except Exception as _es_:
+                print(f"\n  MODIS neige : relecture impossible ({type(_es_).__name__}: {_es_})")
+                _so = None
+        if _so is not None:
+            _ss = _moy_bassin(1.0 - torch.exp(-_DIAG.swe / 15.0))
+            _sb = _moy_bassin(_so)
+            _audit("MODIS couverture nivale", _ss,
+                   _sb if len(_sb) == len(_ss) else _cale(_sb),
+                   "fraction 0-1", lcfg.get("w_snow", 0.0), None,
+                   "JAMAIS ACTIVE : with_forcing perd swe_obs, donc _need_snow est faux")
+        else:
+            print("\n  MODIS neige : non charge")
+        # GRACE : deja etabli par R23, on le repasse au meme moule pour comparaison
+        _to = getattr(td, "tws_obs", None)
+        if _to is not None:
+            _sts2 = model.vertical_column._static["soil"]
+            def _n2(x):
+                return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
+            _stw = (_DIAG.swe.cpu().numpy() + _DIAG.canopy.cpu().numpy()
+                    + 1000.0 * (_DIAG.theta1.cpu().numpy() * _n2(_sts2["z1"])
+                                + _DIAG.theta2.cpu().numpy() * _n2(_sts2["z2"])
+                                + _DIAG.theta3.cpu().numpy() * _n2(_sts2["z3"]))
+                    + (_DIAG.wet_vol.cpu().numpy() if _DIAG.wet_vol is not None else 0.0)
+                    + _DIAG.s_gw.cpu().numpy()).mean(axis=1)
+            _tob = np.full_like(_stw, np.nan)
+            _tmp = _to.cpu().numpy()
+            _tob[t0:t0 + len(_tmp)] = _tmp
+            # centrage long terme des DEUX cotes, comme tws_anomaly_loss
+            _vv = np.isfinite(_stw) & np.isfinite(_tob)
+            _audit("GRACE TWS", _stw - np.nanmean(_stw[_vv]), _tob - np.nanmean(_tob[_vv]),
+                   "mm", lcfg.get("w_tws", 0.0), 25.0,
+                   "R23 : sigma=25 est l'incertitude d'UN mois, pas de la climatologie")
+        else:
+            print("\n  GRACE : non charge")
 
 # ECART EN VOLUME, mois par mois. Un RAPPORT ne dit rien du volume qu'il represente :
 # 27 % du volume d'avril, mois de crue, pese bien plus que 20 % de celui de decembre.
