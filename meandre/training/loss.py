@@ -655,9 +655,11 @@ class HydroLoss(nn.Module):
         w_nll_swe: float = 0.0,
         w_flatness: float = 0.0,
         w_snow: float = 0.0,
+        w_swe_mass: float = 0.0,
         w_et: float = 0.0,
         et_mode: str = "level",
         w_tws: float = 0.0,
+        w_tws_clim: float = 0.0,
         w_quantile: float = 0.0,
         w_mixture: float = 0.0,
         w_peak: float = 0.0,
@@ -691,6 +693,10 @@ class HydroLoss(nn.Module):
         self.flatness_n_bins = flatness_n_bins
         self.flatness_bandwidth = flatness_bandwidth
         self.w_snow = w_snow
+        # CanSWE : masse du manteau mesurée au sol (R24). Calculé dans le
+        # trainer, qui seul dispose du SWE simulé par nœud et de la table
+        # site -> nœud. Complète w_snow (couverture MODIS), ne le remplace pas.
+        self.w_swe_mass = w_swe_mass
         self.w_et = w_et
         # et_mode : "level" (MSE absolu, historique) ou "anomaly" (TENDANCE : les deux
         # séries sont centrées par nœud sur une ligne de base longue durée AVANT
@@ -702,6 +708,11 @@ class HydroLoss(nn.Module):
             raise ValueError(f"et_mode inconnu : {et_mode!r} (attendu 'level' ou 'anomaly')")
         self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
+        # Biais saisonnier GRACE par mois calendaire (R23). Le terme mensuel
+        # ci-dessus juge à l'incertitude d'UNE observation (25 mm) et laisse
+        # passer un biais systématique de 26 mm ; celui-ci le juge à
+        # l'incertitude de la CLIMATOLOGIE (~5 mm). Calculé dans le trainer.
+        self.w_tws_clim = w_tws_clim
         self.w_quantile = w_quantile  # Régression quantile (calculée dans le trainer)
         self.w_mixture = w_mixture    # MDN (option 2b — calculée dans le trainer)
         self.w_peak = w_peak  # Pondération pics (seuil climato Q_p75 par station)

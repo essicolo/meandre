@@ -157,3 +157,67 @@ def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = N
         "quality_ok": ok,
     })
     return sites, mesures
+
+
+def build_swe_targets(mesures, sites, times, max_dist_km: float = 15.0,
+                      max_elev_diff_m: float = 150.0):
+    """Cible d'entrainement sur la MASSE du manteau, a partir des releves CanSWE.
+
+    Pourquoi la masse et pas la couverture (R24, 2026-08-21). La cible existante est
+    la fraction de couverture MOD10, qui sature des qu'il y a un peu de neige
+    (``SCF = 1-exp(-SWE/15)``) et ne porte donc presque aucune information sur la
+    quantite d'eau stockee -- justement ce qui manque au modele. Pire, MODIS mesure
+    une reflectance et sous-estime la neige sous couvert forestier : sur OUTV, boise
+    a 74 %, la contrainte demandait au modele de FONDRE PLUS TOT (+0.47 de fraction
+    en mars, 38 ecarts-types), contre GRACE et contre CanSWE. Les releves CanSWE sont
+    des mesures de masse au sol, insensibles au couvert.
+
+    Representativite. Un releve est PONCTUEL, un troncon est surfacique. On ne peut
+    pas la corriger sans inventer un parametre par site, ce qui detruirait
+    l'identifiabilite qu'on cherche ; on la BORNE en ecartant les sites trop loin du
+    noeud ou a une altitude trop differente, et on laisse le reste au nombre de
+    sites. Les deux seuils sont donc des choix explicites, pas des reglages.
+
+    Retourne ``(valeurs, node_idx, sites_gardes)`` :
+      - ``valeurs`` (T, n_sites) en mm, NaN partout ou il n'y a pas de releve ;
+      - ``node_idx`` (n_sites,) le noeud de chaque site ;
+      - ``sites_gardes`` la table des sites retenus (pour le journal).
+    Retourne ``(None, None, None)`` si rien ne survit aux filtres.
+    """
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    if mesures is None or sites is None or len(mesures) == 0:
+        return None, None, None
+    gardes = sites[(sites["dist_km"] <= max_dist_km)
+                   & (sites["elev_diff_m"].abs() <= max_elev_diff_m)
+                   & sites["node_idx"].notna()].copy()
+    if len(gardes) == 0:
+        return None, None, None
+    gardes = gardes.reset_index(drop=True)
+    rang = {s: i for i, s in enumerate(gardes["swe_station_id"])}
+
+    m = mesures[mesures["swe_station_id"].isin(rang)].copy()
+    m = m[m["swe_mm"].notna()]
+    if len(m) == 0:
+        return None, None, None
+
+    axe = pd.DatetimeIndex(times)
+    pos = pd.Series(np.arange(len(axe)), index=axe)
+    it = pos.reindex(pd.DatetimeIndex(m["date"])).to_numpy()
+    ok = np.isfinite(it)
+    if not ok.any():
+        return None, None, None
+
+    valeurs = np.full((len(axe), len(gardes)), np.nan, dtype=np.float32)
+    lignes = it[ok].astype(int)
+    colonnes = m["swe_station_id"].map(rang).to_numpy()[ok].astype(int)
+    # Plusieurs releves peuvent tomber le meme jour au meme site (doublons de source) :
+    # le dernier ecrit gagne, l'ecart entre eux est negligeable devant la
+    # representativite ponctuelle qu'on ne sait de toute facon pas corriger.
+    valeurs[lignes, colonnes] = m["swe_mm"].to_numpy(dtype=np.float32)[ok]
+
+    return (torch.from_numpy(valeurs),
+            torch.tensor(gardes["node_idx"].to_numpy(), dtype=torch.long),
+            gardes)

@@ -120,6 +120,30 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     # couvert nival MOD10 (fenêtre fonte mars-juin, ingéré 2026-07-22) : supervise la
     # fonte de la colonne DANS sa structure via w_snow (fraction simulée 1-exp(-SWE/ref))
     swe_obs = cache.load_modis_snow(DATE_START, DATE_END, device=device) if lcfg.get("w_snow", 0.0) > 0 else None
+    # CanSWE : MASSE du manteau mesuree au sol (R24, 2026-08-21). Complete MOD10, qui
+    # ne mesure qu'une COUVERTURE : la fraction sature des qu'il y a un peu de neige et
+    # sous-estime sous couvert forestier, si bien qu'elle demandait au modele de fondre
+    # plus tot alors qu'il a deja moitie moins de neige que le mesure (121 mm contre 238
+    # sur OUTV). Filtres de representativite dans build_swe_targets.
+    swe_mass_obs = swe_mass_node = None
+    if lcfg.get("w_swe_mass", 0.0) > 0 and cache.has_canswe():
+        from meandre.data.canswe_loader import build_swe_targets
+        _mes, _sit = cache.load_canswe(DATE_START, DATE_END)
+        swe_mass_obs, swe_mass_node, _gard = build_swe_targets(_mes, _sit, times)
+        if swe_mass_obs is None:
+            # ABSENCE DE DONNEE, pas erreur de cablage : mont et slso n'ont respectivement
+            # qu'un et quatre sites, tous ecartes par les filtres de representativite. On
+            # eteint le poids POUR CETTE REGION plutot que de laisser le garde-fou du
+            # trainer lever -- lequel existe pour attraper une cible perdue en chemin, ce
+            # qui n'est pas le cas ici. Dit a voix haute pour que ca n'ait pas l'air actif.
+            lcfg["w_swe_mass"] = 0.0
+            print(f"[canswe] {reg}: aucun site ne passe les filtres de representativite "
+                  f"-> w_swe_mass mis a 0 POUR CETTE REGION")
+        else:
+            swe_mass_obs = swe_mass_obs.to(device)
+            swe_mass_node = swe_mass_node.to(device)
+            _n = int(torch.isfinite(swe_mass_obs).sum())
+            print(f"[canswe] {reg}: {len(_gard)}/{len(_sit)} sites retenus, {_n} releves de masse")
     tws_obs = None
     con = duckdb.connect(db_path, read_only=True)
     if "grace_tws" in [t[0] for t in con.execute("show tables").fetchall()]:
@@ -158,7 +182,9 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         w_log_nse=lcfg.get("w_log_nse", 0.0), w_log_mse=lcfg.get("w_log_mse", 0.0),
         w_et=lcfg.get("w_et", 0.0), et_mode=lcfg.get("et_mode", "level"),
         w_tws=lcfg.get("w_tws", 0.0),
+        w_tws_clim=lcfg.get("w_tws_clim", 0.0),
         w_snow=lcfg.get("w_snow", 0.0),
+        w_swe_mass=lcfg.get("w_swe_mass", 0.0),
         w_peak=lcfg.get("w_peak", 0.0),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
@@ -176,7 +202,25 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
             et_obs=et_obs[sl_.start:] if et_obs is not None else None,
             tws_obs=tws_obs[sl_.start:] if tws_obs is not None else None,
             swe_obs=swe_obs[sl_.start:] if swe_obs is not None else None,
+            swe_mass_obs=(swe_mass_obs[sl_.start:]
+                          if swe_mass_obs is not None else None),
+            swe_mass_node=swe_mass_node,
         )
+    # Identifiants des stations DANS L'ORDRE DES COLONNES de q_obs, pour pouvoir
+    # rejoindre des donnees par station en aval (drapeaux de qualite du CEHQ, R19).
+    # `station_indices` est un `sorted(set(...))` : si deux stations visaient le meme
+    # noeud, l'une des deux disparaitrait ici. On rend la premiere et on le SIGNALE
+    # plutot que de laisser un decalage silencieux s'installer.
+    _par_noeud = {}
+    for _sid, _ni in station_node_map.items():
+        _par_noeud.setdefault(_ni, []).append(str(_sid))
+    station_ids = [sorted(_par_noeud[_ni])[0] for _ni in station_indices]
+    _double = {n: v for n, v in _par_noeud.items() if len(v) > 1}
+    if _double:
+        print(f"[stations] {len(_double)} noeud(s) vises par plusieurs stations, "
+              f"une seule retenue par noeud : {_double}")
+
     return dict(name=reg, n_nodes=n_nodes, node_ids=node_ids, n_gauges=n_stations,
                 train_data=mk(train_sl), val_data=mk(val_sl), loss_fn=loss_fn,
-                node_coords=node_coords, territorial=territorial, times=times)
+                node_coords=node_coords, territorial=territorial, times=times,
+                station_ids=station_ids, station_indices=station_indices)

@@ -123,6 +123,10 @@ class TrainingConfig:
     # snow cover. ~15 mm = la neige couvre le pixel dès une faible accumulation.
     snow_swe_ref: float = 15.0
 
+    # Incertitude de la CLIMATOLOGIE mensuelle GRACE, pour w_tws_clim (R23).
+    # 25 mm (un mois) / sqrt(~21 ans d'observations par mois) = 5.4 mm.
+    tws_clim_sigma: float = 5.4
+
     # Warm-start spinup: after epoch 0, run only this many steps from the
     # cached spinup state instead of re-running all spinup_steps from zeros.
     # 0 = always run full spinup (safe but slow).
@@ -302,6 +306,13 @@ class TrainingData:
     et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
     swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
     tws_obs: Tensor | None = None   # GRACE TWS anomalie (mm), valeur mensuelle au 15, NaN ailleurs
+    # CanSWE : MASSE du manteau mesurée au sol, par SITE et non par nœud (R24). Plusieurs
+    # sites peuvent viser le même tronçon et les agréger détruirait la dispersion
+    # intra-nœud, qui EST la mesure de l'incertitude de représentativité ponctuelle.
+    # Complémentaire de swe_obs (couverture MODIS) : la fraction sature dès qu'il y a un
+    # peu de neige et sous-estime sous couvert forestier ; la masse, non.
+    swe_mass_obs: Tensor | None = None    # (T, n_sites) mm, NaN hors relevé
+    swe_mass_node: Tensor | None = None   # (n_sites,) nœud visé par chaque site
     # Indices hydrométéorologiques précalculés pour ContextualQuantileHead.
     # Forme : (T, n_st, 5) — GDD, API, SPI, FN, SWE_proxy normalisés z-score.
     indices_ihi: Tensor | None = None
@@ -335,6 +346,7 @@ class Trainer:
         self.loss_fn = loss_fn
         self.train_data = train_data
         self.val_data = val_data if val_data is not None else train_data
+        self._check_auxiliary_targets(self.train_data)
         self.config = config or TrainingConfig()
         self.run_name = run_name or mlflow_run_name or ""
         self.run_logger = run_logger
@@ -647,6 +659,37 @@ class Trainer:
             logger.info(epoch_msg)
             print(epoch_msg, flush=True)
 
+            # DECOMPOSITION DE LA PERTE (2026-08-22). Sans elle on ne sait pas ce qui
+            # tire le modele : un terme multi-objectif mal dose ressemble en tout point
+            # a un modele qui diverge. Le pilote quebecois ne passe aucun `run_logger`,
+            # donc les composantes n'etaient enregistrees NULLE PART et le seul moyen de
+            # juger un poids etait de relancer sans lui. On imprime les termes non nuls
+            # avec leur PART du total : c'est la grandeur qui decide, pas la valeur brute.
+            if train_comps:
+                # PIEGE : les composantes stockees sont les termes BRUTS (L_tws, L_et...),
+                # jamais ponderes, alors que le total l'est. Un pourcentage naif compare
+                # donc une pomme a une somme de poires et surestime les termes a petit
+                # poids. On remultiplie par le poids avant de parler de part.
+                _poids = {"tws": getattr(self.loss_fn, "w_tws", 1.0),
+                          "tws_clim": getattr(self.loss_fn, "w_tws_clim", 1.0),
+                          "et": getattr(self.loss_fn, "w_et", 1.0),
+                          "snow": getattr(self.loss_fn, "w_snow", 1.0),
+                          "swe_mass": getattr(self.loss_fn, "w_swe_mass", 1.0),
+                          "peak": getattr(self.loss_fn, "w_peak", 1.0)}
+                _nz = {}
+                for k, v in train_comps.items():
+                    v = float(v)
+                    if abs(v) <= 1e-9 or math.isnan(v):
+                        continue
+                    _nom = k.replace("_loss", "")
+                    _nz[_nom] = v * _poids.get(_nom, 1.0)
+                if _nz:
+                    _tot = float(train_loss) or 1.0
+                    print("            composantes ponderees | " + "  ".join(
+                        f"{k}={v:.3g}({100*v/_tot:.0f}%)"
+                        for k, v in sorted(_nz.items(), key=lambda kv: -abs(kv[1]))),
+                        flush=True)
+
             if self.run_logger is not None:
                 self.run_logger.log_metrics(
                     {"train_loss": float(train_loss)}
@@ -833,6 +876,35 @@ class Trainer:
         )
         return Q_sim, final_state
 
+    def _check_auxiliary_targets(self, data: TrainingData) -> None:
+        """Un poids de perte strictement positif dont la cible est absente doit CRIER.
+
+        Dette #14 du registre : `w_snow = 0.3` a ete annonce a chaque run du pilote
+        quebecois pendant un mois alors que `swe_obs` etait perdu en amont, donc que le
+        terme ne s'evaluait jamais. Le pilote imprimait la contrainte, le trainer la
+        sautait en silence, et 219 commits sont passes dessus. Meme famille que la
+        dette #3 : une entree a repli silencieux fabrique des fantomes.
+
+        On leve, on n'avertit pas : un multi-objectif dont un objectif manque n'est pas
+        le modele qu'on croit entrainer, et le score qui en sort n'est comparable a rien.
+        """
+        manquants = []
+        for poids, cible, nom in (
+            (getattr(self.loss_fn, "w_snow", 0.0), data.swe_obs, "w_snow / swe_obs (MODIS snow cover)"),
+            (getattr(self.loss_fn, "w_tws", 0.0), data.tws_obs, "w_tws / tws_obs (GRACE TWS)"),
+            (max(getattr(self.loss_fn, "w_et", 0.0), getattr(self.loss_fn, "w_nll_et", 0.0)),
+             data.et_obs, "w_et / et_obs (MODIS MOD16)"),
+            (getattr(self.loss_fn, "w_swe_mass", 0.0), data.swe_mass_obs,
+             "w_swe_mass / swe_mass_obs (CanSWE, masse du manteau)"),
+        ):
+            if poids > 0 and cible is None:
+                manquants.append(f"  - {nom} : poids {poids} mais observation absente")
+        if manquants:
+            raise ValueError(
+                "Contrainte auxiliaire demandee sans sa cible :\n" + "\n".join(manquants)
+                + "\nMettre le poids a zero, ou fournir l'observation dans TrainingData."
+            )
+
     def _center_et(self, et_sim: Tensor, et_obs: Tensor, data: TrainingData) -> tuple[Tensor, Tensor]:
         """Centrage ET pour ``loss_fn.et_mode == "anomaly"`` (TENDANCE, pas niveau).
 
@@ -922,7 +994,10 @@ class Trainer:
             # (différentiable, monotone) à snow_frac MODIS. data.swe_obs porte le
             # snow_frac MODIS (0-1), PAS du SWE en mm.
             _need_snow = (self.loss_fn.w_snow > 0 and data.swe_obs is not None)
-            _need_diag = _need_et or _need_tws or _need_snow
+            # CanSWE : masse mesurée au sol, cible distincte de la couverture MODIS.
+            _need_swe_mass = (getattr(self.loss_fn, "w_swe_mass", 0.0) > 0
+                              and data.swe_mass_obs is not None)
+            _need_diag = _need_et or _need_tws or _need_snow or _need_swe_mass
             with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
                 _sim_out = self.model.simulate(
                     forcing=data.forcing[sl],
@@ -1012,11 +1087,22 @@ class Trainer:
                     _sp = self.model.spatial_encoder(
                         data.node_coords, data.territorial.to_tensor()
                     )
-                    _soil_mm = ((_diag_chunk.theta1 * 0.30
+                    # z1 EST UNE PROPRIETE DE LA COLONNE (0.15 m), pas 0.30 : la valeur
+                    # codee en dur ici doublait la respiration saisonnière de la couche
+                    # de surface (8 mm). Le decalage constant s'annulait au centrage,
+                    # l'amplitude non. Corrige le 2026-08-21.
+                    _z1 = getattr(self.model.vertical_column, "z1", 0.15)
+                    _soil_mm = ((_diag_chunk.theta1 * _z1
                                  + _diag_chunk.theta2 * _sp.Z2
                                  + _diag_chunk.theta3 * _sp.Z3) * 1000.0)
+                    # `_diag_chunk.wetland` est le champ MORT (recopie tel quel d'un pas
+                    # a l'autre en mode hydrotel) : constant, donc invisible apres
+                    # centrage. Le vrai stock est `wet_vol`, expose le 2026-08-20.
+                    _wet = getattr(_diag_chunk, "wet_vol", None)
+                    if _wet is None:
+                        _wet = torch.zeros_like(_diag_chunk.swe)
                     _stor = (_soil_mm + _diag_chunk.swe + _diag_chunk.s_gw
-                             + _diag_chunk.canopy + _diag_chunk.wetland)  # (T, n_nodes) mm
+                             + _diag_chunk.canopy + _wet)  # (T, n_nodes) mm
                     _stor_basin = _stor.mean(dim=1)[burnin:]  # (T-burnin,) moy-bassin
                     _tws_chunk = data.tws_obs[obs_offset + burnin:obs_offset + chunk_len]
                     _vt = ~torch.isnan(_tws_chunk)
@@ -1045,6 +1131,80 @@ class Trainer:
                         loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                         all_components["tws_loss"] = (
                             all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
+
+                        # ── TERME CLIMATOLOGIQUE (2026-08-21, R23) ──────────────
+                        # Le terme ci-dessus compare des mois INDIVIDUELS a sigma=25 mm,
+                        # l'incertitude d'UNE estimation GRACE. Mesure sur le champion
+                        # OUTV : 65 % du residu est un biais saisonnier SYSTEMATIQUE
+                        # (+44 mm en mars, -47 en mai), mais la perte le lit comme
+                        # 1.05 ecart-type et se declare satisfaite. Or un biais moyenne
+                        # sur ~21 ans ne se juge pas a l'incertitude d'un mois : la
+                        # bonne echelle est 25/sqrt(21) = 5.4 mm, contre laquelle le
+                        # meme residu vaut 4.8 ecarts-types (9.2 en mai).
+                        #
+                        # On ajoute donc un terme sur le BIAIS PAR MOIS CALENDAIRE, sans
+                        # retirer le terme mensuel (qui porte l'interannuel, un vrai
+                        # signal qu'on ne veut pas ecraser). Astuce du passage direct :
+                        # la VALEUR penalisee est le biais accumule (moyenne mobile
+                        # detachee par mois), le GRADIENT passe par le residu courant.
+                        # Chaque mois est donc pousse proportionnellement au biais
+                        # systematique de son mois calendaire, et le terme reste
+                        # calculable tronçon par tronçon.
+                        _w_clim = getattr(self.loss_fn, "w_tws_clim", 0.0)
+                        if _w_clim > 0:
+                            _bnd = getattr(self, "_doy_month_bounds", None)
+                            if _bnd is None:
+                                _bnd = torch.tensor(
+                                    [31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
+                                    device=_s.device, dtype=torch.long)
+                                self._doy_month_bounds = _bnd
+                            _doy = data.day_of_year[sl][burnin:][_vt].long()
+                            _mth = torch.bucketize(_doy, _bnd)          # 0..11
+                            _res = (_s - self._tws_sim_base) - (_g - _gb)
+                            _bias = getattr(self, "_tws_month_bias", None)
+                            if _bias is None:
+                                _bias = torch.zeros(12, device=_s.device)
+                            _cur = _bias.clone()
+                            for _m in torch.unique(_mth):
+                                _cur[_m] = _res[_mth == _m].mean().detach()
+                            self._tws_month_bias = 0.9 * _bias + 0.1 * _cur
+                            # passage direct : valeur = biais accumule, gradient = residu
+                            _st = _res - _res.detach() + self._tws_month_bias[_mth]
+                            _sg = float(getattr(self.config, "tws_clim_sigma", 5.4))
+                            L_tws_clim = (_st.pow(2) / (_sg ** 2)).mean()
+                            loss_chunk = loss_chunk + _w_clim * L_tws_clim
+                            all_components["tws_clim_loss"] = (
+                                all_components.get("tws_clim_loss", 0.0)
+                                + float(L_tws_clim.detach()))
+
+                # ── CanSWE : MASSE du manteau mesurée au sol (2026-08-21, R24) ──
+                # La cible existante (w_snow) est la FRACTION DE COUVERTURE MODIS, qui
+                # sature dès qu'il y a un peu de neige (SCF = 1-exp(-SWE/15)) et ne dit
+                # donc presque rien de la quantité d'eau stockée -- justement ce qui
+                # manque au modèle : 121 mm de manteau simulé contre 238 mesurés sur
+                # OUTV. Pire, MODIS mesure une réflectance et sous-estime la neige sous
+                # couvert forestier, si bien que le terme de couverture demandait au
+                # modèle de fondre PLUS TÔT, contre GRACE. Les relevés CanSWE sont des
+                # mesures de masse au sol, insensibles au couvert.
+                #
+                # Échelle : on divise par SWE_SCALE (100 mm, l'ordre de grandeur d'un
+                # manteau québécois) plutôt que par un sigma d'incertitude. La
+                # représentativité ponctuelle d'un relevé face à un tronçon n'a pas
+                # d'écart-type connu ; la borner par les filtres de distance et
+                # d'altitude (build_swe_targets) est plus honnête que d'inventer un
+                # sigma qui donnerait à la contrainte une autorité qu'elle n'a pas.
+                if (getattr(self.loss_fn, "w_swe_mass", 0.0) > 0
+                        and data.swe_mass_obs is not None):
+                    _sm_obs = data.swe_mass_obs[obs_offset + burnin:obs_offset + chunk_len]
+                    _vm = ~torch.isnan(_sm_obs)
+                    if bool(_vm.any()):
+                        _sm_sim = _diag_chunk.swe[burnin:][:, data.swe_mass_node]
+                        _SWE_SCALE = 100.0
+                        L_swe_mass = (((_sm_sim[_vm] - _sm_obs[_vm]) / _SWE_SCALE) ** 2).mean()
+                        loss_chunk = loss_chunk + self.loss_fn.w_swe_mass * L_swe_mass
+                        all_components["swe_mass_loss"] = (
+                            all_components.get("swe_mass_loss", 0.0)
+                            + float(L_swe_mass.detach()))
 
                 # ── Régression quantile (Phase 2 v2) : q_τ = μ + δ_τ ─────
                 # δ_τ via quantile_head (avec gradient), μ détaché (la tête
