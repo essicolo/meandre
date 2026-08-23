@@ -14,6 +14,7 @@ sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr
 from pyproj import CRS, Transformer
 from meandre.data.basin_cache import BasinCache
+from meandre.data.forcing_correction import local_day_index, dedrizzle, scale_volume
 
 CASR = ".runs/slso/data/casr"
 DB = os.environ.get("CASR_DB", ".runs/slso/data/slso.duckdb")
@@ -54,20 +55,12 @@ for ch in CHUNKS:
     da = xr.DataArray(merged, dims=("time", "rlat", "rlon"),
                       coords={"time": times, "rlat": np.concatenate([rlat0, rlat1]), "rlon": np.concatenate([rlon0, rlon1])})
     samp = da.interp(rlon=nrlon_da, rlat=nrlat_da, method="linear")
-    if os.environ.get("DST", "0") == "1":
-        # heure avancée : UTC-4 avril-octobre (approx 2e dim. mars - 1er dim. nov.),
-        # UTC-5 (SHIFT_H) le reste — aligne l'été sur l'heure locale réelle des jauges
-        _off = np.where(times.month.isin(range(4, 11)), SHIFT_H + 1, SHIFT_H)
-        idx_local = times + pd.to_timedelta(_off, unit="h")             # TIMING : jour local DST
-    else:
-        idx_local = times + pd.Timedelta(hours=SHIFT_H)                 # TIMING : jour local
-    df = pd.DataFrame(samp.values * 1000.0, index=idx_local)           # mm/h
-    kept = df.where(df >= DRIZZLE_H, 0.0)                              # VOLUME/distrib : dé-crachinage
-    daily.append(kept.resample("1D").sum())
+    idx_local = local_day_index(times, SHIFT_H, dst=os.environ.get("DST", "0") == "1")  # TIMING : jour local
+    df = pd.DataFrame(dedrizzle(samp.values * 1000.0, DRIZZLE_H), index=idx_local)      # mm/h, dé-crachiné
+    daily.append(df.resample("1D").sum())
 out = pd.concat(daily); out = out.groupby(out.index).sum()
 out = out[(out.index >= pd.Timestamp("2000-01-01")) & (out.index <= pd.Timestamp("2024-12-31"))]
-Pcorr = out.values
-Pcorr = Pcorr * (VOL / (Pcorr.mean() * 365.25))                        # VOLUME : calage bilan
+Pcorr, _ = scale_volume(out.values, VOL)                               # VOLUME : calage bilan
 print(f"P corrigé : {Pcorr.mean()*365.25:.0f} mm/an | jours pluvieux {(Pcorr>0.1).mean()*100:.0f}%")
 
 # remplacer le canal P (0) du forçage de base ; garder T/Rn/etc

@@ -545,6 +545,31 @@ if _melt_dir:
           f"{float(_mp['taux_c'].median()):.1f}/{float(_mp['taux_f'].median()):.1f}/{float(_mp['taux_d'].median()):.1f} "
           f"| seuils {float(_mp['seuil_c'].median()):.2f}/{float(_mp['seuil_f'].median()):.2f}/{float(_mp['seuil_d'].median()):.2f}")
 
+# OCCUPATION DU SOL de PHYSITEL (porté d'etl_run.py, défaut ON depuis 2026-08-18 ;
+# le correctif du 2026-08-10 n'avait été câblé que côté Québec). Sans elle, la
+# physique reçoit 0 % de forêt/eau/imperméable/humide : tout le bassin en classe
+# DÉCOUVERT (la plus fondante), fse=fsi=0, phénologie unique. Mesuré sur OUTV à
+# paramètres figés : KGE 0.482 -> 0.749. SLSO_OCCUPATION=0 pour l'ancien
+# comportement (comparaisons historiques, checkpoints pré-occupation).
+if os.environ.get("SLSO_OCCUPATION", "1") == "1" and cfg.get("model", {}).get("column_mode") == "hydrotel":
+    _occ_dir = cfg.get("basin", {}).get("physitel_project_dir",
+        "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/SLSO_LN24HA_2020")
+    try:
+        from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+                                                 load_phenologie)
+        _lc = load_occupation_sol(_occ_dir, node_ids, device=device)
+        _mh = load_milieux_humides(_occ_dir, node_ids, device=device)
+        _lc.update(_mh)
+        model.vertical_column.set_land_cover(_lc)
+        _ph = load_phenologie(_occ_dir)
+        model.vertical_column.set_phenology(_ph or None)
+        print(f"[occupation] PHYSITEL chargée ({_occ_dir.split('/')[-1]}) : "
+              f"forêt {float(_lc['f_forest_raw'].mean()):.3f} | eau {float(_lc['f_water_raw'].mean()):.3f} | "
+              f"imperméable {float(_lc['f_urban_raw'].mean()):.3f} | humide {float(_lc['f_wetland_raw'].mean()):.3f}")
+    except Exception as _e:
+        print(f"[occupation] AVERTISSEMENT : NON chargée ({type(_e).__name__}: {_e}) "
+              f"-> la physique verra 0 % de forêt et 0 % d'eau")
+
 # Ancrage Hydrotel (REPRODUCE) : remplace le sol NeRF/littérature par la
 # calibration Hydrotel par nœud (bv3c.csv + textures, agrégée UHRH→troncon).
 # Optionnel ([soil].hydrotel_calib_dir) — point de départ, retiré pour découpler.
@@ -866,6 +891,7 @@ loss_fn = HydroLoss(
     w_nll_et=lcfg.get("w_nll_et", 0.0),
     w_nll_swe=lcfg.get("w_nll_swe", 0.0),
     w_et=lcfg.get("w_et", 0.0),
+    et_mode=lcfg.get("et_mode", "level"),
     w_snow=lcfg.get("w_snow", 0.0),
     w_tws=lcfg.get("w_tws", 0.0),
     w_quantile=lcfg.get("w_quantile", 0.0),
