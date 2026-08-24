@@ -38,8 +38,13 @@ import numpy as np
 from meandre.utils import paths as _paths
 
 RESULTS = f"{_paths.DATA_ROOT}/quebec/results"
-SORTIE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                      "docs", "carte")
+# SORTIE HORS DU DEPOT (architecture, remarque d'Essi 2026-08-24) : meandre produit
+# des DONNEES ; feuillage est une APPLICATION qui vit dans son propre depot
+# (github.com/essicolo/feuillage) et se deploie a part. L'instance = feuillage pointe
+# sur ce dossier (clone local servi par http.server, ou depot de publication dedie
+# type meandre-carte sur GitHub Pages). Une copie de l'app dans le depot du modele
+# etait le meme travers que le vendoring de PyGMET.
+SORTIE = f"{_paths.DATA_ROOT}/quebec/carte"
 REGIONS = ["outv", "gasp", "mont", "sagu", "slno", "abit", "slso",
            "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud"]
 PARAMS_CARTE = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus parlants
@@ -214,7 +219,11 @@ def main():
     }
     with open(os.path.join(SORTIE, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-    print(f"config.json ecrit. Servir docs/carte/ (ex. python -m http.server) et ouvrir index.html")
+    print(f"config.json ecrit dans {SORTIE}. Instance : servir ce dossier et ouvrir
+"
+          f"l'index.html d'un clone de feuillage pointe dessus (?config=.../config.json),
+"
+          f"ou publier le dossier dans un depot meandre-carte a cote de l'app.")
 
 
 if __name__ == "__main__":
