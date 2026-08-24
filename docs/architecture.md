@@ -75,13 +75,16 @@ flowchart TB
         L3["<b>L3</b> — deep drainage<br/>q3 = krec·z3·θ3 (faithful, linear)<br/><i>opt-in: ·(θ/θs)^n so the layer<br/>breathes instead of pinning<br/>at saturation</i>"]:::modern
     end
 
-    SOIL --> ETR["<b>Actual ET</b><br/>Linacre regionally calibrated<br/>(or McGuinness / Penman / Oudin)"]:::physics
-    SOIL --> WET["<b>Isolated wetlands</b><br/>SWAT-type reservoir,<br/>conservative coupling (default<br/>since 2026-08-20)"]:::physics
+    L1 -.->|ET| ETR["<b>Actual ET</b><br/>drawn from all three layers;<br/>Linacre regionally calibrated<br/>(or McGuinness / Penman / Oudin)"]:::physics
+    L2 -.->|ET| ETR
+    L3 -.->|ET| ETR
     L3 -->|recharge| GW["<b>Aquifer</b><br/>linear reservoir, k_gw field<br/>(GP on 127 gauged recessions)<br/><i>opt-in: power law Q=q_ref(S/100)^b,<br/>two residence times from one<br/>parameter set</i>"]:::modern
-    GW -->|baseflow| OUT["Lateral inflow<br/>surface + interflow + baseflow"]:::flow
-    L1 --> OUT
-    L2 --> OUT
-    WET --> OUT
+    L1 -->|surface runoff| PROD["Production<br/>surface + interflow + baseflow"]:::flow
+    L2 -->|interflow| PROD
+    GW -->|baseflow| PROD
+    PROD -->|"drained fraction<br/>wet_dra_fr"| WET["<b>Isolated wetlands</b><br/>SWAT-type reservoir intercepting<br/>the production; conservative<br/>coupling (default since 2026-08-20)"]:::physics
+    PROD --> OUT["Lateral inflow<br/>to routing"]:::flow
+    WET -->|delayed release| OUT
 
     classDef input fill:#d5e8d4,stroke:#82b366
     classDef physics fill:#b3d9ff,stroke:#6c8ebf
