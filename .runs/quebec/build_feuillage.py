@@ -219,11 +219,10 @@ def main():
     }
     with open(os.path.join(SORTIE, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-    print(f"config.json ecrit dans {SORTIE}. Instance : servir ce dossier et ouvrir
-"
-          f"l'index.html d'un clone de feuillage pointe dessus (?config=.../config.json),
-"
-          f"ou publier le dossier dans un depot meandre-carte a cote de l'app.")
+    print(f"config.json ecrit dans {SORTIE}.")
+    print("Instance : servir ce dossier et pointer l'index.html d'un clone de "
+          "feuillage dessus (?config=.../config.json), ou publier le dossier dans "
+          "un depot meandre-carte a cote de l'app.")
 
 
 if __name__ == "__main__":
