@@ -155,7 +155,30 @@ if _ds != 1.0:
     # à l'entraînement : mont-kc 0.583 < 0.617 inférence)
     demand = demand * _ds
     print(f"[etl] demande ET débiaisée × {_ds} (bilan/MOD16 régional)")
-f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
+# ETL_ETI=1 : fonte au bilan radiatif reel (Enhanced Temperature Index, valide en
+# juin sur SLSO). Le canal 6, qui porte la demande ET apprise, est REMPLACE par FB
+# (sw_in W/m2, cache forcing-<reg>-swin.nc de build_swin_region.py) : sous
+# ETL_ETP=linacre la demande est ignoree de toute facon (etp_channel=None), le canal
+# est donc libre -- la colonne ETI lit sw_channel=6. Motif (R42) : l'amplitude
+# saisonniere est un SUBSTITUT du cycle radiatif, faux en climat maritime ; la
+# radiation reelle dissout ce scalaire comme le bulbe humide a dissous le seuil.
+_ETI = os.environ.get("ETL_ETI", "0") == "1"
+if _ETI:
+    if os.environ.get("ETL_ETP", "appris") != "linacre":
+        raise SystemExit("ETL_ETI=1 exige ETL_ETP=linacre (le canal 6 doit etre libre)")
+    import xarray as _xsw
+    _swf = f"{_paths.DATA_ROOT}/quebec/forcing-{REG}-swin.nc"
+    if not os.path.exists(_swf):
+        raise SystemExit(f"ETL_ETI=1 : {_swf} absent (lancer build_swin_region.py {REG.upper()})")
+    _dsw = _xsw.open_dataset(_swf)
+    _swv = torch.tensor(_dsw["forcing"].values[:, :, 0], dtype=F.dtype, device=F.device)
+    _dsw.close()
+    assert _swv.shape == F.shape[:2], (_swv.shape, F.shape)
+    f7 = torch.cat([F[:, :, :6], _swv[:, :, None]], dim=2)
+    print(f"[etl] ETI : canal 6 = FB reel (moy {float(_swv.mean()):.0f} W/m2) ; "
+          f"la demande apprise n'est PAS embarquee")
+else:
+    f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
 
 # ETL_SANS_PRELEV=1 : met les prelevements et rejets a ZERO. C'est le protocole de
 # RENATURALISATION en miniature, et le seul moyen de comparer proprement avec/sans
@@ -208,6 +231,7 @@ model = HydroModel(
     # aleatoire par noeud chez meandre, pour 16 jauges. Test de parcimonie.
     param_mode=("static" if os.environ.get("ETL_STATIC", "0") == "1" else "nerf"),
     column_mode="hydrotel",
+    melt_mode=("eti" if os.environ.get("ETL_ETI", "0") == "1" else "degree_day"),
     et_mode="mcguinness",   # court-circuité par etp_channel
     use_temperature=False,
     # ETL_NO_LATENT : les codes latents sont par NOEUD, donc non transferables entre
