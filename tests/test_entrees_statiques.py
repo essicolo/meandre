@@ -16,7 +16,7 @@ import torch
 
 from meandre.routing.kinematic import MuskingumCunge
 from meandre.spatial.territorial import TerritorialFeatures
-from meandre.training.loss import moyenne_glissante
+from meandre.training.loss import rolling_mean
 from meandre.vertical.hydrotel_column import HydrotelColumn
 
 PROJ = Path("C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/OUTV_LN24HA_2020")
@@ -44,16 +44,16 @@ def test_muskingum_conserve_la_masse(k_h, n_sub):
     assert total == pytest.approx(10.0, rel=1e-3), f"masse rendue {total / 10.0:.4f}"
 
 
-def test_moyenne_glissante_apparie_les_composites():
+def test_rolling_mean_apparie_les_composites():
     """L'ETR simulée doit être moyennée sur la même fenêtre que le composite MOD16
     (8 jours). Avant correctif on comparait une moyenne de 8 jours à un seul jour."""
     x = torch.arange(20.0).reshape(20, 1).repeat(1, 3)
-    y = moyenne_glissante(x, 8)
+    y = rolling_mean(x, 8)
     assert y.shape == x.shape
     assert float(y[7, 0]) == pytest.approx(float(x[:8, 0].mean()))
     assert float(y[19, 2]) == pytest.approx(float(x[12:20, 2].mean()))
-    assert torch.equal(moyenne_glissante(x, 1), x)          # fenêtre 1 = sans effet
-    assert torch.equal(moyenne_glissante(x[:3], 8), x[:3])  # série trop courte
+    assert torch.equal(rolling_mean(x, 1), x)          # fenêtre 1 = sans effet
+    assert torch.equal(rolling_mean(x[:3], 8), x[:3])  # série trop courte
 
 
 # ── OCCUPATION DU SOL : elle doit ATTEINDRE la physique ─────────────────────

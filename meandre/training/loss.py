@@ -601,7 +601,7 @@ class CompositeKGELoss(nn.Module):
         return loss, components
 
 
-def moyenne_glissante(x, fenetre: int):
+def rolling_mean(x, fenetre: int):
     """Moyenne glissante causale sur l'axe TEMPS (axe 0), fenêtre en pas de temps.
 
     Sert à apparier l'ETR simulée AUX COMPOSITES MOD16A2GF, qui sont des moyennes sur
@@ -971,7 +971,7 @@ class HydroLoss(nn.Module):
             # de 8 jours à une valeur journalière ajoute du bruit pur et fausse toute
             # statistique de variance. On moyenne donc le simulé sur la même fenêtre.
             # `et_window` = 8 par défaut ; 1 restaure l'ancien comportement.
-            et_sim = moyenne_glissante(et_sim, int(getattr(self, "et_window", 8)))
+            et_sim = rolling_mean(et_sim, int(getattr(self, "et_window", 8)))
             valid = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
             if valid.any():
                 L_et = ((et_obs[valid] - et_sim[valid]) ** 2).mean()
@@ -1058,3 +1058,7 @@ def crps_loss(ensemble_Q: Tensor, observed_Q: Tensor) -> Tensor:
     ).sum(dim=0) / (n_members * (n_members - 1) + 1e-8)
 
     return (mae - spread).mean()
+
+
+# Alias de compatibilite (nettoyage 2026-08-24, convention anglaise pour le code).
+moyenne_glissante = rolling_mean

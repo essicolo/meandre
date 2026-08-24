@@ -928,7 +928,7 @@ class SpatialFieldNetwork(nn.Module):
         return loss / max(n, 1)
 
 
-    def ajuster_sur_champ(self, node_coords, territorial_data, cibles: dict,
+    def fit_to_field(self, node_coords, territorial_data, cibles: dict,
                           n_iter: int = 3000, lr: float = 3e-3, log_keys=("K_sat_1", "K_sat_2",
                           "K_sat_3", "k_gw"), verbeux: bool = True):
         """Ajuste le champ par RÉGRESSION sur des valeurs cibles PAR NŒUD.
@@ -984,3 +984,8 @@ class SpatialFieldNetwork(nn.Module):
                       f"(cible {float(cible.median()):.4f}) | dispersion {cv_p:.3f} "
                       f"(cible {cv_c:.3f})")
         return self
+
+
+# Alias de compatibilite (nettoyage 2026-08-24, convention anglaise pour le code).
+# L'identifiant francais reste appelable ; les scripts .runs historiques y tiennent.
+SpatialFieldNetwork.ajuster_sur_champ = SpatialFieldNetwork.fit_to_field

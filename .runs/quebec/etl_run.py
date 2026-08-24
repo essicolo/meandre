@@ -232,6 +232,11 @@ model = HydroModel(
     param_mode=("static" if os.environ.get("ETL_STATIC", "0") == "1" else "nerf"),
     column_mode="hydrotel",
     melt_mode=("eti" if os.environ.get("ETL_ETI", "0") == "1" else "degree_day"),
+    # Phase probabiliste (ETL_QUANTILE=1) : tete quantile K=6, offsets monotones
+    # depuis la mediane = Q_sim -- le KGE du socle est PRESERVE par construction.
+    # Pipeline etabli sur SLSO (memoire pipeline_final) : backbone GELE, w_quantile,
+    # best_metric nll. Ici on le porte sur le pilote quebecois pour la 1.0.
+    use_quantile_head=(os.environ.get("ETL_QUANTILE", "0") == "1"),
     et_mode="mcguinness",   # court-circuité par etp_channel
     use_temperature=False,
     # ETL_NO_LATENT : les codes latents sont par NOEUD, donc non transferables entre
@@ -427,7 +432,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
             "porosity_2": _cs["thetas2"].float(), "porosity_3": _cs["thetas3"].float(),
             "Z2": _cs["z2"].float(), "Z3": _cs["z3"].float()}
     print(f"[etl] départ sur le champ Hydrotel ({os.path.basename(_plh)}) : ajustement du NeRF")
-    model.spatial_encoder.ajuster_sur_champ(
+    model.spatial_encoder.fit_to_field(
         td.node_coords, r["territorial"].data, _cib,
         n_iter=int(os.environ.get("ETL_INIT_ITER", "2000")))
     # Le prior ne contraint que la MOYENNE du champ : si sa cible reste la valeur
@@ -894,6 +899,26 @@ for _nom, _poids, _cible in (
              else "eteinte" if _poids == 0 else "POIDS SANS CIBLE")
     print(f"        {_nom:<26s} poids {_poids:<6g} cible "
           f"{'presente' if _cible is not None else 'ABSENTE':<9s} -> {_etat}")
+
+if os.environ.get("ETL_QUANTILE", "0") == "1":
+    # GEL DU SOCLE : tout sauf la tete quantile. La mediane reste exactement le Q_sim
+    # du point de reprise charge par ETL_WARM_FROM ; seule l'enveloppe s'apprend.
+    _libres = 0
+    for _nom, _p in model.named_parameters():
+        if "quantile_head" in _nom:
+            _p.requires_grad = True; _libres += _p.numel()
+        else:
+            _p.requires_grad = False
+    r["loss_fn"].w_quantile = 1.0
+    # le debit ne doit plus tirer le socle : tous les poids de debit a zero
+    for _k in ("w_nse", "w_kge", "w_mse", "w_log_mse", "w_pbias", "w_peak",
+               "w_et", "w_tws", "w_tws_clim", "w_snow"):
+        if hasattr(r["loss_fn"], _k):
+            setattr(r["loss_fn"], _k, 0.0)
+    tconf.best_metric = "nll"
+    tconf.w_prior = 0.0
+    print(f"[etl] PHASE QUANTILE : socle gele, {_libres:,} parametres libres "
+          f"(tete K=6), best_metric nll, pertes de debit a zero")
 
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
