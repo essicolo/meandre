@@ -80,3 +80,8 @@ testpaths = ["tests"]
 # preserver son statut de sous-projet valide contre le binaire C++ ; la migration
 # src/ complete est planifiee avec le gel 1.0 (voir docs/architecture.md).
 packages = ["meandre", "hydrotel_clone"]
+
+[dependency-groups]
+dev = [
+    "marimo>=0.24.0",
+]

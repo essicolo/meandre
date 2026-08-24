@@ -1029,6 +1029,47 @@ try:
 except Exception as _efl:
     print(f"[etl] score sur jours mesures : impossible ({type(_efl).__name__}: {_efl})")
 
+# ETL_DUMP_Q=<chemin.npz> : sauve les series simulees et observees aux stations de la
+# tenue de cote. Sert a la PROPAGATION D'ENSEMBLE de la 1.0 (decision d'Essi,
+# 2026-08-24 : le resultat probabiliste doit etre probant, donc l'incertitude de
+# FORCAGE entre dans la chaine) : le meme checkpoint est evalue une fois par membre
+# PyGMET (JOINT_FX_SUFFIX=-ensNNN) et les enveloppes se combinent hors ligne.
+if os.environ.get("ETL_DUMP_Q"):
+    np.savez_compressed(os.environ["ETL_DUMP_Q"],
+                        q_sim=Qs.numpy(), q_obs=qo_test.numpy(),
+                        station_ids=np.array(r.get("station_ids", []), dtype=object),
+                        dates=np.array([str(times[i])[:10] for i in
+                                        range(np.flatnonzero(sl)[0], np.flatnonzero(sl)[-1] + 1)]))
+    print(f"[etl] series Q sauvees : {os.environ['ETL_DUMP_Q']}")
+
+# ETL_DUMP_REACH=<chemin.npz> : cache PAR TRONCON pour le notebook marimo (demande
+# d'Essi, 2026-08-24 : hydrogrammes, cartes de parametres NeRF, cartes d'effet des
+# prelevements). Produit PAR LE PILOTE pour que le cache porte exactement le runtime
+# du run (dette #6 : un checkpoint ne definit pas un modele ; les diagnostics annexes
+# qui reconstruisaient la recette ont deja mesure un autre modele que le champion).
+# Contenu : moyennes mensuelles de Q par troncon, moyenne annuelle, les 38 parametres
+# du champ, coordonnees, prelevement net annuel par troncon.
+if os.environ.get("ETL_DUMP_REACH"):
+    with torch.no_grad():
+        _Qr = Q.cpu().numpy()                                   # (T, n_noeuds)
+        _moisR = _pdm.DatetimeIndex(times).month.to_numpy()
+        _qm = np.stack([_Qr[_moisR == m].mean(axis=0) for m in range(1, 13)])
+        _sp_d = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
+        _champs = {f"param_{k}": getattr(_sp_d, k).detach().cpu().numpy()
+                   for k in _sp_d.__dataclass_fields__
+                   if torch.is_tensor(getattr(_sp_d, k))
+                   and getattr(_sp_d, k).shape[:1] == (n_nodes,)}
+        _wnet = (td.withdrawals.net.abs().sum(dim=0).cpu().numpy()
+                 if hasattr(td.withdrawals, "net") else np.zeros(n_nodes))
+    np.savez_compressed(os.environ["ETL_DUMP_REACH"],
+                        q_mensuel=_qm.astype(np.float32),
+                        q_annuel=_Qr.mean(axis=0).astype(np.float32),
+                        coords=td.node_coords.cpu().numpy(),
+                        prelev_net_abs=_wnet.astype(np.float32),
+                        **{k: v.astype(np.float32) for k, v in _champs.items()})
+    print(f"[etl] cache par troncon sauve : {os.environ['ETL_DUMP_REACH']} "
+          f"({len(_champs)} champs de parametres)")
+
 # BIAIS MENSUEL dans le protocole de REFERENCE. Le score seul ne dit pas OU le modele
 # se trompe, et les rapports mensuels vivaient jusqu'ici dans des scripts de diagnostic
 # qui ne reproduisaient pas le pilote. Fevrier est le plus gros ecart connu du champion
