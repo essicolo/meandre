@@ -109,6 +109,16 @@ def main():
             s, t = int(e.src), int(e.dst)
             if not (0 <= s < n and 0 <= t < n):
                 continue
+            # ARETES VIRTUELLES EXCLUES (trouvees par Essi SUR la carte, 2026-08-24) :
+            # les bassins cotiers independants (Gaspesie, Cote-Nord) sont raccordes par
+            # PHYSITEL a un puits artificiel unique -- 167 aretes de 127 km medians vers
+            # le noeud 1 de gasp. Aucun impact sur les resultats (rien d'evalue dessus,
+            # aires aux stations verifiees a 1.005x par R18), mais la carte en faisait
+            # des eventails d'aiguilles. Seuil 35 km : garde les convergences reelles
+            # (reservoir Baskatong, 20-30 km) et coupe les raccords fictifs.
+            _dkm = (((lon[t] - lon[s]) * 78.0) ** 2 + ((lat[t] - lat[s]) * 111.0) ** 2) ** 0.5
+            if _dkm > 35.0:
+                continue
             pr = {"reg_source": reg}
             for k, v in props_n.items():
                 x = float(v[s])
