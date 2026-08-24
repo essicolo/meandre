@@ -1,14 +1,19 @@
-"""Notebook marimo d'exploration du modele 1.0 (demande d'Essi, 2026-08-24).
+"""Notebook marimo d'ANALYSE du modele 1.0 -- le Quebec entier, sans regions.
 
-Quatre vues : hydrogrammes par station, cartes des parametres du champ NeRF, cartes
-de l'effet des prelevements et rejets par troncon, et hydrogrammes prelevements
-contre debit. Le notebook ne fait AUCUNE simulation : il lit les caches produits par
-le pilote lui-meme (ETL_DUMP_Q et ETL_DUMP_REACH), pour que chaque figure porte
-exactement le runtime du run qui l'a produite (dette #6 du registre).
+Reecrit le 2026-08-24 apres rejet explicite (et repete) du concept de region par Essi :
+la premiere version portait un selecteur de region, artefact de production remonte
+jusqu'a l'interface. Ici le decoupage par base de donnees est FONDU au chargement et
+n'apparait nulle part : un seul domaine, le Quebec meridional.
 
-Produire les caches pour une region (exemple OUTV, paire renaturalisation) :
-  ETL_DUMP_REACH=D:/meandre-data/quebec/results/nb-outv-avec.npz  [recette]  etl_run.py
-  ETL_SANS_PRELEV=1 ETL_DUMP_REACH=...nb-outv-sans.npz            [recette]  etl_run.py
+Partage des roles :
+  - la CARTE interactive (MapLibre, troncons cliquables, zones rouges, hydrogrammes au
+    clic) est une instance feuillage : docs/carte/, couches par
+    .runs/quebec/build_feuillage.py ;
+  - ce NOTEBOOK fait l'analyse : les KGE dans l'espace, les distributions, les
+    agregations statistiques, les diagnostics de calibration.
+
+Aucune simulation ici : les caches viennent du pilote (ETL_DUMP_Q, ETL_DUMP_REACH),
+donc chaque chiffre porte le runtime exact du run qui l'a produit (dette #6).
 
 Lancer :  uv run marimo edit notebooks/meandre_explore.py
 """
@@ -24,176 +29,190 @@ def _():
     import os
     import sys
 
-    import duckdb
     import marimo as mo
     import numpy as np
     import pandas as pd
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from lets_plot import (LetsPlot, aes, coord_fixed, geom_line, geom_point,
-                           ggplot, ggsize, ggtitle, labs, scale_color_gradient)
+    from lets_plot import (LetsPlot, aes, coord_fixed, facet_wrap, geom_boxplot,
+                           geom_histogram, geom_line, geom_point, ggplot, ggsize,
+                           ggtitle, labs)
     from meandre.utils import paths as mpaths
 
     LetsPlot.setup_html()
     RESULTS = f"{mpaths.DATA_ROOT}/quebec/results"
 
     def lp(p):
-        """Rend une figure lets_plot dans marimo."""
         return mo.Html(p._repr_html_())
-    return duckdb, glob, lp, mo, mpaths, np, os, pd, RESULTS, aes, coord_fixed, \
-        geom_line, geom_point, ggplot, ggsize, ggtitle, labs
+    return (RESULTS, aes, coord_fixed, facet_wrap, geom_boxplot, geom_histogram,
+            geom_line, geom_point, ggplot, ggsize, ggtitle, glob, labs, lp, mo,
+            mpaths, np, os, pd)
 
 
 @app.cell
-def _(glob, mo, os, RESULTS):
-    _regions = sorted({os.path.basename(f).split("-")[1]
-                       for f in glob.glob(f"{RESULTS}/nb-*-avec.npz")})
-    region = mo.ui.dropdown(_regions or ["outv"], value=(_regions[0] if _regions else "outv"),
-                            label="Region")
-    mo.md(f"# Exploration meandre 1.0\n{region}")
-    return (region,)
+def _(RESULTS, glob, mo, np, os, pd):
+    # ── CHARGEMENT FUSIONNE : tout ce qui existe, presente comme UN domaine ──
+    def kge_comp(o, s):
+        r = np.corrcoef(o, s)[0, 1]
+        beta = s.mean() / o.mean()
+        gamma = (s.std() / s.mean()) / (o.std() / o.mean())
+        return 1 - np.sqrt((r - 1) ** 2 + (beta - 1) ** 2 + (gamma - 1) ** 2), r, beta, gamma
 
-
-@app.cell
-def _(mo, np, os, region, RESULTS):
-    _fa = f"{RESULTS}/nb-{region.value}-avec.npz"
-    _fs = f"{RESULTS}/nb-{region.value}-sans.npz"
-    _fq = f"{RESULTS}/nb-{region.value}-q.npz"
-    manque = [f for f in (_fa, _fs, _fq) if not os.path.exists(f)]
-    avec = np.load(_fa, allow_pickle=True) if os.path.exists(_fa) else None
-    sans = np.load(_fs, allow_pickle=True) if os.path.exists(_fs) else None
-    qd = np.load(_fq, allow_pickle=True) if os.path.exists(_fq) else None
-    mo.md("ATTENTION, caches manquants : " + ", ".join(map(os.path.basename, manque))
-          if manque else "Caches charges (avec / sans prelevements / series stations).")
-    return avec, qd, sans
+    lignes_st, lignes_mois = [], []
+    troncons = []
+    for fq in sorted(glob.glob(f"{RESULTS}/nb-*-q.npz")):
+        src = os.path.basename(fq).split("-")[1]
+        qd = np.load(fq, allow_pickle=True)
+        dates = pd.to_datetime(qd["dates"])
+        for j, sid in enumerate(qd["station_ids"]):
+            qo, qs = qd["q_obs"][:, j], qd["q_sim"][:, j]
+            v = np.isfinite(qo) & np.isfinite(qs)
+            if v.sum() < 60:
+                continue
+            kge, r, beta, gamma = kge_comp(qo[v], qs[v])
+            lignes_st.append(dict(station=str(sid), kge=kge, r=r, beta=beta,
+                                  gamma=gamma, n=int(v.sum()), source=src))
+            for m in range(1, 13):
+                k = v & (dates.month == m)
+                if k.sum() > 10:
+                    lignes_mois.append(dict(station=str(sid), mois=m,
+                                            rapport=float(qs[k].sum() / max(qo[k].sum(), 1e-9))))
+    for fa in sorted(glob.glob(f"{RESULTS}/nb-*-avec.npz")):
+        src = os.path.basename(fa).split("-")[1]
+        avec = np.load(fa, allow_pickle=True)
+        fs = fa.replace("-avec", "-sans")
+        sans = np.load(fs, allow_pickle=True) if os.path.exists(fs) else None
+        d = pd.DataFrame({"lon": avec["coords"][:, 0], "lat": avec["coords"][:, 1],
+                          "q_annuel": avec["q_annuel"],
+                          "prelev_abs": avec["prelev_net_abs"]})
+        for k in avec.files:
+            if k.startswith("param_"):
+                d[k[6:]] = avec[k]
+        if sans is not None:
+            d["effet_prelev_pct"] = 100.0 * (avec["q_annuel"] - sans["q_annuel"]) / \
+                np.clip(sans["q_annuel"], 1e-6, None)
+        troncons.append(d)
+    stations = pd.DataFrame(lignes_st)
+    mensuel = pd.DataFrame(lignes_mois)
+    quebec = pd.concat(troncons, ignore_index=True) if troncons else pd.DataFrame()
+    mo.md(f"# meandre 1.0 — analyse provinciale\n\n"
+          f"{len(stations)} stations et {len(quebec):,} tronçons chargés, un seul domaine. "
+          f"La carte interactive vit dans docs/carte/ (feuillage).")
+    return mensuel, quebec, stations
 
 
 @app.cell
 def _(mo):
-    mo.md("## 1. Hydrogrammes de tenue de cote (2022-2024)\n"
-          "Simule contre observe aux stations. Le simule est la MEDIANE du modele ; "
-          "l'enveloppe quantile et l'ensemble de forcage s'y superposeront quand la "
-          "chaine probabiliste sera scellee.")
+    mo.md("## 1. Les KGE dans l'espace et en distribution\n"
+          "Tenue de côté 2022-2024, toutes stations confondues. La médiane provinciale "
+          "et la queue basse comptent davantage que n'importe quelle moyenne : c'est la "
+          "queue qui dit où le modèle ne vaut pas encore livraison.")
     return
 
 
 @app.cell
-def _(mo, qd):
-    station = mo.ui.dropdown(list(qd["station_ids"]) if qd is not None else ["-"],
-                             value=(list(qd["station_ids"])[0] if qd is not None else "-"),
-                             label="Station")
-    station
-    return (station,)
-
-
-@app.cell
-def _(aes, geom_line, ggplot, ggsize, labs, lp, mo, pd, qd, station):
-    if qd is None:
-        out1 = mo.md("(cache stations absent)")
+def _(aes, geom_histogram, ggplot, ggsize, ggtitle, lp, mo, stations):
+    if stations.empty:
+        outh = mo.md("(aucun cache de stations)")
     else:
-        _i = list(qd["station_ids"]).index(station.value)
-        _d = pd.DataFrame({"date": pd.to_datetime(qd["dates"]),
-                           "observe": qd["q_obs"][:, _i], "simule": qd["q_sim"][:, _i]})
-        _d = _d.melt("date", var_name="serie", value_name="debit")
-        out1 = lp(ggplot(_d, aes("date", "debit", color="serie")) + geom_line()
-                  + labs(y="debit (m3/s)", title=f"Station {station.value}")
-                  + ggsize(900, 350))
-    out1
+        outh = mo.vstack([
+            mo.md(f"médiane {stations.kge.median():.3f} | q10 {stations.kge.quantile(.1):.3f} "
+                  f"| q90 {stations.kge.quantile(.9):.3f} | n = {len(stations)}"),
+            lp(ggplot(stations, aes("kge")) + geom_histogram(bins=25)
+               + ggtitle("Distribution provinciale des KGE") + ggsize(800, 300)),
+        ])
+    outh
     return
 
 
 @app.cell
-def _(avec, mo):
-    _params = sorted(k[6:] for k in (avec.files if avec is not None else [])
-                     if k.startswith("param_"))
-    param = mo.ui.dropdown(_params or ["-"], value=("krec" if "krec" in _params
-                                                    else (_params[0] if _params else "-")),
-                           label="Parametre du champ")
-    mo.md("## 2. Cartes des parametres NeRF\nLe champ appris, par troncon. " + str(param))
+def _(aes, geom_boxplot, ggplot, ggsize, ggtitle, lp, mo, pd, stations):
+    if stations.empty:
+        outc = mo.md("")
+    else:
+        _l = stations.melt(id_vars=["station"], value_vars=["r", "beta", "gamma"],
+                           var_name="composante", value_name="valeur")
+        outc = lp(ggplot(_l, aes("composante", "valeur")) + geom_boxplot()
+                  + ggtitle("Composantes du KGE (1 = parfait)") + ggsize(800, 300))
+    outc
+    return
+
+
+@app.cell
+def _(aes, geom_line, ggplot, ggsize, ggtitle, lp, mensuel, mo):
+    if mensuel.empty:
+        outm = mo.md("")
+    else:
+        _agg = mensuel.groupby("mois").rapport.median().reset_index()
+        outm = mo.vstack([
+            mo.md("## 2. Le cycle du biais\nRapport simulé/observé par mois, médiane des "
+                  "stations : la signature saisonnière résiduelle du modèle, celle que "
+                  "toute la campagne d'août a travaillée."),
+            lp(ggplot(_agg, aes("mois", "rapport")) + geom_line()
+               + ggtitle("Rapport simulé/observé, médiane provinciale") + ggsize(800, 300)),
+        ])
+    outm
+    return
+
+
+@app.cell
+def _(mo, quebec):
+    _params = sorted(c for c in (quebec.columns if not quebec.empty else [])
+                     if c not in ("lon", "lat", "q_annuel", "prelev_abs", "effet_prelev_pct"))
+    param = mo.ui.dropdown(_params or ["-"],
+                           value=("krec" if "krec" in _params else (_params[0] if _params else "-")),
+                           label="Paramètre")
+    mo.md("## 3. Le champ appris, statistiquement\n"
+          "Distribution provinciale d'un paramètre et sa structure spatiale en quantiles. "
+          "La carte fine est dans feuillage ; ici on juge la DISPERSION (un champ plat = "
+          "un NeRF collapsé, le mode de défaillance historique). " + str(param))
     return (param,)
 
 
 @app.cell
-def _(aes, avec, coord_fixed, geom_point, ggplot, ggsize, ggtitle, lp, mo, np, param, pd):
-    if avec is None or param.value == "-":
-        out2 = mo.md("(cache absent)")
+def _(aes, coord_fixed, geom_histogram, geom_point, ggplot, ggsize, ggtitle, lp,
+      mo, np, param, pd, quebec):
+    if quebec.empty or param.value == "-":
+        outp = mo.md("(aucun cache de tronçons : lancer les dumps ETL_DUMP_REACH)")
     else:
-        _v = avec[f"param_{param.value}"]
-        _c = avec["coords"]
-        _log = (_v.min() > 0) and (_v.max() / max(_v.min(), 1e-30) > 100)
-        _d2 = pd.DataFrame({"lon": _c[:, 0], "lat": _c[:, 1],
-                            "valeur": np.log10(_v) if _log else _v})
-        out2 = lp(ggplot(_d2, aes("lon", "lat", color="valeur")) + geom_point(size=2)
-                  + coord_fixed(ratio=1.4)
-                  + ggtitle(f"{param.value}" + (" (log10)" if _log else ""))
-                  + ggsize(750, 600))
-    out2
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md("## 3. Effet des prelevements et rejets par troncon\n"
-          "Difference relative de debit annuel entre le run AVEC et le run renaturalise "
-          "(SANS), sur le meme point de reprise : c'est le protocole du mandat. Les "
-          "jauges ne voient que 12-33 % du flux anthropique (R17) : cette carte est "
-          "precisement ce que le modele apporte au-dela d'elles.")
-    return
-
-
-@app.cell
-def _(aes, avec, coord_fixed, geom_point, ggplot, ggsize, ggtitle, lp, mo, np, pd, sans):
-    if avec is None or sans is None:
-        out3 = mo.md("(paire avec/sans absente)")
-    else:
-        _qa, _qs = avec["q_annuel"], sans["q_annuel"]
-        _eff = 100.0 * (_qa - _qs) / np.clip(_qs, 1e-6, None)
-        _c3 = avec["coords"]
-        _d3 = pd.DataFrame({"lon": _c3[:, 0], "lat": _c3[:, 1], "effet_pct": _eff})
-        _seuil = float(np.percentile(np.abs(_eff), 99.5))
-        _d3["effet_pct"] = _d3.effet_pct.clip(-_seuil, _seuil)
-        out3 = lp(ggplot(_d3, aes("lon", "lat", color="effet_pct")) + geom_point(size=2)
-                  + coord_fixed(ratio=1.4)
-                  + ggtitle("Effet des prelevements et rejets sur le debit annuel (%)")
-                  + ggsize(750, 600))
-    out3
-    return
-
-
-@app.cell
-def _(duckdb, mo, mpaths, pd, region):
-    _db = mpaths.data_path("quebec", f"{region.value}.duckdb")
-    _con = duckdb.connect(_db, read_only=True)
-    try:
-        prelev = _con.execute(
-            "SELECT * FROM withdrawals ORDER BY 1 LIMIT 1").df()
-        cols_w = [c[0] for c in _con.execute("DESCRIBE withdrawals").fetchall()]
-        stations_db = _con.execute(
-            "SELECT station_id, node_idx FROM stations").df()
-    finally:
-        _con.close()
-    mo.md("## 4. Prelevements et rejets contre le debit\n"
-          "Serie du prelevement net rapportee au debit simule du troncon : l'ordre de "
-          "grandeur LOCAL du signal anthropique, la ou il vit.")
-    return cols_w, stations_db
-
-
-@app.cell
-def _(avec, mo, np, pd, aes, geom_line, ggplot, ggsize, labs, lp):
-    if avec is None:
-        out4 = mo.md("(cache absent)")
-    else:
-        _w = avec["prelev_net_abs"]
-        _qa4 = avec["q_annuel"] * 86400.0 * 365.25 / 1e6   # hm3/an approx pour ratio
-        _top = np.argsort(_w)[::-1][:12]
-        _d4 = pd.DataFrame({"troncon": _top.astype(str),
-                            "prelevement_abs": _w[_top],
-                            "part_du_debit_pct": 100.0 * _w[_top] / np.clip(_qa4[_top] * 1e6 / 31_557_600, 1e-6, None)})
-        out4 = mo.vstack([
-            mo.md("Les 12 troncons au plus fort prelevement net (valeur absolue annuelle) :"),
-            mo.ui.table(_d4, selection=None),
+        _v = quebec[param.value].to_numpy()
+        _log = np.nanmin(_v) > 0 and np.nanmax(_v) / max(np.nanmin(_v), 1e-30) > 100
+        _d = pd.DataFrame({"lon": quebec.lon, "lat": quebec.lat,
+                           "valeur": np.log10(_v) if _log else _v})
+        _cv = float(np.nanstd(_v) / max(abs(np.nanmean(_v)), 1e-12))
+        outp = mo.vstack([
+            mo.md(f"CV provincial = {_cv:.3f} (un CV proche de zéro = champ collapsé)"),
+            lp(ggplot(_d, aes("valeur")) + geom_histogram(bins=40)
+               + ggtitle(f"{param.value}" + (" (log10)" if _log else "")) + ggsize(800, 250)),
+            lp(ggplot(_d.sample(min(len(_d), 20000)), aes("lon", "lat", color="valeur"))
+               + geom_point(size=1.2) + coord_fixed(ratio=1.4)
+               + ggtitle("Structure spatiale") + ggsize(800, 600)),
         ])
-    out4
+    outp
+    return
+
+
+@app.cell
+def _(mo, np, quebec):
+    if quebec.empty or "effet_prelev_pct" not in quebec.columns:
+        outw = mo.md("## 4. Prélèvements et rejets\n(paire avec/sans absente : lancer les "
+                     "dumps renaturalisation)")
+    else:
+        _e = quebec.effet_prelev_pct.to_numpy()
+        _touche = np.abs(_e) > 1.0
+        outw = mo.vstack([
+            mo.md("## 4. Prélèvements et rejets, agrégats provinciaux\n"
+                  "Le détail cliquable (zones rouges, hydrogrammes avec/renaturalisé) est "
+                  "dans la carte feuillage. Ici, les ordres de grandeur du mandat :"),
+            mo.md(f"- tronçons où l'effet dépasse 1 % du débit renaturalisé : "
+                  f"**{int(_touche.sum()):,}** sur {len(_e):,} "
+                  f"({100 * _touche.mean():.1f} %)\n"
+                  f"- effet médian sur les tronçons touchés : "
+                  f"{np.median(_e[_touche]) if _touche.any() else 0:.1f} %\n"
+                  f"- pire assèchement : {np.nanmin(_e):.1f} % | pire rehaussement : "
+                  f"{np.nanmax(_e):.1f} %"),
+        ])
+    outw
     return
 
 
