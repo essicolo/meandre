@@ -1,237 +1,176 @@
-"""Banc FONTE hors-ligne (phase 2, design_modules_appris.md) : trois fonctions de
-fonte dans la MÊME intégration SWE différentiable (SWE' = SWE + neige - fonte,
-partition pluie/neige sigmoïde à seuil apprenable), supervisées par la présence
-de neige MOD10A1 (mars-juin) :
-  dd  : degré-jour calé (C_f, T_melt)                — l'existant, dans son meilleur jour
-  eti : température-radiation calée (tf, srf)        — l'alternative physique
-  mlp : fonte apprise MLP(météo, territoire, saison) — le candidat
-Métriques : MAE date de disparition (jours) + précision de présence. Splits comme
-et_bench : leave-region-out (gasp/sagu/mont) × temporel (test 2022-2024).
+"""Banc NEIGE SEULE aux noeuds des sites CanSWE : des dizaines de variantes en minutes.
 
-  python .runs/quebec/snow_bench.py                # banc complet (15 régions)
-  SNOW_REGIONS="slso gasp" python .runs/quebec/snow_bench.py   # sous-ensemble (dev)
+Motif (Essi, 2026-08-24 : « on peut tester la modulation sans passer par des runs
+complets non ? »). Oui : le juge nival ne regarde que les noeuds des sites CanSWE
+(~50-110 par region), et la neige est un module autonome -- ni sol, ni routage, ni GPU.
+Ce banc rejoue DegreJourModifie (ou l'ETI) sur les 25 ans de forcage a ces seuls
+noeuds, avec les MEMES ancrages de plateforme et le MEME appariement site-jour que le
+pilote. Une variante prend quelques secondes ; l'inference complete en prenait 6 a 9
+minutes et l'entrainement 90.
+
+Ce que le banc NE JUGE PAS : le debit (pas de sol ni de routage) et la retroaction de
+l'apprentissage. Il sert a DEGROSSIR -- eliminer les variantes qui cassent le manteau
+avant de payer un run complet pour les survivantes. Le controle nu doit reproduire les
+ratios du pilote (dette #10 : un banc sans ligne de controle mesure du vide).
+
+    .venv/Scripts/python.exe .runs/quebec/snow_bench.py outv
+    .venv/Scripts/python.exe .runs/quebec/snow_bench.py gasp --eti
 """
-import os, sys
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 try:
-    sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
+
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 import xarray as xr
-import duckdb
+
+from hydrotel_clone.snow import DegreJourModifie, init_state, init_ce
 from meandre.data.basin_cache import BasinCache
+from meandre.data.hydrotel_calib import load_melt_nodes, load_passage_pluie_neige
+from meandre.utils import paths as _paths
 
-REGIONS = os.environ.get("SNOW_REGIONS", "abit cnda cndb cndc cndd cnde gasp labi mont outm outv sagu slno slso vaud").split()
-SPATIAL_HELD = [r for r in ["gasp", "sagu", "mont"] if r in REGIONS]
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DATE_START, DATE_END = "2000-01-01", "2024-12-31"
-TRAIN_END, VAL_END = "2018-12-31", "2021-12-31"
-NODE_CAP = 400            # séquences node×année : 400×24 ≈ 10k par région, suffisant
-SEQ_START_MMDD, SEQ_DAYS = "-09-01", 303   # 1er sept -> ~30 juin
-BATCH = 512
-STEPS = int(os.environ.get("SNOW_STEPS", "400"))
-DBS = {"slso": ".runs/slso/data/slso.duckdb"}
-FORCINGS = {"slso": "D:/meandre-data/slso/forcing-casr-corr.nc"}
-OUT_CSV = "reports/snow_bench_results.csv"
-CKPT = "D:/meandre-data/quebec/checkpoints-etbench"
-rng = np.random.default_rng(0)
-torch.manual_seed(0)
+torch.set_default_dtype(torch.float64)
+REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
+PLAT = f"{_paths.PLATFORMS_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 
 
-def load_region(reg):
-    db = DBS.get(reg, f"D:/meandre-data/quebec/{reg}.duckdb")
-    fx = FORCINGS.get(reg, f"D:/meandre-data/quebec/forcing-{reg}-budyko.nc")
-    if not os.path.exists(fx):
-        fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
-    cache = BasinCache(db)
-    h = cache.load(device="cpu")
-    coords = h["node_coords"].numpy()
-    lat_col = 0 if 40 < np.nanmean(coords[:, 0]) < 62 else 1
-    lat = coords[:, lat_col].astype(np.float32)
-    static = h["territorial"].data.numpy().astype(np.float32)
-    d = xr.open_dataset(fx)
-    meteo = d["forcing"].values[:, :, :6].astype(np.float32)
-    times = pd.to_datetime(d["time"].values); d.close()
+def charger():
+    """Forcage + sites + ancrages, restreints aux noeuds des sites CanSWE."""
+    bc = BasinCache(_paths.data_path("quebec", f"{REG}.duckdb"))
+    h = bc.load(device="cpu")
+    mes, sites = bc.load_canswe("2000-01-01", "2024-12-31")
+    noeuds = sorted(set(int(n) for n in mes.node_idx.unique()))
+    ix = {n: i for i, n in enumerate(noeuds)}
 
-    con = duckdb.connect(db, read_only=True)
-    sf = con.execute("select date, node_idx, snow_frac from modis_snow where snow_frac is not null").fetchdf()
-    con.close()
-    sf["date"] = pd.to_datetime(sf["date"])
-    tidx = {d: i for i, d in enumerate(times)}
-    T = len(times)
-    n_nodes = meteo.shape[1]
-    snow = np.full((T, n_nodes), np.nan, dtype=np.float32)
-    ti = sf["date"].map(tidx).values
-    snow[ti.astype(int), sf["node_idx"].values.astype(int)] = sf["snow_frac"].values
+    f = _paths.data_path("quebec", f"forcing-{REG}-hyb.nc")
+    if not os.path.exists(f):
+        f = _paths.data_path("quebec", f"forcing-{REG}-budyko.nc")
+    ds = xr.open_dataset(f)
+    F = ds["forcing"].values[:, noeuds, :]
+    times = pd.DatetimeIndex(ds["time"].values)
+    ds.close()
+    sw = None
+    fsw = _paths.data_path("quebec", f"forcing-{REG}-swin.nc")
+    if os.path.exists(fsw):
+        d2 = xr.open_dataset(fsw)
+        sw = torch.tensor(d2["forcing"].values[:, noeuds, 0])
+        d2.close()
 
-    n_valid = (~np.isnan(snow)).sum(axis=0)
-    keep = np.flatnonzero(n_valid >= 500)
-    if len(keep) > NODE_CAP:
-        keep = rng.choice(keep, NODE_CAP, replace=False); keep.sort()
-    # séquences (node, année) : 1er sept année y-1 -> +303 j ; obs = fenêtre mars-juin année y
-    seqs = []
-    for y in range(2001, 2025):
-        t0 = tidx.get(pd.Timestamp(f"{y-1}{SEQ_START_MMDD}"))
-        if t0 is None or t0 + SEQ_DAYS > T: continue
-        split = 0 if f"{y}-06-30" <= TRAIN_END else (1 if f"{y}-06-30" <= VAL_END else 2)
-        for n in keep:
-            seqs.append((t0, int(n), y, split))
-    seqs = np.array(seqs, dtype=np.int32)
-    print(f"[{reg}] {len(keep)} nœuds | {len(seqs):,} séquences node×année", flush=True)
-    return dict(name=reg, meteo=meteo, snow=snow, static=static, lat=lat, times=times, seqs=seqs)
+    t = h["territorial"]
+    def gp(k):
+        v = t.get_physical(k)
+        return v[noeuds] if v is not None else None
+    # occupation par classes de fonte, comme la colonne (repli : tout en feuillus)
+    conif = gp("f_forest_conifer_raw")
+    mixte = gp("f_forest_mixed_raw")
+    feuil = gp("f_forest_deciduous_raw")
+    foret = gp("f_forest_raw")
+    if conif is None:
+        conif = torch.zeros(len(noeuds)); feuil = foret if foret is not None else torch.full((len(noeuds),), 0.5)
+    else:
+        feuil = (feuil if feuil is not None else 0) + (mixte if mixte is not None else 0)
+    pct_c = torch.as_tensor(conif).double()
+    pct_f = torch.as_tensor(feuil).double()
+    pct_d = torch.clamp(1.0 - pct_c - pct_f, 0.0, 1.0)
 
-
-regions = [load_region(r) for r in REGIONS]
-F_STATIC = regions[0]["static"].shape[1]
-train_regs = [r for r in regions if r["name"] not in SPATIAL_HELD]
-
-# normalisation météo (réutilise le train des régions d'entraînement)
-_s = []
-for r in train_regs:
-    idx = rng.choice(len(r["seqs"]), min(50, len(r["seqs"])), replace=False)
-    for t0, n, y, sp in r["seqs"][idx]:
-        _s.append(r["meteo"][t0:t0 + SEQ_DAYS, n])
-_s = torch.tensor(np.stack(_s)).reshape(-1, 6)
-M_MEAN, M_STD = _s.mean(0), _s.std(0) + 1e-6
-del _s
+    lat = torch.tensor(h["node_coords"].numpy()[noeuds, 1]).double()
+    ce1, ce0 = init_ce(lat, torch.zeros_like(lat), torch.zeros_like(lat))  # terrain plat
+    mp = load_melt_nodes(PLAT, [h["node_ids"][n] for n in noeuds])
+    seuil_air = load_passage_pluie_neige(PLAT)
+    return dict(F=torch.tensor(F), times=times, sw=sw, mes=mes, ix=ix,
+                lat=lat, ce1=ce1, ce0=ce0, mp=mp, seuil_air=seuil_air,
+                pct=(pct_c, pct_f, pct_d), n=len(noeuds))
 
 
-def gather(r, idx):
-    """(B, 303, 6) météo brute ; (B, 303) présence obs (NaN hors obs) ; (B, F+3) statiques."""
-    t0, n = r["seqs"][idx, 0], r["seqs"][idx, 1]
-    w = np.stack([r["meteo"][a:a + SEQ_DAYS, b] for a, b in zip(t0, n)])
-    o = np.stack([r["snow"][a:a + SEQ_DAYS, b] for a, b in zip(t0, n)])
-    doy0 = np.array([r["times"][a].dayofyear for a in t0], dtype=np.float32)
-    stat = np.concatenate([r["static"][n], (r["lat"][n] / 50.0)[:, None]], axis=1)
-    return (torch.tensor(w), torch.tensor(o), torch.tensor(stat), torch.tensor(doy0))
+def split(P, tmin, tmax, seuil, ea=None, twb_seuil=None):
+    s = torch.full_like(P, float(seuil))
+    if twb_seuil is not None:
+        T = (tmin + tmax) / 2.0
+        es = 0.6108 * torch.exp(17.27 * T / (T + 237.3))
+        rh = torch.clamp(ea / es, 0.05, 1.0) * 100.0
+        twb = (T * torch.atan(0.151977 * torch.sqrt(rh + 8.313659)) + torch.atan(T + rh)
+               - torch.atan(rh - 1.676331) + 0.00391838 * rh ** 1.5 * torch.atan(0.023101 * rh)
+               - 4.686035)
+        s = float(twb_seuil) + (T - twb)
+    taux = torch.clamp((tmax - s) / (tmax - tmin + 1e-6), 0.0, 1.0)
+    taux = torch.where(tmax < s, torch.zeros_like(taux), taux)
+    taux = torch.where(tmin >= s, torch.ones_like(taux), taux)
+    return taux * P, (1.0 - taux) * P
 
 
-class MeltFn(nn.Module):
-    """kind: dd (C_f, T_melt) | eti (tf, srf) | mlp (météo+statiques+saison)."""
-    def __init__(self, kind):
-        super().__init__()
-        self.kind = kind
-        self.t_snow = nn.Parameter(torch.tensor(0.5))   # seuil pluie/neige (partagé, apprenable)
-        if kind == "dd":
-            self.cf = nn.Parameter(torch.tensor(4.5)); self.tm = nn.Parameter(torch.tensor(0.0))
-        elif kind == "eti":
-            self.tf = nn.Parameter(torch.tensor(1.2)); self.srf = nn.Parameter(torch.tensor(0.008))
-        else:
-            self.net = nn.Sequential(nn.Linear(6 + F_STATIC + 1 + 2, 48), nn.ReLU(), nn.Linear(48, 1), nn.Softplus())
-
-    def melt(self, met_raw, met_norm, stat, doy):
-        tmean = 0.5 * (met_raw[:, 1] + met_raw[:, 2])
-        if self.kind == "dd":
-            return torch.relu(self.cf) * torch.relu(tmean - self.tm)
-        if self.kind == "eti":
-            return torch.relu(self.tf * torch.relu(tmean) + torch.relu(self.srf) * torch.relu(met_raw[:, 3]))
-        x = torch.cat([met_norm, stat, torch.sin(2 * np.pi * doy / 365.25)[:, None],
-                       torch.cos(2 * np.pi * doy / 365.25)[:, None]], dim=1)
-        return self.net(x).squeeze(-1) * 10.0   # échelle mm/j
-
-    def forward(self, w, stat, doy0):
-        """Intègre SWE sur la séquence ; retourne SWE (B, 303)."""
-        B = w.shape[0]
-        wn = (w - M_MEAN.to(w.device)) / M_STD.to(w.device)
-        swe = torch.zeros(B, device=w.device)
-        out = []
-        for t in range(w.shape[1]):
-            met = w[:, t]
-            tmean = 0.5 * (met[:, 1] + met[:, 2])
-            fsnow = torch.sigmoid((self.t_snow - tmean) / 1.0)
-            doy = (doy0 + t) % 365.25
-            m = self.melt(met, wn[:, t], stat, doy)
-            swe = torch.clamp(swe + met[:, 0] * fsnow - m, min=0.0)
-            out.append(swe)
-        return torch.stack(out, dim=1)
+def simuler(d, seuil_mode="twb", twb=-0.8, amp=None, melt_mode="degree_day",
+            tf=1.2e-3, srf=9.4e-6):
+    """Rejoue la neige seule. Retourne la serie SWE (T, n) en mm."""
+    mp = d["mp"]
+    p = dict(lat=d["lat"], ce1=d["ce1"], ce0=d["ce0"],
+             pct_conifers=d["pct"][0], pct_feuillus=d["pct"][1], pct_autres=d["pct"][2],
+             coeff_fonte_conifers=mp["taux_c"] / 1000.0,
+             coeff_fonte_feuillus=mp["taux_f"] / 1000.0,
+             coeff_fonte_decouver=mp["taux_d"] / 1000.0,
+             seuil_fonte_conifers=mp["seuil_c"], seuil_fonte_feuillus=mp["seuil_f"],
+             seuil_fonte_decouver=mp["seuil_d"],
+             taux_fonte_geo=mp["taux_geo"], densite_max=mp["dens_max"],
+             constante_tassement=mp["tasse"], melt_mode=melt_mode,
+             tf=torch.full((d["n"],), float(tf)), srf=torch.full((d["n"],), float(srf)))
+    if amp is not None:
+        p["melt_seasonal_amp"] = float(amp)
+    mod = DegreJourModifie(24)
+    st = init_state(d["n"], dtype=torch.float64)
+    F, times = d["F"], d["times"]
+    doys = torch.tensor(times.dayofyear.values, dtype=torch.float64)
+    out = torch.empty(len(times), d["n"])
+    with torch.no_grad():
+        for i in range(len(times)):
+            tmin, tmax = F[i, :, 1], F[i, :, 2]
+            pluie, neige = split(F[i, :, 0], tmin, tmax,
+                                 d["seuil_air"] if seuil_mode == "air" else 0.0,
+                                 ea=F[i, :, 5],
+                                 twb_seuil=(twb if seuil_mode == "twb" else None))
+            sw_i = d["sw"][i] if (melt_mode == "eti" and d["sw"] is not None) else None
+            _, st = mod(tmin, tmax, pluie, neige, doys[i], st, p, sw_in=sw_i)
+            out[i] = st["couvert_nival_mm"]
+    return out
 
 
-def presence(swe):
-    return torch.sigmoid((swe - 10.0) / 4.0)   # SWE 10 mm ~ seuil de couvert détectable
+def juger(d, swe):
+    """Ratios simule/mesure par mois, apparies site-jour comme le pilote."""
+    m = d["mes"].copy()
+    pos = pd.Series(np.arange(len(d["times"])), index=d["times"].normalize())
+    m["t"] = pos.reindex(pd.DatetimeIndex(m.date).normalize()).to_numpy()
+    m = m[np.isfinite(m.t)]
+    m["j"] = [d["ix"][int(n)] for n in m.node_idx]
+    m["sim"] = swe.numpy()[m.t.astype(int), m.j]
+    m = m[np.isfinite(m.swe_mm) & (m.swe_mm >= 0)]
+    m["mois"] = pd.DatetimeIndex(m.date).month
+    r = {}
+    for mo, g in m.groupby("mois"):
+        if len(g) >= 20 and g.swe_mm.sum() > 0:
+            r[int(mo)] = float(g.sim.sum() / g.swe_mm.sum())
+    return r
 
 
-def train_model(kind):
-    model = MeltFn(kind).to(DEVICE)
-    n_steps = STEPS * 3 if kind == "mlp" else STEPS   # 3 params convergent vite, pas le MLP
-    opt = torch.optim.Adam(model.parameters(), lr=3e-3 if kind != "mlp" else 1e-3)
-    pools = [(r, np.flatnonzero(r["seqs"][:, 3] == 0)) for r in train_regs]
-    weights = np.array([len(p) for _, p in pools], dtype=np.float64); weights /= weights.sum()
-    for step in range(n_steps):
-        r, pool = pools[rng.choice(len(pools), p=weights)]
-        idx = rng.choice(pool, min(BATCH, len(pool)), replace=False)
-        w, o, stat, doy0 = [x.to(DEVICE) for x in gather(r, idx)]
-        swe = model(w, stat, doy0)
-        p = presence(swe)
-        v = ~torch.isnan(o)
-        obs = (o >= 0.5).float()
-        loss = nn.functional.binary_cross_entropy(p[v].clamp(1e-5, 1 - 1e-5), obs[v])
-        opt.zero_grad(); loss.backward(); opt.step()
-        if step % 100 == 0:
-            print(f"[{kind}] step {step} | BCE {float(loss):.4f}", flush=True)
-    torch.save(model.state_dict(), f"{CKPT}/snow-{kind}.pt")
-    return model
+def ligne(nom, r):
+    print(f"  {nom:<34s}" + "".join(f"{r.get(mo, float('nan')):6.2f}"
+                                    for mo in (11, 12, 1, 2, 3, 4)))
 
 
-def meltout(days, is_snow):
-    """Date de disparition ROBUSTE : premier jour valide après lequel TOUTES les
-    obs valides restantes sont sans neige (dernière transition neige->sol nu).
-    Insensible à un jour neigeux isolé tardif (contrairement au max des jours neigeux)."""
-    if not is_snow.any():
-        return int(days[0])
-    last_snow_pos = np.flatnonzero(is_snow).max()
-    return int(days[min(last_snow_pos + 1, len(days) - 1)])
-
-
-def evaluate(model, r, idx):
-    maes, accs = [], []
-    for lo in range(0, len(idx), 2048):
-        sub = idx[lo:lo + 2048]
-        w, o, stat, doy0 = [x.to(DEVICE) for x in gather(r, sub)]
-        with torch.no_grad():
-            p = presence(model(w, stat, doy0)).cpu().numpy()
-        o = o.cpu().numpy()
-        # fenêtre mars-juin = jours 181+ de la séquence (1er sept -> 1er mars ~ j181)
-        for b in range(p.shape[0]):
-            v = np.flatnonzero(~np.isnan(o[b, 180:])) + 180
-            if len(v) < 20: continue
-            obs_p = o[b, v] >= 0.5
-            pred_p = p[b, v] >= 0.5
-            accs.append(float((obs_p == pred_p).mean()))
-            # lissage anti-jour-isolé : un jour neigeux entouré de sol nu est ignoré
-            def _despeckle(a):
-                a = a.copy()
-                iso = np.flatnonzero(a[1:-1] & ~a[:-2] & ~a[2:]) + 1
-                a[iso] = False
-                return a
-            maes.append(abs(meltout(v, _despeckle(obs_p)) - meltout(v, _despeckle(pred_p))))
-    return dict(mae_days=float(np.mean(maes)), acc=float(np.mean(accs)), n=len(maes))
-
-
-print(f"\n[banc fonte] {len(regions)} régions | tenues {SPATIAL_HELD} | device {DEVICE}", flush=True)
-models = {k: train_model(k) for k in ["dd", "eti", "mlp"]}
-rows = []
-for r in regions:
-    held = r["name"] in SPATIAL_HELD
-    periods = {"test_2022_2024": np.flatnonzero(r["seqs"][:, 3] == 2)}
-    if held:
-        periods["val_2019_2021"] = np.flatnonzero(r["seqs"][:, 3] == 1)
-    for pname, idx in periods.items():
-        if not len(idx): continue
-        for k, m in models.items():
-            met = evaluate(m, r, idx)
-            rows.append(dict(region=r["name"], spatial_held=held, period=pname, model=k, **met))
-            print(f"  {r['name']} {'(TENUE)' if held else '':7s} {pname} {k}: MAE date {met['mae_days']:.1f} j | acc {met['acc']:.3f}", flush=True)
-
-df = pd.DataFrame(rows)
-df.to_csv(OUT_CSV, index=False)
-for scope, sel in [("TENUES (leave-region-out)", df[df.spatial_held]),
-                   ("TEMPOREL 2022-2024", df[~df.spatial_held & (df.period == "test_2022_2024")])]:
-    if sel.empty: continue
-    print(f"\n== {scope} ==")
-    print(sel.groupby("model")[["mae_days", "acc"]].median().round(3).to_string())
-print("[banc fonte] DONE")
+if __name__ == "__main__":
+    d = charger()
+    print(f"[{REG}] {d['n']} noeuds de sites | seuil air du projet {d['seuil_air']:+.2f}\n")
+    print("  " + " " * 34 + "".join(f"{m:>6d}" for m in (11, 12, 1, 2, 3, 4)))
+    # CONTROLE : la recette du pilote (Twb -0.8, amp 0.5) doit retrouver ses ratios
+    ligne("controle Twb-0.8 amp0.5 (pilote)", juger(d, simuler(d, amp=0.5)))
+    ligne("seuil air projet, sans amp", juger(d, simuler(d, seuil_mode="air", amp=None)))
+    ligne("Twb-0.8 sans amp", juger(d, simuler(d, amp=None)))
+    if d["sw"] is not None:
+        for tf, srf in ((1.2e-3, 9.4e-6), (4e-3, 4.7e-5), (2.5e-3, 2.5e-5)):
+            ligne(f"ETI tf={tf*1000:g} srf={srf*1000:g}",
+                  juger(d, simuler(d, amp=None, melt_mode="eti", tf=tf, srf=srf)))
+    else:
+        print("  (pas de cache sw_in : variantes ETI sautees)")

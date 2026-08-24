@@ -331,6 +331,25 @@ if "ETL_GW_POWER" in os.environ:
     _qr, _b = (float(x) for x in os.environ["ETL_GW_POWER"].split(","))
     model.vertical_column.gw_power_law = (_qr, _b)
     print(f"[etl] nappe NON LINEAIRE : q_ref {_qr} mm/j a 100 mm, exposant {_b}")
+if os.environ.get("ETL_ETI", "0") == "1" and ("ETL_ETI_TF" in os.environ or "ETL_ETI_SRF" in os.environ):
+    # Re-echelle des coefficients ETI. Les valeurs litterature (Pellicciotti 2005 :
+    # tf 1.2 mm/degre/j, srf 9.4e-3 mm/j par W/m2) viennent de glaciers alpins d'ete ;
+    # aux conditions de crue boreale (T ~5, SW ~250, albedo ~0.5) elles donnent
+    # ~7 mm/j quand le degre-jour CALE d'Hydrotel en libere ~25 (taux 8.5 x indice_rad
+    # x (1-albedo)). Le run eti-outv l'a paye : accumulation parfaite SANS sinusoide
+    # (1.02/0.97/1.04) mais mai a 4.10 -- le manteau ne part plus, et deux scalaires
+    # ne remontent pas d'un facteur 3.5 en dix epoques. On initialise donc a
+    # l'equivalence energetique et on laisse l'apprentissage AFFINER.
+    import math as _me
+    with torch.no_grad():
+        if "ETL_ETI_TF" in os.environ:
+            _tf = float(os.environ["ETL_ETI_TF"])
+            model.vertical_column.sp_tf.copy_(torch.tensor(_me.log(_me.expm1(_tf))))
+        if "ETL_ETI_SRF" in os.environ:
+            _srf = float(os.environ["ETL_ETI_SRF"])
+            model.vertical_column.sp_srf.copy_(torch.tensor(_me.log(_me.expm1(_srf))))
+    print(f"[etl] ETI re-echelle : tf {float(torch.nn.functional.softplus(model.vertical_column.sp_tf))*1000:.2f} mm/C/j | "
+          f"srf {float(torch.nn.functional.softplus(model.vertical_column.sp_srf))*1000:.4f} mm/j/(W/m2)")
 if "ETL_KREC_PRIOR" in os.environ:
     # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
     # a krec ~5e-5..1e-4 avec la vanne non lineaire, pas a 2e-5). La moyenne du champ
