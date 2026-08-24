@@ -222,6 +222,27 @@ def main():
                         "sections": [
                             {"type": "properties", "fields": ["kge", "r", "beta", "gamma"]},
                             {"type": "chart", "chart_type": "line",
+                             "data_source": {"type": "zarr", "store_url": "hydro.zarr",
+                                             "value_array": "discharge",
+                                             "feature_dim": "station_id",
+                                             "feature_id_property": "station",
+                                             "indexers": {"percentile": 50},
+                                             "time_array": "time"},
+                             "options": {"title": "Hydrogramme simulé 2022-2024 (médiane ; "
+                                                  "changer l'indexer percentile pour "
+                                                  "l'enveloppe : 5-95 tête quantile, "
+                                                  "0/100 bornes de forçage)",
+                                         "xlabel": "Date", "ylabel": "m³/s"}},
+                            {"type": "chart", "chart_type": "line",
+                             "data_source": {"type": "zarr", "store_url": "hydro.zarr",
+                                             "value_array": "observed",
+                                             "feature_dim": "station_id",
+                                             "feature_id_property": "station",
+                                             "time_array": "time"},
+                             "options": {"title": "Observé (drapeaux CEHQ : déc-mars "
+                                                  "majoritairement reconstruit)",
+                                         "xlabel": "Date", "ylabel": "m³/s"}},
+                            {"type": "chart", "chart_type": "line",
                              "data_field": "cycle_sim", "compare_field": "cycle_obs",
                              "options": {"title": "Cycle mensuel simulé vs observé",
                                          "xlabel": "Mois", "ylabel": "m³/s"}}]},

@@ -1035,11 +1035,29 @@ except Exception as _efl:
 # FORCAGE entre dans la chaine) : le meme checkpoint est evalue une fois par membre
 # PyGMET (JOINT_FX_SUFFIX=-ensNNN) et les enveloppes se combinent hors ligne.
 if os.environ.get("ETL_DUMP_Q"):
+    _extra = {}
+    # Si la tete quantile est chargee (ETL_QUANTILE + point de reprise q1), on sauve
+    # aussi l'ENVELOPPE aux stations : c'est elle qui alimente la dimension percentile
+    # du store zarr des hydrogrammes de la carte (contrat feuillage : indexers).
+    if getattr(model, "use_quantile_head", False) and getattr(model, "quantile_head", None) is not None:
+        with torch.no_grad():
+            _spq = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
+            _pq = torch.stack([getattr(_spq, k) for k in _spq.__dataclass_fields__
+                               if torch.is_tensor(getattr(_spq, k))
+                               and getattr(_spq, k).shape[:1] == (n_nodes,)], dim=1)
+            _qfull = Q[slt].to(_pq.device)
+            _quant = model.quantile_head(_pq, _qfull)          # (T, N, K)
+            _quant_st = _quant[:, td.station_idx, :].cpu().numpy()
+        _extra["q_quantiles"] = _quant_st.astype(np.float32)
+        _extra["quantile_taus"] = np.array(getattr(model.quantile_head, "taus",
+                                                   [0.05, 0.10, 0.25, 0.75, 0.90, 0.95]))
+        print(f"[etl] enveloppe quantile sauvee aussi ({_quant_st.shape})")
     np.savez_compressed(os.environ["ETL_DUMP_Q"],
                         q_sim=Qs.numpy(), q_obs=qo_test.numpy(),
                         station_ids=np.array(r.get("station_ids", []), dtype=object),
                         dates=np.array([str(times[i])[:10] for i in
-                                        range(np.flatnonzero(sl)[0], np.flatnonzero(sl)[-1] + 1)]))
+                                        range(np.flatnonzero(sl)[0], np.flatnonzero(sl)[-1] + 1)]),
+                        **_extra)
     print(f"[etl] series Q sauvees : {os.environ['ETL_DUMP_Q']}")
 
 # ETL_DUMP_REACH=<chemin.npz> : cache PAR TRONCON pour le notebook marimo (demande
