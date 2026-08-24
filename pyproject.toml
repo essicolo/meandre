@@ -75,4 +75,8 @@ torch = { index = "pytorch-cu126" }
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["meandre"]
+# hydrotel_clone est du CODE DE PAQUET : meandre l'importe a 12 endroits. Sans lui
+# le wheel etait invalide (pip install casse). Second paquet de premier niveau pour
+# preserver son statut de sous-projet valide contre le binaire C++ ; la migration
+# src/ complete est planifiee avec le gel 1.0 (voir docs/architecture.md).
+packages = ["meandre", "hydrotel_clone"]
