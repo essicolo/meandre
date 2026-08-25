@@ -106,15 +106,15 @@ if USE_MELT10:
     model.vertical_column.t_neige_seuil = -0.47
     print("[joint] init fonte MOD10 : C_f 5.39, T_melt -0.98, seuil pluie/neige -0.47")
 if USE_AQ:
-    _lp["K_sat_1"] = 0.04; _lp["K_c"] = 1.0; _lp["k_gw"] = 0.07   # priors mesurés (bilan orage, récessions)
+    _lp["K_sat_1"] = 0.04; _lp["K_c"] = 1.0; _lp["k_gw"] = 0.07   # priors mesures (bilan orage, recessions)
+    # krec passe a l'init du CHAMP (2026-08-20) : c'etait un scalaire `krec_raw` de la
+    # colonne, une seule valeur de recharge pour toute une region. Le scalaire a ete
+    # RETIRE, pas laisse en repli, donc l'ancienne copie ici levait AttributeError.
+    _lp.setdefault("krec", 5e-5)
 model.spatial_encoder.init_from_literature(_lp)
 if USE_AQ:
-    import math as _mk
-    _lo, _hi = model.vertical_column._krec_bounds
-    _x = min(max((5e-5 - _lo) / (_hi - _lo), 1e-6), 1 - 1e-6)
-    with torch.no_grad():
-        model.vertical_column.krec_raw.copy_(torch.tensor(_mk.log(_x / (1 - _x))))
-    print("[joint] recette canonique : aquifère + krec 5e-5 + priors mesurés + débiais ET par région")
+    print(f"[joint] recette canonique : aquifere + krec d'init {_lp['krec']:.1e} "
+          "+ priors mesures")
 if USE_ETL:
     model.vertical_column.etp_channel = 6
     print("[joint] etp_channel=6 : demande apprise × K_c NeRF, w_et=0")
@@ -231,7 +231,16 @@ for epoch in range(N_EPOCHS):
 
 # ── held-out 2022-2024 par région (best checkpoint) ─────────────────────────
 print(f"\n[joint] HELD-OUT 2022-2024 (best agrégé {best_agg:.4f})")
-model.load(CKPT); model.eval()
+# JOINT_EPOCHS=0 : SONDAGE ZERO-SHOT. On n'entraine rien, on applique un champ deja
+# appris (JOINT_WARM) aux 14 territoires pour mesurer ce que vaut UN SEUL champ sur la
+# province. C'est la question posee par Essi -- « c'est un lancement global pour verifier
+# si les resultats sont bons » -- et elle ne demande aucune convergence. Sans ce
+# garde-fou, le held-out rechargeait un checkpoint jamais ecrit.
+if N_EPOCHS > 0 and os.path.exists(CKPT):
+    model.load(CKPT)
+else:
+    print("[joint] zero epoch : held-out sur les poids charges, sans recharger de checkpoint")
+model.eval()
 for i, r in enumerate(regions):
     set_region(i)
     td = r["train_data"]
