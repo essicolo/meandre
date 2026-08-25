@@ -105,7 +105,7 @@ def split(P, tmin, tmax, seuil, ea=None, twb_seuil=None):
 
 
 def simuler(d, seuil_mode="twb", twb=-0.8, amp=None, melt_mode="degree_day",
-            tf=1.2e-3, srf=9.4e-6):
+            tf=1.2e-3, srf=9.4e-6, trans=None, tf_wind=None):
     """Rejoue la neige seule. Retourne la serie SWE (T, n) en mm."""
     mp = d["mp"]
     p = dict(lat=d["lat"], ce1=d["ce1"], ce0=d["ce0"],
@@ -120,6 +120,10 @@ def simuler(d, seuil_mode="twb", twb=-0.8, amp=None, melt_mode="degree_day",
              tf=torch.full((d["n"],), float(tf)), srf=torch.full((d["n"],), float(srf)))
     if amp is not None:
         p["melt_seasonal_amp"] = float(amp)
+    if trans is not None:            # transmissivite de canopee (conifers, feuillus, decouvert)
+        p["eti_trans_conifers"], p["eti_trans_feuillus"], p["eti_trans_decouver"] =             (float(x) for x in trans)
+    if tf_wind is not None:          # terme turbulent tf + tf_wind*u2
+        p["eti_tf_wind"] = float(tf_wind)
     mod = DegreJourModifie(24)
     st = init_state(d["n"], dtype=torch.float64)
     F, times = d["F"], d["times"]
@@ -133,7 +137,8 @@ def simuler(d, seuil_mode="twb", twb=-0.8, amp=None, melt_mode="degree_day",
                                  ea=F[i, :, 5],
                                  twb_seuil=(twb if seuil_mode == "twb" else None))
             sw_i = d["sw"][i] if (melt_mode == "eti" and d["sw"] is not None) else None
-            _, st = mod(tmin, tmax, pluie, neige, doys[i], st, p, sw_in=sw_i)
+            _, st = mod(tmin, tmax, pluie, neige, doys[i], st, p, sw_in=sw_i,
+                        u2=F[i, :, 4])
             out[i] = st["couvert_nival_mm"]
     return out
 

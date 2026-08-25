@@ -273,7 +273,8 @@ class DegreJourModifie(torch.nn.Module):
         super().__init__()
         self.pas_de_temps = pas_de_temps
 
-    def forward(self, tmin, tmax, pluie_mm, neige_mm, jour, state, p, sw_in=None):
+    def forward(self, tmin, tmax, pluie_mm, neige_mm, jour, state, p, sw_in=None,
+                u2=None):
         """Un pas de temps. tmin/tmax °C ; pluie/neige mm ; jour = jour julien ;
         state = dict {classe: (stock,hauteur,chaleur,eau_ret), 'albedo_'+classe};
         p = dict params par nœud (lat, ce1, ce0, pct_conifers/feuillus/autres,
@@ -307,15 +308,29 @@ class DegreJourModifie(torch.nn.Module):
         apport = torch.zeros_like(pluie_m)
         stock_moyen = torch.zeros_like(pluie_m)
         pct = {"conifers": p["pct_conifers"], "feuillus": p["pct_feuillus"], "decouver": p["pct_autres"]}
+        # ── Completions ETI (opt-in, 2026-08-24, question d'Essi sur la modulation
+        # robuste) : plutot qu'une porte apprenante entre degre-jour et ETI -- qui
+        # nuirait a l'identifiabilite -- on complete le bilan avec les deux termes que
+        # les conditions "ou l'ETI nuit" designent, a constantes de litterature :
+        #   eti_trans_<classe> : TRANSMISSIVITE de canopee sur SW (l'ETI appliquait le
+        #     meme srf aux trois classes alors que le degre-jour ancre avait ses taux
+        #     par classe ; ~0.2 conifers, ~0.5 feuillus, 1.0 decouvert) ;
+        #   eti_tf_wind : terme turbulent tf_eff = tf + tf_wind*u2 (redoux venteux,
+        #     pluie-sur-neige advective ; n'utilise que u2 deja dans le forcage).
+        # Absents = ETI de base inchange ; degree_day jamais touche.
+        _tfw = p.get("eti_tf_wind")
+        _tf_eff = _tf if (_tfw is None or _tf is None or u2 is None) else _tf + _tfw * u2
         for c in self.CLASSES:
             st, ha, ch, er = state[c]
             alb = state["albedo_" + c]
             _cf = p["coeff_fonte_" + c] if _saison is None else p["coeff_fonte_" + c] * _saison
+            _tr = p.get("eti_trans_" + c)
+            _sw_c = sw_in if (_tr is None or sw_in is None) else sw_in * _tr
             fonte, st2, ha2, ch2, er2, alb2 = calcule_fonte(
                 tmin, tmax, pluie_m, neige_m, ir, st, ha, ch, er, alb,
                 _cf, p["seuil_fonte_" + c], p["taux_fonte_geo"],
                 p["densite_max"], p["constante_tassement"], self.pas_de_temps,
-                melt_mode=_mode, sw_in=sw_in, tf=_tf, srf=_srf)
+                melt_mode=_mode, sw_in=_sw_c, tf=_tf_eff, srf=_srf)
             new_state[c] = (st2, ha2, ch2, er2)
             new_state["albedo_" + c] = alb2
             apport = apport + pct[c] * fonte
