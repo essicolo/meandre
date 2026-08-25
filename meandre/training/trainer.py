@@ -306,6 +306,13 @@ class TrainingData:
     et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
     swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
     tws_obs: Tensor | None = None   # GRACE TWS anomalie (mm), valeur mensuelle au 15, NaN ailleurs
+    # GRACE est un observable de BASSIN, pas de tronçon : sa moyenne de stockage doit se
+    # prendre sur le masque du bassin qu'elle mesure. Tant qu'un entraînement portait sur
+    # un seul bassin, la moyenne sur tous les nœuds était ce masque et la question ne se
+    # posait pas. Sur le domaine provincial fondu (2026-08-25), elle mélangerait quatorze
+    # bassins pour les confronter à une seule série satellitaire. `tws_group` donne le
+    # bassin de chaque nœud et `tws_obs` devient (T, n_bassins).
+    tws_group: Tensor | None = None   # (n_nodes,) indice de bassin, None = un seul bassin
     # CanSWE : MASSE du manteau mesurée au sol, par SITE et non par nœud (R24). Plusieurs
     # sites peuvent viser le même tronçon et les agréger détruirait la dispersion
     # intra-nœud, qui EST la mesure de l'incertitude de représentativité ponctuelle.
@@ -1103,7 +1110,24 @@ class Trainer:
                         _wet = torch.zeros_like(_diag_chunk.swe)
                     _stor = (_soil_mm + _diag_chunk.swe + _diag_chunk.s_gw
                              + _diag_chunk.canopy + _wet)  # (T, n_nodes) mm
-                    _stor_basin = _stor.mean(dim=1)[burnin:]  # (T-burnin,) moy-bassin
+                    _grp = getattr(data, "tws_group", None)
+                    if _grp is None:
+                        _stor_basin = _stor.mean(dim=1)[burnin:]  # (T-burnin,) moy-bassin
+                    else:
+                        # MOYENNE PAR BASSIN. GRACE mesure une colonne d'eau sur un
+                        # bassin ; sur le domaine provincial, moyenner les 25 656
+                        # tronçons confronterait la Gaspésie et l'Abitibi mêlées à une
+                        # seule série. Un index_add par bassin coûte un balayage.
+                        _ng = int(data.tws_obs.shape[1])
+                        _cnt = getattr(self, "_tws_group_count", None)
+                        if _cnt is None:
+                            _cnt = torch.zeros(_ng, device=_stor.device).index_add_(
+                                0, _grp, torch.ones_like(_grp, dtype=_stor.dtype))
+                            self._tws_group_count = _cnt.clamp(min=1.0)
+                            _cnt = self._tws_group_count
+                        _sum = torch.zeros(_stor.shape[0], _ng, device=_stor.device,
+                                           dtype=_stor.dtype).index_add_(1, _grp, _stor)
+                        _stor_basin = (_sum / _cnt)[burnin:]     # (T-burnin, n_bassins)
                     _tws_chunk = data.tws_obs[obs_offset + burnin:obs_offset + chunk_len]
                     _vt = ~torch.isnan(_tws_chunk)
                     if int(_vt.sum()) >= 2:  # ≥2 mois pour centrer
@@ -1119,15 +1143,36 @@ class Trainer:
                         # Côté observation : moyenne de la série ENTIÈRE, calculée une
                         # fois. Côté simulation : moyenne mobile exponentielle détachée,
                         # puisque la valeur longue durée n'est pas connue d'avance.
+                        # Indice de bassin de chaque valeur retenue : les lignes de base
+                        # se prennent PAR BASSIN, sinon on centrerait la Gaspésie sur la
+                        # moyenne provinciale et on inventerait un biais là où il n'y en
+                        # a pas. Sans groupe, `_gi` reste None et rien ne change.
+                        _gi = _vt.nonzero(as_tuple=True)[1] if _vt.ndim == 2 else None
                         _gb = getattr(self, "_tws_obs_base", None)
                         if _gb is None:
-                            _ao = data.tws_obs[~torch.isnan(data.tws_obs)]
-                            _gb = _ao.mean() if _ao.numel() else torch.zeros((), device=_s.device)
+                            _a = data.tws_obs
+                            if _gi is None:
+                                _ao = _a[~torch.isnan(_a)]
+                                _gb = _ao.mean() if _ao.numel() else torch.zeros((), device=_s.device)
+                            else:
+                                _ok = ~torch.isnan(_a)
+                                _n = _ok.sum(dim=0).clamp(min=1)
+                                _gb = torch.where(_ok, _a, torch.zeros_like(_a)).sum(dim=0) / _n
                             self._tws_obs_base = _gb
-                        _sb = _s.mean().detach()
+                        _gbv = _gb if _gi is None else _gb[_gi]
+                        if _gi is None:
+                            _sb = _s.mean().detach()
+                        else:
+                            _ng2 = int(data.tws_obs.shape[1])
+                            _cs = torch.zeros(_ng2, device=_s.device).index_add_(0, _gi, _s.detach())
+                            _cn = torch.zeros(_ng2, device=_s.device).index_add_(
+                                0, _gi, torch.ones_like(_s)).clamp(min=1)
+                            _sb = _cs / _cn
                         _pb = getattr(self, "_tws_sim_base", None)
                         self._tws_sim_base = _sb if _pb is None else (0.98 * _pb + 0.02 * _sb)
-                        L_tws = tws_anomaly_loss(_s, _g, self._tws_sim_base, _gb, sigma=25.0)
+                        _sbv = (self._tws_sim_base if _gi is None
+                                else self._tws_sim_base[_gi])
+                        L_tws = tws_anomaly_loss(_s, _g, _sbv, _gbv, sigma=25.0)
                         loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                         all_components["tws_loss"] = (
                             all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
@@ -1158,18 +1203,40 @@ class Trainer:
                                     [31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335],
                                     device=_s.device, dtype=torch.long)
                                 self._doy_month_bounds = _bnd
-                            _doy = data.day_of_year[sl][burnin:][_vt].long()
+                            _d0 = data.day_of_year[sl][burnin:]
+                            if _gi is not None:      # (T,) -> (T, n_bassins) avant masque
+                                _d0 = _d0[:, None].expand_as(_vt)
+                            _doy = _d0[_vt].long()
                             _mth = torch.bucketize(_doy, _bnd)          # 0..11
-                            _res = (_s - self._tws_sim_base) - (_g - _gb)
+                            _res = (_s - _sbv) - (_g - _gbv)
+                            # Le biais saisonnier s'accumule PAR MOIS ET PAR BASSIN : un
+                            # excès de mars en Gaspésie et un déficit de mars en Abitibi
+                            # se compenseraient dans une case unique, et le terme qui
+                            # existe justement pour voir le biais systématique (R23) ne
+                            # verrait plus rien.
                             _bias = getattr(self, "_tws_month_bias", None)
-                            if _bias is None:
-                                _bias = torch.zeros(12, device=_s.device)
+                            _shape = (12,) if _gi is None else (12, int(data.tws_obs.shape[1]))
+                            if _bias is None or tuple(_bias.shape) != _shape:
+                                _bias = torch.zeros(_shape, device=_s.device)
                             _cur = _bias.clone()
-                            for _m in torch.unique(_mth):
-                                _cur[_m] = _res[_mth == _m].mean().detach()
+                            if _gi is None:
+                                for _m in torch.unique(_mth):
+                                    _cur[_m] = _res[_mth == _m].mean().detach()
+                            else:
+                                _flat = _mth * _shape[1] + _gi
+                                _sm = torch.zeros(_shape[0] * _shape[1], device=_s.device)
+                                _sm.index_add_(0, _flat, _res.detach())
+                                _cn2 = torch.zeros_like(_sm).index_add_(
+                                    0, _flat, torch.ones_like(_res))
+                                _seen = _cn2 > 0
+                                _cur = _cur.reshape(-1)
+                                _cur[_seen] = (_sm[_seen] / _cn2[_seen])
+                                _cur = _cur.reshape(_shape)
                             self._tws_month_bias = 0.9 * _bias + 0.1 * _cur
                             # passage direct : valeur = biais accumule, gradient = residu
-                            _st = _res - _res.detach() + self._tws_month_bias[_mth]
+                            _acc = (self._tws_month_bias[_mth] if _gi is None
+                                    else self._tws_month_bias[_mth, _gi])
+                            _st = _res - _res.detach() + _acc
                             _sg = float(getattr(self.config, "tws_clim_sigma", 5.4))
                             L_tws_clim = (_st.pow(2) / (_sg ** 2)).mean()
                             loss_chunk = loss_chunk + _w_clim * L_tws_clim

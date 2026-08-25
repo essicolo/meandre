@@ -199,6 +199,18 @@ La seconde, immédiatement après : « et il n'y a pas de membres, seulement un 
 
 Ce que les deux partagent : dans les deux cas j'avais obtenu la bonne PROPRIÉTÉ visible (une carte provinciale, une enveloppe autour de l'hydrogramme) en assemblant après coup des objets qui ne l'avaient pas. La propriété doit tenir par construction, sinon elle ne survit pas au premier endroit où on ne l'a pas assemblée à la main.
 
+### R46. La mise à l'échelle a révélé deux défauts que douze runs régionaux ne pouvaient pas voir
+
+Le passage à la province a été traité comme un changement d'échelle du SCORE. C'était un changement d'échelle du COÛT et de la CONFIGURATION, et les deux ont mordu.
+
+Le coût, d'abord, mesuré et non estimé. `joint.py` gardait la plateforme comme unité de calcul et faisait tourner les quatorze en rotation, une simulation par plateforme et par epoch. Résultat sur le run du 2026-08-25 : 5 h 36 de temps écoulé, 19 403 s de CPU sur un seul cœur, GPU à 0-1 %, epoch 0 inachevé. Le modèle est limité par le LANCEMENT de noyaux, pas par le calcul, donc le coût suit le NOMBRE de boucles et non leur largeur. Les réseaux étant disjoints, leur union est un graphe bloc-diagonal et l'epoch devient une seule boucle sur 25 656 tronçons vectorisés. Deux obstacles réels ont dû tomber au passage : le forçage provincial pèse 5.6 Go, les deux tiers de la carte, et ne laissait plus de place aux activations d'un chunk couvrant tous les tronçons (il reste en RAM hôte, seule la tranche du chunk monte au GPU) ; et GRACE, qui moyennait le stockage sur tous les nœuds, aurait confronté quatorze bassins mêlés à une seule série satellitaire (agrégation par bassin, y compris pour le biais climatologique, désormais accumulé par mois ET par bassin).
+
+La configuration, ensuite, et c'est le plus coûteux. L'occupation du sol, les milieux humides, la fonte calée et la phénologie ne sont PAS dans les caches DuckDB : ils viennent des paquets de plateforme Hydrotel et n'étaient chargés que par `etl_run.py`. `joint.py` ne les posait pas. Tous les entraînements conjoints, ceux du 2026-08-25 comme les pilotes antérieurs, tournaient donc sur un territoire sans forêt, sans eau libre et sans milieu humide, tout en classe découvert, la plus fondante. L'écart mesuré sur OUTV à intrants identiques et paramètres figés est de 0.482 contre 0.749 de KGE aux jauges, soit plus que la somme de tous les gains de la campagne d'août. Toute comparaison conjoint contre régional faite avant ce correctif comparait deux physiques différentes, pas deux architectures.
+
+Un troisième écart, mineur mais de la même famille, est apparu : douze caches portent quatre champs physiques, ABIT et LABI en portent treize (milieux humides, c_prod, ksat_bs). L'intersection est le seul choix sûr dans un domaine fondu, mais elle retire à ces deux plateformes des ancrages qu'elles avaient en régional, donc leurs scores fusionnés ne sont pas directement comparables à gen1 tant que les caches n'auront pas été rebâtis sur un schéma commun.
+
+LA LEÇON, et c'est elle qui compte pour la suite : les trois défauts sont des artefacts de PRODUCTION, pas de modélisation, et ils avaient tous la même forme, une configuration héritée en silence par chemin d'exécution. Douze runs régionaux ne pouvaient pas les révéler puisque chacun héritait de la sienne. Fondre les caches en un domaine unique a été un révélateur autant qu'une optimisation, ce qui est l'argument le plus fort en faveur de la consigne d'Essi sur les régions : ce qui n'est jamais unifié n'est jamais confronté.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
