@@ -118,6 +118,26 @@ if USE_AQ:
 if USE_ETL:
     model.vertical_column.etp_channel = 6
     print("[joint] etp_channel=6 : demande apprise × K_c NeRF, w_et=0")
+# ── RECETTE 1.0 (JOINT_V10=1) : la recette validee sur 12 regions, SANS aucun bouton
+# regional. Remarque d'Essi (2026-08-25) : onze runs regionaux, ce sont onze modeles
+# recolles, pas un modele. Ici UN champ pour toute la province.
+#   - partage pluie-neige au BULBE HUMIDE, seuil unique -0.8 (R35/R43) ;
+#   - fonte saisonniere amp 0.5 (R36 ; l'ETI est ecarte de la 1.0, R44) ;
+#   - krec APPRIS par le champ, moyenne ancree 2e-5 (R34, prior_on_krec) ;
+#   - k_gw prior 0.0273, la valeur mesuree sur 1316 recessions.
+if os.environ.get("JOINT_V10", "0") == "1":
+    model.vertical_column.split_mode = "wet_bulb"
+    model.vertical_column.t_neige_seuil = float(os.environ.get("JOINT_TWB", "-0.8"))
+    model.vertical_column.melt_seasonal_amp = float(os.environ.get("JOINT_AMP", "0.5"))
+    model.spatial_encoder.prior_on_krec = True
+    _t10 = getattr(model.spatial_encoder, "_prior_targets", None) or {}
+    _t10["krec"] = 2e-5; _t10["k_gw"] = 0.0273
+    model.spatial_encoder._prior_targets = _t10
+    print("[joint] RECETTE 1.0 : bulbe humide "
+          f"{model.vertical_column.t_neige_seuil:+.2f}, fonte saisonniere "
+          f"{model.vertical_column.melt_seasonal_amp}, krec appris ancre 2e-5, "
+          "k_gw prior 0.0273 -- aucun parametre regional")
+
 if "JOINT_WARM" in os.environ:
     # warm-start du CHAMPION : départage interférence-de-rotation vs lenteur-à-froid.
     # Si le conjoint dégrade depuis le point zero-shot, l'interférence est prouvée.
@@ -139,7 +159,9 @@ if USE_ANCHORS:
 tconf = TrainingConfig(
     n_epochs=N_EPOCHS,
     lr=LR_OVERRIDE if LR_OVERRIDE > 0 else float(tcfg.get("lr", 5e-4)),
-    chunk_steps=int(tcfg.get("chunk_steps", 180)),
+    # JOINT_CHUNK : la memoire d'activations croit avec noeuds x longueur de troncon.
+    # A l'echelle provinciale (25 656 troncons, 7.5x OUTV) sur 8 Go, il faut raccourcir.
+    chunk_steps=int(os.environ.get("JOINT_CHUNK", tcfg.get("chunk_steps", 180))),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
     grad_clip=float(tcfg.get("clip_grad_norm", 1.0)),
     w_prior=float(tcfg.get("w_prior", 0.005)),

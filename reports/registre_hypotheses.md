@@ -189,6 +189,16 @@ MÉTHODE : appariement EXACT par `IDTRONCON` (format provincial) converti par `i
 
 CONSÉQUENCE POUR LE LIVRABLE MINISTÉRIEL : on ne peut PAS valider un produit de renaturalisation contre les jauges, puisque l'essentiel de l'effet à quantifier ne passe par aucune station. Cela vaut pour TOUT modèle, pas seulement le nôtre. La validité du résultat ne peut donc venir que de la STRUCTURE : que le terme anthropique soit explicitement représenté et non absorbé dans des paramètres calés. C'est la distinction entre un modèle identifiable et un modèle ajusté, et elle est démontrable chez nous par la corrélation entre paramètres appris et intensité des prélèvements par nœud -- test qu'un modèle sans paramètres continus ne peut pas passer.
 
+### R45. Onze runs régionaux ne font pas un modèle du Québec, et dix membres ne font pas un modèle probabiliste
+
+Deux corrections d'architecture posées par Essi le 2026-08-25, à deux niveaux de la même erreur.
+
+La première : « il n'y a qu'une seule région dans le concept (le Québec), non ? ». La flotte livrait onze entraînements séparés, donc onze champs NeRF appris indépendamment, recollés ensuite pour couvrir la province. Rien n'y garantissait la continuité aux frontières : deux tronçons voisins de part et d'autre d'une limite de plateforme Hydrotel pouvaient recevoir des paramètres arbitrairement différents, alors que la thèse du projet est justement un champ continu qui dissout les calages régionaux. J'avais retiré la région de l'interface après le premier rappel, sans voir qu'elle structurait encore le CALCUL. Le remède existait déjà dans le dépôt : `joint.py`, un seul HydroModel, les latents dimensionnés au total des nœuds et tranchés par plateforme au chargement, un entraîneur par base lié au même optimiseur. Il ne lui manquait que la recette d'août, maintenant câblée sous `JOINT_V10`.
+
+La seconde, immédiatement après : « et il n'y a pas de membres, seulement un modèle probabiliste ». Le plan traitait l'incertitude de forçage par répétition externe, dix runs déterministes sur dix tirages PyGMET dont on prenait ensuite l'enveloppe. Ce n'est pas un modèle probabiliste, c'est un modèle déterministe passé dix fois : l'objet livré n'est pas une distribution prédictive mais la dispersion d'un échantillon d'exécutions, et sa largeur croît mécaniquement avec le nombre de membres au lieu de converger. Un min/max de dix tirages n'est aucun quantile. L'incertitude de forçage doit entrer comme distribution d'ENTRÉE du modèle unique et ressortir par la même tête quantile, en une passe ; les membres PyGMET ne servent plus qu'à calibrer et vérifier cette entrée. Le contrat du store zarr a été corrigé en conséquence : plus de percentiles 0 et 100 fabriqués à partir de runs.
+
+Ce que les deux partagent : dans les deux cas j'avais obtenu la bonne PROPRIÉTÉ visible (une carte provinciale, une enveloppe autour de l'hydrogramme) en assemblant après coup des objets qui ne l'avaient pas. La propriété doit tenir par construction, sinon elle ne survit pas au premier endroit où on ne l'a pas assemblée à la main.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
