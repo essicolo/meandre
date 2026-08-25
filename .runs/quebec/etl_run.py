@@ -1696,3 +1696,9 @@ if _fold_test is not None:
         print(f"[etl] PLI {_FOLD} - jauges VUES a l'entrainement : n={len(kv)} | "
               f"median {np.median(kv):.4f}")
 print("[etl] DONE")
+# SORTIE FRANCHE (dette #20, 2026-08-25). Un run TERMINE restait vivant onze heures en
+# gardant la carte : les evaluations de membres sont passees de 7 min a 2h15 par
+# contention. La cause exacte (thread de chargeur non ferme ? handle CUDA ?) reste a
+# trouver ; en attendant, on ne laisse plus l'interpreteur decider quand mourir.
+sys.stdout.flush(); sys.stderr.flush()
+os._exit(0)
