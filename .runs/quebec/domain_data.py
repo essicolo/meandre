@@ -41,20 +41,30 @@ from meandre.training.trainer import TrainingData
 
 
 class HostSeries:
-    """Serie (T, ...) gardee en RAM hote, tranchee vers le GPU a la demande.
+    """Serie (T, ...) hors GPU, tranchee vers le GPU a la demande.
 
     Se substitue a un tenseur partout ou le code ne fait que TRANCHER (`data.forcing[sl]`,
     `data.forcing[sl, :, 0]`), ce qui est le seul usage dans le trainer et le modele.
     Le gain n'est pas cosmetique : c'est ce qui permet au chunk de couvrir les 25 656
     troncons a la fois au lieu de 3 900.
+
+    SUR DISQUE quand `host` est un memmap numpy (remarque d'Essi, 2026-08-25 : la RAM
+    de la machine saturait). Le forcage provincial pese 5.6 Go ; le garder en RAM le
+    deplacait simplement du GPU vers la memoire vive, ou il concurrencait Hydrotel et
+    le reste. Sur memmap, seules les pages du chunk courant (~55 Mo) sont residentes,
+    et le cache de pages du systeme garde les plus chaudes sans qu'on ait a le gerer.
     """
 
-    def __init__(self, host: torch.Tensor, device: str) -> None:
+    def __init__(self, host, device: str) -> None:
         self._host = host
         self._device = device
+        self._np = not isinstance(host, torch.Tensor)
 
     def __getitem__(self, key):
-        return self._host[key].to(self._device, non_blocking=True)
+        v = self._host[key]
+        if self._np:
+            v = torch.from_numpy(np.ascontiguousarray(v))
+        return v.to(self._device, non_blocking=True)
 
     def __len__(self) -> int:
         return int(self._host.shape[0])
@@ -69,11 +79,41 @@ class HostSeries:
 
     @property
     def dtype(self):
-        return self._host.dtype
+        return torch.float32 if self._np else self._host.dtype
 
     @property
     def device(self):
         return torch.device(self._device)
+
+
+def _memmap_forcing(parts, names, device):
+    """Concatene le forcage des plateformes dans un fichier sur DISQUE, puis le relit
+    en memmap. Ecrit plateforme par plateforme pour ne jamais tenir la province entiere
+    en RAM, et libere chaque tenseur source au passage. Le fichier est mis en cache :
+    tant que la liste des plateformes et la forme ne changent pas, il est reutilise."""
+    T = parts[0]["train_data"].forcing.shape[0]
+    C = parts[0]["train_data"].forcing.shape[2]
+    N = sum(p["n_nodes"] for p in parts)
+    rep = f"{_mpaths_root()}/quebec/cache"
+    os.makedirs(rep, exist_ok=True)
+    cle = "-".join(names) + f"_{T}x{N}x{C}"
+    if len(cle) > 120:                      # noms de fichiers Windows
+        import hashlib
+        cle = f"dom{len(names)}_{T}x{N}x{C}_{hashlib.md5(cle.encode()).hexdigest()[:8]}"
+    f = f"{rep}/forcage-{cle}.npy"
+    if not os.path.exists(f):
+        mm = np.lib.format.open_memmap(f, mode="w+", dtype=np.float32, shape=(T, N, C))
+        o = 0
+        for p in parts:
+            v = p["train_data"].forcing
+            mm[:, o:o + v.shape[1], :] = v.numpy()
+            o += v.shape[1]
+            mm.flush()
+        del mm
+        print(f"[domaine] forcage ecrit sur disque : {f} ({T * N * C * 4 / 1e9:.1f} Go)")
+    else:
+        print(f"[domaine] forcage repris du cache disque : {os.path.basename(f)}")
+    return HostSeries(np.load(f, mmap_mode="r"), device)
 
 
 class SparseWithdrawals:
@@ -202,7 +242,12 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     station_mask[station_idx] = True
 
     # ── forcage, prelevements ───────────────────────────────────────────────
-    forcing = HostSeries(torch.cat([p["train_data"].forcing for p in parts], dim=1), device)
+    forcing = _memmap_forcing(parts, names, device)
+    # Les copies par plateforme ont fait leur office : les garder doublait l'empreinte
+    # (5.6 Go de plus) pour rien, puisque tout passe desormais par le memmap.
+    for p in parts:
+        p["train_data"].forcing = None
+        p["val_data"].forcing = None
     wc, wv = _compress(torch.cat([_dense_w(p, "net") for p in parts], dim=1))
     gc, gv = _compress(torch.cat([_dense_w(p, "net_gw") for p in parts], dim=1))
     withdrawals = SparseWithdrawals(wc, wv, gc, gv, n_total, device)
@@ -293,11 +338,34 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
             mp_parts.append(load_melt_nodes(pl, p["node_ids"], device="cpu"))
             if phenology is None:
                 phenology = load_phenologie(pl)
+        # MILIEUX HUMIDES : presents sur DOUZE plateformes sur quatorze (seules MONT et
+        # SLNO n'en declarent pas). L'intersection les supprimait donc pour TOUT LE MONDE
+        # a cause de deux territoires -- exactement l'inverse de ce qu'il faut faire.
+        # Un territoire qui n'en declare pas n'en a pas : zero est ici la valeur
+        # PHYSIQUEMENT juste, pas un bouche-trou.
+        WETLAND = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw",
+                   "wet_vol_init_raw", "frac_raw")
         for k in sorted(set().union(*[set(d) for d in lc_parts])):
-            if all(k in d for d in lc_parts):
+            presents = [d for d in lc_parts if k in d]
+            if len(presents) == len(lc_parts):
                 land_cover[k] = torch.cat([d[k] for d in lc_parts]).to(device)
+            elif k in WETLAND:
+                v = [(d[k] if k in d else torch.zeros(sz))
+                     for d, sz in zip(lc_parts, sizes)]
+                land_cover[k] = torch.cat(v).to(device)
+                _abs = [p["name"] for p, d in zip(parts, lc_parts) if k not in d]
+                print(f"[domaine] milieu humide {k} : absent de {_abs}, pose a ZERO "
+                      "(pas de milieu humide declare)")
             else:
-                print(f"[domaine] occupation : champ {k} absent de certaines plateformes, ECARTE")
+                # Coefficients de production et de sol : zero serait FAUX. On pose la
+                # mediane provinciale des plateformes qui l'ont, et on le dit.
+                med = float(torch.cat([d[k] for d in presents]).median())
+                v = [(d[k] if k in d else torch.full((sz,), med))
+                     for d, sz in zip(lc_parts, sizes)]
+                land_cover[k] = torch.cat(v).to(device)
+                _abs = [p["name"] for p, d in zip(parts, lc_parts) if k not in d]
+                print(f"[domaine] {k} : absent de {_abs}, pose a la mediane "
+                      f"provinciale {med:.4g} (HYPOTHESE, pas une mesure)")
         for k in sorted(set().union(*[set(d) for d in mp_parts])):
             if all(k in d for d in mp_parts):
                 v = [d[k] for d in mp_parts]
@@ -320,13 +388,16 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     try:
         from meandre.data.hydrotel_calib import load_linacre_nodes
         from meandre.utils import paths as _mp2
-        a_l, b_l = [], []
+        # six champs par noeud : lat, altitude, T froide, T chaude, albedo, coefficient
+        # d'optimisation regional (~0.4-0.5). Ils se concatenent comme les autres.
+        cols_lin = None
         for p in parts:
             pl = f"{_mp2.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
-            _a, _b = load_linacre_nodes(pl, p["node_ids"], device="cpu")
-            a_l.append(_a); b_l.append(_b)
-        linacre = (torch.cat(a_l).to(device), torch.cat(b_l).to(device))
-        print(f"[domaine] ETP Linacre du projet : {len(a_l)} paquets fondus")
+            v = load_linacre_nodes(pl, p["node_ids"], device="cpu")
+            cols_lin = [[x] for x in v] if cols_lin is None else                 [c + [x] for c, x in zip(cols_lin, v)]
+        linacre = tuple(torch.cat(c).to(device) for c in cols_lin)
+        print(f"[domaine] ETP Linacre du projet : {len(linacre)} champs, coefficient "
+              f"median {float(linacre[5].median()):.3f}")
     except Exception as exc:
         print(f"[domaine] Linacre indisponible ({exc}) : ETP McGuinness par defaut")
     try:
