@@ -68,7 +68,11 @@ model = HydroModel(
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
     param_mode="nerf", column_mode="hydrotel",
-    et_mode="linacre",   # recette gen1 : ETP Linacre calee du projet, pas McGuinness
+    # recette gen1 : ETP Linacre calee du projet. PROV_SANS_LINACRE bascule le MODE en
+    # meme temps que les parametres, sinon la colonne exige un set_linacre_params qui
+    # n'a pas eu lieu et l'assertion tombe au premier pas.
+    et_mode=("mcguinness" if os.environ.get("PROV_SANS_LINACRE", "0") == "1"
+             else "linacre"),
     use_temperature=False,
     # z_n desactive : un effet aleatoire par troncon sur 25 656 troncons ajouterait
     # autant de parametres libres que de noeuds sans contrainte spatiale, et c'est
