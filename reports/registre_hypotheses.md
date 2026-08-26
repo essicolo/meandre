@@ -211,6 +211,20 @@ Un troisième écart, mineur mais de la même famille, est apparu : douze caches
 
 LA LEÇON, et c'est elle qui compte pour la suite : les trois défauts sont des artefacts de PRODUCTION, pas de modélisation, et ils avaient tous la même forme, une configuration héritée en silence par chemin d'exécution. Douze runs régionaux ne pouvaient pas les révéler puisque chacun héritait de la sienne. Fondre les caches en un domaine unique a été un révélateur autant qu'une optimisation, ce qui est l'argument le plus fort en faveur de la consigne d'Essi sur les régions : ce qui n'est jamais unifié n'est jamais confronté.
 
+### R47. Un garde-fou insatisfaisable devient l'objectif, et le borner ne suffit pas
+
+Mesuré le 2026-08-26, deux fois, sur deux échelles.
+
+Sur la province à huit epochs, la perte d'entraînement passe de 4.4 à 48.9 pendant que le débit se dégrade : val_kge 0.7276 puis 0.6510, médiane par station 0.3662 puis 0.2756, et la tenue de côté finale tombe à 0.4518 contre 0.6193 pour le run de quatre epochs. Le modèle n'optimise plus le débit mais GRACE, dont les termes pesaient déjà 966 % du total. Le repli de divergence a mordu deux fois sans suffire. ALLONGER L'ENTRAÎNEMENT DÉGRADE LE MODÈLE, ce qui invalide au passage toute comparaison d'architecture au-delà de quelques epochs.
+
+Deux causes ont été corrigées, et aucune n'a suffi. La tolérance du terme climatologique valait 5.4 mm, soit 25 sur racine de 21, l'incertitude d'une climatologie sur vingt et un ans ; en accumulant le biais par mois ET par bassin, chaque case ne voyait plus qu'une fraction de ces échantillons, et juger une moyenne bruitée à la tolérance d'une moyenne longue fabrique un écart énorme. Et rien ne bornait le z-score : un écart de 240 mm contre 5.4 de tolérance donne un terme de plusieurs milliers ET un gradient proportionnel, donc une rétroaction positive.
+
+LE TEST APPARIÉ DE LA BORNE EST NÉGATIF. Six epochs sur GASP et MONT, borne de Huber active à trois écarts-types : les termes GRACE croissent quand même, tws de 13 à 49.9 et tws_clim de 2.64 à 46.5, et le modèle se dégrade monotonement de 0.5204 à 0.2447. Une borne empêche le gradient d'EXPLOSER, pas de POINTER TOUJOURS DANS LE MÊME SENS : si le modèle ne peut structurellement pas satisfaire la contrainte, un gradient borné mais constant pousse indéfiniment. Le correctif était nécessaire, il n'est pas suffisant.
+
+LA QUESTION QU'IL FALLAIT POSER D'ABORD, et qu'aucun réglage de poids ne remplace : l'écart est-il d'AMPLITUDE, de PHASE ou de DÉRIVE ? Les trois appellent des remèdes opposés. Une amplitude simulée trop grande veut dire que la colonne respire plus que ce que le satellite voit, et aucun poids ne réconciliera sans aplatir la dynamique qui fait le débit. Une phase décalée se corrige par la recharge et la vidange. Une dérive est un problème de référence, pas de physique. D'où `diag_stockage.py`, qui simule sans entraîner et agrège le stockage EXACTEMENT comme le fait la perte.
+
+REMÈDE PRÉPARÉ MAIS NON POSÉ : GRACE en FORME plutôt qu'en niveau, chaque côté divisé par son propre écart-type. C'est la discipline que le projet applique déjà à MODIS ET (R24, la donnée sert pour la forme, jamais pour le niveau) et qui n'avait jamais été étendue à GRACE. Laissé inactif par défaut tant que le diagnostic n'a pas parlé, parce qu'activer un remède avant d'avoir le diagnostic est exactement ce qu'on reproche à un calage.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
