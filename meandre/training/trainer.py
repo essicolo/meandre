@@ -126,6 +126,12 @@ class TrainingConfig:
     # Incertitude de la CLIMATOLOGIE mensuelle GRACE, pour w_tws_clim (R23).
     # 25 mm (un mois) / sqrt(~21 ans d'observations par mois) = 5.4 mm.
     tws_clim_sigma: float = 5.4
+    # Borne de Huber sur les z-scores des contraintes auxiliaires. 0 = desactive
+    # (comportement fidele aux runs anterieurs). 3.0 recommande : au-dela de trois
+    # ecarts-types le gradient cesse de croitre, ce qui empeche une contrainte de
+    # prendre le controle de l'optimisation quand son residu est structurellement
+    # grand -- cas mesure le 2026-08-26 (GRACE a 966 % du total).
+    aux_huber_delta: float = 0.0
 
     # Warm-start spinup: after epoch 0, run only this many steps from the
     # cached spinup state instead of re-running all spinup_steps from zeros.
@@ -1185,7 +1191,14 @@ class Trainer:
                                 _vu, 0.98 * _pb + 0.02 * _sb, _pb)
                         _sbv = (self._tws_sim_base if _gi is None
                                 else self._tws_sim_base[_gi])
-                        L_tws = tws_anomaly_loss(_s, _g, _sbv, _gbv, sigma=25.0)
+                        _d0 = float(getattr(self.config, "aux_huber_delta", 0.0))
+                        if _d0 > 0:
+                            _zt = ((_s - _sbv) - (_g - _gbv)) / 25.0
+                            _at = _zt.abs()
+                            L_tws = torch.where(_at <= _d0, 0.5 * _zt.pow(2),
+                                                _d0 * (_at - 0.5 * _d0)).mean()
+                        else:
+                            L_tws = tws_anomaly_loss(_s, _g, _sbv, _gbv, sigma=25.0)
                         loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                         all_components["tws_loss"] = (
                             all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
@@ -1250,8 +1263,39 @@ class Trainer:
                             _acc = (self._tws_month_bias[_mth] if _gi is None
                                     else self._tws_month_bias[_mth, _gi])
                             _st = _res - _res.detach() + _acc
+                            # TOLERANCE PAR CASE. 5.4 mm vaut 25/sqrt(21), l'incertitude
+                            # d'une climatologie sur vingt et un ans. En accumulant par
+                            # mois ET PAR BASSIN (2026-08-25), chaque case ne voit plus
+                            # qu'une fraction de ces echantillons : garder 5.4 revient a
+                            # juger une moyenne bruitee a la tolerance d'une moyenne
+                            # longue. La tolerance suit desormais le compte reel.
                             _sg = float(getattr(self.config, "tws_clim_sigma", 5.4))
-                            L_tws_clim = (_st.pow(2) / (_sg ** 2)).mean()
+                            if _gi is not None:
+                                _nc = getattr(self, "_tws_cell_n", None)
+                                if _nc is None:
+                                    _nc = torch.zeros(_shape[0] * _shape[1], device=_s.device)
+                                    self._tws_cell_n = _nc
+                                self._tws_cell_n = self._tws_cell_n + _cn2
+                                _n_eff = self._tws_cell_n.reshape(_shape)[_mth, _gi].clamp(min=1.0)
+                                _sg_t = 25.0 / _n_eff.sqrt()
+                            else:
+                                _sg_t = torch.full_like(_st, _sg)
+                            # HUBER SUR LE Z-SCORE (opt-in, `aux_huber_delta`). Sans
+                            # borne, un ecart de 240 mm contre 5.4 de tolerance donne un
+                            # terme de plusieurs milliers et un gradient proportionnel :
+                            # la contrainte cesse d'etre un garde-fou et devient
+                            # l'objectif. Mesure le 2026-08-26 sur la province, ou la
+                            # perte d'entrainement est passee de 4.4 a 48.9 pendant que
+                            # le debit se degradait. Au-dela de delta, le gradient reste
+                            # CONSTANT au lieu de croitre.
+                            _z = _st / _sg_t
+                            _d = float(getattr(self.config, "aux_huber_delta", 0.0))
+                            if _d > 0:
+                                _a = _z.abs()
+                                L_tws_clim = torch.where(_a <= _d, 0.5 * _z.pow(2),
+                                                         _d * (_a - 0.5 * _d)).mean()
+                            else:
+                                L_tws_clim = _z.pow(2).mean()
                             loss_chunk = loss_chunk + _w_clim * L_tws_clim
                             all_components["tws_clim_loss"] = (
                                 all_components.get("tws_clim_loss", 0.0)

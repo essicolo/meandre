@@ -173,6 +173,12 @@ tcfg_obj = TrainingConfig(
     # porte sur l'architecture et non sur la recette ; son reequilibrage est une
     # question ouverte, tracee au registre (dette #19).
     w_prior=float(tcfg.get("w_prior", 0.005)),
+    # PROV_HUBER : borne les z-scores des contraintes auxiliaires. Defaut 3.0 ici,
+    # contre 0 (desactive) dans le trainer pour ne rien changer aux runs anterieurs.
+    # Sans elle, la province a vu sa perte d'entrainement passer de 4.4 a 48.9 en huit
+    # epochs pendant que le debit se degradait : GRACE optimisait a la place du debit,
+    # et la mediane provinciale tombait de 0.6193 a 0.4518 (2026-08-26).
+    aux_huber_delta=float(os.environ.get("PROV_HUBER", "3.0")),
     best_metric=tcfg.get("best_metric", "kge_median"),
     patience=int(tcfg.get("patience", 0)),
 )
