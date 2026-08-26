@@ -444,6 +444,24 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     except Exception as exc:
         print(f"[domaine] sol calibre indisponible ({exc}) : depart litterature")
 
+    # FRACTION AGRICOLE BRUTE. Les attributs du champ ne la portent qu'en z-score, ce
+    # qui ne peut pas servir de fraction de surface. Le parquet provincial la garde en
+    # brut ; on la joint a l'occupation pour que le drainage agricole sache ou draîner.
+    try:
+        import pandas as _pd2
+        _raw = _pd2.read_parquet(f"{_mpaths_root()}/quebec/territorial-raw-QC.parquet")
+        _ag = []
+        for p, sz in zip(parts, sizes):
+            sub = _raw[_raw.region == p["name"]]
+            if len(sub) != sz:
+                raise ValueError(f"{p['name']} : {len(sub)} lignes pour {sz} noeuds")
+            _ag.append(torch.tensor(sub["f_agriculture"].to_numpy(), dtype=torch.float32))
+        land_cover["pct_agricole"] = torch.cat(_ag).to(device)
+        print(f"[domaine] fraction agricole : moyenne {float(land_cover['pct_agricole'].mean()):.3f}"
+              f" | q90 {float(land_cover['pct_agricole'].quantile(0.9)):.3f}")
+    except Exception as exc:
+        print(f"[domaine] fraction agricole indisponible ({exc}) : drainage agricole inerte")
+
     slices = {p["name"]: (int(a), int(b)) for p, a, b in zip(parts, offs[:-1], offs[1:])}
     print(f"[domaine] {len(parts)} plateformes fondues | {n_total} troncons | "
           f"{q_obs.shape[1]} jauges | {graph.n_edges} aretes | "

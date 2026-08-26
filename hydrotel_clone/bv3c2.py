@@ -157,6 +157,7 @@ class BV3C2Clone(torch.nn.Module):
         cin = p["cin"]
         t1, t2, t3 = theta1, theta2, theta3
         lruis = torch.zeros_like(t1); lhyp = torch.zeros_like(t1); lbase = torch.zeros_like(t1)
+        ldrain = torch.zeros_like(t1)   # drainage souterrain agricole (opt-in)
         froz_frac = torch.clamp(frozen_depth_cm / 100.0 / z1, 0.0, 1.0)
         throttle = torch.where(frozen, torch.clamp(1.0 - froz_frac, 0.0, 1.0), torch.ones_like(t1))
         tr = torch.full_like(t1, DT_H)                  # temps restant (h) par nœud
@@ -171,6 +172,49 @@ class BV3C2Clone(torch.nn.Module):
             qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)
             qq23 = k23 * (2.0 * (ps3 - ps2) / (z2 + z3) + 1.0)
             q2 = k2 * sin_slope * z2
+            # ── DRAINAGE SOUTERRAIN AGRICOLE (opt-in, 2026-08-26) ────────────
+            # La colonne n'a AUCUN chemin qui sorte de la couche 2 vers le troncon par
+            # un SEUIL DE PROFONDEUR, or c'est exactement ce qu'est un drain agricole.
+            # En Monteregie (33.7 % de terres cultivees, le territoire le plus mauvais
+            # du domaine a 0.4821 contre 0.6953 pour son champion regional, O12), le
+            # drain convertit un interflux lent en chemin rapide a seuil : crue
+            # printaniere plus haute et plus precoce, etiage estival plus bas.
+            #
+            # Hooghoudt en regime permanent : q = (8*K*de*m + 4*K*m^2) / L^2, ou m est
+            # la hauteur de nappe AU-DESSUS du plan des drains, de la profondeur
+            # equivalente sous les drains et L l'espacement. Continue et derivable.
+            # Le modele n'ayant pas de nappe explicite, on lit la hauteur saturee de la
+            # couche 2 comme s2 = z2 * theta2/thetas2 et on la compare a la position du
+            # drain mesuree depuis la BASE de cette couche.
+            #
+            # Le flux ne s'applique qu'a la fraction DRAINEE (drain_frac, typiquement
+            # une part des terres cultivees) : c'est une moyenne surfacique, et la masse
+            # se conserve puisque le meme terme quitte t2 et rejoint ldrain. ATTENTION,
+            # drain_frac est une fraction de la surface de SOL (fsa) et non du troncon,
+            # puisque les theta et ldrain vivent tous deux dans ce referentiel.
+            # ABSENT DU DICTIONNAIRE = clone fidele au bit pres.
+            if "drain_spacing" in p:
+                _L = p["drain_spacing"]                       # espacement (m)
+                _prof = p["drain_depth"]                      # profondeur de pose (m)
+                _fdr = p["drain_frac"]                        # fraction drainee [0,1]
+                _de = p.get("drain_equiv_depth", z3)          # profondeur equivalente
+                _s2 = z2 * t2 / (ths2 + eps)                  # hauteur saturee dans L2
+                _h_drain = torch.clamp((z1 + z2) - _prof, min=0.0)  # drain au-dessus de la base
+                _m = torch.clamp(_s2 - _h_drain, min=0.0)     # charge sur les drains
+                # UNITES : on garde la forme algebrique de q2 (k2 * facteur * z2) et
+                # on met Hooghoudt dans le facteur, qui est alors SANS DIMENSION
+                # (des metres carres sur des metres carres). Ecrire (8*K*de*m +
+                # 4*K*m^2)/L^2 directement donnerait un flux d'une dimension differente
+                # de celui que la couche attend, et l'erreur serait invisible : elle ne
+                # ferait que decaler l'echelle du parametre appris.
+                _hoog = (8.0 * _de * _m + 4.0 * _m * _m) / (_L * _L)
+                # Un drain ne transmet pas plus que la capacite laterale saturee du sol
+                # qui l'alimente : le facteur est borne a 1, ce qui plafonne q_drain a
+                # k2*z2. Sans cette borne, Hooghoudt hors de son domaine de validite
+                # (forte charge, faible espacement) viderait la couche en un sous-pas.
+                q_drain = _fdr * k2 * z2 * torch.clamp(_hoog, max=1.0)
+            else:
+                q_drain = torch.zeros_like(q2)
             # ── Drainage NON LINEAIRE de L3 (opt-in, 2026-08-22) ──
             # Le drainage fidele est LINEAIRE en theta : q3 = krec*z3*t3. Consequence
             # mesuree (R34/R37) : theta3 s'epingle a saturation, la recharge est
@@ -238,7 +282,7 @@ class BV3C2Clone(torch.nn.Module):
             # ET BRUTE (C++ l.2036 : v_etr1 sans clamp) ; la négativité éventuelle
             # est refoulée depuis la couche du dessous (l.2118), PAS masquée.
             t1 = t1 + dtc * (pinf - qq12 - e1) / z1
-            t2 = t2 + dtc * (qq12 - qq23 - e2 - q2) / z2
+            t2 = t2 + dtc * (qq12 - qq23 - e2 - q2 - q_drain) / z2
             t3 = t3 + dtc * (qq23 - q3 - e3) / z3
             # cascade SATURATION fidèle C++ (l.2046-2116) : on REMPLIT d'abord la
             # capacité disponible (refoulement bas→haut PUIS redistribution
@@ -268,6 +312,7 @@ class BV3C2Clone(torch.nn.Module):
             t3 = torch.clamp(t3, min=0.0)
             lruis = lruis + ruis_rate * dtc + ov1 * z1
             lhyp = lhyp + q2 * dtc
+            ldrain = ldrain + q_drain * dtc
             lbase = lbase + q3 * dtc
             tr = torch.clamp(tr - dtc, min=0.0)
             if not self.static:                      # break = synchro GPU + graph-break
@@ -310,14 +355,18 @@ class BV3C2Clone(torch.nn.Module):
         # de la fraction sol perméable (fsa), avant pondération.
         lruis = lruis + runoff_horton / 1000.0           # m
         prod_surf = lruis * fsa + leau * fse + lprec * fsi      # m
-        prod_hypo = lhyp * fsa
+        # Le drain rejoint la production HYPODERMIQUE : c'est un chemin subsurfacique
+        # rapide vers le fosse, pas du ruissellement de surface. Il est expose a part
+        # dans les diagnostics pour qu'on puisse le juger seul.
+        prod_hypo = (lhyp + ldrain) * fsa
         prod_base = lbase * fsa
         recharge = coef_rech * (prod_hypo + prod_base)
         prod_hypo = prod_hypo - prod_hypo * coef_rech
         prod_base = prod_base - prod_base * coef_rech
 
         diag = dict(pinf=pinf, ruis_hortonien=ruis_rate * DT_H * 1000.0,
-                    sat_t1=(t1 / (ths1 + eps)))
+                    sat_t1=(t1 / (ths1 + eps)),
+                    drain_mm=ldrain * fsa * 1000.0)
         return (torch.clamp(prod_surf, min=0.0) * 1000.0,      # mm
                 torch.clamp(prod_hypo, min=0.0) * 1000.0,
                 torch.clamp(prod_base, min=0.0) * 1000.0,

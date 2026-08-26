@@ -387,6 +387,28 @@ class HydrotelColumn(nn.Module):
                       fsa=fsa, fse=fse, fsi=fsi, coef_recharge=torch.zeros_like(like))
         # Drainage non lineaire de L3 (opt-in, R37) : posee par le pilote via
         # `l3_drain_exp` (float). None = drainage lineaire fidele.
+        # ── DRAINAGE SOUTERRAIN AGRICOLE (opt-in, O12) ──────────────────────
+        # `drainage_agricole` = dict(espacement_m, profondeur_m, part_cultive) ou None.
+        # La fraction drainee est DERIVEE de l'occupation : part_cultive x f_agriculture,
+        # ce qui evite d'inventer un champ la ou l'attribut existe deja. Le NeRF peut
+        # ensuite moduler l'espacement s'il devient une sortie ; pour le premier test il
+        # reste un scalaire, parce qu'on veut mesurer un PROCESSUS et non un parametre
+        # de plus.
+        _drn = getattr(self, "drainage_agricole", None)
+        if _drn is not None:
+            # La fraction agricole n'existe qu'en version NORMALISEE dans les attributs
+            # du champ (z-score) : inutilisable comme fraction. Elle arrive donc par
+            # l'occupation du sol, ou le chargeur provincial la pose en brut. Absente,
+            # on draine tout le sol, ce qui n'a de sens que pour un test unitaire.
+            _lcd = getattr(self, "_land_cover", None) or {}
+            _fag = _lcd.get("pct_agricole")
+            if _fag is None:
+                _fag = torch.ones_like(like)
+            p_soil["drain_spacing"] = torch.full_like(like, float(_drn["espacement_m"]))
+            p_soil["drain_depth"] = torch.full_like(like, float(_drn["profondeur_m"]))
+            p_soil["drain_frac"] = torch.clamp(
+                float(_drn.get("part_cultive", 0.6)) * torch.as_tensor(_fag).to(like),
+                0.0, 1.0)
         _l3n = getattr(self, "l3_drain_exp", None)
         if _l3n is not None:
             p_soil["l3_drain_exp"] = float(_l3n)

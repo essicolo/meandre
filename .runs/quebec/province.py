@@ -121,6 +121,18 @@ if dom.get("kgw") is not None:
 # revanche imposee par noeud, K_sat, porosites et epaisseurs restant appris.
 _soil = None if os.environ.get("PROV_SANS_SOL", "0") == "1" else dom.get("soil")
 
+# DRAINAGE SOUTERRAIN AGRICOLE (PROV_DRAIN=1, O12). Opt-in, defaut inactif : le
+# processus est ecrit et teste, il n'est pas encore MESURE. Espacement et profondeur
+# aux valeurs courantes du drainage quebecois (15 m, 1 m) ; la part de terres cultivees
+# effectivement drainee reste le parametre le plus incertain, d'ou son exposition.
+if os.environ.get("PROV_DRAIN", "0") == "1":
+    model.vertical_column.drainage_agricole = dict(
+        espacement_m=float(os.environ.get("PROV_DRAIN_L", "15")),
+        profondeur_m=float(os.environ.get("PROV_DRAIN_Z", "1.0")),
+        part_cultive=float(os.environ.get("PROV_DRAIN_F", "0.6")))
+    print(f"[province] drainage agricole ACTIF : {model.vertical_column.drainage_agricole}",
+          flush=True)
+
 _lp = dict(cfg.get("literature_prior") or {})
 _lp["K_sat_1"] = 0.04; _lp["K_c"] = 1.0; _lp["k_gw"] = 0.07; _lp.setdefault("krec", 5e-5)
 model.spatial_encoder.init_from_literature(_lp)
