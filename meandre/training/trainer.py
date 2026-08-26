@@ -132,6 +132,10 @@ class TrainingConfig:
     # prendre le controle de l'optimisation quand son residu est structurellement
     # grand -- cas mesure le 2026-08-26 (GRACE a 966 % du total).
     aux_huber_delta: float = 0.0
+    # GRACE compare en FORME (correlation de l'anomalie normalisee) plutot qu'en
+    # millimetres absolus. Meme discipline que MODIS ET (R24). A activer quand le
+    # diagnostic de stockage montre un rapport d'amplitude eloigne de 1.
+    tws_shape_only: bool = False
 
     # Warm-start spinup: after epoch 0, run only this many steps from the
     # cached spinup state instead of re-running all spinup_steps from zeros.
@@ -1191,17 +1195,47 @@ class Trainer:
                                 _vu, 0.98 * _pb + 0.02 * _sb, _pb)
                         _sbv = (self._tws_sim_base if _gi is None
                                 else self._tws_sim_base[_gi])
+                        # ── GRACE EN FORME PLUTOT QU'EN NIVEAU (opt-in) ──────────
+                        # Le projet a deja tranche cette question pour MODIS : la donnee
+                        # sert pour la FORME, jamais pour le NIVEAU (R24, et_mode
+                        # "anomaly"). GRACE est pourtant compare en millimetres absolus,
+                        # alors que rien ne garantit que le stockage simule et le
+                        # stockage satellitaire aient la meme AMPLITUDE : la colonne
+                        # respire sur trois metres de sol plus la neige et la nappe,
+                        # GRACE integre sur une empreinte de plusieurs centaines de
+                        # kilometres. Quand les amplitudes different, la contrainte est
+                        # INSATISFAISABLE et pousse indefiniment -- mesure le 2026-08-26,
+                        # ou meme bornee elle a fait tomber le modele de 0.52 a 0.34.
+                        # En mode forme, chaque cote est divise par son propre
+                        # ecart-type (detache cote simulation, sinon le modele reduirait
+                        # simplement son amplitude pour tricher) : ne restent que la
+                        # phase et la forme, ce que GRACE mesure le plus surement.
+                        if bool(getattr(self.config, "tws_shape_only", False)):
+                            _rs = _s - _sbv
+                            _ro = _g - _gbv
+                            _ss = _rs.detach().std().clamp(min=1e-3)
+                            _so = _ro.std().clamp(min=1e-3)
+                            L_tws = ((_rs / _ss) - (_ro / _so)).pow(2).mean()
+                            loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
+                            all_components["tws_loss"] = (
+                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
+                            _skip_niveau = True
+                        else:
+                            _skip_niveau = False
                         _d0 = float(getattr(self.config, "aux_huber_delta", 0.0))
-                        if _d0 > 0:
+                        if _skip_niveau:
+                            pass
+                        elif _d0 > 0:
                             _zt = ((_s - _sbv) - (_g - _gbv)) / 25.0
                             _at = _zt.abs()
                             L_tws = torch.where(_at <= _d0, 0.5 * _zt.pow(2),
                                                 _d0 * (_at - 0.5 * _d0)).mean()
                         else:
                             L_tws = tws_anomaly_loss(_s, _g, _sbv, _gbv, sigma=25.0)
-                        loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
-                        all_components["tws_loss"] = (
-                            all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
+                        if not _skip_niveau:
+                            loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
+                            all_components["tws_loss"] = (
+                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
 
                         # ── TERME CLIMATOLOGIQUE (2026-08-21, R23) ──────────────
                         # Le terme ci-dessus compare des mois INDIVIDUELS a sigma=25 mm,

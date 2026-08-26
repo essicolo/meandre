@@ -197,6 +197,11 @@ tcfg_obj = TrainingConfig(
     # epochs pendant que le debit se degradait : GRACE optimisait a la place du debit,
     # et la mediane provinciale tombait de 0.6193 a 0.4518 (2026-08-26).
     aux_huber_delta=float(os.environ.get("PROV_HUBER", "3.0")),
+    # PROV_TWS_FORME=1 : GRACE en forme et non en niveau. Defaut INACTIF tant que le
+    # diagnostic de stockage n'a pas montre que l'amplitude est bien le probleme --
+    # activer un remede avant d'avoir le diagnostic, c'est ce qu'on reproche a un
+    # calage.
+    tws_shape_only=(os.environ.get("PROV_TWS_FORME", "0") == "1"),
     best_metric=tcfg.get("best_metric", "kge_median"),
     patience=int(tcfg.get("patience", 0)),
 )
