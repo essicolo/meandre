@@ -300,6 +300,22 @@ explicitement entre le score de débit et le réalisme de la recharge, pas l'opt
 | O7 | Linacre ancrée ou module ET appris ? | A/B sur tenu de côté, base saine | non commencé |
 | O8 | Combien coûte le plafond de sous-pas en entraînement ? | bloc compilé de K sous-pas appelé N/K fois (refactoring du clone) | conçu, non fait |
 
+### O12. L'agriculture est la variable qui explique le mieux l'échec territorial, et il manque un PROCESSUS, pas une variable
+
+Mesuré le 2026-08-26 sur la première tenue de côté provinciale (champ unique, 3 epochs, 141 stations, médiane 0.6193). Sur les six territoires bien échantillonnés, la relation entre fraction agricole et score est presque monotone : MONT 33.7 % pour 0.4821, SLSO 29.2 % pour 0.5380, SAGU 14.1 % pour 0.6737, GASP 11.0 % pour 0.7361, SLNO 10.8 % pour 0.6999, OUTV 9.2 % pour 0.6519. VAUD, le plus agricole à 56 %, n'a aucune jauge et reste invisible.
+
+Ce n'est PAS un manque de variable : `f_agriculture` fait partie des seize attributs fournis au NeRF, qui peut donc moduler ses paramètres dessus. C'est un manque de processus, et un paramètre ne compense un processus absent que dans son bassin de calage. Trois candidats, par ordre d'effet attendu.
+
+Le DRAINAGE SOUTERRAIN d'abord. La colonne n'a aucun chemin qui sorte de la couche 2 vers le tronçon par un seuil de profondeur, or c'est exactement ce qu'est un drain agricole posé à un mètre avec dix à vingt mètres d'espacement. Il convertit un interflux lent en chemin rapide à seuil : crue printanière plus haute et plus précoce, tarissement caractéristique, étiage estival plus bas. Formulation utilisable : Hooghoudt, continue et dérivable, deux paramètres réellement nouveaux (espacement, profondeur de pose), la conductivité étant déjà au champ. DRAINMOD est la référence complète mais n'est ni léger ni différentiable.
+
+La PHÉNOLOGIE DES CULTURES ensuite, et elle est presque gratuite : l'occupation agricole tombe aujourd'hui dans la classe découvert, c'est-à-dire du sol nu toute l'année, sans levée ni croissance racinaire ni coefficient cultural. Le dépôt porte déjà un modulateur phénologique piloté par les degrés-jours pour les classes forestières ; y ajouter une classe cultivée avec les quatre phases FAO-56 est une extension. Elle est jugeable immédiatement puisque l'anomalie d'ET MODIS est déjà dans la perte.
+
+L'IRRIGATION enfin, sous-estimée : les prélèvements agissent sur le débit du tronçon et sur la nappe, jamais sur le sol. L'eau d'irrigation est pourtant prélevée puis APPLIQUÉE sur le champ, d'où elle s'évapore ou percole. La représenter comme une simple soustraction au cours d'eau perd la moitié du cycle, et c'est la moitié qui compte pour le bilan estival.
+
+CE QUI TRANCHE : ajouter un processus à la fois, avec son juge propre, en commençant par le drainage souterrain sur la Montérégie seule, où le signal est le plus fort. Si l'écart de 0.21 face au champion régional se referme, c'est le processus ; sinon c'est le calage ou la donnée.
+
+REMARQUE DE MÉTHODE : c'est le champ UNIQUE qui a rendu ce défaut visible. Les calages régionaux le masquaient, chacun ajustant ses propres paramètres pour absorber localement un processus absent. Le modèle provincial sert donc d'instrument de diagnostic, ce qui est l'argument d'identifiabilité du projet mis en pratique.
+
 ## 5. Dette technique qui PRODUIT des fantômes
 
 1. ~~**Trois numérotations de tronçons**~~ **RÉGLÉ 08-12** : conversions centralisées dans `hydrotel_calib` (`id_provincial`, `id_local`, `appariement_provincial`), un appariement vide LÈVE une erreur au lieu de rendre des nombres. 2 tests.
