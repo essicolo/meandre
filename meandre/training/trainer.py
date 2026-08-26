@@ -1255,7 +1255,14 @@ class Trainer:
                         # Chaque mois est donc pousse proportionnellement au biais
                         # systematique de son mois calendaire, et le terme reste
                         # calculable tronçon par tronçon.
-                        _w_clim = getattr(self.loss_fn, "w_tws_clim", 0.0)
+                        # En mode FORME, le terme climatologique est neutralise : il
+                        # penalise un biais mensuel EN MILLIMETRES, donc il
+                        # reintroduirait exactement le niveau qu'on vient de retirer, et
+                        # avec la tolerance la plus serree des deux. L'information
+                        # saisonniere n'est pas perdue pour autant : le terme de forme
+                        # compare les anomalies normalisees mois par mois.
+                        _w_clim = (0.0 if bool(getattr(self.config, "tws_shape_only", False))
+                                   else getattr(self.loss_fn, "w_tws_clim", 0.0))
                         if _w_clim > 0:
                             _bnd = getattr(self, "_doy_month_bounds", None)
                             if _bnd is None:
