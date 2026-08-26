@@ -81,7 +81,13 @@ model = HydroModel(
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
-    compile_soil=bool(mcfg.get("compile_soil", True)),
+    # PROV_COMPILE=0 : desactive torch.compile sur le sol. Necessaire ici, ou la
+    # compilation Triton echoue (`ptxas failed`, NoTritonConfigsError) et emporte le run
+    # entier -- constate le 2026-08-26 sur le temoin de la borne. C'est probablement
+    # aussi ce qui expliquait la variante sans depart sol a 40 min contre 16 : une
+    # compilation qui echoue retombe sur un chemin lent sans le dire.
+    compile_soil=(os.environ.get("PROV_COMPILE", "1") == "1"
+                  and bool(mcfg.get("compile_soil", True))),
     use_aquifer=True,
 ).to(DEVICE)
 
