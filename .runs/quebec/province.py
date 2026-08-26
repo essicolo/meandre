@@ -54,6 +54,8 @@ CKPT = f".runs/quebec/checkpoints/best-{TAG}.pt"
 
 cfg = tomllib.load(open(BASE_CFG, "rb"))
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
+# Recette gen1 : w_et 0.4 (et non le 1.0 du TOML de base), MODIS pour la FORME.
+lcfg["w_et"] = float(os.environ.get("PROV_WET", "0.4"))
 
 print(f"[province] plateformes fondues : {PLATEFORMES} | device {DEVICE}", flush=True)
 dom = load_domain(PLATEFORMES, lcfg, device=DEVICE)
@@ -65,7 +67,8 @@ model = HydroModel(
     use_temporal=False, use_residual=False, use_travel_time_attn=False,
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
-    param_mode="nerf", column_mode="hydrotel", et_mode="mcguinness",
+    param_mode="nerf", column_mode="hydrotel",
+    et_mode="linacre",   # recette gen1 : ETP Linacre calee du projet, pas McGuinness
     use_temperature=False,
     # z_n desactive : un effet aleatoire par troncon sur 25 656 troncons ajouterait
     # autant de parametres libres que de noeuds sans contrainte spatiale, et c'est
@@ -87,10 +90,46 @@ if dom.get("melt_params"):
     model.vertical_column.set_melt_params(dom["melt_params"])
 if dom.get("phenology"):
     model.vertical_column.set_phenology(dom["phenology"])
+if dom.get("linacre"):
+    model.vertical_column.set_linacre_params(*dom["linacre"])
+    model.vertical_column.etp_channel = None
+if dom.get("kgw") is not None:
+    # Champ k_gw provincial (GP sur les recessions de 127 stations) : il FIXE le niveau
+    # local mesure, le NeRF module autour. Meme montage que dans etl_run.
+    _kv = dom["kgw"]
+    _o_se = model.spatial_encoder.forward
+    def _se_kgw(*a, _o=_o_se, _k=_kv, **kw):
+        sp = _o(*a, **kw); sp.k_gw = _k
+        return sp
+    model.spatial_encoder.forward = _se_kgw
+
+# DEPART SUR LE CHAMP HYDROTEL (recette gen1, ETL_INIT_HYDROTEL=sauf_ks). Le champ est
+# ajuste par regression sur les valeurs calibrees par noeud puis laisse LIBRE : ce n'est
+# pas un ancrage, c'est un point de depart. La courbe de retention (b, psis) est en
+# revanche imposee par noeud, K_sat, porosites et epaisseurs restant appris.
+_soil = dom.get("soil")
 
 _lp = dict(cfg.get("literature_prior") or {})
 _lp["K_sat_1"] = 0.04; _lp["K_c"] = 1.0; _lp["k_gw"] = 0.07; _lp.setdefault("krec", 5e-5)
 model.spatial_encoder.init_from_literature(_lp)
+if _soil:
+    from meandre.data.hydrotel_calib import imposed_retention_curve
+    _cib = {"K_sat_1": _soil["ks1"].float() * 24, "K_sat_2": _soil["ks2"].float() * 24,
+            "K_sat_3": _soil["ks3"].float() * 24, "porosity_1": _soil["thetas1"].float(),
+            "porosity_2": _soil["thetas2"].float(), "porosity_3": _soil["thetas3"].float(),
+            "Z2": _soil["z2"].float(), "Z3": _soil["z3"].float()}
+    model.spatial_encoder.fit_to_field(
+        dom["node_coords"], dom["territorial"].data, _cib,
+        n_iter=int(os.environ.get("PROV_INIT_ITER", "2000")))
+    # krec LIBRE (ETL_KREC_LIBRE de gen1) : la courbe d'Hydrotel porte une recharge
+    # quasi nulle, un robinet ferme en amont de notre aquifere.
+    model.vertical_column.set_calibrated_soil(imposed_retention_curve(_soil, True))
+    _pt0 = getattr(model.spatial_encoder, "_prior_targets", None) or {}
+    for _k, _v in _cib.items():
+        _pt0[_k] = float(_v.median())
+    model.spatial_encoder._prior_targets = _pt0
+    print(f"[province] depart sur le champ Hydrotel : K_sat_1 median "
+          f"{_pt0['K_sat_1']:.4f} m/j, cibles du prior realignees", flush=True)
 model.vertical_column.split_mode = "wet_bulb"
 model.vertical_column.t_neige_seuil = float(os.environ.get("PROV_TWB", "-0.8"))
 model.vertical_column.melt_seasonal_amp = float(os.environ.get("PROV_AMP", "0.5"))
@@ -111,6 +150,11 @@ tcfg_obj = TrainingConfig(
     chunk_steps=int(os.environ.get("PROV_CHUNK", tcfg.get("chunk_steps", 45))),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
     grad_clip=float(tcfg.get("grad_clip", 1.0)),
+    # w_prior : la flotte gen1 le portait (terme dominant de sa perte, ~4400 % du
+    # total selon sa propre decomposition). On le REPRODUIT pour que la comparaison
+    # porte sur l'architecture et non sur la recette ; son reequilibrage est une
+    # question ouverte, tracee au registre (dette #19).
+    w_prior=float(tcfg.get("w_prior", 0.005)),
     best_metric=tcfg.get("best_metric", "kge_median"),
     patience=int(tcfg.get("patience", 0)),
 )

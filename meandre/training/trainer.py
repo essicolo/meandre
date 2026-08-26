@@ -1160,16 +1160,29 @@ class Trainer:
                                 _gb = torch.where(_ok, _a, torch.zeros_like(_a)).sum(dim=0) / _n
                             self._tws_obs_base = _gb
                         _gbv = _gb if _gi is None else _gb[_gi]
+                        _pb = getattr(self, "_tws_sim_base", None)
                         if _gi is None:
                             _sb = _s.mean().detach()
+                            self._tws_sim_base = _sb if _pb is None else (0.98 * _pb + 0.02 * _sb)
                         else:
                             _ng2 = int(data.tws_obs.shape[1])
                             _cs = torch.zeros(_ng2, device=_s.device).index_add_(0, _gi, _s.detach())
                             _cn = torch.zeros(_ng2, device=_s.device).index_add_(
-                                0, _gi, torch.ones_like(_s)).clamp(min=1)
-                            _sb = _cs / _cn
-                        _pb = getattr(self, "_tws_sim_base", None)
-                        self._tws_sim_base = _sb if _pb is None else (0.98 * _pb + 0.02 * _sb)
+                                0, _gi, torch.ones_like(_s))
+                            _vu = _cn > 0        # bassins PRÉSENTS dans ce tronçon
+                            _sb = torch.where(_vu, _cs / _cn.clamp(min=1),
+                                              torch.zeros_like(_cs))
+                            # Un bassin absent du tronçon courant doit GARDER sa ligne de
+                            # base. Le tirer vers zéro parce qu'il n'a pas de mois GRACE
+                            # ici fabriquait un écart de plusieurs centaines de mm, et la
+                            # perte GRACE mangeait 3300 % du total au premier epoch du
+                            # domaine fondu (2026-08-25). Avec une seule région le cas
+                            # n'existait pas : le bassin était toujours présent.
+                            if _pb is None:
+                                _pb = _sb.clone()
+                                _pb[~_vu] = _s.detach().mean()
+                            self._tws_sim_base = torch.where(
+                                _vu, 0.98 * _pb + 0.02 * _sb, _pb)
                         _sbv = (self._tws_sim_base if _gi is None
                                 else self._tws_sim_base[_gi])
                         L_tws = tws_anomaly_loss(_s, _g, _sbv, _gbv, sigma=25.0)

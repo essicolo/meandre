@@ -310,6 +310,69 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
         print(f"[domaine] ATTENTION ancrages de plateforme INDISPONIBLES ({exc}) : "
               "le territoire sera traite en classe DECOUVERT, ce qui coute ~0.27 de KGE")
 
+    # ── ETP LINACRE et CHAMP k_gw : les deux autres ancrages de la flotte gen1 ──
+    # Meme famille que l'occupation : des DONNEES par troncon livrees par plateforme
+    # (Linacre) ou par un champ provincial deja estime (k_gw, GP sur les recessions de
+    # 127 stations). Les omettre ne casse rien de visible, ca change juste la recette --
+    # et comparer la province aux champions gen1 sous une AUTRE recette ne mesurerait
+    # pas l'architecture. C'est l'erreur que l'occupation du sol a failli faire commettre.
+    linacre, kgw = None, None
+    try:
+        from meandre.data.hydrotel_calib import load_linacre_nodes
+        from meandre.utils import paths as _mp2
+        a_l, b_l = [], []
+        for p in parts:
+            pl = f"{_mp2.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
+            _a, _b = load_linacre_nodes(pl, p["node_ids"], device="cpu")
+            a_l.append(_a); b_l.append(_b)
+        linacre = (torch.cat(a_l).to(device), torch.cat(b_l).to(device))
+        print(f"[domaine] ETP Linacre du projet : {len(a_l)} paquets fondus")
+    except Exception as exc:
+        print(f"[domaine] Linacre indisponible ({exc}) : ETP McGuinness par defaut")
+    try:
+        import pandas as _pd
+        _cf = _pd.read_parquet(f"{_mpaths_root()}/quebec/champ_kgw_QC.parquet")
+        vals = []
+        for p, sz in zip(parts, sizes):
+            sub = _cf[_cf.region == p["name"]].sort_values("node_idx")
+            if len(sub) != sz:
+                raise ValueError(f"{p['name']} : {len(sub)} noeuds dans le champ k_gw "
+                                 f"pour {sz} attendus")
+            vals.append(torch.tensor(sub.k_gw.values, dtype=torch.float32))
+        kgw = torch.cat(vals).to(device)
+        print(f"[domaine] champ k_gw provincial : med {float(kgw.median()):.4f} | "
+              f"q10-q90 {float(kgw.quantile(0.1)):.4f}-{float(kgw.quantile(0.9)):.4f}")
+    except Exception as exc:
+        print(f"[domaine] champ k_gw indisponible ({exc}) : k_gw laisse au NeRF")
+
+    # ── SOL CALIBRE HYDROTEL, par noeud : le depart de la flotte gen1 ──────
+    # Ce n'est PAS un ancrage qui fige le sol (la loi des ancrages l'interdit), c'est un
+    # POINT DE DEPART : le champ est ajuste par regression sur les valeurs calibrees,
+    # puis rendu entierement libre. Mesure du 2026-08-13 : le reseau reproduit le champ
+    # a 2 % pres et sa dispersion passe de 0.0017 a 0.741 -- la capacite n'etait pas le
+    # verrou, le point de depart l'etait. Decisif pour un run court : sans lui, quatre
+    # epochs partent d'un champ plat au K_sat huit fois trop bas.
+    soil = None
+    try:
+        from meandre.data.hydrotel_calib import load_calibrated_soil
+        from meandre.utils import paths as _mp3
+        cs_parts = []
+        for p in parts:
+            pl = f"{_mp3.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
+            cs_parts.append(load_calibrated_soil(pl, p["node_ids"], 0.15, device="cpu"))
+        communs = set(cs_parts[0])
+        for d in cs_parts[1:]:
+            communs &= set(d)
+        soil = {}
+        for k in sorted(communs):
+            v = [d[k] for d in cs_parts]
+            if all(hasattr(x, "shape") and x.ndim >= 1 and x.shape[0] == sz
+                   for x, sz in zip(v, sizes)):
+                soil[k] = torch.cat(v).to(device)
+        print(f"[domaine] sol calibre Hydrotel : {len(soil)} champs par noeud")
+    except Exception as exc:
+        print(f"[domaine] sol calibre indisponible ({exc}) : depart litterature")
+
     slices = {p["name"]: (int(a), int(b)) for p, a, b in zip(parts, offs[:-1], offs[1:])}
     print(f"[domaine] {len(parts)} plateformes fondues | {n_total} troncons | "
           f"{q_obs.shape[1]} jauges | {graph.n_edges} aretes | "
@@ -318,7 +381,13 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
                 loss_fn=loss_fn, node_coords=node_coords, territorial=territorial,
                 times=parts[0]["times"], station_ids=st_ids, slices=slices,
                 n_gauges=q_obs.shape[1], land_cover=land_cover,
-                melt_params=melt_params, phenology=phenology)
+                melt_params=melt_params, phenology=phenology,
+                linacre=linacre, kgw=kgw, soil=soil)
+
+
+def _mpaths_root():
+    from meandre.utils import paths as _p
+    return _p.DATA_ROOT
 
 
 def _kahn(edge_index: torch.Tensor, n: int) -> torch.Tensor:
