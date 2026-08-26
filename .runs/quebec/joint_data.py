@@ -64,12 +64,31 @@ FORCINGS = {
 DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
 
+def _resoudre_db(reg):
+    """Base du territoire. SLSO pointait EN DUR sur `.runs/slso/data/slso.duckdb`, le
+    banc d'essai historique : 188 Mo avec ses caches auxiliaires, 40 stations, contre
+    12 Mo et 41 stations pour `quebec/slso.duckdb`. Meme reseau (2889 troncons), mais
+    provenance differente des treize autres plateformes -- et fichier absent d'une
+    machine fraiche, ou le run provincial s'arretait net (2026-08-26).
+
+    Pour un domaine fusionne, l'uniformite de provenance prime sur la continuite avec
+    l'ancien banc : on prend la base quebecoise des qu'elle existe, et on le DIT."""
+    special = DBS.get(reg)
+    commun = f"{_mpaths.DATA_ROOT}/quebec/{reg}.duckdb"
+    if special and os.path.exists(special) and not os.path.exists(commun):
+        return special
+    if special and os.path.exists(commun):
+        print(f"[base] {reg} : {os.path.basename(commun)} (famille quebecoise) plutot "
+              f"que le banc historique {special}")
+    return commun
+
+
 def _paths(reg):
     """Résout (base, forçage). JOINT_FX_SUFFIX = "-none" signifie CaSR BRUT, donc
     forcing-<reg>.nc — et non le repli -budyko, qui faisait passer la variante corrigée
     pour du brut dans toute la carte provinciale du 2 août (bug d'étiquette relevé par
     Essi). Le fichier retenu est imprimé : on doit toujours savoir ce qu'on mesure."""
-    db = DBS.get(reg, f"{_mpaths.DATA_ROOT}/quebec/{reg}.duckdb")
+    db = _resoudre_db(reg)
     sfx = os.environ.get("JOINT_FX_SUFFIX")
     if sfx == "-none":
         fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}.nc"

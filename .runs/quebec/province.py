@@ -84,13 +84,21 @@ model = HydroModel(
 # Occupation du sol, milieux humides et fonte calée, livrés par plateforme et fondus
 # par le chargeur. Sans eux la physique reçoit 0 % de forêt et 0 % d'eau libre, et
 # OUTV perd 0.27 de KGE (mesure du 2026-08-10). joint.py ne les posait pas.
-if dom.get("land_cover"):
+# PROV_SANS_* : interrupteurs de DIAGNOSTIC seulement. L'alignement sur la recette
+# gen1 a fait passer l'epoch de 10 a 36 minutes sur le meme domaine ; ils servent a
+# designer lequel des trois ajouts porte ce cout. Aucun n'a vocation a rester pose.
+if dom.get("land_cover") and os.environ.get("PROV_SANS_MH", "0") != "1":
     model.vertical_column.set_land_cover(dom["land_cover"])
+elif os.environ.get("PROV_SANS_MH") == "1":
+    _lc = {k: v for k, v in (dom.get("land_cover") or {}).items()
+           if not k.startswith(("wet", "frac"))}
+    model.vertical_column.set_land_cover(_lc)
+    print("[province] DIAGNOSTIC : milieux humides retires de l'occupation", flush=True)
 if dom.get("melt_params"):
     model.vertical_column.set_melt_params(dom["melt_params"])
 if dom.get("phenology"):
     model.vertical_column.set_phenology(dom["phenology"])
-if dom.get("linacre"):
+if dom.get("linacre") and os.environ.get("PROV_SANS_LINACRE", "0") != "1":
     model.vertical_column.set_linacre_params(*dom["linacre"])
     model.vertical_column.etp_channel = None
 if dom.get("kgw") is not None:
@@ -107,7 +115,7 @@ if dom.get("kgw") is not None:
 # ajuste par regression sur les valeurs calibrees par noeud puis laisse LIBRE : ce n'est
 # pas un ancrage, c'est un point de depart. La courbe de retention (b, psis) est en
 # revanche imposee par noeud, K_sat, porosites et epaisseurs restant appris.
-_soil = dom.get("soil")
+_soil = None if os.environ.get("PROV_SANS_SOL", "0") == "1" else dom.get("soil")
 
 _lp = dict(cfg.get("literature_prior") or {})
 _lp["K_sat_1"] = 0.04; _lp["K_c"] = 1.0; _lp["k_gw"] = 0.07; _lp.setdefault("krec", 5e-5)
@@ -148,7 +156,13 @@ tcfg_obj = TrainingConfig(
     lr=float(os.environ.get("PROV_LR", tcfg.get("lr", 3e-4))),
     n_epochs=N_EPOCHS,
     chunk_steps=int(os.environ.get("PROV_CHUNK", tcfg.get("chunk_steps", 45))),
-    tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
+    # tbptt REGLE SUR LE CHUNK par defaut. Le defaut de 365 detachait le graphe tous
+    # les quatre chunks de 90 : la memoire GPU montait de 4878 a 7932 Mo au fil de
+    # l'epoch et le run provincial est mort en depassement apres 11 h 30. Sur un bassin
+    # la meme relation existait sans mordre, douze fois moins de troncons tenant dans
+    # la marge.
+    tbptt_steps=int(os.environ.get(
+        "PROV_TBPTT", os.environ.get("PROV_CHUNK", tcfg.get("chunk_steps", 45)))),
     grad_clip=float(tcfg.get("grad_clip", 1.0)),
     # w_prior : la flotte gen1 le portait (terme dominant de sa perte, ~4400 % du
     # total selon sa propre decomposition). On le REPRODUIT pour que la comparaison

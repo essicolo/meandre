@@ -31,7 +31,18 @@ from meandre.data.basin_cache import BasinCache
 from meandre.data.hydrotel_calib import id_local
 from meandre.utils import paths as _paths
 
-SOURCE = "data/io-eau-meandre.parquet"
+# SOURCE : le derive d'io-eau, surchargeable par IO_EAU. La copie locale `data/` etait
+# une COPIE DATEE ; on lit desormais le derive a la source par defaut, pour ne plus
+# reingerer un instantane perime sans s'en apercevoir. La version du 2026-06-10 corrige
+# un mauvais appariement majeur : l'emissaire de la rive sud de Montreal (32 m3/s) etait
+# porte par un troncon de 13 km2, soit 1857 L/s/km2 -- cent fois le debit specifique
+# d'un cours d'eau quebecois. Il revient sur MONT00002, l'axe principal (38 931 km2),
+# ou il vaut 0.8 L/s/km2.
+SOURCE = os.environ.get(
+    "IO_EAU",
+    "C:/Users/parse01/documents-locaux/GitHub/io-eau/data/derived/io-eau-meandre.parquet")
+if not os.path.exists(SOURCE):
+    SOURCE = "data/io-eau-meandre.parquet"
 REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
            "outm", "outv", "sagu", "slno", "slso", "vaud"]
 
