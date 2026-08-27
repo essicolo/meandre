@@ -394,6 +394,14 @@ class SpatialFieldNetwork(nn.Module):
             "Z3": 1.00,
             "vsa_b": 2.5,
             "krec": KREC_REF,
+            # PROPRIETES THERMIQUES : valeurs du C++ (rankinen.cpp), pour que le champ
+            # DEMARRE sur le clone fidele. Sans cela il partirait au MILIEU des bornes
+            # (1.35, 1.75e6, 3.25), donc sur une autre physique de gel, et l'ecart
+            # mesure ne serait plus attribuable au degre de liberte ajoute. Erreur
+            # commise puis corrigee le 2026-08-27.
+            "kt_sol": 0.8,
+            "c_sol": 1.0e6,
+            "fs_neige": 2.35,
         }
         if targets:
             d.update(targets)
@@ -487,6 +495,11 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["vsa_b"], 0.5, 5.0); i += 1
         # krec: exp(clamp(raw*0.3 + log(KREC_REF)))
         raw[i] = (math.log(d["krec"]) - math.log(KREC_REF)) / 0.3; i += 1
+        # proprietes thermiques du gel : bornes de la litterature des sols, valeur de
+        # depart = celle du C++ (voir le dictionnaire de cibles).
+        raw[i] = inv_bounded(d["kt_sol"], 0.2, 2.5); i += 1
+        raw[i] = inv_bounded(d["c_sol"], 0.5e6, 3.0e6); i += 1
+        raw[i] = inv_bounded(d["fs_neige"], 0.5, 6.0); i += 1
 
         return raw
 
