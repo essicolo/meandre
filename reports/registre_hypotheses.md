@@ -225,6 +225,20 @@ LA QUESTION QU'IL FALLAIT POSER D'ABORD, et qu'aucun réglage de poids ne rempla
 
 REMÈDE PRÉPARÉ MAIS NON POSÉ : GRACE en FORME plutôt qu'en niveau, chaque côté divisé par son propre écart-type. C'est la discipline que le projet applique déjà à MODIS ET (R24, la donnée sert pour la forme, jamais pour le niveau) et qui n'avait jamais été étendue à GRACE. Laissé inactif par défaut tant que le diagnostic n'a pas parlé, parce qu'activer un remède avant d'avoir le diagnostic est exactement ce qu'on reproche à un calage.
 
+### R49. Deux sorties pour un seul degré de liberté : le champ exploite la direction sans gradient
+
+Le 2026-08-27, le gel a reçu des propriétés thermiques par nœud apprises par le champ, en remplacement de trois scalaires globaux identiques sur les 25 656 tronçons. Le résultat sur le score est franc, sur GASP et MONT, six epochs, tout identique par ailleurs : le témoin s'effondre (0.5204, 0.4531, 0.3353) alors que la version apprise monte (0.5470, 0.5666, 0.5945). C'est le premier entraînement depuis deux jours qui s'améliore d'un epoch à l'autre, et il lève le blocage décrit en R47, où la contrainte GRACE prenait le contrôle faute pour le modèle de pouvoir la satisfaire.
+
+MAIS L'AUDIT DU CHAMP, fait avant de lire le score, a trouvé conductivité et capacité ANTI-CORRÉLÉES à -0.920 d'un tronçon à l'autre. C'est thermodynamiquement impossible : les deux croissent avec la teneur en eau, l'eau étant à la fois bien plus conductrice et bien plus capacitive que l'air qu'elle remplace.
+
+CE CONTRÔLE NE DÉPEND D'AUCUNE CARTE, ce qui importe puisque les textures viennent de PHYSITEL sans documentation et que les pédotransferts sont très approximatifs (O15). L'hypothèse symétrique, le modèle apprenant la BONNE physique sur de FAUSSES étiquettes, auquel cas l'inversion aurait diagnostiqué la donnée et non le modèle, est donc écartée sans avoir à trancher sur la qualité des cartes. C'est le genre de test à chercher en priorité : celui qui ne dépend d'aucune des entrées suspectes.
+
+LA CAUSE EST UNE PARAMÉTRISATION MAL POSÉE, PAS UNE TRICHE. La relaxation de Rankinen ne dépend du sol que par le RAPPORT conductivité sur capacité : dt·kt/(ca·(2z)²) = dt·alpha/(2z)². Exposer les deux grandeurs laissait une direction SANS AUCUN GRADIENT, augmenter les deux ensemble ne changeant rien au gel, où le champ pouvait dériver au gré du bruit d'entraînement. C'est une définition assez exacte du surajustement : de la capacité qui ne sert pas la prédiction mais qui bouge quand même. Une seule sortie désormais, `diff_gel`, initialisée à 1.6e-7 m²/s, la valeur du C++.
+
+CE QUI RESTE ACQUIS, et qui est le vrai résultat : le déplacement MOYEN était physiquement juste. Conductivité -20 %, capacité +20 %, donc diffusivité -34 %, c'est-à-dire un front de gel qui remonte plus lentement au printemps et retient le drainage plus longtemps, exactement ce que GRACE réclamait après l'échec des quatre leviers de réservoir lent (R48). Le mécanisme est bon, c'était sa paramétrisation qui ne l'était pas.
+
+HYPOTHÈSE D'ESSI À TESTER : la contrainte devrait améliorer la généralisation et réduire le surajustement. Critère de lecture retenu, l'écart entre validation et tenue de côté plutôt que le niveau atteint.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
