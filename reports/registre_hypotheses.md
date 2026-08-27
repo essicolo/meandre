@@ -306,6 +306,16 @@ Tout ce qui a été mesuré AVANT le 10 août l'a été sur un modèle qui recev
 | C6 | Utilité de la couche d'expérience (codes latents) | compensait peut-être les entrées fausses | A/B sur base saine |
 | C7 | Verdicts sur le transfert inter-régions et le zéro-shot | base cassée | après flotte |
 
+### O16. GRACE mesure aussi les reservoirs de barrage, et SAGU/OUTV en sont pleins
+
+Remarque d'Essi (2026-08-27) : « peut etre l'influence des barrages ? Outaouais et Saguenay ont pas mal de petits barrages ». Elle porte sur DEUX enquetes distinctes, et ne s'applique qu'a une seule.
+
+POUR GRACE, ELLE PORTE ET N'AVAIT PAS ETE VUE. GRACE mesure une masse d'eau TOTALE sur son empreinte, sans distinguer sol, neige, nappe ou reservoir de barrage. SAGU compte 348 noeuds lacustres (87 467 km2 draines au plus grand) et OUTV 514 (83 198 km2) : des reservoirs de tete importants, geres de facon coordonnee (O13, DZTR). Si cette gestion retient l'eau plus tard au printemps, une partie de la signature attribuee au SOL, a la NEIGE ou a la NAPPE du modele dans R47-R49 appartient en realite a une gestion de barrage que le modele ne represente pas du tout. TOUTE L'ANALYSE GRACE DES TROIS DERNIERS JOURS A PU ETRE PARTIELLEMENT CONTAMINEE sur ces deux bassins precisement.
+
+Consequence pratique : privilegier GASP et MONT pour tout futur test de stockage contre GRACE, ce sont les deux bassins les moins regules du domaine bien echantillonne. Refaire le diagnostic de stockage (celui qui a produit R47-R49) sur GASP et MONT seuls serait le controle le plus direct.
+
+POUR LE DEFICIT DE MANTEAU MESURE PAR CanSWE, ELLE NE PORTE PAS. CanSWE est une mesure PONCTUELLE au sol, a un site fixe, de la neige accumulee sur le terrain. Le deficit de 22 % constate a SAGU des decembre, avant toute fonte, est mesure a des sites d'observation sans rapport avec un reservoir hydroelectrique. Un barrage ne change rien a la neige qui tombe sur un point de mesure au sol. L'enquete sur le forcage (precipitation solide sous-estimee par CaSR, ou seuil de partage pluie-neige mal calibre) reste entiere et independante de cette remarque.
+
 ## 4. Questions OUVERTES, avec le test qui les tranche
 
 NOTE D'ENJEU (Essi, 2026-08-17) : la RECHARGE n'est pas un simple bouton de calage, c'est un
