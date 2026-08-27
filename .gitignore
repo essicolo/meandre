@@ -71,3 +71,9 @@ Hydat_sqlite3_*.zip
 # Conventions : dot-préfixe = workspace local, non partagé via git.
 .papers/
 .reports/
+
+# Donnees MODIS et dossier "D:" cree par une substitution de chemin Windows.
+# Les .hdf sont des donnees brutes de plusieurs dizaines de Mo : leur place est sous
+# MEANDRE_DATA, jamais dans le depot (remarque d'Essi, 2026-08-25 puis 08-27).
+*.hdf
+D*/
