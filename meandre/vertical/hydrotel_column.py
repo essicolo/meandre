@@ -489,7 +489,7 @@ class HydrotelColumn(nn.Module):
         n_depth = n_intervalles(z11 + z22 + z33, self.frost.dz)
         self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth,
                         gel={k: getattr(sp, k, None)
-                             for k in ("kt_sol", "c_sol", "fs_neige")})
+                             for k in ("diff_gel", "fs_neige")})
         if self.use_aquifer:
             self._static["k_gw"] = sp.k_gw   # récession aquifère par nœud (1/j)
         return p_snow, p_soil, p_etr
@@ -829,7 +829,7 @@ class HydrotelColumn(nn.Module):
             frost_profile, prof_gel_cm = self.frost(
                 tmin, tmax, haut, state.frost_profile,
                 pe["z11"], pe["z22"], pe["z33"],
-                kt=_pg.get("kt_sol"), cs=_pg.get("c_sol"), fs=_pg.get("fs_neige"))
+                alpha=_pg.get("diff_gel"), fs=_pg.get("fs_neige"))
         else:
             frost_profile = state.frost_profile
             prof_gel_cm = torch.zeros_like(P)

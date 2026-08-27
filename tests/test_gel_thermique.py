@@ -3,18 +3,21 @@
 Motif (Essi, 2026-08-27 : « le gel doit etre physique, en fonction de la temperature et
 de la diffusion de la chaleur dans le sol, ce qui est evidemment un champ NeRF rendu
 identifiable avec des variables auxiliaires »). Rankinen portait trois SCALAIRES
-GLOBAUX -- conductivite thermique 0.8, capacite du sol 1e6, amortissement nival 2.35 --
-identiques sur les 25 656 troncons de la province, et sa propre docstring le disait
-(« KT/CS/CIce uniformes donc le type n'entre pas »). Une argile saturee et un sable sec
-gelaient donc identiquement, alors que leurs proprietes different d'un facteur trois a
-quatre.
+GLOBAUX identiques sur les 25 656 troncons de la province, et sa propre docstring le
+disait (« KT/CS/CIce uniformes donc le type n'entre pas »).
+
+UNE diffusivite, pas un couple conductivite/capacite. Le premier essai exposait les deux,
+et le champ a exploite la redondance : apres deux epochs elles etaient anti-correlees a
+-0.920 d'un troncon a l'autre, ce qui est thermodynamiquement impossible puisque les deux
+croissent avec la teneur en eau. La relaxation ne depend du sol que par leur RAPPORT ;
+donner deux sorties pour un seul degre de liberte effectif invitait a les compenser.
 
 Ce que ces tests verrouillent :
   1. l'ABSENCE des champs rend EXACTEMENT le clone C++ (fidelite preservee) ;
   2. deux sols de proprietes differentes gelent DIFFEREMMENT ;
-  3. le SENS est physique -- plus conducteur, front plus profond ; plus capacitif,
-     front moins profond ; plus d'amortissement nival, front moins profond ;
-  4. le gradient traverse les trois, sans quoi ils ne seraient pas identifiables.
+  3. le SENS est physique -- plus diffusif, front plus profond ; plus d'amortissement
+     nival, front moins profond ;
+  4. le gradient traverse les deux, sans quoi ils ne seraient pas identifiables.
 """
 import torch
 
@@ -44,7 +47,7 @@ def test_sans_champs_le_clone_est_identique():
     """Regle de tout processus opt-in du projet : le defaut reste le clone fidele."""
     mod = Rankinen()
     a = _descendre(mod, 3)
-    b = _descendre(mod, 3, kt=None, cs=None, fs=None)
+    b = _descendre(mod, 3, alpha=None, fs=None)
     assert torch.equal(a, b)
 
 
@@ -52,32 +55,29 @@ def test_deux_sols_differents_gelent_differemment():
     """Le point de la correction : avec des scalaires uniformes, tous les troncons
     gelaient pareil, ce qui rendait le gel aveugle a la texture et a l'humidite."""
     mod = Rankinen()
-    kt = torch.tensor([0.3, 0.8, 2.2])          # sec poreux -> sature sableux
-    gel = _descendre(mod, 3, kt=kt)
+    al = torch.tensor([0.6e-7, 1.6e-7, 4.0e-7])   # inerte -> reactif
+    gel = _descendre(mod, 3, alpha=al)
     assert float(gel.max() - gel.min()) > 1.0, gel
 
 
-def test_sens_physique_des_trois_proprietes():
+def test_sens_physique_des_proprietes():
     """Un parametre qui bouge dans le mauvais sens serait pire qu'un scalaire fige :
     il donnerait au champ un levier qui compense au lieu de representer."""
     mod = Rankinen()
     n = 2
-    # conductivite : plus conducteur, la chaleur (ici le froid) penetre plus vite
-    g = _descendre(mod, n, kt=torch.tensor([0.3, 2.2]))
+    # diffusivite : plus diffusif, le froid penetre plus vite
+    g = _descendre(mod, n, alpha=torch.tensor([0.6e-7, 4.0e-7]))
     assert float(g[1]) > float(g[0]), g
-    # capacite : plus capacitif, plus d'inertie, front moins profond
-    g = _descendre(mod, n, cs=torch.tensor([0.6e6, 2.8e6]))
-    assert float(g[1]) < float(g[0]), g
     # amortissement nival : plus d'amortissement, le sol est mieux isole de l'air froid
     g = _descendre(mod, n, fs=torch.tensor([0.8, 5.0]))
     assert float(g[1]) < float(g[0]), g
 
 
-def test_gradient_traverse_les_trois():
+def test_gradient_traverse_les_deux():
     """Un parametre dont le gradient ne passe pas n'est pas identifiable, et c'est
     l'identifiabilite qui est la promesse du projet."""
     mod = Rankinen()
-    for nom, val in (("kt", 0.8), ("cs", 1.0e6), ("fs", 2.35)):
+    for nom, val in (("alpha", 1.6e-7), ("fs", 2.35)):
         x = torch.full((2,), val, requires_grad=True)
         tmin, tmax, hs, p, z, _ = _profil(mod, 2)
         for _ in range(20):

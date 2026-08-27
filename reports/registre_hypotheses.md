@@ -360,6 +360,18 @@ Balayage en inférence du 2026-08-27, juge = climatologie GRACE, aucun entraîne
 
 L'hypothèse était pourtant motivée : le champ k_gw provincial a une médiane de 0.0856 par jour, soit douze jours de temps de résidence, quand GRACE demande une rétention d'un à deux mois, et il a été estimé sur des récessions de COURS D'EAU, donc sur le compartiment le plus rapide. Elle est réfutée, ce qui renforce d'autant la piste du gel.
 
+### O15. Cartes de sol : PHYSITEL non documenté, IRDA en réserve, et le piège des pédotransferts
+
+Posé par Essi le 2026-08-27, en réponse à ma proposition d'ancrer les propriétés thermiques du gel sur des fonctions de pédotransfert. Deux avertissements, tous deux fondés, qui invalident cet ancrage tel que je le proposais.
+
+Les fractions de sable, limon et argile viennent de PHYSITEL et sont issues d'un calage NON DOCUMENTÉ : rien ne garantit qu'elles décrivent correctement le sol. Et les fonctions de pédotransfert thermiques sont reconnues comme très approximatives, avec des incertitudes de l'ordre de cinquante pour cent. Ancrer sur le produit des deux contraindrait fortement le champ vers une valeur dont on ignore la justesse, ce qui est PIRE qu'un paramètre libre : on remplacerait une liberté visible par une erreur invisible.
+
+L'IRDA dispose de cartes mieux documentées. À NE PAS substituer tout de suite, mais la divergence éventuelle entre les deux jeux est en soi une mesure : si elles s'accordent, la texture de PHYSITEL est utilisable ; si elles divergent, on saura que tout ce qui en dépend (dont les corrélations texture-paramètres, dont la lecture ci-dessous) reposait sur du sable.
+
+CE QUE CELA CHANGE À L'INTERPRÉTATION DE R49. J'avais lu l'inversion des corrélations comme une pathologie du modèle. Elle admet une seconde lecture, symétrique : si la carte de texture est mal étiquetée, le champ apprend la BONNE physique sur des étiquettes fausses, et le signe apparaît inversé sans que le modèle ait tort. Le champ deviendrait alors un instrument qui signale une entrée suspecte, ce qui est l'argument d'identifiabilité du projet plutôt que son échec.
+
+LE TEST QUI DÉPARTAGE NE DÉPEND NI DE PHYSITEL NI DES PÉDOTRANSFERTS. La conductivité thermique et la capacité calorifique volumique croissent TOUTES DEUX avec la teneur en eau, l'eau étant à la fois bien plus conductrice que l'air et bien plus capacitive. D'un tronçon à l'autre, elles doivent donc être POSITIVEMENT corrélées ENTRE ELLES, quelles que soient les étiquettes de texture. Une anti-corrélation forte est thermodynamiquement impossible et prouve un levier utilisé hors de son sens ; une corrélation positive laisse ouverte l'hypothèse de la carte fautive.
+
 ## 5. Dette technique qui PRODUIT des fantômes
 
 1. ~~**Trois numérotations de tronçons**~~ **RÉGLÉ 08-12** : conversions centralisées dans `hydrotel_calib` (`id_provincial`, `id_local`, `appariement_provincial`), un appariement vide LÈVE une erreur au lieu de rendre des nombres. 2 tests.

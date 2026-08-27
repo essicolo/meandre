@@ -55,40 +55,41 @@ class Rankinen(torch.nn.Module):
         return fM[:, None] * depths[None, :] + fB[:, None]         # (n_nodes, n_depth)
 
     def forward(self, tmin, tmax, snow_depth_m, profil, z11, z22, z33,
-                kt=None, cs=None, fs=None):
+                alpha=None, fs=None):
         """Un pas de temps. tmin/tmax [°C], snow_depth_m = hauteur couvert nival [m],
         profil (n_nodes, n_depth) = température aux profondeurs i·Δ. z11/z22/z33 :
         épaisseurs des couches.
 
-        kt / cs / fs : PROPRIÉTÉS THERMIQUES PAR NŒUD (conductivité W/m/K, capacité
-        volumique J/m3/K, amortissement nival 1/m). Absentes, on retombe sur les
-        scalaires globaux du C++, qui est le clone fidèle. Elles existent parce que le
-        gel doit dépendre du SOL et pas seulement de l'air : avec des scalaires
-        uniformes, une argile saturée et un sable sec gèlent identiquement, alors que
-        leurs propriétés diffèrent d'un facteur trois à quatre et que la chaleur latente
-        de l'eau domine le bilan (remarque d'Essi, 2026-08-27).
+        alpha / fs : DIFFUSIVITÉ THERMIQUE APPARENTE par nœud (m2/s) et amortissement
+        nival (1/m). Absentes, on retombe sur les scalaires du C++, qui est le clone
+        fidèle. Le gel doit dépendre du SOL et pas seulement de l'air : avec des
+        scalaires uniformes, une argile saturée et un sable sec gèlent identiquement
+        (remarque d'Essi, 2026-08-27).
+
+        UNE diffusivité et non un couple conductivité/capacité : la relaxation ne dépend
+        du sol que par leur RAPPORT. Exposer les deux créait une redondance que le champ
+        a exploitée, apprenant un couple anti-corrélé à -0.920 d'un nœud à l'autre, ce
+        qui est thermodynamiquement impossible puisque les deux croissent avec la teneur
+        en eau. Le modèle ne trichait pas, il tirait sur une paramétrisation mal posée.
         Retourne (profil_new, profondeur_gel_cm)."""
         tair = (tmin + tmax) / 2.0
         _fs = self.fs if fs is None else fs
         damp = torch.exp(-_fs * snow_depth_m)                      # (n_nodes,)
         n_depth = profil.shape[1]
-        # ca = capacité APPARENTE : celle du sol plus celle de la glace, cette dernière
-        # portant la chaleur latente de changement de phase. On module la part du sol,
-        # la part glace restant une constante physique.
-        ca = (self.cs if cs is None else cs) + self.cice
-        _kt = self.kt if kt is None else kt
+        # diffusivité apparente : conductivité sur capacité totale (sol + glace, cette
+        # dernière portant la chaleur latente de changement de phase).
+        _al = (self.kt / (self.cs + self.cice)) if alpha is None else alpha
 
         # surface (index 0) : eq2 à profondeur 0 (rankinen.cpp:214-217)
         surf = torch.where(snow_depth_m != 0.0, tair * damp, tair)
         # nœuds de profondeur 1..n_depth-1 : VECTORISÉS sur l'axe profondeur (pas
         # de couplage entre nœuds, cf docstring) — remplace la boucle Python+stack.
         zs = torch.arange(1, n_depth, dtype=tair.dtype, device=tair.device) * self.dz  # (n_depth-1,)
-        # rate devient (n_nodes, n_depth-1) des que kt ou ca sont des champs : la
-        # diffusion thermique est alors PROPRE A CHAQUE TRONCON, ce qui est tout
-        # l'objet de la correction.
-        _k = _kt[:, None] if torch.is_tensor(_kt) and _kt.ndim else _kt
-        _c = ca[:, None] if torch.is_tensor(ca) and ca.ndim else ca
-        rate = self.dt * _k / (_c * (2.0 * zs[None, :]) ** 2)
+        # rate devient (n_nodes, n_depth-1) des que alpha est un champ : la diffusion
+        # thermique est alors PROPRE A CHAQUE TRONCON, ce qui est tout l'objet de la
+        # correction.
+        _a = _al[:, None] if torch.is_tensor(_al) and _al.ndim else _al
+        rate = self.dt * _a / ((2.0 * zs[None, :]) ** 2)
         t_prev = profil[:, 1:]                                    # (n_nodes, n_depth-1)
         fT = t_prev + rate * (tair[:, None] - t_prev)             # eq1 relaxation
         deep = fT * damp[:, None]                                 # eq2 amortissement neige

@@ -152,11 +152,19 @@ class SpatialParams:
     # Elles sont IDENTIFIABLES separement parce qu'elles agissent sur des choses
     # differentes : la conductivite sur la vitesse de descente du front, la capacite
     # sur son inertie, l'amortissement nival sur le couplage a l'air.
-    kt_sol: Tensor          # conductivite thermique du sol (W/m/K) [0.2, 2.5]
-    c_sol: Tensor           # capacite calorifique volumique (J/m3/K) [0.5e6, 3.0e6]
+    # UNE SEULE sortie, pas deux (correction du 2026-08-27). Rankinen ne depend du sol
+    # que par le RAPPORT conductivite / capacite, c'est-a-dire la diffusivite : sa
+    # relaxation vaut dt * kt / (ca * (2z)^2) = dt * alpha / (2z)^2. Exposer les deux
+    # grandeurs creait donc une REDONDANCE, et le champ l'a exploitee -- apres deux
+    # epochs, conductivite et capacite apprises etaient anti-correlees a -0.920 d'un
+    # troncon a l'autre, ce qui est thermodynamiquement impossible (les deux croissent
+    # avec la teneur en eau). Le modele ne trichait pas : il tirait sur une
+    # parametrisation mal posee. Un parametre qui dit ce qu'il fait vaut mieux que deux
+    # qui se compensent.
+    diff_gel: Tensor        # diffusivite thermique apparente (m2/s) [4e-8, 8e-7]
     fs_neige: Tensor        # amortissement par le couvert nival (1/m) [0.5, 6.0]
 
-    N_PARAMS: ClassVar[int] = 41
+    N_PARAMS: ClassVar[int] = 40
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -399,8 +407,7 @@ class SpatialFieldNetwork(nn.Module):
             # (1.35, 1.75e6, 3.25), donc sur une autre physique de gel, et l'ecart
             # mesure ne serait plus attribuable au degre de liberte ajoute. Erreur
             # commise puis corrigee le 2026-08-27.
-            "kt_sol": 0.8,
-            "c_sol": 1.0e6,
+            "diff_gel": 1.6e-7,     # = 0.8 / (1e6 + 4e6), la valeur du C++
             "fs_neige": 2.35,
         }
         if targets:
@@ -497,8 +504,7 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = (math.log(d["krec"]) - math.log(KREC_REF)) / 0.3; i += 1
         # proprietes thermiques du gel : bornes de la litterature des sols, valeur de
         # depart = celle du C++ (voir le dictionnaire de cibles).
-        raw[i] = inv_bounded(d["kt_sol"], 0.2, 2.5); i += 1
-        raw[i] = inv_bounded(d["c_sol"], 0.5e6, 3.0e6); i += 1
+        raw[i] = inv_bounded(d["diff_gel"], 4e-8, 8e-7); i += 1
         raw[i] = inv_bounded(d["fs_neige"], 0.5, 6.0); i += 1
 
         return raw
@@ -761,8 +767,11 @@ class SpatialFieldNetwork(nn.Module):
         # C++ ; on ouvre autour, la densite et la structure du couvert le faisant
         # varier. Centrees sur le defaut, raw=0 rend EXACTEMENT l'ancien comportement,
         # ce qui garde inoffensif le remplissage par zeros d'un ancien point de reprise.
-        constrained.append(bounded(cols[i], 0.2, 2.5)); i += 1        # kt_sol
-        constrained.append(bounded(cols[i], 0.5e6, 3.0e6)); i += 1    # c_sol
+        # DIFFUSIVITE APPARENTE. Valeur du C++ : kt / (cs + cice) = 0.8 / 5e6 =
+        # 1.6e-7 m2/s. Les bornes couvrent la plage des sols mineraux, du plus inerte
+        # (tourbe saturee) au plus reactif (sable sec), en tenant compte du terme de
+        # glace qui abaisse la diffusivite apparente.
+        constrained.append(bounded(cols[i], 4e-8, 8e-7)); i += 1      # diff_gel
         constrained.append(bounded(cols[i], 0.5, 6.0)); i += 1        # fs_neige
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
@@ -773,7 +782,7 @@ class SpatialFieldNetwork(nn.Module):
     # (2026-08-27) : l'index est desormais nomme explicitement plutot que deduit d'une
     # position, ce qui evite qu'un ajout futur ne deplace silencieusement le gel de la
     # recharge vers autre chose.
-    _IDX_KREC = SpatialParams.N_PARAMS - 4
+    _IDX_KREC = SpatialParams.N_PARAMS - 3
 
     def set_uniform_krec(self, valeur: float) -> None:
         """Force la recharge a une valeur UNIFORME (m/h) sur tous les noeuds.
