@@ -213,7 +213,8 @@ class HydrotelColumn(nn.Module):
 
     # ── Paramètres statiques par nœud ───────────────────────────────────
     def set_static(self, p_snow: dict, p_soil: dict, p_etr: dict,
-                   wetland: dict | None = None, n_depth: int = 31) -> None:
+                   wetland: dict | None = None, n_depth: int = 31,
+                   gel: dict | None = None) -> None:
         """Pose les paramètres statiques par nœud (une fois par simulate).
         p_snow : params DegreJourModifie (lat, ce1, ce0, pct_*, coeff_fonte_*, ...).
         p_soil : params BV3C2 (make_params : Campbell + fsa/fse/fsi + krec/cin/slope + z).
@@ -222,7 +223,11 @@ class HydrotelColumn(nn.Module):
         wetland: params milieu humide par nœud (A,B,wetnvol,wetmxvol,wet_k,c_ev,
                  c_prod,hru_ha,wet_fr) ou None si aucun.
         n_depth: nombre de nœuds du profil de gel."""
-        self._static = dict(snow=p_snow, soil=p_soil, etr=p_etr, wetland=wetland, n_depth=n_depth)
+        # gel : proprietes thermiques par noeud (kt_sol, c_sol, fs_neige) quand le
+        # champ les produit. Absentes d'un ancien point de reprise, Rankinen retombe
+        # sur ses scalaires C++ et le clone reste fidele.
+        self._static = dict(snow=p_snow, soil=p_soil, etr=p_etr, wetland=wetland,
+                            n_depth=n_depth, gel=gel or {})
         # Les breakpoints de phénologie sont convertis en tenseurs ICI, une fois par
         # simulate, et NON dans forward. La conversion (torch.as_tensor sur une liste
         # de tenseurs 0-d) est de la préparation de données : dans le pas, elle rendait
@@ -482,7 +487,9 @@ class HydrotelColumn(nn.Module):
         wetland = self._wetland_from_territorial(territorial, like)
 
         n_depth = n_intervalles(z11 + z22 + z33, self.frost.dz)
-        self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth)
+        self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth,
+                        gel={k: getattr(sp, k, None)
+                             for k in ("kt_sol", "c_sol", "fs_neige")})
         if self.use_aquifer:
             self._static["k_gw"] = sp.k_gw   # récession aquifère par nœud (1/j)
         return p_snow, p_soil, p_etr
@@ -773,6 +780,7 @@ class HydrotelColumn(nn.Module):
         julien (scalaire ou n_nodes). Retourne (prod_totale_mm, new_state, diag)."""
         assert self._static is not None, "appeler set_static() avant forward()"
         ps, pso, pe = self._static["snow"], self._static["soil"], self._static["etr"]
+        _pg = self._static.get("gel") or {}
         tmin_j = tmin if tmin_j is None else tmin_j
         tmax_j = tmax if tmax_j is None else tmax_j
         doy_t = (doy.to(P.dtype) if torch.is_tensor(doy)
@@ -815,23 +823,16 @@ class HydrotelColumn(nn.Module):
 
         # 2. gel RANKINEN → profondeur de gel [cm]
         if self.use_frost:
+            # PROPRIETES THERMIQUES DU CHAMP (2026-08-27). Elles n'existent pas sur un
+            # ancien point de reprise : on retombe alors sur les scalaires du C++, ce
+            # qui preserve la fidelite du clone.
             frost_profile, prof_gel_cm = self.frost(
                 tmin, tmax, haut, state.frost_profile,
-                pe["z11"], pe["z22"], pe["z33"])
+                pe["z11"], pe["z22"], pe["z33"],
+                kt=_pg.get("kt_sol"), cs=_pg.get("c_sol"), fs=_pg.get("fs_neige"))
         else:
             frost_profile = state.frost_profile
             prof_gel_cm = torch.zeros_like(P)
-        # FACTEUR DE GEL (opt-in, sonde de diagnostic). Le front simule ne depasse jamais
-        # 22 a 28 cm et a disparu en avril (mesure du 2026-08-27), quand la realite
-        # quebecoise descend de 40 a 100 cm et persiste jusqu'a la fin avril. Or
-        # l'etranglement du gel ne bloque pas l'infiltration mais le DRAINAGE : le modele
-        # rouvre donc ses vannes en avril, ce qui est exactement la signature que GRACE
-        # mesure, un stockage qui se vide un a deux mois trop tot. Ce facteur ne PREND
-        # PAS la place d'un correctif du modele thermique : il repond d'abord a la
-        # question prealable, est-ce que plus de gel rapproche la forme de GRACE.
-        _fg = getattr(self, "gel_facteur", None)
-        if _fg is not None:
-            prof_gel_cm = prof_gel_cm * float(_fg)
 
         # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
         # McGuinness et donne au NeRF un levier direct sur le volume (β).

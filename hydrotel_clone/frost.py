@@ -54,24 +54,43 @@ class Rankinen(torch.nn.Module):
         depths = torch.arange(n_depth, dtype=tair.dtype, device=tair.device) * self.dz  # (n_depth,)
         return fM[:, None] * depths[None, :] + fB[:, None]         # (n_nodes, n_depth)
 
-    def forward(self, tmin, tmax, snow_depth_m, profil, z11, z22, z33):
+    def forward(self, tmin, tmax, snow_depth_m, profil, z11, z22, z33,
+                kt=None, cs=None, fs=None):
         """Un pas de temps. tmin/tmax [°C], snow_depth_m = hauteur couvert nival [m],
         profil (n_nodes, n_depth) = température aux profondeurs i·Δ. z11/z22/z33 :
-        épaisseurs des couches (pour le type de sol par profondeur ; ici KT/CS/CIce
-        uniformes donc le type n'entre pas). Retourne (profil_new, profondeur_gel_cm)."""
+        épaisseurs des couches.
+
+        kt / cs / fs : PROPRIÉTÉS THERMIQUES PAR NŒUD (conductivité W/m/K, capacité
+        volumique J/m3/K, amortissement nival 1/m). Absentes, on retombe sur les
+        scalaires globaux du C++, qui est le clone fidèle. Elles existent parce que le
+        gel doit dépendre du SOL et pas seulement de l'air : avec des scalaires
+        uniformes, une argile saturée et un sable sec gèlent identiquement, alors que
+        leurs propriétés diffèrent d'un facteur trois à quatre et que la chaleur latente
+        de l'eau domine le bilan (remarque d'Essi, 2026-08-27).
+        Retourne (profil_new, profondeur_gel_cm)."""
         tair = (tmin + tmax) / 2.0
-        damp = torch.exp(-self.fs * snow_depth_m)                  # (n_nodes,)
+        _fs = self.fs if fs is None else fs
+        damp = torch.exp(-_fs * snow_depth_m)                      # (n_nodes,)
         n_depth = profil.shape[1]
-        ca = self.cs + self.cice
+        # ca = capacité APPARENTE : celle du sol plus celle de la glace, cette dernière
+        # portant la chaleur latente de changement de phase. On module la part du sol,
+        # la part glace restant une constante physique.
+        ca = (self.cs if cs is None else cs) + self.cice
+        _kt = self.kt if kt is None else kt
 
         # surface (index 0) : eq2 à profondeur 0 (rankinen.cpp:214-217)
         surf = torch.where(snow_depth_m != 0.0, tair * damp, tair)
         # nœuds de profondeur 1..n_depth-1 : VECTORISÉS sur l'axe profondeur (pas
         # de couplage entre nœuds, cf docstring) — remplace la boucle Python+stack.
         zs = torch.arange(1, n_depth, dtype=tair.dtype, device=tair.device) * self.dz  # (n_depth-1,)
-        rate = self.dt * self.kt / (ca * (2.0 * zs) ** 2)         # (n_depth-1,)
+        # rate devient (n_nodes, n_depth-1) des que kt ou ca sont des champs : la
+        # diffusion thermique est alors PROPRE A CHAQUE TRONCON, ce qui est tout
+        # l'objet de la correction.
+        _k = _kt[:, None] if torch.is_tensor(_kt) and _kt.ndim else _kt
+        _c = ca[:, None] if torch.is_tensor(ca) and ca.ndim else ca
+        rate = self.dt * _k / (_c * (2.0 * zs[None, :]) ** 2)
         t_prev = profil[:, 1:]                                    # (n_nodes, n_depth-1)
-        fT = t_prev + rate[None, :] * (tair[:, None] - t_prev)   # eq1 relaxation
+        fT = t_prev + rate * (tair[:, None] - t_prev)             # eq1 relaxation
         deep = fT * damp[:, None]                                 # eq2 amortissement neige
         profil_new = torch.cat([surf[:, None], deep], dim=1)     # (n_nodes, n_depth)
 

@@ -142,8 +142,21 @@ class SpatialParams:
     # dizaines de kilometres. Sortie du champ spatial, elle recoit les descripteurs
     # territoriaux, dont l'occupation du sol.
     krec: Tensor            # drainage profond L3 -> aquifere (m/h) [1e-7, 1e-4]
+    # ── PROPRIETES THERMIQUES DU SOL (gel de Rankinen) ───────────────────────
+    # Remarque d'Essi (2026-08-27) : « le gel doit etre physique, en fonction de la
+    # temperature et de la diffusion de la chaleur dans le sol ». Ces trois grandeurs
+    # etaient des SCALAIRES GLOBAUX identiques sur les 25 656 troncons de la province,
+    # et la docstring du clone le disait elle-meme (« KT/CS/CIce uniformes donc le type
+    # n'entre pas »). Une argile saturee et un sable sec gelaient donc identiquement,
+    # alors que leurs proprietes thermiques different d'un facteur trois a quatre.
+    # Elles sont IDENTIFIABLES separement parce qu'elles agissent sur des choses
+    # differentes : la conductivite sur la vitesse de descente du front, la capacite
+    # sur son inertie, l'amortissement nival sur le couplage a l'air.
+    kt_sol: Tensor          # conductivite thermique du sol (W/m/K) [0.2, 2.5]
+    c_sol: Tensor           # capacite calorifique volumique (J/m3/K) [0.5e6, 3.0e6]
+    fs_neige: Tensor        # amortissement par le couvert nival (1/m) [0.5, 6.0]
 
-    N_PARAMS: ClassVar[int] = 38
+    N_PARAMS: ClassVar[int] = 41
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -728,12 +741,26 @@ class SpatialFieldNetwork(nn.Module):
         exponent = torch.clamp(cols[i] * 0.3 + math.log(KREC_REF),
                                min=math.log(1e-7), max=math.log(1e-4))
         constrained.append(torch.exp(exponent)); i += 1
+        # PROPRIETES THERMIQUES. Bornes tirees de la litterature des sols : la
+        # conductivite d'un sol mineral va de ~0.25 (sec, poreux) a ~2.2 W/m/K (sature,
+        # sableux) ; la capacite volumique de ~0.8e6 (sec) a ~3e6 J/m3/K (sature, l'eau
+        # portant l'essentiel). L'amortissement nival de Rankinen vaut 2.35 dans le
+        # C++ ; on ouvre autour, la densite et la structure du couvert le faisant
+        # varier. Centrees sur le defaut, raw=0 rend EXACTEMENT l'ancien comportement,
+        # ce qui garde inoffensif le remplissage par zeros d'un ancien point de reprise.
+        constrained.append(bounded(cols[i], 0.2, 2.5)); i += 1        # kt_sol
+        constrained.append(bounded(cols[i], 0.5e6, 3.0e6)); i += 1    # c_sol
+        constrained.append(bounded(cols[i], 0.5, 6.0)); i += 1        # fs_neige
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
 
     # ── Recharge : poser ou geler le champ ────────────────────────────────────
-    _IDX_KREC = SpatialParams.N_PARAMS - 1   # krec est la DERNIERE sortie
+    # krec n'est plus la derniere sortie depuis l'ajout des proprietes thermiques
+    # (2026-08-27) : l'index est desormais nomme explicitement plutot que deduit d'une
+    # position, ce qui evite qu'un ajout futur ne deplace silencieusement le gel de la
+    # recharge vers autre chose.
+    _IDX_KREC = SpatialParams.N_PARAMS - 4
 
     def set_uniform_krec(self, valeur: float) -> None:
         """Force la recharge a une valeur UNIFORME (m/h) sur tous les noeuds.
