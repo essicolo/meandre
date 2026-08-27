@@ -215,9 +215,27 @@ if __name__ == "__main__":
     print(f"[{REG}] {d['n']} noeuds de sites | seuil air du projet {d['seuil_air']:+.2f}\n")
     print("  " + " " * 34 + "".join(f"{m:>6d}" for m in (11, 12, 1, 2, 3, 4)))
     # CONTROLE : la recette du pilote (Twb -0.8, amp 0.5) doit retrouver ses ratios
-    _ref = simuler(d, amp=0.5)
-    ligne("controle Twb-0.8 amp0.5 (pilote)", juger(d, _ref))
-    calendrier(d, _ref)
+    # MODULATION SAISONNIERE DE LA FONTE, mise en accusation le 2026-08-27. Elle vaut
+    # 1 + amp*sin(2*pi*(j-81)/365), donc elle AMPLIFIE la fonte a partir de fin mars :
+    # +31 % fin avril a amp=0.5. Or CanSWE montre que le manteau simule perd un quart de
+    # sa masse en avril quand le manteau reel n'en perd rien (SAGU 185->141 contre
+    # 241->238). Elle avait ete validee sur le DEBIT (R36), jamais sur la MASSE de neige.
+    # On la balaie ici contre son juge propre.
+    for _a in (0.5, 0.25, 0.0, -0.25):
+        _s = simuler(d, amp=(None if _a == 0.0 else _a))
+        ligne(f"amp fonte {_a:+.2f}", juger(d, _s))
+        calendrier(d, _s)
+
+    # SEUIL DU PARTAGE PLUIE-NEIGE. CaSR est innocente sur le TOTAL hivernal (rapport
+    # median 0.948 contre ECCC, 2026-08-27) : le deficit de 22 % du manteau simule des
+    # decembre a SAGU vient donc probablement du PARTAGE, pas de la donnee. Le bulbe
+    # humide est cale a -0.8 (R43) sur l'ensemble du domaine ; on le balaie ici contre
+    # le seul juge qui compte pour cette question, la MASSE mesuree par CanSWE, et non
+    # le debit qui l'a valide a l'origine.
+    for _twb in (-0.8, -1.4, -2.0, -2.6):
+        _s = simuler(d, twb=_twb)
+        ligne(f"bulbe humide {_twb:+.1f}", juger(d, _s))
+        calendrier(d, _s)
     ligne("seuil air projet, sans amp", juger(d, simuler(d, seuil_mode="air", amp=None)))
     ligne("Twb-0.8 sans amp", juger(d, simuler(d, amp=None)))
     if d["sw"] is not None:

@@ -239,6 +239,22 @@ CE QUI RESTE ACQUIS, et qui est le vrai résultat : le déplacement MOYEN était
 
 HYPOTHÈSE D'ESSI À TESTER : la contrainte devrait améliorer la généralisation et réduire le surajustement. Critère de lecture retenu, l'écart entre validation et tenue de côté plutôt que le niveau atteint.
 
+### R50. Cinq hypothèses tombent en cascade sur le déficit de manteau, aucune ne l'explique
+
+Chaîne du 2026-08-27, chaque étape testée avant de passer à la suivante. Point de départ : `calendrier()`, ajouté au banc neige-seule, montre pour la première fois les DEUX courbes mensuelles côte à côte plutôt qu'un ratio. Sur SAGU, le manteau simulé est déjà à 78 % du mesuré en DÉCEMBRE (68 mm contre 84), avant toute fonte, puis perd un quart de sa masse en avril quand le manteau réel n'en perd presque rien (185→141 contre 241→238). Deux défauts distincts, pas un : un déficit d'ACCUMULATION qui court tout l'hiver sur certains bassins, et une perte d'AVRIL qui s'y ajoute.
+
+RÉFUTÉ : la rétention du sol. Nappe 3x et 10x plus lente, drainage L3 non linéaire, leur combinaison : quatre leviers, quatre échecs contre la climatologie GRACE (R48).
+
+RÉFUTÉ : la modulation saisonnière de la fonte (amplitude 0.5, validée sur le débit en R36). Balayée de -0.25 à +0.50 contre la MASSE CanSWE au lieu du débit : le rapport d'avril reste bloqué à 0.60-0.61 quel que soit le signe. Elle ne déplace pas le défaut, elle n'a jamais été le bon levier pour ce juge.
+
+REDIRIGÉ PUIS RÉFUTÉ : le gel thermique appris avait semblé lever le blocage GRACE (R49) avant que l'audit ne découvre une paramétrisation redondante (conductivité/capacité anti-corrélées à -0.920). Corrigé à une diffusivité unique, le test apparié retombe sur la trajectoire du témoin : le gain venait de la direction sans gradient, pas d'un mécanisme physique.
+
+INNOCENTÉ (à la marge) : la précipitation totale de CaSR. Comparée à 21 stations ECCC en hiver (DJF, 2010-2020, <25 km d'un nœud) : rapport médian CaSR/ECCC = 0.948. Un déficit de 5 % ne peut pas expliquer un déficit de manteau de 22 %, et la réserve connue (les jauges au sol sous-captent elles-mêmes la neige sous le vent) va dans le sens de renforcer cette innocence, pas de l'affaiblir.
+
+RÉFUTÉ, ET À L'ENCONTRE DE L'HYPOTHÈSE : le seuil du bulbe humide. Si le partage envoyait trop d'eau vers la pluie, l'abaisser (plus de précipitation classée neige) devrait ENGRAISSER le manteau. C'est l'inverse qui se produit : -0.8 (actuel) donne 0.73-0.77 sur décembre-février, -2.6 donne seulement 0.66-0.67. Le seuil actuel est déjà le MEILLEUR des quatre testés pour la masse, pas le pire.
+
+CE QUI RESTE, et qui commence à ressembler à un défaut structurel plutôt qu'à un paramètre mal réglé : ni la précipitation totale, ni le partage pluie-neige, ni la modulation de fonte, ni la rétention du sol n'expliquent le déficit de décembre. Piste non explorée ce soir, à regarder en premier : l'ETI (Pellicciotti), déjà réfuté sur le DÉBIT le 24 août (R44), ressort à 0.81-0.89 sur la MASSE dans ce même balayage, contre 0.73-0.77 pour le degré-jour au bulbe humide -- un juge différent pourrait avoir tranché la mauvaise formulation de fonte pour la mauvaise raison.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
