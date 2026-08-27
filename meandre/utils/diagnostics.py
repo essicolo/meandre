@@ -77,6 +77,7 @@ class SimDiagnostics:
     theta3: Tensor | None = None   # (T, N) m³/m³ — soil moisture L3 (100-200 cm)
     s_gw: Tensor | None = None     # (T, N) mm — groundwater storage (aquifer)
     canopy: Tensor | None = None   # (T, N) mm — canopy interception storage
+    prof_gel_cm: Tensor | None = None  # (T, N) cm — profondeur du front de gel
     wetland: Tensor | None = None  # (T, N) mm — wetland storage
     # Décomposition de lateral_mm (mm/jour) : surface (ruissellement + débordement de
     # saturation), hypodermique (drainage latéral couche 2), base (recharge q3). Sert à

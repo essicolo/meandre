@@ -413,7 +413,14 @@ class HydroModel(nn.Module):
                              "theta1", "theta2", "theta3",
                              "s_gw", "canopy", "wetland",
                              "prod_surf", "prod_hypo", "prod_base",
-                             "etr_mh_mm", "wet_vol_mm", "subl_mm")}
+                             "etr_mh_mm", "wet_vol_mm", "subl_mm",
+                             # PROFONDEUR DE GEL : calculee par Rankinen sur tout le
+                             # profil (~3.2 m) mais jamais exposee, donc invisible aux
+                             # diagnostics. Or son effet hydrologique est tronque a
+                             # l'epaisseur de la couche 1 (15 cm) : au-dela, un gel plus
+                             # profond ne change plus rien. On ne pouvait meme pas
+                             # verifier si le front simule est realiste (2026-08-27).
+                             "prof_gel_cm")}
             if return_diagnostics else {}
         )
         outflow_buffer = OutflowRingBuffer(
@@ -618,7 +625,7 @@ class HydroModel(nn.Module):
                 diag_lists["etp"].append(vc_out.diag["etp"])
                 diag_lists["etr"].append(vc_out.diag["etr"])
                 diag_lists["snowmelt"].append(vc_out.diag["snowmelt"])
-                for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm"):
+                for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm", "prof_gel_cm"):
                     if _k in vc_out.diag:
                         diag_lists[_k].append(vc_out.diag[_k])
                 for _k in ("prod_surf", "prod_hypo", "prod_base"):
@@ -684,6 +691,8 @@ class HydroModel(nn.Module):
                      if diag_lists.get("wet_vol_mm") else None),
             sublimation=(torch.stack(diag_lists["subl_mm"], dim=0)
                          if diag_lists.get("subl_mm") else None),
+            prof_gel_cm=(torch.stack(diag_lists["prof_gel_cm"], dim=0)
+                         if diag_lists.get("prof_gel_cm") else None),
             prod_surf=(torch.stack(diag_lists["prod_surf"], dim=0)
                        if diag_lists["prod_surf"] else None),
             prod_hypo=(torch.stack(diag_lists["prod_hypo"], dim=0)
