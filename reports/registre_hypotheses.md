@@ -342,6 +342,24 @@ Le répertoire des barrages du CEHQ fournit la localisation, la hauteur, le volu
 
 Le juge doit être choisi avec soin : le débit aux stations en aval mélangerait l'effet du barrage et celui de l'hydrologie amont. Les niveaux de retenue, quand ils sont publiés, seraient l'observable propre, ce qui rejoint O9 sur les niveaux d'eau.
 
+### O14. Laminage de la Richelieu et de l'Outaouais : deux tâches déjà ouvertes, corroborées de l'extérieur
+
+Signalé le 2026-08-27 par un hydrologue d'expérience, via Essi : le laminage est mal modélisé sur le bassin de la Richelieu et sur celui de l'Outaouais. La remarque ne demande pas une tâche nouvelle, elle confirme deux tâches existantes et dit laquelle s'applique où.
+
+VÉRIFICATION FAITE, ET ELLE ÉCARTE UNE FAUSSE PISTE. Le lac Champlain EST dans le domaine : nœud de lac à 44.285 N et -73.406 O, donc au Vermont, 21 283 km² drainés, trente-six arêtes entrantes. Le domaine MONT franchit la frontière et la somme de ses aires locales (38 937 km²) égale son aire cumulée maximale (38 935). Il n'y a donc PAS d'apport transfrontalier manquant, contrairement à ce qu'on pourrait supposer.
+
+RICHELIEU : tout le tamponnement du lac Champlain repose sur UN nœud de lac avec un couple de paramètres appris par le champ. Or son atténuation est gouvernée par le haut-fond de Saint-Jean, donc par une géométrie d'exutoire particulière et fortement non linéaire. Un seul jeu de paramètres appris SUR LE DÉBIT peut difficilement la reproduire, d'autant que le débit n'est plus le terme dominant de la perte (R47). C'est la tâche 40, ancrage d'exutoire et tête apprenante des lacs.
+
+OUTAOUAIS : 514 lacs, le plus grand drainant 83 198 km², donc les réservoirs de tête sont bien présents en tant que plans d'eau. Ce qui manque est leur GESTION. Dozois, Cabonga et Baskatong sont exploités de façon coordonnée pour écrêter les crues, et cette atténuation est une décision, pas une propriété du bassin. C'est O13, le modèle DZTR.
+
+CONSÉQUENCE POUR LE DIAGNOSTIC EN COURS : MONT porte désormais DEUX explications concurrentes pour son mauvais score (0.4821 contre 0.6953 pour son champion régional), l'agriculture (O12) et le laminage de Champlain. Elles ne sont pas exclusives et il faudra les départager, sans quoi on attribuera à l'une ce qui revient à l'autre. Le départage est possible : le drainage agricole agit sur les tronçons à forte fraction cultivée, le laminage sur le seul axe du Richelieu en aval du lac.
+
+### R48. Le temps de résidence de l'aquifère n'est PAS le mécanisme de la descente printanière
+
+Balayage en inférence du 2026-08-27, juge = climatologie GRACE, aucun entraînement. Une nappe trois fois plus lente laisse les rapports d'amplitude quasi inchangés (GASP 1.44 vers 1.42, MONT 0.77 vers 0.73) ; dix fois plus lente ne fait pas mieux et DÉGRADE les corrélations (OUTV 0.834 vers 0.805, MONT 0.890 vers 0.845). Deux points, tous deux négatifs.
+
+L'hypothèse était pourtant motivée : le champ k_gw provincial a une médiane de 0.0856 par jour, soit douze jours de temps de résidence, quand GRACE demande une rétention d'un à deux mois, et il a été estimé sur des récessions de COURS D'EAU, donc sur le compartiment le plus rapide. Elle est réfutée, ce qui renforce d'autant la piste du gel.
+
 ## 5. Dette technique qui PRODUIT des fantômes
 
 1. ~~**Trois numérotations de tronçons**~~ **RÉGLÉ 08-12** : conversions centralisées dans `hydrotel_calib` (`id_provincial`, `id_local`, `appariement_provincial`), un appariement vide LÈVE une erreur au lieu de rendre des nombres. 2 tests.
