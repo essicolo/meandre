@@ -330,6 +330,18 @@ CE QUI TRANCHE : ajouter un processus à la fois, avec son juge propre, en comme
 
 REMARQUE DE MÉTHODE : c'est le champ UNIQUE qui a rendu ce défaut visible. Les calages régionaux le masquaient, chacun ajustant ses propres paramètres pour absorber localement un processus absent. Le modèle provincial sert donc d'instrument de diagnostic, ce qui est l'argument d'identifiabilité du projet mis en pratique.
 
+### O13. Barrages : le modèle DZTR et le répertoire du CEHQ (1.x)
+
+Piste posée par Essi le 2026-08-27. Les ouvrages de retenue sont aujourd'hui absents du modèle, alors que le Québec méridional en compte des milliers et que leur gestion déplace de l'eau dans le temps exactement là où le modèle se trompe déjà, au printemps. Deux ressources à mobiliser.
+
+Le modèle DZTR (Dam Zoning and Target Release) donne une règle de lâcher générique à partir de zones de remplissage et d'une cible saisonnière, sans exiger les consignes réelles de chaque exploitant, qui ne sont ni publiques ni homogènes. C'est ce qui le rend applicable à l'échelle provinciale, et sa forme par zones est différentiable par morceaux. Référence : https://www.sciencedirect.com/org/science/article/pii/S031514682200044X
+
+Le répertoire des barrages du CEHQ fournit la localisation, la hauteur, le volume de retenue et l'usage, donc de quoi apparier un ouvrage à un tronçon et l'initialiser. https://www.cehq.gouv.qc.ca/barrages/default.asp
+
+À NE PAS CONFONDRE avec les pseudo-lacs, artefact déjà connu : des retenues importées d'Hydrotel comme réservoirs actifs y produisaient des retards artificiels. Ici il s'agit de représenter une GESTION, pas une géométrie. Et à distinguer aussi des prélèvements et rejets, qui retirent ou ajoutent de l'eau, alors qu'un barrage la déplace dans le temps sans changer le volume annuel.
+
+Le juge doit être choisi avec soin : le débit aux stations en aval mélangerait l'effet du barrage et celui de l'hydrologie amont. Les niveaux de retenue, quand ils sont publiés, seraient l'observable propre, ce qui rejoint O9 sur les niveaux d'eau.
+
 ## 5. Dette technique qui PRODUIT des fantômes
 
 1. ~~**Trois numérotations de tronçons**~~ **RÉGLÉ 08-12** : conversions centralisées dans `hydrotel_calib` (`id_provincial`, `id_local`, `appariement_provincial`), un appariement vide LÈVE une erreur au lieu de rendre des nombres. 2 tests.

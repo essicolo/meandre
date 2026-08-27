@@ -821,6 +821,17 @@ class HydrotelColumn(nn.Module):
         else:
             frost_profile = state.frost_profile
             prof_gel_cm = torch.zeros_like(P)
+        # FACTEUR DE GEL (opt-in, sonde de diagnostic). Le front simule ne depasse jamais
+        # 22 a 28 cm et a disparu en avril (mesure du 2026-08-27), quand la realite
+        # quebecoise descend de 40 a 100 cm et persiste jusqu'a la fin avril. Or
+        # l'etranglement du gel ne bloque pas l'infiltration mais le DRAINAGE : le modele
+        # rouvre donc ses vannes en avril, ce qui est exactement la signature que GRACE
+        # mesure, un stockage qui se vide un a deux mois trop tot. Ce facteur ne PREND
+        # PAS la place d'un correctif du modele thermique : il repond d'abord a la
+        # question prealable, est-ce que plus de gel rapproche la forme de GRACE.
+        _fg = getattr(self, "gel_facteur", None)
+        if _fg is not None:
+            prof_gel_cm = prof_gel_cm * float(_fg)
 
         # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
         # McGuinness et donne au NeRF un levier direct sur le volume (β).

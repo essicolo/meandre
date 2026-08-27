@@ -81,6 +81,9 @@ if dom.get("soil"):
 _l3 = os.environ.get("DIAG_L3EXP")
 if _l3:
     model.vertical_column.l3_drain_exp = float(_l3)
+_fg = os.environ.get("DIAG_GEL")
+if _fg:
+    model.vertical_column.gel_facteur = float(_fg)
 _kg = float(os.environ.get("DIAG_KGW", "1.0"))
 if _kg != 1.0:
     # Le champ k_gw provincial a une mediane de 0.0856 par jour, soit douze jours de
@@ -92,7 +95,8 @@ if _kg != 1.0:
         sp = _o(*a, **kw); sp.k_gw = sp.k_gw * _m
         return sp
     model.spatial_encoder.forward = _se_lent
-print(f"[diag] leviers : l3_drain_exp={_l3 or 'lineaire'} | k_gw x{_kg}", flush=True)
+print(f"[diag] leviers : l3_drain_exp={_l3 or 'lineaire'} | k_gw x{_kg} "
+      f"| gel x{_fg or 1}", flush=True)
 
 model.vertical_column.split_mode = "wet_bulb"
 model.vertical_column.t_neige_seuil = -0.8
