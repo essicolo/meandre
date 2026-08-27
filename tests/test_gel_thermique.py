@@ -84,3 +84,29 @@ def test_gradient_traverse_les_deux():
             p, gel = mod(tmin, tmax, hs, p, z, z, z, **{nom: x})
         gel.sum().backward()
         assert x.grad is not None and float(x.grad.abs().sum()) > 0.0, nom
+
+
+def test_les_bornes_respectent_la_stabilite_du_schema():
+    """La borne haute de la diffusivite est fixee par la NUMERIQUE, pas par la physique.
+
+    Rankinen est un schema EXPLICITE : son taux de relaxation vaut dt*alpha/(2z)^2, donc
+    8.64e6*alpha au noeud le plus superficiel (5 cm, pas journalier). Au-dela d'un taux
+    de 2, le profil de temperature oscille en divergeant et le gel sort en NaN -- constate
+    le 2026-08-27 avec une borne a 8e-7 empruntee a la litterature des sols, qui donne un
+    taux de 6.9.
+
+    Ce test existe parce que c'est exactement le genre de contrainte qu'on reintroduit
+    sans y penser en elargissant une borne pour « laisser plus de liberte au champ ».
+    """
+    from meandre.spatial.field_network import SpatialFieldNetwork
+
+    mod = Rankinen()
+    n = SpatialFieldNetwork(n_territorial=8, n_nodes=3)
+    n.init_from_literature()
+    sp = n(torch.tensor([[-71.0, 46.0]] * 3), torch.zeros(3, 8))
+    alpha_max = 2.0 * (2.0 * mod.dz) ** 2 / mod.dt
+    assert float(sp.diff_gel.max()) < alpha_max, (float(sp.diff_gel.max()), alpha_max)
+
+    # et le gel reste fini sur une descente complete
+    gel = _descendre(mod, 3, alpha=sp.diff_gel.detach())
+    assert torch.isfinite(gel).all(), gel

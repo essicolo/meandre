@@ -160,6 +160,51 @@ def juger(d, swe):
     return r
 
 
+def calendrier(d, swe):
+    """CLIMATOLOGIE MENSUELLE du manteau, simule et mesure, en millimetres.
+
+    Motif (2026-08-27). Deux jours de recherche sur la RETENTION du stockage ont elimine
+    quatre leviers de reservoir lent : nappe trois puis dix fois plus lente, couche 3 non
+    lineaire, et leur combinaison (R48). Un echec aussi complet suggere qu'il n'y a rien
+    a freiner, et que le probleme est en amont : si l'eau de fonte ARRIVE trop tot, le
+    stockage monte trop tot et redescend trop tot, et aucun frein sur la vidange ne
+    corrige une entree mal datee.
+
+    Les ratios ne peuvent pas repondre a ca : un ratio de 0.5 en avril ne dit pas si le
+    manteau est deux fois trop leger tout l'hiver ou s'il a fondu trois semaines trop
+    tot. Il faut les DEUX courbes, mois par mois, avec leur mois de pic et leur mois de
+    disparition.
+    """
+    m = d["mes"].copy()
+    pos = pd.Series(np.arange(len(d["times"])), index=d["times"].normalize())
+    m["t"] = pos.reindex(pd.DatetimeIndex(m.date).normalize()).to_numpy()
+    m = m[np.isfinite(m.t)]
+    m["j"] = [d["ix"][int(n)] for n in m.node_idx]
+    m["sim"] = swe.numpy()[m.t.astype(int), m.j]
+    m = m[np.isfinite(m.swe_mm) & (m.swe_mm >= 0)]
+    m["mois"] = pd.DatetimeIndex(m.date).month
+    g = m.groupby("mois")[["sim", "swe_mm"]].mean()
+    mois = [10, 11, 12, 1, 2, 3, 4, 5, 6]
+    sim = [float(g.sim.get(x, np.nan)) for x in mois]
+    obs = [float(g.swe_mm.get(x, np.nan)) for x in mois]
+    print("")
+    print("  manteau nival, climatologie mensuelle appariee site-jour (mm)")
+    print("           " + "".join(f"{x:7d}" for x in mois))
+    print("  simule   " + "".join(f"{v:7.0f}" for v in sim))
+    print("  CanSWE   " + "".join(f"{v:7.0f}" for v in obs))
+    def pic(v):
+        k = int(np.nanargmax(v)); return mois[k]
+    def fin(v):
+        # premier mois du printemps ou le manteau tombe sous 10 % de son pic
+        s = max(v); 
+        for i, x in enumerate(v):
+            if mois[i] in (3, 4, 5, 6) and x < 0.1 * s:
+                return mois[i]
+        return None
+    print(f"  pic : simule mois {pic(sim)}, mesure mois {pic(obs)} | "
+          f"disparition : simule mois {fin(sim)}, mesure mois {fin(obs)}")
+
+
 def ligne(nom, r):
     print(f"  {nom:<34s}" + "".join(f"{r.get(mo, float('nan')):6.2f}"
                                     for mo in (11, 12, 1, 2, 3, 4)))
@@ -170,7 +215,9 @@ if __name__ == "__main__":
     print(f"[{REG}] {d['n']} noeuds de sites | seuil air du projet {d['seuil_air']:+.2f}\n")
     print("  " + " " * 34 + "".join(f"{m:>6d}" for m in (11, 12, 1, 2, 3, 4)))
     # CONTROLE : la recette du pilote (Twb -0.8, amp 0.5) doit retrouver ses ratios
-    ligne("controle Twb-0.8 amp0.5 (pilote)", juger(d, simuler(d, amp=0.5)))
+    _ref = simuler(d, amp=0.5)
+    ligne("controle Twb-0.8 amp0.5 (pilote)", juger(d, _ref))
+    calendrier(d, _ref)
     ligne("seuil air projet, sans amp", juger(d, simuler(d, seuil_mode="air", amp=None)))
     ligne("Twb-0.8 sans amp", juger(d, simuler(d, amp=None)))
     if d["sw"] is not None:

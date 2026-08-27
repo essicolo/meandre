@@ -78,12 +78,26 @@ if dom.get("soil"):
 # avant GRACE, sur les quatre bassins. Les deux mecanismes qui gouvernent cette descente
 # sont le drainage de la couche 3 et le temps de residence de la nappe. On les balaie en
 # inference, juges par la climatologie satellitaire, avant de payer le moindre epoch.
+# DIFFUSIVITE THERMIQUE : le seul levier de retention qui reste candidat apres l'echec
+# des quatre leviers de reservoir lent (R48). Contrairement au multiplicateur de
+# profondeur de gel que j'avais essaye puis retire, celui-ci porte sur un PARAMETRE
+# PHYSIQUE et non sur une sortie : une diffusivite plus faible ralentit la descente ET
+# la remontee du front, donc maintient le drainage bloque plus longtemps au printemps.
+# L'entrainement du 2026-08-27 a spontanement reduit ce rapport de 34 % ; on verifie ici
+# que cette reduction fait bien ce qu'on croit sur le stockage.
+_lp0 = dict(cfg.get("literature_prior") or {})
+_lp0["K_sat_1"] = 0.04; _lp0["K_c"] = 1.0; _lp0["k_gw"] = 0.07; _lp0.setdefault("krec", 5e-5)
+model.spatial_encoder.init_from_literature(_lp0)
+_dd = float(os.environ.get("DIAG_DIFF", "1.0"))
+if _dd != 1.0:
+    _o_d = model.spatial_encoder.forward
+    def _se_diff(*a, _o=_o_d, _m=_dd, **kw):
+        sp = _o(*a, **kw); sp.diff_gel = sp.diff_gel * _m
+        return sp
+    model.spatial_encoder.forward = _se_diff
 _l3 = os.environ.get("DIAG_L3EXP")
 if _l3:
     model.vertical_column.l3_drain_exp = float(_l3)
-_fg = os.environ.get("DIAG_GEL")
-if _fg:
-    model.vertical_column.gel_facteur = float(_fg)
 _kg = float(os.environ.get("DIAG_KGW", "1.0"))
 if _kg != 1.0:
     # Le champ k_gw provincial a une mediane de 0.0856 par jour, soit douze jours de
@@ -96,7 +110,7 @@ if _kg != 1.0:
         return sp
     model.spatial_encoder.forward = _se_lent
 print(f"[diag] leviers : l3_drain_exp={_l3 or 'lineaire'} | k_gw x{_kg} "
-      f"| gel x{_fg or 1}", flush=True)
+      f"| diffusivite x{_dd}", flush=True)
 
 model.vertical_column.split_mode = "wet_bulb"
 model.vertical_column.t_neige_seuil = -0.8

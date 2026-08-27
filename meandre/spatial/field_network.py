@@ -161,7 +161,7 @@ class SpatialParams:
     # avec la teneur en eau). Le modele ne trichait pas : il tirait sur une
     # parametrisation mal posee. Un parametre qui dit ce qu'il fait vaut mieux que deux
     # qui se compensent.
-    diff_gel: Tensor        # diffusivite thermique apparente (m2/s) [4e-8, 8e-7]
+    diff_gel: Tensor        # diffusivite thermique APPARENTE (m2/s) [4e-8, 2.2e-7]
     fs_neige: Tensor        # amortissement par le couvert nival (1/m) [0.5, 6.0]
 
     N_PARAMS: ClassVar[int] = 40
@@ -504,7 +504,7 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = (math.log(d["krec"]) - math.log(KREC_REF)) / 0.3; i += 1
         # proprietes thermiques du gel : bornes de la litterature des sols, valeur de
         # depart = celle du C++ (voir le dictionnaire de cibles).
-        raw[i] = inv_bounded(d["diff_gel"], 4e-8, 8e-7); i += 1
+        raw[i] = inv_bounded(d["diff_gel"], 4e-8, 2.2e-7); i += 1
         raw[i] = inv_bounded(d["fs_neige"], 0.5, 6.0); i += 1
 
         return raw
@@ -768,10 +768,22 @@ class SpatialFieldNetwork(nn.Module):
         # varier. Centrees sur le defaut, raw=0 rend EXACTEMENT l'ancien comportement,
         # ce qui garde inoffensif le remplissage par zeros d'un ancien point de reprise.
         # DIFFUSIVITE APPARENTE. Valeur du C++ : kt / (cs + cice) = 0.8 / 5e6 =
-        # 1.6e-7 m2/s. Les bornes couvrent la plage des sols mineraux, du plus inerte
-        # (tourbe saturee) au plus reactif (sable sec), en tenant compte du terme de
-        # glace qui abaisse la diffusivite apparente.
-        constrained.append(bounded(cols[i], 4e-8, 8e-7)); i += 1      # diff_gel
+        # 1.6e-7 m2/s. APPARENTE et non vraie : la capacite au denominateur inclut le
+        # terme de glace (4e6), qui porte la chaleur latente de changement de phase --
+        # methode classique de la capacite apparente. Elle est donc systematiquement plus
+        # basse que les diffusivites de manuel (1e-7 a 1e-6) et ne se compare pas
+        # directement a elles.
+        #
+        # BORNE SUPERIEURE FIXEE PAR LA NUMERIQUE, PAS PAR LA PHYSIQUE. Le schema de
+        # Rankinen est EXPLICITE : son taux de relaxation vaut dt*alpha/(2z)^2, soit
+        # 8.64e6*alpha au noeud le plus superficiel (5 cm, dt journalier). La stabilite
+        # exige ce taux sous 2, donc alpha sous 2.31e-7 ; le clone tourne a 1.38, juste
+        # sous la limite. Mon premier essai bornait a 8e-7 en empruntant la plage de la
+        # litterature : le profil de temperature divergeait et le gel sortait en NaN
+        # (2026-08-27). Ce schema ne peut donc PAS representer les diffusivites reelles
+        # les plus elevees -- une limite de la numerique, a lever par un schema implicite
+        # si le besoin s'en fait sentir.
+        constrained.append(bounded(cols[i], 4e-8, 2.2e-7)); i += 1    # diff_gel
         constrained.append(bounded(cols[i], 0.5, 6.0)); i += 1        # fs_neige
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))

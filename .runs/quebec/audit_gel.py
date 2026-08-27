@@ -67,7 +67,7 @@ with torch.no_grad():
     sp = m.spatial_encoder(dom["node_coords"], dom["territorial"].to_tensor())
 
 DEFAUT = {"diff_gel": 1.6e-7, "fs_neige": 2.35}
-BORNES = {"diff_gel": (4e-8, 8e-7), "fs_neige": (0.5, 6.0)}
+BORNES = {"diff_gel": (4e-8, 2.2e-7), "fs_neige": (0.5, 6.0)}
 print(f"\n{'propriete':10s} {'defaut':>9s} {'q10':>9s} {'mediane':>9s} {'q90':>9s} "
       f"{'CV':>6s}  {'aux bornes':>10s}")
 for k, (lo, hi) in BORNES.items():
