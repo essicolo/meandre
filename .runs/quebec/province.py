@@ -319,6 +319,14 @@ for plate in PLATEFORMES:
 if tous:
     print(f"\n[province] mediane provinciale {np.median(tous):.4f} sur {len(tous)} stations",
           flush=True)
+    # MARQUEUR MACHINE, distinct de la prose. Le chargeur du domaine imprime lui
+    # aussi des lignes contenant 'mediane provinciale' quand un champ manque et
+    # qu'il pose la valeur mediane de la province a la place. Un lecteur automatique
+    # qui cherchait cette chaine rendait donc 0.6, une valeur de remplissage de
+    # milieu humide, au lieu du score -- trouve le 2026-08-28, avant que la file de
+    # fin de semaine ne prenne toutes ses decisions dessus. Une sortie destinee a
+    # etre relue par un programme doit avoir un marqueur qui n'appartient qu'a elle.
+    print(f"PROVMED {np.median(tous):.4f}", flush=True)
 # ── DUMP PAR TRONCON, managed ET naturalise (PROV_DUMP=<prefixe>) ────────────
 # Demande d'Essi (2026-08-28) : rapport provincial statique et couches feuillage --
 # hydrogrammes jauges et non jauges, resumes de KGE, cartes d'impact RELATIF des

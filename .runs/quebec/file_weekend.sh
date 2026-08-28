@@ -21,8 +21,14 @@ export JOINT_FX_SUFFIX=-hyb
 J=/workspace/file.log
 note(){ echo "[$(date -u '+%m-%d %H:%M')] $*" >> "$J"; }
 
-# Lit la mediane provinciale tenue de cote d'un journal de run.
-med(){ grep -aoE "mediane provinciale [0-9.]+" "$1" 2>/dev/null | head -1 | grep -oE "[0-9.]+"; }
+# Lit la mediane provinciale TENUE DE COTE d'un journal de run.
+# PIEGE PAYE LE 2026-08-28 : le chargeur du domaine imprime aussi des lignes du genre
+#   c_ev_raw : absent de [...], pose a la mediane provinciale 0.6 (HYPOTHESE)
+# Une premiere version prenait la PREMIERE occurrence et rendait donc 0.6, une valeur
+# de remplissage de milieu humide, au lieu du score. Toutes les decisions de la file
+# se seraient prises la-dessus. On exige donc le prefixe du pilote ET le suffixe
+# ' sur N stations', que les messages du chargeur n'ont pas.
+med(){ grep -aoE "PROVMED [0-9]+\.[0-9]+" "$1" 2>/dev/null | tail -1 | grep -oE "[0-9]+\.[0-9]+"; }
 # Lit le kge_median d'une epoque donnee.
 kmed(){ grep -aoE "Epoch +$2 \|.*kge_med=[0-9.-]+" "$1" 2>/dev/null | grep -oE "kge_med=[0-9.-]+" | cut -d= -f2; }
 # Nombre d'epoques ecrites.
@@ -31,11 +37,16 @@ nep(){ grep -acE "^\[.*Epoch " "$1" 2>/dev/null || echo 0; }
 run(){  # $1 = tag, $2 = epoques, reste = variables d'environnement
   local tag="$1" ep="$2"; shift 2
   local log="/workspace/log-${tag}.txt"
-  [ -f "$log" ] && grep -q "mediane provinciale" "$log" && { note "$tag deja fait, saute"; return; }
+  [ -f "$log" ] && grep -q "PROVMED" "$log" && { note "$tag deja fait, saute"; return; }
   note "DEBUT $tag ($ep epoques) : $*"
   env "$@" PROV_TAG="$tag" PROV_EPOCHS="$ep" \
     python -u .runs/quebec/province.py > "$log" 2>&1
   note "FIN $tag : mediane $(med "$log")"
+  # LES CHECKPOINTS VIVENT SUR LE DISQUE CONTENEUR, QUI NE SURVIT PAS A UN ARRET
+  # DU POD. Seul /workspace survit. On les recopie donc apres chaque banc : un run
+  # de seize heures perdu parce que le pod s'arrete serait une perte seche, et le
+  # fichier ne pese que ~400 Ko.
+  cp -f ".runs/quebec/checkpoints/best-${tag}.pt" /workspace/ 2>/dev/null || true
 }
 
 # ── 1. Le banc de canopee finit d'abord (deja lance) ────────────────────────
@@ -52,14 +63,19 @@ run "aux-0.02" 3 PROV_AUX=0.02
 # derniere epoque INFERIEUR a celui de l'epoque 0. Si le bras degonfle cesse de diverger,
 # la balance est la cause et on repartit entre les trois termes. Sinon le suspect
 # restant est le taux d'apprentissage, que le registre designe depuis quatre runs.
-A=$(kmed /workspace/log-aux-0.02.txt 0); B=$(kmed /workspace/log-aux-0.02.txt 2)
-note "AUX degonfle : kge_med epoque 0 = ${A:-?}, epoque 2 = ${B:-?}"
+# Premiere version de la regle : le bras degonfle est-il meilleur a l'epoque 2 qu'a
+# l'epoque 0. Elle ne discrimine RIEN : le bras de canopee a fait exactement ca AVEC
+# les poids pleins -- il monte trois epoques (0.3392, 0.3876, 0.4357) puis s'effondre
+# (0.3338, 0.2767). Une trajectoire qui monte jusqu'a l'epoque 2 ne prouve donc pas
+# que le degonflage a change quoi que ce soit. On COMPARE LES DEUX BRAS entre eux, sur
+# la tenue de cote, la seule chose qu'on cherche a ameliorer.
+A=$(med /workspace/log-aux-1.0.txt); B=$(med /workspace/log-aux-0.02.txt)
+note "AUX : plein ${A:-?} | degonfle ${B:-?} (tenue de cote)"
 BRANCHE=lr
 if [ -n "${A:-}" ] && [ -n "${B:-}" ]; then
-  awk -v a="$A" -v b="$B" 'BEGIN{exit !(b>=a)}' && BRANCHE=repartir
+  awk -v a="$A" -v b="$B" 'BEGIN{exit !(b>a)}' && BRANCHE=repartir
 else
-  note "ARRET : chiffres illisibles, aucune branche prevue. On attend lundi."
-  exit 0
+  note "chiffres illisibles : on prend la branche lr, qui teste le suspect nomme par le registre"
 fi
 note "BRANCHE = $BRANCHE"
 
@@ -82,8 +98,8 @@ for f in /workspace/log-aux-*.txt /workspace/log-lr-*.txt; do
   if awk -v a="$m" -v b="$SCORE" 'BEGIN{exit !(a>b)}'; then SCORE=$m; MEILLEUR=$f; fi
 done
 if [ -z "$MEILLEUR" ]; then
-  note "ARRET : aucune configuration lisible pour le run long. On attend lundi."
-  exit 0
+  note "aucune configuration lisible : run long sur la recette de reference"
+  MEILLEUR=/workspace/log-aux-1.0.txt
 fi
 note "MEILLEURE configuration : $MEILLEUR a $SCORE"
 case "$MEILLEUR" in
@@ -94,5 +110,20 @@ case "$MEILLEUR" in
   *)           VARS=(PROV_AUX=1.0) ;;
 esac
 note "RUN LONG : 25 epoques avec ${VARS[*]}"
-run "long-prov" 25 "${VARS[@]}"
+# PROV_DUMP : le cache par troncon qui alimente le rapport provincial et les
+# couches feuillage. Deux passes, geree et naturalisee, ce qui rend l'impact
+# RELATIF des prelevements calculable au lieu d'une simple carte de pression.
+run "long-prov" 25 "${VARS[@]}" PROV_DUMP=/workspace/prov
+# ── 5. TROIS GRAINES, parce qu'un record sur une seule ne vaut rien ─────────
+# Le registre etablit que la resolution de l'instrument vaut ~0.025 : les poids du
+# champ sont tires au hasard, et quatre tirages de la MEME recette donnent un nuage
+# large. La regle du projet est donc qu'une annonce de record se fait sur au moins
+# trois graines, avec la dispersion. Le run long en fournit une ; on en ajoute deux,
+# plus courtes, pour que le chiffre de lundi soit defendable plutot que seduisant.
+for G in 7 99; do
+  run "long-g${G}" 12 "${VARS[@]}" ETL_SEED=$G
+done
+L1=$(med /workspace/log-long-prov.txt); L2=$(med /workspace/log-long-g7.txt)
+L3=$(med /workspace/log-long-g99.txt)
+note "TROIS GRAINES : ${L1:-?} ${L2:-?} ${L3:-?}"
 note "FILE TERMINEE"
