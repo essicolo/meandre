@@ -301,6 +301,27 @@ LE MÉCANISME, cette fois cohérent avec les chiffres : au printemps, la tempér
 
 CE QUI RESTE ENTIER, ET QUI CHANGE DE NATURE : le déficit de manteau de SAGU en DÉCEMBRE (0.77 du mesuré) ne s'explique ni par l'accumulation, identique entre formulations, ni par la fonte, quasi nulle à ce moment. Il n'est donc pas un problème de fonte du tout. Avec la précipitation totale innocentée contre ECCC (0.948) et le seuil de partage réfuté (R50), il reste sans explication et doit être traité comme une question distincte de celle du calendrier printanier.
 
+### R54. La fonte mesurée directement : le degré-jour n'explique RIEN, et personne ne prédit l'intensité
+
+Renversement de méthode proposé par Essi le 2026-08-28 (« la fonte devrait néanmoins être captée par la météo et le terrain [...] MLP ou même un ridge ? »). Depuis trois jours on devinait une formulation, on la faisait tourner dans le modèle entier, et on la jugeait sur un stock résiduel qui ne peut réfuter aucune hypothèse sur l'accumulation ou la fonte prises séparément (R53). Or la fonte est OBSERVABLE : CanSWE donne la masse au sol à intervalle médian d'UN jour (96 % des intervalles à 3 jours ou moins sur SAGU), donc une baisse de masse un jour sans précipitation EST une ablation mesurée. 20 998 jours-site utilisables sur SAGU.
+
+Validation croisée PAR SITE (un découpage aléatoire mettrait des jours consécutifs quasi identiques de part et d'autre et donnerait un R² fantôme).
+
+CIBLE COMPLÈTE : degré-jour -0.008, ETI 0.085, ETI+vent+vapeur 0.091, ridge toutes covariables 0.146, forêt 0.510.
+
+Le degré-jour a un pouvoir explicatif NUL sur la fonte quotidienne observée -- moins que la moyenne. Trois jours de réglages portaient sur une formulation qui n'explique rien. L'ETI fait mieux mais reste à 0.085, et le vent plus la vapeur n'ajoutent que 0.006, ce qui réfute le terme turbulent (R52) par une voie indépendante.
+
+DÉCOMPOSITION EN DEUX QUESTIONS (76 % des jours ont une fonte nulle ; un R² unique mélange deux problèmes de nature différente).
+
+  DÉCLENCHEMENT, fond-il ? AUC : degré-jour 0.669, ETI 0.747, toutes covariables 0.856.
+  INTENSITÉ, combien les jours de fonte ? R² : degré-jour -0.078, ETI 0.032, ridge 0.136, forêt 0.234.
+
+CORRECTION D'UNE LECTURE TROP RAPIDE : j'avais annoncé le 0.510 de la forêt comme preuve que « l'information est dans la météo et le terrain ». La décomposition montre que ce score était largement porté par la partie facile, prédire les 76 % de jours SANS fonte. Sur les jours de fonte réels, la forêt tombe à 0.234. Personne ne prédit bien l'INTENSITÉ.
+
+CE QUE LES DONNÉES DÉSIGNENT : les covariables les plus utiles à la forêt ne sont dans AUCUNE des deux formulations -- le jour de l'année (0.295), la température moyenne (0.197), et le STOCK de neige lui-même (0.182), loin devant le rayonnement absorbé (0.041). Le stock compte parce qu'un manteau profond est froid et doit se réchauffer avant de libérer de l'eau : c'est le contenu en froid, processus standard en nivologie. Le clone suit bien une variable `chaleur` dans son état, mais le TAUX de fonte n'en dépend pas.
+
+RÉSERVE À GARDER : les mesures ponctuelles CanSWE portent leur propre bruit, et une différence de masse journalière en un point l'amplifie. Une part du plafond à 0.234 est probablement irréductible et non imputable au modèle. Il faudrait le borner (par exemple en comparant des sites voisins le même jour) avant d'attribuer tout le résidu à la physique manquante.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
