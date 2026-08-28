@@ -692,7 +692,20 @@ class Trainer:
                           "et": getattr(self.loss_fn, "w_et", 1.0),
                           "snow": getattr(self.loss_fn, "w_snow", 1.0),
                           "swe_mass": getattr(self.loss_fn, "w_swe_mass", 1.0),
-                          "peak": getattr(self.loss_fn, "w_peak", 1.0)}
+                          "peak": getattr(self.loss_fn, "w_peak", 1.0),
+                          # `prior` MANQUAIT a cette table (trouve le 2026-08-28). Il
+                          # tombait donc sur le defaut 1.0 et s'imprimait BRUT au milieu
+                          # de termes ponderes, sous un en-tete qui annonce "ponderees".
+                          # Effet mesure : il affichait 3782 % du total alors que sa part
+                          # reelle vaut 182 x 0.005 = 0.91 sur un total de 3.98, soit
+                          # 23 %. J'ai bati sur ce chiffre tout un diagnostic de soiree
+                          # -- "le prior ecrase le debit d'un facteur cinquante" -- qui
+                          # etait faux. Les vrais dominants sont les deux termes GRACE,
+                          # eux correctement ponderes. Le commentaire ci-dessus dit
+                          # exactement ce qu'il fallait faire ; la table ne le faisait
+                          # pas pour ce terme-la.
+                          "prior": getattr(self.config, "w_prior", 1.0),
+                          "diversity": getattr(self.config, "w_diversity", 1.0)}
                 _nz = {}
                 for k, v in train_comps.items():
                     v = float(v)
