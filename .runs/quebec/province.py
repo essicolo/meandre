@@ -60,10 +60,41 @@ lcfg["w_et"] = float(os.environ.get("PROV_WET", "0.4"))
 print(f"[province] plateformes fondues : {PLATEFORMES} | device {DEVICE}", flush=True)
 dom = load_domain(PLATEFORMES, lcfg, device=DEVICE)
 
+# ── FONTE ETI (PROV_ETI=1, R51-R52) ──────────────────────────────────────────
+# Le degre-jour fond des qu'un redoux passe, sans verifier que l'energie disponible le
+# justifie : en decembre, jours courts et rayonnement faible, il produit une fonte
+# fantome. Mesure sur la MASSE CanSWE a SAGU : 0.77 en decembre et 0.60 en avril, contre
+# 0.86 et 0.89 pour l'ETI aux coefficients de LITTERATURE, sans aucun calage. L'ETI avait
+# ete rejete le 24 aout (R44) mais sur le DEBIT SEUL, qui ne peut pas voir un decalage de
+# calendrier de deux a trois mois puisqu'il se compense en partie dans le bilan annuel.
+# Le bon juge pour une question de calendrier est un calendrier.
+ETI = os.environ.get("PROV_ETI", "0") == "1"
+N_FORCAGE = 6
+if ETI:
+    import xarray as _xr
+    from meandre.utils import paths as _p
+    _sw = []
+    for _nom, (_a, _b) in dom["slices"].items():
+        _f = _p.data_path("quebec", f"forcing-{_nom}-swin.nc")
+        if not os.path.exists(_f):
+            raise SystemExit(f"PROV_ETI=1 mais pas de cache SW_in pour {_nom} : "
+                             f"lancer .runs/quebec/build_swin_region.py {_nom.upper()}")
+        _d = _xr.open_dataset(_f)
+        _sw.append(torch.tensor(_d["forcing"].values[:, :, 0], dtype=torch.float32))
+        _d.close()
+    _SW = torch.cat(_sw, dim=1).to(DEVICE)
+    _F6 = dom["train_data"].forcing[:]
+    _F7 = torch.cat([_F6, _SW[:, :, None]], dim=2)
+    for _k in ("train_data", "val_data"):
+        dom[_k].forcing = _F7
+    N_FORCAGE = 7
+    print(f"[province] fonte ETI : forcage etendu a 7 canaux (SW_in), "
+          f"tf et srf aux valeurs de litterature", flush=True)
+
 model = HydroModel(
     n_nodes=dom["n_nodes"],
     n_territorial=dom["territorial"].n_features,
-    n_forcing=6,
+    n_forcing=N_FORCAGE,
     use_temporal=False, use_residual=False, use_travel_time_attn=False,
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
@@ -89,6 +120,7 @@ model = HydroModel(
     compile_soil=(os.environ.get("PROV_COMPILE", "1") == "1"
                   and bool(mcfg.get("compile_soil", True))),
     use_aquifer=True,
+    melt_mode=("eti" if ETI else "degree_day"),
 ).to(DEVICE)
 
 # Occupation du sol, milieux humides et fonte calée, livrés par plateforme et fondus
@@ -162,13 +194,17 @@ if _soil:
           f"{_pt0['K_sat_1']:.4f} m/j, cibles du prior realignees", flush=True)
 model.vertical_column.split_mode = "wet_bulb"
 model.vertical_column.t_neige_seuil = float(os.environ.get("PROV_TWB", "-0.8"))
-model.vertical_column.melt_seasonal_amp = float(os.environ.get("PROV_AMP", "0.5"))
+# La modulation saisonniere est une BEQUILLE du degre-jour : elle amplifie la fonte de
+# fin mars pour compenser son absence de terme radiatif. Sous ETI, le rayonnement est
+# explicite et la bequille ferait double emploi. Elle reste donc reservee au degre-jour.
+if not ETI:
+    model.vertical_column.melt_seasonal_amp = float(os.environ.get("PROV_AMP", "0.5"))
 model.spatial_encoder.prior_on_krec = True
 _t = getattr(model.spatial_encoder, "_prior_targets", None) or {}
 _t["krec"] = 2e-5; _t["k_gw"] = 0.0273
 model.spatial_encoder._prior_targets = _t
 print(f"[province] recette 1.0 : bulbe humide {model.vertical_column.t_neige_seuil:+.2f}, "
-      f"fonte saisonniere {model.vertical_column.melt_seasonal_amp}, krec ancre 2e-5, "
+      f"fonte {'ETI (radiation reelle)' if ETI else 'degre-jour, saison ' + str(getattr(model.vertical_column, 'melt_seasonal_amp', None))}, krec ancre 2e-5, "
       f"k_gw 0.0273 | {sum(p.numel() for p in model.parameters()):,} parametres", flush=True)
 if "PROV_WARM" in os.environ:
     model.load(os.environ["PROV_WARM"])
