@@ -332,6 +332,20 @@ Consequence pratique : privilegier GASP et MONT pour tout futur test de stockage
 
 POUR LE DEFICIT DE MANTEAU MESURE PAR CanSWE, ELLE NE PORTE PAS. CanSWE est une mesure PONCTUELLE au sol, a un site fixe, de la neige accumulee sur le terrain. Le deficit de 22 % constate a SAGU des decembre, avant toute fonte, est mesure a des sites d'observation sans rapport avec un reservoir hydroelectrique. Un barrage ne change rien a la neige qui tombe sur un point de mesure au sol. L'enquete sur le forcage (precipitation solide sous-estimee par CaSR, ou seuil de partage pluie-neige mal calibre) reste entiere et independante de cette remarque.
 
+### O17. Le deficit de decembre correle a l'occupation du sol (agriculture, wetland), pas au site-noeud
+
+En cherchant la cause du deficit de manteau de SAGU (R50), deux controles supplementaires le 2026-08-27.
+
+REFUTE : l'appariement site-noeud. Correlation du ratio hivernal (sim/CanSWE) avec la distance site-noeud (-0.017) et l'ecart d'altitude site-noeud (-0.086), sur 37 stations bien echantillonnees : essentiellement nulles. Le deficit n'est pas un artefact de mauvais appariement geographique.
+
+PISTE OUVERTE, A CONFIRMER : correlation avec l'occupation du sol au noeud, sur 31 noeuds (n modeste, a interpreter avec prudence). Agriculture -0.421, milieu humide -0.292, conifere +0.198, eau libre +0.216. Les noeuds plus agricoles ou plus humides ont un deficit de decembre PLUS GRAND ; les noeuds plus coniferiens un deficit plus PETIT.
+
+REFUTE comme explication : le terme geothermique (taux_fonte_geo) est un SCALAIRE UNIFORME (0.5 partout, verifie), il ne peut pas porter cette variation spatiale.
+
+HYPOTHESE PHYSIQUE PLAUSIBLE, NON TESTEE : les coefficients de fonte degre-jour par classe (taux_c/taux_f/taux_d) sont plus eleves pour la classe DECOUVERT, qui inclut l'agriculture, que pour le conifere. Des redoux hivernaux ponctuels (temperatures positives en decembre-fevrier, frequents mais courts) feraient donc fondre PLUS en terrain agricole qu'en foret, meme avant le printemps -- ce qui est PHYSIQUEMENT ATTENDU (exposition au vent et au soleil) et pas necessairement un defaut du modele. A verifier : la frequence et l'amplitude des redoux hivernaux dans le forcage CaSR sur SAGU, et si le coefficient DECOUVERT est cale trop haut pour ces evenements courts specifiquement.
+
+TEST QUI TRANCHE, non fait ce soir : refaire cette correlation sur OUTV (accumulation correcte, 0.95) et sur GASP. Si la correlation agriculture/deficit est specifique a SAGU, chercher un defaut LOCAL (forcage ou occupation mal calee sur ce territoire) plutot qu'un mecanisme general.
+
 ## 4. Questions OUVERTES, avec le test qui les tranche
 
 NOTE D'ENJEU (Essi, 2026-08-17) : la RECHARGE n'est pas un simple bouton de calage, c'est un
