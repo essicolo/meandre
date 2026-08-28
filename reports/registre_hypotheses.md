@@ -339,6 +339,33 @@ Les autres travaux du même site convergent. Sur l'ablation, Pomeroy et l'école
 
 Sur l'hiver chaud et peu neigeux (HESS 28:2745, 2024, même forêt) : la fonte y débute 23 jours plus tôt et dure 24 à 31 jours de plus. La sensibilité de la DATE au climat est bien plus forte que celle du taux, ce qui recoupe R53 (l'ETI ne fond pas moins, il fond 4 à 6 semaines plus tard) et désigne le déclenchement, pas l'intensité, comme la variable qui porte le signal utile au débit.
 
+### R56. Comment Hydrotel coordonne la fonte : un verrou par classe d'occupation, calibré contre le débit
+
+Question d'Essi le 2026-08-28, après R55 : comment Hydrotel y arrive-t-il si ni meandre ni Laval ne savent capter la fonte ? Réponse trouvée dans le calage lui-même, `simulation/simulation/degre_jour_modifie.csv` des plateformes, jamais lu jusqu'ici pour ce qu'il dit.
+
+Hydrotel porte un SEUIL DE FONTE PAR CLASSE D'OCCUPATION, distinct du seuil pluie-neige. Deux jeux seulement pour tout le Québec, uniformes sur tous les UHRH d'une plateforme et identiques d'un membre de l'ensemble à l'autre :
+
+  sagu, outv, abit : conifère +3.35, feuillu +0.40, découvert -2.55 degrés | taux 7.20 / 8.52 / 10.10
+  gasp, mont, slso : conifère +2.26, feuillu +1.92, découvert +1.57       | taux 4.52 / 9.05 / 18.09
+
+MESURE DE CE QUE LE VERROU FAIT, sur le forçage réel (part des jours où l'air moyen du domaine dépasse le seuil) :
+
+  sagu, conifère  : 0.7 % de décembre à mars, 26.3 % en avril, 85.0 % en mai
+  sagu, seuil 0   : 4.1 %                      56.7 %          97.2 %
+  abit, conifère  : 1.7 %                      29.3 %          85.8 %
+  outv, conifère  : 4.0 %                      54.1 %          97.0 %
+  gasp, conifère  : 3.0 %                      45.1 %          97.9 %
+
+Sous conifère, le calage divise par SIX le nombre de jours de fonte possibles en hiver et par DEUX ceux d'avril, par rapport au seuil physique. C'est là toute la coordination : ce n'est pas une meilleure loi de fonte, c'est un verrou qui interdit la fonte hivernale sous couvert résineux et retarde le déclenchement du printemps, ajusté classe par classe contre l'hydrogramme.
+
+CE QUE LE VERROU N'EST PAS. Les taux nominaux 7 à 18 mm/j/degC ont l'air hors littérature, ils ne le sont pas : le degré-jour d'Hydrotel les multiplie par `indice_rad * (1 - albédo)`, et l'albédo décroît vers 0.5, donc le taux effectif tombe vers 2 à 3 mm/j/degC, dans la plage de Hock 2003. Le levier est le SEUIL, pas le taux. Vérifié avant d'écrire, contre ma première lecture.
+
+CE QUE LE VERROU EST VRAIMENT, ET POURQUOI LAVAL NE LE CONTREDIT PAS. Un manteau sous canopée résineuse à +2 degrés d'air ne fond effectivement pas : il lui manque l'énergie pour combler son contenu de froid, et la canopée lui coupe le rayonnement. C'est exactement l'état interne que le Cryosphere 15:5371 mesure au BEREV sur 53 fosses et quatre structures de canopée, et exactement le processus que Nadeau et coll. 2020 retiennent (température de surface de neige) quand ils rejettent le rayonnement sous-canopée. Hydrotel encode donc un processus RÉEL, sous forme d'une constante calibrée là où Laval a une variable d'état. Il n'a pas plus de savoir, il a un bouton bien réglé au bon endroit. Et il est réglé contre le débit, pas contre la neige : rien ne garantit qu'il tienne hors de sa période de calage, ce qui est précisément le claim d'identifiabilité de meandre.
+
+CONSÉQUENCE POUR NOUS, ET C'EST UNE DETTE QU'ON S'EST CRÉÉE. Le verrou est calibré EN PAIRE avec le seuil pluie-neige de -2.2168 (R30) : Hydrotel fabrique 35 % de neige en moins puis la verrouille très tard. R35 et R37 ont remplacé la moitié pluie-neige de la paire par le bulbe humide dérivé d'une mesure de masse, ce qui était juste en soi et a réparé l'accumulation, mais a laissé l'autre moitié intacte. On a donc 35 % de neige de plus derrière le MÊME verrou, et mai déborde à 1.235 (R37) : c'est la signature attendue, pas un mystère. La bonne suite n'est pas une énième formulation de fonte, c'est de dériver le verrou de la même façon qu'on a dérivé le seuil pluie-neige, ou mieux, de le remplacer par le contenu de froid que le clone porte DÉJÀ (`chaleur` dans hydrotel_clone/snow.py, avec perte convective, chaleur latente, pluie sur neige et géothermie).
+
+ET ÇA EXPLIQUE R53 SANS RIEN AJOUTER. L'ETI garde le seuil ancré mais remplace le taux calibré par un tf de littérature six à huit fois plus faible, sans le facteur `(1 - albédo)`. Le verrou reste, la libération explosive disparaît. L'ETI ne fond donc pas moins, il étale : quatre à six semaines plus tard, ce qui est le chiffre mesuré. Trois jours passés à moduler l'ETI portaient sur la moitié de la paire qui n'était pas le problème.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
