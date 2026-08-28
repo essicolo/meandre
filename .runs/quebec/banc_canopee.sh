@@ -20,7 +20,11 @@ OUT="/d/meandre-data/quebec/log-canopee-apparie-${REG}.txt"
 for BRAS in 0 1; do
   LOG="/d/meandre-data/quebec/log-canopee-${REG}-${BRAS}.txt"
   T0=$SECONDS
-  PROV_CANOPEE=$BRAS PROV_EPOCHS=$EP \
+  # PROV_TAG DISTINCT PAR BRAS. Sans lui les deux bras ecrivent le meme
+  # best-<tag>.pt et le second ECRASE le premier : les KGE survivent dans les
+  # journaux, mais le checkpoint du temoin est perdu et on ne peut plus juger
+  # la NEIGE des deux cotes, qui est pourtant le juge annonce par R56.
+  PROV_TAG=canopee-${REG}-${BRAS} PROV_CANOPEE=$BRAS PROV_EPOCHS=$EP \
     .venv/Scripts/python.exe -u .runs/quebec/province.py "$REG" > "$LOG" 2>&1
   {
     echo "=== PROV_CANOPEE=$BRAS : $(( (SECONDS - T0) / 60 )) min ==="
