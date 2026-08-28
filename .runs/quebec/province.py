@@ -56,6 +56,21 @@ cfg = tomllib.load(open(BASE_CFG, "rb"))
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
 # Recette gen1 : w_et 0.4 (et non le 1.0 du TOML de base), MODIS pour la FORME.
 lcfg["w_et"] = float(os.environ.get("PROV_WET", "0.4"))
+# PROV_AUX : degonfle EN BLOC les trois contraintes auxiliaires. Defaut 1.0, donc rien
+# ne change sans le demander. MESURE du 2026-08-28 sur le banc provincial : le prior
+# pese 5045 % du total de la perte de debit, le GRACE climatologique 3548 % et le GRACE
+# mensuel 1959 %. Ce ne sont pas trois problemes mais un seul -- des contraintes qui
+# optimisent A LA PLACE de l'hydrogramme -- et toutes les metriques se degradent de
+# facon monotone des l'epoque 1. On les traite donc EN BLOC : la question posee est
+# binaire, la balance de la perte est-elle la cause de la divergence. Si oui, repartir
+# entre les trois est un banc court et facile ; si non, les suspects restants sont la
+# montee du taux d'apprentissage vers 5e-4, que le registre designe depuis quatre runs.
+_AUX = float(os.environ.get("PROV_AUX", "1.0"))
+if _AUX != 1.0:
+    for _k in ("w_tws", "w_tws_clim"):
+        lcfg[_k] = float(lcfg.get(_k, 0.0)) * _AUX
+    print(f"[province] contraintes auxiliaires degonflees x{_AUX:g} : "
+          f"w_tws={lcfg['w_tws']:.4g} w_tws_clim={lcfg['w_tws_clim']:.4g}", flush=True)
 
 print(f"[province] plateformes fondues : {PLATEFORMES} | device {DEVICE}", flush=True)
 dom = load_domain(PLATEFORMES, lcfg, device=DEVICE)
@@ -243,7 +258,8 @@ tcfg_obj = TrainingConfig(
     # monotone des l'epoque 1 (val_kge 0.7149 -> 0.5226 en cinq epoques, perte
     # d'entrainement 4.57 -> 7.05). Le garde-fou de divergence ne voit rien : il
     # declenche sur un pic a 3x la moyenne mobile, pas sur une derive lente.
-    w_prior=float(os.environ.get("PROV_PRIOR", tcfg.get("w_prior", 0.005))),
+    w_prior=float(os.environ.get("PROV_PRIOR",
+                                 tcfg.get("w_prior", 0.005) * _AUX)),
     # PROV_HUBER : borne les z-scores des contraintes auxiliaires. Defaut 3.0 ici,
     # contre 0 (desactive) dans le trainer pour ne rien changer aux runs anterieurs.
     # Sans elle, la province a vu sa perte d'entrainement passer de 4.4 a 48.9 en huit
