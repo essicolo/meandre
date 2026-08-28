@@ -319,4 +319,74 @@ for plate in PLATEFORMES:
 if tous:
     print(f"\n[province] mediane provinciale {np.median(tous):.4f} sur {len(tous)} stations",
           flush=True)
+# ── DUMP PAR TRONCON, managed ET naturalise (PROV_DUMP=<prefixe>) ────────────
+# Demande d'Essi (2026-08-28) : rapport provincial statique et couches feuillage --
+# hydrogrammes jauges et non jauges, resumes de KGE, cartes d'impact RELATIF des
+# prelevements et rejets, cartes des parametres du champ.
+#
+# POURQUOI LE PILOTE ET PAS UN SCRIPT ANNEXE. Dette #6 du registre : un point de reprise
+# ne definit pas un modele. Occupation du sol, milieux humides, phenologie, ancrages de
+# fonte et seuil pluie-neige sont poses A L'EXECUTION. Les diagnostics annexes qui
+# reconstruisaient la recette a la main ont deja mesure un AUTRE modele que le champion
+# -- trois fois rien qu'aujourd'hui sur l'etape 0 des barrages. Le cache est donc produit
+# ici, ou le runtime est celui du run, et le rapport comme la carte le lisent tel quel.
+#
+# DEUX PASSES. La passe naturalisee (prelevements a zero, meme etat initial) est ce qui
+# rend l'impact RELATIF calculable : sans elle on ne peut afficher qu'un volume preleve,
+# pas sa part du debit. C'est la difference entre une carte de pression et une carte
+# d'impact.
+_DUMP = os.environ.get("PROV_DUMP")
+if _DUMP:
+    import pandas as _pdm
+    _t = _pdm.DatetimeIndex(dom["times"])
+    _mois = _t.month.to_numpy()
+
+    def _ecrire(chemin, Qd, wnet):
+        _q = Qd.cpu().numpy()
+        _qm = np.stack([_q[_mois == m].mean(axis=0) for m in range(1, 13)])
+        with torch.no_grad():
+            _sp = model.spatial_encoder(td.node_coords, dom["territorial"].data)
+        _champs = {f"param_{k}": getattr(_sp, k).detach().cpu().numpy()
+                   for k in _sp.__dataclass_fields__
+                   if torch.is_tensor(getattr(_sp, k))
+                   and getattr(_sp, k).shape[:1] == (dom["n_nodes"],)}
+        np.savez_compressed(chemin,
+                            q_mensuel=_qm.astype(np.float32),
+                            q_annuel=_q.mean(axis=0).astype(np.float32),
+                            coords=td.node_coords.cpu().numpy(),
+                            prelev_net_abs=wnet.astype(np.float32),
+                            **{k: v.astype(np.float32) for k, v in _champs.items()})
+        print(f"[dump] {chemin} : {len(_champs)} champs, {Qd.shape[0]} pas", flush=True)
+
+    _w = td.withdrawals
+    _wabs = (_w.net.abs().sum(dim=0).cpu().numpy()
+             if hasattr(_w, "net") and _w.net is not None
+             else np.zeros(dom["n_nodes"], dtype=np.float32))
+    _ecrire(f"{_DUMP}-avec.npz", Q, _wabs)
+
+    with torch.no_grad():
+        Qn, _ = model.simulate(forcing=td.forcing[:],
+                               initial_state=HydroState.zeros(dom["n_nodes"], device=DEVICE),
+                               graph=td.graph, node_coords=td.node_coords,
+                               territorial=dom["territorial"], withdrawals=None,
+                               day_of_year=td.day_of_year)
+    _ecrire(f"{_DUMP}-sans.npz", Qn, np.zeros(dom["n_nodes"], dtype=np.float32))
+
+    # Les series par station, pour les hydrogrammes du rapport. On garde les JAUGES
+    # (observe et simule) et un echantillon de troncons NON JAUGES, puisque le point du
+    # modele distribue est justement de rendre un hydrogramme la ou il n'y a pas de jauge.
+    _idx = td.station_idx.cpu().numpy()
+    _nonj = np.setdiff1d(np.arange(dom["n_nodes"]), _idx)
+    _gros = _nonj[np.argsort(-Q.mean(dim=0).cpu().numpy()[_nonj])][:200]
+    np.savez_compressed(f"{_DUMP}-q.npz",
+                        temps=_t.values.astype("datetime64[D]"),
+                        station_ids=np.array(dom["station_ids"], dtype=object),
+                        station_node=_idx.astype(np.int32),
+                        q_stations=Q[:, _idx].cpu().numpy().astype(np.float32),
+                        q_obs=dom["val_data"].q_obs.cpu().numpy().astype(np.float32),
+                        nonjauge_node=_gros.astype(np.int32),
+                        q_nonjauge=Q[:, _gros].cpu().numpy().astype(np.float32),
+                        allow_pickle=True)
+    print(f"[dump] series : {len(_idx)} jauges, {len(_gros)} troncons non jauges", flush=True)
+
 os._exit(0)

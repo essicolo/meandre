@@ -1,0 +1,292 @@
+---
+title: "méandre — état du modèle provincial"
+subtitle: "Reconstruction météo, hydrogrammes, prélèvements et champ spatial"
+author: "Essi Parent"
+date: today
+lang: fr
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    fig-width: 9
+    fig-height: 5
+execute:
+  warning: false
+  echo: true
+---
+
+Ce rapport prend un angle **provincial**. Le découpage régional des plateformes Hydrotel
+est un artefact de production, fondu au chargement, et il n'apparaît nulle part ici.
+
+Il ne reconstruit pas la recette du modèle. Toutes ses figures viennent des caches par
+tronçon écrits **par le pilote lui-même** (`PROV_DUMP`), pour la raison inscrite au
+registre sous la dette 6 : un point de reprise ne définit pas un modèle. L'occupation du
+sol, les milieux humides, la phénologie, les ancrages de fonte et le seuil pluie-neige
+sont posés à l'exécution. Trois diagnostics annexes ont déjà mesuré un autre modèle que
+le champion en croyant le reproduire.
+
+```{python}
+#| label: setup
+import os, glob, json
+os.chdir("C:/Users/parse01/documents-locaux/GitHub/meandre")
+
+import numpy as np
+import pandas as pd
+import lets_plot as lp
+lp.LetsPlot.setup_html()
+
+RES = os.environ.get("MEANDRE_RESULTS", "D:/meandre-data/quebec")
+PREFIXE = os.environ.get("PROV_DUMP_PREFIXE", f"{RES}/prov")
+
+avec = np.load(f"{PREFIXE}-avec.npz", allow_pickle=True)
+sans = np.load(f"{PREFIXE}-sans.npz", allow_pickle=True)
+qd   = np.load(f"{PREFIXE}-q.npz", allow_pickle=True)
+
+lon, lat = avec["coords"][:, 0], avec["coords"][:, 1]
+n_noeuds = len(lon)
+temps = pd.DatetimeIndex(qd["temps"])
+print(f"{n_noeuds:,} tronçons | {len(qd['station_node'])} jauges | "
+      f"{len(qd['nonjauge_node'])} tronçons non jaugés échantillonnés")
+print(f"période : {temps[0].date()} à {temps[-1].date()}")
+```
+
+# 1. Le forçage, et l'état de sa reconstruction
+
+Le forçage canonique est CaSR v3.2, corrigé et auto-référencé. Ce que cette section
+montre n'est pas la météo mais **ce qu'on sait de sa fiabilité**, parce que le registre
+établit que le forçage a été, à plusieurs reprises, la cause racine confondue avec un
+défaut de modèle.
+
+Trois faits à garder en tête en lisant tout le reste du rapport.
+
+Le seuil pluie-neige hérité du calage Hydrotel, moins 2,2168 degrés, comptait comme
+pluie tout ce qui tombe à moins deux degrés. À site et jour égaux, le modèle n'avait que
+0,55 de la neige mesurée en décembre. Le seuil dérivé d'une mesure de masse, plus 0,3
+degré en température d'air ou moins 0,8 en bulbe humide, efface ce déficit et améliore
+le débit et le score en même temps.
+
+Le débit observé d'hiver n'est pas une mesure. Sous couvert de glace la relation
+hauteur-débit ne tient plus, et l'organisme estime les valeurs entre jaugeages manuels.
+De décembre à mars, 60 à 87 pour cent des valeurs sont des reconstructions. Avril, lui,
+est mesuré à 90 pour cent.
+
+La Gaspésie porte un manteau simulé au double de la mesure, et le seuil pluie-neige y
+est disculpé : même très abaissé, la région ne perd que 18 pour cent de sa neige. Le
+suspect restant est le forçage côtier.
+
+```{python}
+#| label: fig-forcage
+#| fig-cap: "Cycle mensuel du débit simulé, moyenne provinciale par tronçon (mm/j équivalents)"
+qm = avec["q_mensuel"]                       # (12, n_noeuds)
+d = pd.DataFrame({"mois": np.arange(1, 13),
+                  "median": np.median(qm, axis=1),
+                  "q25": np.quantile(qm, .25, axis=1),
+                  "q75": np.quantile(qm, .75, axis=1)})
+(lp.ggplot(d, lp.aes("mois"))
+ + lp.geom_ribbon(lp.aes(ymin="q25", ymax="q75"), alpha=.25)
+ + lp.geom_line(lp.aes(y="median"), size=1.2)
+ + lp.scale_x_continuous(breaks=list(range(1, 13)))
+ + lp.labs(x="mois", y="débit (m³/s)", title="Cycle annuel provincial")
+ + lp.theme_minimal())
+```
+
+# 2. Hydrogrammes
+
+## 2.1 Aux jauges
+
+```{python}
+#| label: hydro-jauges
+sid = [str(x) for x in qd["station_ids"]]
+qs, qo = qd["q_stations"], qd["q_obs"]
+n = min(qs.shape[0], qo.shape[0])
+qs, qo, t = qs[-n:], qo[-n:], temps[-n:]
+
+def kge(o, s):
+    m = np.isfinite(o) & np.isfinite(s)
+    if m.sum() < 365: return np.nan
+    o, s = o[m], s[m]
+    if o.std() < 1e-9 or s.std() < 1e-9: return np.nan
+    r = np.corrcoef(o, s)[0, 1]
+    b = s.mean() / o.mean()
+    g = (s.std() / s.mean()) / (o.std() / o.mean())
+    return 1 - np.sqrt((r - 1)**2 + (b - 1)**2 + (g - 1)**2)
+
+sc = pd.DataFrame({"station": sid,
+                   "kge": [kge(qo[:, j], qs[:, j]) for j in range(len(sid))]})
+sc["plateforme"] = sc.station.str.split(":").str[0]
+sc = sc.dropna()
+print(f"KGE médian provincial : {sc.kge.median():.4f} sur {len(sc)} stations")
+```
+
+```{python}
+#| label: fig-kge
+#| fig-cap: "Distribution du KGE par plateforme. Le découpage n'est montré ici que comme diagnostic, il n'existe pas dans le modèle."
+(lp.ggplot(sc, lp.aes("plateforme", "kge"))
+ + lp.geom_boxplot()
+ + lp.geom_jitter(width=.15, alpha=.5, size=2)
+ + lp.geom_hline(yintercept=float(sc.kge.median()), linetype="dashed")
+ + lp.labs(x="", y="KGE tenu de côté", title="KGE par station")
+ + lp.theme_minimal())
+```
+
+```{python}
+#| label: fig-hydro
+#| fig-cap: "Observé et simulé aux six jauges les plus proches de la médiane provinciale"
+med = sc.kge.median()
+choix = sc.reindex((sc.kge - med).abs().sort_values().index).head(6).station.tolist()
+lignes = []
+for st in choix:
+    j = sid.index(st)
+    for lab, v in (("observé", qo[:, j]), ("simulé", qs[:, j])):
+        lignes.append(pd.DataFrame({"date": t, "q": v, "serie": lab, "station": st}))
+h = pd.concat(lignes)
+h = h[h.date >= t[-1] - pd.Timedelta(days=1095)]
+(lp.ggplot(h, lp.aes("date", "q", color="serie"))
+ + lp.geom_line(alpha=.85)
+ + lp.facet_wrap("station", ncol=2, scales="free_y")
+ + lp.labs(x="", y="débit (m³/s)")
+ + lp.theme_minimal() + lp.ggsize(950, 700))
+```
+
+## 2.2 Là où il n'y a pas de jauge
+
+C'est le point du modèle distribué, et c'est ce qu'un calage station par station ne sait
+pas faire. Les 166 jauges couvrent une fraction du réseau ; le modèle rend un
+hydrogramme sur les 25 656 tronçons.
+
+```{python}
+#| label: fig-nonjauge
+#| fig-cap: "Hydrogrammes de six tronçons NON jaugés parmi les plus gros porteurs de débit"
+qn = qd["q_nonjauge"][-n:]
+noeuds = qd["nonjauge_node"]
+pick = np.linspace(0, qn.shape[1] - 1, 6).astype(int)
+lignes = [pd.DataFrame({"date": t, "q": qn[:, k],
+                        "troncon": f"nœud {noeuds[k]}"}) for k in pick]
+g = pd.concat(lignes)
+g = g[g.date >= t[-1] - pd.Timedelta(days=1095)]
+(lp.ggplot(g, lp.aes("date", "q"))
+ + lp.geom_line(alpha=.9)
+ + lp.facet_wrap("troncon", ncol=2, scales="free_y")
+ + lp.labs(x="", y="débit (m³/s)")
+ + lp.theme_minimal() + lp.ggsize(950, 700))
+```
+
+# 3. Prélèvements et rejets : pression contre impact
+
+La distinction porte tout ce chapitre. Un volume prélevé est une **pression**. Sa part du
+débit du tronçon est un **impact**. Les deux cartes ne désignent pas les mêmes endroits :
+un gros prélèvement sur le fleuve ne se voit pas, un petit sur un ruisseau se voit
+beaucoup.
+
+L'impact se calcule en comparant la simulation gérée à une simulation **naturalisée**,
+prélèvements à zéro, depuis le même état initial. C'est ce que la seconde passe du dump
+fournit.
+
+```{python}
+#| label: impact
+qa, qn_ = avec["q_annuel"], np.clip(sans["q_annuel"], 1e-6, None)
+imp = 100.0 * (qa - qn_) / qn_
+pres = 100.0 * avec["prelev_net_abs"] / np.clip(qn_, 1e-6, None)
+df = pd.DataFrame({"lon": lon, "lat": lat, "impact_pct": imp,
+                   "pression_pct": pres, "q": qn_})
+print(f"impact médian {np.median(imp):+.2f} % | "
+      f"tronçons au-delà de ±5 % : {(np.abs(imp) > 5).sum():,} "
+      f"({100*(np.abs(imp) > 5).mean():.1f} %)")
+print(f"tronçons au-delà de ±25 % : {(np.abs(imp) > 25).sum():,}")
+```
+
+```{python}
+#| label: fig-impact
+#| fig-cap: "Effet relatif des prélèvements et rejets sur le débit annuel. Rouge : le tronçon perd de l'eau. Bleu : il en reçoit."
+v = df[np.abs(df.impact_pct) > 0.5].copy()
+v["effet"] = np.clip(v.impact_pct, -50, 50)
+(lp.ggplot(v, lp.aes("lon", "lat", color="effet"))
+ + lp.geom_point(size=1.6, alpha=.85)
+ + lp.scale_color_gradient2(low="#9c3a34", mid="#cccccc", high="#1b6ea8", midpoint=0)
+ + lp.labs(x="", y="", title="Impact relatif sur le débit annuel (%)")
+ + lp.coord_cartesian() + lp.theme_minimal() + lp.ggsize(950, 700))
+```
+
+```{python}
+#| label: tbl-zones
+#| tbl-cap: "Les vingt tronçons au signal anthropique relatif le plus fort"
+z = df.reindex(df.pression_pct.sort_values(ascending=False).index).head(20)
+z[["lon", "lat", "q", "pression_pct", "impact_pct"]].round(3)
+```
+
+Ces vingt tronçons sont les **zones rouges** que la carte feuillage rend cliquables, avec
+leurs cycles mensuels avec et sans prélèvements embarqués.
+
+# 4. Le champ spatial
+
+Le champ prédit 42 paramètres par tronçon à partir de la position et des attributs du
+territoire. Ce qu'il faut regarder n'est pas la beauté des cartes mais leur
+**structure** : un champ effondré rend un paramètre presque uniforme, ce qui est arrivé
+et a été corrigé en passant à un encodage positionnel haversine isotrope.
+
+Réserve à porter en lisant : trois paramètres sont **ancrés** au calage Hydrotel et non
+appris, `ks1`, `ks2` et `krec`. Leur carte décrit le calage, pas le modèle.
+
+```{python}
+#| label: fig-champ
+#| fig-cap: "Six paramètres du champ. Les valeurs sont écrêtées aux centiles 2 et 98 pour que la structure reste lisible."
+cles = [k for k in avec.files if k.startswith("param_")]
+montrer = [f"param_{x}" for x in
+           ("K_sat_1", "manning_n", "f_vert_1", "T_melt", "frost_alpha", "f_wetland")
+           if f"param_{x}" in cles]
+lignes = []
+for k in montrer:
+    v = avec[k].astype(float)
+    lo, hi = np.nanquantile(v, .02), np.nanquantile(v, .98)
+    lignes.append(pd.DataFrame({"lon": lon, "lat": lat,
+                                "valeur": np.clip(v, lo, hi),
+                                "champ": k.replace("param_", "")}))
+c = pd.concat(lignes)
+(lp.ggplot(c, lp.aes("lon", "lat", color="valeur"))
+ + lp.geom_point(size=.8, alpha=.85)
+ + lp.facet_wrap("champ", ncol=2, scales="free")
+ + lp.labs(x="", y="")
+ + lp.theme_minimal() + lp.ggsize(950, 1000))
+```
+
+```{python}
+#| label: tbl-champ
+#| tbl-cap: "Dispersion de chaque paramètre appris. Un rapport interquartile proche de 1 signale un champ plat, donc une capacité inutilisée."
+st = []
+for k in sorted(cles):
+    v = avec[k].astype(float)
+    q1, q3 = np.nanquantile(v, .25), np.nanquantile(v, .75)
+    st.append({"champ": k.replace("param_", ""), "médiane": np.nanmedian(v),
+               "q25": q1, "q75": q3,
+               "q75/q25": (q3 / q1) if q1 > 1e-12 else np.nan})
+pd.DataFrame(st).round(4)
+```
+
+# 5. Ce que ce rapport ne dit pas
+
+Le KGE rapporté ici porte sur les jauges. Vingt-six d'entre elles portent plus de quinze
+jours de débit moyen en stockage amont, dans des retenues que le modèle n'a aucun organe
+pour représenter. Mesuré par appariement à superficie et plateforme égales, elles
+perdent environ 0,058 de KGE contre leurs voisines. Leurs **paramètres appris**, eux, ne
+sont pas déformés : le modèle n'invente pas une physique pour les imiter, il échoue
+simplement dessus. Un confondant subsiste, un réservoir crée un lac et les bassins
+lacustres sont difficiles pour d'autres raisons.
+
+Le débit d'hiver contre lequel ces KGE sont calculés est reconstruit à 60-87 pour cent.
+
+Et la Gaspésie porte un manteau simulé au double de la mesure, ce qui reste ouvert.
+
+```{python}
+#| label: sans-regulees
+try:
+    reg = pd.read_csv("D:/meandre-data/barrages/data/stations-regulees.csv")
+    reg = reg[np.isfinite(reg.station_id)]
+    ids = {str(int(x)) for x in reg[reg.jours_de_debit > 15].station_id}
+    sc["regulee"] = sc.station.str.split(":").str[-1].isin(ids)
+    print(f"médiane provinciale, toutes stations  : {sc.kge.median():.4f}")
+    print(f"médiane sans les {int(sc.regulee.sum())} stations régularisées : "
+          f"{sc[~sc.regulee].kge.median():.4f}")
+except FileNotFoundError:
+    print("table des stations régularisées absente")
+```
