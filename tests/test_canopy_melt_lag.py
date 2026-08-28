@@ -59,25 +59,42 @@ def test_init_litterature_pose_les_retards():
 def test_depart_a_chaud_conserve_les_champs_appris(tmp_path):
     """Elargir N_PARAMS ne doit PAS jeter les sorties deja apprises.
 
-    Sans le recollage, le filtre generique de formes incompatibles ecarte fc_out en
-    entier : on gagne deux champs et on perd les quarante autres.
+    Ce test appelle le VRAI chemin de chargement, HydroModel.load. Sa premiere version
+    reimplementait la logique a cote et passait donc quoi qu'il arrive : un test qui refait
+    le travail du code ne teste rien. En l'ecrivant pour de bon on decouvre que le
+    rembourrage existait DEJA dans model.py et fonctionnait ; le correctif que j'avais
+    ajoute le 2026-08-28 etait du code mort, et a ete retire.
+
+    Comportement verifie ici : les lignes apprises sont reprises telles quelles, et les
+    nouvelles sont mises a ZERO -- donc au milieu de leurs bornes apres contrainte, pas a
+    la cible de litterature.
     """
     import torch
 
-    net = SpatialFieldNetwork(n_territorial=4)
-    n_new = net.fc_out.weight.shape[0]
+    from meandre.model import HydroModel
+
+    m = HydroModel(n_territorial=4, n_nodes=8)
+    n_new = m.spatial_encoder.fc_out.weight.shape[0]
+    n_in = m.spatial_encoder.fc_out.weight.shape[1]
     n_old = n_new - 2
-    vieux_w = torch.randn(n_old, net.fc_out.weight.shape[1])
+
+    sd = {k: v.clone() for k, v in m.state_dict().items()}
+    vieux_w = torch.randn(n_old, n_in)
     vieux_b = torch.randn(n_old)
-    sd = {"field_network.fc_out.weight": vieux_w, "field_network.fc_out.bias": vieux_b}
+    sd["spatial_encoder.fc_out.weight"] = vieux_w
+    sd["spatial_encoder.fc_out.bias"] = vieux_b
+    chemin = tmp_path / "vieux.pt"
+    torch.save({"state_dict": sd}, chemin)
 
-    own = {"field_network.fc_out.weight": net.fc_out.weight.detach().clone(),
-           "field_network.fc_out.bias": net.fc_out.bias.detach().clone()}
-    for k in own:
-        vieux, neuf = sd[k], own[k].clone()
-        neuf[: vieux.shape[0]] = vieux
-        sd[k] = neuf
+    neuf = HydroModel(n_territorial=4, n_nodes=8)
+    avant = neuf.spatial_encoder.fc_out.weight.detach().clone()
+    neuf.load(chemin)
+    apres = neuf.spatial_encoder.fc_out.weight.detach()
 
-    assert torch.allclose(sd["field_network.fc_out.weight"][:n_old], vieux_w)
-    assert torch.allclose(sd["field_network.fc_out.bias"][:n_old], vieux_b)
-    assert sd["field_network.fc_out.weight"].shape[0] == n_new
+    assert apres.shape[0] == n_new
+    # les lignes apprises sont reprises
+    assert torch.allclose(apres[:n_old], vieux_w, atol=1e-6)
+    # les deux nouvelles sont mises a zero par le rembourrage historique
+    assert torch.allclose(apres[n_old:], torch.zeros_like(apres[n_old:]), atol=1e-6)
+    assert not torch.allclose(avant[n_old:], torch.zeros_like(avant[n_old:]))
+    assert torch.allclose(neuf.spatial_encoder.fc_out.bias.detach()[:n_old], vieux_b, atol=1e-6)

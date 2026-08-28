@@ -77,13 +77,15 @@ def main():
     n_nodes = int(dom["n_nodes"])
     st_idx = td.station_idx.cpu().numpy()
     st_ids = dom["station_ids"]
-    node_coords, territorial = dom["node_coords"], dom["territorial"]
+    node_coords = dom["node_coords"]
+    terr = dom["territorial"]          # TerritorialFeatures, pas un tenseur
+    territorial = terr.data
     print(f"[etape0] {n_nodes:,} troncons | {len(st_idx)} jauges | {len(noms)} plateformes")
 
     # ── le champ appris du champion ────────────────────────────────────────
     ck = torch.load(CKPT, map_location=dev, weights_only=False)
     modele = HydroModel(
-        n_territorial=int(territorial.shape[1]), n_nodes=n_nodes,
+        n_territorial=int(terr.n_features), n_nodes=n_nodes,
         use_latent_codes=True, spatial_melt=True).to(dev)
     modele.load_checkpoint(ck) if hasattr(modele, "load_checkpoint") else None
     sd = ck.get("state_dict", ck)
@@ -96,7 +98,7 @@ def main():
         print(f"[etape0] {len(mism)} cles de forme incompatible ignorees : {mism[:3]}")
     modele.eval()
     with torch.no_grad():
-        sp = modele.field_network(node_coords, territorial)
+        sp = modele.spatial_encoder(node_coords, territorial)
     champs = {k: getattr(sp, k).detach().cpu().numpy() for k in ATTENDU if hasattr(sp, k)}
     print(f"[etape0] champs lus : {', '.join(champs)}")
 

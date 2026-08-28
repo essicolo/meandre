@@ -877,7 +877,13 @@ class HydroModel(nn.Module):
                           f"ce n'est pas volontaire")
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             sd = checkpoint["state_dict"]
-            # Backward compatibility: pad fc_out if old checkpoint had fewer params
+            # Backward compatibility: pad fc_out if old checkpoint had fewer params.
+            # Le rembourrage est a ZERO, ce qui n'est pas neutre et vaut d'etre dit :
+            # une sortie brute nulle rend le MILIEU des bornes apres contrainte, pas
+            # la cible de litterature. Un dT_canopee borne [0, 3] demarre donc a 1.5
+            # sur un depart a chaud, contre 1.0 sur un depart a froid. Ecart benin
+            # tant qu'il est connu ; c'est la meme confusion brut/contraint qui avait
+            # invalide une comparaison d'epoque 0 le 2026-08-27.
             fc_out_key = "spatial_encoder.fc_out.weight"
             if fc_out_key in sd:
                 old_n = sd[fc_out_key].shape[0]
@@ -952,22 +958,6 @@ class HydroModel(nn.Module):
             # input dim). strict=False ignores missing/unexpected keys but NOT
             # size mismatches → filter them so cross-architecture warm-start works.
             own = self.state_dict()
-
-            # ÉLARGISSEMENT DU CHAMP : recoller les lignes déjà apprises plutôt que
-            # de tout jeter. Quand N_PARAMS grandit (40 -> 42 avec les retards de
-            # canopée, R56), fc_out change de forme et le filtre générique ci-dessous
-            # l'écarterait ENTIER : un départ à chaud perdrait les 40 champs appris
-            # pour en gagner 2. On copie donc les anciennes lignes et on laisse les
-            # nouvelles à leur valeur courante, c'est-à-dire l'init de littérature.
-            for k in ("field_network.fc_out.weight", "field_network.fc_out.bias"):
-                if k in sd and k in own and own[k].shape != sd[k].shape:
-                    vieux, neuf = sd[k], own[k].clone()
-                    if vieux.shape[0] < neuf.shape[0] and vieux.shape[1:] == neuf.shape[1:]:
-                        neuf[: vieux.shape[0]] = vieux
-                        sd[k] = neuf
-                        print(f"[load] {k} élargi de {vieux.shape[0]} à "
-                              f"{neuf.shape[0]} sorties : lignes apprises conservées, "
-                              f"nouvelles à l'init de littérature", flush=True)
 
             mism = [k for k, v in sd.items() if k in own and own[k].shape != v.shape]
             if mism:
