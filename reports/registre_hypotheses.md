@@ -255,6 +255,22 @@ RÉFUTÉ, ET À L'ENCONTRE DE L'HYPOTHÈSE : le seuil du bulbe humide. Si le par
 
 CE QUI RESTE, et qui commence à ressembler à un défaut structurel plutôt qu'à un paramètre mal réglé : ni la précipitation totale, ni le partage pluie-neige, ni la modulation de fonte, ni la rétention du sol n'expliquent le déficit de décembre. Piste non explorée ce soir, à regarder en premier : l'ETI (Pellicciotti), déjà réfuté sur le DÉBIT le 24 août (R44), ressort à 0.81-0.89 sur la MASSE dans ce même balayage, contre 0.73-0.77 pour le degré-jour au bulbe humide -- un juge différent pourrait avoir tranché la mauvaise formulation de fonte pour la mauvaise raison.
 
+### R51. L'ETI, jugé sur la MASSE et non le débit, corrige la fonte trop précoce sur deux bassins sur trois
+
+Suite directe de R50. Cinq hypothèses réfutées sur le déficit de manteau ; la seule piste laissée en réserve était l'ETI (Pellicciotti), rejeté le 24 août (R44) mais UNIQUEMENT sur le débit. Testé cette nuit sur la MASSE CanSWE, calendrier complet, coefficients de LITTÉRATURE (tf=1.2e-3, srf=9.4e-6), sans aucun calage.
+
+SAGU : nette amélioration sur TOUTE la saison, pas seulement le printemps. Rapport mensuel décembre à mai : 0.86, 0.86, 0.83, 0.83, 0.89, 1.28, contre 0.77, 0.76, 0.73, 0.60 pour le degré-jour au bulbe humide (avril seul passe de 0.60 à 0.89). Le mécanisme est cohérent : en décembre les jours sont courts et le rayonnement faible, donc l'ETI y produit PEU de fonte quelle que soit la température, alors que le degré-jour pur fond dès qu'un redoux passe, sans regarder si l'énergie disponible le justifie. C'est probablement le vrai mécanisme du déficit de décembre : pas un manque d'accumulation, une fonte hivernale fantôme que rien ne limitait.
+
+OUTV : amélioration nette du printemps (avril 0.61 → 1.25, mai 0.11 → 2.44) mais avec un SURCROIT net à partir de février (rapports 1.00 à 1.25), là où le degré-jour était en léger déficit. Les coefficients de littérature ne sont donc pas directement transférables d'un bassin à l'autre : SAGU les veut presque tels quels, OUTV demande moins de fonte radiative que la littérature n'en donne.
+
+GASP : ETI aggrave massivement (rapports 1.43 à 2.40, jusqu'à NaN en octobre-décembre par absence de données). Cohérent avec le diagnostic déjà établi (R44) : le forçage côtier de GASP est en cause, pas la formulation de fonte, et ETI ne peut pas corriger un défaut de rayonnement ou de température en amont de lui.
+
+MONT : aucune donnée CanSWE exploitable par ce banc (déjà noté, un seul site retenu par les filtres de représentativité).
+
+CE QUI CHANGE : R44 avait conclu que l'ETI ne valait pas la peine pour la 1.0, EN JUGEANT SUR LE DÉBIT SEUL. Le débit ne pouvait pas voir un défaut de calendrier de deux à trois mois qui se compense en partie dans le bilan annuel. Le bon juge pour une question de CALENDRIER est un calendrier, pas un débit intégré. La conclusion de R44 doit donc être révisée : l'ETI n'est pas un raffinement optionnel, c'est probablement une pièce manquante du DIAGNOSTIC de décembre, sur les bassins où le forçage radiatif est fiable.
+
+PROCHAINE ÉTAPE : verifier que l'ETI corrige AUSSI le decalage de stockage GRACE (R47-R49) en inference, avant de payer le moindre entrainement -- si la fonte trop precoce est la vraie cause commune, la meme correction devrait ameliorer les deux juges a la fois.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |
