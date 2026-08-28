@@ -22,6 +22,23 @@ et que c'est contre elles qu'il faut se comparer.
 import os
 import sys
 
+# GRAINE. Le pilote REGIONAL en pose une depuis le 2026-08-20 ; le pilote provincial
+# n'en posait AUCUNE, et personne ne l'avait vu. Consequence mesuree le 2026-08-28 :
+# deux runs de la MEME recette (meme chaine de configuration, memes 100 323 parametres)
+# donnent kge_med 0.3481 et 0.3566 a l'epoque 0, puis 0.4378 et 0.2618 a l'epoque 1.
+# Les poids du champ etaient tires au hasard a chaque lancement, donc AUCUNE des
+# comparaisons provinciales dites appariees de la journee ne l'etait reellement : elles
+# comparaient deux initialisations differentes. Le registre etablit deja cette lecon
+# pour le pilote regional, ou le nuage vaut ~0.025 ; sur la province il est bien plus
+# large. ETL_SEED change le tirage quand on veut MESURER la dispersion.
+import random as _rnd
+import numpy as _npseed
+import torch as _tseed
+_GRAINE = int(os.environ.get("ETL_SEED", "1234"))
+_rnd.seed(_GRAINE); _npseed.random.seed(_GRAINE)
+_tseed.manual_seed(_GRAINE); _tseed.cuda.manual_seed_all(_GRAINE)
+print(f"[province] graine = {_GRAINE}", flush=True)
+
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.getcwd())
 sys.path.insert(0, os.path.join(os.getcwd(), ".runs/quebec"))
