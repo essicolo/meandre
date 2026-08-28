@@ -255,7 +255,9 @@ RÉFUTÉ, ET À L'ENCONTRE DE L'HYPOTHÈSE : le seuil du bulbe humide. Si le par
 
 CE QUI RESTE, et qui commence à ressembler à un défaut structurel plutôt qu'à un paramètre mal réglé : ni la précipitation totale, ni le partage pluie-neige, ni la modulation de fonte, ni la rétention du sol n'expliquent le déficit de décembre. Piste non explorée ce soir, à regarder en premier : l'ETI (Pellicciotti), déjà réfuté sur le DÉBIT le 24 août (R44), ressort à 0.81-0.89 sur la MASSE dans ce même balayage, contre 0.73-0.77 pour le degré-jour au bulbe humide -- un juge différent pourrait avoir tranché la mauvaise formulation de fonte pour la mauvaise raison.
 
-### R51. L'ETI, jugé sur la MASSE et non le débit, corrige la fonte trop précoce sur deux bassins sur trois
+### R51. L'ETI, jugé sur la MASSE et non le débit, décale le calendrier de fonte de quatre à six semaines
+
+MÉCANISME CORRIGÉ LE 2026-08-28 (voir R53) : le texte ci-dessous attribuait le gain à une « fonte hivernale fantôme » que le degré-jour produirait en décembre. C'EST FAUX, mesuré par décomposition : l'écart de fonte entre les deux formulations est de 0 à 3 mm/mois en décembre-janvier. Le vrai effet est au PRINTEMPS. Le FAIT (l'ETI améliore le calendrier de manteau) tient ; l'explication a été refaite.
 
 Suite directe de R50. Cinq hypothèses réfutées sur le déficit de manteau ; la seule piste laissée en réserve était l'ETI (Pellicciotti), rejeté le 24 août (R44) mais UNIQUEMENT sur le débit. Testé cette nuit sur la MASSE CanSWE, calendrier complet, coefficients de LITTÉRATURE (tf=1.2e-3, srf=9.4e-6), sans aucun calage.
 
@@ -282,6 +284,22 @@ POURQUOI IL NE PEUT PAS ÊTRE SÉLECTIF : la vitesse de vent hivernale varie peu
 DIAGNOSTIC SÉPARÉ POUR GASP, et il confirme R44. L'ETI y donne 162 à 301 mm quand CanSWE en mesure 104 à 159 : un EXCÈS de 50 à 100 %. Le degré-jour y était déjà en excès (1.91/1.79/2.02, R44). Les deux formulations de fonte sur-accumulent donc, ce qui n'est pas un problème de fonte mais d'ENTRÉE : le forçage côtier met trop de précipitation solide sur ce territoire. Aucun réglage de fonte ne corrigera ça, et il faut cesser d'en chercher un.
 
 CE QUI SORT DE LA SÉQUENCE R50-R52 : l'ETI aux coefficients de LITTÉRATURE, sans calage et sans terme ajouté, est la meilleure formulation de fonte disponible sur les bassins au forçage fiable (SAGU 0.81-0.89 sur toute la saison contre 0.60-0.77 pour le degré-jour). OUTV le sur-corrige légèrement en fin d'hiver, ce qui reste à comprendre mais ne le disqualifie pas. GASP est un dossier de forçage, pas de fonte.
+
+### R53. Ce n'est pas une fonte fantôme d'hiver, c'est une fonte trop précoce de printemps
+
+Correction demandée par Essi le 2026-08-28, après qu'il a relevé deux narrations avancées sans vérification. La première : j'avais décrit OUTV et GASP comme « plus venteux » alors que le tableau que je venais d'afficher donnait OUTV à 3.98 m/s contre SAGU à 4.57 -- OUTV est le MOINS venté des trois. J'ai bâti l'hypothèse advective sur un contraste inexistant, lancé un test dessus, puis expliqué son échec par l'uniformité du vent, qui était lisible AVANT de lancer. La seconde : j'expliquais le gain de l'ETI par une fonte de redoux non freinée, ce qui prédit un déficit maximal là où les redoux sont les plus fréquents -- c'est OUTV (35.7 % de jours à Tmax>0), et c'est justement là que le degré-jour accumule le mieux. Le mécanisme prédisait l'inverse de l'observation.
+
+POURQUOI J'AI PU ME TROMPER DEUX FOIS SANS ÊTRE CONTREDIT : je regardais des RATIOS DE STOCK mensuels, qui ne montrent que la différence cumulée entre accumulation et fonte. Ils ne portaient pas l'information permettant de départager les deux, donc aucune narration ne pouvait être réfutée par eux.
+
+LA DÉCOMPOSITION (`decompo_fonte.py`, somme des hausses et des baisses journalières de SWE, par mois, par formulation) tranche sans interprétation.
+
+L'ACCUMULATION est identique entre les deux formulations : écarts de 0 à 7 mm/mois. La formulation de fonte n'a donc AUCUN effet sur l'accumulation, ce qui était attendu mais jamais vérifié.
+
+LA FONTE se décale, elle ne diminue pas. Écart ETI moins degré-jour, en mm/mois : SAGU -1 en décembre, 0 en janvier, -2 en février, puis -25 en mars, -70 en avril, +92 en mai. OUTV : -1, -3, -10, puis -23 en mars, +27 en avril, +20 en mai. L'ETI ne fond pas moins, il fond QUATRE À SIX SEMAINES PLUS TARD.
+
+LE MÉCANISME, cette fois cohérent avec les chiffres : au printemps, la température repasse au-dessus du seuil de fonte bien avant que le rayonnement n'ait fourni l'énergie nécessaire. En mars le soleil est encore bas mais l'air se réchauffe déjà. Le degré-jour, qui ne voit que la température, fond dès ce moment ; l'ETI attend l'énergie. C'est ce décalage que CanSWE réclamait et que GRACE voit sur le stockage.
+
+CE QUI RESTE ENTIER, ET QUI CHANGE DE NATURE : le déficit de manteau de SAGU en DÉCEMBRE (0.77 du mesuré) ne s'explique ni par l'accumulation, identique entre formulations, ni par la fonte, quasi nulle à ce moment. Il n'est donc pas un problème de fonte du tout. Avec la précipitation totale innocentée contre ECCC (0.948) et le seuil de partage réfuté (R50), il reste sans explication et doit être traité comme une question distincte de celle du calendrier printanier.
 
 ## 2. Hypothèses RÉFUTÉES
 
