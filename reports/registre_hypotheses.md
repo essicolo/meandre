@@ -271,6 +271,18 @@ CE QUI CHANGE : R44 avait conclu que l'ETI ne valait pas la peine pour la 1.0, E
 
 PROCHAINE ÉTAPE : verifier que l'ETI corrige AUSSI le decalage de stockage GRACE (R47-R49) en inference, avant de payer le moindre entrainement -- si la fonte trop precoce est la vraie cause commune, la meme correction devrait ameliorer les deux juges a la fois.
 
+### R52. Le terme turbulent est réfuté sur la MASSE aussi, et il n'est pas sélectif
+
+Test du 2026-08-27, suite de R51. Prédiction posée AVANT de mesurer : un terme physique réel doit corriger OUTV et GASP, où l'ETI seul laisse trop de neige, SANS dégrader SAGU, où l'ETI seul est déjà bon. Un paramètre de calage déguisé, lui, agirait partout de la même façon.
+
+RÉSULTAT : le terme agit partout, uniformément, et dégrade SAGU de façon monotone. Rapports d'avril à SAGU : 0.89 sans le terme, puis 0.72, 0.56 et 0.40 pour tf_wind de 2e-4, 5e-4 et 1e-3. Sur OUTV il aide le printemps (avril 1.25 → 0.84) mais creuse l'automne (novembre 0.91 → 0.79). Sur GASP il ne suffit jamais, l'excès restant de 1.37 à 2.19 même au coefficient le plus fort.
+
+POURQUOI IL NE PEUT PAS ÊTRE SÉLECTIF : la vitesse de vent hivernale varie peu entre les régions (SAGU 4.57, OUTV 3.98, GASP 4.56 m/s) et peu dans la saison. Le produit tf_wind × u2 est donc quasiment une CONSTANTE ajoutée à tf : mathématiquement, ce terme augmente le facteur de fonte global, il ne distingue rien. Une vraie fonte advective demande le gradient de pression de vapeur et la pluie-sur-neige, pas la seule vitesse du vent. Le terme est donc réfuté sur la masse comme il l'avait été sur le débit, mais cette fois avec sa raison.
+
+DIAGNOSTIC SÉPARÉ POUR GASP, et il confirme R44. L'ETI y donne 162 à 301 mm quand CanSWE en mesure 104 à 159 : un EXCÈS de 50 à 100 %. Le degré-jour y était déjà en excès (1.91/1.79/2.02, R44). Les deux formulations de fonte sur-accumulent donc, ce qui n'est pas un problème de fonte mais d'ENTRÉE : le forçage côtier met trop de précipitation solide sur ce territoire. Aucun réglage de fonte ne corrigera ça, et il faut cesser d'en chercher un.
+
+CE QUI SORT DE LA SÉQUENCE R50-R52 : l'ETI aux coefficients de LITTÉRATURE, sans calage et sans terme ajouté, est la meilleure formulation de fonte disponible sur les bassins au forçage fiable (SAGU 0.81-0.89 sur toute la saison contre 0.60-0.77 pour le degré-jour). OUTV le sur-corrige légèrement en fin d'hiver, ce qui reste à comprendre mais ne le disqualifie pas. GASP est un dossier de forçage, pas de fonte.
+
 ## 2. Hypothèses RÉFUTÉES
 
 | # | Hypothèse | Comment elle est tombée | Date |

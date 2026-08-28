@@ -239,8 +239,28 @@ if __name__ == "__main__":
     ligne("seuil air projet, sans amp", juger(d, simuler(d, seuil_mode="air", amp=None)))
     ligne("Twb-0.8 sans amp", juger(d, simuler(d, amp=None)))
     if d["sw"] is not None:
-        for tf, srf in ((1.2e-3, 9.4e-6), (4e-3, 4.7e-5), (2.5e-3, 2.5e-5)):
-            ligne(f"ETI tf={tf*1000:g} srf={srf*1000:g}",
-                  juger(d, simuler(d, amp=None, melt_mode="eti", tf=tf, srf=srf)))
+        # Le point trouve le 24 aout (R44) : tf litterature + srf 6e-5, 0.84-1.02 sur
+        # l'hiver et 0.91 en avril, JUGE SUR LE DEBIT. On y ajoute le calendrier pour
+        # voir s'il tient aussi en DECEMBRE, ce que le debit ne peut pas trancher.
+        for tf, srf in ((1.2e-3, 9.4e-6), (4e-3, 4.7e-5), (2.5e-3, 2.5e-5), (1.2e-3, 6e-5)):
+            _s = simuler(d, amp=None, melt_mode="eti", tf=tf, srf=srf)
+            ligne(f"ETI tf={tf*1000:g} srf={srf*1000:g}", juger(d, _s))
+            calendrier(d, _s)
+        # ── TERME TURBULENT (fonte advective) ────────────────────────────────
+        # Diagnostic du 2026-08-27 : l'ETI corrige franchement SAGU (froid, peu de
+        # redoux : 18.8 % de jours a Tmax>0) mais laisse TROP de neige sur OUTV et GASP
+        # (35.7 % et 26.2 % de redoux, vent 4.0 et 4.6 m/s). Leur fonte hivernale est en
+        # bonne partie ADVECTIVE -- air doux et humide, vent, pluie sur neige -- que ni
+        # le degre-jour ni l'ETI pur ne portent. Un bilan d'energie l'aurait.
+        #
+        # tf_eff = tf + tf_wind * u2 : le meme terme que le 24 aout, mais juge sur la
+        # MASSE et non sur le debit, qui ne pouvait pas voir un defaut de calendrier.
+        # On ne DOSE PAS un melange entre deux formulations (une porte apprenante serait
+        # le degre de liberte libre que le champ detourne, cf. R49) : on ajoute le terme
+        # PHYSIQUE qui manque aux deux.
+        for _w in (2e-4, 5e-4, 1e-3):
+            _s = simuler(d, amp=None, melt_mode="eti", tf=1.2e-3, srf=9.4e-6, tf_wind=_w)
+            ligne(f"ETI + vent tf_wind={_w:g}", juger(d, _s))
+            calendrier(d, _s)
     else:
         print("  (pas de cache sw_in : variantes ETI sautees)")
