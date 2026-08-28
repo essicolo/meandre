@@ -235,7 +235,15 @@ tcfg_obj = TrainingConfig(
     # total selon sa propre decomposition). On le REPRODUIT pour que la comparaison
     # porte sur l'architecture et non sur la recette ; son reequilibrage est une
     # question ouverte, tracee au registre (dette #19).
-    w_prior=float(tcfg.get("w_prior", 0.005)),
+    # PROV_PRIOR : levier de reequilibrage, defaut = la valeur gen1 pour ne rien
+    # changer en silence. MESURE du 2026-08-28, banc provincial : a 0.005 le terme
+    # prior pese 5045 % du total de la perte de debit, tws_clim 3548 % et tws 1959 %.
+    # L'optimiseur ramene donc le champ vers ses cibles de litterature et satisfait
+    # GRACE, en SACRIFIANT l'hydrogramme -- toutes les metriques se degradent de facon
+    # monotone des l'epoque 1 (val_kge 0.7149 -> 0.5226 en cinq epoques, perte
+    # d'entrainement 4.57 -> 7.05). Le garde-fou de divergence ne voit rien : il
+    # declenche sur un pic a 3x la moyenne mobile, pas sur une derive lente.
+    w_prior=float(os.environ.get("PROV_PRIOR", tcfg.get("w_prior", 0.005))),
     # PROV_HUBER : borne les z-scores des contraintes auxiliaires. Defaut 3.0 ici,
     # contre 0 (desactive) dans le trainer pour ne rien changer aux runs anterieurs.
     # Sans elle, la province a vu sa perte d'entrainement passer de 4.4 a 48.9 en huit
