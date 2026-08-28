@@ -116,6 +116,44 @@ tirer quebec-caches.tar.gz    "$RACINE/meandre-data/quebec"     -xzf
 tirer quebec-forcages.tar     "$RACINE/meandre-data/quebec"     -xf
 tirer plateformes.tar.gz      "$RACINE/plateformes-hydrotel"    -xzf
 
+cat > "$RACINE/env.sh" <<ENV
+export MEANDRE_DATA=$RACINE/meandre-data
+export MEANDRE_PLATEFORMES=$RACINE/plateformes-hydrotel
+export PYTHONUNBUFFERED=1
+ENV
+echo "[amorce] environnement : source $RACINE/env.sh"
+
+# ORDRE : les DEPENDANCES d'abord, les PRELEVEMENTS ensuite (corrige 2026-08-28).
+# La reingestion importe duckdb ; placee avant l'installation elle levait
+# ModuleNotFoundError, et comme le script tourne sous `set -euo pipefail`, elle TUAIT
+# l'amorcage juste avant d'installer quoi que ce soit. Le pod se retrouvait avec ses
+# 15 Go de donnees et aucun environnement, sans que rien ne le dise autrement qu'une
+# trace python au milieu du journal.
+# NE PAS creer d'environnement neuf quand l'image en fournit deja un bon. Les images
+# runpod/pytorch livrent un torch compile pour la carte (2.8.0+cu128 sur l'A40) ; un
+# `uv sync` fabrique a cote un .venv qui ne le contient PAS, et tout tourne ensuite
+# sans GPU ou casse a l'import. On installe donc DANS le python systeme des qu'il a
+# deja un torch CUDA, et on ne retombe sur uv que s'il n'y en a pas (2026-08-28).
+cd "$RACINE"
+# Le build hatchling EXIGE le README declare dans pyproject ; l'archive de code ne le
+# transporte pas, et son absence faisait echouer l'installation avec un message qui ne
+# parle que de metadonnees. Un fichier vide suffit a debloquer.
+[ -f README.md ] || echo "# meandre" > README.md
+if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+  echo "[amorce] torch CUDA deja present dans le python systeme : installation en place"
+  python -m pip install -q -e . || true
+else
+  python -m pip install -q uv 2>/dev/null || true
+  uv sync --quiet 2>/dev/null || python -m pip install -q -e . || true
+fi
+
+source "$RACINE/env.sh"
+python - <<'PY'
+import torch
+print(f"[amorce] torch {torch.__version__} | cuda {torch.cuda.is_available()} | "
+      f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'aucun GPU'}")
+PY
+
 # ── PRELEVEMENTS : REINGERES, jamais herites ────────────────────────────────
 # Remarque d'Essi (2026-08-27 : « j'avais specifie qu'il fallait reinjecter ces
 # donnees. Je devrais le faire manuellement ? »). Non, et surtout pas : les archives
@@ -135,21 +173,5 @@ if [ -n "${PRELEV:-io-eau-meandre.parquet}" ]; then
   fi
 fi
 
-cat > "$RACINE/env.sh" <<ENV
-export MEANDRE_DATA=$RACINE/meandre-data
-export MEANDRE_PLATEFORMES=$RACINE/plateformes-hydrotel
-export PYTHONUNBUFFERED=1
-ENV
-echo "[amorce] environnement : source $RACINE/env.sh"
-
-python -m pip install -q uv 2>/dev/null || true
-cd "$RACINE" && uv sync --quiet 2>/dev/null || python -m pip install -q -e . || true
-
-source "$RACINE/env.sh"
-python - <<'PY'
-import torch
-print(f"[amorce] torch {torch.__version__} | cuda {torch.cuda.is_available()} | "
-      f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'aucun GPU'}")
-PY
 echo "[amorce] PRET. Exemple :"
 echo "  cd $RACINE && PROV_EPOCHS=4 PROV_CHUNK=365 python -u .runs/quebec/province.py"
