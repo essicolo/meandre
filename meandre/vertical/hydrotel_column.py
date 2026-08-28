@@ -95,7 +95,8 @@ class HydrotelColumn(nn.Module):
                  use_hillslope_uh: bool = False,
                  melt_mode: str = "degree_day", use_aquifer: bool = False,
                  use_hortonian: bool = False, frozen_gate_continuous: bool = False,
-                 horton_precomputed: bool = False, spatial_melt: bool = False) -> None:
+                 horton_precomputed: bool = False, spatial_melt: bool = False,
+                 canopy_melt_lag: bool = False) -> None:
         super().__init__()
         soil_n_substep = int(os.environ.get("MEANDRE_NSUBSTEP", soil_n_substep))
         self.et_mode = str(et_mode)
@@ -104,6 +105,8 @@ class HydrotelColumn(nn.Module):
         # facteur de fonte devient un champ appris par nœud (sud-nord QC) au lieu
         # d'un scalaire global rustiné à la main (melt_factor_scale).
         self.spatial_melt = bool(spatial_melt)
+        # Verrou de fonte par canopée appris plutôt qu'ancré (R56).
+        self.canopy_melt_lag = bool(canopy_melt_lag)
         self.use_frost = bool(use_frost)
         self.use_hillslope_uh = bool(use_hillslope_uh)
         # Mode de fonte : "degree_day" (clone fidèle, indice radiation géométrique)
@@ -336,6 +339,17 @@ class HydrotelColumn(nn.Module):
             cf_d = self.melt_taux_d / 1000.0 * mscale
             se_c, se_f, se_d = self.melt_seuil_c, self.melt_seuil_f, self.melt_seuil_d
             tgeo, dmax, tass = self.melt_taux_geo, self.melt_dens_max, self.melt_tasse
+            # SEUIL DE FONTE APPRIS PAR CLASSE (R56, opt-in). Les TAUX restent ancrés ;
+            # seul le verrou -- la constante qui décide QUAND la fonte est permise --
+            # redevient un champ. C'est la loi des ancrages appliquée à la lettre :
+            # on garde du calage ce qui est une propriété de la surface, on rend au
+            # NeRF ce qui était une compensation calée contre l'hydrogramme. La
+            # structure (offsets positifs empilés) garantit conifère >= feuillu >=
+            # découvert, donc les trois seuils ne peuvent pas se compenser entre eux.
+            if self.canopy_melt_lag and hasattr(sp, "dT_canopee_feu"):
+                se_d = sp.T_melt
+                se_f = se_d + sp.dT_canopee_feu
+                se_c = se_f + sp.dT_canopee_conif
         else:
             cf_c = sp_(self.sp_fonte_conif) / 1000.0 * mscale
             cf_f = sp_(self.sp_fonte_feu) / 1000.0 * mscale

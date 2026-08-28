@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 import os
+from dataclasses import fields as _dc_fields
 import torch
 
 # Bornes du temps de transfert Muskingum (heures). Défaut historique [4, 48] avec init
@@ -163,8 +164,30 @@ class SpatialParams:
     # qui se compensent.
     diff_gel: Tensor        # diffusivite thermique APPARENTE (m2/s) [4e-8, 2.2e-7]
     fs_neige: Tensor        # amortissement par le couvert nival (1/m) [0.5, 6.0]
+    # ── Retard de fonte par la canopee (2026-08-28, R56) ──────────────────────
+    # Hydrotel coordonne son freshet avec un SEUIL DE FONTE PAR CLASSE d'occupation,
+    # cale contre le debit : +3.35 degres sous conifere sur sagu/outv/abit, ce qui
+    # n'autorise la fonte que 0.7 % des jours de decembre a mars contre 4.1 % au seuil
+    # physique. C'est un verrou, pas une loi de fonte. Il encode un processus REEL
+    # (contenu de froid + ombrage de canopee : un manteau sous resineux a +2 degres
+    # d'air n'a pas l'energie de fondre, cf. Cryosphere 15:5371 au BEREV), mais comme
+    # une constante calibree contre l'hydrogramme, donc sans garantie hors calage.
+    # On le remplace ici par un champ APPRIS, rendu identifiable par sa structure
+    # plutot que par un ancrage : le seuil de reference est celui du terrain DECOUVERT
+    # (T_melt), et chaque strate de couvert ne peut que le RETARDER. D'ou deux offsets
+    # strictement non negatifs, empiles :
+    #     seuil_decouvert = T_melt
+    #     seuil_feuillu   = T_melt + dT_canopee_feu
+    #     seuil_conifere  = T_melt + dT_canopee_feu + dT_canopee_conif
+    # L'ordre conifere >= feuillu >= decouvert est donc vrai PAR CONSTRUCTION, et c'est
+    # ce qui empeche les trois seuils de se compenser librement. Les deux calages
+    # d'Hydrotel respectent cet ordre, mais s'accordent mal sur l'amplitude (offsets de
+    # 2.95 degres sur la famille sagu contre 0.35 sur la famille gasp) : c'est
+    # precisement pourquoi ils entrent comme PRIOR FAIBLE et non comme ancrage.
+    dT_canopee_feu: Tensor    # retard de fonte sous feuillu, vs decouvert (C) [0, 3]
+    dT_canopee_conif: Tensor  # retard SUPPLEMENTAIRE sous conifere (C) [0, 3]
 
-    N_PARAMS: ClassVar[int] = 40
+    N_PARAMS: ClassVar[int] = 42
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -409,6 +432,14 @@ class SpatialFieldNetwork(nn.Module):
             # commise puis corrigee le 2026-08-27.
             "diff_gel": 1.6e-7,     # = 0.8 / (1e6 + 4e6), la valeur du C++
             "fs_neige": 2.35,
+            # Retards de canopee (R56). Prior FAIBLE et volontairement median : les
+            # deux familles de calage d'Hydrotel donnent 2.95/2.95 (sagu, outv, abit)
+            # et 0.35/0.34 (gasp, mont, slso) pour le meme processus physique. Un
+            # ecart d'un facteur huit sur une constante calee contre le debit dit que
+            # ce n'est pas une mesure ; on part au milieu et on laisse la contrainte
+            # d'ordre plus les observables faire le travail.
+            "dT_canopee_feu": 1.0,
+            "dT_canopee_conif": 1.0,
         }
         if targets:
             d.update(targets)
@@ -506,6 +537,8 @@ class SpatialFieldNetwork(nn.Module):
         # depart = celle du C++ (voir le dictionnaire de cibles).
         raw[i] = inv_bounded(d["diff_gel"], 4e-8, 2.2e-7); i += 1
         raw[i] = inv_bounded(d["fs_neige"], 0.5, 6.0); i += 1
+        raw[i] = inv_bounded(d["dT_canopee_feu"], 0.0, 3.0); i += 1
+        raw[i] = inv_bounded(d["dT_canopee_conif"], 0.0, 3.0); i += 1
 
         return raw
 
@@ -785,6 +818,13 @@ class SpatialFieldNetwork(nn.Module):
         # si le besoin s'en fait sentir.
         constrained.append(bounded(cols[i], 4e-8, 2.2e-7)); i += 1    # diff_gel
         constrained.append(bounded(cols[i], 0.5, 6.0)); i += 1        # fs_neige
+        # Retards de fonte par la canopee (R56). Bornes [0, 3] : non negatives parce
+        # qu'un couvert ne peut qu'ombrager et couper l'echange turbulent, jamais
+        # accelerer la fonte par rapport au terrain decouvert ; plafonnees a 3 parce
+        # que c'est deja l'offset du calage le plus extreme d'Hydrotel (+2.95 sur la
+        # famille sagu) et qu'au-dela le manteau ne fondrait plus du tout en avril.
+        constrained.append(bounded(cols[i], 0.0, 3.0)); i += 1        # dT_canopee_feu
+        constrained.append(bounded(cols[i], 0.0, 3.0)); i += 1        # dT_canopee_conif
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 
@@ -794,7 +834,7 @@ class SpatialFieldNetwork(nn.Module):
     # (2026-08-27) : l'index est desormais nomme explicitement plutot que deduit d'une
     # position, ce qui evite qu'un ajout futur ne deplace silencieusement le gel de la
     # recharge vers autre chose.
-    _IDX_KREC = SpatialParams.N_PARAMS - 3
+    _IDX_KREC = [f.name for f in _dc_fields(SpatialParams)].index("krec")
 
     def set_uniform_krec(self, valeur: float) -> None:
         """Force la recharge a une valeur UNIFORME (m/h) sur tous les noeuds.
@@ -903,6 +943,13 @@ class SpatialFieldNetwork(nn.Module):
 
         # T_melt
         loss = loss + ((params.T_melt.mean() - tg("T_melt", -0.5)) ** 2) * 0.5
+        # Retards de canopee : prior FAIBLE (poids 0.1 contre 0.5 pour T_melt), parce
+        # que les deux calages d'Hydrotel s'accordent sur l'ORDRE mais pas du tout sur
+        # l'amplitude. L'ordre est deja garanti par la construction (offsets bornes
+        # positifs, empiles) ; ce terme ne sert qu'a eviter la derive vers les bornes
+        # en debut d'entrainement, pas a imposer une valeur.
+        loss = loss + ((params.dT_canopee_feu.mean() - tg("dT_canopee_feu", 1.0)) ** 2) * 0.1
+        loss = loss + ((params.dT_canopee_conif.mean() - tg("dT_canopee_conif", 1.0)) ** 2) * 0.1
 
         # frost_alpha
         loss = loss + ((params.frost_alpha.mean() - tg("frost_alpha", 0.5)) ** 2) * 0.3

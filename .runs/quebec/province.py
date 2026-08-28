@@ -69,6 +69,14 @@ dom = load_domain(PLATEFORMES, lcfg, device=DEVICE)
 # calendrier de deux a trois mois puisqu'il se compense en partie dans le bilan annuel.
 # Le bon juge pour une question de calendrier est un calendrier.
 ETI = os.environ.get("PROV_ETI", "0") == "1"
+
+# ── VERROU DE FONTE APPRIS (PROV_CANOPEE=1, R56) ─────────────────────────────
+# Hydrotel place son freshet avec un seuil de fonte PAR CLASSE cale contre le debit
+# (+3.35 degres sous conifere sur sagu/outv/abit : 0.7 % des jours de decembre a mars
+# le franchissent, contre 4.1 % au seuil physique). On garde ses TAUX ancres et on
+# rend ce seuil au NeRF, sous forme de deux retards non negatifs empiles qui imposent
+# conifere >= feuillu >= decouvert.
+CANOPEE = os.environ.get("PROV_CANOPEE", "0") == "1"
 N_FORCAGE = 6
 if ETI:
     import xarray as _xr
@@ -121,6 +129,7 @@ model = HydroModel(
                   and bool(mcfg.get("compile_soil", True))),
     use_aquifer=True,
     melt_mode=("eti" if ETI else "degree_day"),
+    canopy_melt_lag=CANOPEE,
 ).to(DEVICE)
 
 # Occupation du sol, milieux humides et fonte calée, livrés par plateforme et fondus
