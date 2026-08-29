@@ -82,6 +82,14 @@ lcfg["w_et"] = float(os.environ.get("PROV_WET", "0.4"))
 # binaire, la balance de la perte est-elle la cause de la divergence. Si oui, repartir
 # entre les trois est un banc court et facile ; si non, les suspects restants sont la
 # montee du taux d'apprentissage vers 5e-4, que le registre designe depuis quatre runs.
+# PROV_SANS_PRELEV=1 : couper les prelevements, en ENTRAINEMENT comme en evaluation.
+# Diagnostic du 2026-08-29. Le run provincial du 26 aout rendait 0.6193 de KGE median
+# tenu de cote ; ceux du 28 aout rendent 0.43 a nombre d'epoques egal, et l'effondrement
+# epargne OUTV tout en frappant mont, sagu et slso. Or la reingestion des prelevements
+# du 26 aout (8e02622) a multiplie la couverture par deux et demi, et ces plateformes
+# sont precisement celles qui portent le plus de sites : slso 1087, slno 1017, sagu 234,
+# quand OUTV en porte peu. Ce levier teste la correspondance au lieu de la supposer.
+_SANS_PRELEV = os.environ.get("PROV_SANS_PRELEV", "0") == "1"
 _AUX = float(os.environ.get("PROV_AUX", "1.0"))
 if _AUX != 1.0:
     for _k in ("w_tws", "w_tws_clim"):
@@ -291,6 +299,25 @@ tcfg_obj = TrainingConfig(
     best_metric=tcfg.get("best_metric", "kge_median"),
     patience=int(tcfg.get("patience", 0)),
 )
+# Couper les prelevements AVANT le trainer, pas seulement a l'evaluation : la question
+# est de savoir si le modele apprend a compenser une donnee fausse, ce qui ne se voit
+# pas en inference sur des poids deja formes.
+def _prelev_nul_pre(w):
+    import copy as _cp
+    z = _cp.copy(w)
+    for _a in ("_vals", "_vals_gw"):
+        if hasattr(z, _a):
+            setattr(z, _a, getattr(z, _a) * 0.0)
+    if hasattr(z, "net") and getattr(z, "net", None) is not None:
+        z.net = z.net * 0.0
+    return z
+
+if _SANS_PRELEV:
+    from dataclasses import replace as _rep
+    _z = _prelev_nul_pre(dom["train_data"].withdrawals)
+    dom["train_data"] = _rep(dom["train_data"], withdrawals=_z)
+    dom["val_data"] = _rep(dom["val_data"], withdrawals=_z)
+    print("[province] PRELEVEMENTS COUPES (diagnostic)", flush=True)
 trainer = Trainer(model, dom["loss_fn"], train_data=dom["train_data"],
                   val_data=dom["val_data"], config=tcfg_obj, checkpoint_path=CKPT)
 trainer.fit()
@@ -301,11 +328,27 @@ if os.path.exists(CKPT):
     model.load(CKPT)
 model.eval()
 td = dom["train_data"]
+# COUPER LES PRELEVEMENTS N'EST PAS LES METTRE A None. `model.simulate` appelle
+# `withdrawals.gw_withdrawal(t)` sans garde : passer None leve une AttributeError
+# apres la simulation complete, donc apres avoir paye tout le calcul (mesure le
+# 2026-08-29 sur le banc de bissection, qui est mort a la seconde passe). On neutralise
+# donc les VALEURS en gardant l'objet et son interface.
+def _prelev_nul(w):
+    import copy as _cp
+    z = _cp.copy(w)
+    for _a in ("_vals", "_vals_gw"):
+        if hasattr(z, _a):
+            setattr(z, _a, getattr(z, _a) * 0.0)
+    if hasattr(z, "net") and getattr(z, "net", None) is not None:
+        z.net = z.net * 0.0
+    return z
+
+_PRELEV = _prelev_nul(td.withdrawals) if _SANS_PRELEV else td.withdrawals
 with torch.no_grad():
     Q, _ = model.simulate(forcing=td.forcing[:],
                           initial_state=HydroState.zeros(dom["n_nodes"], device=DEVICE),
                           graph=td.graph, node_coords=td.node_coords,
-                          territorial=td.territorial, withdrawals=td.withdrawals,
+                          territorial=td.territorial, withdrawals=_PRELEV,
                           day_of_year=td.day_of_year)
 times = dom["times"]
 sl = (times >= "2022-01-01") & (times <= "2024-12-31")
