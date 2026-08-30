@@ -584,25 +584,44 @@ class SpatialFieldNetwork(nn.Module):
             return self.latent_codes.pow(2).mean()
         return torch.zeros((), device=self.fc_out.weight.device)
 
-    def _project_coords(self, coords: Tensor) -> Tensor:
-        """Projette (lon, lat) en degrés vers des coordonnées ISOTROPES normalisées.
+    # REPERE FIXE, ET C'EST UN CORRECTIF MAJEUR (2026-08-30).
+    # La version precedente calculait le centre ET l'echelle SUR LE LOT PASSE :
+    #     lat0 = lat.mean() ; scale = max(|x|.max(), |y|.max())
+    # Le champ n'etait donc pas une fonction de la POSITION mais de la position
+    # RELATIVE A LA BOITE ENGLOBANTE DU DOMAINE CHARGE. Mesure sur les 17 708 noeuds
+    # communs entre un domaine de 6 plateformes et un de 14 : l'echelle passe de 572 a
+    # 1111 km et les coordonnees projetees d'un MEME troncon se deplacent de 0.195 en
+    # mediane, 0.62 au maximum, sur une plage totale de -1 a 1. Le meme fichier de poids
+    # rendait donc 0.4513 de KGE median sur 14 plateformes et 0.7059 sur 6, aux MEMES
+    # stations : ce n'etait pas une regression, c'etaient d'autres entrees.
+    #
+    # Trois consequences, toutes levees par le repere fixe. Une comparaison entre deux
+    # ensembles de plateformes redevient valide. Un modele entraine peut etre applique a
+    # un nouveau territoire sans que ses parametres se deplacent, ce que le claim de
+    # regionalisation exige. Et la carte du champ cesse de dependre de ce qu'on charge.
+    #
+    # Constantes : centre (-72, 52) et rayon 1200 km, mesures sur l'emprise reelle des
+    # quatorze plateformes (lon -80.4 a -55.8, lat 43.3 a 53.1 ; rayon max 1109 km).
+    # Elles sont FIXES a dessein -- les recalculer sur les donnees reintroduirait la
+    # dependance qu'on vient de retirer.
+    _LON0 = -72.0
+    _LAT0 = 52.0
+    _RAYON_KM = 1200.0
 
-        Les degrés lon/lat ne sont pas isotropes : à la latitude φ, 1° de longitude
-        ≈ cos(φ)·111 km contre ≈ 111 km pour 1° de latitude. Traiter (lon, lat)
-        comme cartésien distord l'encodage Fourier (une « fréquence » en lon n'a pas
-        la même longueur d'onde physique qu'en lat). On applique une projection
-        équirectangulaire centrée sur la latitude médiane (haversine-cohérente pour
-        un bassin régional) → km, puis on normalise par l'extent isotrope max
-        (aspect préservé) → coords ∈ ~[-1, 1]. L'encodage opère alors sur des
-        distances physiques réelles.
+    def _project_coords(self, coords: Tensor) -> Tensor:
+        """Projette (lon, lat) en degres vers des coordonnees ISOTROPES, repere FIXE.
+
+        Les degres lon/lat ne sont pas isotropes : a la latitude phi, 1 degre de
+        longitude vaut cos(phi)*111 km contre 111 km pour 1 degre de latitude. Traiter
+        (lon, lat) comme cartesien distord l'encodage de Fourier. On applique donc une
+        projection equirectangulaire vers des kilometres, puis on divise par un rayon
+        CONSTANT. Le resultat ne depend que du point, jamais du lot.
         """
-        lon = coords[:, 0]
-        lat = coords[:, 1]
-        lat0 = lat.mean()
-        x = (lon - lon.mean()) * torch.cos(torch.deg2rad(lat0)) * 111.32
-        y = (lat - lat.mean()) * 110.574
-        scale = torch.maximum(x.abs().max(), y.abs().max()).clamp(min=1e-6)
-        return torch.stack([x / scale, y / scale], dim=-1)
+        import math
+        lon, lat = coords[:, 0], coords[:, 1]
+        x = (lon - self._LON0) * math.cos(math.radians(self._LAT0)) * 111.32
+        y = (lat - self._LAT0) * 110.574
+        return torch.stack([x / self._RAYON_KM, y / self._RAYON_KM], dim=-1)
 
     def _trunk(self, coords: Tensor, territorial: Tensor) -> Tensor:
         """Tronc NeRF partagé (fc1 → skip → fc2) → features cachées h."""
