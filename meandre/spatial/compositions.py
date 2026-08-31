@@ -18,9 +18,13 @@ de zeros exacts (urbain nul sur la plupart des troncons) et la granulometrie en 
 chaque zero recoit delta, les parts non nulles sont reduites au prorata, la somme est
 preservee.
 
-BASE. L'ilr depend d'une base orthonormee du simplexe ; on prend la base par bifurcation
-sequentielle standard (balances), qui pour la granulometrie donne deux coordonnees
-interpretables : grossier contre fin, puis sable contre limon.
+IMPLEMENTATION. Au branchement (1.1), remplacer les fonctions locales par le package
+`nuee` d'Essi (PyPI, 0.2.1) : nuee.ilr(), nuee.multiplicative_replacement(),
+nuee.sbp_basis() pour des bases de balances choisies plutot que codees en dur, et
+nuee.closure(). Les fonctions locales ci-dessous n'existent que pour verrouiller les
+proprietes par les tests en attendant ; elles portent la meme convention et devront
+etre validees contre nuee avant d'etre supprimees. Ajouter nuee aux dependances a ce
+moment-la, pas avant.
 """
 from __future__ import annotations
 
