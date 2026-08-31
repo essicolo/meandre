@@ -5,15 +5,20 @@ description: Rédiger ou réviser un document destiné à un lecteur humain (rap
 
 # Rédaction des livrables de méandre
 
-Deux échecs fondent ce skill. Le 2026-08-31, un rapport livré illisible : vocabulaire interne du projet, nombres sans grandeur ni unité, et une définition dimensionnellement fausse (« la pression est le volume prélevé rapporté au débit », un volume sur un débit donne un temps). Essi a dû réécrire chaque phrase. Une liste de règles ne suffit pas : la première version de ce skill existait déjà quand ces phrases ont été écrites. Ce qui fonctionne : imiter un étalon de voix, et réviser mécaniquement.
+Deux échecs fondent ce skill. Le 2026-08-31, un rapport livré illisible : vocabulaire interne du projet, nombres sans grandeur ni unité, et une définition dimensionnellement fausse (« la pression est le volume prélevé rapporté au débit », un volume sur un débit donne un temps). Essi a dû réécrire chaque phrase. Une liste de règles ne suffit pas : la première version de ce skill existait déjà quand ces phrases ont été écrites. Ce qui fonctionne : viser un registre défini indépendamment des personnes, et réviser mécaniquement.
 
-## 1. L'étalon de voix est la prose d'Essi
+## 1. Le registre visé
 
-Avant d'écrire, lire les paragraphes qu'Essi a déjà écrits dans le document, et les imiter. À défaut, imiter l'exemple ci-dessous, tiré du rapport sur les prélèvements (sa prose, verbatim) :
+Le standard n'est ni la prose de l'assistant ni celle d'Essi : c'est le registre des publications scientifiques en hydrologie de langue française (revues comme LHB Hydroscience, rapports de l'INRS ou de l'organisme d'expertise hydrique). Ses traits opérationnels :
 
-> La naturalisation des débits, définie ici par le retrait des prélèvements et rejets, ne peut être rigoureusement effectuée que si le modèle permet d'effectuer des études de sensibilité. Le corollaire d'une telle approche est que l'entraînement du modèle impute les erreurs de prédiction aux bons paramètres. En effet, la modélisation hydrologique est un problème inverse cherchant à reconstruire les paramètres du modèle à l'aide de débits observés.
+- Chaque terme technique est défini à sa première occurrence, dans la phrase même où il apparaît.
+- La motivation précède la description : on dit pourquoi une méthode est employée avant de dire comment.
+- Les enchaînements logiques sont explicites (donc, en effet, en revanche, par conséquent), jamais implicites ni décoratifs.
+- Aucune emphase (considérable, spectaculaire, s'effondre) : l'ampleur est portée par le chiffre, pas par l'adjectif.
+- La voix passive ou impersonnelle domine ; le document décrit un état de connaissance, pas les auteurs au travail.
+- Un paragraphe porte une idée, annoncée par sa première phrase.
 
-Ce qui caractérise cette voix : le terme est défini au moment où il apparaît (« définie ici par ») ; la motivation précède la description ; les enchaînements sont logiques et explicites (corollaire, en effet) ; aucune emphase, aucun chiffre nu, aucun sigle non défini ; le registre est celui d'un hydrologue qui écrit pour des collègues, pas d'un journal de développement.
+Les paragraphes déjà écrits par Essi dans un document fixent le PLAN et l'ANGLE, jamais le standard de langue : ce sont des brouillons de travail, ils peuvent porter des coquilles, et ils lui appartiennent. On écrit autour, dans le registre ci-dessus, sans les modifier.
 
 ## 2. Exemples de transformation (fautes réelles, corrections réelles)
 
