@@ -1079,9 +1079,21 @@ if os.environ.get("ETL_DUMP_REACH"):
                    and getattr(_sp_d, k).shape[:1] == (n_nodes,)}
         _wnet = (td.withdrawals.net.abs().sum(dim=0).cpu().numpy()
                  if hasattr(td.withdrawals, "net") else np.zeros(n_nodes))
+        # Serie mensuelle COMPLETE, pas seulement la climatologie (annotations
+        # d'Essi, 2026-08-31) : la variance INTERANNUELLE devient calculable, ce
+        # qu'exige l'analyse signal sur bruit -- l'effet des prelevements sur un
+        # mois donne depasse-t-il l'ecart-type des memes mois calendaires sur la
+        # periode ? ~4 Mo par region en float32.
+        _tt_d = _pdm.DatetimeIndex(times)
+        _cle_mois = _tt_d.year * 12 + _tt_d.month
+        _mois_u = _np_d = __import__('numpy').unique(_cle_mois)
+        _qms = __import__('numpy').stack(
+            [_Qr[_cle_mois == m].mean(axis=0) for m in _mois_u])
     np.savez_compressed(os.environ["ETL_DUMP_REACH"],
                         q_mensuel=_qm.astype(np.float32),
                         q_annuel=_Qr.mean(axis=0).astype(np.float32),
+                        q_mois_serie=_qms.astype(np.float32),
+                        mois_serie=_mois_u.astype(np.int32),
                         coords=td.node_coords.cpu().numpy(),
                         prelev_net_abs=_wnet.astype(np.float32),
                         **{k: v.astype(np.float32) for k, v in _champs.items()})
