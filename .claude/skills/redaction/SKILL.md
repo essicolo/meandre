@@ -46,7 +46,11 @@ La passe de révision est OBLIGATOIRE et se fait sur le document entier, une phr
 3. Test des termes physiques : pression, charge, tension, capacité, conductivité, flux, intensité, énergie ne s'emploient que dans leur sens physique. Sinon, nommer la grandeur par sa construction.
 4. Test du nombre : grandeur, unité en clair, période ou population. Arrondir à la précision qui a un sens physique.
 5. Test du vocabulaire interne : tenu de côté, champion, gen1, recette, plateforme (pour une région), ancrage, forçage -hyb, kge_med, R19, dette 6 sont interdits. Traduire : période d'évaluation indépendante 2022-2024 ; modèle retenu ; configuration retenue ; version calibrée d'Hydrotel ; paramètre repris du calage d'Hydrotel ; données météorologiques d'entrée en précisant la correction ; KGE médian par station ; énoncer le fait au lieu du numéro.
-6. Typographie d'Essi : pas de tirets cadratins, pas de gras ni d'italique dans ma prose, pas de guillemets décoratifs, pas de hard-wrap. Sa prose à lui est intouchable.
+6. Typographie d'Essi : pas de tirets cadratins, pas de gras ni d'italique dans ma prose, pas de guillemets décoratifs, pas de hard-wrap. La prose d'Essi est intouchable.
+
+## 3 bis. Les homonymes entre communautés
+
+Un meme terme peut designer deux techniques sans rapport selon la communaute. Cas paye le 2026-08-31 : interpolation optimale designe le schema d'assimilation de Gandin en meteorologie (celui de CaPA), et une technique de redistribution des erreurs sur les debits en hydrologie operationnelle quebecoise. Regle : quand un terme technique vient d'une autre communaute que celle du lecteur, l'attribuer a sa source dans la phrase meme, et desamorcer explicitement l'homonyme si la communaute du lecteur en possede un.
 
 ## 4. Ce que le document n'est pas
 
