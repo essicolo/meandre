@@ -52,11 +52,14 @@ AUX=(ETL_WET=0.4)
 case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0) ;; esac
 SFX=${JOINT_FX_SUFFIX:--budyko}
 [ "$REG" = vaud ] && SFX=-none
-# ETL_COMPILE=0 : les grappes de l'Alliance n'ont pas Triton, et torch.compile du sol y
-# fait echouer la simulation. La compilation n'achete que de la vitesse.
+# ETL_COMPILE : la compilation du sol exige Triton, disponible dans la logitheque de
+# l'Alliance (pip install --no-index triton) mais absent des environnements batis
+# avant le 2026-09-01. Sans elle, une simulation SLSO prend 27 min sur A100 contre
+# 6 min en local : notre colonne est dominee par le lancement de petits noyaux, le
+# cas ou la compilation apporte le plus. ETL_COMPILE=0 pour s'en passer.
 # RECETTE DU SOCLE, identique au poste : sol impose sauf K_sat et porosites, Linacre
 # calee, seuil pluie/neige au bulbe humide, fonte regionale ancree, aquifere.
-env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG ETL_COMPILE=0 \
+env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \n    ETL_COMPILE=${ETL_COMPILE:-1} \
     ETL_WSNOW=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_INIT_HYDROTEL=sauf_ks \
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
     "${AUX[@]}" ETL_SEUIL_NEIGE=0 ETL_SEUIL_TWB=-0.8 ETL_MELT_SAISON=0.5 \

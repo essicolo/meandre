@@ -17,7 +17,7 @@ pip install --no-index --upgrade pip
 # s'importer sans lui. L'erreur apparait tard, au premier ouverture de forcage.
 # Liste etablie par inventaire des imports du pilote (2026-09-01), apres avoir
 # decouvert quatre paquets manquants un a un, chacun au prix d'une tache perdue.
-pip install --no-index torch numpy scipy pandas xarray netCDF4 mpi4py duckdb zarr tqdm
+pip install --no-index torch triton numpy scipy pandas xarray netCDF4 mpi4py duckdb zarr tqdm
 python - <<'PY'
 import torch
 import pyarrow, netCDF4, xarray, duckdb, scipy, zarr, tqdm
