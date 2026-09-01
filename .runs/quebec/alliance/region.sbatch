@@ -42,6 +42,11 @@ cp "$D"/forcing-${REG}*.nc "$LOCAL/quebec/" 2>/dev/null || true
 cp "$D"/forcing-casr-corr.nc "$LOCAL/quebec/" 2>/dev/null || true
 cp "$D"/*.parquet "$LOCAL/quebec/" 2>/dev/null || true
 cp -r "$D/checkpoints-etbench" "$LOCAL/quebec/" 2>/dev/null || true
+# SLSO est une exception du chargeur : sa variante corrigee de CaSR vit dans un dossier
+# a elle, hors de quebec/. Sans cette copie la tache echoue apres deux minutes de mise
+# en place, sur un chemin qui n'existe pas dans le disque local du noeud.
+mkdir -p "$LOCAL/slso"
+cp "$D/forcing-casr-corr.nc" "$LOCAL/slso/" 2>/dev/null || true
 export MEANDRE_DATA="$LOCAL"
 export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 
