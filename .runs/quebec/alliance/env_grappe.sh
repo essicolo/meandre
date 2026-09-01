@@ -13,10 +13,13 @@ VENV=$HOME/venv-meandre
 source "$VENV/bin/activate"
 pip install --no-index --upgrade pip
 # torch est fourni compile pour les cartes de la grappe : ne JAMAIS le prendre sur PyPI.
-pip install --no-index torch numpy pandas xarray netCDF4 duckdb tomli
+# mpi4py : la roue netCDF4 de l'Alliance est compilee avec le support MPI et refuse de
+# s'importer sans lui. L'erreur apparait tard, au premier ouverture de forcage.
+pip install --no-index torch numpy pandas xarray netCDF4 mpi4py duckdb tomli
 python - <<'PY'
 import torch
-import pyarrow
+import pyarrow, netCDF4, xarray, duckdb
+print("netCDF4", netCDF4.__version__)
 print("torch", torch.__version__, "| cuda:", torch.version.cuda,
       "| pyarrow", pyarrow.__version__)
 PY
