@@ -6,11 +6,32 @@ Procédure en sept étapes. Les trois premières se font la veille, sans transf�
 
 Les quinze régions sont indépendantes : sur le poste elles se suivent, sur la grappe elles partent ensemble. Une nuit de vingt heures devient l'attente d'une seule région, environ deux heures, plus le temps de file. Il n'y a pas de facturation à l'heure : ce qui se répartit entre les groupes est une priorité d'ordonnancement calculée sur la consommation passée, et un accès inutilisé ne consomme rien.
 
+## Étape 0 : se connecter
+
+Depuis un terminal du poste, avec l'identifiant CCDB (pas l'adresse de courriel) :
+
+```
+ssh identifiant@fir.alliancecan.ca
+ssh identifiant@narval.alliancecan.ca
+ssh identifiant@rorqual.alliancecan.ca
+```
+
+La clé privée est trouvée automatiquement si elle s'appelle `~/.ssh/id_ed25519` ou `~/.ssh/id_rsa` ; sinon la désigner par `-i`. Deux comportements normaux peuvent surprendre : une clé publique déposée dans CCDB met jusqu'à une demi-heure à se propager, et l'authentification à deux facteurs est obligatoire, donc une confirmation est demandée sur le téléphone même lorsque la clé est acceptée.
+
+La session s'ouvre sur un nœud de connexion. C'est une machine partagée qui sert à préparer, transférer et soumettre ; aucun calcul ne s'y exécute, et une tâche lourde lancée là est interrompue par l'administration système.
+
 ## Étape 1, la veille : sonder les trois grappes et en choisir une
 
 Les accès à Fir, Narval et Rorqual sont accordés, et la procédure est identique sur les trois : même ordonnanceur, même pile logicielle. Une seule différence compte : les données ne se partagent pas entre grappes, donc le transfert se fait vers une seule d'entre elles.
 
-Sur le nœud de connexion de chacune, `bash .runs/quebec/alliance/sonde.sh`, une minute et aucune ressource de calcul consommée. Trois critères tranchent, dans cet ordre. Le compte disponible d'abord : une allocation peut n'exister que sur certaines grappes, et sans compte utilisable rien ne se soumet. L'attente en file ensuite, qui varie fortement de l'une à l'autre. Les cartes offertes enfin, sachant que le modèle tient dans huit gigaoctets de mémoire vidéo : les cartes les plus modestes conviennent et se réservent plus vite que les plus grosses.
+Le dépôt n'est pas encore sur la grappe : à cette étape, coller directement les commandes de `sonde.sh` dans la session ouverte, ou le contenu du bloc ci-dessous, une minute et aucune ressource de calcul consommée.
+
+```
+sacctmgr -nP show associations user=$USER format=Account | sort -u
+sshare -U | head
+sinfo -o "%P %G %D" | sort -u | head -20
+diskusage_report
+``` Trois critères tranchent, dans cet ordre. Le compte disponible d'abord : une allocation peut n'exister que sur certaines grappes, et sans compte utilisable rien ne se soumet. L'attente en file ensuite, qui varie fortement de l'une à l'autre. Les cartes offertes enfin, sachant que le modèle tient dans huit gigaoctets de mémoire vidéo : les cartes les plus modestes conviennent et se réservent plus vite que les plus grosses.
 
 La sortie donne aussi le nom du compte à passer à `--account`, les quotas d'espace et la présence de PyTorch dans la logithèque locale. La sortie donne le nom du compte à passer à `--account`, les cartes offertes, les quotas d'espace et la présence de PyTorch dans la logithèque locale.
 ## Étape 2, la veille : dresser le manifeste
