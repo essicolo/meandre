@@ -26,6 +26,11 @@ côté ou de l'autre sans que ça veuille dire grand-chose ; ils sont marqués `
 import numpy as np
 import torch
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 # AXE DU SAINT-LAURENT en POLYLIGNE, et non en droite. Une droite unique ne peut pas
 # separer les deux rives a la fois dans le troncon fluvial (oriente est-nord-est) et dans
 # l'estuaire, qui s'elargit et tourne franchement vers l'est. Premiere version avec une
@@ -131,7 +136,7 @@ if __name__ == "__main__":
     noms = [n.strip() for n in noms if n.strip()]
     cs, es, tranches, off = [], [], {}, 0
     for n in noms:
-        h = BasinCache(f"D:/meandre-data/quebec/{n}.duckdb").load(device="cpu")
+        h = BasinCache(f"{_DATA_ROOT}/quebec/{n}.duckdb").load(device="cpu")
         c, g = h["node_coords"], h["graph"]
         cs.append(c)
         if g.edge_index.numel():
@@ -153,7 +158,7 @@ if __name__ == "__main__":
         print(f"  {nom:6s} nord {int((sub > 0).sum()):5d} | sud {int((sub < 0).sum()):5d} | "
               f"hors {int((sub == 0).sum()):5d}")
     import numpy as _np
-    _np.savez_compressed("D:/meandre-data/quebec/rive-troncons.npz",
+    _np.savez_compressed(f"{_DATA_ROOT}/quebec/rive-troncons.npz",
                          regions=_np.array(noms), rive=r.numpy(), dist_km=d.numpy(),
                          debut=_np.array([tranches[n][0] for n in noms]))
     print("")

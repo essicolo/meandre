@@ -2,11 +2,19 @@
 Factorisé depuis etl_run.py pour réutilisation par joint.py (conjoint) et les runs mono.
 compute_demand(...) -> (T, N) mm/j, fenêtres traînantes 8 j / 90 j (voir design_et_appris.md).
 """
+import os as _os
 import numpy as np
 import torch
 import torch.nn as nn
 
-ETB = "D:/meandre-data/quebec/checkpoints-etbench"
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
+# Dernier chemin en dur de la chaine d'entrainement (portage grappe, 2026-09-01) :
+# MEANDRE_DATA gouverne la racine des donnees derivees, ici comme partout ailleurs.
+ETB = f"{_os.environ.get('MEANDRE_DATA', f'{_DATA_ROOT}')}/quebec/checkpoints-etbench"
 
 
 def load_mlp(f_static, device):

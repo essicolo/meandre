@@ -20,8 +20,14 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_RQH_ROOT = _osp.environ.get("MEANDRE_RQH", "C:/Users/parse01/documents-locaux/rqh-local")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 MEMBRES = ["LN24HA", "MG24HA", "MG24HI", "MG24HK", "MG24HQ", "MG24HS"]
-PT = "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data/06_posttraitement/posttraitement_{m}.zarr"
+PT = f"{_RQH_ROOT}/rqh_2026-04/data/06_posttraitement/posttraitement_{m}.zarr"
 LOCAUX = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
           "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 T0, T1 = "2022-01-01", "2024-12-31"
@@ -71,7 +77,7 @@ for REG in [a.lower() for a in sys.argv[1:]]:
     Qs = Q[:, td.station_idx].cpu().numpy()
     del m_, Q; torch.cuda.empty_cache()
 
-    db = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb"
+    db = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb"
     con = duckdb.connect(db, read_only=True)
     st = con.execute("select station_id, node_idx from stations").fetchdf()
     idx_map = {int(v): i for i, v in enumerate(td.station_idx.cpu().numpy())}

@@ -13,12 +13,18 @@ import numpy as np, pandas as pd, xarray as xr
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_RQH_ROOT = _osp.environ.get("MEANDRE_RQH", "C:/Users/parse01/documents-locaux/rqh-local")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = sys.argv[1].lower()
 T0, T1 = "2000-01-01", "2024-12-31"
-ZARR = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
-CASR_F = f"D:/meandre-data/quebec/forcing-{REG}.nc"
-OUT = f"D:/meandre-data/quebec/forcing-{REG}-hyb.nc"
-DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb"
+ZARR = f"{_RQH_ROOT}/io_2026-04/data/03_imputation/quebec.zarr"
+CASR_F = f"{_DATA_ROOT}/quebec/forcing-{REG}.nc"
+OUT = f"{_DATA_ROOT}/quebec/forcing-{REG}-hyb.nc"
+DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb"
 
 h = BasinCache(DB).load(device="cpu")
 nc_ = h["node_coords"].numpy()

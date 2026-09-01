@@ -32,11 +32,16 @@ import numpy as np
 import pandas as pd
 import torch
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 sys.path.insert(0, ".runs/quebec")
 sys.path.insert(0, ".")
 
-BARRAGES = os.environ.get("BARRAGES_DATA", "D:/meandre-data/barrages/data")
-CKPT = os.environ.get("ETAPE0_CKPT", "D:/meandre-data/quebec/runpod/best-province.pt")
+BARRAGES = os.environ.get("BARRAGES_DATA", f"{_DATA_ROOT}/barrages/data")
+CKPT = os.environ.get("ETAPE0_CKPT", f"{_DATA_ROOT}/quebec/runpod/best-province.pt")
 SEUIL_JOURS = float(os.environ.get("ETAPE0_SEUIL", "15"))
 # parametre -> sens attendu si la regularisation est absorbee par le champ
 ATTENDU = {"K_sat_1": "-", "K_sat_2": "-", "manning_n": "+", "f_vert_1": "+",
@@ -83,19 +88,20 @@ def main():
     print(f"[etape0] {n_nodes:,} troncons | {len(st_idx)} jauges | {len(noms)} plateformes")
 
     # ── le champ appris du champion ────────────────────────────────────────
-    ck = torch.load(CKPT, map_location=dev, weights_only=False)
+    # PASSER PAR HydroModel.load, JAMAIS par un tri de cles a la main. Premiere version
+    # de ce script : je retirais moi-meme les cles de forme incompatible avant
+    # load_state_dict, ce qui ecartait spatial_encoder.fc_out en entier puisque le
+    # champion a 40 sorties et le modele courant 42. Le champ compare etait donc
+    # l'INITIALISATION ALEATOIRE, et le tableau ne mesurait rien. load() porte le
+    # rembourrage qui reprend les 40 lignes apprises et met les 2 nouvelles a zero.
     modele = HydroModel(
         n_territorial=int(terr.n_features), n_nodes=n_nodes,
         use_latent_codes=True, spatial_melt=True).to(dev)
-    modele.load_checkpoint(ck) if hasattr(modele, "load_checkpoint") else None
-    sd = ck.get("state_dict", ck)
-    own = modele.state_dict()
-    mism = [k for k, v in sd.items() if k in own and own[k].shape != v.shape]
-    for k in mism:
-        sd.pop(k)
-    modele.load_state_dict(sd, strict=False)
-    if mism:
-        print(f"[etape0] {len(mism)} cles de forme incompatible ignorees : {mism[:3]}")
+    modele.load(CKPT)
+    with torch.no_grad():
+        avant = modele.spatial_encoder.fc_out.weight.detach().clone()
+    if torch.allclose(avant, torch.zeros_like(avant)):
+        raise SystemExit("[etape0] fc_out est nul apres chargement : champ non appris")
     modele.eval()
     with torch.no_grad():
         sp = modele.spatial_encoder(node_coords, territorial)
@@ -104,6 +110,9 @@ def main():
 
     # ── qui est regularise ─────────────────────────────────────────────────
     sr = pd.read_csv(f"{BARRAGES}/stations-regulees.csv")
+    # np.isfinite et pas notna : la table du script 08 porte des station_id
+    # INFINIES, que notna() laisse passer et que astype(int) refuse.
+    sr = sr[np.isfinite(sr.station_id)].copy()
     sr["sid"] = sr.station_id.astype(float).astype(int).astype(str)
     reg = dict(zip(sr.sid, sr.jours_de_debit))
     aire = dict(zip(sr.sid, sr.aire_km2))

@@ -22,13 +22,18 @@ from pathlib import Path
 import numpy as np, torch
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").upper()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG}_LN24HA_2020"
 N_ECH = int(os.environ.get("BANC_N", "400"))
 T = 60           # jours simulés par test
 torch.set_grad_enabled(False)
 
 from hydrotel_clone.network_routing_torch import _transfert_riviere_vec, _transfert_lac_vec
 from meandre.routing.kinematic import MuskingumCunge
+
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
 
 # ── géométrie réelle des tronçons ────────────────────────────────────────────
 lignes = [l.strip() for l in (Path(PROJ) / "physitel" / "troncon.trl").read_text(encoding="latin-1").splitlines() if l.strip()]

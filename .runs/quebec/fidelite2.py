@@ -23,8 +23,14 @@ from meandre.data.hgm_loader import lire_hgm
 from hydrotel_clone.network_routing_torch import route_network_torch
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 T0, T1 = "2022-01-01", "2024-12-31"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
@@ -118,7 +124,7 @@ P["is_river"] = torch.tensor(isr, device=DEVICE)
 
 # aval et niveaux topologiques
 import duckdb, collections
-con = duckdb.connect(f"D:/meandre-data/quebec/{REG}.duckdb", read_only=True)
+con = duckdb.connect(f"{_DATA_ROOT}/quebec/{REG}.duckdb", read_only=True)
 e = con.execute("select src, dst from edges").fetchdf(); con.close()
 down = np.full(n, -1, dtype=np.int64)
 for s_, d_ in zip(e["src"].values, e["dst"].values):
@@ -167,4 +173,4 @@ for lo, hi, lib in [(0, 50, 'têtes <50'), (50, 1000, '50-1000'), (1000, 1e9, '>
     print(f"  {lib:12s} r {np.nanmedian(rs[msk]):.3f} | beta {np.nanmedian(be[msk]):.3f} (n={int(msk.sum())})")
 lacm = td.graph.is_lake.bool().cpu().numpy()
 print(f"  {'lacs':12s} r {np.nanmedian(rs[lacm]):.3f} | beta {np.nanmedian(be[lacm]):.3f} (n={int(lacm.sum())})")
-np.savez_compressed(f"D:/meandre-data/quebec/fidelite2_{REG}.npz", r=rs, beta=be, acum=Acum, lac=lacm)
+np.savez_compressed(f"{_DATA_ROOT}/quebec/fidelite2_{REG}.npz", r=rs, beta=be, acum=Acum, lac=lacm)

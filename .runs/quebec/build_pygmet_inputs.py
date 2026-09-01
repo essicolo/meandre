@@ -17,14 +17,20 @@ from scipy.interpolate import RegularGridInterpolator
 from meandre.data.basin_cache import BasinCache
 from meandre.data.eccc_loader import fetch_stations, fetch_daily
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = sys.argv[1].lower()
 Y0, Y1 = int(os.environ.get("Y0", 2000)), int(os.environ.get("Y1", 2024))
 GRID_DEG = float(os.environ.get("GRID_DEG", 0.05))
 MIN_DAYS = int(os.environ.get("MIN_DAYS", 730))
-DEM = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020/physitel/altitude.tif"
-OUT = Path(f"D:/meandre-data/pygmet/{REG}")
+DEM = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020/physitel/altitude.tif"
+OUT = Path(f"{_DATA_ROOT}/pygmet/{REG}")
 (OUT / "stndata").mkdir(parents=True, exist_ok=True)
-DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb"
+DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb"
 
 nc = BasinCache(DB).load(device="cpu")["node_coords"].numpy()
 bbox = (round(float(nc[:, 0].min()) - 0.3, 1), round(float(nc[:, 1].min()) - 0.3, 1),

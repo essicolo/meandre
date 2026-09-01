@@ -19,8 +19,14 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 CK = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
       "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -71,7 +77,7 @@ print(f"[meandre] {QM.shape[1]} noeuds x {QM.shape[0]} jours", flush=True)
 A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
 # aire drainee cumulee par noeud (topologie)
 import duckdb
-con = duckdb.connect(f"D:/meandre-data/quebec/{REG}.duckdb", read_only=True)
+con = duckdb.connect(f"{_DATA_ROOT}/quebec/{REG}.duckdb", read_only=True)
 e = con.execute("select src, dst from edges").fetchdf(); con.close()
 Acum = A.copy()
 import collections

@@ -13,9 +13,14 @@ import torch, numpy as np
 from meandre.model import HydroModel
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 CKS = sys.argv[2:] or [f"best-{REG}-etl-qc"]
-db = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb"
+db = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb"
 h = BasinCache(db).load(device="cpu"); n = h["n_nodes"]; terr = h["territorial"]
 lac = h["graph"].is_lake.bool()
 

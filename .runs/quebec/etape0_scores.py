@@ -22,11 +22,16 @@ import numpy as np
 import pandas as pd
 import torch
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 sys.path.insert(0, ".runs/quebec")
 sys.path.insert(0, ".")
 
-BARRAGES = os.environ.get("BARRAGES_DATA", "D:/meandre-data/barrages/data")
-CKPT = os.environ.get("ETAPE0_CKPT", "D:/meandre-data/quebec/runpod/best-province.pt")
+BARRAGES = os.environ.get("BARRAGES_DATA", f"{_DATA_ROOT}/barrages/data")
+CKPT = os.environ.get("ETAPE0_CKPT", f"{_DATA_ROOT}/quebec/runpod/best-province.pt")
 SEUIL_JOURS = float(os.environ.get("ETAPE0_SEUIL", "15"))
 
 
@@ -66,6 +71,7 @@ def main():
         n_forcing=6, use_temporal=False, use_residual=False,
         param_mode="nerf", column_mode="hydrotel", et_mode="linacre",
         use_latent_codes=False, spatial_melt=True, use_aquifer=True,
+        use_temperature=False,   # sinon la thermie desactive le routage par operateur
         predict_lake_params=True, routing_mode="operator-lagged").to(dev)
     if dom.get("land_cover"):
         modele.vertical_column.set_land_cover(dom["land_cover"])
@@ -83,6 +89,11 @@ def main():
             sp.k_gw = _k
             return sp
         modele.spatial_encoder.forward = _kgw
+    # Partage pluie-neige de la recette 1.0. Sans lui le seuil reste a 0 au lieu de
+    # -0.8 en bulbe humide, ce qui change 35 % de la neige (R35/R37) : la fiche
+    # d'execution du point de reprise le signale et annonce des scores FAUX.
+    modele.vertical_column.split_mode = "wet_bulb"
+    modele.vertical_column.t_neige_seuil = -0.8
     if dom.get("soil"):
         modele.vertical_column.set_calibrated_soil(dom["soil"])
     modele.load(CKPT)

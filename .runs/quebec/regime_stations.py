@@ -31,8 +31,13 @@ import urllib.request
 import duckdb
 import pandas as pd
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 BASE = "https://www.cehq.gouv.qc.ca/depot/historique_donnees/fichier"
-RACINE = os.environ.get("MEANDRE_QUEBEC", "D:/meandre-data/quebec")
+RACINE = os.environ.get("MEANDRE_QUEBEC", f"{_DATA_ROOT}/quebec")
 SORTIE = f"{RACINE}/regime-stations.csv"
 PLATS = [a.lower() for a in sys.argv[1:]] or [
     "outv", "gasp", "mont", "sagu", "slno", "abit", "slso",
@@ -60,7 +65,13 @@ def entete(sid: str) -> tuple[str | None, float | None]:
     if reg:
         # "Non influence" et "Influence" apres normalisation des accents
         r2 = reg.lower().replace("\u00e9", "e")
-        reg = "non influence" if r2.startswith("non") else ("influence" if "influence" in r2 else reg)
+        # TROIS libelles au CEHQ, pas deux : "Non influence", "Influence" et
+        # "Naturel". Ma premiere normalisation n'en gerait que deux et laissait
+        # 28 stations sous un libelle brut, invisible dans un compte par valeur.
+        if r2.startswith("non") or r2.startswith("naturel"):
+            reg = "naturel"
+        elif "influence" in r2:
+            reg = "influence"
     b = re.search(r"Bassin versant:\s*([0-9]+)", txt)
     return reg, (float(b.group(1)) if b else None)
 

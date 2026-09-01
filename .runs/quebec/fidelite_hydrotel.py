@@ -33,13 +33,19 @@ from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_node
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 # MEMBRE d'ancrage. Hydrotel est un ENSEMBLE de 6 calages équifinaux, et sur OUTV
 # LN24HA est le PLUS FAIBLE des six (0.7531 contre 0.8299 pour MG24HK, mesuré le
 # 2026-08-11). Or c'est celui qu'on ancre depuis le début : méandre hérite donc du
 # moins bon calage. FIDELITE_MEMBRE=MG24HK pour ancrer sur le meilleur.
 MEMBRE = os.environ.get("FIDELITE_MEMBRE", "LN24HA")
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/{MEMBRE}/{REG.upper()}_{MEMBRE}_2020"
+PROJ = f"{_PLAT_ROOT}/{MEMBRE}/{REG.upper()}_{MEMBRE}_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 T0, T1 = "2022-01-01", "2024-12-31"
 DATE_ETAT = "2023-08-01"
@@ -201,7 +207,7 @@ for j in range(n):
         be[j] = m_.mean() / max(h_.mean(), 1e-9)
 A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
 import duckdb, collections
-con = duckdb.connect(f"D:/meandre-data/quebec/{REG}.duckdb", read_only=True)
+con = duckdb.connect(f"{_DATA_ROOT}/quebec/{REG}.duckdb", read_only=True)
 e = con.execute("select src, dst from edges").fetchdf(); con.close()
 Acum = A.copy(); enf = collections.defaultdict(list)
 for s_, d_ in zip(e["src"].values, e["dst"].values):

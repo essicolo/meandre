@@ -33,10 +33,15 @@ from pyproj import CRS, Transformer
 from meandre.data.basin_cache import BasinCache
 from meandre.utils import paths as _paths
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "OUTV").upper()
 DB = _paths.data_path("quebec", f"{REG.lower()}.duckdb")
 OUT = _paths.data_path("quebec", f"forcing-{REG.lower()}-swin.nc")
-CASR_DIRS = ["D:/meandre-data/casr", ".runs/slso/data/casr"]
+CASR_DIRS = [f"{_DATA_ROOT}/casr", ".runs/slso/data/casr"]
 CHUNKS = ["2000-2003", "2004-2007", "2008-2011", "2012-2015", "2016-2019", "2020-2023", "2024-2024"]
 
 

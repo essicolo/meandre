@@ -4,13 +4,18 @@ le cache SLSO historique (.runs/slso/data/casr). Reprise/retry, tolère les 404.
   python .runs/quebec/fetch_casr_quebec.py
 """
 import os, sys, time, urllib.request, urllib.error
+
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 BASE = "https://hpfx.collab.science.gc.ca/~scar700/rcas-casr/data/CaSRv3.2/netcdf_tile"
-OUT = "D:/meandre-data/casr"
+OUT = f"{_DATA_ROOT}/casr"
 LEGACY = ".runs/slso/data/casr"
 os.makedirs(OUT, exist_ok=True)
-with open("D:/meandre-data/quebec/tiles_needed.txt") as f:
+with open(f"{_DATA_ROOT}/quebec/tiles_needed.txt") as f:
     TILES = [t.strip().replace("rlon", "rlon").replace("_rlat", "_rlat") for t in f if t.strip()]
 VARS = ["A_PR0_SFC", "A_TT_1.5m", "A_TD_1.5m", "P_FB_SFC", "P_FI_SFC", "P_UVC_10m"]
 CHUNKS = ["2000-2003", "2004-2007", "2008-2011", "2012-2015", "2016-2019", "2020-2023", "2024-2024"]

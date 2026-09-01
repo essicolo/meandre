@@ -26,6 +26,12 @@ from meandre.data.basin_cache import BasinCache
 from hydrotel_clone.mcguinness import mcguinness_etp
 from hydrotel_clone.linacre import linacre_etp
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 SMOKE = os.environ.get("ET_SMOKE", "0") == "1"
 REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
            "outm", "outv", "sagu", "slno", "slso", "vaud"]
@@ -43,20 +49,20 @@ BATCH = 4096
 STEPS_PER_EPOCH = 20 if SMOKE else 80
 MAX_EPOCHS = 3 if SMOKE else 40
 PATIENCE = 4
-PLATFORMS = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA"
+PLATFORMS = f"{_PLAT_ROOT}/LN24HA"
 DBS = {"slso": ".runs/slso/data/slso.duckdb"}
-FORCINGS = {"slso": "D:/meandre-data/slso/forcing-casr-corr.nc"}
+FORCINGS = {"slso": f"{_DATA_ROOT}/slso/forcing-casr-corr.nc"}
 OUT_CSV = "reports/et_bench_results.csv"
-CKPT = "D:/meandre-data/quebec/checkpoints-etbench"
+CKPT = f"{_DATA_ROOT}/quebec/checkpoints-etbench"
 rng = np.random.default_rng(0)
 torch.manual_seed(0)
 
 
 def load_region(reg):
-    db = DBS.get(reg, f"D:/meandre-data/quebec/{reg}.duckdb")
-    fx = FORCINGS.get(reg, f"D:/meandre-data/quebec/forcing-{reg}-budyko.nc")
+    db = DBS.get(reg, f"{_DATA_ROOT}/quebec/{reg}.duckdb")
+    fx = FORCINGS.get(reg, f"{_DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
     if not os.path.exists(fx):   # vaud : pas de variante budyko (région ajoutée en dernier)
-        fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
+        fx = f"{_DATA_ROOT}/quebec/forcing-{reg}.nc"
     cache = BasinCache(db)
     h = cache.load(device="cpu")
     n_nodes, node_ids = h["n_nodes"], h["node_ids"]

@@ -13,12 +13,17 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = sys.argv[1].lower()
 T0, T1 = "2000-01-01", "2024-12-31"
-PGM_DIR = f"D:/meandre-data/pygmet/{REG}/PyGMET_output/regression_outputs"
-CASR_F = f"D:/meandre-data/quebec/forcing-{REG}.nc"
-OUT = f"D:/meandre-data/quebec/forcing-{REG}-pgm.nc"
-DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb"
+PGM_DIR = f"{_DATA_ROOT}/pygmet/{REG}/PyGMET_output/regression_outputs"
+CASR_F = f"{_DATA_ROOT}/quebec/forcing-{REG}.nc"
+OUT = f"{_DATA_ROOT}/quebec/forcing-{REG}-pgm.nc"
+DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb"
 
 
 def boxcox_retransform(d, texp=4):

@@ -19,12 +19,17 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 LOCAUX = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
           "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
 AD = json.load(open("reports/deploy_adapters.json"))
-RAW = pd.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+RAW = pd.read_parquet(f"{_DATA_ROOT}/quebec/territorial-raw-QC.parquet")
 # force du transfert : 0 = aucun, 1 = structure pédotransfert complète
 FORCES = [float(x) for x in os.environ.get("PEDO_F", "0.5,1.0").split(",")]
 rows = []

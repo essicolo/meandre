@@ -32,9 +32,14 @@ from joint_data import load_region
 from recipe import set_lake_area_from_hydrolakes
 from meandre.utils.metrics import kge as kge_fn
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 CKPT = os.environ.get("SWEEP_CKPT", ".runs/quebec/checkpoints/best-outv-etl-aq30.pt")
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
 T0, T1 = "2022-01-01", "2024-12-31"
 

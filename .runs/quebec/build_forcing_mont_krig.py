@@ -11,12 +11,18 @@ import numpy as np, pandas as pd, xarray as xr
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
-T0, T1 = "2020-01-01", "2024-12-31"
-MET = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/MONT_LN24HA_2020/meteo/MONT.nc"
-CASR_F = "D:/meandre-data/quebec/forcing-mont.nc"
-OUT = "D:/meandre-data/quebec/forcing-mont-krig.nc"
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 
-h = BasinCache("D:/meandre-data/quebec/mont.duckdb").load(device="cpu")
+T0, T1 = "2020-01-01", "2024-12-31"
+MET = f"{_PLAT_ROOT}/LN24HA/MONT_LN24HA_2020/meteo/MONT.nc"
+CASR_F = f"{_DATA_ROOT}/quebec/forcing-mont.nc"
+OUT = f"{_DATA_ROOT}/quebec/forcing-mont-krig.nc"
+
+h = BasinCache(f"{_DATA_ROOT}/quebec/mont.duckdb").load(device="cpu")
 nc_ = h["node_coords"].numpy()  # (n, 2) lon/lat
 d = xr.open_dataset(MET)
 t = pd.to_datetime(d["time"].values)

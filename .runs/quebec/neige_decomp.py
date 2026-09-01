@@ -18,6 +18,11 @@ from meandre.data.basin_cache import BasinCache
 from joint_data import load_region, DATE_START, DATE_END
 from et_module import compute_demand
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 CKPT = os.environ.get("NEIGE_CKPT", ".runs/quebec/checkpoints/best-gasp-etl-ds.pt")
 SWE_REF = 15.0   # mm, même conversion SWE -> fraction que la loss (snow_swe_ref)
 SCF_SEUIL = 0.5  # fraction de couvert définissant la disparition
@@ -46,7 +51,7 @@ for REG in [a.lower() for a in sys.argv[1:]]:
     times = pd.to_datetime(r["times"]); t0 = td.train_slice.start
     tt = pd.DatetimeIndex(times[t0:])
     scf_sim = (1.0 - torch.exp(-diag.swe / SWE_REF)).cpu().numpy()
-    obs = BasinCache(".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb") \
+    obs = BasinCache(".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb") \
         .load_modis_snow(DATE_START, DATE_END, device="cpu")
     scf_obs = obs.numpy()[t0:t0 + len(tt)] if obs is not None else None
     Qs = Q.cpu().numpy()

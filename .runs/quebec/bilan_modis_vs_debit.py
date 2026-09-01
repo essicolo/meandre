@@ -14,6 +14,11 @@ sys.path.insert(0, os.getcwd()); sys.path.insert(0, ".runs/quebec")
 import tomllib, numpy as np, pandas as pd, torch, duckdb
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "gasp").lower()
 DEVICE = "cpu"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
@@ -23,7 +28,7 @@ tt = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
 
 # aires cumulées amont
 A = r["territorial"].get_physical("area_km2_local").numpy()
-con = duckdb.connect(f"D:/meandre-data/quebec/{REG}.duckdb", read_only=True)
+con = duckdb.connect(f"{_DATA_ROOT}/quebec/{REG}.duckdb", read_only=True)
 e = con.execute("select src, dst from edges").fetchdf(); con.close()
 enf = collections.defaultdict(list)
 for s_, d_ in zip(e["src"].values, e["dst"].values):

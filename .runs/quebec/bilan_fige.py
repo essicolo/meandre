@@ -16,8 +16,14 @@ from meandre.data.hydrotel_calib import load_calibrated_soil, load_linacre_nodes
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
 r = load_region(REG, dict(cfg["loss"]), device=DEVICE)
@@ -42,7 +48,7 @@ with torch.no_grad():
                             graph=td.graph, node_coords=td.node_coords, territorial=r["territorial"],
                             withdrawals=td.withdrawals, day_of_year=td.day_of_year,
                             return_diagnostics=True)
-np.savez_compressed(f"D:/meandre-data/quebec/bilan_fige_{REG}.npz",
+np.savez_compressed(f"{_DATA_ROOT}/quebec/bilan_fige_{REG}.npz",
                     etp=diag.etp.cpu().numpy().astype(np.float32),
                     etr=diag.etr.cpu().numpy().astype(np.float32),
                     swe=diag.swe.cpu().numpy().astype(np.float32),

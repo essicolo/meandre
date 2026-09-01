@@ -13,11 +13,16 @@ import numpy as np, pandas as pd, xarray as xr, duckdb
 from pyproj import CRS, Transformer
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = sys.argv[1].upper()
 TEST = "--test" in sys.argv
-DB = f"D:/meandre-data/quebec/{REG.lower()}.duckdb"
-OUT = f"D:/meandre-data/quebec/forcing-{REG.lower()}.nc"
-CASR_DIRS = ["D:/meandre-data/casr", ".runs/slso/data/casr"]
+DB = f"{_DATA_ROOT}/quebec/{REG.lower()}.duckdb"
+OUT = f"{_DATA_ROOT}/quebec/forcing-{REG.lower()}.nc"
+CASR_DIRS = [f"{_DATA_ROOT}/casr", ".runs/slso/data/casr"]
 CHUNKS = ["2000-2003", "2004-2007", "2008-2011", "2012-2015", "2016-2019", "2020-2023", "2024-2024"]
 SIGMA = 5.670374e-8; ALBEDO = 0.23; EMIS = 0.95
 DRIZZLE_H = float(os.environ.get("DRIZZLE_H", "0.3")); SHIFT_H = -5; ET_MM = 450.0

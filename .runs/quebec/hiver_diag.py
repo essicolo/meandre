@@ -33,10 +33,16 @@ from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 from recipe import set_lake_area_from_hydrolakes
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_RQH_ROOT = _osp.environ.get("MEANDRE_RQH", "C:/Users/parse01/documents-locaux/rqh-local")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 CKPT = sys.argv[2] if len(sys.argv) > 2 else ".runs/quebec/checkpoints/best-outv-etl-aq30.pt"
 MEMBRE_REF = os.environ.get("MEMBRE_REF", "MG24HK")
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 T0, T1 = "2022-01-01", "2024-12-31"
 
@@ -90,7 +96,7 @@ fonte = npy(D.snowmelt); qbase = npy(D.q_baseflow); rech = npy(D.recharge)
 lat_mm = npy(D.lateral_mm); etr = npy(D.etr)
 
 # membre Hydrotel de référence
-z = xr.open_zarr(f"C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data/06_posttraitement/"
+z = xr.open_zarr(f"{_RQH_ROOT}/rqh_2026-04/data/06_posttraitement/"
                  f"posttraitement_{MEMBRE_REF}.zarr")
 cols = appariement_provincial(REG, [int(node_ids[i]) for i in sid],
                               np.asarray(z["troncon_id"].values).astype(str))

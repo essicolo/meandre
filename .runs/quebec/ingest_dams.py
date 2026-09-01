@@ -14,7 +14,12 @@ import pandas as pd
 import duckdb
 from meandre.data.basin_cache import BasinCache
 
-XLS = "D:/meandre-data/quebec/barrages/repertoire_des_barrages.xls"
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
+XLS = f"{_DATA_ROOT}/quebec/barrages/repertoire_des_barrages.xls"
 REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
            "outm", "outv", "sagu", "slno", "slso", "vaud"]
 DBS = {"slso": ".runs/slso/data/slso.duckdb"}
@@ -40,7 +45,7 @@ print(f"[dams] répertoire : {len(df)} ouvrages géolocalisés | capacité total
 
 R = 6371.0
 for reg in REGIONS:
-    db = DBS.get(reg, f"D:/meandre-data/quebec/{reg}.duckdb")
+    db = DBS.get(reg, f"{_DATA_ROOT}/quebec/{reg}.duckdb")
     cache = BasinCache(db)
     h = cache.load(device="cpu")
     coords = h["node_coords"].numpy()

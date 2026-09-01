@@ -96,7 +96,14 @@ def _memmap_forcing(parts, names, device):
     N = sum(p["n_nodes"] for p in parts)
     rep = f"{_mpaths_root()}/quebec/cache"
     os.makedirs(rep, exist_ok=True)
-    cle = "-".join(names) + f"_{T}x{N}x{C}"
+    # LA VARIANTE DE FORCAGE DOIT ENTRER DANS LA CLE. Sans elle, changer
+    # JOINT_FX_SUFFIX relit silencieusement le cache de l'autre variante : meme
+    # liste de regions, memes dimensions, meme nom de fichier. Mesure le 2026-08-31,
+    # c'est ce qui faisait rendre 0.68 et 0.36 au MEME modele sur les MEMES stations,
+    # le forcage differant de 70 % de son echelle entre les deux chargements. Trois
+    # jours de diagnostic sont partis la-dedans.
+    _sfx = os.environ.get("JOINT_FX_SUFFIX", "-defaut") or "-defaut"
+    cle = "-".join(names) + _sfx + f"_{T}x{N}x{C}"
     if len(cle) > 120:                      # noms de fichiers Windows
         import hashlib
         cle = f"dom{len(names)}_{T}x{N}x{C}_{hashlib.md5(cle.encode()).hexdigest()[:8]}"

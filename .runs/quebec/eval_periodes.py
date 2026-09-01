@@ -30,10 +30,16 @@ from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_node
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 CKPT = sys.argv[2] if len(sys.argv) > 2 else None      # None = modèle ANCRÉ
 MEMBRE = os.environ.get("FIDELITE_MEMBRE", "LN24HA")
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/{MEMBRE}/{REG.upper()}_{MEMBRE}_2020"
+PROJ = f"{_PLAT_ROOT}/{MEMBRE}/{REG.upper()}_{MEMBRE}_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PERIODES = [("validation", "2019-01-01", "2021-12-31"), ("tenu de côté", "2022-01-01", "2024-12-31")]
 
@@ -49,7 +55,7 @@ tt = pd.DatetimeIndex(pd.to_datetime(r["times"])[td.train_slice.start:])
 FORC = td.forcing[:, :, :6]
 if CKPT:
     import torch.nn as _nn
-    _ETB = "D:/meandre-data/quebec/checkpoints-etbench"
+    _ETB = f"{_DATA_ROOT}/quebec/checkpoints-etbench"
     _nrm = torch.load(f"{_ETB}/norm.pt", weights_only=False)
     _HH, _HC = _nrm["h_hist"], _nrm["h_comp"]
     _FS = r["territorial"].n_features

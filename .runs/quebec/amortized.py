@@ -12,6 +12,11 @@ import numpy as np, pandas as pd, torch, xgboost as xgb
 from meandre.model import HydroModel
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 # régions dont on possède une calibration (checkpoint) — sources d'expérience
 SRC = {
     "gasp": ".runs/quebec/checkpoints/best-gasp-etl-ds.pt",
@@ -22,13 +27,13 @@ SRC = {
 CIBLES = ["K_sat_1", "K_sat_2", "K_sat_3", "porosity_1", "Z2", "Z3", "C_f", "T_melt",
           "K_c", "k_gw", "K_musk_hours", "x_musk"]
 LOG = {"K_sat_1", "K_sat_2", "K_sat_3", "k_gw"}
-raw = pd.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+raw = pd.read_parquet(f"{_DATA_ROOT}/quebec/territorial-raw-QC.parquet")
 
 rows = []
 for reg, ck in SRC.items():
     if not os.path.exists(ck):
         print(f"[{reg}] checkpoint absent, ignoré"); continue
-    h = BasinCache(f"D:/meandre-data/quebec/{reg}.duckdb" if reg != "slso" else ".runs/slso/data/slso.duckdb").load(device="cpu")
+    h = BasinCache(f"{_DATA_ROOT}/quebec/{reg}.duckdb" if reg != "slso" else ".runs/slso/data/slso.duckdb").load(device="cpu")
     m = HydroModel(n_nodes=h["n_nodes"], n_territorial=h["territorial"].n_features, n_forcing=6,
                    use_temporal=False, use_residual=False, use_travel_time_attn=False, param_mode="nerf",
                    column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,

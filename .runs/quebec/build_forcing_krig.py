@@ -13,12 +13,18 @@ from meandre.data.basin_cache import BasinCache
 
 T0, T1 = "2020-01-01", "2024-12-31"
 import sys
-REG = sys.argv[1].upper()
-MET = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG}_LN24HA_2020/meteo/{REG}.nc"
-CASR_F = f"D:/meandre-data/quebec/forcing-{REG.lower()}.nc"
-OUT = f"D:/meandre-data/quebec/forcing-{REG.lower()}-krig.nc"
 
-h = BasinCache(f"D:/meandre-data/quebec/{REG.lower()}.duckdb").load(device="cpu")
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+REG = sys.argv[1].upper()
+MET = f"{_PLAT_ROOT}/LN24HA/{REG}_LN24HA_2020/meteo/{REG}.nc"
+CASR_F = f"{_DATA_ROOT}/quebec/forcing-{REG.lower()}.nc"
+OUT = f"{_DATA_ROOT}/quebec/forcing-{REG.lower()}-krig.nc"
+
+h = BasinCache(f"{_DATA_ROOT}/quebec/{REG.lower()}.duckdb").load(device="cpu")
 nc_ = h["node_coords"].numpy()  # (n, 2) lon/lat
 d = xr.open_dataset(MET)
 t = pd.to_datetime(d["time"].values)

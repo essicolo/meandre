@@ -31,8 +31,14 @@ from meandre.data.hydrotel_calib import (load_calibrated_soil, load_linacre_node
 from meandre.data.hgm_loader import lire_hgm
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 T0, T1 = "2022-01-01", "2024-12-31"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
@@ -233,4 +239,4 @@ mois = pd.DatetimeIndex(ti[hd][:nT]).month
 print("  cycle mensuel méandre/hydrotel : " +
       " ".join(f"{mo}:{np.nanmean(QM[mois == mo]) / max(np.nanmean(QH[mois == mo]), 1e-9):.2f}"
                for mo in range(1, 13)))
-np.savez_compressed(f"D:/meandre-data/quebec/compat_{REG}.npz", r=rs, beta=be, lac=lacm)
+np.savez_compressed(f"{_DATA_ROOT}/quebec/compat_{REG}.npz", r=rs, beta=be, lac=lacm)

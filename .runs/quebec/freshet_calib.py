@@ -15,13 +15,18 @@ from meandre.utils.state import HydroState
 from joint_data import load_region
 from et_module import compute_demand
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 SENS = float(os.environ.get("FRESHET_SENS", "3.0"))  # j de CM par +1 °C (banc gasp)
 CKPT = os.environ.get("FRESHET_CKPT", ".runs/quebec/checkpoints/best-gasp-etl-ds.pt")
 CLAMP = float(os.environ.get("FRESHET_CLAMP", "2.0"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 os.environ.setdefault("JOINT_FX_SUFFIX", "-none")
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
-CHAMP = pd.read_parquet("D:/meandre-data/quebec/champ_freshet_QC.parquet")
+CHAMP = pd.read_parquet(f"{_DATA_ROOT}/quebec/champ_freshet_QC.parquet")
 rows, dts = [], []
 
 for REG in [a.lower() for a in sys.argv[1:]]:
@@ -96,7 +101,7 @@ for REG in [a.lower() for a in sys.argv[1:]]:
           f"| KGE {k0:.4f} -> {k1:.4f} ({k1-k0:+.4f})", flush=True)
     del m; torch.cuda.empty_cache()
 
-pd.concat(dts).to_parquet("D:/meandre-data/quebec/champ_freshet_dT.parquet")
+pd.concat(dts).to_parquet(f"{_DATA_ROOT}/quebec/champ_freshet_dT.parquet")
 df = pd.DataFrame(rows); df.to_csv("reports/freshet_calib.csv", index=False)
 print(df.to_string(index=False))
 json.dump(dict(sensibilite_j_par_C=SENS, clamp_C=CLAMP, checkpoint=os.path.basename(CKPT),

@@ -16,6 +16,11 @@ from meandre.data.modis_loader import fetch_modis_snow_daily
 
 REG = sys.argv[1].lower()
 import platform
+
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 _D = "/mnt/d" if platform.system() == "Linux" else "D:"
 BASIN_DB = f"{_D}/meandre-data/quebec/{REG}.duckdb" if REG != "slso" else ".runs/slso/data/slso.duckdb"
 CACHE_DIR = f"{_D}/meandre-data/modis10"

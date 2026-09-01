@@ -35,6 +35,11 @@ import zarr
 
 from meandre.utils import paths as _paths
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 RESULTS = f"{_paths.DATA_ROOT}/quebec/results"
 STORE = f"{_paths.DATA_ROOT}/quebec/carte/hydro.zarr"
 

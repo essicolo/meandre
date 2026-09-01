@@ -10,6 +10,11 @@ physique (0 degre) et au prior de litterature que meandre utilise quand il appre
 import numpy as np
 import xarray as xr
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 SEUILS = {"sagu": (3.3518, 0.4034, -2.5450, 7.1968, 8.5248, 10.0978),
           "outv": (3.3518, 0.4034, -2.5450, 7.1968, 8.5248, 10.0978),
           "abit": (3.3518, 0.4034, -2.5450, 7.1968, 8.5248, 10.0978),
@@ -19,7 +24,7 @@ SEUILS = {"sagu": (3.3518, 0.4034, -2.5450, 7.1968, 8.5248, 10.0978),
 
 for reg, (sc, sf, sd, tc, tf, td) in SEUILS.items():
     try:
-        ds = xr.open_dataset(f"D:/meandre-data/quebec/forcing-{reg}-hyb.nc")
+        ds = xr.open_dataset(f"{_DATA_ROOT}/quebec/forcing-{reg}-hyb.nc")
     except Exception as e:
         print(f"[{reg}] {e}")
         continue

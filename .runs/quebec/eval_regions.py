@@ -12,8 +12,14 @@ sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, duckdb, xarray as xr
 from meandre.data.basin_cache import BasinCache
 
-QC = "D:/meandre-data/quebec"
-ZARR = r"C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data/06_posttraitement/posttraitement_LN24HA.zarr"
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_RQH_ROOT = _osp.environ.get("MEANDRE_RQH", "C:/Users/parse01/documents-locaux/rqh-local")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
+QC = f"{_DATA_ROOT}/quebec"
+ZARR = rf"{_RQH_ROOT}/rqh_2026-04/data/06_posttraitement/posttraitement_LN24HA.zarr"
 T0, T1 = "2022-01-01", "2024-12-31"
 REGIONS = [r.upper() for r in sys.argv[1:]] or ["LABI", "CNDC", "CNDA", "CNDE", "CNDB", "CNDD",
     "ABIT", "MONT", "SAGU", "OUTM", "SLNO", "OUTV", "GASP", "SLSO"]

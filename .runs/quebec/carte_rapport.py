@@ -33,6 +33,11 @@ from ckpt_util import a_des_latents
 import joint_data
 from et_module import compute_demand
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 GLOBAL = "best-gasp-etl-ds"
 LOCAUX = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
           "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
@@ -40,7 +45,7 @@ REGIONS = [a.lower() for a in sys.argv[1:]] or [
     "outv", "gasp", "sagu", "mont", "slno", "slso",
     "abit", "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "outm", "vaud"]
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-SORTIE = os.environ.get("MEANDRE_RAPPORT", "D:/meandre-data/quebec/rapport")
+SORTIE = os.environ.get("MEANDRE_RAPPORT", f"{_DATA_ROOT}/quebec/rapport")
 os.makedirs(SORTIE, exist_ok=True)
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
 AD = json.load(open("reports/deploy_adapters.json"))

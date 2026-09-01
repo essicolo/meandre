@@ -26,7 +26,7 @@ from ckpt_util import a_des_latents
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
 DATE = os.environ.get("HT_DATE", "2023-08-01")
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 ETAT = f"{PROJ}/etat"
 CK = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
       "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
@@ -45,6 +45,11 @@ if bv is None:
 
 # UHRH -> troncon (meme agregation que hydrotel_calib : moyenne ponderee par l'aire UHRH)
 from pathlib import Path as _P
+
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
 tr = _parse_troncon(_P(PROJ) / "physitel" / "troncon.trl")
 uh = pd.read_csv(f"{PROJ}/physitel/uhrh.csv", sep=";")
 col_a = [c for c in uh.columns if "aire" in c.lower() or "area" in c.lower() or "km" in c.lower()]

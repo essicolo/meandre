@@ -29,13 +29,18 @@ from meandre.utils.metrics import kge as kge_fn
 from meandre.utils.state import HydroState
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+
 REGIONS = [a.lower() for a in sys.argv[1:]] or ["slso", "mont", "gasp"]
 TAG = os.environ.get("JOINT_TAG", "pilote3")
 N_EPOCHS = int(os.environ.get("JOINT_EPOCHS", "30"))
 LR_OVERRIDE = float(os.environ.get("JOINT_LR", "0"))
 USE_ZN = os.environ.get("JOINT_ZN", "1") != "0"   # JOINT_ZN=0 -> NeRF pur sans latents (pilote3c)
 USE_ANCHORS = os.environ.get("JOINT_ANCHORS", "0") == "1"   # recette v7 : Linacre + fonte régionale PAR RÉGION (pilote3d)
-PLATFORMS = "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA"
+PLATFORMS = f"{_PLAT_ROOT}/LN24HA"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BASE_CFG = ".runs/quebec/config/gasp-v4.toml"   # source des poids loss + hyperparams
 CKPT = f".runs/quebec/checkpoints/best-joint-{TAG}.pt"

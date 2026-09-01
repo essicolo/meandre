@@ -42,10 +42,15 @@ import numpy as np
 import pandas as pd
 import torch
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 sys.path.insert(0, ".runs/quebec")
 sys.path.insert(0, ".")
 
-CKPT = os.environ.get("BIS_CKPT", "D:/meandre-data/quebec/runpod/best-province.pt")
+CKPT = os.environ.get("BIS_CKPT", f"{_DATA_ROOT}/quebec/runpod/best-province.pt")
 PLATS = (os.environ.get("BIS_PLATEFORMES") or "outv,gasp,mont,sagu,slno,slso").split(",")
 
 
@@ -107,23 +112,33 @@ def main():
     n = int(sl.sum())
     q_obs = dom["val_data"].q_obs
 
-    res = {}
-    for nom, w in (("avec prelevements", td.withdrawals), ("SANS prelevements", None)):
+    res, detail = {}, {}
+    # Couper les prelevements = mettre les VALEURS a zero, pas passer None : simulate
+    # appelle withdrawals.gw_withdrawal(t) sans garde et leve une AttributeError APRES
+    # avoir paye toute la simulation. Ce banc est mort dessus le 2026-08-29.
+    import copy as _cp
+    _z = _cp.copy(td.withdrawals)
+    for _a in ("_vals", "_vals_gw"):
+        if hasattr(_z, _a):
+            setattr(_z, _a, getattr(_z, _a) * 0.0)
+    for nom, w in (("avec prelevements", td.withdrawals), ("SANS prelevements", _z)):
         with torch.no_grad():
             Q, _ = modele.simulate(
                 forcing=td.forcing[:],
                 initial_state=HydroState.zeros(int(dom["n_nodes"]), device=dev),
                 graph=td.graph, node_coords=td.node_coords, territorial=terr,
                 withdrawals=w, day_of_year=td.day_of_year)
-        par = {}
+        par, lignes = {}, []
         for j, brut in enumerate(dom["station_ids"]):
-            plat = str(brut).split(":")[0]
+            plat, _, sid = str(brut).partition(":")
             node = int(td.station_idx[j])
             k = kge(q_obs[-n:, j].detach().cpu().numpy(),
                     Q[sl][:, node].detach().cpu().numpy())
             if np.isfinite(k):
                 par.setdefault(plat, []).append(k)
+                lignes.append({"plateforme": plat, "station_id": sid, "kge": k})
         res[nom] = par
+        detail[nom] = pd.DataFrame(lignes)
         tous = [x for v in par.values() for x in v]
         print(f"[{nom}] mediane {np.median(tous):.4f} sur {len(tous)} stations", flush=True)
         del Q
@@ -138,6 +153,24 @@ def main():
             continue
         ma, mb = float(np.median(a)), float(np.median(b))
         print(f"{plat:>12} | {ma:8.4f} | {mb:8.4f} | {mb - ma:+8.4f} | {len(a)}")
+
+    # ── PAR REGIME, et c'est la seule statistique honnete ────────────────────
+    # Remarque d'Essi : une station NOTEE INFLUENCEE a la source porte des barrages aux
+    # operateurs diversifies que le modele ne represente pas, donc un mauvais score y
+    # est ATTENDU. Une mediane unique confond ce que le modele rate parce qu'il est faux
+    # avec ce qu'il rate parce qu'on ne lui a rien donne pour le representer.
+    try:
+        reg = pd.read_csv(f"{_DATA_ROOT}/quebec/regime-stations.csv")
+        reg["station_id"] = reg.station_id.astype(str)
+        for nom, d in detail.items():
+            d = d.merge(reg[["station_id", "regime"]], on="station_id", how="left")
+            print("")
+            print(f"[{nom}] KGE median par regime")
+            print(d.groupby(d.regime.fillna("inconnu")).kge.agg(["count", "median"]).round(4).to_string())
+            print(d.pivot_table(index="plateforme", columns=d.regime.fillna("inconnu"),
+                                values="kge", aggfunc="median").round(3).to_string())
+    except FileNotFoundError:
+        print("table des regimes absente")
 
     print("\nLECTURE. Un ecart franchement POSITIF, surtout sur mont, sagu et slso, dit que")
     print("la reingestion des prelevements du 26 aout porte la regression. Un ecart nul")

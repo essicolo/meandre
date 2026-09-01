@@ -21,6 +21,11 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 LOCAUX = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
           "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 AREFS = [float(x) for x in os.environ.get("LACS_AREF", "1,5,20").split(",")]  # km2 de lac
@@ -53,7 +58,7 @@ for REG in [a.lower() for a in sys.argv[1:]]:
     A = gp("area_km2_local").to(DEVICE)
     # lake_fraction n'est disponible que NORMALISEE dans le cache ; les valeurs
     # physiques sont dans le parquet d'attributs bruts provincial.
-    _raw = pd.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+    _raw = pd.read_parquet(f"{_DATA_ROOT}/quebec/territorial-raw-QC.parquet")
     _raw = _raw[_raw.region == REG]
     assert len(_raw) == n, f"{REG}: {len(_raw)} lignes brutes pour {n} noeuds"
     fl = torch.tensor(_raw["lake_fraction"].values, dtype=torch.float32, device=DEVICE)

@@ -38,8 +38,13 @@ from domain_data import load_domain
 from meandre.model import HydroModel
 from meandre.utils.state import HydroState
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 CKPT = sys.argv[1] if len(sys.argv) > 1 else \
-    "D:/meandre-data/quebec/runpod/best-province.pt"
+    f"{_DATA_ROOT}/quebec/runpod/best-province.pt"
 PLATEFORMES = [a.lower() for a in sys.argv[2:]] or ["gasp", "mont", "sagu", "outv"]
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))

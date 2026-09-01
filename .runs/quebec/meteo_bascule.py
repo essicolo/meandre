@@ -15,10 +15,16 @@ import numpy as np, pandas as pd, xarray as xr
 from scipy.spatial import cKDTree
 from meandre.data.eccc_loader import fetch_stations, fetch_daily
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_RQH_ROOT = _osp.environ.get("MEANDRE_RQH", "C:/Users/parse01/documents-locaux/rqh-local")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 Y0 = int(sys.argv[1]) if len(sys.argv) > 1 else 2015
 Y1 = int(sys.argv[2]) if len(sys.argv) > 2 else 2020
 BBOX = (-80.0, 44.5, -60.0, 53.5)
-ZARR = "C:/Users/parse01/documents-locaux/rqh-local/io_2026-04/data/03_imputation/quebec.zarr"
+ZARR = f"{_RQH_ROOT}/io_2026-04/data/03_imputation/quebec.zarr"
 
 st = fetch_stations(BBOX)
 for c in ("lon", "lat"):
@@ -45,5 +51,5 @@ if not parts:
     raise SystemExit("aucune donnée ECCC récupérée")
 df = pd.concat(parts, ignore_index=True).drop_duplicates()
 print(f"observations quotidiennes : {len(df):,} lignes | colonnes {list(df.columns)[:8]}", flush=True)
-df.to_parquet(f"D:/meandre-data/quebec/eccc_daily_{Y0}_{Y1}.parquet")
+df.to_parquet(f"{_DATA_ROOT}/quebec/eccc_daily_{Y0}_{Y1}.parquet")
 print("-> eccc_daily parquet écrit")

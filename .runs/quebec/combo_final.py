@@ -18,8 +18,14 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-PROJ = f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{REG.upper()}_LN24HA_2020"
+PROJ = f"{_PLAT_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020"
 CK = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
       "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -40,7 +46,7 @@ m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6
 m.load(ck); m.eval(); m.vertical_column.etp_channel = 6
 
 # pedotransfert : motif spatial normalise a mediane 1, mi-intensite
-raw = pd.read_parquet("D:/meandre-data/quebec/territorial-raw-QC.parquet")
+raw = pd.read_parquet(f"{_DATA_ROOT}/quebec/territorial-raw-QC.parquet")
 raw = raw[raw.region == REG]
 assert len(raw) == n
 p = saxton_rawls(raw.f_sand.values, raw.f_clay.values)

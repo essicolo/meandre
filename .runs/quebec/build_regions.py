@@ -12,9 +12,15 @@ from pathlib import Path
 from pyproj import CRS, Transformer
 from meandre.data.basin_cache import BasinCache
 
-PLATEFORMES = Path("C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA")
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
+PLATEFORMES = Path(f"{_PLAT_ROOT}/LN24HA")
 STATIONS = Path(r"C:\Users\parse01\documents-locaux\rqh-local\rqh_2026-04\data\07_stations\stations_concatenees.nc")
-OUT = Path("D:/meandre-data/quebec"); OUT.mkdir(parents=True, exist_ok=True)
+OUT = Path(f"{_DATA_ROOT}/quebec"); OUT.mkdir(parents=True, exist_ok=True)
 REGIONS = sys.argv[1:] or ["GASP", "VAUD", "MONT", "SLSO", "SLNO", "SAGU", "LABI", "ABIT",
                            "OUTM", "OUTV", "CNDA", "CNDB", "CNDC", "CNDD", "CNDE"]
 

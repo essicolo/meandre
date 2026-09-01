@@ -20,6 +20,11 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+
 CK = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
       "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -28,7 +33,7 @@ AD = json.load(open("reports/deploy_adapters.json"))
 rows = []
 
 def lire_lacs_trl(reg, node_ids):
-    p = Path(f"C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/{reg.upper()}_LN24HA_2020/physitel/troncon.trl")
+    p = Path(f"{_PLAT_ROOT}/LN24HA/{reg.upper()}_LN24HA_2020/physitel/troncon.trl")
     lignes = [l.strip() for l in p.read_text(encoding="latin-1").splitlines() if l.strip()]
     d = {}
     for l in lignes[3:]:

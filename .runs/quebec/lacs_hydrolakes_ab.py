@@ -22,12 +22,17 @@ from joint_data import load_region
 from et_module import compute_demand
 from ckpt_util import a_des_latents
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 LOCAUX = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
           "outv": "best-outv-etl-qc", "slso": "best-slso-etl-canon", "slno": "best-slno-etl-canon"}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
 AD = json.load(open("reports/deploy_adapters.json"))
-HL = pd.read_parquet("D:/meandre-data/quebec/lacs_hydrolakes.parquet")
+HL = pd.read_parquet(f"{_DATA_ROOT}/quebec/lacs_hydrolakes.parquet")
 KMAX = float(os.environ.get("HL_KMAX", "0.01"))    # borne haute actuelle du modele
 # La borne BASSE du modele (1e-6 /s) est 30x AU-DESSUS du k physique d'un lac de 368 j
 # (3.1e-8 /s) : les bornes ont ete calibrees pour beta = 1.5, ou k n'a pas les memes

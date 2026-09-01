@@ -21,13 +21,18 @@ import numpy as np, pandas as pd, xarray as xr
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = sys.argv[1].lower()
 K = int(os.environ.get("MIX_K", "6"))          # voisines retenues
 D0 = float(os.environ.get("MIX_D0", "55"))     # km, croisement mesuré
 PEXP = float(os.environ.get("MIX_P", "3"))
-DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"D:/meandre-data/quebec/{REG}.duckdb"
-FX = f"D:/meandre-data/quebec/forcing-{REG}.nc"
-OUT = f"D:/meandre-data/quebec/forcing-{REG}-mix.nc"
+DB = ".runs/slso/data/slso.duckdb" if REG == "slso" else f"{_DATA_ROOT}/quebec/{REG}.duckdb"
+FX = f"{_DATA_ROOT}/quebec/forcing-{REG}.nc"
+OUT = f"{_DATA_ROOT}/quebec/forcing-{REG}-mix.nc"
 
 ds = xr.open_dataset(FX)
 F = ds["forcing"].values.copy()                # (T, N, 6) : P, Tmin, Tmax, R_n, u2, e_a
@@ -36,7 +41,7 @@ h = BasinCache(DB).load(device="cpu"); nc = h["node_coords"].numpy()
 lat_col = 0 if 40 < float(np.nanmean(nc[:, 0])) < 62 else 1
 lon_n, lat_n = nc[:, 1 - lat_col], nc[:, lat_col]
 
-d = pd.concat([pd.read_parquet(f) for f in glob.glob("D:/meandre-data/eccc/daily_*.parquet")],
+d = pd.concat([pd.read_parquet(f) for f in glob.glob(f"{_DATA_ROOT}/eccc/daily_*.parquet")],
               ignore_index=True).drop_duplicates(["climate_id", "date"])
 d["date"] = pd.to_datetime(d["date"])
 d = d[d.date.isin(times)]

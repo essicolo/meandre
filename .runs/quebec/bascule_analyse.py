@@ -18,11 +18,16 @@ import numpy as np, pandas as pd, xarray as xr
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 Y0 = int(sys.argv[1]) if len(sys.argv) > 1 else 2016
 Y1 = int(sys.argv[2]) if len(sys.argv) > 2 else 2019
 REGS = ["gasp","sagu","mont","labi","abit","cnda","cndb","cndc","cndd","cnde","outm","outv","slno","slso","vaud"]
 
-d = pd.concat([pd.read_parquet(f) for f in glob.glob("D:/meandre-data/eccc/daily_*.parquet")],
+d = pd.concat([pd.read_parquet(f) for f in glob.glob(f"{_DATA_ROOT}/eccc/daily_*.parquet")],
               ignore_index=True)
 d = d.drop_duplicates(["climate_id", "date"])
 d["date"] = pd.to_datetime(d["date"])
@@ -44,8 +49,8 @@ tree = cKDTree(Pst)
 # CaSR au nœud le plus proche de chaque station (tous les nœuds de la province)
 noeuds, casr = [], []
 for reg in REGS:
-    db = ".runs/slso/data/slso.duckdb" if reg == "slso" else f"D:/meandre-data/quebec/{reg}.duckdb"
-    fx = f"D:/meandre-data/quebec/forcing-{reg}.nc"
+    db = ".runs/slso/data/slso.duckdb" if reg == "slso" else f"{_DATA_ROOT}/quebec/{reg}.duckdb"
+    fx = f"{_DATA_ROOT}/quebec/forcing-{reg}.nc"
     if not os.path.exists(fx):
         continue
     h = BasinCache(db).load(device="cpu"); nc = h["node_coords"].numpy()
@@ -57,7 +62,7 @@ for reg in REGS:
     noeuds.append(proj(nc[:, 1-lat_col], nc[:, lat_col])); casr.append(P)
     print(f"  [{reg}] {P.shape[1]} nœuds, {P.shape[0]} jours", flush=True)
 Pn = np.vstack(noeuds); Pcasr = np.hstack(casr)
-tn = pd.to_datetime(xr.open_dataset(f"D:/meandre-data/quebec/forcing-gasp.nc")["time"].values)
+tn = pd.to_datetime(xr.open_dataset(f"{_DATA_ROOT}/quebec/forcing-gasp.nc")["time"].values)
 tn = tn[(tn.year >= Y0) & (tn.year <= Y1)]
 tree_n = cKDTree(Pn)
 print(f"[casr] {Pn.shape[0]} nœuds | {Pcasr.shape[0]} jours", flush=True)

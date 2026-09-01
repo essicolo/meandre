@@ -19,7 +19,12 @@ import numpy as np, pandas as pd, geopandas as gpd
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache
 
-SHP = glob.glob("D:/meandre-data/hydrolakes/**/HydroLAKES_points_v10.shp", recursive=True)[0]
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
+SHP = glob.glob(f"{_DATA_ROOT}/hydrolakes/**/HydroLAKES_points_v10.shp", recursive=True)[0]
 REGS = ["gasp", "sagu", "mont", "labi", "abit", "cnda", "cndb", "cndc", "cndd", "cnde",
         "outm", "outv", "slno", "slso", "vaud"]
 DMAX = float(os.environ.get("HL_DMAX_KM", "10"))
@@ -33,7 +38,7 @@ tree = cKDTree(proj(lon, lat))
 
 out = []
 for reg in REGS:
-    db = ".runs/slso/data/slso.duckdb" if reg == "slso" else f"D:/meandre-data/quebec/{reg}.duckdb"
+    db = ".runs/slso/data/slso.duckdb" if reg == "slso" else f"{_DATA_ROOT}/quebec/{reg}.duckdb"
     try:
         h = BasinCache(db).load(device="cpu")
     except Exception as e:
@@ -58,6 +63,6 @@ for reg in REGS:
           f"profondeur méd {np.median(sub['Depth_avg'].values):.1f} m", flush=True)
 
 df = pd.concat(out, ignore_index=True)
-df.to_parquet("D:/meandre-data/quebec/lacs_hydrolakes.parquet")
+df.to_parquet(f"{_DATA_ROOT}/quebec/lacs_hydrolakes.parquet")
 print(f"\n{len(df)} nœuds-lacs appariés au total -> lacs_hydrolakes.parquet")
 print(df[["lake_area_km2", "depth_avg_m", "res_time_j", "dist_km"]].describe().round(2).to_string())

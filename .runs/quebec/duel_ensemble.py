@@ -15,8 +15,14 @@ import tomllib, numpy as np, pandas as pd, torch, xarray as xr
 from meandre.data.hydrotel_calib import appariement_provincial
 from joint_data import load_region
 
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_RQH_ROOT = _osp.environ.get("MEANDRE_RQH", "C:/Users/parse01/documents-locaux/rqh-local")
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+
 REG = (sys.argv[1] if len(sys.argv) > 1 else "outv").lower()
-BASE = "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data/06_posttraitement"
+BASE = f"{_RQH_ROOT}/rqh_2026-04/data/06_posttraitement"
 MEMBRES = ["LN24HA", "MG24HA", "MG24HI", "MG24HK", "MG24HQ", "MG24HS"]
 T0, T1 = "2022-01-01", "2024-12-31"
 
@@ -90,7 +96,7 @@ print(f"  MEILLEUR membre par station    : {np.nanmedian(best_par_station):.4f}"
 # journal des runs si un résultat existe pour CETTE région, sinon on ne dit rien.
 import glob as _gl
 _ms = []
-for _f in _gl.glob(f"D:/meandre-data/quebec/log-{REG}-socle*.txt"):
+for _f in _gl.glob(f"{_DATA_ROOT}/quebec/log-{REG}-socle*.txt"):
     for _l in open(_f, encoding="utf-8", errors="ignore"):
         if "HELD-OUT" in _l and "médian" in _l:
             _ms.append((os.path.basename(_f), _l.split("médian")[1].split("|")[0].strip()))
@@ -100,7 +106,7 @@ if _ms:
         print(f"    {_n:34s} {_v}")
 else:
     print("\n  (aucun run méandre trouvé pour cette région : pas de repère affiché)")
-np.savez_compressed(f"D:/meandre-data/quebec/duel_ensemble_{REG}.npz",
+np.savez_compressed(f"{_DATA_ROOT}/quebec/duel_ensemble_{REG}.npz",
                     membres=np.array(list(res.keys())), kge=M,
                     med=med_par_station, best=best_par_station,
                     troncons=np.array(tro))

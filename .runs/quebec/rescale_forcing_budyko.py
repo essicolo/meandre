@@ -8,6 +8,11 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, os.getcwd())
 import numpy as np, pandas as pd, xarray as xr, duckdb
 from meandre.data.basin_cache import BasinCache
+
+# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+# execution hors du poste d'origine impossible. Defauts inchanges.
+import os as _osp
+_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 _LAMBDA = 2.45
 def re_ext(doy, lat_deg):
     lat = np.radians(lat_deg)
@@ -16,7 +21,7 @@ def re_ext(doy, lat_deg):
     ws = np.arccos(np.clip(-np.tan(lat)*np.tan(dec), -1, 1))
     return 37.586*dr*(ws*np.sin(lat)*np.sin(dec) + np.cos(lat)*np.cos(dec)*np.sin(ws))
 for reg in [a.lower() for a in sys.argv[1:]]:
-    nc_p = f"D:/meandre-data/quebec/forcing-{reg}.nc"; db = f"D:/meandre-data/quebec/{reg}.duckdb"
+    nc_p = f"{_DATA_ROOT}/quebec/forcing-{reg}.nc"; db = f"{_DATA_ROOT}/quebec/{reg}.duckdb"
     d = xr.open_dataset(nc_p); F = d["forcing"].values.copy(); V = list(d["var"].values.astype(str))
     t = pd.to_datetime(d["time"].values); d.close()
     lat = BasinCache(db).load(device="cpu")["node_coords"][:, 1].numpy().mean()
@@ -34,7 +39,7 @@ for reg in [a.lower() for a in sys.argv[1:]]:
         P = P2
     cur = F[:, :, 0].mean()*365.25
     F[:, :, 0] = (F[:, :, 0]*(P/cur)).astype(np.float32)
-    out = f"D:/meandre-data/quebec/forcing-{reg}-budyko.nc"
+    out = f"{_DATA_ROOT}/quebec/forcing-{reg}-budyko.nc"
     if os.path.exists(out): os.remove(out)
     xr.Dataset({"forcing": (("time", "node", "var"), F)},
                coords={"time": t, "node": np.arange(F.shape[1]), "var": V}).to_netcdf(out)
