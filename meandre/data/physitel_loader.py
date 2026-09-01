@@ -475,6 +475,7 @@ def _build_graph(
     # (A's downstream point is B's upstream point → water flows A → B)
 
     # Build to_junct → troncon lookup (rivers only; lakes have to_junct=-1)
+    _widths: dict[int, float] = {x["id"]: x.get("width_m", 0.0) for x in troncons}
     to_junct_to_tid: dict[int, list[tuple[int, float]]] = collections.defaultdict(list)
     for t in troncons:
         if t["type"] == 1 and t.get("to_junct", -1) >= 0:
@@ -548,6 +549,17 @@ def _build_graph(
             # Fallback: ds_reach (when junction numbering has gaps).
             # Skip for reaches whose to_junct is a lake outlet junction —
             # those are downstream of a lake and terminal in the domain.
+            # GARDE DE VRAISEMBLANCE (2026-09-01). Sur OUTM, le dernier jeton de la ligne
+            # du troncon exutoire vaut 138, et le troncon 1 (exutoire du domaine, 463 m de
+            # large, 62 996 km2) etait branche sur le troncon 138, un ruisseau de 6.5 m. Ce
+            # seul lien fermait un cycle ; le briseur de cycles coupait alors la sortie du
+            # lac 96, enracinant les 2379 troncons sur un lac de 2 079 km2. La station du
+            # troncon 46 ne recevait plus que 40 % de son eau (beta 0.51) et la region
+            # tombait a 0.45 contre 0.77 pour Hydrotel. Une riviere ne se jette jamais dans
+            # un chenal un ordre de grandeur plus etroit : le repli refuse ce cas.
+            _ws, _wd = t.get("width_m", 0.0), _widths.get(t["downstream_id"], 0.0)
+            if _ws > 0 and _wd > 0 and _wd < 0.3 * _ws:
+                continue
             ds = t["downstream_id"]
             if ds != tid and ds != 0 and ds in troncon_idx:
                 _add_edge(tid, ds, t["length_m"])
