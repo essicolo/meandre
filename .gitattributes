@@ -1,0 +1,6 @@
+
+# Scripts destines a une grappe Linux : fins de ligne LF imposees. Avec des CRLF, bash
+# echoue avec un message trompeur ("$'\r': command not found"), et l'ordonnanceur ne dit
+# rien d'utile. Piege paye plusieurs fois lors des transferts vers le pod.
+*.sh text eol=lf
+*.sbatch text eol=lf
