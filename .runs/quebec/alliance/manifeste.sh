@@ -24,8 +24,10 @@ ajoute "$D/quebec/*.parquet"
 ajoute "$D/quebec/checkpoints-etbench/*"
 # Observations auxiliaires (MODIS, GRACE, CanSWE) si elles sont en cache.
 ajoute "$D/quebec/aux/*"
-# Plateformes Hydrotel : SEULS les dossiers de calage lus par la recette du socle.
-ajoute "$P/LN24HA/*_LN24HA_2020"
+# Plateformes Hydrotel : SEULS les fichiers TEXTE de calage. Les rasters (altitude,
+# pente, occupation en .tif) et les fichiers de forme pesent 99 % de l'arbre et ne sont
+# jamais lus par la recette : 4.4 Go contre 38 Mo une fois ecartes (mesure 2026-09-01).
+find "$P/LN24HA" -type f \n  | grep -vE "simulation/simulation/resultat|/meteo/" \n  | grep -viE "\.(tif|shp|dbf|shx|prj|sbn|sbx|qpj|cpg|db|png|jpg)$|Thumbs" >> "$M"
 n=$(wc -l < "$M")
 o=$(du -ch $(cat "$M") 2>/dev/null | tail -1 | cut -f1)
 echo "manifeste : $n entrees, $o"
