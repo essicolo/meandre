@@ -248,7 +248,11 @@ model = HydroModel(
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
     routing_mode=mcfg.get("routing_mode", "operator-lagged"),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
-    compile_soil=bool(mcfg.get("compile_soil", True)),
+    # ETL_COMPILE=0 : desactive torch.compile du sol. Necessaire la ou Triton est
+    # absent (grappes de l'Alliance, 2026-09-01) ; la compilation n'apporte que de la
+    # vitesse, jamais un resultat different.
+    compile_soil=(bool(mcfg.get("compile_soil", True))
+                  and os.environ.get("ETL_COMPILE", "1") == "1"),
     # AQUIFÈRE RESTITUANT (spec Essi 2026-07-28) : recharge -> réservoir lent par nœud,
     # vidange k_gw NeRF (prior = récessions MESURÉES des jauges). Banc partition :
     # krec 5e-5 + k_gw 0.068 = baseflow 24%, +0.07 KGE en inférence pure.
