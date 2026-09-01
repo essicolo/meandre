@@ -15,10 +15,12 @@ pip install --no-index --upgrade pip
 # torch est fourni compile pour les cartes de la grappe : ne JAMAIS le prendre sur PyPI.
 # mpi4py : la roue netCDF4 de l'Alliance est compilee avec le support MPI et refuse de
 # s'importer sans lui. L'erreur apparait tard, au premier ouverture de forcage.
-pip install --no-index torch numpy pandas xarray netCDF4 mpi4py duckdb tomli
+# Liste etablie par inventaire des imports du pilote (2026-09-01), apres avoir
+# decouvert quatre paquets manquants un a un, chacun au prix d'une tache perdue.
+pip install --no-index torch numpy scipy pandas xarray netCDF4 mpi4py duckdb zarr tqdm
 python - <<'PY'
 import torch
-import pyarrow, netCDF4, xarray, duckdb
+import pyarrow, netCDF4, xarray, duckdb, scipy, zarr, tqdm
 print("netCDF4", netCDF4.__version__)
 print("torch", torch.__version__, "| cuda:", torch.version.cuda,
       "| pyarrow", pyarrow.__version__)
