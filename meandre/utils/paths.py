@@ -48,9 +48,13 @@ def resolve_run_path(p: str | Path, run_dir: str | Path) -> Path:
 import os as _os
 
 DATA_ROOT = _os.environ.get("MEANDRE_DATA", "D:/meandre-data")
-PLATFORMS_ROOT = _os.environ.get(
-    "MEANDRE_PLATEFORMES",
-    "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+# Two spellings accepted: the original French name and the English one used by the
+# cluster scripts. A silent fallback to the workstation default cost a debugging
+# round on Narval (2026-09-01): the job ran twenty minutes before failing on a
+# Windows path it could not possibly reach.
+PLATFORMS_ROOT = (_os.environ.get("MEANDRE_PLATEFORMES")
+                  or _os.environ.get("MEANDRE_PLATFORMS")
+                  or "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
 RQH_ROOT = _os.environ.get(
     "MEANDRE_RQH",
     "C:/Users/parse01/documents-locaux/rqh-local/rqh_2026-04/data")

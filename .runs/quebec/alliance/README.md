@@ -40,7 +40,7 @@ Sur le poste, `bash .runs/quebec/alliance/manifeste.sh`. Il liste ce qui doit mo
 
 ## Étape 3, la veille : déposer le dépôt
 
-Le dépôt est petit et n'a pas besoin de Globus : `git clone` depuis le nœud de connexion, ou une archive par `scp`. La chaîne d'entraînement est entièrement portable depuis le 2026-09-01 : elle lit ses racines dans `MEANDRE_DATA`, `MEANDRE_PLATFORMS` et `MEANDRE_RQH`, et ne porte plus aucun chemin absolu.
+Le dépôt est petit et n'a pas besoin de Globus : `git clone` depuis le nœud de connexion, ou une archive par `scp`. La chaîne d'entraînement est entièrement portable depuis le 2026-09-01 : elle lit ses racines dans `MEANDRE_DATA`, `MEANDRE_PLATEFORMES` et `MEANDRE_RQH`, et ne porte plus aucun chemin absolu.
 
 ## Étape 4, au bureau : transférer les données
 
