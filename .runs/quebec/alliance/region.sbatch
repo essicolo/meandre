@@ -15,7 +15,7 @@
 set -euo pipefail
 REGIONS=(outv gasp sagu mont slno slso abit cnda cndb cndc cndd cnde labi outm vaud)
 REG=${REGIONS[$SLURM_ARRAY_TASK_ID]}
-module purge && module load StdEnv/2023 python/3.11 scipy-stack
+module purge && module load StdEnv/2023 gcc arrow python/3.11 scipy-stack
 source "$HOME/venv-meandre/bin/activate"
 cd "${MEANDRE_RACINE:-$HOME/meandre}"
 # Les donnees vivent dans l'espace de projet ; on les copie sur le disque LOCAL du noeud,
