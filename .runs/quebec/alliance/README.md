@@ -1,4 +1,4 @@
-# Porter la flotte méandre sur Fir (Alliance de recherche numérique)
+# Porter la flotte méandre sur une grappe de l'Alliance
 
 Procédure en sept étapes. Les trois premières se font la veille, sans transférer un octet ; les quatre autres se déclenchent quand la connexion est bonne. Chaque étape produit une sortie vérifiable, et aucune n'engage la suivante.
 
@@ -6,10 +6,13 @@ Procédure en sept étapes. Les trois premières se font la veille, sans transf�
 
 Les quinze régions sont indépendantes : sur le poste elles se suivent, sur la grappe elles partent ensemble. Une nuit de vingt heures devient l'attente d'une seule région, environ deux heures, plus le temps de file. Il n'y a pas de facturation à l'heure : ce qui se répartit entre les groupes est une priorité d'ordonnancement calculée sur la consommation passée, et un accès inutilisé ne consomme rien.
 
-## Étape 1, la veille : sonder le compte
+## Étape 1, la veille : sonder les trois grappes et en choisir une
 
-Sur le nœud de connexion, `bash .runs/quebec/alliance/sonde.sh`. La sortie donne le nom du compte à passer à `--account`, les cartes offertes, les quotas d'espace et la présence de PyTorch dans la logithèque locale. Rien d'autre ne peut être décidé avant de connaître ces quatre choses.
+Les accès à Fir, Narval et Rorqual sont accordés, et la procédure est identique sur les trois : même ordonnanceur, même pile logicielle. Une seule différence compte : les données ne se partagent pas entre grappes, donc le transfert se fait vers une seule d'entre elles.
 
+Sur le nœud de connexion de chacune, `bash .runs/quebec/alliance/sonde.sh`, une minute et aucune ressource de calcul consommée. Trois critères tranchent, dans cet ordre. Le compte disponible d'abord : une allocation peut n'exister que sur certaines grappes, et sans compte utilisable rien ne se soumet. L'attente en file ensuite, qui varie fortement de l'une à l'autre. Les cartes offertes enfin, sachant que le modèle tient dans huit gigaoctets de mémoire vidéo : les cartes les plus modestes conviennent et se réservent plus vite que les plus grosses.
+
+La sortie donne aussi le nom du compte à passer à `--account`, les quotas d'espace et la présence de PyTorch dans la logithèque locale. La sortie donne le nom du compte à passer à `--account`, les cartes offertes, les quotas d'espace et la présence de PyTorch dans la logithèque locale.
 ## Étape 2, la veille : dresser le manifeste
 
 Sur le poste, `bash .runs/quebec/alliance/manifeste.sh`. Il liste ce qui doit monter et sa taille, mesurée le 2026-09-01 à 20 Go pour 86 entrées. Les 47 Go de tuiles CaSR brutes ne montent pas : elles ne servent qu'à construire les forçages, déjà construits. Le fichier produit sert de liste à Globus, puis de contrôle à l'arrivée.
