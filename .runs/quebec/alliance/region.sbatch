@@ -18,7 +18,16 @@
 #SBATCH --output=%x-%A_%a.out
 set -euo pipefail
 RACINE=${MEANDRE_RACINE:-$HOME/meandre}
-PROJET=${PROJET:-$HOME/projects/$(id -gn)/$USER}
+# Le groupe primaire n'est pas toujours celui de l'allocation (id -gn donne "atlas01"
+# la ou le dossier s'appelle "def-atlas01") : on cherche le dossier qui porte les
+# donnees plutot que de deviner son nom. Une tache est morte en douze secondes sur
+# cette devinette le 2026-09-02.
+if [ -z "${PROJET:-}" ]; then
+  for _c in "$HOME"/projects/*/"$USER"; do
+    [ -d "$_c/meandre/donnees" ] && PROJET="$_c" && break
+  done
+  PROJET=${PROJET:-$HOME/projects/$(id -gn)/$USER}
+fi
 TRAVAIL=${TRAVAIL:-$HOME/scratch}
 JOURNAUX=$TRAVAIL/meandre/journaux
 mkdir -p "$JOURNAUX" "$TRAVAIL/meandre/checkpoints"
