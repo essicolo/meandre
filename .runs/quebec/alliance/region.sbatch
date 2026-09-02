@@ -31,6 +31,9 @@ exec > "$JOURNAUX/$REG-$SLURM_ARRAY_JOB_ID.log" 2>&1
 module purge && module load StdEnv/2023 gcc arrow mpi4py python/3.11 scipy-stack
 source "$HOME/venv-meandre/bin/activate"
 cd "$RACINE"
+# git ne versionne pas les dossiers vides : sans cette ligne, une tache s'entraine
+# vingt minutes puis meurt au moment de sauvegarder son point de reprise.
+mkdir -p .runs/quebec/checkpoints
 
 # Les donnees vivent dans l'espace de projet ; on les copie sur le disque LOCAL du noeud,
 # beaucoup plus rapide et sans concurrence entre les taches du tableau.
