@@ -28,6 +28,7 @@ from meandre.temporal.state_noise import CorrelatedStateNoise
 from meandre.utils.diagnostics import SimDiagnostics
 from meandre.utils.noise_head import HeteroscedasticNoiseHead, SpatialNoiseHead
 from meandre.utils.state import HydroState
+import os as _os
 # VerticalColumn (colonne native legacy) importée paresseusement dans __init__
 # uniquement quand column_mode != "hydrotel" (découplage du clone Hydrotel).
 
@@ -380,7 +381,42 @@ class HydroModel(nn.Module):
                     theta3=frac * spatial_params.porosity_3)
             self.vertical_column.setup_simulate(
                 spatial_params, territorial, node_coords, state)
+        # ECHELLE PHYSIQUE DE LA CONSTANTE DE MUSKINGUM (MEANDRE_KMUSK_PHYS=1).
+        #
+        # Mesure le 2026-09-02 : le retard de la simulation croit avec le NOMBRE de
+        # troncons traverses (correlation de rang 0.64 avec l'aire du bassin, 0.60 avec
+        # le compte d'amonts) et n'a aucune relation avec le noyau de versant (-0.02).
+        # Signature d'un delai ajoute a chaque troncon. Or K_musk_hours est borne
+        # [4, 48] h alors qu'un troncon de 3 a 5 km parcouru a 0.5-1.5 m/s demande 0.6 a
+        # 3 h : LA BORNE INFERIEURE EST DEJA DEUX A QUATRE FOIS TROP GRANDE, et le champ
+        # s'installe a 24 h, vingt fois le temps physique. Le retard mesure vaut un a
+        # trois jours selon la taille du bassin et coute les 0.03 a 0.08 de correlation
+        # qui nous separent d'Hydrotel, lequel n'a aucun retard sur SLSO, OUTV et GASP.
+        #
+        # La correction garde la variation apprise mais la pose sur l'echelle du
+        # troncon : la valeur bornee [4, 48] est lue comme une position relative, puis
+        # etalee entre un quart et quatre fois le temps de parcours physique. Sans
+        # longueur de troncon disponible, le comportement historique est conserve.
         K_musk = spatial_params.K_musk_hours * 3600.0  # hours → seconds
+        if _os.environ.get("MEANDRE_KMUSK_PHYS", "0") == "1":
+            # Longueur du troncon, deduite du graphe : chaque lien porte la longueur de
+            # son troncon AMONT (edge_attr[:, 0]). Le troncon exutoire n'a pas de lien
+            # sortant ; il herite de la mediane, ce qui est sans consequence puisqu'il
+            # ne route vers personne.
+            _lon = getattr(self, "_reach_len_m", None)
+            if _lon is None or _lon.shape[0] != spatial_params.K_musk_hours.shape[0]:
+                _n = spatial_params.K_musk_hours.shape[0]
+                _lon = torch.zeros(_n, device=K_musk.device, dtype=K_musk.dtype)
+                _src = graph.edge_index[0]
+                _lon[_src] = graph.edge_attr[:, 0].to(K_musk.dtype).to(K_musk.device)
+                _med = _lon[_lon > 0].median() if (_lon > 0).any() else torch.tensor(1.0)
+                _lon = torch.where(_lon > 0, _lon, _med)
+                self._reach_len_m = _lon
+            if _lon is not None:
+                _cel = float(_os.environ.get("MEANDRE_CELERITE_MS", "1.0"))
+                _tphys = _lon.to(K_musk.dtype).to(K_musk.device) / _cel
+                _pos = ((spatial_params.K_musk_hours - 4.0) / 44.0).clamp(0.0, 1.0)
+                K_musk = _tphys * (0.25 + 3.75 * _pos)
         x_musk = spatial_params.x_musk
 
         # Params de lac par nœud (NeRF) — constants dans le temps, posés sur la
