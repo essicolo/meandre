@@ -579,3 +579,21 @@ LE TEST QUI DÉPARTAGE NE DÉPEND NI DE PHYSITEL NI DES PÉDOTRANSFERTS. La cond
 **Vitesse.** Une simulation SLSO complète (24 ans, 2900 tronçons) prend **6 min 13 sur A100 avec la compilation du sol**, contre 27 min sans elle et 6 min en local : la colonne est dominée par le lancement de petits noyaux, pas par le calcul, et `torch.compile` y vaut un facteur quatre et demi. Le KGE est identique dans les deux cas (0,5737), donc la compilation ne change que la vitesse. Extrapolation : simulation provinciale des quinze régions en tableau, six à dix minutes de temps réel ; entraînement de trente époques, environ quatre heures au lieu de vingt en séquence.
 
 **Portée.** Les quinze régions sont indépendantes, donc un tableau de tâches les entraîne en parallèle : la nuit de vingt heures en local devient l'attente d'une seule région. Coût nul. Procédure et scripts dans `.runs/quebec/alliance/`.
+
+## R58 — L'Outaouais amont n'échouait pas, son réseau était inversé (2026-09-02)
+
+**Statut : établi et corrigé.** Chaque ligne de `troncon.trl` finit par l'identifiant du tronçon aval, et le repli de `_build_graph` l'utilisait sans contrôle. Sur OUTM, la ligne du tronçon 1 (l'exutoire du domaine, 463 m de large, 62 996 km²) finit par 138, un ruisseau de 6,5 m : l'exutoire a été branché dessus. Ce lien fermait un cycle, le briseur de cycles a coupé la sortie du lac 96, et les 2379 tronçons se sont enracinés sur un lac de 2 079 km².
+
+**Ce que ça produisait.** La station 041902 recevait 40 % de son bassin : rapport de volume 0,51 avec une corrélation de 0,91, et un débit spécifique de 6,5 L/s/km² contre 14 à 18 pour ses voisines. La région valait 0,448 contre 0,770 pour l'ensemble Hydrotel, et j'ai successivement soupçonné les barrages, le donneur, la météo et les paramètres de sol avant de regarder la topologie.
+
+**Après correction** : 041902 passe de 0,448 à 0,639 et son débit spécifique à 15,0 L/s/km², la région passe de 0,448 à 0,639, l'écart à Hydrotel tombe de 0,322 à 0,131.
+
+**Invariant à vérifier désormais sur tout domaine construit** : la racine de l'arbre doit être le tronçon de plus grande aire drainée. Mesuré sur dix régions, OUTM était la seule à 0,03 ; toutes les autres à 1,00.
+
+## R59 — Sept sorties du champ spatial ne sont lues par personne (2026-09-02)
+
+**Statut : établi, correction à faire.** Sur les 42 champs produits par le réseau spatial, un audit de gradient (`.runs/quebec/audit_gradients.py`) montre que `manning_n`, `interception_capacity`, `rain_hours`, `frost_alpha`, `alpha_T`, `f_wetland` et le champ de canopée n'apparaissent dans aucune équation de la physique : gradient exactement nul, aucun usage dans `hydrotel_column`, `routing` ou `model`. Le réseau consacre de la capacité à prédire des quantités que rien ne consomme, et leurs termes de prior tirent sur le tronc partagé.
+
+**À ne pas confondre avec l'imposition légitime.** Les 23 champs imposés par la recette du socle sont bien des paramètres de sol (b, psis, nn, mm, omegpi, fsa/fse/fsi, cin, slope, z1-z3) ; leur gradient nul est voulu. `K_atm` et `alpha_T` sont morts parce que `use_temperature=False`, ce qui est un choix, pas un défaut.
+
+**Conséquence mesurée.** Seuls K_sat (44 % de variation relative), k_gw (10 %) et T_melt (6 %) varient d'un tronçon à l'autre ; les 35 autres champs sont des constantes. Le champ de 42 paramètres se comporte comme un champ de trois, ce qui explique que l'entraînement apporte peu et que le transfert dépende autant du donneur.

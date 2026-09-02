@@ -19,7 +19,16 @@ _PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-l
 _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 
 PLATEFORMES = Path(f"{_PLAT_ROOT}/LN24HA")
-STATIONS = Path(r"C:\Users\parse01\documents-locaux\rqh-local\rqh_2026-04\data\07_stations\stations_concatenees.nc")
+# Le fichier des observations a suivi la chaine RQH sur le disque de donnees ; a l'ancien
+# emplacement, la reconstruction d'une region produisait une base SANS AUCUNE STATION,
+# en silence, et la region devenait inevaluable (2026-09-02).
+_STATIONS_CANDIDATS = [
+    "D:/rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
+    f"{_DATA_ROOT}/../rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
+    r"C:\Users\parse01\documents-locaux\rqh-local\rqh_2026-04\data\07_stations\stations_concatenees.nc",
+]
+STATIONS = Path(next((c for c in _STATIONS_CANDIDATS if _osp.path.exists(str(c))),
+                     _STATIONS_CANDIDATS[0]))
 OUT = Path(f"{_DATA_ROOT}/quebec"); OUT.mkdir(parents=True, exist_ok=True)
 REGIONS = sys.argv[1:] or ["GASP", "VAUD", "MONT", "SLSO", "SLNO", "SAGU", "LABI", "ABIT",
                            "OUTM", "OUTV", "CNDA", "CNDB", "CNDC", "CNDD", "CNDE"]
