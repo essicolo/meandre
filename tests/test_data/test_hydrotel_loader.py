@@ -84,11 +84,19 @@ def _write_troncon(path: Path, reaches: list[dict]) -> None:
                 f"{length} {width} {slope} {n_uhrh} {uhrh_str} {ds}\n"
             )
         else:
-            # Lake: no path nodes for simplicity
+            # Lac : le bloc metrique n'est pas (longueur, largeur, pente, v4) mais
+            # (surface m2, profondeur moyenne m, coefficient de tarage, exposant).
+            # Mesure du 2026-09-03 sur six regions : l'exposant vaut 1.500 partout et
+            # la racine carree du premier champ donne 660 a 810 m, la dimension d'un
+            # petit lac. Pas de noeuds de parcours ici, pour rester minimal.
             upstream = r.get("upstream_node", r["id"])
+            aire = r.get("lake_area_m2", 500_000.0)
+            prof = r.get("lake_depth_m", 3.5)
+            k = r.get("lake_rating_k", 8.0)
+            beta = r.get("lake_rating_beta", 1.5)
             lines.append(
                 f"    {r['id']} {rtype} {upstream} 0 "
-                f"{length} {width} {slope} 1.5 {n_uhrh} {uhrh_str} {ds}\n"
+                f"{aire} {prof} {k} {beta} {n_uhrh} {uhrh_str} {ds}\n"
             )
     path.write_text("".join(lines), encoding="latin-1")
 
@@ -263,17 +271,45 @@ class TestParseTroncon:
         assert troncons[0]["downstream_id"] == 2
 
     def test_lake_reach_parsed(self, tmp_path):
+        """Le bloc metrique d'un lac porte une SURFACE, pas une longueur.
+
+        Lu comme une longueur, ce champ donnait a chaque lac un troncon de plusieurs
+        centaines de kilometres (mediane 437 a 656 km sur les six regions inspectees le
+        2026-09-03, maximum 8831 km). La longueur d'ecoulement retenue est la dimension
+        lineaire du lac, racine carree de la surface.
+        """
         reaches = [
             {"id": 1, "type": 2, "upstream_node": 1,
-             "length_m": 50000.0, "width_m": 500.0, "slope": 0.001,
+             "lake_area_m2": 640_000.0, "lake_depth_m": 3.5,
+             "lake_rating_k": 8.0, "lake_rating_beta": 1.5,
              "uhrh_ids": [1, 2, 3], "downstream_id": 1},  # outlet (self)
         ]
         _write_troncon(tmp_path / "troncon.trl", reaches)
         troncons = _parse_troncon(tmp_path / "troncon.trl")
 
         assert troncons[0]["type"] == 2
-        assert troncons[0]["length_m"] == pytest.approx(50000.0)
+        assert troncons[0]["lake_area_m2"] == pytest.approx(640_000.0)
+        assert troncons[0]["lake_depth_m"] == pytest.approx(3.5)
+        assert troncons[0]["lake_rating_beta"] == pytest.approx(1.5)
+        # 640 000 m2 -> 800 m de cote, une longueur d'ecoulement plausible.
+        assert troncons[0]["length_m"] == pytest.approx(800.0)
         assert troncons[0]["uhrh_ids"] == [1, 2, 3]
+
+    def test_lake_length_stays_plausible(self, tmp_path):
+        """Aucun lac ne doit produire un troncon plus long que la plus longue riviere."""
+        reaches = [
+            {"id": 1, "type": 2, "upstream_node": 1, "lake_area_m2": 9_000_000.0,
+             "uhrh_ids": [1], "downstream_id": 2},
+            {"id": 2, "type": 1, "upstream_node": 2, "downstream_node": 3,
+             "length_m": 5000.0, "width_m": 20.0, "slope": 0.01,
+             "uhrh_ids": [2], "downstream_id": 2},
+        ]
+        _write_troncon(tmp_path / "troncon.trl", reaches)
+        troncons = _parse_troncon(tmp_path / "troncon.trl")
+
+        lac = next(t for t in troncons if t["type"] == 2)
+        assert lac["length_m"] == pytest.approx(3000.0)  # racine de 9 km2
+        assert lac["length_m"] < 50_000.0
 
     def test_reach_count(self, tmp_path):
         reaches = [

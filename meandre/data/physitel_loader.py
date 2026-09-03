@@ -322,15 +322,44 @@ def _parse_troncon(path: Path) -> list[dict]:
             ptr = 4  # start of length
             n_metric = 3  # length, width, slope
         else:
-            # Lake: id type from_junct n_path [path_nodes] length width v3 v4 n_uhrh [uhrh_ids] ds_reach
+            # Lake: id type from_junct n_path [path_nodes] AREA DEPTH k beta n_uhrh
+            #       [uhrh_ids] ds_reach
+            #
+            # MESURE 2026-09-03 : ce bloc de quatre nombres N'EST PAS (longueur, largeur,
+            # v3, v4). Sur les six regions inspectees le quatrieme vaut 1.500 pour tous
+            # les lacs (l'exposant de la loi de deversoir) et le premier a une mediane de
+            # 437 000 a 656 000 dont la racine carree vaut 661 a 810 m, soit la dimension
+            # lineaire d'un petit lac : c'est une SURFACE en metres carres. Le deuxieme
+            # (mediane 3.2 a 4.1 m) est une profondeur moyenne, le troisieme (7 a 9.5) le
+            # coefficient de tarage.
+            #
+            # Lu comme une longueur, ce champ donnait a chaque lac un troncon de 437 a
+            # 656 km, contre 3 a 5 km pour une riviere, et jusqu'a 8831 km. Deux effets :
+            # le temps de parcours en jours (longueur / 86400) valait 5 a 8 jours par lac
+            # au lieu d'un, et toute mesure d'un temps de parcours physique a partir de
+            # cet attribut etait fausse d'un facteur cent (c'est ce qui a invalide le banc
+            # du Muskingum physique du 2026-09-02, ou la Gaspesie perdait 0.19 de KGE).
+            # La largeur ainsi lue valait la profondeur, ce qui faisait refuser des liens
+            # riviere -> lac legitimes au garde-fou de largeur.
             to_junct = -1
             n_path = int(tokens[3])
             lake_outlets = [int(tokens[4 + i]) for i in range(n_path)]
-            ptr = 4 + n_path  # start of length
-            n_metric = 4      # length, width, val3, val4
+            ptr = 4 + n_path
+            n_metric = 4
 
-        length_m = float(tokens[ptr])
-        width_m = float(tokens[ptr + 1])
+        if type_code == 1:
+            length_m = float(tokens[ptr])
+            width_m = float(tokens[ptr + 1])
+        else:
+            lake_area_m2 = float(tokens[ptr])
+            lake_depth_m = float(tokens[ptr + 1])
+            lake_rating_k = float(tokens[ptr + 2])
+            lake_rating_beta = float(tokens[ptr + 3])
+            # Longueur d'ecoulement a travers le lac : la dimension lineaire, racine de la
+            # surface. Defendable et du bon ordre de grandeur (660 a 810 m en mediane),
+            # la ou l'ancienne lecture donnait des centaines de kilometres.
+            length_m = float(np.sqrt(max(lake_area_m2, 0.0)))
+            width_m = length_m
         ptr += n_metric
 
         n_uhrh = int(tokens[ptr])
@@ -340,7 +369,7 @@ def _parse_troncon(path: Path) -> list[dict]:
 
         downstream_id = int(tokens[ptr])
 
-        troncons.append({
+        enregistrement = {
             "id": reach_id,
             "type": type_code,
             "length_m": length_m,
@@ -350,7 +379,15 @@ def _parse_troncon(path: Path) -> list[dict]:
             "to_junct": to_junct,
             "lake_outlets": lake_outlets,
             "downstream_id": downstream_id,
-        })
+        }
+        if type_code != 1:
+            enregistrement.update({
+                "lake_area_m2": lake_area_m2,
+                "lake_depth_m": lake_depth_m,
+                "lake_rating_k": lake_rating_k,
+                "lake_rating_beta": lake_rating_beta,
+            })
+        troncons.append(enregistrement)
 
     return troncons
 
@@ -476,6 +513,7 @@ def _build_graph(
 
     # Build to_junct → troncon lookup (rivers only; lakes have to_junct=-1)
     _widths: dict[int, float] = {x["id"]: x.get("width_m", 0.0) for x in troncons}
+    _types: dict[int, int] = {x["id"]: x.get("type", 1) for x in troncons}
     to_junct_to_tid: dict[int, list[tuple[int, float]]] = collections.defaultdict(list)
     for t in troncons:
         if t["type"] == 1 and t.get("to_junct", -1) >= 0:
@@ -557,8 +595,11 @@ def _build_graph(
             # troncon 46 ne recevait plus que 40 % de son eau (beta 0.51) et la region
             # tombait a 0.45 contre 0.77 pour Hydrotel. Une riviere ne se jette jamais dans
             # un chenal un ordre de grandeur plus etroit : le repli refuse ce cas.
+            # La comparaison n'a de sens qu'entre deux RIVIERES : une riviere qui se jette
+            # dans un lac est le cas normal, et le lac n'a pas de largeur de chenal.
             _ws, _wd = t.get("width_m", 0.0), _widths.get(t["downstream_id"], 0.0)
-            if _ws > 0 and _wd > 0 and _wd < 0.3 * _ws:
+            _aval_riviere = _types.get(t["downstream_id"]) == 1
+            if _aval_riviere and _ws > 0 and _wd > 0 and _wd < 0.3 * _ws:
                 continue
             ds = t["downstream_id"]
             if ds != tid and ds != 0 and ds in troncon_idx:
