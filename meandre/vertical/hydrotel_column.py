@@ -484,10 +484,29 @@ class HydrotelColumn(nn.Module):
         # = optionnelle, pas un prérequis (objectif découplage).
         if not et_classes:
             et_classes.append((fsa, _JBP, _LEAF["default"], _ROOT["default"]))
-        # z des couches : calibrés Hydrotel si ancré (cohérence ETR/gel/sol), sinon NeRF
-        z11, z22, z33 = self.z1, float(sp.Z2.mean()), float(sp.Z3.mean())
+        # z des couches : calibrés Hydrotel si ancré (cohérence ETR/gel/sol), sinon NeRF.
+        #
+        # GRADIENT (2026-09-03). `float(sp.Z2.mean())` faisait DEUX choses à la fois :
+        # il fournissait un scalaire au maillage de gel, qui en exige un pour compter ses
+        # intervalles, et il alimentait la voie racinaire de l'évapotranspiration. Sur
+        # cette seconde voie la conversion en flottant coupe le graphe : Z2 et Z3 n'y
+        # recevaient aucun gradient, et toute leur variation spatiale était écrasée par
+        # une moyenne. Asymétrie silencieuse, le sol les lisant par ailleurs comme des
+        # tenseurs. `calcule_etr` accepte déjà l'un ou l'autre (il convertit les scalaires
+        # en tenseurs), donc les deux usages se séparent sans risque.
+        # MEANDRE_Z_TENSEUR=0 restitue l'ancien comportement, pour comparaison.
+        _z_tenseur = os.environ.get("MEANDRE_Z_TENSEUR", "1") == "1"
+        # .detach() explicite : ces deux scalaires ne servent QU'A dimensionner le
+        # maillage de gel. Sans lui, torch emet un avertissement de conversion qui
+        # finirait par masquer une vraie fuite de gradient.
+        z22_s = float(sp.Z2.detach().mean())
+        z33_s = float(sp.Z3.detach().mean())
+        z11 = self.z1
+        z22, z33 = (sp.Z2, sp.Z3) if _z_tenseur else (z22_s, z33_s)
         if self._calib_soil is not None and self._calib_z is not None:
             z11, z22, z33 = self._calib_z
+            z22_s = float(z22.detach().mean()) if torch.is_tensor(z22) else float(z22)
+            z33_s = float(z33.detach().mean()) if torch.is_tensor(z33) else float(z33)
         # K_c (coefficient cultural) par nœud, prédit par le NeRF (borné [0.3,1.5],
         # prior vers 0.85). Multiplie l'ETP → corrige la sur-évaporation McGuinness
         # et laisse le NeRF caler le volume (β) par nœud. Levier de découplage.
@@ -500,7 +519,8 @@ class HydrotelColumn(nn.Module):
         # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
         wetland = self._wetland_from_territorial(territorial, like)
 
-        n_depth = n_intervalles(z11 + z22 + z33, self.frost.dz)
+        # Le maillage de gel compte des intervalles : il lui faut un SCALAIRE.
+        n_depth = n_intervalles(float(z11) + z22_s + z33_s, self.frost.dz)
         self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth,
                         gel={k: getattr(sp, k, None)
                              for k in ("diff_gel", "fs_neige")})

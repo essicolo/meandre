@@ -559,8 +559,22 @@ if os.environ.get("ETL_KGW_FIELD", "0") == "1":
     if len(_cf) == n_nodes:
         _kv = torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE)
         _o_se = model.spatial_encoder.forward
+        # MODULATION plutot qu'ECRASEMENT (2026-09-03). `sp.k_gw = _k` remplacait la
+        # sortie du champ par un tenseur SANS GRADIENT : la conductivite souterraine
+        # cessait d'etre apprise, et le champ n'avait plus aucune prise dessus, alors que
+        # le bloc voisin du seuil de fonte module correctement (sp.T_melt + _d). Le champ
+        # impose desormais le NIVEAU et le reseau module le CONTRASTE spatial autour de 1,
+        # borne a un facteur deux pour que le niveau reste celui du champ.
+        # MEANDRE_KGW_MODULE=0 restitue l'ecrasement, pour comparaison.
+        _kgw_module = os.environ.get("MEANDRE_KGW_MODULE", "1") == "1"
+
         def _se_kgw(*a, _o=_o_se, _k=_kv, **kw):
-            sp = _o(*a, **kw); sp.k_gw = _k
+            sp = _o(*a, **kw)
+            if _kgw_module:
+                _ref = sp.k_gw.detach().median().clamp(min=1e-12)
+                sp.k_gw = _k * (sp.k_gw / _ref).clamp(0.5, 2.0)
+            else:
+                sp.k_gw = _k
             return sp
         model.spatial_encoder.forward = _se_kgw
         print(f"[etl] champ k_gw appliqué : méd {float(_kv.median()):.4f} | q10-q90 "
