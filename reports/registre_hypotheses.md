@@ -633,3 +633,45 @@ LE TEST QUI DÉPARTAGE NE DÉPEND NI DE PHYSITEL NI DES PÉDOTRANSFERTS. La cond
 ## R63 — Un forçage demandé et introuvable basculait en silence sur un autre (2026-09-03)
 
 **Statut : établi, corrigé.** `joint_data._paths` résolvait `forcing-<reg><suffixe>.nc` et, si le fichier était absent, retombait sans un mot sur `forcing-<reg>-budyko.nc`. Les forçages hybrides n'ayant jamais été téléversés sur la grappe, le banc de routage du 2026-09-03 y a évalué les champions de la version 1.0, entraînés sur le forçage hybride, contre le forçage tout-CaSR : outv notait 0,671 au lieu de 0,780, et l'écart a d'abord été pris pour un effet du mode de routage. Un forçage explicitement demandé et introuvable est désormais une erreur, sauf pour les régions qui possèdent une entrée propre dans `FORCINGS`. Les tâches de grappe fixent le suffixe et refusent de démarrer si le fichier manque.
+
+## R64 — L'entraînement anéantit l'état riche tous les 45 jours (2026-09-03)
+
+**Statut : établi, non corrigé, le plus destructeur des défauts connus.** Diagnostic apporté par un audit externe, vérifié ligne à ligne et reproduit ici. Le trainer découpe la séquence en blocs (`chunk_steps = 45` dans toutes les configurations du Québec) et appelle `model.simulate` une fois par bloc (`trainer.py:1032`). Il transmet bien l'état d'un bloc au suivant, mais `simulate` en rejette la partie riche : `HydrotelColumn.setup_simulate` fabrique un état neuf par `init_state(theta_init=(0,0,0))` et ne recopie que les teneurs en eau, lesquelles sont de toute façon écrasées juste avant par `frac × porosité` (0,9) dans `model.py`. Le stockage des lacs repart aussi de zéro (`lake_storage = torch.zeros`). Neige, gel, milieu humide et lacs sont donc remis à zéro tous les 45 jours.
+
+**Reproduction** : `python tests/test_chunk_state_annihilation.py`, seize secondes. Sort 538,86 mm d'équivalent en eau du manteau effacés à la frontière de bloc, et le profil de gel réinitialisé.
+
+**Conséquence.** L'entraînement n'a jamais simulé d'hiver continu : les gradients du facteur de fonte, du seuil pluie-neige et de la température de fonte sont appris sur des manteaux de deux semaines, alors que l'évaluation juge une simulation continue sur trois ans. La perte et la métrique de sélection ne portent pas sur le même objet. Cela explique, mieux que tout le reste, pourquoi le réentraînement ne paie pas.
+
+**Défauts voisins vérifiés au passage.** `w_kge = 1.0` cohabite avec `chunk_steps = 45` alors que le commentaire deux lignes plus haut dans le même fichier déclare cette famille de critères incompatible avec le découpage (le Nash-Sutcliffe voisin est désactivé pour cette raison, pas le KGE). Le stockage des lacs est détaché en mode opérateur (`operator_routing.py`, deux endroits). `ETL_KGW_FIELD=1` écrase `sp.k_gw` par un tenseur sans gradient au lieu de le moduler. `float(sp.Z2.mean())` tue le gradient de Z2 et Z3 pour la voie racinaire. `w_physics` est un poids fantôme, son argument n'étant jamais fourni par le trainer.
+
+## R65 — L'hydrogramme simulé est plat un tiers à une moitié du temps (2026-09-03)
+
+**Statut : établi, non corrigé.** Constat visuel d'Essi sur les hydrogrammes du rapport, quantifié depuis les séries. Est dit plat un jour dont le débit varie de moins de 1 % par rapport à la veille.
+
+| région | plat simulé | plat observé | plat en hiver | plus longue suite |
+|---|---|---|---|---|
+| outm | 54,7 % | 17,7 % | 80,4 % | 102 j |
+| abit | 46,1 % | 17,7 % | 73,3 % | 123 j |
+| sagu | 38,3 % | 14,1 % | 74,9 % | 105 j |
+| gasp | 38,0 % | 12,1 % | 53,7 % | 96 j |
+| outv | 32,0 % | 8,7 % | 48,6 % | 54 j |
+| slso | 21,2 % | 3,3 % | 41,9 % | 70 j |
+| slno | 20,2 % | 5,8 % | 27,8 % | 55 j |
+| mont | 6,5 % | 2,5 % | 6,9 % | 16 j |
+
+En hiver le modèle descend une récession exponentielle sans qu'aucun événement ne s'y ajoute : ni fonte de redoux, ni pluie sur neige. Le classement des régions par platitude reproduit celui de leur échec. À rapprocher de R61 (le coefficient de récession est une constante figée sur ces régions, donc la décrue est un exponentiel uniforme) et de R64 (aucun hiver continu n'a jamais été entraîné). Mesure : `python .runs/quebec/banc_defauts.py --region <reg>`.
+
+## R66 — Le champ provincial est une mosaïque de quinze champs disjoints (2026-09-03)
+
+**Statut : établi, non corrigé.** Constat visuel d'Essi sur les cartes de paramètres, quantifié. Pour toutes les paires de tronçons distantes de moins de dix kilomètres, écart relatif médian du paramètre selon qu'une frontière de région les sépare ou non (28 035 tronçons, 8 696 paires transfrontalières).
+
+| champ | même région | de part et d'autre | saut |
+|---|---|---|---|
+| Z2 | 0,2 % | 48,2 % | 286× |
+| Z3 | 0,6 % | 73,0 % | 113× |
+| K_sat_3 | 2,1 % | 178,4 % | 83× |
+| K_sat_2 | 2,0 % | 150,6 % | 75× |
+| K_sat_1 | 2,1 % | 121,6 % | 57× |
+| T_melt | 3,6 % | 42,8 % | 12× |
+
+Deux tronçons voisins reçoivent des conductivités qui diffèrent de 120 à 180 % parce qu'une ligne administrative passe entre eux, contre 2 % à l'intérieur d'une région. La frontière n'a aucune existence hydrologique : c'est l'artefact de production que le projet refuse d'exposer. Le champ est lisse à l'intérieur de chaque région et discontinu entre elles, donc l'effondrement du champ a deux visages distincts, à ne pas confondre : à l'intérieur, 27 sorties sur 42 sont quasi constantes (R61) ; entre régions, les sorties vivantes sautent d'un facteur 50 à 300. Un champ provincial unique doit ramener ces rapports vers 1. Mesure : `python .runs/quebec/banc_discontinuite.py`.
