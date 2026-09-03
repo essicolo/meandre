@@ -991,6 +991,13 @@ class Trainer:
         all_components: dict[str, float] = {}
         n_chunks = 0
         sp_tensor: Tensor | None = None  # cached spatial params for SpatialNoiseHead
+        # HISTORIQUE DÉTACHÉ des débits aux stations, pour que le KGE et la famille
+        # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
+        # (voir la note dans loss.py). MEANDRE_KGE_CONTINU=0 restitue le comportement
+        # historique, pour comparaison.
+        _kge_continu = os.environ.get("MEANDRE_KGE_CONTINU", "1") == "1"
+        _hist_o: list[Tensor] = []
+        _hist_s: list[Tensor] = []
 
         # OFFSET ALÉATOIRE des frontières de chunks, par epoch (revue 2026-07-01) :
         # avec des frontières FIXES, les mêmes 11 jours de burn-in sur 45 (24 % des
@@ -1113,7 +1120,12 @@ class Trainer:
                         else None
                     ),
                     log_df=getattr(self.model.noise_head, "log_df", None),
+                    q_obs_hist=(torch.cat(_hist_o) if (_kge_continu and _hist_o) else None),
+                    q_sim_hist=(torch.cat(_hist_s) if (_kge_continu and _hist_s) else None),
                 )
+                if _kge_continu:
+                    _hist_o.append(q_obs_chunk.detach())
+                    _hist_s.append(Q_chunk_loss[:, data.station_mask].detach())
 
                 # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
                 # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).

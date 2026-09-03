@@ -675,3 +675,24 @@ En hiver le modèle descend une récession exponentielle sans qu'aucun événeme
 | T_melt | 3,6 % | 42,8 % | 12× |
 
 Deux tronçons voisins reçoivent des conductivités qui diffèrent de 120 à 180 % parce qu'une ligne administrative passe entre eux, contre 2 % à l'intérieur d'une région. La frontière n'a aucune existence hydrologique : c'est l'artefact de production que le projet refuse d'exposer. Le champ est lisse à l'intérieur de chaque région et discontinu entre elles, donc l'effondrement du champ a deux visages distincts, à ne pas confondre : à l'intérieur, 27 sorties sur 42 sont quasi constantes (R61) ; entre régions, les sorties vivantes sautent d'un facteur 50 à 300. Un champ provincial unique doit ramener ces rapports vers 1. Mesure : `python .runs/quebec/banc_discontinuite.py`.
+
+## R67 — Le KGE de la perte portait sur 45 jours, celui de la sélection sur trois ans (2026-09-03)
+
+**Statut : établi puis CORRIGÉ.** Défaut signalé par un audit externe, quantifié et réparé ici. Le KGE, le Nash-Sutcliffe et le NRMSE sont des statistiques de séquence : moyennes, écarts-types, corrélation. Toutes les configurations du Québec portent `w_kge = 1.0` avec `chunk_steps = 45`, alors que le commentaire deux lignes plus haut dans le même fichier déclare cette famille incompatible avec le découpage. Le Nash-Sutcliffe voisin est désactivé pour cette raison précise, pas le KGE. La perte était donc calculée sur des fenêtres de 34 jours utiles (45 moins 11 de burn-in), la sélection sur la série continue de trois ans.
+
+**Ampleur mesurée**, sur les huit régions du rapport, KGE médian par station.
+
+| région | KGE continu | KGE moyen par fenêtre de 45 j | corrélation entre les deux |
+|---|---|---|---|
+| gasp | 0,762 | −0,014 | 0,57 |
+| outv | 0,780 | 0,140 | 0,67 |
+| slno | 0,768 | 0,158 | **0,05** |
+| sagu | 0,741 | 0,085 | 0,91 |
+| mont | 0,687 | 0,229 | 0,76 |
+| outm | 0,639 | 0,272 | 0,99 |
+| slso | 0,601 | 0,196 | 0,69 |
+| abit | 0,549 | 0,187 | 1,00 |
+
+Sur le Saguenay nord-ouest, la corrélation entre ce que la perte optimise et ce qui sert à choisir le modèle vaut 0,05 : ce ne sont pas deux mesures du même objet à une échelle près, ce sont deux quantités différentes.
+
+**Correction.** La perte accepte un historique DÉTACHÉ des débits déjà simulés dans l'époque, et les statistiques portent sur toute la séquence vue depuis son début. Le gradient ne remonte que par le bloc courant, ce qui est correct : les blocs passés ont été simulés avec des paramètres antérieurs. Coût mémoire négligeable, l'historique ne portant que les stations. `MEANDRE_KGE_CONTINU=0` restitue l'ancien comportement pour comparaison. Vérifié par `tests/test_training/test_kge_continu.py`, dont un test montre qu'une perte calculée en deux blocs avec historique ÉGALE celle calculée d'un coup sur la séquence entière.

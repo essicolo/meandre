@@ -747,6 +747,8 @@ class HydroLoss(nn.Module):
         water_balance_residual: Tensor | None = None,
         residual_gate_logits: Tensor | None = None,
         log_df: Tensor | None = None,   # ν Student-t (lu depuis noise_head.log_df par le trainer)
+        q_obs_hist: Tensor | None = None,
+        q_sim_hist: Tensor | None = None,
     ) -> tuple[Tensor, dict[str, Tensor]]:
         """
         Args:
@@ -847,10 +849,32 @@ class HydroLoss(nn.Module):
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
+                    # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
+                    # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
+                    # corrélation. Calculés sur un bloc d'entraînement de 45 jours, ils ne
+                    # mesurent pas la même chose que sur la série continue qui sert à
+                    # choisir le modèle. Mesuré sur les huit régions du rapport : le KGE
+                    # médian par fenêtre de 45 jours vaut -0,01 à 0,27 quand le KGE
+                    # continu vaut 0,55 à 0,78, et sur slno la corrélation entre les deux
+                    # tombe à 0,05. La perte optimisait donc un objet sans rapport avec la
+                    # métrique de sélection.
+                    # Correction : les statistiques portent sur toute la séquence vue
+                    # depuis le début de l'époque. L'historique est DÉTACHÉ, donc le
+                    # gradient ne remonte que par le bloc courant, ce qui est correct :
+                    # les blocs passés ont été simulés avec des paramètres antérieurs.
+                    _hist = (q_obs_hist is not None and q_sim_hist is not None
+                             and q_obs_hist.numel() > 0)
+                    if _hist:
+                        _vh = ~torch.isnan(q_obs_hist) & ~torch.isnan(q_sim_hist)
                     for j, si in enumerate(keep_idx):
                         v = valid[:, si]
                         q_o_v = q_obs[v, si]
                         q_s_v = q_sim_at_stations[v, si]
+                        if _hist:
+                            _vs = _vh[:, si]
+                            if bool(_vs.any()):
+                                q_o_v = torch.cat([q_obs_hist[_vs, si].detach(), q_o_v])
+                                q_s_v = torch.cat([q_sim_hist[_vs, si].detach(), q_s_v])
                         if self.w_nse > 0:
                             nse_v.append(differentiable_nse_loss(q_o_v, q_s_v))
                         if self.w_kge > 0:
