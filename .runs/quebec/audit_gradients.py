@@ -46,7 +46,7 @@ from et_module import compute_demand
 REG = os.environ.get("ETL_REGION", "outv").lower()
 CK = os.environ.get("AUDIT_CKPT", ".runs/quebec/checkpoints/best-outv-etl-canon.pt")
 N_JOURS = int(os.environ.get("AUDIT_JOURS", "120"))
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = os.environ.get("AUDIT_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
 AD = json.load(open("reports/deploy_adapters.json"))
@@ -85,10 +85,15 @@ _fwd = m.spatial_encoder.forward
 
 
 def fwd_trace(*a, **k):
+    # to_tensor() fabrique un NOUVEAU tenseur hors du graphe utilise par la physique :
+    # son gradient restait None. On retient le gradient sur chaque champ lui-meme.
     p = _fwd(*a, **k)
-    t = p.to_tensor()
-    t.retain_grad()
-    contraint["x"] = t
+    import dataclasses
+    for f in dataclasses.fields(p):
+        v = getattr(p, f.name)
+        if torch.is_tensor(v) and v.requires_grad:
+            v.retain_grad()
+    contraint["p"] = p
     return p
 
 
@@ -108,11 +113,12 @@ perte.backward()
 noms = [f for f in SpatialParams.__dataclass_fields__]
 noms = noms[:SpatialParams.N_PARAMS]
 gb = brut["x"].grad
-gc = contraint["x"].grad
 lignes = []
 for i, nom in enumerate(noms):
     b = float(gb[:, i].abs().mean()) if gb is not None else float("nan")
-    c = float(gc[:, i].abs().mean()) if gc is not None else float("nan")
+    _v = getattr(contraint["p"], nom)
+    _g = _v.grad if torch.is_tensor(_v) else None
+    c = float(_g.abs().mean()) if _g is not None else 0.0
     lignes.append({"champ": nom, "gradient brut": b, "gradient contraint": c})
 t = pd.DataFrame(lignes)
 t["rapport"] = t["gradient brut"] / t["gradient contraint"].replace(0, np.nan)

@@ -60,6 +60,8 @@ Hydat_sqlite3_*.zip
 !/.runs/**/*.py
 !/.runs/**/*.toml
 !/.runs/**/README*
+!/.runs/**/*.sbatch
+!/.runs/quebec/alliance/*.sh
 
 # --- Shared data inputs ---
 # data/ contains large parquet/shapefile inputs. Specific files re-included below.

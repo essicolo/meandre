@@ -246,7 +246,11 @@ model = HydroModel(
                       and bool(mcfg.get("use_latent_codes", True))),
     latent_mode="additive",
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
-    routing_mode=mcfg.get("routing_mode", "operator-lagged"),
+    # ETL_ROUTING : mode de routage. Le defaut operator-lagged impose UN JOUR de delai a
+    # chaque lac traverse (sortie calculee sur le stockage de la veille) ; en serie, les
+    # lacs additionnent ces jours. Mesure du 2026-09-03 : mediane de 5 a 8 lacs en serie
+    # au-dessus des stations d'abit, outm et cnde. "operator" (etage) n'a pas ce delai.
+    routing_mode=os.environ.get("ETL_ROUTING", mcfg.get("routing_mode", "operator-lagged")),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     # ETL_COMPILE=0 : desactive torch.compile du sol. Necessaire la ou Triton est
     # absent (grappes de l'Alliance, 2026-09-01) ; la compilation n'apporte que de la
