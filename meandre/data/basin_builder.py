@@ -1615,22 +1615,6 @@ def _landcover_fractions_nrcan(
     return fracs
 
 
-def _zonal_fraction_threshold(
-    labels: np.ndarray,
-    values: np.ndarray,
-    n_nodes: int,
-    threshold: float,
-    _idx: "_LabelIndex | None" = None,
-) -> np.ndarray:
-    """Fraction of pixels in each zone where *values* >= *threshold* — vectorised."""
-    if _idx is None:
-        _idx = _LabelIndex(labels, n_nodes)
-    v = _idx.extract(values)
-    hits = (v >= threshold).astype(np.float64)
-    counts = np.bincount(_idx.lbl0, weights=hits, minlength=n_nodes)
-    return np.where(_idx.counts > 0, counts / _idx.counts, 0.0).astype(np.float32)
-
-
 def _saxton_rawls_2006(
     sand: np.ndarray,
     clay: np.ndarray,

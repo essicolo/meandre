@@ -63,13 +63,3 @@ RQH_ROOT = _os.environ.get(
 def data_path(*parts: str) -> str:
     """Path under the derived-data root."""
     return str(Path(DATA_ROOT).joinpath(*parts)).replace("\\", "/")
-
-
-def platform_path(*parts: str) -> str:
-    """Path under the Hydrotel platforms root (INTERNAL data)."""
-    return str(Path(PLATFORMS_ROOT).joinpath(*parts)).replace("\\", "/")
-
-
-def rqh_path(*parts: str) -> str:
-    """Path under the RQH reference-output root (INTERNAL data)."""
-    return str(Path(RQH_ROOT).joinpath(*parts)).replace("\\", "/")

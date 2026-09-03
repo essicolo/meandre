@@ -7,7 +7,11 @@ Reimagines Hydrotel (INRS-ETE) as a fully differentiable pipeline:
 **Spatial Encoder (NeRF + z_n latents) -> Hydrotel Column (faithful physics clone) -> Routing (Muskingum-Cunge, operator mode) -> Quantile head -> Loss**
 
 All operations are vectorised over n_nodes (river reaches/troncons).
-The GRU temporal encoder and residual corrector are LEGACY (inactive, kept for checkpoint compatibility).
+The residual corrector is LEGACY (inactive everywhere, kept for checkpoint compatibility).
+The GRU temporal encoder is inactive on the QUEBEC line only. Measured 2026-09-03: the three
+Quebec pilots hardcode `use_temporal=False`, but `.runs/slso/slso.py` enables it whenever
+`enable_temporal_epoch < 9999`, which holds in 113 of the 114 SLSO configs — so the GRU IS
+trained and concatenated to the forcing on the SLSO bench. Do not call it inactive there.
 
 ## Language
 
@@ -64,7 +68,10 @@ meandre/
   data/           # Basin cache (DuckDB), PHYSITEL loader, forcing, regional
                   # calib loaders (hydrotel_calib: soil/linacre/melt), MODIS, GRACE
   spatial/        # NeRF field network, positional encoding, latent codes
-  temporal/       # LEGACY (GRU, residual corrector) — inactive
+  temporal/       # GRU + residual corrector. Residual corrector inactive partout ;
+                  # le GRU est inactif sur la ligne QUEBEC mais ACTIF sur le banc SLSO
+                  # (113 configs sur 114). `indices.py` et `phenology_modulator.py` sont
+                  # vivants et sans rapport avec le GRU.
   vertical/       # HydrotelColumn + ET modes + spatial melt
   routing/        # Graph, kinematic/operator routing, message passing, lakes
   training/       # Trainer, loss (incl. pinball), autopilot

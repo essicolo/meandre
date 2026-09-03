@@ -53,28 +53,3 @@ class FourierPositionalEncoding(nn.Module):
     def out_dim(self, in_dim: int) -> int:
         base = in_dim * 2 * self.n_freqs
         return base + in_dim if self.include_input else base
-
-
-class RandomFourierFeatures(nn.Module):
-    """Gaussian random Fourier features (Rahimi & Recht 2007).
-
-    An alternative to the deterministic log-scale encoding when the
-    input has more than 2 dimensions (e.g. when territorial features
-    are also encoded positionally).
-    """
-
-    def __init__(self, in_dim: int, out_dim: int, sigma: float = 1.0) -> None:
-        super().__init__()
-        assert out_dim % 2 == 0, "out_dim must be even"
-        B = torch.randn(in_dim, out_dim // 2) * sigma
-        self.register_buffer("B", B)
-
-    def forward(self, x: Tensor) -> Tensor:
-        """
-        Args:
-            x: (..., in_dim)
-        Returns:
-            features: (..., out_dim)
-        """
-        proj = x @ self.B  # (..., out_dim//2)
-        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)

@@ -33,30 +33,3 @@ class SinusoidalDOYEncoding(nn.Module):
         angle = 2.0 * math.pi * doy.float() / 366.0
         sincos = torch.stack([torch.sin(angle), torch.cos(angle)], dim=-1)
         return self.linear(sincos)
-
-
-class FourierDOYEncoding(nn.Module):
-    """Multi-harmonic Fourier encoding of day-of-year.
-
-    Includes k harmonics: sin(2*pi*n*doy/366), cos(2*pi*n*doy/366) for n=1..k.
-    Richer than a single harmonic; useful for capturing intra-seasonal patterns.
-    """
-
-    def __init__(self, d_model: int, n_harmonics: int = 4) -> None:
-        super().__init__()
-        self.n_harmonics = n_harmonics
-        self.linear = nn.Linear(2 * n_harmonics, d_model)
-
-    def forward(self, doy: Tensor) -> Tensor:
-        """
-        Args:
-            doy: (...) integer day 1-366
-        Returns:
-            encoding: (..., d_model)
-        """
-        base = 2.0 * math.pi * doy.float() / 366.0  # (...)
-        harmonics = []
-        for n in range(1, self.n_harmonics + 1):
-            harmonics.extend([torch.sin(n * base), torch.cos(n * base)])
-        x = torch.stack(harmonics, dim=-1)  # (..., 2*n_harmonics)
-        return self.linear(x)

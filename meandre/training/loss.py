@@ -207,19 +207,6 @@ def flatness_loss(
     return ((freq - uniform) ** 2).mean() / (uniform ** 2)
 
 
-def pinball_loss(y_obs: Tensor, q_pred: Tensor, tau: float) -> Tensor:
-    """Pinball loss pour un seul quantile τ.
-
-        L_τ(y, q̂) = max(τ·(y − q̂), (τ − 1)·(y − q̂))
-
-    Sous-prédire (q̂ < y) est pénalisé en proportion τ ; sur-prédire en (1−τ).
-    """
-    if y_obs.numel() == 0:
-        return torch.zeros((), device=q_pred.device)
-    resid = y_obs - q_pred
-    return torch.maximum(tau * resid, (tau - 1.0) * resid).mean()
-
-
 def quantile_loss(y_obs: Tensor, q_pred: Tensor, taus: Tensor) -> Tensor:
     """Loss quantile multi-τ = moyenne des pinball sur K quantiles.
 
@@ -401,48 +388,6 @@ def timing_tolerant_mse(
     if w is not None:
         return (per * w).sum()
     return per.mean()
-
-
-def differentiable_fdc_loss(q_obs: Tensor, q_sim: Tensor, quantiles: list[float] = None) -> Tensor:
-    """Flow Duration Curve loss - matches flow quantiles, especially important for low flows.
-
-    Computes MSE between observed and simulated flow quantiles.
-    Default quantiles focus on low to medium flows for water shortage analysis.
-
-    Args:
-        q_obs: Observed discharge
-        q_sim: Simulated discharge
-        quantiles: List of quantiles to match (default: focus on low flows)
-
-    Returns:
-        FDC loss (lower is better)
-    """
-    if quantiles is None:
-        # Focus on low to medium flows (Q95, Q90, Q75, Q50, Q25, Q10)
-        quantiles = [0.95, 0.90, 0.75, 0.50, 0.25, 0.10]
-
-    # Sort flows to get flow duration curves
-    q_obs_sorted = torch.sort(q_obs, descending=True)[0]
-    q_sim_sorted = torch.sort(q_sim, descending=True)[0]
-
-    n = q_obs.shape[0]
-    losses = []
-
-    for q in quantiles:
-        idx = int(q * n)
-        idx = min(idx, n - 1)  # Ensure valid index
-
-        # Get flow at this exceedance probability
-        obs_q = q_obs_sorted[idx]
-        sim_q = q_sim_sorted[idx]
-
-        # Relative error weighted by 1/obs to emphasize low flows
-        # Use log-space for better low-flow sensitivity
-        weight = 1.0 / (obs_q + 1.0)  # +1 to avoid division by zero
-        loss_q = weight * (torch.log(sim_q + 1.0) - torch.log(obs_q + 1.0)) ** 2
-        losses.append(loss_q)
-
-    return torch.stack(losses).mean()
 
 
 def differentiable_nrmse_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
@@ -1043,45 +988,6 @@ class HydroLoss(nn.Module):
 # ---------------------------------------------------------------------------
 # CRPS loss for ensemble calibration
 # ---------------------------------------------------------------------------
-
-def crps_loss(ensemble_Q: Tensor, observed_Q: Tensor) -> Tensor:
-    """Continuous Ranked Probability Score — proper scoring rule for ensembles.
-
-    CRPS = E|X - y| - 0.5 * E|X - X'|
-
-    where X, X' are independent draws from the ensemble distribution and y is
-    the observation.  A perfectly calibrated ensemble minimises CRPS.
-
-    Parameters
-    ----------
-    ensemble_Q : (n_members, n_timesteps, n_nodes) or (n_members, n_valid)
-        Ensemble of simulated streamflow values.
-    observed_Q : (n_timesteps, n_nodes) or (n_valid,)
-        Observed streamflow (NaN values are automatically excluded).
-
-    Returns
-    -------
-    crps : scalar mean CRPS across all valid (timestep, node) pairs.
-    """
-    n_members = ensemble_Q.shape[0]
-    E = ensemble_Q.reshape(n_members, -1)   # (M, S)
-    y = observed_Q.reshape(-1)               # (S,)
-
-    # Mask NaN observations
-    valid = ~torch.isnan(y)
-    E, y = E[:, valid], y[valid]
-
-    # E|X - y| averaged over members
-    mae = (E - y.unsqueeze(0)).abs().mean(dim=0)    # (S,)
-
-    # E|X - X'| via the energy-score Gini-mean difference identity
-    E_sorted, _ = E.sort(dim=0)
-    k = torch.arange(1, n_members + 1, dtype=E.dtype, device=E.device)
-    spread = (
-        (2.0 * k - n_members - 1).unsqueeze(-1) * E_sorted
-    ).sum(dim=0) / (n_members * (n_members - 1) + 1e-8)
-
-    return (mae - spread).mean()
 
 
 # Alias de compatibilite (nettoyage 2026-08-24, convention anglaise pour le code).

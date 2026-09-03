@@ -37,11 +37,6 @@ def soft_relu(x: Tensor, sharpness: float = 10.0) -> Tensor:
     return F.softplus(x * sharpness) / sharpness
 
 
-def soft_step(x: Tensor, sharpness: float = 10.0) -> Tensor:
-    """Differentiable step: sigmoid(sharpness * x), centered at 0."""
-    return torch.sigmoid(sharpness * x)
-
-
 def smooth_partition(
     value: Tensor, threshold: float, sharpness: float = 10.0
 ) -> tuple[Tensor, Tensor]:
