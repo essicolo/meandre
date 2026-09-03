@@ -57,10 +57,23 @@ export MEANDRE_DATA="$LOCAL"
 export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 
 MAJ=$(echo "$REG" | tr a-z A-Z)
+# Le champion de chaque region a ete entraine sur le forcage HYBRIDE (version 1.0).
+# L'evaluer sur un autre forcage donne un score faux. slso a son propre fichier
+# (forcing-casr-corr.nc, resolu par la table FORCINGS de joint_data) ; les autres
+# lisent forcing-<reg>-hyb.nc. On FIXE le suffixe en dur (unset toute fuite d'env de
+# session) et on refuse de continuer si le fichier attendu manque, au lieu du repli
+# silencieux sur forcing-<reg>-budyko.nc qui a invalide tout un banc le 2026-09-03.
+unset JOINT_FX_SUFFIX
+if [ "$REG" != slso ] && [ ! -f "$LOCAL/quebec/forcing-${REG}-hyb.nc" ]; then
+  echo "ARRET : forcing-${REG}-hyb.nc absent du colis. Le champion est sur le forcage" \
+       "hybride ; sans lui la tache retomberait en silence sur budyko et mesurerait le" \
+       "mauvais modele. Televerser les forcages hybrides dans donnees/quebec." >&2
+  exit 3
+fi
 # Les contraintes auxiliaires n'ont pas de cible hors des six regions calibrees.
 AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0)
 env MEANDRE_NSUBSTEP=64 ETL_ROUTING=$MODE \
-    JOINT_FX_SUFFIX=${JOINT_FX_SUFFIX:--hyb} ETL_FORCE=1 ETL_REGION=$REG \
+    JOINT_FX_SUFFIX=-hyb ETL_FORCE=1 ETL_REGION=$REG \
     ETL_COMPILE=${ETL_COMPILE:-1} \
     ETL_WSNOW=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_INIT_HYDROTEL=sauf_ks \
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \

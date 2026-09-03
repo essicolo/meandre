@@ -99,6 +99,20 @@ def _paths(reg):
         fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}{sfx}.nc"
         if os.path.exists(fx):
             return db, fx
+        # Le repli etait SILENCIEUX : un suffixe demande mais absent faisait basculer la
+        # mesure sur forcing-<reg>-budyko.nc sans un mot. Le 2026-09-03 il a invalide un
+        # banc entier de quinze regions sur la grappe (les champions de la version 1.0
+        # sont sur le forcage hybride, qui n'avait pas ete televerse ; les scores lus
+        # etaient ceux d'un autre forcage, outv 0.671 au lieu de 0.780). Un forcage
+        # explicitement demande et introuvable est desormais une erreur, sauf pour les
+        # regions qui possedent une entree propre dans FORCINGS.
+        if reg not in FORCINGS:
+            raise FileNotFoundError(
+                f"{reg}: forcage '{sfx}' demande mais {fx} absent. Aucun repli : un "
+                f"point de reprise evalue sur un autre forcage que le sien rend un "
+                f"score faux. Televerser le fichier, ou changer JOINT_FX_SUFFIX.")
+        print(f"[forcage] {reg}: suffixe '{sfx}' introuvable, fichier propre de la "
+              f"region utilise ({os.path.basename(FORCINGS[reg])})")
     fx = FORCINGS.get(reg, f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
     return db, fx
 
