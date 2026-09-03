@@ -696,3 +696,19 @@ Deux tronçons voisins reçoivent des conductivités qui diffèrent de 120 à 18
 Sur le Saguenay nord-ouest, la corrélation entre ce que la perte optimise et ce qui sert à choisir le modèle vaut 0,05 : ce ne sont pas deux mesures du même objet à une échelle près, ce sont deux quantités différentes.
 
 **Correction.** La perte accepte un historique DÉTACHÉ des débits déjà simulés dans l'époque, et les statistiques portent sur toute la séquence vue depuis son début. Le gradient ne remonte que par le bloc courant, ce qui est correct : les blocs passés ont été simulés avec des paramètres antérieurs. Coût mémoire négligeable, l'historique ne portant que les stations. `MEANDRE_KGE_CONTINU=0` restitue l'ancien comportement pour comparaison. Vérifié par `tests/test_training/test_kge_continu.py`, dont un test montre qu'une perte calculée en deux blocs avec historique ÉGALE celle calculée d'un coup sur la séquence entière.
+
+## R68 — Le Labrador n'a pas un défaut d'appariement, mais une couverture tardive (2026-09-03)
+
+**Statut : clos, aucun correctif requis.** Une passe d'entraînement y annonçait « max valid count: 0 » alors que la base porte 3045 jours d'observations dans la fenêtre d'entraînement, ce qui faisait soupçonner un appariement station-tronçon défaillant. Vérification : l'appariement est juste (station 089907 vers le tronçon 174, aire 222 km²) et les 3045 jours sont bien chargés dans `q_obs`. La station commence simplement le 2010-08-31 quand l'entraînement démarre en 2000 : les 86 premiers blocs de 45 jours ne contiennent aucune observation, et l'avertissement était exact.
+
+**Coût mesuré**, part des blocs d'entraînement sans aucune observation après burn-in, période 2000-2018 :
+
+| région | première observation | blocs vides sur 154 | part |
+|---|---|---|---|
+| labi | 2010-08-31 | 86 | 55,8 % |
+| cnde | 2000-01-01 | 15 | 9,7 % |
+| cnda | 2000-01-01 | 11 | 7,1 % |
+| cndd | 2000-01-01 | 8 | 5,2 % |
+| les onze autres | 2000-01-01 | 0 | 0 % |
+
+Sur les quinze régions, 120 blocs vides sur 2156, soit **5,6 % du calcul d'entraînement rendant un gradient nul**. Réel mais modeste, et concentré sur une région. Sauter les blocs sans observation économiserait ce temps ; l'optimisation n'est pas prioritaire. Vaudreuil reste sans aucune station, ce qui était déjà connu et justifie son modèle transféré.
