@@ -932,6 +932,26 @@ class HydroModel(nn.Module):
                     if bias_key in sd:
                         pad_b = torch.zeros(new_n - old_n, device=device)
                         sd[bias_key] = torch.cat([sd[bias_key], pad_b], dim=0)
+                    # Le rembourrage etait SILENCIEUX, et ses consequences invisibles :
+                    # une ligne nulle rend, apres contrainte, le MILIEU des bornes, la
+                    # meme valeur sur tous les troncons. Le parametre est alors une
+                    # constante non apprise que rien ne signale. Mesure du 2026-09-03 :
+                    # les modeles retenus portent 37 ou 38 sorties pour 42 attendues, si
+                    # bien que outv et gasp deploient krec, diff_gel, fs_neige et les deux
+                    # ecarts de canopee en constantes d'etalement NUL -- alors que la
+                    # recette annonce a chaque execution que krec est appris par le champ.
+                    # On nomme desormais les sorties concernees.
+                    try:
+                        from meandre.spatial.field_network import SpatialParams as _SP
+                        _noms = [f for f in _SP.__dataclass_fields__][:_SP.N_PARAMS]
+                        _combles = _noms[old_n:new_n]
+                    except Exception:
+                        _combles = [f"sortie {i}" for i in range(old_n, new_n)]
+                    print(f"[load] AVERTISSEMENT : le point de reprise porte {old_n} "
+                          f"sorties de champ pour {new_n} attendues. Les {new_n - old_n} "
+                          f"manquantes sont remplies de ZEROS, donc figees au MILIEU de "
+                          f"leurs bornes et identiques sur tous les troncons : "
+                          f"{', '.join(_combles)}. Ces parametres ne sont pas appris.")
 
             # Backward compatibility: pad fc1/fc2 if territorial features grew.
             # Use small Kaiming-scaled init (not zeros) so new features have
