@@ -90,6 +90,21 @@ tests/            # Mirrors meandre/ structure
 
 ## Config
 
+### Recette : un modèle se définit par un fichier, plus par un bloc de variables
+
+Inventaire du 2026-09-03 : la configuration effective d'une exécution ne se lisait NI dans le TOML NI dans le point de reprise, mais dans le bloc de variables d'environnement du script shell qui l'avait lancée. Sur 53 configurations québécoises, UNE seule était chargée par le code, et le pilote régional lit à lui seul 79 variables, dont la loi des ancrages, le seuil pluie-neige, l'amplitude de fonte, l'aquifère, les milieux humides, les lacs et les bornes du routage. C'est l'énoncé structurel de « un checkpoint seul ne définit PAS un modèle ».
+
+Deux mécanismes traitent le problème, et ils sont complémentaires.
+
+**En entrée**, un fichier TOML peut porter une section `[recette]` dont les clés sont posées dans l'environnement avant toute lecture du pilote, par `meandre.utils.recette.appliquer_recette`. `ETL_CONFIG` choisit le fichier ; `.runs/quebec/config/socle.toml` encode la loi des ancrages. L'ORDRE DE PRIORITÉ est : variable d'environnement si posée, puis fichier, puis défaut du code — donc tout script de grappe existant se comporte exactement comme avant. Une clé sans préfixe de projet (`ETL_`, `MEANDRE_`, `JOINT_`, `PROV_`) est refusée bruyamment : elle ne serait lue par personne.
+
+```bash
+ETL_CONFIG=.runs/quebec/config/socle.toml ETL_REGION=GASP python .runs/quebec/etl_run.py
+```
+
+**En sortie**, `HydroModel.save` écrit la recette DANS le point de reprise et à côté de lui, en `<nom>.recette.toml` lisible sans torch : variables du projet effectivement posées, empreinte git, contexte machine. `load` signale tout écart avec l'environnement courant, en ignorant les chemins de déploiement et sans jamais capturer de secret. Un `.recette.toml` répond donc à la question « qu'est-ce qui a produit ce modèle ».
+
+
 TOML configs in `.runs/slso/config/` and `.runs/quebec/config/`. Key sections:
 - `[paths]`: basin_db, forcing_cache, checkpoint, fields_nc, reach_parquet
 - `[model]`: use_latent_codes, spatial_melt, melt_factor_scale (legacy scalar; ignored on warm-start and when spatial_melt), n_forcing, routing/lakes

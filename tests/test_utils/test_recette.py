@@ -93,3 +93,60 @@ def test_le_point_de_reprise_porte_sa_recette(tmp_path, monkeypatch):
     ck = torch.load(p, map_location="cpu", weights_only=True)
     assert ck["recette"]["variables"]["ETL_MELT_SAISON"] == "0.5"
     assert isinstance(ck["recette"]["contexte"].get("torch"), str)
+
+
+def test_la_recette_du_fichier_ne_prime_jamais_sur_l_environnement(monkeypatch):
+    """Un script de grappe qui pose son bloc de variables doit se comporter comme avant."""
+    from meandre.utils.recette import appliquer_recette
+
+    monkeypatch.setenv("ETL_SEUIL_TWB", "-2.0")
+    monkeypatch.delenv("ETL_MELT_SAISON", raising=False)
+
+    posees = appliquer_recette({"ETL_SEUIL_TWB": -0.8, "ETL_MELT_SAISON": 0.5})
+
+    import os
+    assert os.environ["ETL_SEUIL_TWB"] == "-2.0", "l'environnement prime"
+    assert os.environ["ETL_MELT_SAISON"] == "0.5", "le fichier comble le manque"
+    assert posees == ["ETL_MELT_SAISON"]
+
+
+def test_un_booleen_devient_un_drapeau_lisible(monkeypatch):
+    from meandre.utils.recette import appliquer_recette
+    import os
+
+    monkeypatch.delenv("ETL_AQUIFER", raising=False)
+    monkeypatch.delenv("ETL_WSNOW", raising=False)
+
+    appliquer_recette({"ETL_AQUIFER": True, "ETL_WSNOW": False})
+
+    assert os.environ["ETL_AQUIFER"] == "1"
+    assert os.environ["ETL_WSNOW"] == "0"
+
+
+def test_une_cle_sans_prefixe_du_projet_est_refusee():
+    """Une cle que personne ne lira doit echouer bruyamment, pas dormir dans un fichier."""
+    from meandre.utils.recette import appliquer_recette
+
+    with pytest.raises(ValueError, match="prefixe"):
+        appliquer_recette({"SEUIL_TWB": -0.8})
+
+
+def test_le_fichier_de_socle_est_lisible_et_applicable(monkeypatch):
+    """Le socle livre encode la loi des ancrages et doit s'appliquer sans erreur."""
+    import os
+    from pathlib import Path
+    from meandre.utils.recette import appliquer_recette
+
+    chemin = Path(__file__).resolve().parents[2] / ".runs/quebec/config/socle.toml"
+    if not chemin.exists():
+        pytest.skip("socle.toml absent")
+    section = tomllib.loads(chemin.read_text(encoding="utf-8"))["recette"]
+    for cle in section:
+        monkeypatch.delenv(cle, raising=False)
+
+    posees = appliquer_recette(section)
+
+    assert "ETL_INIT_HYDROTEL" in posees
+    assert os.environ["ETL_INIT_HYDROTEL"] == "sauf_ks"
+    assert os.environ["ETL_ETP"] == "linacre"
+    assert os.environ["ETL_SEUIL_TWB"] == "-0.8"

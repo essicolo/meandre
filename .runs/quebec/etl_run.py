@@ -35,6 +35,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from meandre.model import HydroModel
+from meandre.utils.recette import appliquer_recette as _appliquer_recette
 from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
 from meandre.utils.metrics import kge as kge_fn
 from meandre.utils.state import HydroState
@@ -44,7 +45,13 @@ from meandre.utils import paths as _paths
 REG = os.environ.get("ETL_REGION", "gasp").lower()
 N_EPOCHS = int(os.environ.get("ETL_EPOCHS", "12"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BASE_CFG = ".runs/quebec/config/gasp-v4.toml"
+# FICHIER DE RECETTE. Le defaut reste gasp-v4.toml, qui n'est plus une configuration
+# regionale mais un sac d'hyperparametres communs : la region vient de ETL_REGION. Un
+# fichier passe par ETL_CONFIG peut porter en plus une section [recette] dont les cles
+# sont posees dans l'environnement AVANT toute lecture, sans jamais ecraser une variable
+# deja posee. Un modele devient ainsi definissable par un fichier plutot que par le bloc
+# de variables d'un script shell (inventaire du 2026-09-03).
+BASE_CFG = os.environ.get("ETL_CONFIG", ".runs/quebec/config/gasp-v4.toml")
 # GARDE-FOU DE CONTENTION (2026-08-10) : deux entraînements simultanés sur la même carte
 # passent de 450 s/époque à 4000-11000 s/époque (mesuré : un job de 3.5 h en prend 85).
 # `pgrep` depuis un shell POSIX NE VOIT PAS les processus Windows — d'où le lancement en
@@ -65,6 +72,12 @@ CKPT = f".runs/quebec/checkpoints/best-{REG}-etl{os.environ.get('ETL_TAG', '')}.
 ETB = f"{_paths.DATA_ROOT}/quebec/checkpoints-etbench"
 
 cfg = tomllib.load(open(BASE_CFG, "rb"))
+# La recette du fichier est posee AVANT que le pilote ne lise quoi que ce soit. Ordre de
+# priorite : variable d'environnement, puis fichier, puis defaut du code.
+_posees = _appliquer_recette(cfg.get("recette"))
+if _posees:
+    print(f"[recette] {os.path.basename(BASE_CFG)} : {len(_posees)} reglage(s) pose(s) "
+          f"depuis le fichier : {', '.join(_posees)}")
 lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
 if "ETL_WSNOW" in os.environ:
     # seuils de fonte appris contre MOD10 (fonte à 0 jusqu'à Tmax+5.5 au banc freshet

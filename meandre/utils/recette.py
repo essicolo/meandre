@@ -141,6 +141,42 @@ def ecrire_recette_toml(chemin, recette: dict, fiche: dict | None = None,
         return None
 
 
+def appliquer_recette(section: dict | None) -> list[str]:
+    """Pose une recette lue en TOML dans l'environnement, SANS jamais écraser.
+
+    C'est la brique qui rend les réglages exprimables en fichier. Le pilote lit
+    aujourd'hui sa physique dans l'environnement, en soixante-dix endroits dispersés ;
+    réécrire ces soixante-dix lectures serait long et risqué. Poser les valeurs du
+    fichier par `setdefault` avant que le pilote ne commence donne le même résultat en
+    une ligne, et conserve l'ordre de priorité attendu :
+
+        1. la variable d'environnement, si elle est posée (un lancement ponctuel prime) ;
+        2. la valeur du fichier de recette ;
+        3. le défaut du code.
+
+    Un script de grappe existant, qui pose son bloc de variables, continue donc de se
+    comporter exactement comme avant. Retourne les clés effectivement appliquées.
+    """
+    if not section:
+        return []
+    posees = []
+    for cle, valeur in section.items():
+        nom = str(cle)
+        if not nom.startswith(PREFIXES):
+            raise ValueError(
+                f"recette : '{nom}' ne porte aucun prefixe du projet {PREFIXES}. "
+                f"Une cle sans prefixe ne serait lue par personne.")
+        if nom in os.environ:
+            continue
+        if isinstance(valeur, bool):
+            texte = "1" if valeur else "0"
+        else:
+            texte = str(valeur)
+        os.environ[nom] = texte
+        posees.append(nom)
+    return sorted(posees)
+
+
 def comparer_recette(sauvee: dict | None, ignorer: tuple[str, ...] = ()) -> list[str]:
     """Écarts entre la recette sauvegardée et l'environnement courant.
 
