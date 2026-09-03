@@ -1,17 +1,18 @@
-"""Test adversarial : la frontière de chunk ANÉANTIT l'état riche de la colonne.
+"""REPRODUCTION du defaut d'aneantissement de l'etat aux frontieres de bloc (R64).
 
-Le trainer chunked (chunk_steps=45 dans toutes les configs québécoises) appelle
-model.simulate() par chunk avec initial_state = état du chunk précédent. Mais
-simulate() appelle setup_simulate() qui reconstruit self._aux depuis zéro :
-neige (3 classes), profil de gel (4°C), wet_vol — seule theta survit, et elle
-est de surcroît ÉCRASÉE par 0.9×porosité (column_theta_init_frac=0.9) au lieu
-d'être lue depuis l'état entrant.
+Ce fichier etait pose sous tests/test_chunk_state_annihilation.py. Il est ECRIT COMME UN
+SCRIPT (code et assertions au niveau du module) et pose torch.set_default_dtype(float64)
+globalement : pytest le collectait, l'executait a l'import, et la double precision fuyait
+vers seize tests de routage et d'encodeur temporel qui echouaient alors. Il est deplace
+sous tests/scripts/, qui n'est pas collecte, et reste lancable a la main.
 
-Conséquence mesurable : un manteau construit pendant un chunk de 45 jours
-disparaît au chunk suivant ; le modèle entraîné n'a jamais vu d'hiver continu.
+La NON-REGRESSION est couverte par tests/test_vertical/test_poursuite_etat.py, qui
+verifie les deux chemins : sans poursuite l'etat est refabrique, avec poursuite le
+manteau et le profil de gel survivent.
 
-  python tests/test_chunk_state_annihilation.py
+  python tests/scripts/reproduction_annihilation_etat.py
 """
+
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch

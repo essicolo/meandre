@@ -318,6 +318,7 @@ class HydroModel(nn.Module):
         h_context: Tensor | None = None,
         tbptt_steps: int = 0,
         return_diagnostics: bool = False,
+        poursuivre_etat: bool = False,
     ) -> tuple[Tensor, HydroState] | tuple[Tensor, HydroState, SimDiagnostics]:
         """Full forward pass: scan over timesteps.
 
@@ -371,8 +372,12 @@ class HydroModel(nn.Module):
             # Cale la theta initiale sur l'init Hydrotel validé (0.9·thetas) au lieu
             # de la valeur du cache (0.3, trop sèche → gros réservoir à remplir avant
             # de produire = déficit de volume). frac=0 garde la theta du cache.
+            # poursuivre_etat : la simulation continue celle de l'appel precedent (bloc
+            # suivant d'un entrainement decoupe). On ne REINITIALISE alors pas theta a
+            # 0.9 de la porosite, sans quoi l'humidite du sol accumulee sur le bloc
+            # precedent est perdue tous les 45 jours en meme temps que le manteau.
             frac = getattr(self, "column_theta_init_frac", 0.9)
-            if frac > 0.0:
+            if frac > 0.0 and not poursuivre_etat:
                 import dataclasses
                 state = dataclasses.replace(
                     state,
@@ -380,7 +385,8 @@ class HydroModel(nn.Module):
                     theta2=frac * spatial_params.porosity_2,
                     theta3=frac * spatial_params.porosity_3)
             self.vertical_column.setup_simulate(
-                spatial_params, territorial, node_coords, state)
+                spatial_params, territorial, node_coords, state,
+                poursuivre=poursuivre_etat)
         # ECHELLE PHYSIQUE DE LA CONSTANTE DE MUSKINGUM (MEANDRE_KMUSK_PHYS=1).
         #
         # Mesure le 2026-09-02 : le retard de la simulation croit avec le NOMBRE de
@@ -465,11 +471,20 @@ class HydroModel(nn.Module):
             self.n_nodes, depth=self.max_travel_time, device=forcing.device
         )
 
-        # Lake storage state (m3); only allocated when lake nodes exist
+        # Lake storage state (m3); only allocated when lake nodes exist.
+        # Comme l'etat interne de la colonne, il ne tient pas dans HydroState et repartait
+        # donc de ZERO a chaque appel, soit tous les 45 jours a l'entrainement : un lac
+        # n'avait jamais le temps de se remplir. Avec poursuivre_etat il est repris du
+        # dernier appel, detache (le stockage l'est deja pas a pas dans le routage).
         has_lakes = bool(graph.is_lake.any())
-        lake_storage: Tensor | None = (
-            torch.zeros(self.n_nodes, device=forcing.device) if has_lakes else None
-        )
+        _lac_prec = getattr(self, "_lake_storage_fin", None)
+        if (has_lakes and poursuivre_etat and _lac_prec is not None
+                and _lac_prec.shape[0] == self.n_nodes):
+            lake_storage: Tensor | None = _lac_prec.detach().to(forcing.device)
+        else:
+            lake_storage = (
+                torch.zeros(self.n_nodes, device=forcing.device) if has_lakes else None
+            )
         # Use physical (un-normalised) drainage area for lake routing.
         # territorial.drainage_area_km2 may be z-score normalised (negative
         # values possible), which breaks the depth = S/area computation in
@@ -700,6 +715,10 @@ class HydroModel(nn.Module):
         # Store final GRU hidden state for optional carryover to next call
         self._last_h_context: Tensor | None = (
             h_context.detach() if h_context is not None else None
+        )
+        # Stockage des lacs en fin d'appel, pour le bloc suivant (poursuivre_etat).
+        self._lake_storage_fin = (
+            lake_storage.detach() if lake_storage is not None else None
         )
 
         # Empty sequence (e.g. zero-length spinup): return zeros

@@ -1040,6 +1040,12 @@ class Trainer:
                     h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
                     return_diagnostics=_need_diag,
+                    # Les blocs suivants POURSUIVENT la simulation : le manteau neigeux,
+                    # le profil de gel, le milieu humide et le stockage des lacs vivent
+                    # hors de HydroState et repartaient de zero a chaque bloc, soit tous
+                    # les 45 jours. L'entrainement ne voyait donc jamais un hiver
+                    # continu (2026-09-03).
+                    poursuivre_etat=(n_chunks > 0),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out

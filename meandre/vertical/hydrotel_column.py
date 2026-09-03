@@ -564,13 +564,40 @@ class HydrotelColumn(nn.Module):
             uh_s4=(_uh.clone() if _uh is not None else None))
 
     # ── Adaptateur interface VerticalColumn (pour model.py simulate) ────
-    def setup_simulate(self, spatial_params, territorial, node_coords, init_state):
-        """Appelé UNE fois avant la boucle simulate : assemble les params depuis le
-        NeRF et initialise l'état interne riche (neige/gel/wetland) depuis l'état
-        méandre. theta de départ = init_state.theta1/2/3."""
+    def setup_simulate(self, spatial_params, territorial, node_coords, init_state,
+                       poursuivre: bool = False):
+        """Assemble les params depuis le NeRF et prépare l'état interne riche.
+
+        POURSUIVRE (défaut False, comportement historique). L'état interne de la colonne
+        (manteau neigeux par classe, profil de gel multicouche, volume de milieu humide,
+        cascade de versant) ne tient pas dans `HydroState` : il vit dans `self._aux`. Un
+        appel à `simulate` le reconstruisait donc TOUJOURS à neuf, en ne recopiant que
+        les teneurs en eau. Or l'entraînement appelle `simulate` une fois par bloc de 45
+        jours : le manteau, le gel et le milieu humide repartaient de zéro six fois par
+        an, et l'entraînement n'a jamais simulé d'hiver continu (mesure du 2026-09-03 :
+        538,86 mm d'équivalent en eau effacés à une frontière de bloc, voir
+        `tests/test_chunk_state_annihilation.py`). Les gradients du facteur de fonte et
+        du seuil pluie-neige étaient appris sur des manteaux de deux semaines quand
+        l'évaluation juge une trajectoire continue de trois ans.
+
+        Avec `poursuivre=True`, l'état interne est CONSERVÉ et détaché (le détachement
+        est ce que fait déjà la troncature du gradient entre blocs) ; seules les teneurs
+        en eau sont resynchronisées depuis l'état entrant, qui peut porter une correction
+        appliquée en dehors de la colonne. Les paramètres sont toujours relus du champ,
+        qui a bougé entre deux blocs.
+        """
         self.params_from_nerf(spatial_params, territorial, node_coords)
         n = init_state.theta1.shape[0]
         dev, dt = init_state.theta1.device, init_state.theta1.dtype
+        ancien = getattr(self, "_aux", None)
+        if (poursuivre and ancien is not None
+                and getattr(ancien, "theta1", None) is not None
+                and ancien.theta1.shape[0] == n):
+            aux = ancien.detach()
+            aux.theta1, aux.theta2, aux.theta3 = (init_state.theta1, init_state.theta2,
+                                                  init_state.theta3)
+            self._aux = aux
+            return
         aux = self.init_state(n, theta_init=(0.0, 0.0, 0.0), device=dev, dtype=dt)
         aux.theta1, aux.theta2, aux.theta3 = init_state.theta1, init_state.theta2, init_state.theta3
         # volume initial du milieu humide depuis le territorial si dispo (sinon 0)
