@@ -79,3 +79,4 @@ Hydat_sqlite3_*.zip
 # MEANDRE_DATA, jamais dans le depot (remarque d'Essi, 2026-08-25 puis 08-27).
 *.hdf
 D*/
+*.recette.toml
