@@ -39,6 +39,11 @@ BANCS = [
     ("routage", "hydrotel_clone/validate_routing.py", None, None),
     ("chaine", "tests/smoke_hydrotel_column.py",
      r"grad d\(prod\)/d\(krec\) = ([\d.]+)", None),
+    # Bout en bout sur le banc mini (384 troncons) : champ spatial, colonne, routage et
+    # retour du gradient. Verifie qu'un debit sort, sans NaN, et que le champ recoit
+    # encore du signal a travers toute la chaine.
+    ("bout-en-bout", "tests/smoke_hydrotel_model.py",
+     r"grad NeRF ([\d.]+)", None),
 ]
 
 
