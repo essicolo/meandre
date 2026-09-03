@@ -996,6 +996,7 @@ class Trainer:
         # (voir la note dans loss.py). MEANDRE_KGE_CONTINU=0 restitue le comportement
         # historique, pour comparaison.
         _kge_continu = os.environ.get("MEANDRE_KGE_CONTINU", "1") == "1"
+        _etat_continu = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
         _hist_o: list[Tensor] = []
         _hist_s: list[Tensor] = []
 
@@ -1051,8 +1052,9 @@ class Trainer:
                     # le profil de gel, le milieu humide et le stockage des lacs vivent
                     # hors de HydroState et repartaient de zero a chaque bloc, soit tous
                     # les 45 jours. L'entrainement ne voyait donc jamais un hiver
-                    # continu (2026-09-03).
-                    poursuivre_etat=(n_chunks > 0),
+                    # continu (2026-09-03). MEANDRE_ETAT_CONTINU=0 restitue l'ancien
+                    # comportement, pour un banc apparie.
+                    poursuivre_etat=(_etat_continu and n_chunks > 0),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out
