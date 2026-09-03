@@ -597,3 +597,39 @@ LE TEST QUI DÉPARTAGE NE DÉPEND NI DE PHYSITEL NI DES PÉDOTRANSFERTS. La cond
 **À ne pas confondre avec l'imposition légitime.** Les 23 champs imposés par la recette du socle sont bien des paramètres de sol (b, psis, nn, mm, omegpi, fsa/fse/fsi, cin, slope, z1-z3) ; leur gradient nul est voulu. `K_atm` et `alpha_T` sont morts parce que `use_temperature=False`, ce qui est un choix, pas un défaut.
 
 **Conséquence mesurée.** Seuls K_sat (44 % de variation relative), k_gw (10 %) et T_melt (6 %) varient d'un tronçon à l'autre ; les 35 autres champs sont des constantes. Le champ de 42 paramètres se comporte comme un champ de trois, ce qui explique que l'entraînement apporte peu et que le transfert dépende autant du donneur.
+
+## R60 — La surface d'un lac était lue comme une longueur d'écoulement (2026-09-03)
+
+**Statut : établi, corrigé.** Dans `troncon.trl`, le bloc de quatre nombres d'un tronçon de lac est (surface en mètres carrés, profondeur moyenne, coefficient de tarage, exposant), et non (longueur, largeur, pente, quatrième valeur). Deux preuves indépendantes : le quatrième nombre vaut 1,500 pour tous les lacs des six régions inspectées, soit l'exposant de la loi de déversoir ; et la racine carrée du premier vaut 661 à 810 mètres en médiane, la dimension linéaire d'un petit lac. `_parse_troncon` lisait le premier comme `length_m` et le second comme `width_m`.
+
+**Ampleur.** Longueur médiane des tronçons de lac : 437 à 656 km selon la région, maximum 8831 km, contre 3 à 5 km pour les rivières dont le maximum est 82 km. Le défaut est proportionnel à la densité de lacs, donc maximal là où le modèle s'effondre (outm 19 % de lacs, cnde 24 %).
+
+**Ce que ce défaut n'a PAS fait.** Il n'a pas faussé la version 1.0. La topologie reconstruite est rigoureusement identique avant et après correction sur outv, outm, gasp et slso : zéro lien ajouté, zéro retiré. Le temps de parcours en jours, qui atteignait 102 jours sur 14 % des liens d'outv contre 1 jour après correction, n'est consommé que par l'attention temporelle, désactivée (`use_travel_time_attn=False`).
+
+**Ce que ce défaut a fait.** Il a invalidé le banc du Muskingum physique du 2026-09-02, qui calculait le temps de parcours à partir de cet attribut et obtenait 167 heures par lac. Le verdict « l'échelle physique perd sur quatre régions sur six, dont −0,19 en Gaspésie » est donc **NUL** et ne doit plus être cité. Il faisait aussi comparer, au garde-fou de largeur de R58, une largeur de rivière à une profondeur de lac ; le garde ne compare désormais que deux rivières.
+
+## R61 — Les modèles retenus déploient quatre à cinq paramètres figés sans le dire (2026-09-03)
+
+**Statut : établi, cause de la « collapse » du champ.** Le champ compte aujourd'hui 42 sorties. Les modèles retenus en portent 37 ou 38 : ils sont antérieurs à l'ajout des dernières. Au chargement, `HydroModel.load` complète la différence par des ZÉROS, et une ligne nulle rend, après contrainte, le MILIEU des bornes, la même valeur sur tous les tronçons. Le paramètre devient une constante non apprise, et rien ne le signalait avant le 2026-09-03.
+
+| modèle retenu | sorties | figées |
+|---|---|---|
+| outv-etl-canon, gasp-etl-socle30, sagu-etl-socle30, slno-etl-socle30 | 37 | krec, diff_gel, fs_neige, dT_canopee_feu, dT_canopee_conif |
+| mont-etl-gen1 | 38 | diff_gel, fs_neige, dT_canopee_feu, dT_canopee_conif |
+| slso-etl-casr | 42 | aucune |
+
+**Contradiction relevée.** La recette du socle pose `ETL_KREC_LIBRE=1` et le journal annonce à chaque exécution que la récession de l'aquifère est apprise par le champ. Sur le champion de l'Outaouais elle vaut 2,0×10⁻⁵ sur les 3412 tronçons, étalement nul.
+
+**Vérification par le témoin.** Le seul modèle complet, slso-etl-casr, apprend bien ces paramètres : krec 12,0 % d'étalement entre déciles, diff_gel 6,5 %, fs_neige 8,5 %, et une seule constante déguisée sur 19 sorties vivantes contre trois pour outv. Le mécanisme est donc la PÉREMPTION du point de reprise, pas un défaut de la physique ni de l'optimiseur.
+
+**Correction.** Le rembourrage nomme désormais les sorties concernées au chargement. La correction de fond est un réentraînement à 42 sorties.
+
+## R62 — Le temps de transfert de Muskingum vaut quinze à vingt-six fois le temps physique (2026-09-03)
+
+**Statut : établi (la mesure), ouvert (le correctif).** Longueur du tronçon médian après correction de R60 : 2,9 à 3,5 km selon la région, soit environ une heure de parcours à 1 m/s. Le champ borne le temps de transfert à [4, 48] h : la borne INFÉRIEURE excède déjà de quatre à cinq fois le temps physique. Valeurs médianes effectivement déployées par les modèles retenus : 16,5 h (mont), 20,7 h (slso), 26,1 h (outv). Chaque tronçon se comporte donc en réservoir de près d'un jour, effet composé le long de la chaîne topologique, ce qui est le mécanisme candidat du retard d'un à trois jours croissant avec l'aire drainée.
+
+**Ce qui a déjà été réfuté, et ce qui ne l'a pas été.** R2 (2026-08-09) a réfuté un K PHYSIQUE FIXE de 0,35 h : tout se dégradait. Le banc du 2026-09-02 est nul par R60. Aucune expérience n'a encore testé une PLAGE physique apprise. Le banc `alliance/muskingum.sbatch` le fait, par `MEANDRE_KMUSK="0.5,12,3"` contre le témoin `"4,48,24"`, sur le forçage cohérent tout-CaSR, trente époques, six régions appariées.
+
+## R63 — Un forçage demandé et introuvable basculait en silence sur un autre (2026-09-03)
+
+**Statut : établi, corrigé.** `joint_data._paths` résolvait `forcing-<reg><suffixe>.nc` et, si le fichier était absent, retombait sans un mot sur `forcing-<reg>-budyko.nc`. Les forçages hybrides n'ayant jamais été téléversés sur la grappe, le banc de routage du 2026-09-03 y a évalué les champions de la version 1.0, entraînés sur le forçage hybride, contre le forçage tout-CaSR : outv notait 0,671 au lieu de 0,780, et l'écart a d'abord été pris pour un effet du mode de routage. Un forçage explicitement demandé et introuvable est désormais une erreur, sauf pour les régions qui possèdent une entrée propre dans `FORCINGS`. Les tâches de grappe fixent le suffixe et refusent de démarrer si le fichier manque.
