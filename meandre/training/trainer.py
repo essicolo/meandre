@@ -1610,7 +1610,29 @@ class Trainer:
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = chunk_len / n_train
             if not torch.isnan(loss_chunk) and loss_chunk.requires_grad:
+                # FILET PAR BLOC (2026-09-04). Le pas d'optimisation est UNIQUE par
+                # epoque, sur les gradients accumules de tous les blocs. Un seul bloc
+                # dont la retropropagation rend inf ou NaN empoisonne donc la somme, et
+                # le nettoyage d'avant le pas mettait a ZERO le gradient de tout le champ
+                # spatial : il n'apprenait rien de l'epoque, silencieusement (validation
+                # identique a la quatrieme decimale d'une epoque a l'autre). On prend une
+                # copie des gradients avant le bloc ; si le bloc les rend non finis, on
+                # la restaure et on compte le bloc comme jete, au lieu de perdre l'epoque.
+                _instantane = {p_: (p_.grad.detach().clone() if p_.grad is not None else None)
+                               for p_ in self.model.parameters() if p_.requires_grad}
                 (loss_chunk * weight).backward()
+                _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
+                              for p_ in _instantane)
+                if _pourri:
+                    for p_, g_ in _instantane.items():
+                        p_.grad = g_
+                    _n_jetes = getattr(self, "_n_blocs_jetes", 0) + 1
+                    self._n_blocs_jetes = _n_jetes
+                    if _n_jetes <= 3:
+                        print(f"[train] bloc {n_chunks} (t={t_start}) : gradient non fini, "
+                              f"bloc JETE, gradients restaures ({_n_jetes} bloc(s) jete(s) "
+                              f"jusqu'ici)", flush=True)
+                del _instantane
             elif not loss_chunk.requires_grad and loss_chunk.item() == 0.0:
                 n_no_grad = getattr(self, "_n_no_grad_chunks", 0) + 1
                 self._n_no_grad_chunks = n_no_grad

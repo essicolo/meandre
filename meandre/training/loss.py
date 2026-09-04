@@ -38,8 +38,19 @@ def _kge_components(q_obs: Tensor, q_sim: Tensor) -> tuple[Tensor, Tensor, Tenso
     y = q_sim - q_sim.mean()
     var_obs = (x ** 2).mean()
     var_sim = (y ** 2).mean()
-    std_obs = torch.sqrt(var_obs + 1e-8)
-    std_sim = torch.sqrt(var_sim + 1e-8)
+    # PLANCHER RELATIF sur les ecarts-types (2026-09-04). Sur une fenetre de debit
+    # quasi constant (janvier sous glace, 34 jours, aucun historique au premier bloc),
+    # var -> 0 et le plancher absolu de 1e-8 donnait std = 1e-4 : r = cov/1e-8 et
+    # gamma = std_sim/std_obs explosaient, leur gradient devenait inf, puis NaN. Or le
+    # trainer accumule les gradients de TOUS les blocs et ne fait qu'UN pas par epoque :
+    # un seul bloc NaN mettait a zero le gradient accumule de tout le champ spatial, qui
+    # n'apprenait donc RIEN de l'epoque (validation identique a la quatrieme decimale
+    # d'une epoque a l'autre, perte qui ne bougeait que par le prior). Un plancher de
+    # 0.1 % du debit moyen rend le gradient fini partout, sans effet mesurable ailleurs.
+    plancher_obs = (1e-3 * q_obs.mean().abs()).clamp(min=1e-6)
+    plancher_sim = (1e-3 * q_sim.mean().abs()).clamp(min=1e-6)
+    std_obs = torch.sqrt(var_obs + plancher_obs ** 2)
+    std_sim = torch.sqrt(var_sim + plancher_sim ** 2)
     r = (x * y).mean() / (std_obs * std_sim)
     r = r.clamp(-1.0, 1.0)
 
