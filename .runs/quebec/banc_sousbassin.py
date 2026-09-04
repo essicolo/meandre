@@ -251,6 +251,55 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     return temps, q_sim, o
 
 
+
+def forme(temps, q, o, garde=None):
+    """Deux questions que gamma ne separe pas (Essi, 2026-09-04) :
+      1. l'hydrogramme est-il RABOTE ? -> rapport des pointes annuelles et des hauts
+         quantiles, simule sur observe ;
+      2. l'hydrogramme est-il PLAT par moments ? -> part de jours ou le debit varie de
+         moins de 1 % d'un jour a l'autre, en hiver et sur l'annee, et plus longue suite.
+    Un gamma bas peut venir de l'un ou de l'autre ; ils ne se corrigent pas pareil.
+    """
+    import pandas as pd
+    if garde is None:
+        garde = np.ones(len(temps), bool)
+    an = temps.year.to_numpy()
+    mois = temps.month.to_numpy()
+    m = garde & np.isfinite(q) & np.isfinite(o)
+    # 1. rabotage
+    pics = []
+    for a in np.unique(an[m]):
+        sel = m & (an == a)
+        if sel.sum() > 300 and np.nanmax(o[sel]) > 0:
+            pics.append(np.nanmax(q[sel]) / np.nanmax(o[sel]))
+    q95 = np.nanquantile(q[m], 0.95) / max(np.nanquantile(o[m], 0.95), 1e-9)
+    q99 = np.nanquantile(q[m], 0.99) / max(np.nanquantile(o[m], 0.99), 1e-9)
+    # 2. platitude
+    def _plat(x):
+        r = np.abs(np.diff(x)) / np.maximum(x[:-1], 1e-9)
+        return r < 0.01
+    mm = m[:-1] & m[1:]
+    ps, po = _plat(q), _plat(o)
+    hiv = np.isin(mois[:-1], (12, 1, 2, 3)) & mm
+    n_ = mx = 0
+    for c in ps[mm]:
+        n_ = n_ + 1 if c else 0
+        mx = max(mx, n_)
+    return dict(pic=float(np.median(pics)) if pics else float("nan"), q95=float(q95),
+                q99=float(q99), plat=100 * float(ps[mm].mean()),
+                plat_obs=100 * float(po[mm].mean()),
+                plat_hiv=100 * float(ps[hiv].mean()) if hiv.any() else float("nan"),
+                plat_hiv_obs=100 * float(po[hiv].mean()) if hiv.any() else float("nan"),
+                suite=int(mx))
+
+
+def _ligne_forme(etiquette, f):
+    print(f"  {etiquette:28s} pointes annuelles sim/obs {f['pic']:5.2f} | q95 {f['q95']:5.2f} "
+          f"| q99 {f['q99']:5.2f} || plat {f['plat']:4.1f}% (obs {f['plat_obs']:4.1f}%) "
+          f"| hiver {f['plat_hiv']:4.1f}% (obs {f['plat_hiv_obs']:4.1f}%) "
+          f"| plus longue suite {f['suite']:3d} j", flush=True)
+
+
 def _kge(sim, obs):
     m = np.isfinite(sim) & np.isfinite(obs)
     if m.sum() < 100:
@@ -418,6 +467,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         k, r, b, gm = _kge(q[ev], o[ev])
         print(f"  {etiquette:28s} KGE vs observe {k:6.3f} | r {r:5.3f} | beta {b:5.3f} "
               f"| gamma {gm:5.3f}", flush=True)
+        _ligne_forme(etiquette, forme(temps, q, o, ev))
         return q, ev
 
     oui_non = lambda v: "oui" if v else "NON"
@@ -457,6 +507,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             k, r, b, gm = _kge(h[ev], o[ev])
             print(f"  {'Hydrotel':28s} KGE vs observe {k:6.3f} | r {r:5.3f} | beta {b:5.3f} "
                   f"| gamma {gm:5.3f}")
+            _ligne_forme("Hydrotel", forme(temps, h, o, ev))
             for etiq, q in (("zero epoque", q0), (f"apres {epoques} epoques", q1)):
                 k, r, b, gm = _kge(q[ev], h[ev])
                 print(f"  {etiq + ' vs Hydrotel':28s} KGE {k:6.3f} | r {r:5.3f}")
