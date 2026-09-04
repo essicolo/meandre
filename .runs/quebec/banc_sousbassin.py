@@ -372,6 +372,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # acceptent un device ; modele, donnees et ancrages y vont ensemble, sinon un seul
     # tenseur reste sur l'autre carte et tout s'arrete.
     dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    # GRAINE FIXE (2026-09-04). Le champ spatial est initialise au hasard : trois zero
+    # epoque successifs ont donne 0.811, 0.817 et 0.850 de gamma pour la meme
+    # configuration, soit l'ordre de grandeur de l'ecart a Hydrotel. Sans graine, un
+    # verdict absolu n'a pas de sens ; on lit un ecart APPARIE dans un meme run, et on
+    # rend la reference reproductible.
+    torch.manual_seed(int(os.environ.get("ETL_SEED", "1234")))
+    np.random.seed(int(os.environ.get("ETL_SEED", "1234")))
 
     s = extraire(reg, station)
     idx, g, terr = s["idx"], s["graph"], s["territorial"]
