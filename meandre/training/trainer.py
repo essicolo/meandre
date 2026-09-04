@@ -1016,6 +1016,7 @@ class Trainer:
         # historique, pour comparaison.
         _kge_continu = os.environ.get("MEANDRE_KGE_CONTINU", "1") == "1"
         _etat_continu = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
+        _pas_par_bloc = os.environ.get("MEANDRE_PAS_PAR_BLOC", "0") == "1"
         _hist_o: list[Tensor] = []
         _hist_s: list[Tensor] = []
 
@@ -1633,6 +1634,18 @@ class Trainer:
                               f"bloc JETE, gradients restaures ({_n_jetes} bloc(s) jete(s) "
                               f"jusqu'ici)", flush=True)
                 del _instantane
+                # UN PAS PAR BLOC (2026-09-04, MEANDRE_PAS_PAR_BLOC=1). Le trainer ne
+                # faisait qu'UN pas d'optimisation par epoque, sur les gradients
+                # accumules de tous les blocs (plein lot), avec un rechauffement du taux
+                # sur cinq epoques : trente epoques valaient trente pas d'Adam dont les
+                # cinq premiers presque nuls, et le point de reprise apres une epoque
+                # etait IDENTIQUE a l'initialisation. Un champ spatial n'apprend pas en
+                # trente pas. Ici, un pas apres chaque bloc (la troncature du gradient
+                # habituelle) : soixante-cinq pas par epoque au lieu d'un.
+                if _pas_par_bloc and not _pourri:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
             elif not loss_chunk.requires_grad and loss_chunk.item() == 0.0:
                 n_no_grad = getattr(self, "_n_no_grad_chunks", 0) + 1
                 self._n_no_grad_chunks = n_no_grad
@@ -1693,10 +1706,11 @@ class Trainer:
                 f"NaN/Inf gradients in {len(nan_params)} params — "
                 f"zeroed: {nan_params[:5]}"
             )
-        total_norm = torch.nn.utils.clip_grad_norm_(
-            self.model.parameters(), self.config.grad_clip
-        )
-        self.optimizer.step()
+        if not _pas_par_bloc:
+            total_norm = torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.config.grad_clip
+            )
+            self.optimizer.step()
 
         comp_tensors = {k: torch.tensor(v) for k, v in all_components.items()}
         return total_loss, comp_tensors
