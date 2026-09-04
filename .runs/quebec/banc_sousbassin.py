@@ -139,6 +139,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     champ part de son initialisation de litterature et des ancrages de la plateforme,
     exactement comme une passe a zero epoque.
     """
+    import os
     import duckdb
     import pandas as pd
     import xarray as xr
@@ -152,7 +153,8 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     idx, g, terr = s["idx"], s["graph"], s["territorial"]
     n = len(idx)
 
-    ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-hyb.nc")
+    _sfx = os.environ.get("JOINT_FX_SUFFIX", "-hyb")
+    ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}{_sfx}.nc")
     temps = pd.DatetimeIndex(ds["time"].values)
     if debut is None:
         fin = temps.year < temps.year.min() + annees
@@ -374,7 +376,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     s = extraire(reg, station)
     idx, g, terr = s["idx"], s["graph"], s["territorial"]
     n = len(idx)
-    ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-hyb.nc")
+    _sfx = os.environ.get("JOINT_FX_SUFFIX", "-hyb")
+    ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}{_sfx}.nc")
     temps = pd.DatetimeIndex(ds["time"].values)
     # MISE EN REGIME. Le trainer ne spinne que sur les jours qui PRECEDENT le debut de
     # la tranche d'entrainement (spinup_end = min(730, train_slice.start)). Si le
