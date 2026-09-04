@@ -318,7 +318,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     n = len(idx)
     ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-hyb.nc")
     temps = pd.DatetimeIndex(ds["time"].values)
-    fen = (temps.year >= debut_train)
+    # MISE EN REGIME. Le trainer ne spinne que sur les jours qui PRECEDENT le debut de
+    # la tranche d'entrainement (spinup_end = min(730, train_slice.start)). Si le
+    # forcage commence le jour meme, il n'y a AUCUN spinup : chaque epoque repart d'un
+    # manteau vide un premier janvier, le premier bloc rend des gradients NaN, et le
+    # premier hiver de chaque epoque est faux -- la faute de R64 sous une autre forme.
+    # On charge donc deux annees de plus en amont, reservees a la mise en regime.
+    fen = (temps.year >= debut_train - 2)
     F = torch.tensor(ds["forcing"].isel(node=idx).values[fen], dtype=torch.float32)
     ds.close()
     temps = temps[fen]
@@ -395,6 +401,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
           f" | validation {fin_train+1}-{fin_val} | evaluation {debut_eval}-{temps.year.max()}")
     print(f"  boucle : etat continu={oui_non(etat_continu)}, "
           f"KGE continu={oui_non(kge_continu)} | sol={sol} | aquifere={aquifere}", flush=True)
+    print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
+          f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
     q0, ev = _evaluer(m, "zero epoque")
 
