@@ -764,3 +764,20 @@ Depuis la correction de R64, le manteau persiste, et la répartition mensuelle e
 L'hiver reste sous-produit de trente pour cent et l'excédent ressort en été et en automne. Signature d'une fonte hivernale trop bridée : l'eau reste dans un manteau qui, lui, persiste désormais.
 
 **Prédiction posée d'avance**, pour ne pas interpréter après coup : baisser l'amplitude doit remonter le rapport de volume d'hiver vers 1 et faire redescendre l'été et l'automne, en Gaspésie surtout. Si l'hiver ne bouge pas, la fonte n'est pas le mécanisme et il faut chercher du côté de la récession de l'aquifère, figée sur ces modèles (R61). Banc : `alliance/fonte.sbatch`, amplitudes 0,50 / 0,25 / 0,00 sur trois régions.
+
+## R71 — REQUALIFICATION : tout verdict obtenu par entraînement est antérieur à une boucle juste (2026-09-03)
+
+**Statut : avertissement permanent, à lire avant de citer un verdict de ce registre.**
+
+Deux défauts de la boucle d'entraînement ont été établis et corrigés le 2026-09-03. Ils ne datent pas d'hier : ils étaient présents dans **tout entraînement jamais lancé dans ce projet**.
+
+- R64, l'état riche anéanti tous les 45 jours. Le manteau neigeux, le profil de gel, le milieu humide et le stockage des lacs repartaient de zéro à chaque bloc, et les teneurs en eau du sol étaient réinitialisées à 0,9 fois la porosité. Aucun entraînement n'a jamais simulé d'hiver continu, ni laissé un lac se remplir.
+- R67, le KGE de la perte calculé sur 45 jours quand la sélection le calcule sur trois ans. Sur une région, la corrélation entre les deux valait 0,05.
+
+**Conséquence à porter.** Un verdict de la forme « telle piste a été testée par réentraînement et n'a pas payé » a été rendu par une boucle qui n'entraînait pas ce qu'on croyait. Il ne devient pas faux pour autant, mais il perd son autorité : il dit que la piste n'a pas paye SOUS UNE BOUCLE CASSÉE. Un verdict de mesure, d'inférence pure ou de lecture de code n'est pas concerné.
+
+**Décompte sur ce registre**, sur 44 entrées de tableau : 14 verdicts s'appuient sur un entraînement (R3, R12, R13, R18, R19, R24, R26, R27, R29, R31, R33, R40, R43, R44) et 13 sur de l'inférence pure ou une mesure. Les entrées longues (R45 et suivantes) sont à qualifier au cas par cas selon la même règle.
+
+**Preuve que la requalification n'est pas théorique.** R69 montre que la correction de la boucle fait passer l'hiver gaspésien de 12 à 18 événements pour 17 observés, et sa variabilité de 0,76 à 1,34 pour 1,12 observée, alors que le KGE annuel BAISSE de 0,035. Une piste hivernale jugée sur le KGE annuel sous l'ancienne boucle aurait été écartée deux fois à tort : parce que l'hiver n'était pas simulé, et parce que le juge ne regardait pas l'hiver.
+
+**Règle pratique.** Avant de rouvrir une piste écartée, vérifier deux choses : le verdict reposait-il sur un entraînement, et son critère était-il un KGE annuel médian. Si les deux réponses sont oui, le verdict est à refaire avant d'être cité. Le cas de R32, l'amplitude de fonte saisonnière, est le premier traité sous cette règle (voir R70).
