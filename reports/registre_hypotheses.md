@@ -918,3 +918,21 @@ Sous-bassin de la Gaspésie en amont de la station 021702, 33 tronçons, 223 km�
 **Portée, MESURÉE et plus étroite que ce que la première rédaction avançait.** Les journaux locaux de trois entraînements sur région entière (Montréal sur deux époques, deux fois ; Côte-Nord E sur une époque) ne contiennent AUCUN message « NaN/Inf gradients … zeroed ». Le poison frappe le banc de sous-bassin, où la station est UNIQUE et son premier bloc de janvier sans variance ; sur une région à vingt-huit stations, le KGE du premier bloc est moyenné sur des stations dont certaines varient, et reste fini. L'hypothèse que les anciens champions aient été privés d'apprentissage par ce mécanisme n'est donc PAS soutenue par les journaux disponibles ; elle reste à vérifier sur les journaux de grappe (`grep -c "NaN/Inf" ~/scratch/meandre/*/*.log`). Le correctif reste juste et nécessaire pour tout banc à peu de stations.
 
 **Correctifs.** (1) Plancher RELATIF sur les écarts-types du KGE, 0,1 % du débit moyen : gradient fini sur une fenêtre constante, effet nul ailleurs. (2) Filet par bloc dans le trainer : copie des gradients avant chaque bloc, restauration si le bloc les rend non finis, bloc compté comme jeté. Un bloc perdu coûte 1,5 % de l'époque ; il n'en coûtait 100 %. Tests au vert. **Tous les entraînements des 3 et 4 septembre sur sous-bassin sont à refaire, ainsi que la tâche de grappe 2394135 (59 sous-bassins), lancée avec le défaut.**
+
+## R77 bis — Sur la grappe, le poison a bien frappé des régions entières, et de façon ASYMÉTRIQUE entre les bras (2026-09-04)
+
+**Statut : établi.** Comptage du message « NaN/Inf gradients … zeroed » dans les journaux de grappe (une occurrence = une époque dont le gradient du champ a été mis à zéro) :
+
+| journal | époques perdues sur 30 |
+|---|---|
+| correctifs / gasp-corrigé | 5 |
+| correctifs / gasp-ancien, outv (2), sagu (2) | 0 |
+| kmusk / mont-témoin | 3 |
+| kmusk / slso-témoin | 3 |
+| kmusk / les dix autres | 0 |
+| sousbassins / gasp-021702, mont-030424, slno-052233 | 2 sur 2 (toutes) |
+| sousbassins / mont-030919 | 1 sur 2 |
+
+**Ce que cela change.** La restriction de R77 (« les régions entières ne sont pas touchées ») valait pour trois journaux locaux ; elle ne vaut pas en général. Sur une région entière, le premier bloc a une frontière tirée au hasard à chaque époque (revue du 2026-07-01) : certaines époques tombent sur une fenêtre à variance quasi nulle, et le champ perd alors toute l'époque. Le taux est faible (0 à 17 %) mais **non nul et inégal entre les bras d'un même banc**. Sur le banc apparié des correctifs (R69), le bras corrigé de la Gaspésie a perdu 5 époques sur 30 et son témoin aucune : l'écart de −0,035 y est confondu par cinq époques de handicap, et R69 doit se lire avec cette réserve. Les bancs de sous-bassin à station unique perdent TOUTES leurs époques, comme prévu.
+
+**Conséquence pratique.** Tout verdict d'entraînement antérieur au correctif de R77 doit être accompagné du comptage de ce message dans son journal ; un bras qui a perdu des époques n'est pas comparable à un bras qui n'en a pas perdu. Le filet par bloc rend le comptage inutile pour les runs à venir (un bloc jeté coûte 1,5 % d'une époque, pas 100 %). La tâche 2394135 est annulée et relancée en 2396210 avec le correctif.
