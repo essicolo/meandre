@@ -552,9 +552,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.5, w_mse=0.1, w_nse=0.0, w_nrmse=0.0,
-                            w_log_nse=0.0, w_log_mse=0.0, w_et=float(w_et), per_station=True)
-        print(f"  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 {float(w_et):.2f} (recette du "
-              "socle, sans GRACE)", flush=True)
+                            w_log_nse=0.0, w_log_mse=0.0, w_et=float(w_et), per_station=True,
+                            # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
+                            # MOD16 donne la forme de l'ET, jamais son volume. Le banc
+                            # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
+                            # et un essai a conclu a tort que MOD16 vidait la riviere.
+                            et_mode="anomaly")
+        print(f"  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 {float(w_et):.2f} en tendance "
+              "(recette du socle, sans GRACE)", flush=True)
     else:
         loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
                             w_log_nse=0.0, w_log_mse=0.0, per_station=True)
