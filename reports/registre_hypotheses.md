@@ -890,3 +890,21 @@ Sous-bassin de la Gaspésie en amont de la station 021702, 33 tronçons, 223 km�
 **Ce que cela n'entame pas.** La méthode a fonctionné : le recoupement par simulation continue indépendante a détecté l'écart en trois minutes, deux fois, et c'est lui qui a conduit à la convention. Le banc est corrigé, les trois essais d'entraînement faits sous le désalignement sont jetés, le test du champ repart sur GPU.
 
 **Leçon consignée dans le code.** Un bloc de commentaire dans `banc_sousbassin.py` porte la convention. Elle devrait être un contrat vérifié dans `TrainingData` (une assertion sur les longueurs) plutôt qu'une convention tacite ; c'est le troisième défaut de cette famille en deux jours.
+
+## R76 — Rabotage et platitude, séparés : le rabotage est partagé avec Hydrotel, la platitude n'existe pas avant entraînement (2026-09-04)
+
+**Statut : établi sur un sous-bassin, à confirmer sur les 59 (grappe, tâche 2394135).** Deux questions d'Essi qu'un gamma bas ne distingue pas : l'hydrogramme est-il raboté, et est-il plat par moments. Mesuré sur la Gaspésie 021702, 2020-2024, `banc_sousbassin.py` (fonction `forme`).
+
+| | pointes annuelles sim/obs | q95 | q99 | jours plats | plats en hiver | plus longue suite |
+|---|---|---|---|---|---|---|
+| socle, zéro époque | 0,58 | 0,71 | 0,72 | 6,7 % | 9,2 % | 7 j |
+| Hydrotel | 0,54 | 0,66 | 0,67 | 5,3 % | 2,2 % | 10 j |
+| observé | 1,00 | 1,00 | 1,00 | 10,2 % | 21,9 % | 27 j |
+
+**Raboté : oui, fortement, et Hydrotel autant.** Les deux modèles rendent 54 à 58 % des pointes annuelles et environ 70 % du quantile 95. Le défaut est partagé, donc il n'est pas dans ce que méandre fait de différent ; il est en amont des deux (forçage aux pointes, ou physique commune). Chantier à part.
+
+**Plat : non, pas avant entraînement.** Le socle est MOINS plat que la réalité (6,7 % contre 10,2 % de jours plats ; 9 % contre 22 % en hiver) : l'observé sous glace est réellement constant et aucun des deux modèles ne le reproduit. La platitude de R65 (38 % de jours plats en Gaspésie) est celle des champions ENTRAÎNÉS sous la boucle cassée ; elle est absente du modèle ancré à zéro époque.
+
+**D'où vient alors l'écart de gamma (0,82 contre 0,875) ?** Pas des pointes, que méandre rabote moins. Du NIVEAU MOYEN : biais 0,88 pour méandre contre 0,74 pour Hydrotel à écart-type comparable, donc coefficient de variation plus bas. Le gamma d'Hydrotel est meilleur en partie parce que sa moyenne est plus fausse. **Gamma ne doit plus être lu seul** ; le banc imprime les deux diagnostics à côté.
+
+**Bruit d'initialisation, à connaître avant tout verdict.** Sans graine fixe, trois zéro époque successifs ont donné 0,811, 0,817 et 0,850 de gamma pour la même configuration : l'initialisation aléatoire du champ vaut l'écart à Hydrotel. Graine fixée dans le banc depuis ; un verdict d'entraînement se lit en écart APPARIÉ dans un même run. Les 59 sous-bassins de la grappe (lancés avant la graine) restent valides bassin par bassin, leurs références absolues sont bruitées.
