@@ -528,13 +528,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
 
     if aux and et_obs is not None:
         # Poids de la recette du socle (gasp-v4 [loss] + ETL_WET=0.4), sans GRACE.
+        # per_station=True est OBLIGATOIRE (trouve le 2026-09-04 a 14 h 35) : le defaut
+        # de HydroLoss est la branche « pooled », qui calcule le KGE sur le seul bloc
+        # courant SANS l'historique detache. Tous les essais du banc jusqu'ici ont donc
+        # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
+        # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.5, w_mse=0.1, w_nse=0.0, w_nrmse=0.0,
-                            w_log_nse=0.0, w_log_mse=0.0, w_et=0.4)
+                            w_log_nse=0.0, w_log_mse=0.0, w_et=0.4, per_station=True)
         print("  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 0.4 (recette du socle, "
               "sans GRACE)", flush=True)
     else:
         loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
-                            w_log_nse=0.0, w_log_mse=0.0)
+                            w_log_nse=0.0, w_log_mse=0.0, per_station=True)
         print("  perte : KGE seul (PAS la recette du socle)", flush=True)
     # warmup_epochs=0 : le defaut de cinq epoques de rechauffement rendait un essai
     # court entierement nul (cinq pas d'Adam a taux presque nul).
