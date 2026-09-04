@@ -763,7 +763,19 @@ Depuis la correction de R64, le manteau persiste, et la répartition mensuelle e
 
 L'hiver reste sous-produit de trente pour cent et l'excédent ressort en été et en automne. Signature d'une fonte hivernale trop bridée : l'eau reste dans un manteau qui, lui, persiste désormais.
 
-**Prédiction posée d'avance**, pour ne pas interpréter après coup : baisser l'amplitude doit remonter le rapport de volume d'hiver vers 1 et faire redescendre l'été et l'automne, en Gaspésie surtout. Si l'hiver ne bouge pas, la fonte n'est pas le mécanisme et il faut chercher du côté de la récession de l'aquifère, figée sur ces modèles (R61). Banc : `alliance/fonte.sbatch`, amplitudes 0,50 / 0,25 / 0,00 sur trois régions.
+**Prédiction posée d'avance**, pour ne pas interpréter après coup : baisser l'amplitude doit remonter le rapport de volume d'hiver vers 1 et faire redescendre l'été et l'automne, en Gaspésie surtout. Si l'hiver ne bouge pas, la fonte n'est pas le mécanisme et il faut chercher du côté de la récession de l'aquifère, figée sur ces modèles (R61).
+
+**VERDICT DU 2026-09-03 : PRÉDICTION RÉFUTÉE, le mécanisme est négligeable.** Mesuré en trois minutes sur colonne isolée et forçage réel de Gaspésie (`banc_synthetique.py fonte`, huit nœuds, quatre années dont une de mise en régime), sans réseau, sans routage, sans entraînement :
+
+| amplitude | manteau au 1er avril | production hiver | printemps | total annuel |
+|---|---|---|---|---|
+| 0,50 | 383 mm | 19 mm/an | 55 mm/an | 109 mm/an |
+| 0,25 | 378 mm | 21 mm/an | 54 mm/an | 109 mm/an |
+| 0,00 | 374 mm | 23 mm/an | 51 mm/an | 110 mm/an |
+
+Supprimer entièrement la modulation ne libère que 4 mm/an d'eau en hiver, contre un déficit mesuré de trente pour cent sur bassin. L'amplitude déplace 10 mm de manteau, rien de plus. **Aucune passe de grappe n'est engagée sur cette piste** ; `alliance/fonte.sbatch` reste écrit mais n'a pas à tourner. Le déficit hivernal vient d'ailleurs, et R61 (récession de l'aquifère figée) est le candidat suivant.
+
+**Méthode validée au passage.** Neuf essais de grappe à huit heures ont été évités par trois minutes de banc. Deux pièges payés en le construisant : un climat entièrement fabriqué était trop froid pour fondre (janvier à −12 °C sans redoux), donc aucun réglage de fonte n'y produisait d'effet ; et `melt_seasonal_amp` n'est injecté que par `params_from_nerf`, si bien qu'un banc passant par `set_static` le contournait et donnait trois résultats identiques au millimètre. C'est cette exactitude impossible qui a trahi l'erreur. Le bon partage est de fabriquer le SYSTÈME (colonne isolée) et de garder la MÉTÉO réelle.
 
 ## R71 — REQUALIFICATION : tout verdict obtenu par entraînement est antérieur à une boucle juste (2026-09-03)
 
