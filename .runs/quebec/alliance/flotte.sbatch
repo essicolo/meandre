@@ -9,11 +9,14 @@
 # de variables shell (R63 et inventaire du 2026-09-03).
 #
 # Deux bras, pour ne pas laisser dormir la fin de semaine :
-#   A  socle corrige                     indices 0-14, ETL_TAG=-fdsA
-#   B  socle corrige + Muskingum physique indices 15-29, ETL_TAG=-fdsB, MEANDRE_KMUSK=0.5,12,3
-#      (R62 : la borne basse actuelle de 4 h vaut quatre fois le temps de parcours du
-#      troncon median ; jamais teste comme plage apprise sous une boucle juste)
-# Le bras A est la livraison ; le bras B est la question ouverte. Soumettre A d'abord.
+#   A  socle, boucle corrigee   indices 0-14,  ETL_TAG=-fdsA : un pas par bloc (R78),
+#      historique amorce (chaque bloc voit le KGE de toute la periode), minimum de trente
+#      qui compte l'historique et aucun pas sur le prior seul (R80)
+#   B  socle, ancienne boucle   indices 15-29, ETL_TAG=-fdsB : un pas par epoque, sans
+#      amorce, tout le reste identique. C'est le TEMOIN : lundi, A contre B region par
+#      region dit si la boucle corrigee apprend, ce qu'aucun banc local n'a encore
+#      montre (2026-09-04, 16 h). Le Muskingum physique (R62) attend ce verdict.
+# Soumettre A et B ensemble : le verdict est la paire, pas un bras seul.
 #
 #   sbatch --account=<compte> --array=0-14%6  flotte.sbatch     # bras A
 #   sbatch --account=<compte> --array=15-29%6 flotte.sbatch     # bras B
@@ -38,9 +41,9 @@ TRAVAIL=${TRAVAIL:-$HOME/scratch}
 REGIONS=(outv gasp sagu mont slno slso abit cnda cndb cndc cndd cnde labi outm vaud)
 REG=${REGIONS[$((SLURM_ARRAY_TASK_ID % 15))]}
 if [ $((SLURM_ARRAY_TASK_ID / 15)) -eq 0 ]; then
-  BRAS=A; TAG=-fdsA; KMUSK=4,48,24
+  BRAS=A; TAG=-fdsA; KMUSK=4,48,24; PAS_PAR_BLOC=1; AMORCE=1
 else
-  BRAS=B; TAG=-fdsB; KMUSK=0.5,12,3
+  BRAS=B; TAG=-fdsB; KMUSK=4,48,24; PAS_PAR_BLOC=0; AMORCE=0
 fi
 JOURNAUX=$TRAVAIL/meandre/flotte
 mkdir -p "$JOURNAUX" "$TRAVAIL/meandre/checkpoints" "$RACINE/.runs/quebec/checkpoints"
@@ -67,6 +70,7 @@ unset JOINT_FX_SUFFIX MEANDRE_ETAT_CONTINU MEANDRE_KGE_CONTINU MEANDRE_KMUSK
 # Sans lui, trente epoques valaient vingt-cinq pas d'Adam et le champ n'apprenait
 # presque rien. PAS_PAR_BLOC=0 restitue l'ancien comportement.
 PAS_PAR_BLOC=${PAS_PAR_BLOC:-1}
+AMORCE=${AMORCE:-1}
 MAJ=$(echo "$REG" | tr a-z A-Z)
 if [ "$REG" != slso ] && [ ! -f "$LOCAL/quebec/forcing-${REG}-budyko.nc" ]; then
   echo "ARRET : forcing-${REG}-budyko.nc absent du colis." >&2
@@ -78,6 +82,7 @@ AUX=(ETL_WET=0.4)
 case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0) ;; esac
 
 env ETL_CONFIG=.runs/quebec/config/socle.toml MEANDRE_PAS_PAR_BLOC=$PAS_PAR_BLOC \
+    MEANDRE_HISTORIQUE_AMORCE=$AMORCE \
     JOINT_FX_SUFFIX=-budyko MEANDRE_KMUSK="$KMUSK" \
     ETL_FORCE=1 ETL_REGION=$REG ETL_COMPILE=${ETL_COMPILE:-1} \
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
