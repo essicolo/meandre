@@ -243,13 +243,144 @@ def _bilan_un_mode(f, temps, garde, n_ans, n, et_mode):
           f"{pd_:10.0f}mm {pd_/max(pr,1e-9):12.2f}")
 
 
+
+# ---------------------------------------------------------------------------
+# Colonne ANCREE : la seule qui ait un bilan d'eau juste (R72)
+# ---------------------------------------------------------------------------
+
+def colonne_ancree(reg="gasp", n_noeuds=8, graine=0, melt_seasonal_amp=None,
+                   plateforme=None):
+    """Colonne isolee AVEC les parametres Linacre cales de la plateforme regionale.
+
+    R72 : sans eux, la colonne evapore 88 % de la pluie et rend un coefficient
+    d'ecoulement de 0.13 au lieu de 0.59. Aucun verdict de VOLUME n'a de sens sur une
+    colonne non ancree. Retourne (colonne, indices des noeuds tires).
+    """
+    import numpy as _np
+    from meandre.data.basin_cache import BasinCache
+    from meandre.data.hydrotel_calib import load_linacre_nodes
+    from meandre.utils import paths as _p
+
+    maj = reg.upper()
+    plateforme = plateforme or f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
+    d = BasinCache(f"{_p.DATA_ROOT}/quebec/{reg}.duckdb").load(device=torch.device("cpu"))
+    node_ids = d["node_ids"]
+    rng = _np.random.default_rng(graine)
+    idx = _np.sort(rng.choice(len(node_ids), size=min(n_noeuds, len(node_ids)),
+                              replace=False))
+    ids = [node_ids[i] for i in idx]
+    lin = load_linacre_nodes(plateforme, ids, device=torch.device("cpu"))
+    col = _colonne(melt_seasonal_amp=melt_seasonal_amp, n=len(idx), et_mode="linacre")
+    col.set_linacre_params(*lin)
+    # ANCRAGE COMPLET. R72 a montre qu'une colonne a moitie ancree ne peut rien conclure
+    # sur des VOLUMES ; le meme raisonnement vaut pour le CALENDRIER, gouverne par les
+    # taux de fonte et le seuil pluie-neige de la plateforme, et par le calage de sol.
+    from meandre.data.hydrotel_calib import (
+        load_melt_nodes, load_passage_pluie_neige, load_occupation_sol,
+    )
+    try:
+        col.set_melt_params(load_melt_nodes(plateforme, ids, device=torch.device("cpu")))
+    except Exception as e:
+        print(f"  [ancrage] taux de fonte non charges ({type(e).__name__}) : "
+              f"le calendrier de la crue n'est PAS ancre")
+    try:
+        _sn = load_passage_pluie_neige(plateforme)
+        if _sn != 0.0:
+            col.t_neige_seuil = _sn
+    except Exception:
+        pass
+    try:
+        _occ = load_occupation_sol(plateforme, ids, device=torch.device("cpu"))
+        if _occ is not None and hasattr(col, "set_land_cover"):
+            col.set_land_cover(_occ)
+    except Exception:
+        pass
+    return col, idx
+
+
+def banc_saison(reg="gasp", n_noeuds=8):
+    """La colonne ANCREE sous-produit-elle en hiver, et de combien ?
+
+    Compare la repartition mensuelle de la production de la colonne a celle du debit
+    OBSERVE aux stations de la region. La colonne n'a ni routage ni reseau : on compare
+    donc des PARTS du total annuel, pas des debits.
+    """
+    import pandas as pd
+    torch.set_default_dtype(torch.float64)
+    col, idx = colonne_ancree(reg, n_noeuds)
+    f, temps = forcage_reel(reg, n_noeuds)
+    i2 = pd.DatetimeIndex(temps)
+    g = i2.year < i2.year.min() + 5
+    f, temps = f[g], temps[g]
+    i2 = pd.DatetimeIndex(temps)
+    an, mois, doy = i2.year.to_numpy(), i2.month.to_numpy(), i2.dayofyear.to_numpy()
+    garde = an > an.min()
+
+    st = col.init_state(f.shape[1], theta_init=(0.30, 0.30, 0.30))
+    tt = lambda a: torch.tensor(a, dtype=torch.float64)
+    prod = []
+    with torch.no_grad():
+        for i in range(f.shape[0]):
+            p, st, _ = col(tt(f[i, :, 0]), tt(f[i, :, 1]), tt(f[i, :, 2]), tt(f[i, :, 3]),
+                           tt(f[i, :, 4]), tt(f[i, :, 5]), float(doy[i]), st)
+            prod.append(float(p.mean()))
+    prod = np.array(prod)
+
+    # Debit observe : parts mensuelles, sur les memes annees
+    from meandre.data.basin_cache import BasinCache
+    from meandre.utils import paths as _p
+    obs = BasinCache(f"{_p.DATA_ROOT}/quebec/{reg}.duckdb").load_observations(
+        date_start=str(temps[0])[:10], date_end=str(temps[-1])[:10], min_valid_days=365)
+    Q = np.asarray(obs["discharge"], dtype=float)   # (T, N), NaN hors stations
+    import pandas as _pd
+    mo = _pd.DatetimeIndex(obs["dates"]).month.to_numpy()
+
+    print(f"Colonne ANCREE (Linacre calee), {reg.upper()}, {n_noeuds} noeuds, "
+          f"{len(np.unique(an[garde]))} annees jugees.")
+    print("Parts du total annuel, en pourcentage.")
+    print()
+    print(f"{'mois':>5s} {'colonne':>9s} {'observe':>9s} {'ecart':>7s}")
+    tot_s = prod[garde].sum()
+    # Part mensuelle du debit observe, moyennee sur les stations pour ne pas laisser la
+    # plus grosse ecraser les autres : on normalise CHAQUE station puis on medianise.
+    parts_st = []
+    for j in range(Q.shape[1]):
+        q = Q[:, j]
+        if np.isfinite(q).sum() < 365:
+            continue
+        pm = np.array([np.nansum(q[mo == m]) for m in range(1, 13)])
+        if pm.sum() <= 0:
+            continue
+        parts_st.append(100 * pm / pm.sum())
+    parts_o = np.median(np.array(parts_st), axis=0) if parts_st else np.full(12, np.nan)
+    for m in range(1, 13):
+        ps = 100 * prod[garde & (mois == m)].sum() / max(tot_s, 1e-9)
+        print(f"{m:5d} {ps:8.1f}% {parts_o[m-1]:8.1f}% {ps - parts_o[m-1]:+6.1f}")
+    hs = sum(100 * prod[garde & (mois == m)].sum() / max(tot_s, 1e-9) for m in (12, 1, 2, 3))
+    ho = parts_o[[11, 0, 1, 2]].sum()
+    print()
+    print(f"hiver (dec-mar) : colonne {hs:.1f} % contre observe {ho:.1f} % "
+          f"({hs - ho:+.1f} points)")
+    if hs - ho < -5:
+        print("La colonne SOUS-PRODUIT en hiver, hors de tout routage : le deficit nait "
+              "dans la colonne, pas dans le reseau.")
+    elif abs(hs - ho) <= 5:
+        print("La colonne repartit l'annee correctement : le deficit hivernal du modele "
+              "complet vient du RESEAU ou du routage, pas de la colonne.")
+    else:
+        print("La colonne SUR-PRODUIT en hiver.")
+
+
 def main():
     quoi = sys.argv[1] if len(sys.argv) > 1 else "fonte"
+    if quoi == "saison":
+        banc_saison(sys.argv[2] if len(sys.argv) > 2 else "gasp")
+        return
     if quoi == "bilan":
         banc_bilan(sys.argv[2] if len(sys.argv) > 2 else "gasp")
         return
     if quoi != "fonte":
-        raise SystemExit("bancs disponibles : fonte, bilan")
+        raise SystemExit("bancs disponibles : fonte, bilan, saison")
     amps = [float(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 \
         else [0.5, 0.25, 0.0]
     banc_fonte(amps)
