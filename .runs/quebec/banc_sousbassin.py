@@ -340,7 +340,7 @@ def rapport(reg, station, **kw):
 def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
               kge_continu=True, etat_continu=True, device=None, tag="",
-              pas_par_bloc=True, amorce=False):
+              pas_par_bloc=True, amorce=False, aux=True):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -408,6 +408,26 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     o = pd.Series(obs["discharge"].values,
                   index=pd.DatetimeIndex(obs["date"])).reindex(temps).to_numpy(dtype=float)
     q_obs = torch.tensor(o, dtype=torch.float32)[:, None].to(dev)
+    # CIBLES AUXILIAIRES (objection d'Essi, 2026-09-04). La recette du socle ne
+    # s'entraine PAS sur le KGE seul : elle pese l'evapotranspiration MOD16 a 0.4, GRACE a
+    # 0.2 et 0.05, le biais de volume a 0.5 et une MSE a 0.1, pour rendre le modele
+    # IDENTIFIABLE. Un banc au KGE seul mesure la compensation non identifiable que ces
+    # termes existent pour empecher. MOD16 est charge ici pour les noeuds du sous-bassin ;
+    # GRACE ne l'est pas : son empreinte (un mascon de ~300 km) n'a aucun sens pour un
+    # sous-bassin de 200 km2, et le socle le dit lui-meme pour les regions sans cible.
+    et_obs = None
+    if aux:
+        from meandre.data.basin_cache import BasinCache as _BC
+        _et = _BC(s["base"]).load_modis_et(str(temps[0].date()), str(temps[-1].date()),
+                                          device=torch.device("cpu"))
+        if _et is not None:
+            _et = _et[:, torch.tensor(idx)]
+            if _et.shape[0] == len(temps):
+                et_obs = _et.to(torch.float32).to(dev)
+                print(f"  MOD16 : {int(torch.isfinite(et_obs).sum())} valeurs finies sur "
+                      f"{et_obs.numel()} (ET 8 jours, mm/j)", flush=True)
+            else:
+                print(f"  MOD16 ignore : {_et.shape[0]} pas de temps contre {len(temps)}")
     mask = torch.zeros(n, dtype=torch.bool, device=dev)
     mask[s["exutoire"]] = True
     st_idx = torch.tensor([s["exutoire"]], device=dev)
@@ -465,9 +485,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     tr_sl = _tranche(debut_train, fin_train)
     va_sl = _tranche(fin_train + 1, fin_val)
     td = TrainingData(train_slice=tr_sl, val_slice=va_sl,
-                      **{**commun, "q_obs": q_obs[tr_sl.start:]})
+                      **{**commun, "q_obs": q_obs[tr_sl.start:],
+                         "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None)})
     vd = TrainingData(train_slice=va_sl, val_slice=va_sl,
-                      **{**commun, "q_obs": q_obs[va_sl.start:]})
+                      **{**commun, "q_obs": q_obs[va_sl.start:],
+                         "et_obs": (et_obs[va_sl.start:] if et_obs is not None else None)})
 
     def _evaluer(m, etiquette):
         m.eval()
@@ -495,8 +517,16 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     m = _construire()
     q0, ev = _evaluer(m, "zero epoque")
 
-    loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
-                        w_log_nse=0.0, w_log_mse=0.0)
+    if aux and et_obs is not None:
+        # Poids de la recette du socle (gasp-v4 [loss] + ETL_WET=0.4), sans GRACE.
+        loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.5, w_mse=0.1, w_nse=0.0, w_nrmse=0.0,
+                            w_log_nse=0.0, w_log_mse=0.0, w_et=0.4)
+        print("  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 0.4 (recette du socle, "
+              "sans GRACE)", flush=True)
+    else:
+        loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
+                            w_log_nse=0.0, w_log_mse=0.0)
+        print("  perte : KGE seul (PAS la recette du socle)", flush=True)
     # warmup_epochs=0 : le defaut de cinq epoques de rechauffement rendait un essai
     # court entierement nul (cinq pas d'Adam a taux presque nul).
     tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=45, tbptt_steps=365,
@@ -550,6 +580,8 @@ def main():
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
     ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
     ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--kge-seul", action="store_true",
+                    help="perte au KGE seul, sans MOD16 : PAS la recette du socle")
     ap.add_argument("--amorce", action="store_true",
                     help="passe sans gradient en debut d epoque : chaque bloc voit le KGE de toute la periode")
     ap.add_argument("--pas-par-epoque", action="store_true",
@@ -569,7 +601,7 @@ def main():
                   sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
-                  amorce=a.amorce)
+                  amorce=a.amorce, aux=not a.kge_seul)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,
