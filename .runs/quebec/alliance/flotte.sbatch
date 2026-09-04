@@ -63,6 +63,10 @@ export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 
 # Aucune fuite de session ne doit changer le forcage ni les leviers de la boucle.
 unset JOINT_FX_SUFFIX MEANDRE_ETAT_CONTINU MEANDRE_KGE_CONTINU MEANDRE_KMUSK
+# R78 : un pas d'optimisation par bloc (~65 par epoque) au lieu d'un par epoque.
+# Sans lui, trente epoques valaient vingt-cinq pas d'Adam et le champ n'apprenait
+# presque rien. PAS_PAR_BLOC=0 restitue l'ancien comportement.
+PAS_PAR_BLOC=${PAS_PAR_BLOC:-1}
 MAJ=$(echo "$REG" | tr a-z A-Z)
 if [ "$REG" != slso ] && [ ! -f "$LOCAL/quebec/forcing-${REG}-budyko.nc" ]; then
   echo "ARRET : forcing-${REG}-budyko.nc absent du colis." >&2
@@ -73,7 +77,7 @@ fi
 AUX=(ETL_WET=0.4)
 case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0) ;; esac
 
-env ETL_CONFIG=.runs/quebec/config/socle.toml \
+env ETL_CONFIG=.runs/quebec/config/socle.toml MEANDRE_PAS_PAR_BLOC=$PAS_PAR_BLOC \
     JOINT_FX_SUFFIX=-budyko MEANDRE_KMUSK="$KMUSK" \
     ETL_FORCE=1 ETL_REGION=$REG ETL_COMPILE=${ETL_COMPILE:-1} \
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
