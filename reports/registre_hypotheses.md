@@ -812,3 +812,38 @@ Précipitation 871 mm/an. Fourchette de référence : ETR boréale 400 à 500 mm
 **Ce que le résultat établit tout de même.** Un facteur 1,5 sur l'évapotranspiration devient un facteur 4 sur l'écoulement, parce que la production est la petite différence de deux grands termes. Le choix du mode d'ETP domine donc tout autre réglage du bilan, et le coefficient calé de Linacre n'est pas un détail d'ancrage mais la pièce qui rend le modèle physiquement correct. C'est l'énoncé quantitatif de la loi des ancrages, et la raison concrète pour laquelle un point de reprise seul ne définit pas un modèle.
 
 **Conséquence de méthode.** Tout banc sur colonne isolée doit poser les paramètres d'ancrage avant de conclure quoi que ce soit sur des volumes. `banc_synthetique.py` documente le piège.
+
+## R73 — L'équation d'évapotranspiration n'est pas le sujet, une seule constante l'est (2026-09-03)
+
+**Statut : établi.** Question posée par Essi : Hydrotel s'en sort avec McGuinness ou Linacre et un coefficient constant par région ; pourquoi le champ spatial n'y arriverait-il pas ? Mesuré sur colonne isolée, forçage réel de Gaspésie, quatre années dont une de mise en régime.
+
+**Correction de vocabulaire d'abord, elle avait faussé un test.** Une PLATEFORME est une configuration de modèle, pas une région. Hydrotel en a six : LN24HA sur Linacre, les cinq MG24H* sur McGuinness. Vérifier « les plateformes de la Gaspésie, de l'Outaouais, de Montréal » revenait à vérifier cinq régions de LA MÊME plateforme, celle qui est sur Linacre ; l'absence de fichier McGuinness n'y prouvait rien.
+
+**Comparaison loyale**, région Gaspésie, plateforme MG24HK, chaque formule avec SON coefficient :
+
+| formule | coefficient calé | ETR | part de la pluie | coefficient d'écoulement |
+|---|---|---|---|---|
+| McGuinness brute | — | 766 mm/an | 88 % | 0,13 |
+| McGuinness calée | 0,500 | 387 mm/an | 44 % | 0,58 |
+| Linacre calée | 0,485 | 457 mm/an | 52 % | 0,50 |
+
+Les deux équations donnent le même résultat une fois calées, et leurs coefficients sont voisins. **L'équation est interchangeable ; la constante multiplicative fait tout.**
+
+**Pourquoi cette constante est difficile.** Balayage du coefficient Linacre, même colonne :
+
+| coefficient | ETR | coefficient d'écoulement |
+|---|---|---|
+| 1,000 | 816 mm/an | 0,10 |
+| 0,800 | 750 mm/an | 0,17 |
+| 0,600 | 566 mm/an | 0,37 |
+| 0,399 | 376 mm/an | 0,59 |
+| 0,300 | 283 mm/an | 0,69 |
+
+Un facteur 2,5 sur la constante déplace l'écoulement d'un facteur 6, la production étant la petite différence de deux grands termes. La direction est extrêmement raide.
+
+**Réponse à la question posée.** Le champ dispose du bon levier : `K_c`, borné [0,3, 1,5], multiplie l'ETP, et la valeur cherchée (0,4 à 0,5) tombe dans cette plage. **Il PEUT la représenter.** L'audit du 2026-09-03 le mesure pourtant à 0,975 de médiane avec 14 % d'étalement, donc collé à 1. Deux raisons, à ne pas confondre :
+
+1. Dans la configuration déployée, Linacre est déjà ancrée à 0,4 : un `K_c` proche de 1 par-dessus est CORRECT, et le champ n'a jamais eu à chercher la constante.
+2. Son prior le tire vers 0,85, loin de la réponse, sur une direction où l'erreur de débit varie d'un facteur 6. Un optimiseur qui part à 0,85 et qu'un prior y retient a peu de chances de descendre à 0,45.
+
+Le champ n'échoue donc pas à s'adapter : on ne le lui a jamais demandé, et son prior l'en empêcherait. **Hypothèse à tester** : sans ancrage d'ETP, un entraînement fait-il descendre `K_c` vers 0,45 ? Si non, le prior et les bornes de `K_c` sont mal centrés et c'est un défaut réparable.
