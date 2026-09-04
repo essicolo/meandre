@@ -1017,6 +1017,15 @@ class Trainer:
         _kge_continu = os.environ.get("MEANDRE_KGE_CONTINU", "1") == "1"
         _etat_continu = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
         _pas_par_bloc = os.environ.get("MEANDRE_PAS_PAR_BLOC", "0") == "1"
+        # AMORCAGE DE L'HISTORIQUE (2026-09-04, MEANDRE_HISTORIQUE_AMORCE=1). Avec le
+        # KGE continu, le bloc k ne voit que les blocs 0..k-1 : les dix premiers pas de
+        # chaque epoque optimisent un KGE d'hiver seul, et avec un pas par bloc ils
+        # poussent le modele vers un hiver plus fort et plus plat (mesure : validation
+        # 0.83 -> 0.55 apres 65 pas). Ici, une passe SANS gradient en debut d'epoque
+        # fournit la serie de toute la periode ; le bloc k voit alors le KGE de toute la
+        # periode, lui-meme en direct et le reste detache.
+        _amorce = os.environ.get("MEANDRE_HISTORIQUE_AMORCE", "0") == "1" and _kge_continu
+        _pre_o = _pre_s = None
         _hist_o: list[Tensor] = []
         _hist_s: list[Tensor] = []
 
@@ -1030,6 +1039,30 @@ class Trainer:
         # (< chunk+60). Déterministe par epoch (reproductible).
         _g = torch.Generator().manual_seed(int(getattr(self, "_cur_epoch", 0)))
         _first_offset = int(torch.randint(0, chunk, (1,), generator=_g).item())
+
+        if _amorce:
+            _col = getattr(self.model, "vertical_column", None)
+            _aux0 = getattr(_col, "_aux", None)
+            _lac0 = getattr(self.model, "_lake_storage_fin", None)
+            with torch.no_grad():
+                _Qp, _ = self.model.simulate(
+                    forcing=data.forcing[data.train_slice],
+                    initial_state=initial_state,
+                    graph=data.graph, node_coords=data.node_coords,
+                    territorial=data.territorial, withdrawals=data.withdrawals,
+                    day_of_year=data.day_of_year[data.train_slice],
+                    poursuivre_etat=(_etat_continu and _spinup_a_tourne),
+                )
+            _T = data.train_slice.stop - data.train_slice.start
+            _pre_s = _Qp[:, data.station_mask].detach()
+            _pre_o = data.q_obs[:_T].detach()
+            del _Qp
+            # La passe a fait avancer l'etat interne jusqu'a la fin de la periode : on
+            # remet celui de la mise en regime pour que le premier bloc reparte juste.
+            if _col is not None and _aux0 is not None:
+                _col._aux = _aux0
+            if _lac0 is not None:
+                self.model._lake_storage_fin = _lac0
 
         while t_start < data.train_slice.stop:
             _len = chunk + _first_offset if n_chunks == 0 else chunk
@@ -1146,8 +1179,12 @@ class Trainer:
                         else None
                     ),
                     log_df=getattr(self.model.noise_head, "log_df", None),
-                    q_obs_hist=(torch.cat(_hist_o) if (_kge_continu and _hist_o) else None),
-                    q_sim_hist=(torch.cat(_hist_s) if (_kge_continu and _hist_s) else None),
+                    q_obs_hist=(torch.cat([_pre_o[:obs_offset + burnin], _pre_o[obs_offset + chunk_len:]])
+                                if _amorce else
+                                (torch.cat(_hist_o) if (_kge_continu and _hist_o) else None)),
+                    q_sim_hist=(torch.cat([_pre_s[:obs_offset + burnin], _pre_s[obs_offset + chunk_len:]])
+                                if _amorce else
+                                (torch.cat(_hist_s) if (_kge_continu and _hist_s) else None)),
                 )
                 if _kge_continu:
                     _hist_o.append(q_obs_chunk.detach())

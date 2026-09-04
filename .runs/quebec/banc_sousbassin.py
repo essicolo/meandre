@@ -340,7 +340,7 @@ def rapport(reg, station, **kw):
 def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
               kge_continu=True, etat_continu=True, device=None, tag="",
-              pas_par_bloc=True):
+              pas_par_bloc=True, amorce=False):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -369,6 +369,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     os.environ["MEANDRE_KGE_CONTINU"] = "1" if kge_continu else "0"
     os.environ["MEANDRE_ETAT_CONTINU"] = "1" if etat_continu else "0"
     os.environ["MEANDRE_PAS_PAR_BLOC"] = "1" if pas_par_bloc else "0"
+    os.environ["MEANDRE_HISTORIQUE_AMORCE"] = "1" if amorce else "0"
     # GPU (2026-09-04, les epoques etaient extremement trop longues). Le banc tournait
     # sur processeur : 13 min par epoque pour 33 troncons. Tous les chargeurs d'ancrage
     # acceptent un device ; modele, donnees et ancrages y vont ensemble, sinon un seul
@@ -487,7 +488,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
           f" | validation {fin_train+1}-{fin_val} | evaluation {debut_eval}-{temps.year.max()}")
     print(f"  boucle : etat continu={oui_non(etat_continu)}, "
           f"KGE continu={oui_non(kge_continu)} | sol={sol} | aquifere={aquifere} "
-          f"| device={dev} | pas par bloc={oui_non(pas_par_bloc)}", flush=True)
+          f"| device={dev} | pas par bloc={oui_non(pas_par_bloc)} "
+          f"| historique amorce={oui_non(amorce)}", flush=True)
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
@@ -547,6 +549,9 @@ def main():
     ap.add_argument("--entrainer", type=int, default=0, metavar="EPOQUES")
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
     ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
+    ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--amorce", action="store_true",
+                    help="passe sans gradient en debut d epoque : chaque bloc voit le KGE de toute la periode")
     ap.add_argument("--pas-par-epoque", action="store_true",
                     help="un seul pas par epoque, comme avant le 2026-09-04")
     ap.add_argument("--ancienne-boucle", action="store_true",
@@ -563,7 +568,8 @@ def main():
         entrainer(a.region, a.station, epoques=a.entrainer,
                   sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
-                  device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque)
+                  device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
+                  amorce=a.amorce)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,
