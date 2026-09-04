@@ -334,6 +334,24 @@ class TrainingData:
     # Forme : (T, n_st, 5) — GDD, API, SPI, FN, SWE_proxy normalisés z-score.
     indices_ihi: Tensor | None = None
 
+    def __post_init__(self) -> None:
+        # CONVENTION D'ALIGNEMENT, payee trois fois en deux jours (R75 bis) : q_obs[0]
+        # correspond a forcing[train_slice.start], pas a forcing[0]. Le forcage porte la
+        # mise en regime en amont ; les observations commencent au premier jour juge.
+        # Un banc qui passe q_obs complet compare des annees decalees et rend un score
+        # faux sans aucune erreur d'execution. On avertit ; on n'interdit pas, pour ne
+        # casser aucun pilote existant.
+        try:
+            n_f, n_o = int(self.forcing.shape[0]), int(self.q_obs.shape[0])
+            attendu = n_f - int(self.train_slice.start)
+            if n_o != attendu:
+                print(f"[TrainingData] AVERTISSEMENT alignement : q_obs a {n_o} pas de temps, "
+                      f"forcing en a {n_f} et train_slice commence a {self.train_slice.start} ; "
+                      f"la convention veut q_obs[0] <-> forcing[train_slice.start], soit "
+                      f"{attendu} pas. Score FAUX si ce n'est pas volontaire.")
+        except Exception:
+            pass
+
 
 class Trainer:
     """Training loop with curriculum scheduling and RunLogger logging.
