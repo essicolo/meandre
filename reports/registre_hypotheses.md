@@ -880,3 +880,13 @@ Sous-bassin de la Gaspésie en amont de la station 021702, 33 tronçons, 223 km�
 **Correctif.** L'état riche traverse désormais les trois frontières : fin d'entraînement vers validation, mise en régime vers validation, mise en régime vers premier bloc. Même levier `MEANDRE_ETAT_CONTINU`. Tests d'entraînement au vert. Le test du champ sur le sous-bassin est relancé avec une sélection enfin juste ; ses deux premiers essais (validation fausse) sont jetés.
 
 **Règle de méthode confirmée.** Toute mesure du trainer doit être recoupée au moins une fois par une simulation continue indépendante, et l'écart de 0,43 ici a été trouvé en trois minutes par ce recoupement.
+
+## R75 bis — RECTIFICATION : l'écart de validation de 0,43 venait du banc, pas du trainer (2026-09-04)
+
+**Statut : R75 est requalifié.** L'écart entre la validation du trainer (0,399, puis 0,560 après le correctif de frontière) et l'évaluation continue indépendante (0,82) n'était pas dû au manteau jeté à la validation. Il venait d'une **convention du trainer que le banc de sous-bassin violait** : `q_obs[0]` correspond à `forcing[train_slice.start]`, pas à `forcing[0]` (voir `joint_data.py`, `q_obs=q_obs[sl_.start:]`, et `trainer.py`, `obs_offset = 0` puis `q_obs_val = data.q_obs[:n_val]`). Le forçage porte la mise en régime en amont, les observations commencent au premier jour jugé. Le banc passait `q_obs` complet : la boucle comparait la simulation de 2010 aux observations de 2008, et la validation celle de 2018 à celles de 2008. La première version du banc, sans mise en régime, comparait de même 2018 à 2010.
+
+**Ce qui reste de R75.** Le correctif du trainer est conservé parce qu'il est physiquement juste, dans la droite ligne de R64 : `simulate` refabriquait bien l'état riche aux trois frontières, et le manteau était bien jeté. Mais son EFFET sur le score n'est plus mesuré, et la phrase « tous les champions du projet ont été sélectionnés par une validation sans neige » est **retirée** tant qu'une mesure propre ne l'a pas établie : la mesure qui la fondait était confondue par le désalignement.
+
+**Ce que cela n'entame pas.** La méthode a fonctionné : le recoupement par simulation continue indépendante a détecté l'écart en trois minutes, deux fois, et c'est lui qui a conduit à la convention. Le banc est corrigé, les trois essais d'entraînement faits sous le désalignement sont jetés, le test du champ repart sur GPU.
+
+**Leçon consignée dans le code.** Un bloc de commentaire dans `banc_sousbassin.py` porte la convention. Elle devrait être un contrat vérifié dans `TrainingData` (une assertion sur les longueurs) plutôt qu'une convention tacite ; c'est le troisième défaut de cette famille en deux jours.

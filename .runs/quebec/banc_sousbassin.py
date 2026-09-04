@@ -288,7 +288,7 @@ def rapport(reg, station, **kw):
 
 def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
-              kge_continu=True, etat_continu=True):
+              kge_continu=True, etat_continu=True, device=None, tag=""):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -316,6 +316,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
 
     os.environ["MEANDRE_KGE_CONTINU"] = "1" if kge_continu else "0"
     os.environ["MEANDRE_ETAT_CONTINU"] = "1" if etat_continu else "0"
+    # GPU (2026-09-04, les epoques etaient extremement trop longues). Le banc tournait
+    # sur processeur : 13 min par epoque pour 33 troncons. Tous les chargeurs d'ancrage
+    # acceptent un device ; modele, donnees et ancrages y vont ensemble, sinon un seul
+    # tenseur reste sur l'autre carte et tout s'arrete.
+    dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
     s = extraire(reg, station)
     idx, g, terr = s["idx"], s["graph"], s["territorial"]
@@ -329,10 +334,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # premier hiver de chaque epoque est faux -- la faute de R64 sous une autre forme.
     # On charge donc deux annees de plus en amont, reservees a la mise en regime.
     fen = (temps.year >= debut_train - 2)
-    F = torch.tensor(ds["forcing"].isel(node=idx).values[fen], dtype=torch.float32)
+    F = torch.tensor(ds["forcing"].isel(node=idx).values[fen], dtype=torch.float32).to(dev)
     ds.close()
     temps = temps[fen]
-    doy = torch.tensor(temps.dayofyear.to_numpy(), dtype=torch.long)
+    doy = torch.tensor(temps.dayofyear.to_numpy(), dtype=torch.long).to(dev)
 
     con = duckdb.connect(s["base"], read_only=True)
     obs = con.execute("select date, discharge from observations where station_id = ? "
@@ -340,10 +345,15 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     con.close()
     o = pd.Series(obs["discharge"].values,
                   index=pd.DatetimeIndex(obs["date"])).reindex(temps).to_numpy(dtype=float)
-    q_obs = torch.tensor(o, dtype=torch.float32)[:, None]
-    mask = torch.zeros(n, dtype=torch.bool)
+    q_obs = torch.tensor(o, dtype=torch.float32)[:, None].to(dev)
+    mask = torch.zeros(n, dtype=torch.bool, device=dev)
     mask[s["exutoire"]] = True
-    st_idx = torch.tensor([s["exutoire"]])
+    st_idx = torch.tensor([s["exutoire"]], device=dev)
+    g = g.to(dev)
+    from meandre.spatial.territorial import TerritorialFeatures as _TF
+    terr = _TF(data=terr.data.to(dev), columns=list(terr.columns),
+               physical={k: v.to(dev) for k, v in terr.physical.items()})
+    coords = s["node_coords"].to(dev)
 
     def _construire():
         m = HydroModel(n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
@@ -355,18 +365,19 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                        compile_soil=False, use_aquifer=aquifere)
         maj = reg.upper()
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
+        m = m.to(dev)
         col = m.vertical_column
         col.et_mode = "linacre"
         col.etp_channel = None
-        col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"], device=torch.device("cpu")))
-        col.set_melt_params(load_melt_nodes(plat, s["node_ids"], device=torch.device("cpu")))
+        col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"], device=dev))
+        col.set_melt_params(load_melt_nodes(plat, s["node_ids"], device=dev))
         sn = load_passage_pluie_neige(plat)
         if sn:
             col.t_neige_seuil = sn
-        col.set_land_cover(load_occupation_sol(plat, s["node_ids"], device=torch.device("cpu")))
+        col.set_land_cover(load_occupation_sol(plat, s["node_ids"], device=dev))
         if sol:
             z1 = float(getattr(col, "z1", 0.15))
-            calib = load_calibrated_soil(plat, s["node_ids"], z1, device=torch.device("cpu"))
+            calib = load_calibrated_soil(plat, s["node_ids"], z1, device=dev)
             if sol == "sauf_ks":
                 for k in ("ks1", "ks2", "ks3"):
                     calib.pop(k, None)
@@ -378,22 +389,31 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         i1 = int(np.argmax(temps.year > b))
         return slice(i0, i1 if i1 > 0 else len(temps))
 
-    w = WithdrawalData(net=torch.zeros(F.shape[0], n))
+    w = WithdrawalData(net=torch.zeros(F.shape[0], n, device=dev))
     commun = dict(forcing=F, q_obs=q_obs, station_mask=mask, station_idx=st_idx, graph=g,
-                  node_coords=s["node_coords"], territorial=terr, withdrawals=w,
+                  node_coords=coords, territorial=terr, withdrawals=w,
                   day_of_year=doy)
-    td = TrainingData(train_slice=_tranche(debut_train, fin_train),
-                      val_slice=_tranche(fin_train + 1, fin_val), **commun)
-    vd = TrainingData(train_slice=_tranche(fin_train + 1, fin_val),
-                      val_slice=_tranche(fin_train + 1, fin_val), **commun)
+    # CONVENTION DU TRAINER, payee le 2026-09-04 : q_obs[0] correspond a
+    # forcing[train_slice.start], PAS a forcing[0]. Le forcage porte la mise en regime
+    # en amont, les observations commencent au premier jour juge. Pour la validation,
+    # q_obs[0] correspond a forcing[val_slice.start]. En passant q_obs complet, la
+    # boucle comparait la simulation de 2010 aux observations de 2008, et la validation
+    # celle de 2018 a celles de 2008 : le trainer notait 0.399 puis 0.560 un modele qui
+    # vaut 0.82. J'avais attribue cet ecart au trainer (R75) ; il etait dans ce banc.
+    tr_sl = _tranche(debut_train, fin_train)
+    va_sl = _tranche(fin_train + 1, fin_val)
+    td = TrainingData(train_slice=tr_sl, val_slice=va_sl,
+                      **{**commun, "q_obs": q_obs[tr_sl.start:]})
+    vd = TrainingData(train_slice=va_sl, val_slice=va_sl,
+                      **{**commun, "q_obs": q_obs[va_sl.start:]})
 
     def _evaluer(m, etiquette):
         m.eval()
         with torch.no_grad():
-            Q, _ = m.simulate(forcing=F, initial_state=HydroState.zeros(n), graph=g,
-                              node_coords=s["node_coords"], territorial=terr,
+            Q, _ = m.simulate(forcing=F, initial_state=HydroState.zeros(n, device=dev),
+                              graph=g, node_coords=coords, territorial=terr,
                               withdrawals=w, day_of_year=doy)
-        q = Q[:, s["exutoire"]].numpy()
+        q = Q[:, s["exutoire"]].detach().cpu().numpy()
         ev = (temps.year >= debut_eval)
         k, r, b, gm = _kge(q[ev], o[ev])
         print(f"  {etiquette:28s} KGE vs observe {k:6.3f} | r {r:5.3f} | beta {b:5.3f} "
@@ -404,7 +424,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     print(f"{reg.upper()} / {station} : {n} troncons | entrainement {debut_train}-{fin_train}"
           f" | validation {fin_train+1}-{fin_val} | evaluation {debut_eval}-{temps.year.max()}")
     print(f"  boucle : etat continu={oui_non(etat_continu)}, "
-          f"KGE continu={oui_non(kge_continu)} | sol={sol} | aquifere={aquifere}", flush=True)
+          f"KGE continu={oui_non(kge_continu)} | sol={sol} | aquifere={aquifere} "
+          f"| device={dev}", flush=True)
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
@@ -415,10 +436,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=45, tbptt_steps=365,
                            grad_clip=1.0, w_prior=0.005, w_latent_reg=0.0,
                            best_metric="kge_median", autopilot=False)
-    ck = f"{_p.DATA_ROOT}/quebec/sousbassin/best-{reg}-{station}.pt"
+    ck = f"{_p.DATA_ROOT}/quebec/sousbassin/best-{reg}-{station}{tag}.pt"
     os.makedirs(os.path.dirname(ck), exist_ok=True)
     tr = Trainer(model=m, loss_fn=loss_fn, train_data=td, val_data=vd, config=tconf,
-                 run_name=f"sb-{reg}-{station}", checkpoint_path=ck)
+                 run_name=f"sb-{reg}-{station}{tag}", checkpoint_path=ck)
     tr.fit()
     if os.path.exists(ck):
         m.load(ck)
@@ -459,6 +480,8 @@ def main():
     ap.add_argument("--sol", choices=["complet", "sauf_ks"], default=None)
     ap.add_argument("--sans-aquifere", action="store_true")
     ap.add_argument("--entrainer", type=int, default=0, metavar="EPOQUES")
+    ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
+    ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
     ap.add_argument("--ancienne-boucle", action="store_true",
                     help="etat et KGE NON continus, comme avant le 2026-09-03")
     ap.add_argument("--regions", nargs="*", default=["gasp", "outv", "mont", "sagu",
@@ -472,7 +495,8 @@ def main():
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
                   sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
-                  kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle)
+                  kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
+                  device=a.device, tag=a.tag)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,
