@@ -1572,6 +1572,12 @@ class Trainer:
                             all_components.get("mixture_nll", 0.0) + float(L_mdn.detach()))
 
 
+            # BLOC SANS DONNEE (2026-09-04). Si la perte de donnees n'a pas de gradient
+            # (aucune station gardee dans ce bloc), le prior ajoute ci-dessous en aurait
+            # un, et le pas par bloc se ferait sur le prior SEUL : mesure sur le banc de
+            # sous-bassin, 23 pas sur 24 par epoque tiraient le champ vers la litterature
+            # sans qu'aucune observation ne pese. Un tel bloc ne doit pas faire de pas.
+            _sans_donnees = not loss_chunk.requires_grad
             # Soft physical prior regularization on spatial params (k_gw, krec, K_sat, K_c, ...).
             # Pulls toward literature targets — prevents drift toward overfit values.
             if self.config.w_prior > 0 or self.config.w_diversity > 0:
@@ -1679,7 +1685,15 @@ class Trainer:
                 # etait IDENTIQUE a l'initialisation. Un champ spatial n'apprend pas en
                 # trente pas. Ici, un pas apres chaque bloc (la troncature du gradient
                 # habituelle) : soixante-cinq pas par epoque au lieu d'un.
-                if _pas_par_bloc and not _pourri:
+                if _pas_par_bloc and _sans_donnees:
+                    # Gradient du prior seul : jete, pas de pas (voir plus haut).
+                    self.optimizer.zero_grad()
+                    _n_vides = getattr(self, "_n_blocs_sans_donnees", 0) + 1
+                    self._n_blocs_sans_donnees = _n_vides
+                    if _n_vides <= 2:
+                        print(f"[train] bloc {n_chunks} (t={t_start}) : aucune donnee, pas "
+                              f"d'optimisation SAUTE ({_n_vides} bloc(s) jusqu'ici)", flush=True)
+                elif _pas_par_bloc and not _pourri:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
                     self.optimizer.step()
                     self.optimizer.zero_grad()

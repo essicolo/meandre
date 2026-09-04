@@ -11,6 +11,7 @@ L = w1*(1-NSE) + w2*|PBIAS|/100 + w3*(1-KGE)
 import logging
 import math
 
+import os
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -732,7 +733,17 @@ class HydroLoss(nn.Module):
             # Validity mask: (T, S) — True where both obs and sim are valid
             valid = ~torch.isnan(q_obs) & ~torch.isnan(q_sim_at_stations)
             valid_counts = valid.sum(dim=0)  # (S,)
-            keep = valid_counts >= 30  # stations with enough data
+            # MINIMUM DE TRENTE OBSERVATIONS (revu le 2026-09-04). Le seuil protegeait les
+            # statistiques de sequence (KGE, NSE) contre un bloc trop court. Avec
+            # l'historique detache, les statistiques portent sur l'historique PLUS le
+            # bloc : c'est cette longueur-la qu'il faut compter. Sans cela, un bloc de
+            # quinze jours (douze vivants apres rodage) rendait une perte de debit NULLE,
+            # et le trainer, qui ajoute le prior a chaque bloc, faisait alors un pas sur
+            # le prior seul : 23 pas sur 24 par epoque, mesure sur le banc de sous-bassin.
+            _n_hist = torch.zeros_like(valid_counts)
+            if q_obs_hist is not None and q_sim_hist is not None and q_obs_hist.numel() > 0:
+                _n_hist = (~torch.isnan(q_obs_hist) & ~torch.isnan(q_sim_hist)).sum(dim=0)
+            keep = ((valid_counts + _n_hist) >= 30) & (valid_counts >= 1)
             n_keep = keep.sum().item()
 
             if n_keep == 0:
@@ -835,6 +846,19 @@ class HydroLoss(nn.Module):
                             nse_v.append(differentiable_nse_loss(q_o_v, q_s_v))
                         if self.w_kge > 0:
                             kge_v.append(differentiable_kge_loss(q_o_v, q_s_v))
+                            if os.environ.get("MEANDRE_DEBUG_KGE", "0") == "1":
+                                # Trace de controle (2026-09-04) : le terme KGE de la perte
+                                # valait 0.04 quand le KGE de l'annee d'entrainement
+                                # mesure hors ligne valait 0.75. On imprime ce que le
+                                # terme voit vraiment : longueur d'historique, du bloc
+                                # vivant, et les trois composantes.
+                                _r, _b, _g, _k = _kge_components(q_o_v.detach(), q_s_v.detach())
+                                _nh = int(_vs.sum()) if _hist else 0
+                                print(f"[kge-debug] station {int(si)} | hist {_nh} j | vivant "
+                                      f"{int(v.sum())} j | KGE {float(_k):.3f} r {float(_r):.3f} "
+                                      f"beta {float(_b):.3f} gamma {float(_g):.3f} | mu_obs "
+                                      f"{float(q_o_v.mean()):.2f} mu_sim {float(q_s_v.mean()):.2f}",
+                                      flush=True)
                         if self.w_nrmse > 0:
                             nrmse_v.append(differentiable_nrmse_loss(q_o_v, q_s_v))
                         if self.w_log_nse > 0:

@@ -341,7 +341,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
               kge_continu=True, etat_continu=True, device=None, tag="",
               pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
-              substeps=None, chunk=45):
+              substeps=None, chunk=45, w_et=0.4):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -503,15 +503,33 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     def _evaluer(m, etiquette):
         m.eval()
         with torch.no_grad():
-            Q, _ = m.simulate(forcing=F, initial_state=HydroState.zeros(n, device=dev),
-                              graph=g, node_coords=coords, territorial=terr,
-                              withdrawals=w, day_of_year=doy)
+            Q, _, _d = m.simulate(forcing=F, initial_state=HydroState.zeros(n, device=dev),
+                                  graph=g, node_coords=coords, territorial=terr,
+                                  withdrawals=w, day_of_year=doy, return_diagnostics=True)
         q = Q[:, s["exutoire"]].detach().cpu().numpy()
         ev = (temps.year >= debut_eval)
+        # Bilan d'evapotranspiration simulee contre MOD16, la ou MOD16 est fini : dit si
+        # le terme d'ET tire le volume vers le bas (ET simulee < MOD16) ou vers le haut.
+        _etr = getattr(_d, "etr", None)
+        if et_obs is not None and _etr is not None and _etr.shape[0] == len(temps):
+            _fin = torch.isfinite(et_obs) & torch.tensor(ev, device=et_obs.device)[:, None]
+            if bool(_fin.any()):
+                _s = float(_etr.to(et_obs.device)[_fin].mean())
+                _o = float(et_obs[_fin].mean())
+                print(f"  {etiquette:28s} ET simulee {_s:5.2f} mm/j contre MOD16 {_o:5.2f} mm/j "
+                      f"({100 * (_s / max(_o, 1e-9) - 1):+.0f} %) sur les jours MOD16 finis "
+                      f"de la periode d'evaluation", flush=True)
         k, r, b, gm = _kge(q[ev], o[ev])
         print(f"  {etiquette:28s} KGE vs observe {k:6.3f} | r {r:5.3f} | beta {b:5.3f} "
               f"| gamma {gm:5.3f}", flush=True)
         _ligne_forme(etiquette, forme(temps, q, o, ev))
+        # Le meme KGE sur la fenetre d'ENTRAINEMENT : a comparer au terme KGE de la
+        # perte (1 - KGE), qui semblait deja presque nul a la premiere epoque.
+        tr = (temps.year >= debut_train) & (temps.year <= fin_train)
+        if tr.any() and np.isfinite(o[tr]).sum() > 100:
+            k2, r2, b2, g2 = _kge(q[tr], o[tr])
+            print(f"  {etiquette:28s} KGE entrainement {debut_train}-{fin_train} {k2:6.3f} "
+                  f"| r {r2:5.3f} | beta {b2:5.3f} | gamma {g2:5.3f}", flush=True)
         return q, ev
 
     oui_non = lambda v: "oui" if v else "NON"
@@ -534,9 +552,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.5, w_mse=0.1, w_nse=0.0, w_nrmse=0.0,
-                            w_log_nse=0.0, w_log_mse=0.0, w_et=0.4, per_station=True)
-        print("  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 0.4 (recette du socle, "
-              "sans GRACE)", flush=True)
+                            w_log_nse=0.0, w_log_mse=0.0, w_et=float(w_et), per_station=True)
+        print(f"  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 {float(w_et):.2f} (recette du "
+              "socle, sans GRACE)", flush=True)
     else:
         loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
                             w_log_nse=0.0, w_log_mse=0.0, per_station=True)
@@ -594,6 +612,8 @@ def main():
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
     ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
     ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--w-et", type=float, default=0.4,
+                    help="poids du terme MOD16 (0 = meme perte sans le terme d ET)")
     ap.add_argument("--chunk", type=int, default=45,
                     help="longueur des blocs en jours : plus court = plus de pas par epoque")
     ap.add_argument("--rapide", action="store_true",
@@ -621,7 +641,7 @@ def main():
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,
                   debut_train=2012, fin_train=2012, fin_val=2013, debut_eval=2013,
-                  fin_charge=2013, substeps=16, chunk=a.chunk)
+                  fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
