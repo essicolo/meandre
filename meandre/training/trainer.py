@@ -983,6 +983,7 @@ class Trainer:
         # chunk, accumulate gradients, single optimizer.step().
         # Memory ∝ chunk_steps, no checkpointing overhead.
         initial_state, h_ctx = self._run_spinup(data)
+        _spinup_a_tourne = min(self.config.spinup_steps, data.train_slice.start) > 0
 
         state = initial_state
         t_start = data.train_slice.start
@@ -1054,7 +1055,11 @@ class Trainer:
                     # les 45 jours. L'entrainement ne voyait donc jamais un hiver
                     # continu (2026-09-03). MEANDRE_ETAT_CONTINU=0 restitue l'ancien
                     # comportement, pour un banc apparie.
-                    poursuivre_etat=(_etat_continu and n_chunks > 0),
+                    # ... et aussi au PREMIER bloc quand une mise en regime vient de
+                    # tourner : sans cela le manteau spinne etait jete au passage, le
+                    # premier hiver de chaque epoque etait faux et le premier bloc
+                    # rendait des gradients NaN en janvier (2026-09-04).
+                    poursuivre_etat=(_etat_continu and (n_chunks > 0 or _spinup_a_tourne)),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out
@@ -1888,6 +1893,7 @@ class Trainer:
         return loss.detach(), {k: v.detach() for k, v in components.items()}
 
     def _val_epoch(self) -> dict[str, float]:
+        _etat_continu_val = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
         """Validation: simulate val period, compute evaluation metrics.
 
         Reports both pooled metrics (all stations flattened) and per-station
@@ -1924,6 +1930,14 @@ class Trainer:
                 cached_h_ctx = getattr(self, "_cached_train_end_h_ctx", None)
 
                 if cached_state is not None:
+                    # VALIDATION SANS NEIGE (2026-09-04). L'etat mis en cache est celui
+                    # de la fin de l'entrainement, la veille du debut de la validation ;
+                    # mais simulate() REFABRIQUAIT l'etat riche de la colonne, donc la
+                    # validation demarrait sans manteau et ratait la crue : sur un
+                    # sous-bassin gaspesien le trainer notait 0.399 (beta 0.62) un modele
+                    # qui vaut 0.829 en simulation continue. Ce chiffre faux choisissait le
+                    # meilleur point de reprise et pilotait l'autopilote. Meme correctif
+                    # que pour les blocs (R64) : l'etat riche traverse la frontiere.
                     Q_sim, _ = self.model.simulate(
                         forcing=data.forcing[data.val_slice],
                         initial_state=cached_state,
@@ -1934,6 +1948,7 @@ class Trainer:
                         day_of_year=data.day_of_year[data.val_slice],
                         h_context=cached_h_ctx,
                         tbptt_steps=self.config.tbptt_steps,
+                        poursuivre_etat=_etat_continu_val,
                     )
                 else:
                     # Slow path: no cached state (e.g. before first train epoch).
@@ -1941,9 +1956,12 @@ class Trainer:
                     initial_state, h_ctx = self._run_spinup(data)
                     spinup_end = min(self.config.spinup_steps, data.val_slice.start)
                     full_slice = slice(spinup_end, data.val_slice.stop)
+                    # La mise en regime vient de laisser l'etat riche de la colonne au
+                    # jour spinup_end : la simulation qui suit doit le CONSERVER.
                     Q_full, _ = self.model.simulate(
                         forcing=data.forcing[full_slice],
                         initial_state=initial_state,
+                        poursuivre_etat=(_etat_continu_val and spinup_end > 0),
                         graph=data.graph,
                         node_coords=data.node_coords,
                         territorial=data.territorial,

@@ -868,3 +868,15 @@ Sous-bassin de la Gaspésie en amont de la station 021702, 33 tronçons, 223 km�
 **Ce que cela ne dit pas encore.** Le pari du projet est de BATTRE Hydrotel par le champ, pas de l'égaler. Aucun entraînement sous une boucle juste n'a encore montré que le champ rend les hydrogrammes plus nets. Le test est en cours sur ce même sous-bassin (`--entrainer 20`) : si gamma dépasse 0,863 en apprenant K_sat, le champ bat Hydrotel sur ce qui compte ; s'il descend, la réponse est définitive dans l'autre sens.
 
 **Réponse à « six mois à tourner en rond ».** Le modèle n'était pas cassé ; l'appareil pour l'entraîner (R64, R67) et le juger (R69) l'était, et chaque essai coûtait des heures. Les trois verrous ont sauté les 3 et 4 septembre, et ce duel a coûté deux minutes par bras.
+
+## R75 — La validation du trainer démarrait sans manteau neigeux : le sélecteur de champions était faux de 0,43 (2026-09-04)
+
+**Statut : établi, corrigé.** Sur le sous-bassin gaspésien 021702 (`banc_sousbassin.py --entrainer`), le trainer rapportait après une époque un KGE de validation de 0,399 avec un biais de 0,619, alors que le même point de reprise, évalué par une simulation continue indépendante, vaut **0,829** sur la même période 2018-2019 (zéro époque : 0,823). Essi a relevé l'anomalie : « méandre part au moins à 0,6 ».
+
+**Mécanisme.** La validation reprend l'état de fin d'entraînement (chemin rapide) ou une mise en régime de 730 jours (chemin lent), puis appelle `simulate`, qui REFABRIQUAIT l'état riche de la colonne : manteau, gel, milieu humide, lacs. La validation démarrait donc chaque année sans neige et ratait la crue, d'où le biais de 0,62. C'est R64 sous une troisième forme, après les blocs d'entraînement et la mise en régime du banc. Le premier bloc d'entraînement après la mise en régime jetait de même le manteau spinné, ce qui explique les gradients NaN observés au premier bloc de chaque époque (KGE de janvier sur un débit quasi constant).
+
+**Portée.** Ce chiffre faux est celui qui choisit le meilleur point de reprise (`best_metric`) et déclenche l'autopilote (paliers de taux, redémarrages sur régression). **Tous les champions du projet ont été sélectionnés par une validation sans neige**, et les redémarrages de l'autopilote ont pu répondre à des régressions fantômes. C'est une explication directe du motif « l'entraînement dégrade le modèle » (loi des ancrages : OUTV 0,739 sans entraînement contre 0,499 pour le champion entraîné), à ajouter à R64 et R67.
+
+**Correctif.** L'état riche traverse désormais les trois frontières : fin d'entraînement vers validation, mise en régime vers validation, mise en régime vers premier bloc. Même levier `MEANDRE_ETAT_CONTINU`. Tests d'entraînement au vert. Le test du champ sur le sous-bassin est relancé avec une sélection enfin juste ; ses deux premiers essais (validation fausse) sont jetés.
+
+**Règle de méthode confirmée.** Toute mesure du trainer doit être recoupée au moins une fois par une simulation continue indépendante, et l'écart de 0,43 ici a été trouvé en trois minutes par ce recoupement.

@@ -132,7 +132,7 @@ def lister(regions, n_min=25, n_max=130, jours_min=3000):
 
 def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
             melt_saison=None, seuil_neige=None, debut=None, sol=None,
-            aquifere=True, verbeux=True):
+            aquifere=True, charger=None, verbeux=True):
     """Modele COMPLET sur le sous-bassin : colonne, reseau, routage, une station reelle.
 
     Retourne (dates, debit simule a l'exutoire, debit observe). Aucun entrainement : le
@@ -231,6 +231,10 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
             return sp
         m.spatial_encoder.forward = _mod
 
+    if charger:
+        # Evaluer un point de reprise avec CE protocole (continu, independant du trainer).
+        m.load(charger)
+        m.eval()
     w = WithdrawalData(net=torch.zeros(F.shape[0], n))
     with torch.no_grad():
         Q, _ = m.simulate(forcing=F, initial_state=HydroState.zeros(n),
