@@ -712,3 +712,55 @@ Sur le Saguenay nord-ouest, la corrélation entre ce que la perte optimise et ce
 | les onze autres | 2000-01-01 | 0 | 0 % |
 
 Sur les quinze régions, 120 blocs vides sur 2156, soit **5,6 % du calcul d'entraînement rendant un gradient nul**. Réel mais modeste, et concentré sur une région. Sauter les blocs sans observation économiserait ce temps ; l'optimisation n'est pas prioritaire. Vaudreuil reste sans aucune station, ce qui était déjà connu et justifie son modèle transféré.
+
+## R69 — Les deux correctifs d'entraînement débloquent l'hiver, et le KGE annuel ne le voit pas (2026-09-03)
+
+**Statut : établi.** Banc apparié sur grappe, trois régions enneigées, deux bras, trente époques, forçage tout-CaSR cohérent, un seul changement entre les bras : la poursuite de l'état riche entre blocs (R64) et le calcul du KGE sur la séquence continue (R67).
+
+**Contrôle de validité.** Le bras ancien reproduit sur l'Outaouais un KGE médian de 0,7130 quand la version 1.0.1 sur le même forçage donnait 0,7127. La comparaison est donc propre.
+
+**Le KGE annuel dit match nul.**
+
+| région | ancien | corrigé | écart |
+|---|---|---|---|
+| gasp | 0,767 | 0,732 | −0,035 |
+| sagu | 0,755 | 0,782 | +0,026 |
+| outv | 0,713 | 0,717 | +0,004 |
+
+**Le comportement hivernal dit autre chose.** Part de jours où la simulation varie de moins de 1 % par jour, nombre d'événements hivernaux (montée de plus de 25 % en un jour) et variabilité d'hiver :
+
+| gasp, hiver | ancien | corrigé | observé |
+|---|---|---|---|
+| jours plats | 57,9 % | 35,2 % | — |
+| événements | 12 | 18 | 17 |
+| variabilité | 0,76 | 1,34 | 1,12 |
+| plus longue suite plate | 96 j | 51 j | — |
+
+Le KGE d'hiver gagne 0,134 en Gaspésie ; la perte annuelle vient entièrement de l'été (−0,150). **Le score annuel récompensait un hiver écrasé.** Sur l'Outaouais la platitude d'hiver recule aussi (13,8 % à 8,3 %) mais le modèle produit désormais 20 événements pour 16 observés : la dynamique est revenue sans être juste. Le Saguenay ne bouge pas en hiver ; son gain annuel vient du printemps.
+
+**Le bilan de masse annuel s'améliore partout.**
+
+| volume simulé / observé | ancien | corrigé |
+|---|---|---|
+| gasp | 0,88 | 1,09 |
+| outv | 1,21 | 1,14 |
+| sagu | 1,19 | 1,15 |
+
+L'erreur absolue baisse sur les trois régions. Les correctifs ne créent pas d'eau, ils la répartissent.
+
+**Conclusion.** Les deux correctifs sont conservés. Ils corrigent deux propriétés de JUSTESSE, pas deux réglages : la perte mesure enfin le même objet que la sélection, et l'entraînement voit enfin des hivers continus. Le KGE médian annuel est disqualifié comme juge unique de la question hivernale. Mesure : `python .runs/quebec/banc_hiver.py <dossier>`.
+
+## R70 — L'amplitude de fonte saisonnière a été calée sous une boucle qui effaçait le manteau (2026-09-03)
+
+**Statut : ouvert, banc écrit.** La modulation vaut `s(j) = 1 + amp·sin(2π(j−81)/365)`, donc décembre ×(1−amp) et juin ×(1+amp), moyenne annuelle inchangée. L'amplitude 0,5 de la recette du socle a été calée quand l'entraînement remettait le manteau à zéro tous les 45 jours : le modèle n'avait alors jamais de manteau profond, et brider la fonte de décembre ne coûtait rien.
+
+Depuis la correction de R64, le manteau persiste, et la répartition mensuelle en porte la trace en Gaspésie :
+
+| volume simulé / observé | hiver | printemps | été | automne | annuel |
+|---|---|---|---|---|---|
+| avant correction | 0,63 | 0,95 | 0,98 | 0,87 | 0,88 |
+| après correction | 0,70 | 1,06 | 1,26 | 1,32 | 1,09 |
+
+L'hiver reste sous-produit de trente pour cent et l'excédent ressort en été et en automne. Signature d'une fonte hivernale trop bridée : l'eau reste dans un manteau qui, lui, persiste désormais.
+
+**Prédiction posée d'avance**, pour ne pas interpréter après coup : baisser l'amplitude doit remonter le rapport de volume d'hiver vers 1 et faire redescendre l'été et l'automne, en Gaspésie surtout. Si l'hiver ne bouge pas, la fonte n'est pas le mécanisme et il faut chercher du côté de la récession de l'aquifère, figée sur ces modèles (R61). Banc : `alliance/fonte.sbatch`, amplitudes 0,50 / 0,25 / 0,00 sur trois régions.
