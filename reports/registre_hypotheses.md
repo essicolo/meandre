@@ -847,3 +847,24 @@ Un facteur 2,5 sur la constante déplace l'écoulement d'un facteur 6, la produc
 2. Son prior le tire vers 0,85, loin de la réponse, sur une direction où l'erreur de débit varie d'un facteur 6. Un optimiseur qui part à 0,85 et qu'un prior y retient a peu de chances de descendre à 0,45.
 
 Le champ n'échoue donc pas à s'adapter : on ne le lui a jamais demandé, et son prior l'en empêcherait. **Hypothèse à tester** : sans ancrage d'ETP, un entraînement fait-il descendre `K_c` vers 0,45 ? Si non, le prior et les bornes de `K_c` sont mal centrés et c'est un défaut réparable.
+
+## R74 — Avec les paramètres d'Hydrotel, méandre reproduit Hydrotel : le clone est fidèle de bout en bout (2026-09-04)
+
+**Statut : établi.** Question d'Essi : Hydrotel fonctionne, méandre non, nous avons le code d'Hydrotel et ses paramètres, pourquoi le défaut n'est-il pas identifiable ? Réponse par un duel à trois sur le même sous-bassin, même météo, même période : méandre contre Hydrotel isole le défaut de tout ce qui n'est pas méandre (données, jauge, régime), puisque tout le reste est commun.
+
+Sous-bassin de la Gaspésie en amont de la station 021702, 33 tronçons, 223 km², évaluation 2020-2024 (période couverte par le post-traitement d'Hydrotel), `banc_sousbassin.py`, aucun entraînement :
+
+| configuration de méandre | KGE vs observé | KGE vs Hydrotel | r vs Hydrotel | gamma vs observé |
+|---|---|---|---|---|
+| sol de littérature, sans ancrage | 0,354 | 0,440 | 0,733 | 0,462 |
+| sol d'Hydrotel imposé en entier, sans aquifère | 0,673 | 0,853 | 0,898 | 0,879 |
+| recette du socle (tout sauf K_sat), aquifère | 0,651 | 0,863 | 0,947 | 0,795 |
+| **Hydrotel lui-même** | **0,661** | — | — | **0,863** |
+
+**Ce que cela établit.** Avec les paramètres d'Hydrotel, méandre reproduit Hydrotel à 0,947 de corrélation et l'égale contre l'observé. La colonne clonée, le réseau et le routage sont donc fidèles de bout en bout, pas seulement module par module. Le défaut n'est PAS dans le code de la physique.
+
+**Où naît la platitude.** Le sol de littérature seul donne gamma 0,462 : c'est le chiffre « qui ne vaut rien ». Le socle le ramène à 0,795, à sept centièmes d'Hydrotel, et l'écart restant tient au seul paramètre laissé libre, K_sat. Les hydrogrammes plats du rapport (R65, 38 % de jours plats en Gaspésie) sont ceux de champions ENTRAÎNÉS sous la boucle qui effaçait le manteau : l'entraînement les a rendus plus plats que le zéro époque, ce qui rejoint la loi des ancrages (OUTV 0,739 sans entraînement contre 0,499 entraîné).
+
+**Ce que cela ne dit pas encore.** Le pari du projet est de BATTRE Hydrotel par le champ, pas de l'égaler. Aucun entraînement sous une boucle juste n'a encore montré que le champ rend les hydrogrammes plus nets. Le test est en cours sur ce même sous-bassin (`--entrainer 20`) : si gamma dépasse 0,863 en apprenant K_sat, le champ bat Hydrotel sur ce qui compte ; s'il descend, la réponse est définitive dans l'autre sens.
+
+**Réponse à « six mois à tourner en rond ».** Le modèle n'était pas cassé ; l'appareil pour l'entraîner (R64, R67) et le juger (R69) l'était, et chaque essai coûtait des heures. Les trois verrous ont sauté les 3 et 4 septembre, et ce duel a coûté deux minutes par bras.
