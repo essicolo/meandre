@@ -82,7 +82,7 @@ def annee_synthetique(n_annees=2, graine=0):
     return np.array(P), np.array(TN), np.array(TX)
 
 
-def _colonne(melt_seasonal_amp=None, n=N):
+def _colonne(melt_seasonal_amp=None, n=N, et_mode="mcguinness"):
     """PIEGE PAYE le 2026-09-03 : `melt_seasonal_amp` n'est injecte dans les parametres
     de neige que par `params_from_nerf`, le chemin qui construit tout depuis le champ
     spatial. Un banc qui passe par `build_static_params` et `set_static` le contourne, et
@@ -94,7 +94,7 @@ def _colonne(melt_seasonal_amp=None, n=N):
         z=(0.15, 0.45, 1.4), occupation=occ)
     if melt_seasonal_amp is not None:
         psnow["melt_seasonal_amp"] = float(melt_seasonal_amp)
-    col = HydrotelColumn(et_mode="mcguinness", use_frost=True)
+    col = HydrotelColumn(et_mode=et_mode, use_frost=True)
     col.set_static(psnow, psoil, petr, wetland=None, n_depth=n_intervalles(2.0, 0.05))
     return col
 
@@ -188,10 +188,68 @@ def banc_fonte(amplitudes, reg="gasp", n_noeuds=8):
         print(f"SENS INVERSE : baisser l'amplitude RETIRE {-d:.0f} mm/an a l'hiver.")
 
 
+def banc_bilan(reg="gasp", n_noeuds=8, modes=("mcguinness", "penman", "oudin")):
+    """Ou part la precipitation ? Bilan de la colonne isolee, sur forcage reel.
+
+    Motif (2026-09-03) : le banc de fonte a rendu 109 mm/an de production pour une
+    Gaspesie qui recoit environ 1100 mm/an, soit un coefficient d'ecoulement de 0.10 quand
+    la realite quebecoise tourne autour de 0.5. Avant de chercher un levier hivernal, il
+    faut savoir si la colonne perd son eau, et par ou.
+    """
+    import pandas as pd
+    f, temps = forcage_reel(reg, n_noeuds)
+    idx = pd.DatetimeIndex(temps)
+    g4 = idx.year < idx.year.min() + 4
+    f, temps = f[g4], temps[g4]
+    idx = pd.DatetimeIndex(temps)
+    an = idx.year.to_numpy()
+    garde = an > an.min()
+    n_ans = len(np.unique(an[garde]))
+
+    torch.set_default_dtype(torch.float64)
+    n = f.shape[1]
+    print(f"Bilan de la colonne isolee, {reg.upper()}, {n_ans} annees jugees, en mm/an")
+    print(f"{'mode ETP':>12s} {'pluie':>7s} {'ETR':>7s} {'part ETR':>9s} "
+          f"{'production':>11s} {'coef ecoul.':>12s}")
+    for _mode in modes:
+        _bilan_un_mode(f, temps, garde, n_ans, n, _mode)
+    print()
+    print("  ETR boreale reelle : 400 a 500 mm/an (litterature). Coefficient")
+    print("  d'ecoulement au Quebec meridional : 0.45 a 0.65.")
+    return
+
+
+def _bilan_un_mode(f, temps, garde, n_ans, n, et_mode):
+    import pandas as pd
+    idx = pd.DatetimeIndex(temps)
+    col = _colonne(n=n, et_mode=et_mode)
+    st = col.init_state(n, theta_init=(0.30, 0.30, 0.30))
+    doy = idx.dayofyear.to_numpy()
+    tt = lambda a: torch.tensor(a, dtype=torch.float64)
+    prod, etr = [], []
+    with torch.no_grad():
+        for i in range(f.shape[0]):
+            p, st, dg = col(tt(f[i, :, 0]), tt(f[i, :, 1]), tt(f[i, :, 2]),
+                            tt(f[i, :, 3]), tt(f[i, :, 4]), tt(f[i, :, 5]),
+                            float(doy[i]), st)
+            prod.append(float(p.mean()))
+            etr.append(float(dg["etr"].mean()) if "etr" in dg else float("nan"))
+    prod, etr = np.array(prod), np.array(etr)
+    P = f[:, :, 0].mean(axis=1)
+    pr = P[garde].sum() / n_ans
+    pd_ = prod[garde].sum() / n_ans
+    ev = etr[garde].sum() / n_ans
+    print(f"{et_mode:>12s} {pr:6.0f}mm {ev:6.0f}mm {100*ev/max(pr,1e-9):8.0f}% "
+          f"{pd_:10.0f}mm {pd_/max(pr,1e-9):12.2f}")
+
+
 def main():
     quoi = sys.argv[1] if len(sys.argv) > 1 else "fonte"
+    if quoi == "bilan":
+        banc_bilan(sys.argv[2] if len(sys.argv) > 2 else "gasp")
+        return
     if quoi != "fonte":
-        raise SystemExit("bancs disponibles : fonte")
+        raise SystemExit("bancs disponibles : fonte, bilan")
     amps = [float(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 \
         else [0.5, 0.25, 0.0]
     banc_fonte(amps)

@@ -793,3 +793,22 @@ Deux défauts de la boucle d'entraînement ont été établis et corrigés le 20
 **Preuve que la requalification n'est pas théorique.** R69 montre que la correction de la boucle fait passer l'hiver gaspésien de 12 à 18 événements pour 17 observés, et sa variabilité de 0,76 à 1,34 pour 1,12 observée, alors que le KGE annuel BAISSE de 0,035. Une piste hivernale jugée sur le KGE annuel sous l'ancienne boucle aurait été écartée deux fois à tort : parce que l'hiver n'était pas simulé, et parce que le juge ne regardait pas l'hiver.
 
 **Règle pratique.** Avant de rouvrir une piste écartée, vérifier deux choses : le verdict reposait-il sur un entraînement, et son critère était-il un KGE annuel médian. Si les deux réponses sont oui, le verdict est à refaire avant d'être cité. Le cas de R32, l'amplitude de fonte saisonnière, est le premier traité sous cette règle (voir R70).
+
+## R72 — Le mode d'évapotranspiration est le plus gros levier du bilan d'eau (2026-09-03)
+
+**Statut : établi, et il retire une fausse alerte.** Colonne isolée sur le forçage réel de Gaspésie, huit nœuds, quatre années dont une de mise en régime, aucun réseau ni entraînement (`banc_synthetique.py bilan`).
+
+| mode d'ETP | ETR | part de la pluie | production | coefficient d'écoulement |
+|---|---|---|---|---|
+| McGuinness brut | 766 mm/an | 88 % | 110 mm/an | 0,13 |
+| Penman | 737 mm/an | 85 % | 150 mm/an | 0,17 |
+| Oudin | 526 mm/an | 60 % | 365 mm/an | 0,42 |
+| **Linacre calée du projet** | **376 mm/an** | **43 %** | **514 mm/an** | **0,59** |
+
+Précipitation 871 mm/an. Fourchette de référence : ETR boréale 400 à 500 mm/an, coefficient d'écoulement du Québec méridional 0,45 à 0,65.
+
+**Fausse alerte retirée.** Le premier bilan, en McGuinness brut, montrait 88 % d'évapotranspiration et un coefficient de 0,13, ce qui aurait fait de la fuite d'eau le défaut dominant devant toute question de forme d'hydrogramme. C'était un artefact de la colonne NON ANCRÉE. Le coefficient de calage Linacre de la plateforme vaut 0,399 en médiane sur ces nœuds : il divise l'évapotranspiration par deux et demi, et c'est lui qui rend le bilan juste. **Le modèle déployé n'a pas de fuite d'eau.**
+
+**Ce que le résultat établit tout de même.** Un facteur 1,5 sur l'évapotranspiration devient un facteur 4 sur l'écoulement, parce que la production est la petite différence de deux grands termes. Le choix du mode d'ETP domine donc tout autre réglage du bilan, et le coefficient calé de Linacre n'est pas un détail d'ancrage mais la pièce qui rend le modèle physiquement correct. C'est l'énoncé quantitatif de la loi des ancrages, et la raison concrète pour laquelle un point de reprise seul ne définit pas un modèle.
+
+**Conséquence de méthode.** Tout banc sur colonne isolée doit poser les paramètres d'ancrage avant de conclure quoi que ce soit sur des volumes. `banc_synthetique.py` documente le piège.
