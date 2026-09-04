@@ -310,6 +310,19 @@ K_c = 0.6
 # lancement, pas de recette.
 [recette]
 
+# -- LE FORCAGE N'EST PAS POSE ICI, ET C'EST VOULU -------------------------
+# JOINT_FX_SUFFIX choisit la meteo d'entree, et c'est le reglage le plus consequent de
+# tous : un meme reseau evalue sur un autre forcage que le sien rend un score faux
+# (0.671 au lieu de 0.780 sur l'Outaouais, R63). Le poser en defaut dans un fichier
+# nomme "socle" ferait exactement ce qui a coute une semaine : un choix de meteo
+# applique en silence. Il DOIT etre pose explicitement au lancement.
+#   -hyb     grille krigee MELCCFP pour P et T, energie CaSR. Forcage des modeles
+#            retenus de la version 1.0. INCOHERENT en source (deux origines melangees).
+#   -budyko  tout-CaSR corrige (decrachinage, jour local, calage de volume Budyko-Fu).
+#            Coherent en source unique. Prix mesure de la coherence : -0.08 de KGE median.
+#   -none    CaSR brut.
+
+
 # -- Ancrages du socle -------------------------------------------------------
 ETL_INIT_HYDROTEL = "sauf_ks"   # calage de sol impose, sauf K_sat et porosites
 ETL_ETP = "linacre"             # Linacre calee du projet, coherente avec le sol ancre

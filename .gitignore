@@ -61,7 +61,11 @@ Hydat_sqlite3_*.zip
 !/.runs/**/*.toml
 !/.runs/**/README*
 !/.runs/**/*.sbatch
-!/.runs/quebec/alliance/*.sh
+# Les scripts de lancement portent la CONFIGURATION REELLE des executions : jusqu'au
+# 2026-09-03 le fichier que CLAUDE.md designe comme « la reference de tout deploiement »
+# (file_generalisation.sh) n'existait que sur une seule machine, hors de git. Ce sont de
+# petits fichiers texte, et ils sont la memoire des recettes : on les suit.
+!/.runs/**/*.sh
 
 # --- Shared data inputs ---
 # data/ contains large parquet/shapefile inputs. Specific files re-included below.
