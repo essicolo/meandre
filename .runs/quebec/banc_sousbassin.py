@@ -340,7 +340,8 @@ def rapport(reg, station, **kw):
 def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
               kge_continu=True, etat_continu=True, device=None, tag="",
-              pas_par_bloc=True, amorce=False, aux=True):
+              pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
+              substeps=None, chunk=45):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -370,6 +371,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     os.environ["MEANDRE_ETAT_CONTINU"] = "1" if etat_continu else "0"
     os.environ["MEANDRE_PAS_PAR_BLOC"] = "1" if pas_par_bloc else "0"
     os.environ["MEANDRE_HISTORIQUE_AMORCE"] = "1" if amorce else "0"
+    if substeps is not None:
+        # ESSAI DE MECANISME (Essi, 2026-09-04 : « pourquoi pas des essais de trente
+        # secondes »). Seize sous-pas au lieu de soixante-quatre : la physique n'est plus
+        # celle de la recette, mais la question posee ici est « l'optimiseur ameliore-t-il
+        # l'objectif, et dans quel sens », pas la fidelite au dixieme.
+        os.environ["MEANDRE_NSUBSTEP"] = str(int(substeps))
     # GPU (2026-09-04, les epoques etaient extremement trop longues). Le banc tournait
     # sur processeur : 13 min par epoque pour 33 troncons. Tous les chargeurs d'ancrage
     # acceptent un device ; modele, donnees et ancrages y vont ensemble, sinon un seul
@@ -396,6 +403,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # premier hiver de chaque epoque est faux -- la faute de R64 sous une autre forme.
     # On charge donc deux annees de plus en amont, reservees a la mise en regime.
     fen = (temps.year >= debut_train - 2)
+    if fin_charge is not None:
+        fen = fen & (temps.year <= int(fin_charge))
     F = torch.tensor(ds["forcing"].isel(node=idx).values[fen], dtype=torch.float32).to(dev)
     ds.close()
     temps = temps[fen]
@@ -529,7 +538,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         print("  perte : KGE seul (PAS la recette du socle)", flush=True)
     # warmup_epochs=0 : le defaut de cinq epoques de rechauffement rendait un essai
     # court entierement nul (cinq pas d'Adam a taux presque nul).
-    tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=45, tbptt_steps=365,
+    tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=int(chunk), tbptt_steps=365,
                            grad_clip=1.0, w_prior=0.005, w_latent_reg=0.0,
                            best_metric="kge_median", autopilot=False, warmup_epochs=0)
     ck = f"{_p.DATA_ROOT}/quebec/sousbassin/best-{reg}-{station}{tag}.pt"
@@ -580,6 +589,10 @@ def main():
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
     ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
     ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--chunk", type=int, default=45,
+                    help="longueur des blocs en jours : plus court = plus de pas par epoque")
+    ap.add_argument("--rapide", action="store_true",
+                    help="essai de mecanisme en ~30 s par epoque : un an d entrainement, un an de validation, 16 sous-pas")
     ap.add_argument("--kge-seul", action="store_true",
                     help="perte au KGE seul, sans MOD16 : PAS la recette du socle")
     ap.add_argument("--amorce", action="store_true",
@@ -596,6 +609,15 @@ def main():
         return
     if not a.station:
         raise SystemExit("usage : banc_sousbassin.py <region> <station>")
+    if a.entrainer and a.rapide:
+        entrainer(a.region, a.station, epoques=a.entrainer,
+                  sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
+                  kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
+                  device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
+                  amorce=a.amorce, aux=not a.kge_seul,
+                  debut_train=2012, fin_train=2012, fin_val=2013, debut_eval=2013,
+                  fin_charge=2013, substeps=16, chunk=a.chunk)
+        return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
                   sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
