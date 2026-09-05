@@ -103,6 +103,46 @@ def differentiable_pbias_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return pbias.abs()
 
 
+def differentiable_dq_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
+    """Rapport des ecarts-types des VARIATIONS journalieres, simule sur observe.
+
+    POURQUOI (Essi, 2026-09-05, apres l'audit des plateaux). Aucun terme de la perte ne
+    voyait un hydrogramme fige : gamma compare des ecarts-types de NIVEAU, qu'un plateau
+    a la bonne moyenne et un signal nerveux peuvent egaler. Le rapport des ecarts-types
+    des differences d'un jour a l'autre, lui, vaut 0.1 pour un plateau et 3 pour un
+    signal nerveux : il punit les deux fautes SYMETRIQUEMENT, ce qui est exactement ce
+    qui manquait entre les deux mondes mesures le 2026-09-05 (le monde plat gagnait le
+    KGE). Formule : (sigma(dQ_sim)/sigma(dQ_obs) - 1)^2, parfait = 0.
+    """
+    if q_obs.numel() < 3:
+        return torch.zeros((), device=q_sim.device)
+    d_o = q_obs[1:] - q_obs[:-1]
+    d_s = q_sim[1:] - q_sim[:-1]
+    s_o = torch.sqrt((d_o ** 2).mean() + 1e-12)
+    s_s = torch.sqrt((d_s ** 2).mean() + 1e-12)
+    return (s_s / s_o.clamp(min=1e-8) - 1.0) ** 2
+
+
+def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
+                                bas: float = 0.2, ref: float = 0.5) -> Tensor:
+    """Ecart sur le SOUTIEN d'etiage : quantile bas rapporte a la mediane.
+
+    Substitut differentiable et bon marche de l'indice d'ecoulement de base. Un modele
+    dont toute l'eau d'ete passe par la nappe a un rapport Q20/Q50 proche de 1 ; un
+    modele qui la fait passer par les chemins rapides l'a bien plus bas. C'est la seule
+    facon de contraindre le CHEMIN de l'eau a partir des seuls debits observes : le
+    2026-09-05, deux entrainements de la meme recette ont fait passer la part de la nappe
+    de 32 a 70 % du debit d'ete sans qu'aucun terme de la perte ne s'en apercoive.
+    """
+    if q_obs.numel() < 10:
+        return torch.zeros((), device=q_sim.device)
+    qb_o = torch.quantile(q_obs, bas); qr_o = torch.quantile(q_obs, ref)
+    qb_s = torch.quantile(q_sim, bas); qr_s = torch.quantile(q_sim, ref)
+    r_o = qb_o / qr_o.clamp(min=1e-8)
+    r_s = qb_s / qr_s.clamp(min=1e-8)
+    return (r_s - r_o) ** 2
+
+
 def box_cox(x: Tensor, lam: float, eps: float = 1e-3) -> Tensor:
     """Box-Cox transform sur Q. lam=1 → identité, lam=0.3 → standard hydro
     (Bates & Campbell 2001), lam=0 → log. Clamp à eps pour éviter Q≤0.
@@ -620,6 +660,8 @@ class HydroLoss(nn.Module):
         w_quantile: float = 0.0,
         w_mixture: float = 0.0,
         w_peak: float = 0.0,
+        w_dq: float = 0.0,
+        w_fdc_bas: float = 0.0,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
@@ -673,6 +715,9 @@ class HydroLoss(nn.Module):
         self.w_quantile = w_quantile  # Régression quantile (calculée dans le trainer)
         self.w_mixture = w_mixture    # MDN (option 2b — calculée dans le trainer)
         self.w_peak = w_peak  # Pondération pics (seuil climato Q_p75 par station)
+        # FORME (2026-09-05) : variations journalieres et soutien d'etiage.
+        self.w_dq = w_dq
+        self.w_fdc_bas = w_fdc_bas
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -811,10 +856,13 @@ class HydroLoss(nn.Module):
                 # NSE, KGE, NRMSE, log-NSE require per-station variance
                 # or correlation — only compute if weight > 0
                 L_nse = L_kge = L_nrmse = L_log_nse = zero
+                L_dq = L_fdc = zero
                 need_loop = (self.w_nse > 0 or self.w_kge > 0
-                             or self.w_nrmse > 0 or self.w_log_nse > 0)
+                             or self.w_nrmse > 0 or self.w_log_nse > 0
+                             or self.w_dq > 0 or self.w_fdc_bas > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
+                    dq_v, fdc_v = [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -862,6 +910,10 @@ class HydroLoss(nn.Module):
                             nse_v.append(_remis(differentiable_nse_loss(q_o_v, q_s_v)))
                         if self.w_kge > 0:
                             kge_v.append(_remis(differentiable_kge_loss(q_o_v, q_s_v)))
+                        if self.w_dq > 0:
+                            dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
+                        if self.w_fdc_bas > 0:
+                            fdc_v.append(_remis(differentiable_fdc_bas_loss(q_o_v, q_s_v)))
                             if os.environ.get("MEANDRE_DEBUG_KGE", "0") == "1":
                                 # Trace de controle (2026-09-04) : le terme KGE de la perte
                                 # valait 0.04 quand le KGE de l'annee d'entrainement
@@ -887,6 +939,10 @@ class HydroLoss(nn.Module):
                         L_nrmse = (torch.stack(nrmse_v) * w).sum()
                     if self.w_log_nse > 0 and lnse_v:
                         L_log_nse = (torch.stack(lnse_v) * w).sum()
+                    if self.w_dq > 0 and dq_v:
+                        L_dq = (torch.stack(dq_v) * w).sum()
+                    if self.w_fdc_bas > 0 and fdc_v:
+                        L_fdc = (torch.stack(fdc_v) * w).sum()
         else:
             # Pooled metrics: flatten time x station (dominated by largest station)
             q_o = q_obs.reshape(-1)
@@ -906,6 +962,8 @@ class HydroLoss(nn.Module):
             L_log_nse = differentiable_log_nse_loss(q_o, q_s) if self.w_log_nse > 0 else _zero
             L_log_mse = differentiable_log_mse_loss(q_o, q_s) if self.w_log_mse > 0 else _zero
             L_tol_mse = _zero   # tolérance timing : chemin per_station uniquement
+            L_dq = differentiable_dq_loss(q_o, q_s) if self.w_dq > 0 else _zero
+            L_fdc = differentiable_fdc_bas_loss(q_o, q_s) if self.w_fdc_bas > 0 else _zero
 
         # Heteroscedastic Gaussian NLL (probabilistic loss replacing the
         # ensemble UQ stack). Aligns log_sigma to q_sim at station nodes.
@@ -966,8 +1024,11 @@ class HydroLoss(nn.Module):
                 + self.w_tol_mse * L_tol_mse
                 + self.w_nll * L_nll
                 + self.w_flatness * L_flatness
-                + self.w_peak * L_peak)
+                + self.w_peak * L_peak
+                + self.w_dq * L_dq
+                + self.w_fdc_bas * L_fdc)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
+                      "dq_loss": L_dq, "fdc_bas_loss": L_fdc,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,

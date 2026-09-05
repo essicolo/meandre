@@ -353,7 +353,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
               kge_continu=True, etat_continu=True, device=None, tag="",
               pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
-              substeps=None, chunk=45, w_et=0.4):
+              substeps=None, chunk=45, w_et=0.4, w_kge=1.0, w_pbias=0.5, w_mse=0.1,
+              w_dq=0.0, w_fdc=0.0):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -563,17 +564,20 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # courant SANS l'historique detache. Tous les essais du banc jusqu'ici ont donc
         # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
-        loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.5, w_mse=0.1, w_nse=0.0, w_nrmse=0.0,
+        loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
+                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc),
                             w_log_nse=0.0, w_log_mse=0.0, w_et=float(w_et), per_station=True,
                             # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
                             # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
                             # et un essai a conclu a tort que MOD16 vidait la riviere.
                             et_mode="anomaly")
-        print(f"  perte : KGE 1.0 + biais 0.5 + MSE 0.1 + ET MOD16 {float(w_et):.2f} en tendance "
-              "(recette du socle, sans GRACE)", flush=True)
+        print(f"  perte : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f} + MSE {float(w_mse):.2f}"
+              f" + ET MOD16 {float(w_et):.2f} en tendance + dQ {float(w_dq):.2f}"
+              f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
     else:
-        loss_fn = HydroLoss(w_kge=1.0, w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
+        loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
+                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc),
                             w_log_nse=0.0, w_log_mse=0.0, per_station=True)
         print("  perte : KGE seul (PAS la recette du socle)", flush=True)
     # warmup_epochs=0 : le defaut de cinq epoques de rechauffement rendait un essai
@@ -631,6 +635,13 @@ def main():
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
     ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
     ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--w-kge", type=float, default=1.0)
+    ap.add_argument("--w-pbias", type=float, default=0.5)
+    ap.add_argument("--w-mse", type=float, default=0.1)
+    ap.add_argument("--w-dq", type=float, default=0.0,
+                    help="rapport des ecarts-types des variations journalieres (punit plateau ET nervosite)")
+    ap.add_argument("--w-fdc", type=float, default=0.0,
+                    help="soutien d'etiage Q20/Q50 (contraint le chemin de l'eau)")
     ap.add_argument("--w-et", type=float, default=0.4,
                     help="poids du terme MOD16 (0 = meme perte sans le terme d ET)")
     ap.add_argument("--chunk", type=int, default=45,
@@ -660,7 +671,8 @@ def main():
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,
                   debut_train=2012, fin_train=2012, fin_val=2013, debut_eval=2013,
-                  fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et)
+                  fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et,
+                  w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
