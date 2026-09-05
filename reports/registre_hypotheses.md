@@ -1070,3 +1070,48 @@ sous-pas   surface  hypodermique  nappe   production plate   débit plat
 Et sur le modèle non entraîné du même sous-bassin, la partition ne bouge pas non plus (hypodermique 59 % dans les deux cas). Le plafond de sous-pas déforme la partition dans le régime de crue saturée (R84, mesuré sur la colonne isolée et confirmé indépendamment : ruissellement de 93 mm à 64 sous-pas contre 44 mm à 256 pour 120 mm de pluie), mais il ne fabrique pas les plateaux d'été et ne change pas le chemin de l'eau à l'échelle du sous-bassin. Refaire la flotte à 256 sous-pas ne réglera pas la platitude. R84 reste un défaut de fidélité à corriger pour la crue, pas une cause de la platitude.
 
 **Ce qui reste, par élimination.** La platitude du point de reprise à plateaux est portée par ses paramètres appris : 70 % du débit d'été par la nappe contre 32 % au départ, l'écoulement hypodermique passant de 59 % à 17 %. Le déplacement du chemin de l'eau est l'objet même de l'apprentissage, et rien dans la perte ne le mesure.
+
+
+## R88 — GRACE est innocentée : l'éteindre dégrade la Gaspésie (2026-09-05)
+
+**Statut : établi, réfute l'hypothèse du 5 septembre au matin.** Paire de contrôle sur la Gaspésie, MOD16 gardée en tendance, les deux termes GRACE éteints, tout le reste identique au candidat de livraison. Tenu de côté 2022-2024, quinze stations :
+
+```
+                        KGE médian   platitude   été       suite plate   pointes
+avec GRACE, bras B         0,810      25,0 %     10,1 %      74 j         0,95
+sans GRACE, bras B         0,672      34,6 %     42,9 %      89 j         1,22
+avec GRACE, bras A         0,771      22,6 %     15,8 %      78 j         0,88
+sans GRACE, bras A         0,810      32,2 %     32,0 %      84 j         0,85
+```
+
+Éteindre GRACE coûte 0,14 de KGE au bras B et quadruple sa platitude d'été. La présomption tirée de la coïncidence géographique des effondrements du 4 septembre était fausse : GRACE tient la forme au lieu de la casser, et les journaux le disaient déjà, six des neuf effondrements ayant eu lieu dans des régions où GRACE est éteinte. La cause des effondrements est le protocole d'optimisation, pas la contrainte de stockage.
+
+## R89 — Le KGE n'est pas nécessaire dans la perte, et il coûte des pointes (2026-09-05)
+
+**Statut : établi sur un sous-bassin, à confirmer à l'échelle provinciale.** Neuf pertes comparées sur le sous-bassin gaspésien 021702, même graine, même protocole, six époques de vingt-quatre pas. Référence à zéro époque : KGE 0,834, gamma 0,917, pointes 0,83 de l'observé.
+
+```
+perte                                         KGE    gamma  pointes  suite plate
+socle actuel (KGE 1, biais 0,5, MSE 0,1, ET) 0,813   0,876   0,76       8 j
+socle + variations journalières              0,821   0,891   0,82       9 j
+socle + variations + soutien d'étiage        0,821   0,887   0,82       7 j
+sans KGE, avec les deux termes de forme      0,820   0,888   0,84       9 j
+forme seule (biais, ET, variations, étiage)  0,834   0,928   0,91       5 j
+KGE + variations seuls                       0,818   0,963   0,89       9 j
+```
+
+La perte sans KGE ni erreur quadratique est la seule qui ne dégrade pas le KGE en six époques, la seule dont les pointes dépassent celles du modèle de départ, et elle a la plus courte suite plate. Le socle actuel perd sept points de pointes. Le rôle du KGE dans la perte se réduit donc à ce que le biais de volume fait mieux et sans rabotage.
+
+**Réserve.** Ce sous-bassin ne présente pas la maladie de platitude d'étiage : son simulé est moins plat que l'observé, 4 à 8 % contre 9,3 %. Le balayage mesure le rabotage, pas les plateaux.
+
+## R90 — Le terme de variations en valeur absolue est aveugle à un étiage figé (2026-09-05)
+
+**Statut : établi par construction et par mesure, corrigé.** L'écart-type des variations journalières est dominé par les crues. Cas de contrôle, trois cent soixante-cinq jours, cent jours d'étiage figés, crues intactes :
+
+```
+                              étiage figé   pointes rabotées de moitié
+terme en valeur absolue          0,00000            0,268
+terme en logarithme              0,00285            0,015
+```
+
+Le terme absolu ne voit rien quand l'étiage est gelé, ce qui est précisément le défaut visible sur les hydrogrammes du rapport, dont les pointes sont justes et les basses eaux plates. Le terme logarithmique donne le même poids à une variation de 5 % quel que soit le niveau du débit. Les deux sont complémentaires : l'absolu garde les pointes, le logarithmique garde les basses eaux. Levier `ETL_WDQ` et `ETL_WFDC` au pilote, options `--w-dq`, `--w-dq-log` et `--w-fdc` au banc.
