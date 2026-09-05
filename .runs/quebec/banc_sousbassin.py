@@ -320,6 +320,7 @@ def rapport(reg, station, **kw):
     k, r, b, gm = _kge(q[garde], o[garde])
     print(f"{reg.upper()} / {station} : KGE {k:.3f} | r {r:.3f} | beta {b:.3f} | "
           f"gamma {gm:.3f}")
+    _ligne_forme("forme", forme(temps, q, o, garde))
     mo = temps.month.to_numpy()
     ps, po = [], []
     for mm in range(1, 13):
@@ -604,6 +605,8 @@ def main():
     ap.add_argument("region")
     ap.add_argument("station", nargs="?")
     ap.add_argument("--simuler", action="store_true")
+    ap.add_argument("--charger", default=None,
+                    help="point de reprise (.pt) a charger avant de simuler : compare un modele entraine au zero epoque")
     ap.add_argument("--sans-ancrage", action="store_true")
     ap.add_argument("--kc", type=float, default=None)
     ap.add_argument("--kmusk", type=float, default=None)
@@ -659,7 +662,7 @@ def main():
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,
                 kc=a.kc, kmusk=a.kmusk, annees=a.annees, melt_saison=a.fonte,
                 seuil_neige=a.seuil, debut=a.debut, sol=a.sol,
-                aquifere=not a.sans_aquifere)
+                aquifere=not a.sans_aquifere, charger=a.charger)
         return
     s = extraire(a.region, a.station)
     g = s["graph"]

@@ -1688,7 +1688,23 @@ class Trainer:
                 # la restaure et on compte le bloc comme jete, au lieu de perdre l'epoque.
                 _instantane = {p_: (p_.grad.detach().clone() if p_.grad is not None else None)
                                for p_ in self.model.parameters() if p_.requires_grad}
-                (loss_chunk * weight).backward()
+                if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":
+                    # Autopsie (2026-09-05) : la perte et les debits du bloc fautif etaient
+                    # finis, le gradient non ; le mode anomalie de torch nomme l'operation
+                    # dont la retropropagation produit le premier NaN, avec sa pile.
+                    try:
+                        with torch.autograd.detect_anomaly(check_nan=True):
+                            (loss_chunk * weight).backward()
+                    except RuntimeError as _e:
+                        import traceback as _tb
+                        print("[nan-debug] operation fautive :\n" + "".join(_tb.format_exc())[-3000:],
+                              flush=True)
+                        _noms = [n_ for n_, p_ in self.model.named_parameters()
+                                 if p_.grad is not None and not torch.isfinite(p_.grad).all()]
+                        print(f"[nan-debug] parametres a gradient non fini ({len(_noms)}) : {_noms[:15]}",
+                              flush=True)
+                else:
+                    (loss_chunk * weight).backward()
                 _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
                               for p_ in _instantane)
                 if _pourri:
