@@ -992,3 +992,37 @@ Mécanisme (agent 2). Sous le socle, le drainage de la troisième couche est lin
 Perte (agent 4). Aucun terme actif ne punit un plateau d'été : la MSE, le log-MSE et le terme pics ont pour optimum, sous un décalage d'un jour, l'espérance conditionnelle lissée ; le terme pics ne voit que les jours observés au-dessus du 75e centile, donc jamais l'été ; le PBIAS par bloc de 34 jours vaut zéro pour un simulé plat à la moyenne du bloc ; le prior tire K_sat_1 vers 0,08 m/j et krec vers 2e-5 m/h, plus d'infiltration et plus de chemin lent ; les lacs n'ont ni prior ni ancre et un taux 50 fois plus grand. Le seul contrepoids, gamma, était inerte (R82). Reconstruction de la perte de la flotte : les deux termes GRACE pesaient environ 84 % du total dans les régions où ils sont actifs (leur composante est accumulée sans le poids de bloc, d'où des affichages à 6000 %), avec un écart RMS de 160 mm entre stockage simulé et GRACE, cible insatisfaisable (R47) ; c'est là que la validation s'est effondrée. Le garde-fou de divergence exige un saut à six fois l'EMA en une époque et ne voit pas une montée de 1,27 à 3,08 en cinq (dette 23).
 
 Verdict de forme (auditeur externe, mêmes dumps) : quatorze régions sur quatorze REFUSÉES ; Gaspésie, meilleur KGE de la flotte (0,819), est une calamité masquée : son score vient du point de reprise de l'époque 0, l'entraînement s'étant effondré à l'époque 1, et ce point produit 115 jours plats d'affilée en hiver et 40 suites de plus de 30 jours sur 15 stations.
+
+
+## R84 — La colonne n'est pas convergée : le plafond de 64 sous-pas fabrique les deux tiers du ruissellement de surface (2026-09-05)
+
+**Statut : établi par mesure, non corrigé.** Le schéma de sol boucle en sous-pas de Courant et, quand le plafond `MEANDRE_NSUBSTEP` est atteint avant la fin de la journée, la branche de fermeture de masse verse en ruissellement de surface toute la pluie non traitée. Mesure sur huit nœuds gaspésiens ancrés, été 2013, colonne isolée, mêmes paramètres, seul le plafond change :
+
+```
+sous-pas   surface   hypodermique   nappe   débit
+    64       65 %        21 %        14 %   1,48 mm/j
+   512       11 %        73 %        16 %   1,62 mm/j
+```
+
+La recette du socle pose 64. La partition entre chemin rapide de surface et chemin hypodermique, qui gouverne la forme de l'hydrogramme, est donc à 54 points près un artefact numérique, et non la physique d'Hydrotel. Le débit total ne bouge que de 9 %, ce qui explique qu'aucun bilan de masse ni aucun KGE ne l'ait signalé. Conséquences à examiner : la fidélité au binaire C++ n'a jamais été vérifiée à ce plafond sur une région entière ; l'apprentissage de K_sat_1 interagit avec le plafond, puisqu'une conductivité plus forte raccourcit le pas de Courant et fait déborder la boucle plus tôt.
+
+## R85 — Deux entraînements de la même recette diffèrent d'un facteur 40 sur la conductivité qui commande l'écoulement hypodermique (2026-09-05)
+
+**Statut : établi.** Comparaison des champs de paramètres des deux points de reprise du Saint-Laurent sud de la flotte du 4 septembre, évalués sur les 2889 nœuds de la région : A (boucle corrigée, plateaux d'été sur 6,8 % des jours) contre B (ancienne boucle, plateaux sur 31,5 % des jours). Médianes par nœud :
+
+```
+paramètre        A          B         B/A
+K_sat_2       10,8 m/j   0,275 m/j    0,025
+theta_wp_1    0,0033     0,092        28
+k_gw          0,0033 /j  0,0163 /j    4,9
+theta_fc_1    0,062      0,273        4,4
+krec          5,6e-6     1,65e-5      2,9
+K_musk        6,6 h      16,8 h       2,5
+porosity_1    0,200      0,495        2,5
+porosity_3    0,200      0,502        2,5
+K_c           1,489      1,18         0,79
+```
+
+Les vingt autres paramètres diffèrent de moins de 20 %. Deux lectures. Première : la solution à plateaux a exactement la signature que la relecture de la colonne prédisait, une conductivité de deuxième couche quarante fois plus faible, donc un écoulement hypodermique éteint, et un drainage de troisième couche trois fois plus rapide, donc un débit d'été porté par le seul réservoir lent. Seconde : la solution sans plateaux n'est pas pour autant physique, ses porosités sont collées à leur borne basse (0,200), son coefficient cultural à sa borne haute (1,489 pour une borne à 1,5) et son coefficient de Muskingum de forme à 0,449 pour une borne à 0,49. L'équifinalité est massive : à recette, graine et données identiques, deux boucles d'optimisation atteignent des jeux de paramètres qui diffèrent d'un facteur quarante sur le paramètre le plus déterminant pour la forme de l'hydrogramme. Aucune contrainte de la perte ni du prior ne les sépare.
+
+**Ce que le banc de colonne ne reproduit pas.** Sur la colonne isolée, faire varier krec sur trois ordres de grandeur et diviser K_sat_2 par mille change la part de nappe de 0 à 67 % et la part de jours plats de 0 à 26 %, mais ne produit jamais de suite plate de plus de cinq jours : la production de surface répond à chaque pluie. Le plateau de trente à cent quarante jours de la flotte demande donc quelque chose de plus que ces deux paramètres, à chercher du côté du sol calé du socle, du réseau et des lacs, ou de l'interaction avec R84.
