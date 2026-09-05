@@ -81,3 +81,17 @@ Les dumps ne contiennent que les débits : le réservoir qui porte le stock lent
 ## 5. Tests à faire, par ordre de coût
 
 Colonne isolée, trois minutes chacun : balayage de krec et de K_sat_2 sur un été réel, puis de K_c et du seuil de stress, en mesurant la part de la production hypodermique, la fraction d'une pluie de 20 mm restituée en cinq jours et le nombre de jours plats. Sous-bassin, trois minutes : simulation avec le point de reprise SLSO-B puis SLSO-A, comparaison des 37 champs de paramètres et des diagnostics de production pendant le plateau du 15 mai au 22 août 2024 à la station 022704. Grappe, deux heures : paire de contrôle gaspésienne sans GRACE. Scripts : aligner les sept lectures de troncon.trl sur celle du chargeur. Garde-fous : test de tendance sur la perte et repli sur la forme à chaque validation, indépendants des époques de grâce de l'autopilote.
+
+## 6. Suite du 5 septembre, soirée
+
+Quatre résultats sont venus après la rédaction des sections précédentes et en corrigent deux.
+
+**GRACE est innocentée.** La paire de contrôle gaspésienne, contrainte de stockage éteinte et tout le reste identique, perd 0,14 de KGE et voit sa platitude d'été passer de 10 à 43 %. La présomption tirée de la coïncidence géographique des effondrements était fausse. La cause des effondrements est le protocole d'optimisation, ce que les journaux disaient déjà puisque six des neuf effondrements ont eu lieu là où GRACE est éteinte.
+
+**Le plateau ne vient pas de la non-convergence numérique.** Le même modèle rejoué à 256 sous-pas au lieu de 64 garde sa partition, 70 % du débit d'été par la nappe, et sa platitude, sept jours de suite maximale. Le défaut de convergence reste à corriger pour la crue, il n'explique pas les plateaux.
+
+**Le KGE n'est pas nécessaire dans la perte et coûte des pointes.** Neuf pertes comparées sur le même sous-bassin, même graine, six époques. La perte sans KGE ni erreur quadratique, qui garde le biais de volume, l'évapotranspiration satellitaire et les deux nouveaux termes de forme, est la seule qui ne dégrade pas le KGE et la seule dont les pointes dépassent celles du modèle de départ, 0,91 contre 0,83. Le socle actuel perd sept points de pointes en six époques.
+
+**Le terme de variations en valeur absolue est aveugle à un étiage figé**, ce que montrent les hydrogrammes du rapport dont les pointes sont justes et les basses eaux plates. Un cas de contrôle le chiffre : cent jours d'étiage gelés donnent 0,00000 au terme absolu et 0,00285 au terme logarithmique. Le terme logarithmique supprime les plateaux, plus longue suite ramenée à un jour, mais au poids 1 il rabote les pointes à 0,68 et rend le modèle plus nerveux que la réalité. Il doit être dosé, et son dosage se juge sur une région malade.
+
+**Deux flottes provinciales sont lancées** sur ces conclusions, quinze régions chacune, boucle corrigée au taux réduit : la perte de forme seule, et la même augmentée du terme d'étiage à poids modéré. Leur comparaison, région par région, dira si l'étiage se répare sans sacrifier les pointes. Elles s'ajoutent aux deux flottes de l'après-midi, dont trois runs sur dix-sept passent déjà le verdict de forme, contre zéro la veille.
