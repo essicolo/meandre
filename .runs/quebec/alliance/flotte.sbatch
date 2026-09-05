@@ -47,7 +47,7 @@ else
 fi
 JOURNAUX=$TRAVAIL/meandre/flotte
 mkdir -p "$JOURNAUX" "$TRAVAIL/meandre/checkpoints" "$RACINE/.runs/quebec/checkpoints"
-exec > "$JOURNAUX/$REG-$BRAS.log" 2>&1
+exec > "$JOURNAUX/$REG-$BRAS${FLOTTE_TAG:-}.log" 2>&1
 
 module purge && module load StdEnv/2023 gcc arrow mpi4py python/3.11 scipy-stack
 source "$HOME/venv-meandre/bin/activate"
@@ -80,6 +80,17 @@ fi
 # contrainte sans cible ne contraint rien et deplace la solution.
 AUX=(ETL_WET=0.4)
 case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0) ;; esac
+# PAIRE DE CONTROLE (2026-09-05). La flotte du 4 septembre a montre que les trois
+# effondrements de validation (GASP dans les deux bras, MONT-B, SAGU-A) sont dans les
+# regions ou GRACE est active, et que pendant l'effondrement TOUS les termes de la perte
+# montent, le biais saisonnier GRACE de 28 fois : c'est une divergence, pas un compromis.
+# FLOTTE_AUX remplace le bloc de contraintes auxiliaires et FLOTTE_TAG s'ajoute au tag,
+# pour relancer une region avec une contrainte eteinte sans toucher au reste :
+#   sbatch --account=<compte> --array=6,21 \
+#     --export=ALL,FLOTTE_AUX="ETL_WET=0.4 ETL_WTWS=0 ETL_WTWSCLIM=0",FLOTTE_TAG=-sansgrace \
+#     flotte.sbatch        # GASP, bras A (6) et B (21), MOD16 gardee, GRACE eteinte
+if [ -n "${FLOTTE_AUX:-}" ]; then read -r -a AUX <<< "$FLOTTE_AUX"; fi
+TAG="$TAG${FLOTTE_TAG:-}"
 
 env ETL_CONFIG=.runs/quebec/config/socle.toml MEANDRE_PAS_PAR_BLOC=$PAS_PAR_BLOC \
     MEANDRE_HISTORIQUE_AMORCE=$AMORCE \
@@ -88,7 +99,7 @@ env ETL_CONFIG=.runs/quebec/config/socle.toml MEANDRE_PAS_PAR_BLOC=$PAS_PAR_BLOC
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
     "${AUX[@]}" \
     ETL_TAG=$TAG ETL_EPOCHS=${ETL_EPOCHS:-30} \
-    ETL_DUMP_Q="$JOURNAUX/q-$REG-$BRAS.npz" \
+    ETL_DUMP_Q="$JOURNAUX/q-$REG-$BRAS${FLOTTE_TAG:-}.npz" \
     python -u .runs/quebec/etl_run.py
 
 cp -f "$RACINE/.runs/quebec/checkpoints/best-${REG}-etl${TAG}.pt" \

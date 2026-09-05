@@ -1672,10 +1672,19 @@ class Trainer:
                         p_.grad = g_
                     _n_jetes = getattr(self, "_n_blocs_jetes", 0) + 1
                     self._n_blocs_jetes = _n_jetes
-                    if _n_jetes <= 3:
+                    if _n_jetes <= 3 or _n_jetes % 20 == 0:
                         print(f"[train] bloc {n_chunks} (t={t_start}) : gradient non fini, "
                               f"bloc JETE, gradients restaures ({_n_jetes} bloc(s) jete(s) "
                               f"jusqu'ici)", flush=True)
+                    if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":
+                        # Autopsie du bloc (2026-09-05) : quels parametres portent le
+                        # gradient non fini, et la perte elle-meme etait-elle finie ?
+                        _noms = [n_ for n_, p_ in self.model.named_parameters()
+                                 if p_.grad is not None and not torch.isfinite(p_.grad).all()]
+                        print(f"[nan-debug] perte={float(loss_chunk):.4g} finie="
+                              f"{bool(torch.isfinite(loss_chunk))} | q_sim non finis="
+                              f"{int((~torch.isfinite(q_sim_chunk)).sum())} sur {q_sim_chunk.numel()}"
+                              f" | parametres touches ({len(_noms)}) : {_noms[:12]}", flush=True)
                 del _instantane
                 # UN PAS PAR BLOC (2026-09-04, MEANDRE_PAS_PAR_BLOC=1). Le trainer ne
                 # faisait qu'UN pas d'optimisation par epoque, sur les gradients
