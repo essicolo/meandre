@@ -98,6 +98,21 @@ if "ETL_WSNOW" in os.environ:
         print("      R24 : elle tire vers MOINS de neige en mars-avril, contre GRACE et "
               "CanSWE. Mettre ETL_WSNOW=0 tant que la cible n'est pas CanSWE (masse) "
               "plutot que MOD10 (couverture).")
+for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", "w_pbias"),
+                   ("ETL_WLOGMSE", "w_log_mse"), ("ETL_WPEAK", "w_peak")):
+    # Poids des termes de debit, exposes le 2026-09-05 : le balayage de neuf pertes du
+    # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
+    # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle
+    # provinciale pour le verifier.
+    if _cle in os.environ:
+        lcfg[_nom] = float(os.environ[_cle])
+        print(f"[etl] {_nom} = {lcfg[_nom]}")
+if "ETL_WDQLOG" in os.environ:
+    # Variations journalieres en espace LOG : voit la platitude d'etiage, invisible au
+    # terme absolu (R90). A poids 1.0 sur un sous-bassin sain il sur-corrige (pointes
+    # 0.70 contre 0.83 au depart) ; a doser.
+    lcfg["w_dq_log"] = float(os.environ["ETL_WDQLOG"])
+    print(f"[etl] w_dq_log = {lcfg['w_dq_log']} (variations en log, etiage)")
 if "ETL_WDQ" in os.environ:
     # Rapport des ecarts-types des variations journalieres (2026-09-05). Seul terme de la
     # perte qui punisse SYMETRIQUEMENT le plateau et la nervosite ; gamma, lui, compare
