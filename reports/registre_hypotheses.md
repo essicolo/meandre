@@ -1055,3 +1055,18 @@ point B           22 %        24 %        54 %   0,414  0,813    7,8 m³/s
 Trois régimes hydrologiques incompatibles, issus de la même recette, des mêmes données et de la même graine, séparés seulement par la boucle d'optimisation. Le point A, dont la conductivité de deuxième couche est quarante fois plus grande (R85), envoie 83 % du débit d'été par le ruissellement de surface : c'est le plafond de sous-pas de R84 qui le lui permet, une conductivité forte raccourcissant le pas de Courant jusqu'à faire déborder la boucle, qui verse alors la pluie non traitée en surface. Le point B, conductivité quarante fois plus faible, éteint l'hypodermique et fait porter 54 % du débit d'été par la nappe : c'est le régime de plateau. Aucun des trois ne ressemble à l'autre, et l'observé n'est reproduit par aucun (KGE 0,05 à 0,41 sur ce sous-bassin difficile).
 
 **Rétractation partielle de R83.** L'affirmation « les plateaux d'été sont créés par l'apprentissage » venait du sous-bassin gaspésien 021702, où le modèle non entraîné est effectivement propre (8 à 11 jours de suite maximale). Elle ne vaut pas partout : sur 022704, le modèle non entraîné présente déjà 20,6 % de jours plats sur l'année et une suite de 43 jours, par le routage. L'apprentissage déplace la cause de la platitude du routage vers la colonne, il ne la crée pas de rien.
+
+
+## R87 — Le plateau survit à la convergence numérique : R84 est réel mais n'est pas la cause (2026-09-05)
+
+**Statut : établi, réfute l'hypothèse numérique.** Même point de reprise à plateaux, même sous-bassin (station 022704, 73 tronçons), mêmes paramètres appris, seul le plafond de sous-pas change. Été 2024 :
+
+```
+sous-pas   surface  hypodermique  nappe   production plate   débit plat
+   64        13 %       17 %       70 %    22,3 % (7 j)       14,0 % (6 j)
+  256        11 %       19 %       70 %    19,8 % (7 j)       14,9 % (6 j)
+```
+
+Et sur le modèle non entraîné du même sous-bassin, la partition ne bouge pas non plus (hypodermique 59 % dans les deux cas). Le plafond de sous-pas déforme la partition dans le régime de crue saturée (R84, mesuré sur la colonne isolée et confirmé indépendamment : ruissellement de 93 mm à 64 sous-pas contre 44 mm à 256 pour 120 mm de pluie), mais il ne fabrique pas les plateaux d'été et ne change pas le chemin de l'eau à l'échelle du sous-bassin. Refaire la flotte à 256 sous-pas ne réglera pas la platitude. R84 reste un défaut de fidélité à corriger pour la crue, pas une cause de la platitude.
+
+**Ce qui reste, par élimination.** La platitude du point de reprise à plateaux est portée par ses paramètres appris : 70 % du débit d'été par la nappe contre 32 % au départ, l'écoulement hypodermique passant de 59 % à 17 %. Le déplacement du chemin de l'eau est l'objet même de l'apprentissage, et rien dans la perte ne le mesure.
