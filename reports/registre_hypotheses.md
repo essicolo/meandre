@@ -1026,3 +1026,30 @@ K_c           1,489      1,18         0,79
 Les vingt autres paramètres diffèrent de moins de 20 %. Deux lectures. Première : la solution à plateaux a exactement la signature que la relecture de la colonne prédisait, une conductivité de deuxième couche quarante fois plus faible, donc un écoulement hypodermique éteint, et un drainage de troisième couche trois fois plus rapide, donc un débit d'été porté par le seul réservoir lent. Seconde : la solution sans plateaux n'est pas pour autant physique, ses porosités sont collées à leur borne basse (0,200), son coefficient cultural à sa borne haute (1,489 pour une borne à 1,5) et son coefficient de Muskingum de forme à 0,449 pour une borne à 0,49. L'équifinalité est massive : à recette, graine et données identiques, deux boucles d'optimisation atteignent des jeux de paramètres qui diffèrent d'un facteur quarante sur le paramètre le plus déterminant pour la forme de l'hydrogramme. Aucune contrainte de la perte ni du prior ne les sépare.
 
 **Ce que le banc de colonne ne reproduit pas.** Sur la colonne isolée, faire varier krec sur trois ordres de grandeur et diviser K_sat_2 par mille change la part de nappe de 0 à 67 % et la part de jours plats de 0 à 26 %, mais ne produit jamais de suite plate de plus de cinq jours : la production de surface répond à chaque pluie. Le plateau de trente à cent quarante jours de la flotte demande donc quelque chose de plus que ces deux paramètres, à chercher du côté du sol calé du socle, du réseau et des lacs, ou de l'interaction avec R84.
+
+
+## R86 — Les plateaux d'été ont DEUX causes distinctes, et elles ne sont pas les mêmes selon le modèle (2026-09-05)
+
+**Statut : établi sur le sous-bassin de la station 022704 du Saint-Laurent sud, 73 tronçons, 796 km², 4 lacs, été 2022-2024.** Le même sous-bassin est rejoué avec trois jeux de paramètres, et l'on mesure séparément la platitude de la PRODUCTION de la colonne, somme des trois chemins avant réseau et lacs, et celle du DÉBIT ROUTÉ à l'exutoire.
+
+```
+                production plate   débit routé plat   observé
+zéro époque        2,7 % (2 j)       14,0 % (5 j)     1,7 % (1 j)
+point A            4,1 % (3 j)        3,6 % (3 j)     1,7 % (1 j)
+point B           17,5 % (7 j)       12,9 % (6 j)     1,7 % (1 j)
+```
+
+Deux causes indépendantes. Au départ, la colonne produit un signal qui varie normalement et c'est le ROUTAGE qui multiplie la platitude par cinq : lacs et Muskingum. Dans le point de reprise à plateaux, c'est la COLONNE elle-même qui est plate à la source, et le routage n'y ajoute rien. Le point de reprise sans plateaux ne souffre d'aucun des deux, mais pour une autre raison, il est trop nerveux (gamma 1,575 contre 0,813).
+
+**Partition des chemins d'eau en été, même sous-bassin**, qui donne la signature physique de chaque solution :
+
+```
+                surface   hypodermique   nappe   KGE    gamma   débit d'été
+zéro époque       11 %        63 %        26 %   0,199  0,423   13,7 m³/s
+point A           83 %        15 %         3 %   0,051  1,575   10,9 m³/s
+point B           22 %        24 %        54 %   0,414  0,813    7,8 m³/s
+```
+
+Trois régimes hydrologiques incompatibles, issus de la même recette, des mêmes données et de la même graine, séparés seulement par la boucle d'optimisation. Le point A, dont la conductivité de deuxième couche est quarante fois plus grande (R85), envoie 83 % du débit d'été par le ruissellement de surface : c'est le plafond de sous-pas de R84 qui le lui permet, une conductivité forte raccourcissant le pas de Courant jusqu'à faire déborder la boucle, qui verse alors la pluie non traitée en surface. Le point B, conductivité quarante fois plus faible, éteint l'hypodermique et fait porter 54 % du débit d'été par la nappe : c'est le régime de plateau. Aucun des trois ne ressemble à l'autre, et l'observé n'est reproduit par aucun (KGE 0,05 à 0,41 sur ce sous-bassin difficile).
+
+**Rétractation partielle de R83.** L'affirmation « les plateaux d'été sont créés par l'apprentissage » venait du sous-bassin gaspésien 021702, où le modèle non entraîné est effectivement propre (8 à 11 jours de suite maximale). Elle ne vaut pas partout : sur 022704, le modèle non entraîné présente déjà 20,6 % de jours plats sur l'année et une suite de 43 jours, par le routage. L'apprentissage déplace la cause de la platitude du routage vers la colonne, il ne la crée pas de rien.

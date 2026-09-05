@@ -239,10 +239,21 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         m.eval()
     w = WithdrawalData(net=torch.zeros(F.shape[0], n))
     with torch.no_grad():
-        Q, _ = m.simulate(forcing=F, initial_state=HydroState.zeros(n),
-                          graph=g, node_coords=s["node_coords"], territorial=terr,
-                          withdrawals=w, day_of_year=doy)
+        Q, _, _dg = m.simulate(forcing=F, initial_state=HydroState.zeros(n),
+                               graph=g, node_coords=s["node_coords"], territorial=terr,
+                               withdrawals=w, day_of_year=doy, return_diagnostics=True)
     q_sim = Q[:, s["exutoire"]].numpy()
+    # PARTITION DES CHEMINS (2026-09-05). La question ouverte de R83 et R85 : pendant un
+    # plateau d'ete, quel chemin porte le debit ? Surface, hypodermique et nappe sont
+    # moyennes sur les noeuds du sous-bassin, en millimetres par jour.
+    _part = {}
+    for _k in ("prod_surf", "prod_hypo", "prod_base"):
+        _v = getattr(_dg, _k, None)
+        if _v is None and isinstance(_dg, dict):
+            _v = _dg.get(_k)
+        if _v is not None:
+            _part[_k] = _v.detach().cpu().numpy().mean(axis=1)
+    globals()["_DERNIERE_PARTITION"] = _part
 
     con = duckdb.connect(s["base"], read_only=True)
     obs = con.execute("select date, discharge from observations where station_id = ? "
