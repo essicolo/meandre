@@ -1012,6 +1012,54 @@ for s in range(Qs.shape[1]):
 ks = np.array(ks)
 print(f"\n[etl] HELD-OUT 2022-2024 {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
 
+# FORME DE L'HYDROGRAMME, A COTE DU KGE (Essi, 2026-09-05 : « un modele hydrologique
+# incapable de modeliser l'hydrologie a une seule destination : la poubelle »). La flotte
+# du 4 septembre rendait des KGE de 0,67 a 0,82 avec des plateaux d'ete de 30 a 116 jours
+# a 0,8 fois le debit median, sur 20 a 45 % des jours contre 3 a 14 % dans l'observe ;
+# aucun chiffre ne le disait. Mesure par station puis mediane : part de jours plats
+# (variation relative < 1 % d'un jour a l'autre), la meme part dans l'observe, part en
+# ete (juin a septembre), plus longue suite plate, rapport des pointes annuelles et du
+# quantile 99 simule sur observe. VERDICT explicite : FORME REFUSEE si la platitude
+# simulee depasse le double de l'observee ou si une suite plate depasse 30 jours.
+import pandas as _pd
+_tsl = _pd.DatetimeIndex(np.asarray(times)[np.asarray(sl)])
+_mois, _an = _tsl.month.to_numpy(), _tsl.year.to_numpy()
+_f_plat, _f_plat_o, _f_ete, _f_ete_o, _f_suite, _f_pic, _f_q99 = [], [], [], [], [], [], []
+for s in range(Qs.shape[1]):
+    _o = qo_test[:, s].numpy().astype(float)
+    _s = Qs[:, s].numpy().astype(float)
+    _m = np.isfinite(_o) & np.isfinite(_s)
+    if _m.sum() < 365:
+        continue
+    _ps = np.abs(np.diff(_s)) / np.maximum(_s[:-1], 1e-9) < 0.01
+    _po = np.abs(np.diff(_o)) / np.maximum(_o[:-1], 1e-9) < 0.01
+    _mm = _m[:-1] & _m[1:]
+    _ete = np.isin(_mois[:-1], (6, 7, 8, 9)) & _mm
+    _f_plat.append(_ps[_mm].mean()); _f_plat_o.append(_po[_mm].mean())
+    if _ete.any():
+        _f_ete.append(_ps[_ete].mean()); _f_ete_o.append(_po[_ete].mean())
+    _n = _mx = 0
+    for _c in _ps[_mm]:
+        _n = _n + 1 if _c else 0
+        _mx = max(_mx, _n)
+    _f_suite.append(_mx)
+    _pics = [np.nanmax(_s[_m & (_an == a)]) / np.nanmax(_o[_m & (_an == a)])
+             for a in np.unique(_an[_m]) if (_m & (_an == a)).sum() > 300 and np.nanmax(_o[_m & (_an == a)]) > 0]
+    if _pics:
+        _f_pic.append(np.median(_pics))
+    _f_q99.append(np.nanquantile(_s[_m], 0.99) / max(np.nanquantile(_o[_m], 0.99), 1e-9))
+if _f_plat:
+    _plat, _plat_o = 100 * np.median(_f_plat), 100 * np.median(_f_plat_o)
+    _ete_s = 100 * np.median(_f_ete) if _f_ete else float("nan")
+    _ete_o = 100 * np.median(_f_ete_o) if _f_ete_o else float("nan")
+    _suite = int(np.median(_f_suite))
+    _refus = (_plat > 2 * max(_plat_o, 1.0)) or (_suite > 30)
+    print(f"[etl] FORME {REG} (tenu de cote, mediane des stations) : plat {_plat:.1f} % (obs {_plat_o:.1f} %) "
+          f"| ete {_ete_s:.1f} % (obs {_ete_o:.1f} %) | plus longue suite plate {_suite} j "
+          f"| pointes sim/obs {np.median(_f_pic) if _f_pic else float('nan'):.2f} | q99 sim/obs {np.median(_f_q99):.2f}")
+    print(f"[etl] VERDICT DE FORME {REG} : {'FORME REFUSEE (plateaux)' if _refus else 'forme acceptable'} "
+          f"| regle : platitude simulee > 2 x observee ou suite plate > 30 j")
+
 # SCORE SUR LES JOURS REELLEMENT MESURES (R19, 2026-08-21).
 # Le CEHQ publie a cote de chaque debit une remarque, et deux de ses codes disent que la
 # valeur n'est pas une lecture de courbe de tarage : `E` (estimee) et `R` (corrigee pour

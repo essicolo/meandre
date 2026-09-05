@@ -1653,6 +1653,30 @@ class Trainer:
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = chunk_len / n_train
+            if os.environ.get("MEANDRE_DEBUG_GRAD", "0") == "1" and n_chunks < 3:
+                # QUI POUSSE LE PLUS FORT (2026-09-05). Norme du gradient de chaque terme
+                # pondere, mesuree sur les trois premiers blocs, pour savoir quel terme
+                # domine la descente : la flotte du 4 septembre a diverge dans les regions
+                # ou GRACE est active, tous les termes montant ensemble.
+                _params = [p_ for p_ in self.model.parameters() if p_.requires_grad]
+                _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
+                           if torch.is_tensor(v_) and v_.requires_grad}
+                for _nom, _var in (("prior", locals().get("prior_loss")),
+                                   ("tws", locals().get("L_tws")),
+                                   ("tws_clim", locals().get("L_tws_clim"))):
+                    if torch.is_tensor(_var) and _var.requires_grad:
+                        _termes[_nom] = _var
+                _lignes = []
+                for _nom, _v in _termes.items():
+                    _w = getattr(self.loss_fn, f"w_{_nom}", None)
+                    if _w is None:
+                        _w = getattr(self.config, f"w_{_nom}", 1.0)
+                    _g = torch.autograd.grad(_v, _params, retain_graph=True, allow_unused=True)
+                    _n2 = sum(float((g_ ** 2).sum()) for g_ in _g if g_ is not None)
+                    _lignes.append(f"{_nom}={float(_v):.3g} x{float(_w):g} -> grad {float(_w) * _n2 ** 0.5:.3g}")
+                print(f"[grad-debug] bloc {n_chunks} (t={t_start}) : " + " | ".join(_lignes), flush=True)
+                if n_chunks == 2 and os.environ.get("MEANDRE_DEBUG_GRAD_STOP", "0") == "1":
+                    raise SystemExit("grad-debug termine apres trois blocs")
             if not torch.isnan(loss_chunk) and loss_chunk.requires_grad:
                 # FILET PAR BLOC (2026-09-04). Le pas d'optimisation est UNIQUE par
                 # epoque, sur les gradients accumules de tous les blocs. Un seul bloc
@@ -1683,7 +1707,7 @@ class Trainer:
                                  if p_.grad is not None and not torch.isfinite(p_.grad).all()]
                         print(f"[nan-debug] perte={float(loss_chunk):.4g} finie="
                               f"{bool(torch.isfinite(loss_chunk))} | q_sim non finis="
-                              f"{int((~torch.isfinite(q_sim_chunk)).sum())} sur {q_sim_chunk.numel()}"
+                              f"{int((~torch.isfinite(Q_chunk_loss)).sum())} sur {Q_chunk_loss.numel()}"
                               f" | parametres touches ({len(_noms)}) : {_noms[:12]}", flush=True)
                 del _instantane
                 # UN PAS PAR BLOC (2026-09-04, MEANDRE_PAS_PAR_BLOC=1). Le trainer ne
