@@ -123,6 +123,26 @@ def differentiable_dq_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return (s_s / s_o.clamp(min=1e-8) - 1.0) ** 2
 
 
+def differentiable_dq_log_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
+    """Le meme rapport de variations, mais en espace LOGARITHMIQUE.
+
+    DEFAUT DU TERME PRECEDENT, vu sur les hydrogrammes du rapport le 2026-09-05 : l'ecart-
+    type des variations ABSOLUES est domine par les crues. Un etiage fige pendant deux
+    mois n'y pese presque rien, et c'est pourtant la que les plateaux se voient. En
+    passant au logarithme, une variation de 5 % compte autant a 2 m3/s qu'a 200 m3/s :
+    le terme voit alors la platitude d'etiage, qui est celle qui reste.
+    """
+    if q_obs.numel() < 3:
+        return torch.zeros((), device=q_sim.device)
+    eps = (1e-2 * q_obs.median().abs()).clamp(min=1e-6)
+    lo = torch.log(q_obs.clamp(min=0.0) + eps)
+    ls = torch.log(q_sim.clamp(min=0.0) + eps)
+    d_o, d_s = lo[1:] - lo[:-1], ls[1:] - ls[:-1]
+    s_o = torch.sqrt((d_o ** 2).mean() + 1e-12)
+    s_s = torch.sqrt((d_s ** 2).mean() + 1e-12)
+    return (s_s / s_o.clamp(min=1e-8) - 1.0) ** 2
+
+
 def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
                                 bas: float = 0.2, ref: float = 0.5) -> Tensor:
     """Ecart sur le SOUTIEN d'etiage : quantile bas rapporte a la mediane.
@@ -661,6 +681,7 @@ class HydroLoss(nn.Module):
         w_mixture: float = 0.0,
         w_peak: float = 0.0,
         w_dq: float = 0.0,
+        w_dq_log: float = 0.0,
         w_fdc_bas: float = 0.0,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
@@ -717,6 +738,7 @@ class HydroLoss(nn.Module):
         self.w_peak = w_peak  # Pondération pics (seuil climato Q_p75 par station)
         # FORME (2026-09-05) : variations journalieres et soutien d'etiage.
         self.w_dq = w_dq
+        self.w_dq_log = w_dq_log
         self.w_fdc_bas = w_fdc_bas
         self.w_physics = w_physics
         self.w_residual = w_residual
@@ -856,13 +878,13 @@ class HydroLoss(nn.Module):
                 # NSE, KGE, NRMSE, log-NSE require per-station variance
                 # or correlation — only compute if weight > 0
                 L_nse = L_kge = L_nrmse = L_log_nse = zero
-                L_dq = L_fdc = zero
+                L_dq = L_fdc = L_dql = zero
                 need_loop = (self.w_nse > 0 or self.w_kge > 0
                              or self.w_nrmse > 0 or self.w_log_nse > 0
-                             or self.w_dq > 0 or self.w_fdc_bas > 0)
+                             or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
-                    dq_v, fdc_v = [], []
+                    dq_v, fdc_v, dql_v = [], [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -912,6 +934,8 @@ class HydroLoss(nn.Module):
                             kge_v.append(_remis(differentiable_kge_loss(q_o_v, q_s_v)))
                         if self.w_dq > 0:
                             dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
+                        if self.w_dq_log > 0:
+                            dql_v.append(_remis(differentiable_dq_log_loss(q_o_v, q_s_v)))
                         if self.w_fdc_bas > 0:
                             fdc_v.append(_remis(differentiable_fdc_bas_loss(q_o_v, q_s_v)))
                             if os.environ.get("MEANDRE_DEBUG_KGE", "0") == "1":
@@ -941,6 +965,8 @@ class HydroLoss(nn.Module):
                         L_log_nse = (torch.stack(lnse_v) * w).sum()
                     if self.w_dq > 0 and dq_v:
                         L_dq = (torch.stack(dq_v) * w).sum()
+                    if self.w_dq_log > 0 and dql_v:
+                        L_dql = (torch.stack(dql_v) * w).sum()
                     if self.w_fdc_bas > 0 and fdc_v:
                         L_fdc = (torch.stack(fdc_v) * w).sum()
         else:
@@ -963,6 +989,7 @@ class HydroLoss(nn.Module):
             L_log_mse = differentiable_log_mse_loss(q_o, q_s) if self.w_log_mse > 0 else _zero
             L_tol_mse = _zero   # tolérance timing : chemin per_station uniquement
             L_dq = differentiable_dq_loss(q_o, q_s) if self.w_dq > 0 else _zero
+            L_dql = differentiable_dq_log_loss(q_o, q_s) if self.w_dq_log > 0 else _zero
             L_fdc = differentiable_fdc_bas_loss(q_o, q_s) if self.w_fdc_bas > 0 else _zero
 
         # Heteroscedastic Gaussian NLL (probabilistic loss replacing the
@@ -1026,9 +1053,10 @@ class HydroLoss(nn.Module):
                 + self.w_flatness * L_flatness
                 + self.w_peak * L_peak
                 + self.w_dq * L_dq
+                + self.w_dq_log * L_dql
                 + self.w_fdc_bas * L_fdc)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
-                      "dq_loss": L_dq, "fdc_bas_loss": L_fdc,
+                      "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,

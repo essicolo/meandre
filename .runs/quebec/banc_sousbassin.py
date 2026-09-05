@@ -354,7 +354,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               kge_continu=True, etat_continu=True, device=None, tag="",
               pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
               substeps=None, chunk=45, w_et=0.4, w_kge=1.0, w_pbias=0.5, w_mse=0.1,
-              w_dq=0.0, w_fdc=0.0):
+              w_dq=0.0, w_fdc=0.0, w_dq_log=0.0):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -566,6 +566,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
                             w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc),
+                            w_dq_log=float(w_dq_log),
                             w_log_nse=0.0, w_log_mse=0.0, w_et=float(w_et), per_station=True,
                             # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
@@ -640,6 +641,8 @@ def main():
     ap.add_argument("--w-mse", type=float, default=0.1)
     ap.add_argument("--w-dq", type=float, default=0.0,
                     help="rapport des ecarts-types des variations journalieres (punit plateau ET nervosite)")
+    ap.add_argument("--w-dq-log", type=float, default=0.0,
+                    help="rapport des variations journalieres en espace log : voit la platitude d etiage")
     ap.add_argument("--w-fdc", type=float, default=0.0,
                     help="soutien d'etiage Q20/Q50 (contraint le chemin de l'eau)")
     ap.add_argument("--w-et", type=float, default=0.4,
@@ -672,7 +675,8 @@ def main():
                   amorce=a.amorce, aux=not a.kge_seul,
                   debut_train=2012, fin_train=2012, fin_val=2013, debut_eval=2013,
                   fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et,
-                  w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc)
+                  w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc,
+                  w_dq_log=a.w_dq_log)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
