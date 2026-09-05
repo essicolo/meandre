@@ -86,9 +86,12 @@ case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWS
 # montent, le biais saisonnier GRACE de 28 fois : c'est une divergence, pas un compromis.
 # FLOTTE_AUX remplace le bloc de contraintes auxiliaires et FLOTTE_TAG s'ajoute au tag,
 # pour relancer une region avec une contrainte eteinte sans toucher au reste :
-#   sbatch --account=<compte> --array=6,21 \
+#   sbatch --account=<compte> --array=1,16 \
 #     --export=ALL,FLOTTE_AUX="ETL_WET=0.4 ETL_WTWS=0 ETL_WTWSCLIM=0",FLOTTE_TAG=-sansgrace \
-#     flotte.sbatch        # GASP, bras A (6) et B (21), MOD16 gardee, GRACE eteinte
+#     flotte.sbatch        # GASP, bras A (1) et B (16), MOD16 gardee, GRACE eteinte
+# ORDRE DES REGIONS (indice A, indice B = A + 15) : outv 0, gasp 1, sagu 2, mont 3, slno 4,
+# slso 5, abit 6, cnda 7, cndb 8, cndc 9, cndd 10, cnde 11, labi 12, outm 13, vaud 14.
+# Le 2026-09-05 une paire « gaspesienne » a ete lancee avec 6 et 21 : c'etait ABIT.
 if [ -n "${FLOTTE_AUX:-}" ]; then read -r -a AUX <<< "$FLOTTE_AUX"; fi
 TAG="$TAG${FLOTTE_TAG:-}"
 

@@ -1694,7 +1694,7 @@ class Trainer:
                     # dont la retropropagation produit le premier NaN, avec sa pile.
                     try:
                         with torch.autograd.detect_anomaly(check_nan=True):
-                            (loss_chunk * weight).backward()
+                            (loss_chunk * weight).backward(retain_graph=True)
                     except RuntimeError as _e:
                         import traceback as _tb
                         print("[nan-debug] operation fautive :\n" + "".join(_tb.format_exc())[-3000:],
@@ -1707,6 +1707,34 @@ class Trainer:
                     (loss_chunk * weight).backward()
                 _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
                               for p_ in _instantane)
+                if _pourri and os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":
+                    # AVANT restauration : quels parametres, NaN ou inf, et quel TERME de
+                    # la perte porte le gradient non fini (le detecteur d'anomalie ne voit
+                    # que les NaN ; un inf de debordement passe).
+                    _touches = []
+                    for n_, p_ in self.model.named_parameters():
+                        if p_.grad is not None and not torch.isfinite(p_.grad).all():
+                            _g = p_.grad
+                            _touches.append(f"{n_} nan={int(torch.isnan(_g).sum())} inf={int(torch.isinf(_g).sum())}"
+                                            f" maxfini={float(_g[torch.isfinite(_g)].abs().max()) if torch.isfinite(_g).any() else float('nan'):.3g}")
+                    print(f"[nan-debug] bloc {n_chunks} (t={t_start}) perte={float(loss_chunk):.4g} | "
+                          f"{len(_touches)} parametre(s) touche(s) : " + " ; ".join(_touches[:10]), flush=True)
+                    _params = [p_ for p_ in self.model.parameters() if p_.requires_grad]
+                    _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
+                               if torch.is_tensor(v_) and v_.requires_grad}
+                    for _nom, _var in (("prior", locals().get("prior_loss")), ("tws", locals().get("L_tws")),
+                                       ("tws_clim", locals().get("L_tws_clim"))):
+                        if torch.is_tensor(_var) and _var.requires_grad:
+                            _termes[_nom] = _var
+                    for _nom, _v in _termes.items():
+                        try:
+                            _g = torch.autograd.grad(_v, _params, retain_graph=True, allow_unused=True)
+                            _fini = all(torch.isfinite(g_).all() for g_ in _g if g_ is not None)
+                            _n2 = sum(float((g_[torch.isfinite(g_)] ** 2).sum()) for g_ in _g if g_ is not None)
+                            print(f"[nan-debug]   terme {_nom:10s} valeur {float(_v):.4g} gradient fini={_fini} "
+                                  f"norme finie {_n2 ** 0.5:.3g}", flush=True)
+                        except RuntimeError as _e:
+                            print(f"[nan-debug]   terme {_nom:10s} : {str(_e)[:120]}", flush=True)
                 if _pourri:
                     for p_, g_ in _instantane.items():
                         p_.grad = g_
