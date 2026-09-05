@@ -98,6 +98,17 @@ if "ETL_WSNOW" in os.environ:
         print("      R24 : elle tire vers MOINS de neige en mars-avril, contre GRACE et "
               "CanSWE. Mettre ETL_WSNOW=0 tant que la cible n'est pas CanSWE (masse) "
               "plutot que MOD10 (couverture).")
+if "ETL_WDQ" in os.environ:
+    # Rapport des ecarts-types des variations journalieres (2026-09-05). Seul terme de la
+    # perte qui punisse SYMETRIQUEMENT le plateau et la nervosite ; gamma, lui, compare
+    # des ecarts-types de niveau qu'un plateau a la bonne moyenne satisfait.
+    lcfg["w_dq"] = float(os.environ["ETL_WDQ"])
+    print(f"[etl] w_dq = {lcfg['w_dq']} (variations journalieres)")
+if "ETL_WFDC" in os.environ:
+    # Soutien d'etiage Q20/Q50 : substitut d'indice d'ecoulement de base, seule prise sur
+    # le CHEMIN de l'eau a partir des debits observes (R86).
+    lcfg["w_fdc_bas"] = float(os.environ["ETL_WFDC"])
+    print(f"[etl] w_fdc_bas = {lcfg['w_fdc_bas']} (soutien d'etiage)")
 if "ETL_WTWS" in os.environ:
     # GRACE (anomalie de stockage total). Actif par défaut à 0.2 via le fichier de
     # config ; on l'expose pour pouvoir mesurer ce qu'il apporte OU coûte, sa ligne de

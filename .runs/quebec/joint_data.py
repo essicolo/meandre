@@ -219,6 +219,11 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         w_snow=lcfg.get("w_snow", 0.0),
         w_swe_mass=lcfg.get("w_swe_mass", 0.0),
         w_peak=lcfg.get("w_peak", 0.0),
+        # FORME (2026-09-05) : variations journalieres et soutien d'etiage. Mesure au
+        # banc de sous-bassin le meme jour : le terme dQ empeche le rabotage des
+        # pointes (0.82 du pic observe apres six epoques contre 0.76 sans lui) et
+        # gagne 0.008 de KGE et 0.015 de gamma.
+        w_dq=lcfg.get("w_dq", 0.0), w_fdc_bas=lcfg.get("w_fdc_bas", 0.0),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
         peak_threshold=peak_thr if lcfg.get("w_peak", 0.0) > 0 else None,
