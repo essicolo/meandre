@@ -808,7 +808,13 @@ if os.environ.get("ETL_LAKE_TRL", "1") == "1":
         _t = _l.split()
         if int(_t[1]) != 1:
             _ptr = 4 + int(_t[3])
-            _dl[int(_t[0])] = (float(_t[_ptr+1]), float(_t[_ptr+2]), float(_t[_ptr+3]))
+            # BLOC LAC = (surface en m2, profondeur moyenne en m, coefficient c, exposant k),
+            # la lecture etablie par R60 (physitel_loader.py). Jusqu'au 2026-09-05 cette
+            # ligne lisait la PROFONDEUR comme surface en km2 : 3,5 km2 en mediane au lieu
+            # de 0,63, jusqu'a 17,8 au p90, donc k_lake = c/A cinq a trente fois trop petit
+            # et des constantes de temps de lac de 12 a 17 jours en mediane (0,5 a 1,3 jour
+            # avec la vraie surface), jusqu'a plusieurs annees. La surface est rendue en km2.
+            _dl[int(_t[0])] = (float(_t[_ptr]) / 1e6, float(_t[_ptr+2]), float(_t[_ptr+3]))
     _idxl = {int(i): j for j, i in enumerate(r["node_ids"])}
     import numpy as _npl
     _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)

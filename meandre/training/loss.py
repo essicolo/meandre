@@ -842,10 +842,26 @@ class HydroLoss(nn.Module):
                             if bool(_vs.any()):
                                 q_o_v = torch.cat([q_obs_hist[_vs, si].detach(), q_o_v])
                                 q_s_v = torch.cat([q_sim_hist[_vs, si].detach(), q_s_v])
+                        # ECHELLE DU GRADIENT AVEC HISTORIQUE (2026-09-05). Une statistique
+                        # de sequence sur N = N_hist + n jours a un gradient en 1/N par jour
+                        # vivant ; la MSE du bloc l'a en 1/n. Le trainer multiplie ensuite
+                        # la perte du bloc par n/N_train : le KGE recevait donc un facteur
+                        # n/N de trop, environ 1 % pour 34 jours vivants sur 2900
+                        # d'historique. Gamma, seul terme de toute la perte qui punit la
+                        # platitude, etait de fait inerte (audit du 2026-09-05). On remet
+                        # la sensibilite par jour vivant a l'echelle des termes locaux :
+                        # la VALEUR imprimee reste celle de la serie complete (detachee).
+                        _ech = 1.0
+                        if _hist:
+                            _n_viv = max(int(v.sum()), 1)
+                            _ech_t = torch.tensor(float(q_o_v.numel()) / _n_viv, device=q_o_v.device)
+                            _ech = _ech_t
+                        def _remis(l_):
+                            return l_.detach() + (l_ - l_.detach()) * _ech
                         if self.w_nse > 0:
-                            nse_v.append(differentiable_nse_loss(q_o_v, q_s_v))
+                            nse_v.append(_remis(differentiable_nse_loss(q_o_v, q_s_v)))
                         if self.w_kge > 0:
-                            kge_v.append(differentiable_kge_loss(q_o_v, q_s_v))
+                            kge_v.append(_remis(differentiable_kge_loss(q_o_v, q_s_v)))
                             if os.environ.get("MEANDRE_DEBUG_KGE", "0") == "1":
                                 # Trace de controle (2026-09-04) : le terme KGE de la perte
                                 # valait 0.04 quand le KGE de l'annee d'entrainement
