@@ -47,7 +47,9 @@ BRAS = os.environ.get("MEANDRE_BRAS", "A-v2lr1e-4")
 # type meandre-carte sur GitHub Pages). Une copie de l'app dans le depot du modele
 # etait le meme travers que le vendoring de PyGMET.
 SORTIE = f"{_paths.DATA_ROOT}/quebec/carte"
-REGIONS = ["outv", "gasp", "mont", "sagu", "slno", "abit", "slso",
+# L'Outaouais moyen MANQUAIT de cette liste depuis le 2026-08-24 : ses 2379 troncons
+# n'ont jamais paru sur la carte, alors que ses caches existent (2026-09-06).
+REGIONS = ["outv", "gasp", "mont", "sagu", "slno", "abit", "slso", "outm",
            "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud"]
 PARAMS_CARTE = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus parlants
 N_ROUGES = 150   # zones rouges provinciales (pas par region)

@@ -1014,6 +1014,9 @@ model.eval()
 # les diagnostics qui vivaient a cote ont fini par mesurer un autre modele que le
 # champion (fevrier annonce a 0.688 alors qu'il vaut 0.896).
 _VEUT_NEIGE = os.environ.get("ETL_CMP_NEIGE", "0") == "1"
+# Le cache de carte a besoin des memes diagnostics pour la recharge et l'ETR
+# (2026-09-06 : la premiere serie de caches est sortie sans eux, faute de cette ligne).
+_VEUT_NEIGE = _VEUT_NEIGE or bool(os.environ.get("ETL_DUMP_REACH"))
 with torch.no_grad():
     if _VEUT_NEIGE:
         Q, _, _DIAG = model.simulate(
