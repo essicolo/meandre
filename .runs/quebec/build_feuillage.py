@@ -123,6 +123,19 @@ def main():
                 # signal anthropique RELATIF : somme |prelevements| rapportee au debit
                 props_n["prelev_rel_pct"] = 100.0 * avec["prelev_net_abs"] / np.clip(
                     avec["q_annuel"] * 31_557_600.0, 1e-6, None)
+                # SIGNAL SUR BRUIT (definition d'Essi, 2026-09-06) : l'importance des
+                # prelevements et rejets sur la VARIANCE du signal. Le signal est la
+                # perturbation anthropique, debit avec moins debit renaturalise ; le bruit
+                # est la variabilite naturelle du debit renaturalise. Les deux sont
+                # calcules sur la serie mensuelle de chaque troncon. Sans dimension,
+                # exprime en pourcentage : au-dela de 100 %, la perturbation depasse en
+                # amplitude la variabilite naturelle et devient detectable partout.
+                if "q_mois_serie" in avec.files and "q_mois_serie" in sans.files:
+                    _a, _s = avec["q_mois_serie"], sans["q_mois_serie"]
+                    if _a.shape == _s.shape:
+                        _pert = (_a - _s).std(axis=0)
+                        _nat = np.clip(_s.std(axis=0), 1e-9, None)
+                        props_n["signal_bruit_pct"] = 100.0 * _pert / _nat
 
         for _, e in d["edges"].iterrows():
             s, t = int(e.src), int(e.dst)
@@ -187,11 +200,10 @@ def main():
                                    "r": round(r, 3), "beta": round(beta, 3),
                                    "gamma": round(gamma, 3),
                                    "modele": d.get("qd_src") or "?",
-                                   # SIGNAL SUR BRUIT : ecart-type de l'observe rapporte a
-                                   # celui du residu observe moins simule. Vaut 1 quand le
-                                   # modele n'explique aucune variabilite, et croit avec la
-                                   # part expliquee. Sans dimension.
-                                   "signal_bruit": round(float(o.std() / max((o - si).std(), 1e-9)), 2),
+                                   # Amplitude de l'observe rapportee a celle du residu :
+                                   # une mesure de PERFORMANCE, a ne pas confondre avec le
+                                   # signal sur bruit anthropique du reseau (2026-09-06).
+                                   "obs_sur_residu": round(float(o.std() / max((o - si).std(), 1e-9)), 2),
                                    "plat_sim_pct": round(_plat(si), 1),
                                    "plat_obs_pct": round(_plat(o), 1),
                                    "dates": [str(x) for x in dates[v]],
@@ -243,8 +255,11 @@ def main():
              "visible": False, "color_by": "etr_mm_an", "popup_template": "troncon"},
             {"name": "Prélèvements et rejets (% du débit)", "url": "reseau.geojson",
              "visible": False, "color_by": "prelev_rel_pct", "popup_template": "troncon"},
-            {"name": "Signal sur bruit aux stations", "url": "stations.geojson",
-             "visible": False, "color_by": "signal_bruit", "popup_template": "station"},
+            {"name": "Signal sur bruit anthropique (% de la variabilité naturelle)",
+             "url": "reseau.geojson", "visible": False, "color_by": "signal_bruit_pct",
+             "popup_template": "troncon"},
+            {"name": "Amplitude observée sur résidu (stations)", "url": "stations.geojson",
+             "visible": False, "color_by": "obs_sur_residu", "popup_template": "station"},
             {"name": "Platitude simulée aux stations (%)", "url": "stations.geojson",
              "visible": False, "color_by": "plat_sim_pct", "popup_template": "station"},
         ] + [
@@ -261,6 +276,7 @@ def main():
                         "sections": [{"type": "properties",
                                       "fields": ["q_annuel", "recharge_mm_an", "etr_mm_an",
                                                  "effet_prelev_pct", "prelev_rel_pct",
+                                                 "signal_bruit_pct",
                                                  "krec", "K_sat_1", "k_gw", "C_f", "T_melt"]}]},
             "zone_rouge": {"title": "Zone rouge — prélèvement {properties.prelev_rel_pct} % du débit",
                            "sections": [
@@ -274,7 +290,7 @@ def main():
             "station": {"title": "Station {properties.station} — KGE {properties.kge}",
                         "sections": [
                             {"type": "properties",
-                             "fields": ["modele", "kge", "r", "beta", "gamma", "signal_bruit",
+                             "fields": ["modele", "kge", "r", "beta", "gamma", "obs_sur_residu",
                                         "plat_sim_pct", "plat_obs_pct"]},
                             # Hydrogramme journalier embarque dans la station : simule et
                             # observe sur la periode d'evaluation, sans dependance a un
