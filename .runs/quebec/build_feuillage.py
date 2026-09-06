@@ -122,9 +122,15 @@ def main():
             if sans is not None:
                 qs = np.clip(sans["q_annuel"], 1e-6, None)
                 props_n["effet_prelev_pct"] = 100.0 * (avec["q_annuel"] - sans["q_annuel"]) / qs
-                # signal anthropique RELATIF : somme |prelevements| rapportee au debit
-                props_n["prelev_rel_pct"] = 100.0 * avec["prelev_net_abs"] / np.clip(
-                    avec["q_annuel"] * 31_557_600.0, 1e-6, None)
+                # FRACTION DU DEBIT PRELEVEE, corrigee le 2026-09-06. L'ancienne formule
+                # divisait une somme de debits sur T pas de temps par un volume annuel :
+                # les deux grandeurs n'avaient pas la meme dimension et le resultat
+                # plafonnait a 0,045 % partout, ce qui masquait completement le signal.
+                # Ici : debit preleve moyen, en metres cubes par seconde, rapporte au
+                # debit NATURALISE du meme troncon. Sans dimension, en pourcentage.
+                _npas = max(len(avec["mois_serie"]) * 30.44, 1.0) if "mois_serie" in avec.files else 1.0
+                props_n["prelev_rel_pct"] = 100.0 * (avec["prelev_net_abs"] / _npas) / np.clip(
+                    sans["q_annuel"], 1e-6, None)
                 # SIGNAL SUR BRUIT (definition d'Essi, 2026-09-06) : l'importance des
                 # prelevements et rejets sur la VARIANCE du signal. Le signal est la
                 # perturbation anthropique, debit avec moins debit renaturalise ; le bruit
