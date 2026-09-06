@@ -294,6 +294,7 @@ def forme(temps, q, o, garde=None):
     mm = m[:-1] & m[1:]
     ps, po = _plat(q), _plat(o)
     hiv = np.isin(mois[:-1], (12, 1, 2, 3)) & mm
+    ete = np.isin(mois[:-1], (6, 7, 8, 9)) & mm
     n_ = mx = 0
     for c in ps[mm]:
         n_ = n_ + 1 if c else 0
@@ -303,6 +304,8 @@ def forme(temps, q, o, garde=None):
                 plat_obs=100 * float(po[mm].mean()),
                 plat_hiv=100 * float(ps[hiv].mean()) if hiv.any() else float("nan"),
                 plat_hiv_obs=100 * float(po[hiv].mean()) if hiv.any() else float("nan"),
+                plat_ete=100 * float(ps[ete].mean()) if ete.any() else float("nan"),
+                plat_ete_obs=100 * float(po[ete].mean()) if ete.any() else float("nan"),
                 suite=int(mx))
 
 
@@ -310,6 +313,7 @@ def _ligne_forme(etiquette, f):
     print(f"  {etiquette:28s} pointes annuelles sim/obs {f['pic']:5.2f} | q95 {f['q95']:5.2f} "
           f"| q99 {f['q99']:5.2f} || plat {f['plat']:4.1f}% (obs {f['plat_obs']:4.1f}%) "
           f"| hiver {f['plat_hiv']:4.1f}% (obs {f['plat_hiv_obs']:4.1f}%) "
+          f"| ete {f['plat_ete']:4.1f}% (obs {f['plat_ete_obs']:4.1f}%) "
           f"| plus longue suite {f['suite']:3d} j", flush=True)
 
 
@@ -577,10 +581,16 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               f" + ET MOD16 {float(w_et):.2f} en tendance + dQ {float(w_dq):.2f}"
               f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
     else:
-        loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=0.0, w_nse=0.0, w_mse=0.0, w_nrmse=0.0,
-                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc),
+        # Sans cible MOD16 : meme perte, terme d'ET en moins. Le 2026-09-05 cette branche
+        # ignorait w_pbias, w_mse et w_dq_log, si bien qu'un balayage de dosage a rendu
+        # trois resultats identiques sans que rien ne le signale.
+        loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
+                            w_nse=0.0, w_nrmse=0.0,
+                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_dq_log=float(w_dq_log),
                             w_log_nse=0.0, w_log_mse=0.0, per_station=True)
-        print("  perte : KGE seul (PAS la recette du socle)", flush=True)
+        print(f"  perte SANS cible MOD16 : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f}"
+              f" + MSE {float(w_mse):.2f} + dQ {float(w_dq):.2f} + dQ log {float(w_dq_log):.2f}"
+              f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
     # warmup_epochs=0 : le defaut de cinq epoques de rechauffement rendait un essai
     # court entierement nul (cinq pas d'Adam a taux presque nul).
     tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=int(chunk), tbptt_steps=365,
