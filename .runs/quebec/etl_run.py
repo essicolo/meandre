@@ -1204,7 +1204,17 @@ if os.environ.get("ETL_DUMP_REACH"):
         _mois_u = _np_d = __import__('numpy').unique(_cle_mois)
         _qms = __import__('numpy').stack(
             [_Qr[_cle_mois == m].mean(axis=0) for m in _mois_u])
+    # FLUX VERTICAUX PAR TRONCON (demande d'Essi, 2026-09-06) : la carte doit pouvoir
+    # colorer la recharge de la nappe et l'evapotranspiration reelle, pas seulement le
+    # debit. Moyennes sur la periode simulee, converties en millimetres par an.
+    _flux = {}
+    _dg_r = globals().get("_DIAG")
+    for _att, _nom in (("recharge", "recharge_annuel"), ("etr", "etr_annuel")):
+        _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
+        if _v is not None and hasattr(_v, "shape") and _v.shape[-1:] == (n_nodes,):
+            _flux[_nom] = (_v.detach().cpu().numpy().mean(axis=0) * 365.25).astype(np.float32)
     np.savez_compressed(os.environ["ETL_DUMP_REACH"],
+                        **_flux,
                         q_mensuel=_qm.astype(np.float32),
                         q_annuel=_Qr.mean(axis=0).astype(np.float32),
                         q_mois_serie=_qms.astype(np.float32),
