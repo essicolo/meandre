@@ -39,7 +39,17 @@ exec > "$SORTIE/$REG.log" 2>&1
 cd "$RACINE"
 module purge && module load StdEnv/2023 gcc arrow mpi4py python/3.11 scipy-stack
 source "${MEANDRE_VENV:-$HOME/venv-meandre}/bin/activate"
-LOCAL=${MEANDRE_DATA:-$PROJET/meandre/donnees}
+# MISE EN PLACE LOCALE, comme la flotte. Le Saint-Laurent sud a une entree propre dans
+# la table des forcages, `slso/forcing-casr-corr.nc`, qui n'existe que dans l'arborescence
+# mise en place par le script : pointer directement le dossier du projet le fait echouer
+# en dix-sept secondes (2026-09-06). On copie donc les memes fichiers que la flotte.
+LOCAL=$SLURM_TMPDIR/donnees
+mkdir -p "$LOCAL/quebec" "$LOCAL/slso"
+D=$PROJET/meandre/donnees/quebec
+cp "$D/${REG}.duckdb" "$LOCAL/quebec/"
+cp "$D"/forcing-${REG}*.nc "$LOCAL/quebec/" 2>/dev/null || true
+cp "$D"/*.parquet "$LOCAL/quebec/" 2>/dev/null || true
+cp "$D/forcing-casr-corr.nc" "$LOCAL/slso/" 2>/dev/null || true
 export MEANDRE_DATA="$LOCAL"
 export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 MAJ=$(echo "$REG" | tr '[:lower:]' '[:upper:]')
