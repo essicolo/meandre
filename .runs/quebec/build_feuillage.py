@@ -38,6 +38,8 @@ import numpy as np
 from meandre.utils import paths as _paths
 
 RESULTS = f"{_paths.DATA_ROOT}/quebec/results"
+FLOTTE = os.environ.get("MEANDRE_FLOTTE", f"{_paths.DATA_ROOT}/quebec/flotte")
+BRAS = os.environ.get("MEANDRE_BRAS", "A-v2lr1e-4")
 # SORTIE HORS DU DEPOT (architecture, remarque d'Essi 2026-08-24) : meandre produit
 # des DONNEES ; feuillage est une APPLICATION qui vit dans son propre depot
 # (github.com/essicolo/feuillage) et se deploie a part. L'instance = feuillage pointe
@@ -49,6 +51,13 @@ REGIONS = ["outv", "gasp", "mont", "sagu", "slno", "abit", "slso",
            "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud"]
 PARAMS_CARTE = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus parlants
 N_ROUGES = 150   # zones rouges provinciales (pas par region)
+
+
+def _plat(x):
+    """Part de jours ou le debit varie de moins de 1 % : la platitude, en pourcentage."""
+    if len(x) < 3:
+        return float("nan")
+    return 100.0 * float((np.abs(np.diff(x)) / np.maximum(x[:-1], 1e-9) < 0.01).mean())
 
 
 def charge_region(reg):
@@ -68,12 +77,17 @@ def charge_region(reg):
         avec = np.load(fa, allow_pickle=True)
     if os.path.exists(fs):
         sans = np.load(fs, allow_pickle=True)
-    qd = None
-    fq = f"{RESULTS}/nb-{reg}-q.npz"
-    if os.path.exists(fq):
-        qd = np.load(fq, allow_pickle=True)
+    # SERIES AUX STATIONS (2026-09-06). Les flottes provinciales deposent leurs propres
+    # series sous D:/meandre-data/quebec/flotte/q-<region>-<bras>.npz, au meme format que
+    # l'ancien cache nb-<region>-q.npz. MEANDRE_BRAS choisit le bras ; a defaut on retombe
+    # sur l'ancien. Un rapport, une carte, doivent dire QUEL modele ils montrent.
+    qd, qd_src = None, None
+    for _f, _s in ((f"{FLOTTE}/q-{reg}-{BRAS}.npz", BRAS), (f"{RESULTS}/nb-{reg}-q.npz", "cache")):
+        if os.path.exists(_f):
+            qd, qd_src = np.load(_f, allow_pickle=True), _s
+            break
     return dict(reg=reg, nodes=nodes, edges=edges, stations=stations,
-                avec=avec, sans=sans, qd=qd)
+                avec=avec, sans=sans, qd=qd, qd_src=qd_src)
 
 
 def main():
@@ -97,6 +111,11 @@ def main():
                     v = avec[k]
                     props_n[p] = np.log10(np.clip(v, 1e-30, None)) if p in ("krec", "k_gw") else v
             props_n["q_annuel"] = avec["q_annuel"]
+            # Recharge et evapotranspiration par troncon, en millimetres par an, quand le
+            # pilote les a exportees (ETL_DUMP_REACH).
+            for _c, _n in (("recharge_annuel", "recharge_mm_an"), ("etr_annuel", "etr_mm_an")):
+                if _c in avec.files:
+                    props_n[_n] = avec[_c]
             props_n["prelev_abs"] = avec["prelev_net_abs"]
             if sans is not None:
                 qs = np.clip(sans["q_annuel"], 1e-6, None)
@@ -167,6 +186,17 @@ def main():
                     "properties": {"station": str(sid), "kge": round(kge, 3),
                                    "r": round(r, 3), "beta": round(beta, 3),
                                    "gamma": round(gamma, 3),
+                                   "modele": d.get("qd_src") or "?",
+                                   # SIGNAL SUR BRUIT : ecart-type de l'observe rapporte a
+                                   # celui du residu observe moins simule. Vaut 1 quand le
+                                   # modele n'explique aucune variabilite, et croit avec la
+                                   # part expliquee. Sans dimension.
+                                   "signal_bruit": round(float(o.std() / max((o - si).std(), 1e-9)), 2),
+                                   "plat_sim_pct": round(_plat(si), 1),
+                                   "plat_obs_pct": round(_plat(o), 1),
+                                   "dates": [str(x) for x in dates[v]],
+                                   "q_obs": [round(float(x), 3) for x in o],
+                                   "q_sim": [round(float(x), 3) for x in si],
                                    "cycle_obs": cyc_o, "cycle_sim": cyc_s}})
         print(f"  {reg}: {len(d['edges'])} segments"
               + ("" if avec is None else " + parametres/effet")
@@ -203,11 +233,34 @@ def main():
              "visible": True, "color": "#d62728", "popup_template": "zone_rouge"},
             {"name": "Stations (KGE tenu de côté)", "url": "stations.geojson",
              "visible": True, "color_by": "kge", "popup_template": "station"},
+            # COUCHES DEMANDEES LE 2026-09-06. Une couche par grandeur, toutes sur la meme
+            # geometrie de reseau : l'utilisateur en allume une a la fois. Les couches de
+            # flux (recharge, evapotranspiration) n'apparaissent que si le pilote a exporte
+            # ces champs ; sinon feuillage colore en gris faute de propriete.
+            {"name": "Recharge de la nappe (mm/an)", "url": "reseau.geojson",
+             "visible": False, "color_by": "recharge_mm_an", "popup_template": "troncon"},
+            {"name": "Évapotranspiration réelle (mm/an)", "url": "reseau.geojson",
+             "visible": False, "color_by": "etr_mm_an", "popup_template": "troncon"},
+            {"name": "Prélèvements et rejets (% du débit)", "url": "reseau.geojson",
+             "visible": False, "color_by": "prelev_rel_pct", "popup_template": "troncon"},
+            {"name": "Signal sur bruit aux stations", "url": "stations.geojson",
+             "visible": False, "color_by": "signal_bruit", "popup_template": "station"},
+            {"name": "Platitude simulée aux stations (%)", "url": "stations.geojson",
+             "visible": False, "color_by": "plat_sim_pct", "popup_template": "station"},
+        ] + [
+            {"name": f"Champ appris : {_nom}", "url": "reseau.geojson", "visible": False,
+             "color_by": _cle, "popup_template": "troncon"}
+            for _cle, _nom in (("K_sat_1", "conductivité de surface (m/j)"),
+                               ("krec", "drainage profond, log10 (m/h)"),
+                               ("k_gw", "récession de nappe, log10 (1/j)"),
+                               ("C_f", "facteur de fonte (mm/°C/j)"),
+                               ("T_melt", "seuil de fonte (°C)"))
         ],
         "popup_templates": {
             "troncon": {"title": "Tronçon",
                         "sections": [{"type": "properties",
-                                      "fields": ["q_annuel", "effet_prelev_pct", "prelev_rel_pct",
+                                      "fields": ["q_annuel", "recharge_mm_an", "etr_mm_an",
+                                                 "effet_prelev_pct", "prelev_rel_pct",
                                                  "krec", "K_sat_1", "k_gw", "C_f", "T_melt"]}]},
             "zone_rouge": {"title": "Zone rouge — prélèvement {properties.prelev_rel_pct} % du débit",
                            "sections": [
@@ -220,7 +273,18 @@ def main():
                                             "xlabel": "Mois", "ylabel": "m³/s"}}]},
             "station": {"title": "Station {properties.station} — KGE {properties.kge}",
                         "sections": [
-                            {"type": "properties", "fields": ["kge", "r", "beta", "gamma"]},
+                            {"type": "properties",
+                             "fields": ["modele", "kge", "r", "beta", "gamma", "signal_bruit",
+                                        "plat_sim_pct", "plat_obs_pct"]},
+                            # Hydrogramme journalier embarque dans la station : simule et
+                            # observe sur la periode d'evaluation, sans dependance a un
+                            # magasin zarr distant.
+                            {"type": "chart", "chart_type": "line",
+                             "data_field": "q_sim", "compare_field": "q_obs",
+                             "x_field": "dates",
+                             "options": {"title": "Débit journalier simulé et observé, "
+                                                  "période d'évaluation",
+                                         "xlabel": "Date", "ylabel": "m³/s"}},
                             {"type": "chart", "chart_type": "line",
                              "data_source": {"type": "zarr", "store_url": "hydro.zarr",
                                              "value_array": "discharge",
