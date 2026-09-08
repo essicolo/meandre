@@ -42,7 +42,18 @@ SOURCE = os.environ.get(
     "IO_EAU",
     "C:/Users/parse01/documents-locaux/GitHub/io-eau/data/derived/io-eau-meandre.parquet")
 if not os.path.exists(SOURCE):
-    SOURCE = "data/io-eau-meandre.parquet"
+    # REPLI BRUYANT (2026-09-08). Le repli silencieux sur la copie locale est ce qui a
+    # permis d'ingerer un instantane perime sans s'en apercevoir (R91) ; sur la grappe,
+    # ou le depot d'io-eau n'existe pas, il aurait reintroduit la donnee d'avril.
+    _repli = "data/io-eau-meandre.parquet"
+    if not os.path.exists(_repli):
+        raise SystemExit(f"[prelev] ARRET : ni {SOURCE} ni {_repli} n'existent. "
+                         "Poser IO_EAU sur le derive d'io-eau.")
+    import pandas as _pd
+    _fin = _pd.read_parquet(_repli, columns=["date"]).date.max()
+    print(f"[prelev] ATTENTION : source io-eau absente, repli sur {_repli}, "
+          f"dont la donnee s'arrete au {str(_fin)[:10]}. Verifier que c'est voulu.")
+    SOURCE = _repli
 REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
            "outm", "outv", "sagu", "slno", "slso", "vaud"]
 
