@@ -697,7 +697,9 @@ Sur le Saguenay nord-ouest, la corrélation entre ce que la perte optimise et ce
 
 **Correction.** La perte accepte un historique DÉTACHÉ des débits déjà simulés dans l'époque, et les statistiques portent sur toute la séquence vue depuis son début. Le gradient ne remonte que par le bloc courant, ce qui est correct : les blocs passés ont été simulés avec des paramètres antérieurs. Coût mémoire négligeable, l'historique ne portant que les stations. `MEANDRE_KGE_CONTINU=0` restitue l'ancien comportement pour comparaison. Vérifié par `tests/test_training/test_kge_continu.py`, dont un test montre qu'une perte calculée en deux blocs avec historique ÉGALE celle calculée d'un coup sur la séquence entière.
 
-## R68 — Le Labrador n'a pas un défaut d'appariement, mais une couverture tardive (2026-09-03)
+## R68 — Le bassin du lac Abitibi n'a pas un défaut d'appariement, mais une couverture tardive (2026-09-03)
+
+Correction du 2026-09-08 : la région `labi` désigne le bassin du LAC ABITIBI, centré à 79,6 degrés ouest et 48,8 degrés nord, et non le Labrador. L'erreur d'étiquette a circulé dans les comptes rendus du 3 au 8 septembre.
 
 **Statut : clos, aucun correctif requis.** Une passe d'entraînement y annonçait « max valid count: 0 » alors que la base porte 3045 jours d'observations dans la fenêtre d'entraînement, ce qui faisait soupçonner un appariement station-tronçon défaillant. Vérification : l'appariement est juste (station 089907 vers le tronçon 174, aire 222 km²) et les 3045 jours sont bien chargés dans `q_obs`. La station commence simplement le 2010-08-31 quand l'entraînement démarre en 2000 : les 86 premiers blocs de 45 jours ne contiennent aucune observation, et l'avertissement était exact.
 
