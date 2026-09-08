@@ -1197,6 +1197,15 @@ if os.environ.get("ETL_DUMP_REACH"):
                    and getattr(_sp_d, k).shape[:1] == (n_nodes,)}
         _wnet = (td.withdrawals.net.abs().sum(dim=0).cpu().numpy()
                  if hasattr(td.withdrawals, "net") else np.zeros(n_nodes))
+        # BILAN SIGNE (demande d'Essi, 2026-09-08). prelev_net_abs est une SOMME sur les
+        # pas de temps de la valeur absolue : elle perd le signe et n'a pas la dimension
+        # d'un debit. Ici la moyenne journaliere signee, en m3/s, positive quand le troncon
+        # recoit de l'eau (rejets), negative quand il en perd (prelevements), en surface et
+        # dans la nappe. Rapportee au debit naturalise, c'est la fraction interpretable.
+        _wmoy = (td.withdrawals.net.mean(dim=0).cpu().numpy()
+                 if hasattr(td.withdrawals, "net") else np.zeros(n_nodes))
+        _wgw = (td.withdrawals.net_gw.mean(dim=0).cpu().numpy()
+                if getattr(td.withdrawals, "net_gw", None) is not None else np.zeros(n_nodes))
         # Serie mensuelle COMPLETE, pas seulement la climatologie (annotations
         # d'Essi, 2026-08-31) : la variance INTERANNUELLE devient calculable, ce
         # qu'exige l'analyse signal sur bruit -- l'effet des prelevements sur un
@@ -1212,10 +1221,25 @@ if os.environ.get("ETL_DUMP_REACH"):
     # debit. Moyennes sur la periode simulee, converties en millimetres par an.
     _flux = {}
     _dg_r = globals().get("_DIAG")
-    for _att, _nom in (("recharge", "recharge_annuel"), ("etr", "etr_annuel")):
+    _mois_r = _pdm.DatetimeIndex(times).month.to_numpy()
+    for _att, _nom, _cumul in (("recharge", "recharge", True), ("etr", "etr", True),
+                               ("swe", "swe", False), ("q_baseflow", "debit_base", True)):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
-        if _v is not None and hasattr(_v, "shape") and _v.shape[-1:] == (n_nodes,):
-            _flux[_nom] = (_v.detach().cpu().numpy().mean(axis=0) * 365.25).astype(np.float32)
+        if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
+            continue
+        _a = _v.detach().cpu().numpy()
+        # Moyenne annuelle : un flux en millimetres par jour devient des millimetres par
+        # an ; un STOCK comme l'equivalent en eau de la neige reste en millimetres, et
+        # c'est son maximum annuel qui a un sens, pas sa moyenne.
+        if _cumul:
+            _flux[f"{_nom}_annuel"] = (_a.mean(axis=0) * 365.25).astype(np.float32)
+        else:
+            _ans = _pdm.DatetimeIndex(times).year.to_numpy()
+            _flux[f"{_nom}_max_annuel"] = np.stack(
+                [_a[_ans == _y].max(axis=0) for _y in np.unique(_ans)]).mean(axis=0).astype(np.float32)
+        # Cycle saisonnier par noeud : douze valeurs, la climatologie mensuelle.
+        _flux[f"{_nom}_mensuel"] = np.stack(
+            [_a[_mois_r == _m].mean(axis=0) for _m in range(1, 13)]).astype(np.float32)
     np.savez_compressed(os.environ["ETL_DUMP_REACH"],
                         **_flux,
                         q_mensuel=_qm.astype(np.float32),
@@ -1224,6 +1248,8 @@ if os.environ.get("ETL_DUMP_REACH"):
                         mois_serie=_mois_u.astype(np.int32),
                         coords=td.node_coords.cpu().numpy(),
                         prelev_net_abs=_wnet.astype(np.float32),
+                        prelev_net_moyen=_wmoy.astype(np.float32),
+                        prelev_gw_moyen=_wgw.astype(np.float32),
                         **{k: v.astype(np.float32) for k, v in _champs.items()})
     print(f"[etl] cache par troncon sauve : {os.environ['ETL_DUMP_REACH']} "
           f"({len(_champs)} champs de parametres)")
