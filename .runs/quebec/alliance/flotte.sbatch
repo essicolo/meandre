@@ -71,6 +71,13 @@ unset JOINT_FX_SUFFIX MEANDRE_ETAT_CONTINU MEANDRE_KGE_CONTINU MEANDRE_KMUSK
 # presque rien. PAS_PAR_BLOC=0 restitue l'ancien comportement.
 PAS_PAR_BLOC=${PAS_PAR_BLOC:-1}
 AMORCE=${AMORCE:-1}
+# PRELEVEMENTS REINGERES AVANT L'ENTRAINEMENT (R91, 2026-09-08). Les bases de la grappe
+# portent encore les deux ingestions empilees ; la table est videe et rechargee depuis le
+# derive d'io-eau du colis. Sans cela, la Monteregie s'entrainerait de nouveau sur le
+# double du flux anthropique reel.
+if [ "${REINGERER_PRELEV:-1}" = 1 ] && [ -f "$RACINE/data/io-eau-meandre.parquet" ]; then
+  IO_EAU="$RACINE/data/io-eau-meandre.parquet" python -u "$RACINE/.runs/quebec/ingest_withdrawals.py" "$REG" || true
+fi
 MAJ=$(echo "$REG" | tr a-z A-Z)
 if [ "$REG" != slso ] && [ ! -f "$LOCAL/quebec/forcing-${REG}-budyko.nc" ]; then
   echo "ARRET : forcing-${REG}-budyko.nc absent du colis." >&2
