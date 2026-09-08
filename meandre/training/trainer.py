@@ -1017,6 +1017,14 @@ class Trainer:
         _kge_continu = os.environ.get("MEANDRE_KGE_CONTINU", "1") == "1"
         _etat_continu = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
         _pas_par_bloc = os.environ.get("MEANDRE_PAS_PAR_BLOC", "0") == "1"
+        if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "2" and not torch.is_anomaly_enabled():
+            # NIVEAU 2 : mode anomalie pose des la passe AVANT, seul moyen d'obtenir la
+            # ligne de code qui cree le tenseur fautif. Le niveau 1 ne nomme que
+            # l'operation de la passe arriere (2026-09-08 : PowBackward0), ce qui ne suffit
+            # pas a designer laquelle des puissances du modele est en cause. Tres lent :
+            # a reserver a un sous-bassin.
+            torch.autograd.set_detect_anomaly(True)
+            print("[nan-debug] mode anomalie pose sur la passe avant (lent)", flush=True)
         # AMORCAGE DE L'HISTORIQUE (2026-09-04, MEANDRE_HISTORIQUE_AMORCE=1). Avec le
         # KGE continu, le bloc k ne voit que les blocs 0..k-1 : les dix premiers pas de
         # chaque epoque optimisent un KGE d'hiver seul, et avec un pas par bloc ils

@@ -824,12 +824,20 @@ class HydroLoss(nn.Module):
                 L_nse = L_pbias = L_kge = L_mse = L_nrmse = L_log_nse = L_log_mse = zero
                 L_tol_mse = zero
             else:
-                # Masked obs/sim: set invalid to NaN for nanmean
-                q_o = q_obs[:, keep].clone()                    # (T, S_keep)
-                q_s = q_sim_at_stations[:, keep].clone()        # (T, S_keep)
-                inv = ~valid[:, keep]
-                q_o[inv] = float("nan")
-                q_s[inv] = float("nan")
+                # MASQUE SANS NaN (2026-09-08). L'ancienne version posait des NaN DANS
+                # le tenseur simule, puis s'appuyait sur nanmean et nansum. Ces reductions
+                # ignorent les NaN a l'ALLER mais leur retropropagation rend un gradient
+                # NaN : la perte restait finie, les debits aussi, et le gradient etait
+                # empoisonne des qu'un bloc contenait une observation manquante. Mesure sur
+                # la flotte du 6 septembre : 2000 blocs jetes sur le Saint-Laurent sud,
+                # 1760 en Gaspesie, soit pres de la moitie des pas d'optimisation, alors
+                # que les regions aux series completes n'en jetaient aucun. On masque donc
+                # par multiplication et on normalise par le compte, ce qui donne la meme
+                # valeur avec un gradient fini.
+                q_o = torch.nan_to_num(q_obs[:, keep], nan=0.0)  # (T, S_keep)
+                q_s = q_sim_at_stations[:, keep]                 # (T, S_keep), jamais NaN
+                _m = valid[:, keep].to(q_s.dtype)                # 1 si observe, 0 sinon
+                _n_val = _m.sum(dim=0).clamp(min=1.0)            # (S_keep,)
 
                 # Weights for kept stations
                 if self.station_weights is not None and len(self.station_weights) == n_stations:
@@ -840,8 +848,8 @@ class HydroLoss(nn.Module):
 
                 # ── Vectorized MSE (chunk-safe) ──────────────────────────
                 if self.w_mse > 0:
-                    sq_err = (q_o - q_s) ** 2                   # (T, S_keep)
-                    mse_per = torch.nanmean(sq_err, dim=0)      # (S_keep,)
+                    sq_err = ((q_o - q_s) * _m) ** 2            # (T, S_keep)
+                    mse_per = sq_err.sum(dim=0) / _n_val        # (S_keep,)
                     if self.station_var is not None:
                         mse_per = mse_per / (self.station_var[keep] + 1e-8)
                     L_mse = (mse_per * w).sum()
@@ -850,8 +858,8 @@ class HydroLoss(nn.Module):
 
                 # ── Vectorized PBIAS ─────────────────────────────────────
                 if self.w_pbias > 0:
-                    diff_sum = torch.nansum(q_s - q_o, dim=0)   # (S_keep,)
-                    obs_sum = torch.nansum(q_o, dim=0)           # (S_keep,)
+                    diff_sum = ((q_s - q_o) * _m).sum(dim=0)    # (S_keep,)
+                    obs_sum = (q_o * _m).sum(dim=0)              # (S_keep,)
                     pbias_per = (diff_sum / (obs_sum + 1e-8)).abs()
                     L_pbias = (pbias_per * w).sum()
                 else:
@@ -859,8 +867,9 @@ class HydroLoss(nn.Module):
 
                 # ── Vectorized log-MSE ───────────────────────────────────
                 if self.w_log_mse > 0:
-                    log_sq = (torch.log(q_o + 1.0) - torch.log(q_s.clamp(min=0.0) + 1.0)) ** 2
-                    L_log_mse = (torch.nanmean(log_sq, dim=0) * w).sum()
+                    log_sq = ((torch.log(q_o + 1.0)
+                               - torch.log(q_s.clamp(min=0.0) + 1.0)) * _m) ** 2
+                    L_log_mse = ((log_sq.sum(dim=0) / _n_val) * w).sum()
                 else:
                     L_log_mse = zero
 
