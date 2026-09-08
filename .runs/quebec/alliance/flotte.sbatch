@@ -75,8 +75,16 @@ AMORCE=${AMORCE:-1}
 # portent encore les deux ingestions empilees ; la table est videe et rechargee depuis le
 # derive d'io-eau du colis. Sans cela, la Monteregie s'entrainerait de nouveau sur le
 # double du flux anthropique reel.
-if [ "${REINGERER_PRELEV:-1}" = 1 ] && [ -f "$RACINE/data/io-eau-meandre.parquet" ]; then
-  IO_EAU="$RACINE/data/io-eau-meandre.parquet" python -u "$RACINE/.runs/quebec/ingest_withdrawals.py" "$REG" || true
+# MEANDRE_DATA pointe deja sur la copie locale du noeud : l'ingestion corrige CETTE
+# copie, jamais la base partagee du projet, donc quinze taches peuvent la faire en
+# parallele sans se marcher dessus. Le fichier manquant est une ERREUR : s'entrainer sur
+# les prelevements empiles est precisement ce qu'on corrige.
+if [ "${REINGERER_PRELEV:-1}" = 1 ]; then
+  if [ ! -f "$RACINE/data/io-eau-meandre.parquet" ]; then
+    echo "ARRET : $RACINE/data/io-eau-meandre.parquet absent (derive d'io-eau a televerser)." >&2
+    exit 4
+  fi
+  IO_EAU="$RACINE/data/io-eau-meandre.parquet" python -u "$RACINE/.runs/quebec/ingest_withdrawals.py" "$REG"
 fi
 MAJ=$(echo "$REG" | tr a-z A-Z)
 if [ "$REG" != slso ] && [ ! -f "$LOCAL/quebec/forcing-${REG}-budyko.nc" ]; then
