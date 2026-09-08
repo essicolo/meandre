@@ -110,6 +110,23 @@ case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWS
 if [ -n "${FLOTTE_AUX:-}" ]; then read -r -a AUX <<< "$FLOTTE_AUX"; fi
 TAG="$TAG${FLOTTE_TAG:-}"
 
+# PHASE PROBABILISTE (ETL_QUANTILE=1). La tete quantile s'entraine sur un socle GELE :
+# la mediane reste exactement le debit du point de reprise deterministe, donc le KGE est
+# preserve par construction et seule l'enveloppe s'apprend. Le depart a chaud est donc
+# obligatoire, et son absence est une erreur : entrainer une tete sur un modele non
+# initialise ne produirait qu'une enveloppe autour de rien. DEPART nomme le tag du
+# modele deterministe de la MEME region (defaut -v3).
+if [ "${ETL_QUANTILE:-0}" = 1 ]; then
+  DEPART=${DEPART:--v3}
+  CKPT_DET="$RACINE/.runs/quebec/checkpoints/best-${REG}-etl${DEPART}.pt"
+  if [ ! -f "$CKPT_DET" ]; then
+    echo "ARRET : phase quantile demandee mais $CKPT_DET absent." >&2
+    exit 5
+  fi
+  export ETL_WARM_FROM="$CKPT_DET"
+  echo "[flotte] phase quantile : depart a chaud depuis $(basename "$CKPT_DET")"
+fi
+
 env ETL_CONFIG=.runs/quebec/config/socle.toml MEANDRE_PAS_PAR_BLOC=$PAS_PAR_BLOC \
     MEANDRE_HISTORIQUE_AMORCE=$AMORCE \
     JOINT_FX_SUFFIX=-budyko MEANDRE_KMUSK="$KMUSK" \
