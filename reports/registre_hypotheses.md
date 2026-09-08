@@ -1117,3 +1117,20 @@ terme en logarithme              0,00285            0,015
 ```
 
 Le terme absolu ne voit rien quand l'étiage est gelé, ce qui est précisément le défaut visible sur les hydrogrammes du rapport, dont les pointes sont justes et les basses eaux plates. Le terme logarithmique donne le même poids à une variation de 5 % quel que soit le niveau du débit. Les deux sont complémentaires : l'absolu garde les pointes, le logarithmique garde les basses eaux. Levier `ETL_WDQ` et `ETL_WFDC` au pilote, options `--w-dq`, `--w-dq-log` et `--w-fdc` au banc.
+
+## R91 — Les prélèvements et rejets de deux ingestions étaient empilés dans les bases (2026-09-08)
+
+**Statut : établi, corrigé.** `BasinCache.import_withdrawals` insère sans jamais vider la table. Les deux ingestions successives de la donnée d'io-eau, celle de la copie locale du 15 avril et celle de la source du 10 juin, coexistaient donc, sur des tronçons différents. Signature décisive : les nœuds surnuméraires s'arrêtaient tous au 1er décembre 2024, date de fin exacte de la copie d'avril, tandis que les nœuds à jour allaient au 1er février 2026, date de fin de la source de juin. Aucun nœud de la source n'était absent des bases : c'était un surplus, pas un manque.
+
+```
+région   nœuds périmés   amplitude périmée   nœuds à jour   amplitude à jour
+mont          33             39,0 m³/s           217           39,1 m³/s
+outv          83              1,5 m³/s           215            8,1 m³/s
+slso          27              1,2 m³/s           444            9,5 m³/s
+```
+
+En Montérégie, le flux anthropique vu à l'entraînement valait donc le double du flux réel, dont la moitié sur de mauvais tronçons. Le cas le plus visible est l'ancien appariement de l'émissaire de la rive sud, 25,2 m³/s déversés sur un cours d'eau au débit naturalisé de 0,34 m³/s, soit 7192 % : la correction de juin avait déplacé cet émissaire sur MONT00002 en AJOUTANT la ligne juste, sans retirer la fausse. Toutes les flottes entraînées avant le 8 septembre ont vu cette donnée corrompue, ainsi que les couches anthropiques de la carte.
+
+**Correctif** : la table est vidée avant réimportation dans `ingest_withdrawals.py`. Réingestion des quinze régions faite le 8 septembre : zéro nœud orphelin restant, toutes les régions couvrent 2001-01-01 à 2026-02-01.
+
+**Deux défauts distincts trouvés au passage.** La région de l'Outaouais moyen n'avait AUCUNE table de prélèvements : ses 2379 nœuds ont été entraînés en régime naturalisé alors que leurs débits observés sont influencés, et son signal anthropique cartographié était un zéro silencieux. Elle est ingérée, 98 sites et 46 nœuds. Et un site demeure douteux dans la source elle-même, à signaler à io-eau : X2003275, prélèvement de surface de 0,76 m³/s attribué à MONT00574 dont le débit naturalisé vaut 0,02 m³/s, soit 3858 %.

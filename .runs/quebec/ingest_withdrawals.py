@@ -81,6 +81,20 @@ for reg in cible:
     if sel.empty:
         print(f"[prelev] {reg}: aucun troncon apparie ({perdus:,} lignes sans correspondance)")
         continue
+    # TABLE VIDEE AVANT REIMPORTATION (2026-09-08). `import_withdrawals` insere sans
+    # jamais effacer : les deux ingestions successives s'empilaient. Mesure sur les bases
+    # du 8 septembre : 33 noeuds perimes en Monterégie, finissant au 2024-12-01 comme la
+    # copie locale d'avril, portant 39,0 m3/s, soit AUTANT que les 217 noeuds a jour. La
+    # region a donc ete entrainee avec le double du flux anthropique reel, dont la moitie
+    # sur de mauvais troncons -- dont l'ancien mauvais appariement de l'emissaire de la
+    # rive sud, corrige en juin par ajout sans retrait de la ligne fautive.
+    _c = duckdb.connect(db)
+    try:
+        _av = _c.execute("select count(*) from withdrawals").fetchone()[0]             if _c.execute("select count(*) from duckdb_tables() where table_name='withdrawals'").fetchone()[0] else 0
+        if _av:
+            _c.execute("DELETE FROM withdrawals")
+    finally:
+        _c.close()
     n = BasinCache(db).import_withdrawals(sel[["date", "node_idx", "net_withdrawal", "source"]],
                                           node_col="node_idx", site_col=None)
     net = float(sel["net_withdrawal"].sum()) / max(sel["date"].nunique(), 1)
