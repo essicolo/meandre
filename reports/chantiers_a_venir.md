@@ -37,3 +37,13 @@ Ouvert le 2026-09-08. Ce document liste les chantiers identifiés mais non entre
 **Ce que le chantier demande.** L'instrumentation existe et imprime, avant restauration, les paramètres touchés et la norme du gradient de chaque terme de la perte. Elle n'a pas encore attrapé de bloc fautif sur le sous-bassin d'essai. Il faut la faire tourner sur une région entière, où le phénomène se produit.
 
 **Critère de réussite.** Nommer l'opération et le terme responsables, et proposer un correctif qui supprime le rejet plutôt que de le compenser.
+
+## 5. Activer la contrainte de neige mesurée au sol
+
+**Pourquoi.** La cible CanSWE est construite, rattachée au réseau et vérifiée depuis août 2026, mais son poids dans la fonction de perte vaut zéro : aucun modèle n'a jamais été contraint par la neige mesurée au sol. Or le manteau nival gouverne la crue printanière, qui est l'événement dominant de l'année hydrologique québécoise, et deux défauts persistants du modèle sont hivernaux, les longues suites plates de décembre à mars et le calendrier de la fonte.
+
+**Ce que le chantier demande.** Le rattachement est déjà fait : chaque station est liée au tronçon le plus proche, plafond de vingt-cinq kilomètres, écart d'altitude conservé comme diagnostic. Ce qui manque est le réglage du poids, et il ne peut pas être uniforme : la densité du réseau varie d'un facteur cent entre les régions, de cent dix sites en Outaouais à un seul en Montérégie, et les distances médianes de rattachement vont de 2,1 à 24,9 kilomètres. Un poids qui a du sens en Outaouais n'en a aucun en Montérégie.
+
+**Ce qu'il faut mesurer avant de l'activer.** Une paire appariée sur une région bien couverte, avec et sans la contrainte, jugée sur la perte et ses composantes, sur le calendrier de la crue printanière et sur les signatures hivernales, jamais sur le KGE seul. Une contrainte auxiliaire qui améliore le débit en dégradant les autres cibles ne contraint rien, elle déplace la compensation.
+
+**Critère de réussite.** La masse simulée du couvert et sa date de disparition se rapprochent des relevés, sans dégradation de l'évapotranspiration satellitaire ni du stockage gravimétrique, et la platitude hivernale diminue.
