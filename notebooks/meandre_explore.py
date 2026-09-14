@@ -17,9 +17,10 @@ donc chaque chiffre porte le runtime exact du run qui l'a produit (dette #6).
 
 Lancer :  uv run marimo edit notebooks/meandre_explore.py
 """
+
 import marimo
 
-__generated_with = "0.9.0"
+__generated_with = "0.24.0"
 app = marimo.App(width="medium")
 
 
@@ -44,9 +45,25 @@ def _():
 
     def lp(p):
         return mo.Html(p._repr_html_())
-    return (RESULTS, aes, coord_fixed, facet_wrap, geom_boxplot, geom_histogram,
-            geom_line, geom_point, ggplot, ggsize, ggtitle, glob, labs, lp, mo,
-            mpaths, np, os, pd)
+
+    return (
+        RESULTS,
+        aes,
+        coord_fixed,
+        geom_boxplot,
+        geom_histogram,
+        geom_line,
+        geom_point,
+        ggplot,
+        ggsize,
+        ggtitle,
+        glob,
+        lp,
+        mo,
+        np,
+        os,
+        pd,
+    )
 
 
 @app.cell
@@ -103,10 +120,13 @@ def _(RESULTS, glob, mo, np, os, pd):
 
 @app.cell
 def _(mo):
-    mo.md("## 1. Les KGE dans l'espace et en distribution\n"
+    mo.md("""
+    ## 1. Les KGE dans l'espace et en distribution
+    "
           "Tenue de côté 2022-2024, toutes stations confondues. La médiane provinciale "
           "et la queue basse comptent davantage que n'importe quelle moyenne : c'est la "
-          "queue qui dit où le modèle ne vaut pas encore livraison.")
+          "queue qui dit où le modèle ne vaut pas encore livraison.
+    """)
     return
 
 
@@ -126,7 +146,7 @@ def _(aes, geom_histogram, ggplot, ggsize, ggtitle, lp, mo, stations):
 
 
 @app.cell
-def _(aes, geom_boxplot, ggplot, ggsize, ggtitle, lp, mo, pd, stations):
+def _(aes, geom_boxplot, ggplot, ggsize, ggtitle, lp, mo, stations):
     if stations.empty:
         outc = mo.md("")
     else:
@@ -170,8 +190,21 @@ def _(mo, quebec):
 
 
 @app.cell
-def _(aes, coord_fixed, geom_histogram, geom_point, ggplot, ggsize, ggtitle, lp,
-      mo, np, param, pd, quebec):
+def _(
+    aes,
+    coord_fixed,
+    geom_histogram,
+    geom_point,
+    ggplot,
+    ggsize,
+    ggtitle,
+    lp,
+    mo,
+    np,
+    param,
+    pd,
+    quebec,
+):
     if quebec.empty or param.value == "-":
         outp = mo.md("(aucun cache de tronçons : lancer les dumps ETL_DUMP_REACH)")
     else:

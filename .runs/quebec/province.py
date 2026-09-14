@@ -409,7 +409,7 @@ if _DUMP:
     _t = _pdm.DatetimeIndex(dom["times"])
     _mois = _t.month.to_numpy()
 
-    def _ecrire(chemin, Qd, wnet):
+    def _ecrire(chemin, Qd, wnet, wmoy=None, wgw=None):
         _q = Qd.cpu().numpy()
         _qm = np.stack([_q[_mois == m].mean(axis=0) for m in range(1, 13)])
         with torch.no_grad():
@@ -423,6 +423,8 @@ if _DUMP:
                             q_annuel=_q.mean(axis=0).astype(np.float32),
                             coords=td.node_coords.cpu().numpy(),
                             prelev_net_abs=wnet.astype(np.float32),
+                            prelev_net_moyen=(wmoy if wmoy is not None else np.zeros_like(wnet)).astype(np.float32),
+                            prelev_gw_moyen=(wgw if wgw is not None else np.zeros_like(wnet)).astype(np.float32),
                             **{k: v.astype(np.float32) for k, v in _champs.items()})
         print(f"[dump] {chemin} : {len(_champs)} champs, {Qd.shape[0]} pas", flush=True)
 
@@ -430,7 +432,10 @@ if _DUMP:
     _wabs = (_w.net.abs().sum(dim=0).cpu().numpy()
              if hasattr(_w, "net") and _w.net is not None
              else np.zeros(dom["n_nodes"], dtype=np.float32))
-    _ecrire(f"{_DUMP}-avec.npz", Q, _wabs)
+    # Bilan signe en moyenne journaliere (m3/s), positif = le troncon recoit de l'eau.
+    _wmoy = _w.net.mean(dim=0).cpu().numpy() if hasattr(_w, "net") and _w.net is not None else None
+    _wgw = _w.net_gw.mean(dim=0).cpu().numpy() if getattr(_w, "net_gw", None) is not None else None
+    _ecrire(f"{_DUMP}-avec.npz", Q, _wabs, _wmoy, _wgw)
 
     with torch.no_grad():
         Qn, _ = model.simulate(forcing=td.forcing[:],

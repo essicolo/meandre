@@ -137,6 +137,20 @@ Deux termes de la physique du milieu humide n'étaient exposés nulle part et re
 - Scaling factors (sf1, sf2, sf3) cap extraction so theta stays in [0, porosity]
 - spatial_melt scale = clamp(C_f/4.5, 0.15, 1.8) applied to class melt factors
 
+## Avant de lancer une simulation longue
+
+Règle posée par Essi le 2026-09-13, après une journée où la plupart des heures de calcul ont servi à répondre à des questions mortes. Un entraînement long ne se lance qu'une fois les quatre points suivants faits. Ils coûtent des minutes ; les sauter coûte des heures.
+
+**1. Vérifier la configuration réellement en vigueur, pas celle qu'on croit.** Le même jour, trois réglages différaient de ce qui était supposé : le banc de sous-bassin ne posait pas de graine dans sa fonction de simulation, si bien que deux passes identiques s'écartaient de 0,029 de KGE et qu'un effet mesuré à 0,015 n'était que du bruit ; son forçage par défaut est `-hyb` alors que la recette emploie `-budyko`, ce qui déplace le KGE de 0,14 ; et il ne normalisait pas l'écart quadratique par la variance de chaque station, alors que le pilote régional le fait, si bien qu'il minimisait une perte à 95 % d'écart quadratique quand celle de la région en compte 3 %. Graine, forçage, ancrages et composition de la perte se lisent AVANT, et se comparent à ceux du pilote.
+
+**2. Demander si la question se répond sans simuler.** Une question sur la fonction objectif se répond sur la fonction objectif : `banc_perte.py` déforme un hydrogramme observé comme le modèle se trompe et demande à chaque terme s'il préfère l'original, sur 32 stations en une minute. Une question sur une métrique se répond en la calculant sur des séries fabriquées. Un effet de paramètre physique se répond en passe avant seule, sans entraîner. L'entraînement n'est nécessaire que pour la dernière question : l'optimiseur atteint-il la solution que la perte préfère.
+
+**3. Chiffrer le coût et chercher le mode rapide.** Le coût est dominé par le nombre de pas séquentiels, pas par la taille du domaine : une région de milliers de tronçons coûte 31 min par époque, un sous-bassin de 69 tronçons en coûte 10, parce que le travail est limité par le lancement des noyaux. Le banc de sous-bassin a un mode rapide annoncé à 30 s par époque, et son en-tête promet par ailleurs un centième du coût d'une région, ce qui est faux : la mesure inscrite plus bas dans le même fichier dit 13 min. Lire la mesure, pas la promesse.
+
+**4. Vérifier que le témoin porte le défaut qu'on veut corriger.** Deux épreuves du 2026-09-13 et du 2026-09-14 ont échoué pour cette seule raison : un terme de forme jugé contre un témoin dont la plus longue suite plate valait 8 jours, là où le défaut à corriger en fait 38 ; puis un mécanisme de ruissellement jugé sur un sous-bassin dont le rapport des pointes valait déjà 1,11, là où le défaut régional le met à 0,39. Un remède éprouvé sur un témoin sain ne conclut rien, et coûte le même temps qu'une épreuve valide.
+
+**5. Énoncer d'avance ce que chaque issue changerait.** Si aucun résultat possible ne modifie une décision, le calcul est inutile. Une flotte lancée pour une hypothèse déjà réfutée entre-temps doit être arrêtée, pas laissée finir.
+
 ## Common pitfalls
 
 - Don't use chunk_steps > 0 with NSE/KGE loss (they need full-sequence stats). Use MSE + log-MSE + PBIAS for chunk-safe training.

@@ -1075,6 +1075,17 @@ if TEST_START and TEST_END:
             _in = (q_obs_test >= _lo) & (q_obs_test <= _hi)
             _cov = (_in & _validq).sum().float() / _validq.sum().float()
             print(f"  Test cov_{_lvl} (quantile): {float(_cov):.4f}  (cible {_lvl/100:.2f})")
+        # MEANDRE_DUMP_QUANT=<chemin.npz> (2026-09-10) : les quantiles JOUR PAR JOUR aux
+        # stations sur le test, pour un diagramme de Talagrand (rang de l'observation parmi
+        # les quantiles). Les journaux ne gardaient que les couvertures a 50 et 90 %.
+        if _os.environ.get("MEANDRE_DUMP_QUANT"):
+            _sid_par_noeud = {v: k for k, v in station_node_map.items()}
+            _np.savez_compressed(_os.environ["MEANDRE_DUMP_QUANT"],
+                                 q_obs=q_obs_test.numpy(), q_sim=Q_test.numpy(),
+                                 offsets=_off.numpy(), taus=_np.array(_taus),
+                                 station_ids=_np.array([str(_sid_par_noeud[i]) for i in station_indices]),
+                                 dates=_np.array([str(d)[:10] for d in all_dates[test_sl.start:test_sl.stop][:n_test]]))
+            print(f"  quantiles journaliers sauves : {_os.environ['MEANDRE_DUMP_QUANT']}")
 
     # ── Couverture probabiliste Box-Cox sur le test (noise head) ────────────
     # NB : en mode quantile, ces cov sigma sont OBSOLÈTES (tête jamais re-calée).

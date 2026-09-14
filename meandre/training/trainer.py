@@ -1696,8 +1696,13 @@ class Trainer:
                 # la restaure et on compte le bloc comme jete, au lieu de perdre l'epoque.
                 _instantane = {p_: (p_.grad.detach().clone() if p_.grad is not None else None)
                                for p_ in self.model.parameters() if p_.requires_grad}
-                if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":
-                    # Autopsie (2026-09-05) : la perte et les debits du bloc fautif etaient
+                if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "2":
+                    # NIVEAU 2 SEULEMENT (2026-09-09). Ce bloc interrompt la
+                    # retropropagation des qu'un NaN parait, si bien que les gradients ne
+                    # deviennent jamais non finis et que l'autopsie PAR TERME, qui vit plus
+                    # bas et se declenche sur ce critere, ne s'executait jamais. Les deux
+                    # niveaux sont donc separes : 1 pour l'autopsie par terme a vitesse
+                    # normale, 2 pour la trace d'operation, lente et exclusive.
                     # finis, le gradient non ; le mode anomalie de torch nomme l'operation
                     # dont la retropropagation produit le premier NaN, avec sa pile.
                     try:

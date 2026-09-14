@@ -132,7 +132,7 @@ def lister(regions, n_min=25, n_max=130, jours_min=3000):
 
 def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
             melt_saison=None, seuil_neige=None, debut=None, sol=None,
-            aquifere=True, charger=None, verbeux=True):
+            aquifere=True, charger=None, verbeux=True, melt_diurne=False):
     """Modele COMPLET sur le sous-bassin : colonne, reseau, routage, une station reelle.
 
     Retourne (dates, debit simule a l'exutoire, debit observe). Aucun entrainement : le
@@ -149,11 +149,29 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     from meandre.data.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
                                              load_passage_pluie_neige)
 
+    # GRAINE FIXE, comme dans `entrainer`. Elle manquait ici jusqu'au 2026-09-13, si bien
+    # que deux passes de la meme configuration differaient d'autant qu'un traitement : le
+    # champ spatial est tire au hasard et trois zero epoque successifs avaient donne
+    # 0.811, 0.817 et 0.850 de variabilite. Toute comparaison faite par ce chemin sans
+    # graine mesurait ce tirage. La variable ETL_SEED permet de balayer plusieurs tirages
+    # pour situer un effet par rapport a cette dispersion.
+    torch.manual_seed(int(os.environ.get("ETL_SEED", "1234")))
+    np.random.seed(int(os.environ.get("ETL_SEED", "1234")))
+
     s = extraire(reg, station)
     idx, g, terr = s["idx"], s["graph"], s["territorial"]
     n = len(idx)
 
+    # LE FORCAGE N'EST PAS CELUI DE LA RECETTE PAR DEFAUT. Le socle emploie -budyko ;
+    # ce banc part de -hyb, herite de son premier usage. L'ecart n'est pas anodin : sur ce
+    # sous-bassin, mesure le 2026-09-13, le KGE a zero epoque vaut 0,782 sous -budyko et
+    # 0,644 sous -hyb, soit sept fois la dispersion due au tirage du champ. Le forcage est
+    # donc annonce a chaque passe, faute de quoi une comparaison se fait sans le savoir
+    # entre deux modeles differents.
     _sfx = os.environ.get("JOINT_FX_SUFFIX", "-hyb")
+    if verbeux:
+        print(f"  [forcage] forcing-{reg}{_sfx}.nc"
+              + ("" if _sfx == "-budyko" else "   ATTENTION : la recette emploie -budyko"))
     ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}{_sfx}.nc")
     temps = pd.DatetimeIndex(ds["time"].values)
     if debut is None:
@@ -217,6 +235,8 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         m.vertical_column.set_calibrated_soil(calib)
     if melt_saison is not None:
         m.vertical_column.melt_seasonal_amp = float(melt_saison)
+    if melt_diurne:
+        m.vertical_column.melt_diurnal = True
     if seuil_neige is not None:
         # Seuil de partage pluie/neige au bulbe humide, en degres. Plus il est HAUT,
         # plus la precipitation est comptee en neige, donc stockee au lieu de ruisseler.
@@ -358,7 +378,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               kge_continu=True, etat_continu=True, device=None, tag="",
               pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
               substeps=None, chunk=45, w_et=0.4, w_kge=1.0, w_pbias=0.5, w_mse=0.1,
-              w_dq=0.0, w_fdc=0.0, w_dq_log=0.0):
+              w_dq=0.0, w_fdc=0.0, w_dq_log=0.0, quantile=False, charger=None,
+              w_log_mse=0.0, w_peak=0.0):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -561,6 +582,34 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     m = _construire()
     q0, ev = _evaluer(m, "zero epoque")
 
+    # NORMALISATION PAR STATION (2026-09-13). L'ecart quadratique se calcule en metres
+    # cubes par seconde au carre : sur ce sous-bassin il vaut environ 147 quand tous les
+    # autres termes valent moins de deux, si bien qu'il emportait 95 % de la perte quel
+    # que soit son poids affiche. Le pilote regional divise chaque station par la variance
+    # observee de ses debits d'entrainement, ce qui rend le terme sans dimension et
+    # d'ordre un ; le banc ne le faisait pas, et minimisait donc autre chose que la region
+    # qu'il est cense representer. Mesure sur un entrainement regional reel, la perte se
+    # repartit alors en 44 % de Kling-Gupta, 26 % d'ecart quadratique logarithmique, 25 %
+    # de pics, 15 % de biais de volume, 11 % d'evapotranspiration et 3 % d'ecart
+    # quadratique brut.
+    _qtr = q_obs[tr_sl]
+    _svar = torch.ones(_qtr.shape[1], dtype=torch.float32, device=dev)
+    for _i in range(_qtr.shape[1]):
+        _mk = torch.isfinite(_qtr[:, _i])
+        if int(_mk.sum()) > 30:
+            _svar[_i] = _qtr[_mk, _i].var()
+    _svar = torch.clamp(_svar, min=1e-6)
+    # Seuil du terme de pics : troisieme quartile des debits observes d'entrainement par
+    # station, comme dans le pilote regional.
+    _pthr = torch.full((_qtr.shape[1],), float("inf"), dtype=torch.float32, device=dev)
+    for _i in range(_qtr.shape[1]):
+        _mk = torch.isfinite(_qtr[:, _i])
+        if int(_mk.sum()) > 100:
+            _pthr[_i] = torch.quantile(_qtr[_mk, _i], 0.75)
+    print(f"  normalisation par station : variance observee de {float(_svar.min()):.1f} "
+          f"a {float(_svar.max()):.1f} (m3/s)^2 | seuil de pics {float(_pthr.min()):.1f} m3/s",
+          flush=True)
+
     if aux and et_obs is not None:
         # Poids de la recette du socle (gasp-v4 [loss] + ETL_WET=0.4), sans GRACE.
         # per_station=True est OBLIGATOIRE (trouve le 2026-09-04 a 14 h 35) : le defaut
@@ -570,14 +619,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
                             w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc),
-                            w_dq_log=float(w_dq_log),
-                            w_log_nse=0.0, w_log_mse=0.0, w_et=float(w_et), per_station=True,
+                            w_dq_log=float(w_dq_log), station_var=_svar,
+                            w_log_nse=0.0, w_log_mse=float(w_log_mse),
+                            w_peak=float(w_peak),
+                            peak_threshold=_pthr if float(w_peak) > 0 else None,
+                            w_et=float(w_et), per_station=True,
                             # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
                             # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
                             # et un essai a conclu a tort que MOD16 vidait la riviere.
                             et_mode="anomaly")
         print(f"  perte : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f} + MSE {float(w_mse):.2f}"
+              f" + MSE log {float(w_log_mse):.2f} + pics {float(w_peak):.2f}"
               f" + ET MOD16 {float(w_et):.2f} en tendance + dQ {float(w_dq):.2f}"
               f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
     else:
@@ -585,9 +638,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # ignorait w_pbias, w_mse et w_dq_log, si bien qu'un balayage de dosage a rendu
         # trois resultats identiques sans que rien ne le signale.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
-                            w_nse=0.0, w_nrmse=0.0,
+                            w_nse=0.0, w_nrmse=0.0, station_var=_svar,
                             w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_dq_log=float(w_dq_log),
-                            w_log_nse=0.0, w_log_mse=0.0, per_station=True)
+                            w_log_nse=0.0, w_log_mse=float(w_log_mse),
+                            w_peak=float(w_peak),
+                            peak_threshold=_pthr if float(w_peak) > 0 else None,
+                            per_station=True)
         print(f"  perte SANS cible MOD16 : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f}"
               f" + MSE {float(w_mse):.2f} + dQ {float(w_dq):.2f} + dQ log {float(w_dq_log):.2f}"
               f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
@@ -595,9 +651,32 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # court entierement nul (cinq pas d'Adam a taux presque nul).
     tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=int(chunk), tbptt_steps=365,
                            grad_clip=1.0, w_prior=0.005, w_latent_reg=0.0,
-                           best_metric="kge_median", autopilot=False, warmup_epochs=0)
+                           best_metric=("nll" if quantile else "kge_median"),
+                           autopilot=False, warmup_epochs=0)
     ck = f"{_p.DATA_ROOT}/quebec/sousbassin/best-{reg}-{station}{tag}.pt"
     os.makedirs(os.path.dirname(ck), exist_ok=True)
+    if charger:
+        # Depart a chaud : le socle vient d'un entrainement anterieur. Obligatoire pour la
+        # phase probabiliste, qui n'apprend qu'une enveloppe autour d'un debit deja fixe.
+        m.load(charger)
+        print(f"  socle charge depuis {os.path.basename(charger)}", flush=True)
+    elif quantile:
+        raise SystemExit("phase quantile sans --charger : une enveloppe autour d'un modele "
+                         "non entraine ne veut rien dire")
+    if quantile:
+        # PHASE PROBABILISTE. Le socle est GELE : la mediane reste exactement le debit du
+        # point de reprise charge, donc aucun score deterministe ne bouge, et seule
+        # l'enveloppe s'apprend. Sans gel, un modele gonfle son incertitude pour masquer
+        # un biais qu'il devrait corriger.
+        _libres = 0
+        for _nn, _pp in m.named_parameters():
+            _pp.requires_grad = "quantile_head" in _nn
+            if _pp.requires_grad:
+                _libres += _pp.numel()
+        loss_fn = HydroLoss(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_nse=0.0, w_nrmse=0.0,
+                            w_log_nse=0.0, w_log_mse=0.0, w_quantile=1.0, per_station=True)
+        print(f"  phase quantile : socle gele, {_libres:,} parametres libres (tete K=6), "
+              f"perte de pinball seule", flush=True)
     tr = Trainer(model=m, loss_fn=loss_fn, train_data=td, val_data=vd, config=tconf,
                  run_name=f"sb-{reg}-{station}{tag}", checkpoint_path=ck)
     tr.fit()
@@ -638,6 +717,8 @@ def main():
     ap.add_argument("--kmusk", type=float, default=None)
     ap.add_argument("--annees", type=int, default=6)
     ap.add_argument("--fonte", type=float, default=None)
+    ap.add_argument("--fonte-diurne", action="store_true",
+                    help="degre-jour integrant le cycle diurne au lieu de la moyenne")
     ap.add_argument("--seuil", type=float, default=None)
     ap.add_argument("--debut", type=int, default=None)
     ap.add_argument("--sol", choices=["complet", "sauf_ks"], default=None)
@@ -646,6 +727,8 @@ def main():
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
     ap.add_argument("--tag", default="", help="suffixe du point de reprise et du run")
     ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--quantile", action="store_true",
+                    help="phase probabiliste : socle GELE, seule la tete de quantiles apprend")
     ap.add_argument("--w-kge", type=float, default=1.0)
     ap.add_argument("--w-pbias", type=float, default=0.5)
     ap.add_argument("--w-mse", type=float, default=0.1)
@@ -653,6 +736,10 @@ def main():
                     help="rapport des ecarts-types des variations journalieres (punit plateau ET nervosite)")
     ap.add_argument("--w-dq-log", type=float, default=0.0,
                     help="rapport des variations journalieres en espace log : voit la platitude d etiage")
+    ap.add_argument("--w-log-mse", type=float, default=0.0,
+                    help="ecart quadratique sur le logarithme des debits ; la recette pose 0,3")
+    ap.add_argument("--w-peak", type=float, default=0.0,
+                    help="terme de pics au-dela du troisieme quartile ; la recette pose 0,5")
     ap.add_argument("--w-fdc", type=float, default=0.0,
                     help="soutien d'etiage Q20/Q50 (contraint le chemin de l'eau)")
     ap.add_argument("--w-et", type=float, default=0.4,
@@ -686,20 +773,26 @@ def main():
                   debut_train=2012, fin_train=2012, fin_val=2013, debut_eval=2013,
                   fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et,
                   w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc,
-                  w_dq_log=a.w_dq_log)
+                  w_dq_log=a.w_dq_log, quantile=a.quantile, charger=a.charger,
+                  w_log_mse=a.w_log_mse, w_peak=a.w_peak)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
                   sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
-                  amorce=a.amorce, aux=not a.kge_seul)
+                  amorce=a.amorce, aux=not a.kge_seul,
+                  chunk=a.chunk, w_et=a.w_et, w_kge=a.w_kge, w_pbias=a.w_pbias,
+                  w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc, w_dq_log=a.w_dq_log,
+                  quantile=a.quantile, charger=a.charger,
+                  w_log_mse=a.w_log_mse, w_peak=a.w_peak)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,
                 kc=a.kc, kmusk=a.kmusk, annees=a.annees, melt_saison=a.fonte,
                 seuil_neige=a.seuil, debut=a.debut, sol=a.sol,
-                aquifere=not a.sans_aquifere, charger=a.charger)
+                aquifere=not a.sans_aquifere, charger=a.charger,
+                melt_diurne=a.fonte_diurne)
         return
     s = extraire(a.region, a.station)
     g = s["graph"]

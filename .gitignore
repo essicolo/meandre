@@ -84,3 +84,5 @@ Hydat_sqlite3_*.zip
 *.hdf
 D*/
 *.recette.toml
+
+lets-plot-images/

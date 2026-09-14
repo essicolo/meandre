@@ -823,6 +823,9 @@ class HydroLoss(nn.Module):
                 )
                 L_nse = L_pbias = L_kge = L_mse = L_nrmse = L_log_nse = L_log_mse = zero
                 L_tol_mse = zero
+                # Les termes de forme aussi, sans quoi un bloc sans aucune station gardee
+                # leve une erreur au lieu de rendre une perte nulle (2026-09-09).
+                L_dq = L_dql = L_fdc = zero
             else:
                 # MASQUE SANS NaN (2026-09-08). L'ancienne version posait des NaN DANS
                 # le tenseur simule, puis s'appuyait sur nanmean et nansum. Ces reductions
@@ -838,6 +841,15 @@ class HydroLoss(nn.Module):
                 q_s = q_sim_at_stations[:, keep]                 # (T, S_keep), jamais NaN
                 _m = valid[:, keep].to(q_s.dtype)                # 1 si observe, 0 sinon
                 _n_val = _m.sum(dim=0).clamp(min=1.0)            # (S_keep,)
+                if os.environ.get("MEANDRE_MASQUE_NAN", "0") == "1":
+                    # TEMOIN : restitue le masquage par NaN d'avant le 2026-09-08, pour
+                    # mesurer en apparie ce que le correctif change. A n'utiliser que pour
+                    # cela : il empoisonne le gradient de tout bloc a lacune (R92).
+                    q_o = q_obs[:, keep].clone(); q_s = q_sim_at_stations[:, keep].clone()
+                    _inv = ~valid[:, keep]
+                    q_o[_inv] = float("nan"); q_s[_inv] = float("nan")
+                    _m = torch.ones_like(q_s); _n_val = torch.full((int(keep.sum()),), float(q_s.shape[0]),
+                                                                   device=q_s.device, dtype=q_s.dtype)
 
                 # Weights for kept stations
                 if self.station_weights is not None and len(self.station_weights) == n_stations:

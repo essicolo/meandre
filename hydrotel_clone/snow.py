@@ -124,11 +124,46 @@ def indice_radiation(lat_dd: Tensor, ce1: Tensor, ce0: Tensor, jour: Tensor,
     return torch.where(i_j1 != 0.0, torch.abs(i_j2 / i_j1), torch.ones_like(i_j1))
 
 
+def degre_jour_effectif(tmin, tmax, seuil):
+    """Degrés-jour au-dessus d'un seuil, en intégrant le cycle diurne.
+
+    Le clone fidèle calcule la fonte sur la moyenne des températures extrêmes. Sous un
+    climat à forte amplitude diurne, cela efface les redoux : mesuré le 2026-09-12 sur un
+    sous-bassin du Saguenay, l'amplitude diurne hivernale médiane vaut 9,3 °C, trente-neuf
+    jours d'hiver ont un maximum au-dessus du seuil de fonte et dix seulement une moyenne
+    au-dessus. En janvier, le cumul de degrés-jour calculé sur la moyenne vaut exactement
+    zéro, ce qui rend la fonte de coeur d'hiver impossible par construction et laisse le
+    couvert croître sans interruption de décembre à mars.
+
+    On intègre donc la partie positive de T(t) − seuil sur un cycle sinusoïdal d'amplitude
+    (tmax − tmin)/2 centré sur la moyenne, ce qui est la forme classique du degré-jour
+    horaire agrégé et n'introduit aucun paramètre nouveau. Trois cas :
+      le seuil est sous le minimum, l'intégrale vaut la moyenne moins le seuil ;
+      le seuil est au-dessus du maximum, elle vaut zéro ;
+      entre les deux, elle vaut ((A − seuil)·phi + B·sin(phi)) / pi, où phi est la phase
+      de croisement du seuil, cos(phi) = (seuil − A) / B.
+
+    Le résultat est en degrés-jour, donc il se substitue directement au facteur
+    (temperature_moyenne − seuil_fonte) du clone.
+    """
+    A = (tmin + tmax) / 2.0
+    B = (tmax - tmin) / 2.0
+    # La dérivée de arccos diverge en ±1 ; on borne l'argument pour garder un gradient
+    # fini, et on borne B par le bas pour la même raison sur la division.
+    Bs = torch.clamp(B, min=1e-6)
+    x = torch.clamp((seuil - A) / Bs, -1.0 + 1e-6, 1.0 - 1e-6)
+    phi = torch.acos(x)
+    partiel = ((A - seuil) * phi + Bs * torch.sin(phi)) / torch.pi
+    dj = torch.where(A - B >= seuil, A - seuil, partiel)
+    return torch.where(A + B <= seuil, torch.zeros_like(dj), dj)
+
+
 def calcule_fonte(tmin, tmax, pluie_m, neige_m, indice_rad,
                   stock, hauteur, chaleur, eau_retenue, albedo,
                   coeff_fonte, seuil_fonte, taux_fonte_geo, densite_max,
                   constante_tassement, pas_de_temps=24, methode_albedo=1,
-                  melt_mode="degree_day", sw_in=None, tf=None, srf=None):
+                  melt_mode="degree_day", sw_in=None, tf=None, srf=None,
+                  melt_diurnal=False):
     """CalculeFonte (degre_jour_modifie.cpp:1241) pour UNE classe d'occupation, un
     pas de temps, vectorisé. Tout en m / °C / heures. coeff_fonte déjà en m/°C/jour
     (taux mm/jour /1000). Retourne (fonte_m, stock, hauteur, chaleur, eau_retenue,
@@ -141,7 +176,12 @@ def calcule_fonte(tmin, tmax, pluie_m, neige_m, indice_rad,
         proxy géométrique par la radiation RÉELLE : fonte = tf·(T−seuil) + srf·(1−albédo)·sw_in,
         sw_in = courte longueur d'onde incidente (W/m²), tf (m/°C/j), srf (m/j par W/m²).
         L'albédo reste celui, évolutif, du manteau ; tout le reste du bilan calorifique
-        (cold content, surplus, rétention) est inchangé."""
+        (cold content, surplus, rétention) est inchangé.
+
+    melt_diurnal (opt-in, 2026-09-12) : le terme de fonte intègre le cycle diurne au lieu
+      d'employer la moyenne des extrêmes, par `degre_jour_effectif`. Seul ce terme change ;
+      le contenu de froid, la densité et la température du manteau restent sur la moyenne,
+      comme dans le clone. False restitue le clone fidèle à l'identique."""
     pdts = pas_de_temps * 3600
     temperature_moyenne = (tmin + tmax) / 2.0
 
@@ -201,16 +241,19 @@ def calcule_fonte(tmin, tmax, pluie_m, neige_m, indice_rad,
 
     # terme de fonte : degré-jour modulé par radiation POTENTIELLE (clone fidèle),
     # ou ETI avec radiation RÉELLE CaSR (modernisation). Le reste du bilan est commun.
+    if melt_diurnal:
+        _dj = degre_jour_effectif(tmin, tmax, seuil_fonte)
+    else:
+        _dj = torch.where(temperature_moyenne > seuil_fonte,
+                          temperature_moyenne - seuil_fonte,
+                          torch.zeros_like(temperature_moyenne))
     if melt_mode == "eti" and sw_in is not None:
-        fonte = torch.where(temperature_moyenne > seuil_fonte,
-                            tf * (temperature_moyenne - seuil_fonte)
-                            + srf * (1.0 - albedo) * sw_in,
+        fonte = torch.where(_dj > 0.0,
+                            tf * _dj + srf * (1.0 - albedo) * sw_in,
                             torch.zeros_like(stock_n))
     else:
         # fonte par radiation degré-jour (l.1347-1351)
-        fonte = torch.where(temperature_moyenne > seuil_fonte,
-                            coeff_fonte * (temperature_moyenne - seuil_fonte) * indice_rad * (1.0 - albedo),
-                            torch.zeros_like(stock_n))
+        fonte = coeff_fonte * _dj * indice_rad * (1.0 - albedo)
     fonte = fonte * (pas_de_temps / 24.0)
     chaleur_n = chaleur_n + fonte * DENSITE_EAU * CHALEUR_FONTE
 
@@ -330,7 +373,8 @@ class DegreJourModifie(torch.nn.Module):
                 tmin, tmax, pluie_m, neige_m, ir, st, ha, ch, er, alb,
                 _cf, p["seuil_fonte_" + c], p["taux_fonte_geo"],
                 p["densite_max"], p["constante_tassement"], self.pas_de_temps,
-                melt_mode=_mode, sw_in=_sw_c, tf=_tf_eff, srf=_srf)
+                melt_mode=_mode, sw_in=_sw_c, tf=_tf_eff, srf=_srf,
+                melt_diurnal=bool(p.get("melt_diurnal", False)))
             new_state[c] = (st2, ha2, ch2, er2)
             new_state["albedo_" + c] = alb2
             apport = apport + pct[c] * fonte

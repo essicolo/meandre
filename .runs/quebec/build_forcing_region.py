@@ -21,7 +21,10 @@ _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 REG = sys.argv[1].upper()
 TEST = "--test" in sys.argv
 DB = f"{_DATA_ROOT}/quebec/{REG.lower()}.duckdb"
-OUT = f"{_DATA_ROOT}/quebec/forcing-{REG.lower()}.nc"
+# Le suffixe nomme la variante de forcage et ne doit jamais ecraser une variante en
+# service : les fichiers de la recette portent -budyko, ceux du banc SLSO -casr-corr.
+_SFX = os.environ.get("QC_SUFFIXE", "")
+OUT = f"{_DATA_ROOT}/quebec/forcing-{REG.lower()}{_SFX}.nc"
 CASR_DIRS = [f"{_DATA_ROOT}/casr", ".runs/slso/data/casr"]
 CHUNKS = ["2000-2003", "2004-2007", "2008-2011", "2012-2015", "2016-2019", "2020-2023", "2024-2024"]
 SIGMA = 5.670374e-8; ALBEDO = 0.23; EMIS = 0.95
@@ -107,6 +110,34 @@ def load_daily(var, agg):
     out = pd.concat(parts)
     return getattr(out.groupby(out.index), agg)()
 
+def load_dt_eff():
+    """Duree EFFECTIVE d'orage par jour et par noeud, en heures : pluie journaliere
+    divisee par le maximum horaire du jour, bornee entre 1 et 24.
+
+    Une averse convective concentre sa lame en une a trois heures et ruisselle ; une pluie
+    frontale l'etale sur la journee et s'infiltre. Le pas journalier ecrase cette
+    distinction : la colonne recoit toujours P/24 et n'atteint jamais la capacite
+    d'infiltration. Mesure sur la colonne isolee le 2026-09-14, une averse de 40 mm sur un
+    sol a 70 % d'humidite relative produit 0,4 % d'ecoulement rapide le jour meme, contre
+    5 a 30 % attendus en foret boreale ; avec une duree d'orage de deux heures, 66 %. Le
+    mecanisme d'exces d'infiltration existe deja dans le clone (`storm_hours`), et il est
+    tres sensible a cette duree : elle doit donc venir de la donnee horaire, jamais d'une
+    constante. Meme definition que sur le banc SLSO, ou ce canal se nomme DT_eff.
+    """
+    parts = []
+    for ch in (CHUNKS[:1] if TEST else CHUNKS):
+        samp, times = hourly_chunk("A_PR0_SFC", ch)
+        idx_local = times + pd.Timedelta(hours=SHIFT_H)
+        df = pd.DataFrame(samp.values * 1000.0, index=idx_local)
+        kept = df.where(df >= DRIZZLE_H, 0.0)
+        jour = kept.resample("1D")
+        parts.append((jour.sum(), jour.max()))
+    tot = pd.concat([a for a, _ in parts]); tot = tot.groupby(tot.index).sum()
+    mx = pd.concat([b for _, b in parts]); mx = mx.groupby(mx.index).max()
+    dt = (tot / mx.where(mx > 0.0)).clip(lower=1.0, upper=24.0)
+    return dt.fillna(24.0)
+
+
 def load_p_corr():
     parts = []
     for ch in (CHUNKS[:1] if TEST else CHUNKS):
@@ -132,14 +163,24 @@ R_n = (((1 - ALBEDO) * FB - (EMIS * SIGMA * (Tmean + 273.15)**4 - FI)) * 0.0864)
 u2 = UVC * 0.748
 Pv = P.reindex(idx).values
 Pv = Pv * (VOL / (np.nanmean(Pv) * 365.25))                          # VOLUME : calage bilan
-cols = [None, Tmin, Tmax, R_n, u2, e_a]
+# Canal de duree d'orage, opt-in : sans lui le ruissellement hortonien sous-journalier du
+# clone reste inerte, faute d'entree. QC_INTENS=1 l'ajoute en septieme canal, sous le meme
+# nom que sur le banc SLSO.
+INTENS = os.environ.get("QC_INTENS", "0") == "1"
+DT_eff = load_dt_eff() if INTENS else None
+cols = [None, Tmin, Tmax, R_n, u2, e_a] + ([DT_eff] if INTENS else [])
 arr = [Pv] + [c.reindex(idx).values for c in cols[1:]]
 F = np.stack([a.astype(np.float32) for a in arr], axis=-1)
 print(f"forcing {F.shape} NaN={np.isnan(F).any()} | P {np.nanmean(Pv)*365.25:.0f} mm/an | "
       f"jours pluvieux {(Pv > 0.1).mean()*100:.0f}% | Rn {np.nanmean(arr[3]):.1f}")
+if INTENS:
+    _d = arr[-1][Pv > 1.0]
+    print(f"  DT_eff sur les jours de plus de 1 mm : mediane {np.nanmedian(_d):.1f} h | "
+          f"part sous 3 h {100 * np.nanmean(_d < 3.0):.0f} % | part a 24 h {100 * np.nanmean(_d >= 23.9):.0f} %")
 if TEST:
     print("[test] OK"); sys.exit(0)
 if os.path.exists(OUT): os.remove(OUT)
 xr.Dataset({"forcing": (("time", "node", "var"), F)},
-           coords={"time": idx, "node": np.arange(n_nodes), "var": ["P", "Tmin", "Tmax", "R_n", "u2", "e_a"]}).to_netcdf(OUT)
+           coords={"time": idx, "node": np.arange(n_nodes),
+                   "var": ["P", "Tmin", "Tmax", "R_n", "u2", "e_a"] + (["DT_eff"] if INTENS else [])}).to_netcdf(OUT)
 print(f"[ok] {OUT}")

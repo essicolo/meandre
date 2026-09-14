@@ -648,6 +648,49 @@ class SpatialFieldNetwork(nn.Module):
         A = _t.clamp(_t.as_tensor(area_lac_km2, dtype=_t.float32), min=1e-3)
         self._lake_k_anchor = k0 * _t.clamp((a_ref_km2 / A) ** alpha, max=1.0)
 
+    def set_routing_anchor(self, length_km, slope_frac=None, celerite_ms: float = 1.0,
+                           pente_ref: float = 0.005, k_min_h: float = 0.05,
+                           k_max_h: float = 48.0):
+        """Ancre le temps de transfert Muskingum sur la GEOMETRIE du troncon.
+
+        Mesure du 2026-09-14 : la sortie de routage du champ ne s'ecarte pas de son
+        initialisation. Sur le Saguenay, K vaut 23,96 h en mediane avec un ecart-type de
+        0,3 h sur 2 212 troncons, et x vaut 0,202 a 0,006 pres : les deux parametres sont
+        constants sur toute la region. La cause est visible dans les poids : la ligne de
+        `fc_out` qui les produit a une norme de 0,058 contre 0,878 pour la conductivite a
+        saturation, et son entree brute a un ecart-type de 0,021 contre 1,68. Le tronc
+        differencie pourtant bien les troncons, ses unites cachees ayant un ecart-type de
+        0,34. Le routage est donc reste a son point de depart, faute de gradient : la perte
+        y est plate, mesuree a 4 pour cent du total le 2026-08-09.
+
+        Or le temps de parcours PHYSIQUE d'un troncon median de 7,1 km vaut 2,0 h a un
+        metre par seconde, et 0,4 h au cinquieme centile. L'initialisation constante a 24 h
+        est donc douze fois trop longue, et la borne basse de 4 h reste deux fois trop
+        longue pour le troncon median : l'optimiseur ne peut pas corriger, meme s'il le
+        voulait.
+
+        L'ancre remplace la constante par L / c, ou la celerite suit l'onde cinematique,
+        c = 5/3 v avec v proportionnelle a la racine de la pente selon Manning. Le reseau
+        module ensuite autour de cette ancre au lieu de partir d'une valeur unique. Poser
+        None retire l'ancrage et restitue exactement le comportement borne d'avant.
+
+        length_km : (n_nodes,) longueur du troncon en kilometres.
+        slope_frac : (n_nodes,) pente du troncon, sans dimension. None = pente de reference.
+        celerite_ms : vitesse d'ecoulement a la pente de reference, en metres par seconde.
+        """
+        if length_km is None:
+            self._k_musk_anchor = None
+            return
+        import torch as _t
+        L = _t.clamp(_t.as_tensor(length_km, dtype=_t.float32), min=0.05) * 1000.0
+        if slope_frac is None:
+            v = _t.full_like(L, float(celerite_ms))
+        else:
+            S = _t.clamp(_t.as_tensor(slope_frac, dtype=_t.float32), min=1e-5)
+            v = celerite_ms * _t.sqrt(S / pente_ref)
+        c = (5.0 / 3.0) * _t.clamp(v, min=0.05)
+        self._k_musk_anchor = _t.clamp(L / c / 3600.0, min=k_min_h, max=k_max_h)
+
     def lake_params(self, coords: Tensor, territorial: Tensor) -> tuple[Tensor, Tensor]:
         """Paramètres de lac par nœud (k_lake, beta), bornés physiquement.
 
@@ -785,7 +828,16 @@ class SpatialFieldNetwork(nn.Module):
         # contre 10.61 pour le clone de l'onde cinématique).
         # Stabilité : en mode opérateur un petit K donne c2=0, soit translation pure,
         # numériquement sain. En mode message-passing (n_substeps=2) garder K >= 4.
-        constrained.append(bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX)); i += 1
+        # Avec set_routing_anchor(), K devient l'ancre geometrique MODULEE par le reseau,
+        # sur le patron de l'ancre de lac : raw=0 donne exactement l'ancre, et la sortie
+        # reste bornee physiquement. Sans ancre, comportement borne inchange.
+        _kanc = getattr(self, "_k_musk_anchor", None)
+        if _kanc is None:
+            constrained.append(bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX)); i += 1
+        else:
+            _a = _kanc.to(cols[i].device)
+            _mod = torch.exp(torch.clamp(cols[i], -1.5, 1.5))
+            constrained.append(torch.clamp(_a * _mod, min=0.05, max=_KMUSK_MAX)); i += 1
         # x_musk: Muskingum weighting factor [0.01, 0.49]
         constrained.append(bounded(cols[i], 0.01, 0.49)); i += 1
         # K_c: ETP scaling [0.3, 1.5]. Default ~1.0 (FAO-56 reference).

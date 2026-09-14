@@ -88,15 +88,50 @@ class QuantileHead(nn.Module):
         log_w = a.unsqueeze(0) + b.unsqueeze(0) * log_q.unsqueeze(-1)
         w = log_w.exp()                              # (T, N, K) > 0
 
-        # Côté bas (τ < 0.5) : largeurs ordonnées par τ ascendant déjà
-        # → on reverse pour cumsumer depuis le plus proche de 0.5
+        # ENVELOPPE MULTIPLICATIVE, EN LOG (2026-09-11). Les largeurs cumulees etaient
+        # appliquees ADDITIVEMENT au debit, si bien que le cote bas pouvait passer sous
+        # zero : mesure sur cinq regions, le cinquieme centile predit etait negatif ou nul
+        # dans 21 a 44 % des pas de temps, et la classe inferieure du diagramme de
+        # Talagrand etait vide PAR CONSTRUCTION, une observation ne pouvant pas descendre
+        # sous un debit negatif. Un debit est strictement positif et sa distribution est
+        # log-normale : les largeurs se cumulent donc dans le LOGARITHME du debit, ce qui
+        # rend chaque quantile strictement positif et l'enveloppe dissymetrique comme la
+        # variable. Le contrat exterieur ne change pas, la fonction rend toujours des
+        # ecarts a ajouter a la mediane.
+        # MEANDRE_QUANTILE_ADDITIF=1 restitue l'ancienne forme, pour comparaison seulement.
         w_lower = w[..., : self.n_lower]             # (T, N, n_lower)
-        w_lower_rev = w_lower.flip(-1)               # plus proche 0.5 en premier
-        cumsum_lower_rev = w_lower_rev.cumsum(dim=-1)
-        offsets_lower = -cumsum_lower_rev.flip(-1)   # négatif, ordre τ ascendant
-
-        # Côté haut (τ > 0.5) : ordre τ ascendant = plus proche 0.5 en premier
+        cum_lower = -w_lower.flip(-1).cumsum(dim=-1).flip(-1)   # <= 0, ordre τ ascendant
         w_upper = w[..., self.n_lower:]              # (T, N, n_upper)
-        offsets_upper = w_upper.cumsum(dim=-1)       # positif, ordre τ ascendant
-
-        return torch.cat([offsets_lower, offsets_upper], dim=-1)  # (T, N, K)
+        cum_upper = w_upper.cumsum(dim=-1)           # >= 0, ordre τ ascendant
+        cum = torch.cat([cum_lower, cum_upper], dim=-1)         # (T, N, K)
+        import os as _os
+        if _os.environ.get("MEANDRE_QUANTILE_ADDITIF", "0") == "1":
+            return cum
+        # ECHELLE (2026-09-11, deuxieme passe). Les largeurs `w` sont calibrees en unites
+        # de DEBIT : les reutiliser telles quelles comme largeurs en LOGARITHME les fait
+        # exploser. Mesure sur quatre regions apres la premiere version de ce correctif :
+        # le cumul atteignait la borne de 30, soit un quatre-vingt-quinzieme centile a
+        # 10^13 fois la mediane et un cinquieme centile numeriquement nul, donc une queue
+        # basse toujours vide et une couverture de 96 % pour un intervalle annonce a 90.
+        # On ramene donc la largeur dans un domaine logarithmique raisonnable : un facteur
+        # ECH par niveau, et un cumul borne a BORNE, soit au plus un facteur e^BORNE entre
+        # un quantile extreme et la mediane. A l'initialisation le cinquieme centile vaut
+        # environ 0,9 fois la mediane, et l'entrainement elargit si les observations le
+        # demandent.
+        # TROISIEME PASSE, et cette fois un test l'a attrapee avant l'entrainement. Les
+        # largeurs valent exp(a + b.log Q), soit une PUISSANCE du debit : en unites de
+        # debit c'est voulu, une grande riviere a une enveloppe plus large en valeur
+        # absolue. Reprises comme largeurs logarithmiques, elles font croitre la largeur
+        # RELATIVE avec le debit, et le test l'a mesure : a 1 m3/s l'enveloppe allait de
+        # 0,90 a 1,12 fois la mediane, a 100 m3/s de 0,018 a 55. On passe donc par une
+        # fonction douce du meme predicteur lineaire, qui croit comme log Q et non comme
+        # une puissance de Q, si bien que la largeur relative ne derive que lentement.
+        _ECH, _BORNE = 0.05, 4.0
+        s = torch.nn.functional.softplus(log_w)                 # (T, N, K) > 0, doux
+        s_lower = s[..., : self.n_lower]
+        cum_l = -s_lower.flip(-1).cumsum(dim=-1).flip(-1)
+        s_upper = s[..., self.n_lower:]
+        cum_u = s_upper.cumsum(dim=-1)
+        cum_log = (_ECH * torch.cat([cum_l, cum_u], dim=-1)).clamp(-_BORNE, _BORNE)
+        q_pos = Q.clamp(min=0.0).unsqueeze(-1)
+        return q_pos * (torch.exp(cum_log) - 1.0)

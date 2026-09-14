@@ -757,6 +757,39 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
               f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
     else:
         print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
+
+# ANCRAGE GEOMETRIQUE DU ROUTAGE (opt-in, 2026-09-14). Mesure du jour : le temps de
+# transfert appris vaut 23,96 h avec un ecart-type de 0,3 h sur 2 212 troncons du Saguenay
+# et le coefficient de ponderation 0,202 a 0,006 pres, donc les deux sont constants ; la
+# ligne de poids qui les produit a une norme de 0,058 contre 0,878 pour la conductivite a
+# saturation. Le routage est reste a son initialisation, faute de gradient. Or le temps de
+# parcours physique d'un troncon median de 7,1 km vaut 2,0 h, contre 24 h initialisees.
+# L'ancre pose K = L / c par troncon et laisse le reseau moduler autour.
+if os.environ.get("ETL_ROUTAGE_ANCRE", "0") == "1":
+    _lg = None
+    try:
+        _ei = td.graph.edge_index
+        _ea = getattr(td.graph, "edge_attr", None)
+        if _ea is not None and _ea.shape[-1] >= 1:
+            _lg = torch.zeros(n_nodes)
+            _lg[_ei[0].long()] = _ea[:, 0].float() / 1000.0   # metres -> km, cote amont
+    except Exception as _e:
+        print(f"[etl] longueur de tronçon indisponible : {type(_e).__name__}")
+    if _lg is None or float(_lg.max()) <= 0:
+        print("[etl] ancrage du routage IGNORÉ : longueur de tronçon absente du graphe")
+    else:
+        _pente = None
+        try:
+            _pente = torch.tensor(_rw["mean_slope_pct"].values / 100.0, dtype=torch.float32)
+        except Exception:
+            pass
+        model.spatial_encoder.set_routing_anchor(
+            _lg, slope_frac=_pente,
+            celerite_ms=float(os.environ.get("ETL_CELERITE", "1.0")))
+        _ka = model.spatial_encoder._k_musk_anchor
+        print(f"[etl] ancrage du routage : K = L/c | ancre méd {float(_ka.median()):.2f} h "
+              f"| q10-q90 {float(_ka.quantile(0.1)):.2f}-{float(_ka.quantile(0.9)):.2f} h "
+              f"| longueur méd {float(_lg[_lg > 0].median()):.1f} km")
 if os.environ.get("ETL_LAKE_AREA", "1") == "1":
     # ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
     # DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
@@ -984,6 +1017,17 @@ if os.environ.get("ETL_QUANTILE", "0") == "1":
             setattr(r["loss_fn"], _k, 0.0)
     tconf.best_metric = "nll"
     tconf.w_prior = 0.0
+    # PROGRAMME DU TAUX D'APPRENTISSAGE PROPRE A CETTE PHASE (2026-09-11). Le socle
+    # monte en cinq epoques puis descend en cosinus jusqu'a 1 % du taux initial : c'est un
+    # reglage d'AFFINAGE d'un champ physique deja entraine. La tete de quantiles, elle,
+    # part de zero et n'a que 1772 poids. Mesure sur la Cote-Nord B, huit epoques : la
+    # couverture de l'intervalle a 90 % montait encore, de 0,419 a 0,539, quand le taux
+    # s'est effondre de 1e-2 a 1e-4 et a fige l'apprentissage. Le commentaire de
+    # `TrainerConfig.eta_min_factor` decrit exactement ce piege. On tient donc le taux
+    # CONSTANT et on supprime la montee : la tete apprend du premier pas au dernier.
+    tconf.eta_min_factor = 1.0
+    tconf.warmup_epochs = 0
+    print("[etl] phase quantile : taux d'apprentissage constant, sans montee progressive")
     print(f"[etl] PHASE QUANTILE : socle gele, {_libres:,} parametres libres "
           f"(tete K=6), best_metric nll, pertes de debit a zero")
 

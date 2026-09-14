@@ -382,6 +382,10 @@ class HydrotelColumn(nn.Module):
         _msa = getattr(self, "melt_seasonal_amp", None)
         if _msa is not None:
             p_snow["melt_seasonal_amp"] = float(_msa)
+        # Degre-jour integrant le cycle diurne (opt-in) : pose par le pilote via
+        # `melt_diurnal`. False = clone fidele a l'identique.
+        if getattr(self, "melt_diurnal", False):
+            p_snow["melt_diurnal"] = True
 
         # sol BV3C2 : NeRF (thetas/ks) + Campbell global
         b1 = self._sig(self.b1_raw, self._b_bounds); b2 = self._sig(self.b2_raw, self._b_bounds); b3 = self._sig(self.b3_raw, self._b_bounds)

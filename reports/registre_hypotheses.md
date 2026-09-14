@@ -1148,3 +1148,191 @@ Pour ignorer les observations manquantes, la branche par station de `HydroLoss` 
 **Correctif.** Le masque devient multiplicatif : les observations manquantes sont remplacées par zéro, l'écart est multiplié par un masque binaire, et la somme est normalisée par le nombre de pas valides. La valeur rendue est identique à celle de l'ancienne moyenne sur les jours observés, seul le gradient change. Le tenseur simulé ne reçoit plus jamais de NaN. Test de non-régression dans `tests/test_training/test_gradient_nan_obs.py` : gradient fini pour les trois termes avec une lacune partielle et une station entièrement absente, et égalité des valeurs avec la moyenne sur les jours observés.
 
 **Ce que ce défaut n'a PAS fait.** Il n'a pas faussé les valeurs de perte ni les scores, qui étaient calculés correctement. Il a supprimé des pas d'apprentissage. Le filet par bloc écrit le 4 septembre, qui jetait ces blocs au lieu de perdre l'époque entière, a donc protégé les entraînements sans jamais nommer leur cause.
+
+## R93 — Le fichier de prélèvements ajoute trois fois plus d'eau qu'il n'en retire, et un tiers de cet ajout est reconstruit (2026-09-10)
+
+**Statut : établi.**
+
+**Constat.** Sur `io-eau-meandre.parquet`, en débit moyen par site sur 2001-2024, les prélèvements déclarés retirent 65,1 m³/s, les rejets déclarés en ajoutent 71,9, et des entrées reconstruites en ajoutent 53,9 de plus. Le solde est un ajout net de 60,7 m³/s au réseau hydrographique du Québec méridional.
+
+**Les entrées reconstruites.** Elles se reconnaissent au suffixe `_synth` de leur identifiant. Le fichier en compte 1851, et elles sont TOUTES positives : aucune n'est un prélèvement. Chacune est placée sur le tronçon même du prélèvement qu'elle accompagne, ce qui est vrai des 1851 sans exception. Elles couvrent 94 pour cent du volume prélevé, soit 61,0 des 65,1 m³/s, avec un taux de retour médian de 0,88 et pondéré de 0,883. Un prélèvement ne retire donc à son tronçon que 12 pour cent de son volume.
+
+**Conséquence sur les résultats de naturalisation.** C'est l'explication du contraste mesuré sur les caches `nb-<reg>-{avec,sans}.npz` : sur 14 061 tronçons dont le débit naturalisé dépasse 1 m³/s, 328 voient leur débit augmenté de plus de 1 pour cent et 34 seulement le voient diminué d'autant. L'effet simulé des prélèvements est faible parce que le fichier leur rend 88 pour cent de leur volume au même endroit, pas parce que le modèle l'amortit.
+
+**Ce que ce constat RÉFUTE.** L'hypothèse selon laquelle le motif d'une nappe en déficit net et d'un réseau de surface en excédent net serait la signature observée d'une eau prise en profondeur et rendue en surface, dont l'exhaure minière. Ce motif est en grande partie CONSTRUIT : 1072 des 1851 couples convertissent un prélèvement souterrain en rejet de surface, et cette conversion est opérée par la règle de reconstruction, pas par une déclaration. L'exhaure reste une explication plausible d'une partie des rejets déclarés, mais ce motif ne l'établit pas. Une note écrite le 2026-09-09 dans la présentation affirmait le contraire et a été corrigée.
+
+**Ouvert : le double comptage.** L'eau distribuée par un réseau d'aqueduc est prélevée, reçoit un retour reconstruit sur le tronçon du prélèvement, puis ressort à la station d'épuration qui déclare son propre rejet. Si les deux mécanismes portent sur le même mètre cube, il est rendu deux fois. Les couples surface vers surface pèsent 47,2 m³/s de retours reconstruits, à comparer aux 71,9 m³/s de rejets déclarés. Test : comparer le rejet déclaré d'une station d'épuration au retour reconstruit attribué aux prélèvements de son territoire desservi.
+
+**Exposition des stations d'entraînement (2026-09-10).** Sur les 178 stations des quatorze régions, l'effet anthropique simulé sur leur propre tronçon vaut : 132 sous 0,5 pour cent en valeur absolue, 18 entre 0,5 et 1 pour cent, 15 entre 1 et 5, et 8 au-delà de 5. Cinq stations seulement subissent un effet négatif au-delà de 0,5 pour cent, aucune au-delà de 5. La dissymétrie se retrouve donc jusque dans les données d'entraînement : 41 stations reçoivent plus de 0,5 pour cent d'eau ajoutée contre 5 qui en perdent autant. Les huit stations les plus exposées sont 030304 (+13,1 %), 030340 (+10,9 %), 021916 (+8,7 %), 030345 (+7,6 %), 02E901, 030262 et 030299 (+6,1 %, même tronçon) et 046404 (+5,8 %). Détail dans `exposition-stations.csv`.
+
+**Conséquence pour le calage.** Pour 132 stations sur 178, le terme anthropique est trop faible pour peser sur les paramètres appris. Pour les 25 dont l'effet dépasse 1 pour cent, le modèle se voit retirer de l'eau du débit observé avant comparaison ; si les retours reconstruits sont surestimés, il doit produire davantage d'écoulement naturel pour compenser, ce qui biaise ses paramètres vers un territoire plus humide. Ce biais est donc localisé, pas systémique.
+
+**Vérifié aussi.** L'ingestion ne filtre pas ces lignes : `.runs/quebec/ingest_withdrawals.py` somme `net_withdrawal` par tronçon sans regarder l'identifiant. Les entrées reconstruites sont donc bien dans les bases de bassin et dans tous les entraînements.
+
+## R94 — L'export des quantiles de la Gaspésie ne provient pas du modèle présenté (2026-09-10)
+
+**Statut : établi. Le diagramme de Talagrand est retiré de la présentation.**
+
+**La règle.** La tête de quantiles est apprise sur un modèle physique GELÉ, et sa médiane est le débit du modèle déterministe. Le contrôle qui en découle, posé par Essi, est que le débit médian de l'export probabiliste doit être identique à celui du modèle déterministe présenté, au millionième près, avant tout diagramme.
+
+**Le contrôle échoue.** `quant-gasp.npz` comparé aux trois exports déterministes disponibles pour la même région, mêmes seize stations dans le même ordre, mêmes 1096 jours de 2022-2024, mêmes observations au bit près :
+
+| export déterministe | écart relatif médian | écart relatif maximal |
+| --- | --- | --- |
+| q-gasp-A-v4.npz | 0,419 | 7,06 |
+| q-gasp-B.npz | 0,458 | 21,98 |
+| q-gasp-A.npz | 0,446 | 19,59 |
+
+Aucune valeur journalière ne coïncide à 1e-6 près, à aucun niveau de débit : l'écart relatif médian vaut 0,39 sur le décile inférieur et 0,36 sur le décile supérieur. La corrélation des séries simulées va de 0,66 à 0,90 selon la station. Les KGE par station diffèrent nettement, de 0,507 contre 0,814 à la station 011509 et de 0,776 contre 0,595 à la station 022507.
+
+**Le piège à éviter.** Les KGE MÉDIANS des deux exports coïncident à 0,715, et les débits moyens à 0,3 pour cent près. Un contrôle porté sur le score médian aurait donc conclu à tort que le socle était préservé. Seule la comparaison valeur par valeur détecte le défaut. C'est la raison d'être de la règle du millionième.
+
+**Ce que valait le diagramme.** Sur 16 246 observations, la couverture de l'intervalle à 90 pour cent valait 89,6 pour cent, apparemment excellente, mais elle résultait de deux erreurs opposées : aucune observation ne descendait sous le cinquième centile prédit, contre 5 pour cent attendus, et 10,4 pour cent dépassaient le quatre-vingt-quinzième, contre 5 attendus. Ce diagnostic reste sans objet tant que le modèle sous-jacent n'est pas identifié.
+
+**Correctif livré.** Le contrôle est écrit DANS la diapositive de `.reports/quebec/presentation.qmd` : chaque région dont l'export de quantiles s'écarte du déterministe est écartée, et si aucune ne passe, la diapositive imprime la raison du refus au lieu d'un diagramme. La présentation ne peut donc plus afficher un diagramme de Talagrand tracé sur un autre modèle.
+
+**Cause identifiée le 2026-09-10.** Les neuf configurations de phase probabiliste, `.runs/quebec/config/<region>-quantile.toml`, portent toutes `warm_start_from = "checkpoints/best-<region>.pt"`. Aucune ne désigne le point de reprise de la flotte, `best-<region>-etl-fdsA-v4.pt`. La tête de quantiles a donc été apprise par-dessus un autre modèle physique que celui présenté, et le défaut est systématique, non propre à la Gaspésie. La configuration de la Gaspésie porte de surcroît deux commentaires contradictoires sur cette même ligne, l'un annonçant un départ à chaud et l'autre un départ à froid.
+
+**Correctif à appliquer.** Faire pointer `warm_start_from` sur le point de reprise effectivement présenté, puis réexporter les quantiles. Le contrôle du millionième, désormais écrit dans la diapositive, dira si la correction tient. Tant qu'il n'est pas passé, aucun résultat probabiliste n'est présentable.
+
+
+## R95 — Coût de la rétropropagation mesuré : 2,4 à 2,7 fois la passe avant (2026-09-10)
+
+**Statut : établi.**
+
+La présentation avançait « environ deux fois et demie le temps de la simulation » sans preuve. Mesure faite sur le lac Abitibi, 393 tronçons, recette du socle appliquée, routage par opérateur, carte NVIDIA RTX 2000 Ada. Deux temps sur le même nombre de pas de temps, appariés dans la même répétition, avec synchronisation de la carte avant chaque relevé et un tour de chauffe non compté : passe avant seule sous `torch.no_grad()`, puis passe avant avec graphe, perte quadratique et rétropropagation.
+
+Sur 30 pas de temps et neuf répétitions, la passe avant seule prend 17,8 s en médiane et la passe complète 43,1 s, soit un rapport de 2,4 sur les médianes et de 2,7 en médiane des rapports appariés. Un contrôle sur 45 pas de temps, la taille de bloc réellement utilisée à l'entraînement, rend 2,42.
+
+**Réserve.** Un autre processus occupait la carte pendant la mesure, ce qui disperse les temps absolus d'un facteur deux d'une répétition à l'autre. Le rapport, apparié dans chaque répétition, n'en souffre pas.
+
+**Conclusion.** L'affirmation de la présentation est confirmée et y est maintenue.
+
+## R96 — Le seuil de dé-crachinage de 0,3 mm/h n'est dérivé de rien (2026-09-10)
+
+**Statut : ouvert. Question posée par Essi, vérification faite dans le dépôt.**
+
+**Ce que le seuil fait.** `dedrizzle` met à zéro toute heure de précipitation d'intensité inférieure au seuil. Mesuré aujourd'hui sur une maille CaSR du Saint-Laurent sud-ouest, quatre années horaires : le seuil de 0,3 mm/h touche 85 pour cent des heures où il tombe quelque chose, et ces heures portent 24 pour cent du volume. Le journal enregistre l'effet correspondant sur le Saint-Laurent nord-ouest, la fraction de jours pluvieux passant de 62 à 40 pour cent.
+
+**D'où vient la valeur.** De nulle part de traçable. C'est la valeur par défaut du paramètre `threshold_mm_h` de `meandre/data/forcing_correction.py`, reprise telle quelle par les deux constructeurs de forçage, où elle est exposée sous `DRIZZLE_H` sans jamais avoir été balayée. Aucun rapport ne consigne d'essai à une autre valeur, ni de critère qui aurait servi à la choisir.
+
+**Ce que la littérature citée appuie, et ce qu'elle n'appuie pas.** La revue du prétraitement météorologique cite Lavers et ses collaborateurs, 2022, pour ERA5 et Lespinas, 2015, pour CaPA. Ces travaux établissent l'EXISTENCE d'un biais de bruine, précipitation trop fréquente et trop faible, jours humides surestimés. Aucun ne fixe la valeur du seuil qui le corrige. Le dé-crachinage est donc appuyé dans son principe et arbitraire dans son réglage.
+
+**Le seul contrôle observationnel disponible ne le soutient pas.** La grille krigée des stations du ministère, 2889 nœuds sur 2000-2024, porte 61,4 pour cent de jours au-dessus de 0,1 mm par jour, soit la même fréquence que CaSR brut. Le dé-crachinage éloigne donc CaSR de cette référence au lieu de l'en rapprocher. Réserve importante : le krigeage étale la pluie sur tous les nœuds et gonfle de lui-même le compte des jours humides, si bien que cette grille est un mauvais juge de la FRÉQUENCE, même si elle reste un bon juge du VOLUME de bassin. La question reste donc ouverte, elle n'est pas tranchée contre le seuil.
+
+**Pourquoi cela compte.** Les 24 pour cent de volume retirés sont rendus ensuite par le calage annuel sur le bilan de Budyko. Le seuil ne change donc pas le volume final, il change la DISTRIBUTION TEMPORELLE de la pluie, en concentrant la même eau sur moins d'heures. C'est exactement la grandeur qui gouverne le ruissellement hortonien et les pointes de crue. Un réglage non dérivé pilote une propriété de premier ordre.
+
+**Le test qui trancherait.** Comparer la fréquence de jours pluvieux à des séries de stations PONCTUELLES, non krigées, aux nœuds qui les portent, et balayer le seuil pour trouver celui qui reproduit cette fréquence. À défaut, balayer le seuil et juger sur les signatures de crue, jamais sur le volume annuel, qui est insensible au seuil par construction.
+
+## R97 — Ce que le calage du volume par le bilan suppose vraiment, et ce qu'il coûte (2026-09-10)
+
+**Statut : établi. Objection soulevée par Essi, quantifiée.**
+
+**Objection.** « On prend un débit médian aux stations, qui ne sont aucunement représentatives des débits dans le réseau, et on fait un bilan là-dessus ? »
+
+**Première réponse : ce n'est pas un débit.** `rescale_forcing_budyko.py` divise le débit moyen de chaque station par son aire drainée et convertit en millimètres par année. La grandeur médiane est donc une LAME ÉCOULÉE, normalisée par l'aire, et non un débit. C'est ce qui rend comparables un bassin de 27 km² et un de 15 515 km² du Saguenay. La médiane porte sur des lames, pas sur des débits.
+
+**Deuxième réponse : ce que la correction fixe.** Un seul scalaire par région, la précipitation annuelle moyenne. La grille CaSR est multipliée par ce rapport sans que sa structure spatiale ni sa chronologie ne changent. L'hypothèse n'est donc pas que les stations représentent le réseau tronçon par tronçon, mais que le bilan d'eau des bassins jaugés estime le bilan d'eau moyen de la région.
+
+**Le choix de la médiane n'est pas le point faible.** Écart entre la médiane des lames et leur moyenne pondérée par l'aire drainée : 4,5 % en Gaspésie, 3,7 % au Saint-Laurent sud-ouest, moins de 3 % partout ailleurs, 0,1 % au Saint-Laurent nord-ouest.
+
+**Les vrais points faibles, mesurés.**
+
+Premier, le nombre de jauges. Six régions en portent deux ou moins. Toute la grille du bassin du lac Abitibi est recalée sur un seul bassin de 222 km², et celle de la Côte-Nord A sur un seul de 768 km².
+
+Deuxième, le désaccord entre stations d'une même région. Étendue rapportée à la médiane, dans les six régions entraînées : 120 % au Saguenay, dont les lames vont de 162 à 976 mm par année, 96 % en Montérégie, 90 % au Saint-Laurent nord-ouest, 73 % en Outaouais, 61 % en Gaspésie, 60 % au Saint-Laurent sud-ouest. La médiane est un centre robuste, mais la dispersion autour d'elle est du même ordre que la grandeur estimée.
+
+Troisième, la circularité anthropique. Le débit observé aux stations comprend les prélèvements et les rejets, donc un bilan d'eau NATUREL est fermé sur un débit GÉRÉ. Effet mesuré sur la lame médiane régionale, en corrigeant chaque station de l'effet anthropique simulé sur son propre tronçon : Montérégie −3,0 %, Saint-Laurent sud-ouest −1,3 %, bassin de l'Abitibi −1,2 %, Saint-Laurent nord-ouest −0,3 %, négligeable dans les dix autres régions. La précipitation corrigée est donc surestimée d'au plus 3 %, et seulement là où les rejets sont importants.
+
+Quatrième, non mesuré ici mais structurel : la partie non jaugée d'une région, souvent plus au nord, reçoit la correction déduite de sa partie jaugée.
+
+**Lien.** Cette correction est aussi ce qui PRESCRIT le niveau d'évapotranspiration du modèle, limite déjà consignée au point 25 de la liste des limites. Les deux se lisent ensemble : le bilan impose à la fois le volume de précipitation et, par conservation, le niveau d'évapotranspiration vers lequel l'entraînement converge.
+
+## R98 — L'hiver observé sur lequel le modèle s'entraîne est lui-même une reconstruction, et elle est bien plus plate que les mesures (2026-09-10)
+
+**Statut : établi.**
+
+**Mesure.** Part des observations de décembre à mars, depuis 2001, portant le drapeau de reconstruction du Centre d'expertise hydrique, et platitude hivernale observée, définie comme la part des jours où le débit varie de moins de 1 pour cent d'un jour à l'autre, calculée sur tous les jours puis sur les seuls jours mesurés. Médiane par station.
+
+| région | stations | reconstruit | platitude, tous jours | platitude, jours mesurés |
+| --- | --- | --- | --- | --- |
+| outv | 16 | 74,8 % | 14,6 % | 6,9 % |
+| gasp | 18 | 84,1 % | 20,5 % | 6,6 % |
+| sagu | 23 | 93,8 % | 36,4 % | 10,0 % |
+| mont | 28 | 59,0 % | 4,5 % | 2,8 % |
+| slno | 32 | 80,7 % | 15,7 % | 6,0 % |
+| slso | 41 | 80,1 % | 7,3 % | 2,7 % |
+| abit | 4 | 83,7 % | 38,2 % | 15,9 % |
+| cnda | 1 | 94,3 % | 40,3 % | 10,6 % |
+| cndb | 2 | 89,9 % | 23,2 % | 6,6 % |
+| cndc | 2 | 48,8 % | 41,0 % | 26,1 % |
+| cndd | 2 | 94,5 % | 51,5 % | 14,0 % |
+| cnde | 2 | 92,4 % | 48,3 % | 12,3 % |
+| labi | 1 | 92,6 % | 14,7 % | 7,4 % |
+
+La base de l'Outaouais moyen ne porte pas le drapeau ; elle est hors tableau.
+
+**Premier constat.** De 49 à 95 pour cent des observations hivernales ne sont pas des mesures. Sous couvert de glace, le débit est reconstruit. Cette reconstruction est deux à quatre fois plus plate que les jours réellement mesurés de la même station et de la même saison.
+
+**Conséquence sur l'ENTRAÎNEMENT, et c'est la plus importante.** Les termes de débit de la fonction de perte traitent ces valeurs reconstruites exactement comme des mesures. Le modèle est donc entraîné, quatre mois par an et sur la grande majorité des jours de ces mois, à reproduire une courbe lissée par un procédé d'estimation. C'est un mécanisme candidat direct pour les plateaux d'hiver simulés, et il est extérieur au modèle.
+
+**Conséquence sur le VERDICT DE FORME.** Le verdict compare la platitude simulée à la platitude observée, tous jours confondus. Cette référence étant gonflée par la reconstruction, le seuil est plus haut qu'il ne devrait, donc le verdict est plus INDULGENT qu'il n'y paraît. Les huit régions qui échouent échouent contre une référence déjà trop plate.
+
+**Ce que ce constat ne dit pas.** Il ne dit pas que la reconstruction du Centre d'expertise hydrique est fausse : sous glace, un débit lisse peut être le bon. Il dit que le modèle apprend cette régularité comme si elle avait été mesurée, et qu'aucune des deux hypothèses n'a été testée.
+
+**Test proposé, préalable à tout entraînement.** Une paire appariée sur un sous-bassin : perte de débit calculée sur tous les jours contre perte calculée en écartant les jours reconstruits, jugée sur la platitude hivernale simulée et sur le calendrier de la crue printanière. Le risque à mesurer est que l'exclusion laisse l'hiver presque sans contrainte, de 75 à 95 pour cent des observations disparaissant.
+
+## R99 — Jugé sur des mesures réelles, le défaut de platitude hivernale disparaît dans sept régions sur huit (2026-09-10)
+
+**Statut : établi. Il révise le verdict de forme et retire l'essentiel du grief des plateaux d'hiver.**
+
+**Objection d'Essi qui a déclenché la mesure.** « Un masque dur ne risque-t-il pas de générer n'importe quoi en hiver, alors qu'on a au moins une approximation ? »
+
+**Premier résultat : le masque dur est écarté.** Les jours reconstruits ne sont pas dispersés, ils forment des suites continues. Longueur médiane de 22 jours en Montérégie à 45 au Saguenay, neuvième décile de 45 à 62 jours, maximum de 122 jours, soit l'hiver entier. Le nombre médian de jours réellement mesurés par station et par hiver va de 2 au Saguenay et 6 en Gaspésie à 42 en Montérégie, et 5,3 pour cent des hivers du Saguenay n'en comptent aucun. Écarter les jours reconstruits des termes de débit laisserait donc l'hiver sans contrainte. L'objection est validée : la reconstruction porte une information de VOLUME qu'il ne faut pas jeter ; ce qu'elle ne porte pas, c'est une information de VARIABILITÉ.
+
+**Second résultat, et c'est le principal.** Le verdict de forme comparait la platitude simulée sur tous les jours d'hiver à la platitude observée sur tous les jours d'hiver, référence gonflée par la reconstruction. Comparaison refaite à échantillon identique : uniquement les paires de jours calendaires CONSÉCUTIFS dont les deux observations portent le drapeau de mesure. Ce choix élimine l'artefact d'échantillonnage, une différence entre deux jours mesurés éloignés n'étant pas une variation d'un jour à l'autre.
+
+| région | stations | paires | platitude simulée | platitude observée | rapport | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| outv | 12 | 86 | 11,1 % | 8,3 % | 1,34 | ok |
+| gasp | 9 | 67 | 23,9 % | 7,5 % | 3,19 | REFUS |
+| mont | 23 | 124 | 1,9 % | 1,9 % | 1,00 | ok |
+| slno | 16 | 49 | 2,6 % | 6,5 % | 0,40 | ok |
+| slso | 24 | 60 | 3,0 % | 2,2 % | 1,36 | ok |
+| abit | 1 | 100 | 36,0 % | 36,0 % | 1,00 | ok |
+| cndb | 1 | 49 | 8,2 % | 8,2 % | 1,00 | ok |
+| cndc | 1 | 355 | 51,5 % | 31,5 % | 1,63 | ok |
+
+Sur les huit régions comparables, une seule échoue, la Gaspésie. Le Saint-Laurent nord-ouest est même moins plat que ses observations. Sous l'ancienne comparaison, la Gaspésie, la Montérégie, le Saint-Laurent nord-ouest et le Saint-Laurent sud-ouest échouaient toutes les quatre.
+
+**Ce que cela change.** Le grief des plateaux d'hiver visait en grande partie une comparaison contre une courbe lissée par un procédé d'estimation, et non un défaut du modèle. Un entraînement dédié à corriger l'hiver corrigerait donc surtout un artefact de mesure. La Gaspésie reste un cas réel à traiter.
+
+**Ce que cela ne dit pas.** Rien sur l'été ni sur les longues suites plates hors hiver, que ce test ne couvre pas. Rien non plus sur les régions transférées à station unique, où le rapport porte sur une seule série. Et cela ne dit pas que le modèle est bon en hiver, seulement que sa platitude hivernale ne s'écarte pas de celle des mesures.
+
+**Correctif à porter au verdict de forme.** Calculer la platitude observée et simulée sur les paires de jours consécutifs mesurés, et non sur tous les jours. Le verdict actuel, dans `.runs/quebec/etl_run.py`, compare des échantillons différents.
+
+## R100 — La seconde règle du verdict de forme n'est PAS un artefact : les suites plates simulées sont réelles (2026-09-10)
+
+**Statut : établi. Il corrige une conclusion trop favorable que j'avais tirée une heure plus tôt.**
+
+Le verdict de forme refuse si l'une de DEUX règles se déclenche : la platitude simulée dépasse le double de l'observée, ou la plus longue suite de jours plats dépasse 30 jours. La révision de la comparaison à échantillon identique ne touche que la PREMIÈRE. J'avais écrit qu'une correction de l'hiver reviendrait surtout à corriger un artefact ; la mesure ci-dessous montre que c'est faux pour la seconde règle.
+
+Plus longue suite de jours consécutifs où le débit varie de moins de 1 pour cent, médiane par station, sur la période d'évaluation, et part de jours reconstruits à l'intérieur de la suite simulée :
+
+| région | suite simulée | suite observée | part reconstruite de la suite |
+| --- | --- | --- | --- |
+| outv | 18 j | 11 j | 0,0 % |
+| gasp | 81 j | 25 j | 97,4 % |
+| sagu | 116 j | 25 j | 98,1 % |
+| mont | 20 j | 2 j | 95,6 % |
+| slno | 46 j | 9 j | 97,3 % |
+| slso | 46 j | 7 j | 0,0 % |
+| abit | 21 j | 26 j | 40,9 % |
+| cndb | 86 j | 25 j | 97,7 % |
+| cndc | 68 j | 7 j | 0,0 % |
+
+**Deux lectures, toutes deux défavorables au modèle.** D'abord, la suite simulée dépasse la suite observée dans huit régions sur neuf, et souvent d'un facteur trois à dix : le modèle est plus plat que la reconstruction elle-même, alors que celle-ci est déjà lissée. Ensuite, dans trois régions, l'Outaouais, le Saint-Laurent sud-ouest et la Côte-Nord C, la plus longue suite simulée tombe entièrement dans des périodes MESURÉES : 46 et 68 jours de débit constant y sont contredits par des mesures réelles.
+
+**Ce que les deux constats donnent ensemble.** Le modèle reproduit correctement la petite variation d'un jour à l'autre là où l'on mesure, et il sait néanmoins tenir un débit constant pendant des semaines ailleurs. Le défaut n'est donc pas diffus, il est LOCALISÉ dans le temps. C'est une piste plus précise que « le modèle est plat » : il faut chercher ce qui gèle la production pendant des blocs de plusieurs semaines, pas ce qui amortit la variabilité en général.
+
+**Correction de ma conclusion antérieure.** J'ai écrit qu'une v5 dédiée à l'hiver corrigerait surtout un artefact de comparaison. Cela vaut pour la première règle, pas pour la seconde. Le grief des longues suites plates tient.
