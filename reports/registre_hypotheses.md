@@ -1470,3 +1470,18 @@ Mesure sur les caches par station de la période d'évaluation 2022-2024, refait
 **Conséquences pour le chantier du routage.** L'épreuve appariée de l'ancre a porté sur le Saguenay et la Gaspésie, qui appartiennent à la seconde population : raccourcir leur temps de transfert ne pouvait qu'aggraver une nervosité déjà excessive. Une épreuve valide doit se faire sur la Montérégie ou le Saint-Laurent sud-ouest. Et un réglage uniforme du routage est faux en principe, puisqu'il faudrait accélérer les basses-terres et ralentir le Bouclier : c'est un argument POUR une ancre géométrique, qui varie avec la longueur et la pente, à condition de la juger région par région et jamais sur une moyenne provinciale.
 
 **Réserve.** Ces chiffres viennent des champions déployés ; les bras de Narval employaient la recette du socle à vingt époques, dont les témoins donnaient 0,81 et 0,95 pour le Saguenay et la Gaspésie contre 1,26 et 1,03 ici. La recette déplace donc le diagnostic, et cette mesure doit être refaite sous la recette qu'on entend éprouver.
+
+**CORRECTION du constat précédent, le même jour.** La partition en deux populations est en grande partie un artefact de DÉPLOIEMENT et non une propriété du territoire. Six régions tournent avec leur propre point de reprise, six autres avec le champion de la Gaspésie appliqué ailleurs.
+
+| déploiement | régions | pointes médianes | nervosité médiane | KGE médian |
+|---|---:|---:|---:|---:|
+| point de reprise propre | 6 | 0,96 | 0,78 | 0,598 |
+| champion de la Gaspésie transféré | 6 | 1,46 | 1,78 | 0,613 |
+
+Un modèle calé en Gaspésie et posé sur l'Abitibi produit donc un débit deux fois plus nerveux que l'observé. Cela ne renseigne pas sur l'Abitibi, cela mesure le coût d'un transfert.
+
+**Ce qui survit.** Parmi les six régions calées chez elles, les trois des basses-terres restent les plus lisses, 0,57, 0,64 et 0,65, contre 0,91, 0,94 et 1,40 pour les trois autres. Trois observations sur six ne fondent pas un chantier.
+
+**Et la nervosité ne se prédit pas par le territoire.** Sur les 143 stations, elle forme un continuum, médiane 0,86 et du premier au neuvième décile 0,39 à 1,89, non deux amas. Le meilleur attribut explicatif est l'ordre de Strahler à -0,467, puis la fraction urbaine à -0,315. Une prédiction par l'ensemble des attributs du bassin amont donne un R² de +0,08 en retirant des stations au hasard mais de -0,27 en retirant des RÉGIONS entières, donc pire que de prédire la moyenne générale. Rien ne généralise.
+
+**Conséquence de méthode, qui vient d'Essi.** Un ancrage réglé par région ajusterait un artefact de production ; la région est un artefact et non une entité hydrologique. Le diagnostic du routage ne peut pas se trancher sur des caches qui mélangent six modèles calés et un modèle transféré six fois. Il faut un modèle unique sur tout le domaine, une validation croisée par stations et par régions retirées, et le travail porte alors sur la fonction de perte.
