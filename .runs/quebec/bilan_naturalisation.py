@@ -20,12 +20,7 @@ from meandre.utils import paths as _paths
 
 REGIONS = ["outv", "gasp", "sagu", "mont", "slno", "slso", "abit", "cnda", "cndb",
            "cndc", "cndd", "cnde", "labi", "outm", "vaud"]
-# Vaudreuil est ecarte : la region ne porte AUCUNE station et AUCUNE observation, donc elle
-# n'a pas de cible pour le recalage du volume et son forcage -budyko ne peut pas exister.
-# Le recalage tente le 2026-09-15 a produit une precipitation entierement non definie, sur
-# 1 835 532 valeurs. Ses 52 troncons a plus d'un metre cube par seconde ne pesent rien dans
-# le compte provincial.
-REGIONS = [r for r in REGIONS if r != "vaud"]
+
 SEUIL_Q = 1.0
 SEUIL_PCT = 1.0
 
