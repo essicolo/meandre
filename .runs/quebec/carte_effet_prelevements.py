@@ -71,10 +71,22 @@ def main():
     # de 23 816. C'est ce nombre qui tuait la version precedente, laquelle n'en dessinait
     # qu'une partie et recadrait la vue sur ce qui passait. L'emprise est imposee pour que
     # la carte s'ouvre sur le Quebec meridional et non sur le premier troncon venu.
+    # `location` CENTRE la carte sans la cadrer : avec les deux coins, lets_plot se place sur
+    # leur milieu et garde un zoom par defaut, ce qui ouvrait la carte sur le Lac-Saint-Jean.
+    # Le niveau se calcule : a un niveau z, une fenetre de 1180 pixels couvre 1659 / 2**z
+    # degres de longitude. Il faut couvrir 15,2 degres, donc le niveau 6, qui en couvre 25,9 ;
+    # le 7 n'en couvrirait que 13,0.
     bb = [float(touche.total_bounds[0]), float(touche.total_bounds[1]),
           float(touche.total_bounds[2]), float(touche.total_bounds[3])]
+    span = bb[2] - bb[0]
+    niveau = max(1, min(15, int(np.floor(np.log2(1659.0 / (span * 1.15))))))
+    print(f"emprise {span:.1f} degrés de longitude -> niveau de zoom {niveau}")
     pz = (lp.ggplot()
-          + lp.geom_livemap(location=bb)
+          # `const_size_zoomin` vaut -1 par defaut : l'epaisseur d'un trait a taille
+          # CONSTANTE croit sans limite avec le zoom, si bien qu'une riviere devient un
+          # pate des qu'on s'approche. A zero, le trait garde son epaisseur en pixels,
+          # comme sur n'importe quelle carte en ligne.
+          + lp.geom_livemap(location=bb, zoom=niveau, const_size_zoomin=0)
           + lp.geom_path(lp.aes(color="effet_borne"), data=touche, size=1.2)
           + lp.scale_color_gradient2(low=pal.ROUGE, mid=pal.GRIS_PALE, high=pal.BLEU,
                                      midpoint=0, limits=[-10, 10], name="effet (%)")
