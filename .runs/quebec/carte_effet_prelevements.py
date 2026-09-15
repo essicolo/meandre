@@ -65,6 +65,22 @@ def main():
          + lp.theme(axis_text=lp.element_blank(), panel_grid=lp.element_blank()))
     os.makedirs(SORTIE, exist_ok=True)
     lp.ggsave(p + lp.ggsize(1180, 620), "carte-effet.png", path=SORTIE, scale=2)
+
+    # VERSION ZOOMABLE. Le fond de carte porte deja les rivieres et les lacs, donc la couche
+    # de contexte y est inutile : on ne trace que les troncons affectes, 788 chemins au lieu
+    # de 23 816. C'est ce nombre qui tuait la version precedente, laquelle n'en dessinait
+    # qu'une partie et recadrait la vue sur ce qui passait. L'emprise est imposee pour que
+    # la carte s'ouvre sur le Quebec meridional et non sur le premier troncon venu.
+    bb = [float(touche.total_bounds[0]), float(touche.total_bounds[1]),
+          float(touche.total_bounds[2]), float(touche.total_bounds[3])]
+    pz = (lp.ggplot()
+          + lp.geom_livemap(location=bb)
+          + lp.geom_path(lp.aes(color="effet_borne"), data=touche, size=1.2)
+          + lp.scale_color_gradient2(low=pal.ROUGE, mid=pal.GRIS_PALE, high=pal.BLEU,
+                                     midpoint=0, limits=[-10, 10], name="effet (%)")
+          + lp.theme_minimal())
+    lp.ggsave(pz + lp.ggsize(1180, 620), "carte-effet.html", path=SORTIE, iframe=False)
+    print(f"{SORTIE}/carte-effet.html | emprise {[round(x, 2) for x in bb]}")
     h = int((touche.effet > SEUIL_EFFET).sum())
     b = int((touche.effet < -SEUIL_EFFET).sum())
     print(f"{SORTIE}/carte-effet.png")
