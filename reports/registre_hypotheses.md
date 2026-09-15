@@ -1441,3 +1441,32 @@ Sur les 69 stations dont le bassin est couvert à plus de 50 pour cent, aire mé
 **Conséquence, qui corrige une affirmation trop rapide.** Une contrainte auxiliaire ne corrige les poids que si la correction s'exprime avec des attributs disponibles partout. Comme le matériau ne se déduit pas des attributs actuels, une contrainte fondée sur lui ne pourrait pas être appliquée hors couverture : le champ n'en retiendrait qu'une correction moyenne. Le raisonnement qui vaut pour MODIS et GRACE, dont la couverture est complète, ne se transpose donc pas tel quel.
 
 **Deux issues.** Accepter que le gain porte sur les 11 pour cent cartographiés, où se trouvent les usages, les prélèvements, la plupart des jauges et les petits bassins de la plaine. Ou chercher la même variable à couverture provinciale complète, c'est-à-dire une cartographie des dépôts de surface, plus grossière que le 1:20 000 de l'IRDA mais entière. Pour un modèle provincial, la seconde vaut mieux, et elle est à vérifier avant d'engager le chantier.
+
+---
+
+## R105 — Le rabotage des pointes n'existe que dans les basses-terres ; ailleurs le modèle est trop nerveux (2026-09-15) — ÉTABLI
+
+Mesure sur les caches par station de la période d'évaluation 2022-2024, refaits le 15 septembre avec les champions déployés, quatorze régions.
+
+| région | stations | pointes sim/obs | nervosité | excès de platitude | KGE |
+|---|---:|---:|---:|---:|---:|
+| Montérégie | 23 | 0,76 | 0,64 | +7,4 pt | 0,601 |
+| Saint-Laurent sud-ouest | 29 | 0,78 | 0,57 | +4,4 pt | 0,595 |
+| Saint-Laurent nord-ouest | 26 | 0,88 | 0,65 | +5,4 pt | 0,565 |
+| Gaspésie | 15 | 1,03 | 0,94 | -0,5 pt | 0,632 |
+| Côte-Nord C | 2 | 1,23 | 2,12 | -2,9 pt | 0,634 |
+| Côte-Nord B | 2 | 1,25 | 1,49 | -3,8 pt | 0,662 |
+| Saguenay | 19 | 1,26 | 0,91 | -0,9 pt | 0,636 |
+| Outaouais aval | 16 | 1,30 | 1,40 | +1,4 pt | 0,527 |
+| Côte-Nord A | 1 | 1,40 | 2,09 | -8,1 pt | 0,339 |
+| Labrador | 1 | 1,51 | 1,10 | -6,0 pt | 0,765 |
+| Abitibi | 3 | 1,55 | 2,08 | -11,6 pt | 0,592 |
+| Outaouais moyen | 3 | 1,62 | 1,45 | -11,4 pt | 0,424 |
+
+**Aucune région n'a de pointes sous 0,75.** Le déficit de 0,39 à 0,59 qui a motivé le chantier du routage ne décrit aucun déploiement régional courant.
+
+**Deux populations opposées.** Les trois régions des basses-terres du Saint-Laurent portent le sur-lissage : pointes de 0,76 à 0,88, nervosité de 0,57 à 0,65, excès de platitude de 4,4 à 7,4 points. Ce sont les seules dont la nervosité tombe sous 0,70. Partout ailleurs le modèle est trop nerveux : pointes de 1,03 à 1,62, nervosité jusqu'à 2,12, et une platitude INFÉRIEURE à l'observée, jusqu'à 11,6 points de moins.
+
+**Conséquences pour le chantier du routage.** L'épreuve appariée de l'ancre a porté sur le Saguenay et la Gaspésie, qui appartiennent à la seconde population : raccourcir leur temps de transfert ne pouvait qu'aggraver une nervosité déjà excessive. Une épreuve valide doit se faire sur la Montérégie ou le Saint-Laurent sud-ouest. Et un réglage uniforme du routage est faux en principe, puisqu'il faudrait accélérer les basses-terres et ralentir le Bouclier : c'est un argument POUR une ancre géométrique, qui varie avec la longueur et la pente, à condition de la juger région par région et jamais sur une moyenne provinciale.
+
+**Réserve.** Ces chiffres viennent des champions déployés ; les bras de Narval employaient la recette du socle à vingt époques, dont les témoins donnaient 0,81 et 0,95 pour le Saguenay et la Gaspésie contre 1,26 et 1,03 ici. La recette déplace donc le diagnostic, et cette mesure doit être refaite sous la recette qu'on entend éprouver.
