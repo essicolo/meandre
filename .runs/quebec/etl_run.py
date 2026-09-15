@@ -1363,6 +1363,50 @@ if os.environ.get("ETL_DUMP_REACH"):
     print(f"[etl] cache par troncon sauve : {os.environ['ETL_DUMP_REACH']} "
           f"({len(_champs)} champs de parametres)")
 
+    # PASSE NATURALISEE, avec les MEMES POIDS (ETL_DUMP_NATUREL=1).
+    #
+    # C'est la seule facon de calculer un effet RELATIF des prelevements : sans elle on
+    # n'affiche qu'un volume preleve, pas sa part du debit. Et elle doit vivre ICI plutot
+    # que dans un script annexe, pour la raison que le commentaire ci-dessus donne deja :
+    # un cache produit ailleurs porte une autre recette que le run, et mesure alors un
+    # autre modele. Le 2026-09-15, le script annexe employait la recette des champions de
+    # juillet, incompatible avec celle du socle.
+    #
+    # Ne pas confondre avec ETL_SANS_PREVEL, qui met les prelevements a zero pour TOUT le
+    # run, entrainement compris : un modele cale sans prelevements les a deja absorbes
+    # dans ses parametres, et les mettre a zero ensuite ne renaturalise rien.
+    #
+    # Le fichier naturalise ne porte que les grandeurs derivees du debit et les
+    # coordonnees : les parametres du champ sont IDENTIQUES puisque les poids le sont, et
+    # les prelevements y sont nuls par construction.
+    if os.environ.get("ETL_DUMP_NATUREL", "0") == "1":
+        _base = os.environ["ETL_DUMP_REACH"]
+        _sortie_nat = _base[:-4] + "-sans.npz" if _base.endswith(".npz") else _base + "-sans.npz"
+        from meandre.routing.withdrawals import WithdrawalData as _WD
+        with torch.no_grad():
+            _Qn, _ = model.simulate(
+                forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
+                graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
+                withdrawals=_WD.zeros_like(td.withdrawals), day_of_year=td.day_of_year)
+        _Qn = _Qn.cpu().numpy()
+        _qmn = np.stack([_Qn[_moisR == m].mean(axis=0) for m in range(1, 13)])
+        _qmsn = np.stack([_Qn[_cle_mois == m].mean(axis=0) for m in _mois_u])
+        np.savez_compressed(_sortie_nat,
+                            q_mensuel=_qmn.astype(np.float32),
+                            q_annuel=_Qn.mean(axis=0).astype(np.float32),
+                            q_mois_serie=_qmsn.astype(np.float32),
+                            mois_serie=_mois_u.astype(np.int32),
+                            coords=td.node_coords.cpu().numpy(),
+                            prelev_net_abs=np.zeros(n_nodes, dtype=np.float32),
+                            prelev_net_moyen=np.zeros(n_nodes, dtype=np.float32),
+                            prelev_gw_moyen=np.zeros(n_nodes, dtype=np.float32))
+        _eff = 100.0 * (_Qr.mean(axis=0) - _Qn.mean(axis=0)) / np.clip(_Qn.mean(axis=0), 1e-6, None)
+        _gros = _Qn.mean(axis=0) > 1.0
+        print(f"[etl] cache naturalise sauve : {_sortie_nat}")
+        print(f"[etl] effet des prelevements : {int((_eff[_gros] > 1).sum())} tronçons en "
+              f"hausse de plus de 1 %, {int((_eff[_gros] < -1).sum())} en baisse, sur "
+              f"{int(_gros.sum())} à plus de 1 m³/s")
+
 # BIAIS MENSUEL dans le protocole de REFERENCE. Le score seul ne dit pas OU le modele
 # se trompe, et les rapports mensuels vivaient jusqu'ici dans des scripts de diagnostic
 # qui ne reproduisaient pas le pilote. Fevrier est le plus gros ecart connu du champion
