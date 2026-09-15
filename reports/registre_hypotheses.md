@@ -6,7 +6,7 @@ Ce registre est l'inverse : un état COURANT, révisé, où chaque ligne porte u
 
 Statuts : **ÉTABLI** (mesuré, reproductible, toujours valide) · **RÉFUTÉ** (testé, faux) · **CADUC** (mesuré sur une base depuis corrigée, à refaire) · **OUVERT** (test défini, pas encore fait).
 
-Dernière révision : 2026-08-22.
+Dernière révision : 2026-09-15.
 
 ---
 
@@ -1336,3 +1336,24 @@ Plus longue suite de jours consécutifs où le débit varie de moins de 1 pour c
 **Ce que les deux constats donnent ensemble.** Le modèle reproduit correctement la petite variation d'un jour à l'autre là où l'on mesure, et il sait néanmoins tenir un débit constant pendant des semaines ailleurs. Le défaut n'est donc pas diffus, il est LOCALISÉ dans le temps. C'est une piste plus précise que « le modèle est plat » : il faut chercher ce qui gèle la production pendant des blocs de plusieurs semaines, pas ce qui amortit la variabilité en général.
 
 **Correction de ma conclusion antérieure.** J'ai écrit qu'une v5 dédiée à l'hiver corrigerait surtout un artefact de comparaison. Cela vaut pour la première règle, pas pour la seconde. Le grief des longues suites plates tient.
+
+---
+
+## R101 — Le double comptage des rejets portait presque toute la dissymétrie du fichier de prélèvements (2026-09-15) — ÉTABLI
+
+Essi a corrigé le 15 septembre un double comptage des rejets dans le dérivé d'io-eau. Ce que la correction déplace, mesuré sur la période 2001-2024 et par site.
+
+| grandeur | avant | après |
+|---|---:|---:|
+| solde provincial | +62 m³/s | +9,0 m³/s |
+| entrées reconstruites | 1 851 | 318 |
+| part du volume prélevé couverte par un retour | 94 % | 2,7 % |
+| taux de restitution médian | 0,88 | 0,16 |
+
+**Ce qui est réfuté par cette correction.** La phrase qui disait qu'un prélèvement ne retire réellement que douze pour cent de son volume, le reste lui étant restitué sur le tronçon même, était un artefact du double comptage. Un prélèvement retire désormais l'essentiel de son volume, et la naturalisation repose sur des volumes déclarés des deux côtés du bilan plutôt que sur une règle de retour supposée.
+
+**Ce qui reste, et devient l'explication entière de la dissymétrie.** Parmi les lignes déclarées, la surface est excédentaire de 15 m³/s et le souterrain déficitaire de 7 : de l'eau prise dans la nappe et rendue au cours d'eau. Le fichier porte l'origine de l'eau mais pas le secteur d'activité, donc l'attribution à un usage précis reste non vérifiable.
+
+**Effet régional.** Au Saguenay, le terme net de surface change de signe, de +1,39 à -0,14 m³/s. En Gaspésie il passe de +2,90 à +1,65. Le terme souterrain ne bouge dans aucune région, ce qui confirme que le double comptage était entièrement dans les rejets de surface.
+
+**Conséquence sur les résultats publiés.** Les quinze bases régionales sont réingérées. Les caches de naturalisation, donc la carte de l'effet simulé et les hydrogrammes gérés contre naturalisés, ont été refaits le 15 septembre. Les POIDS, eux, ont été ajustés avec les rejets doublés : l'écart de naturalisation reste valide puisque les deux passes partagent les mêmes poids, mais le calage a absorbé une part d'un flux fictif, et seul un recalage le corrigera. Toute conclusion tirée de la valeur ABSOLUE des paramètres de sol des champions actuels est donc à considérer comme caduque jusqu'à ce recalage.
