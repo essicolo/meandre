@@ -17,6 +17,8 @@ aujourd'hui une colonne de zeros faute de donnee.
 import os
 import sys
 
+from pathlib import Path
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -66,7 +68,7 @@ def une_region(reg, irda):
     inter["aire"] = inter.geometry.area
     uh["aire_uhrh"] = uh.geometry.area
 
-    tr = _parse_troncon(f"{proj}/physitel/troncon.trl")
+    tr = _parse_troncon(Path(f"{proj}/physitel/troncon.trl"))
     lignes = []
     a_uhrh = dict(zip(uh.uhrh, uh.aire_uhrh))
     for cat, col_ in (("drainage", DRAIN), ("materiau", MATER), ("roc", ["AFFLEUREMENT"])):

@@ -1402,3 +1402,32 @@ Le code ne fait plus cette erreur. Le commit du 3 septembre, « le bloc métriqu
 **Correctif à appliquer, mais pas à chaud.** Deux gestes chirurgicaux qui préservent l'ordre des nœuds, donc la validité des points de reprise : remettre dans `edges` la longueur du lac à la racine de sa surface, que `troncon.trl` permet de recalculer ; puis recalculer `dist_to_outlet_km` dans les attributs provinciaux. Une reconstruction complète des bases par `build_regions.py` corrigerait aussi, mais elle risque de déplacer la numérotation des nœuds et invaliderait tout ce qui existe.
 
 **Leçon de méthode.** Un correctif de lecture ne vaut rien tant que les caches qu'il alimente n'ont pas été refaits. Il faudrait que la construction d'un cache inscrive l'empreinte du code qui l'a produit, comme le fait déjà `HydroModel.save` pour les points de reprise.
+
+---
+
+## R104 — Le biais de volume du modèle est organisé par le matériau parental, que le modèle ne reçoit pas (2026-09-15) — ÉTABLI
+
+Croisement de la couverture pédologique de l'IRDA, 680 feuillets au 1:20 000, avec les unités hydrologiques de PHYSITEL, puis agrégation au tronçon par la même moyenne pondérée par l'aire que les attributs existants. Sept régions, 20 087 tronçons, dont 6 264 couverts à plus de la moitié de leur surface. Cumul amont sur le bassin de chaque station, puis comparaison au biais de volume mesuré sur 2022-2024. Aucun entraînement.
+
+Sur les 69 stations dont le bassin est couvert à plus de 50 pour cent, aire médiane 367 km², corrélations de rang avec le rapport des moyennes simulée sur observée :
+
+| attribut | rho brut | rho à aire contrôlée | p |
+|---|---:|---:|---:|
+| matériau till | -0,532 | -0,524 | < 0,00001 |
+| matériau sable | +0,500 | +0,493 | 0,00002 |
+| matériau argile | +0,394 | +0,388 | 0,00098 |
+| matériau organique | +0,291 | +0,280 | 0,02 |
+| classe de drainage | de -0,09 à +0,19 | — | > 0,4 |
+| affleurement rocheux | +0,032 | +0,040 | 0,74 |
+
+**Ampleur.** Entre le quartile pauvre en till, moins de 32 pour cent de la surface, et le quartile riche, plus de 75 pour cent, le rapport des moyennes passe de 1,112 à 0,868 et le KGE médian de 0,727 à 0,578. Pour le sable, de 0,941 à 1,226 entre les quartiles extrêmes. Le modèle assèche donc les bassins de till d'environ treize pour cent et noie ceux de sable d'environ vingt-trois.
+
+**Ce n'est pas un effet de taille.** Contrôler par le logarithme de l'aire drainée ne déplace les corrélations que de 0,01. Sur les 29 stations de moins de 300 km² prises seules, l'effet est au moins aussi fort : till -0,478 avec p = 0,009, sable +0,597 avec p = 0,0006.
+
+**Pourquoi le modèle ne peut pas le voir.** Il reçoit trois pourcentages granulométriques, sable, limon et argile. Un till et un sable délavé peuvent partager la même granulométrie et se comporter à l'inverse, le till étant compact, souvent surmonté d'une couche perméable, et reposant sur un substrat peu conducteur. Le matériau parental est une classification génétique qui porte cette différence ; la granulométrie ne la porte pas.
+
+**Mécanisme plausible, non vérifié.** Sur un till classé comme loam, le champ prédit une conductivité modérée, l'eau percole vers la réserve profonde et, la vidange étant trop lente, elle ne ressort pas dans la période : déficit de volume. Sur un sable, la conductivité prédite est forte mais le substrat imperméable réel produit un écoulement hypodermique rapide que le modèle envoie en profondeur, d'où l'excès inverse. À éprouver.
+
+**La classe de drainage, elle, n'explique rien du biais de volume.** C'était l'attribut que j'attendais ; il ne sort pas. Cela n'élimine pas son intérêt comme contrainte sur les paramètres, mais son apport comme entrée explicative du biais est nul sur cet échantillon.
+
+**Limites.** 69 stations, sept régions, et uniquement là où la couverture pédologique dépasse la moitié du bassin, donc surtout les basses-terres agricoles. La relation est une corrélation : les bassins de till diffèrent aussi par leur position sur le Bouclier, même si le contrôle par l'aire ne change rien.
