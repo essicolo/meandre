@@ -1506,7 +1506,11 @@ Banc de fonction de perte, 77 stations complètes, neuf régions. On déforme l'
 
 **Poids retenu : 1,0.** Il pèse alors environ treize pour cent du total sur une simulation réelle. ATTENDU, énoncé avant l'épreuve : il supprime la préférence pour le lissage sur environ quatre-vingt-dix pour cent des stations, et sur un peu moins de la moitié pour le rabotage des pics.
 
-**Pourquoi ne pas monter à 2,69.** Le terme pèserait trente pour cent du total, et la mesure du même jour montre que huit régions sur quatorze sont déjà trop nerveuses, avec des rapports de pointes jusqu'à 1,62. Un terme qui pousse à la nervosité les aggraverait. Le poids vise le défaut avéré, le sur-lissage des basses-terres, et non celui qui ne l'est pas.
+**Pourquoi ne pas monter à 2,69.** Le terme pèserait trente pour cent du total, ce qui est trop pour un terme unique à côté de cinq autres.
+
+**CORRECTION d'un argument que j'avais avancé.** J'avais écarté 2,69 en disant qu'un terme sur les variations pousserait à la nervosité et aggraverait les huit régions déjà trop nerveuses. C'est faux. Le commentaire du pilote, écrit le 2026-09-05, énonce que ce terme est le SEUL de la perte qui punisse SYMÉTRIQUEMENT le plateau et la nervosité, là où gamma compare des écarts-types de niveau qu'un plateau à la bonne moyenne satisfait. Il compare des écarts-types de VARIATIONS, donc un excès comme un défaut lui coûtent.
+
+**Attendu renforcé, et plus facile à réfuter.** Le terme doit améliorer les DEUX populations mesurées le même jour : les trois régions des basses-terres dont la nervosité vaut 0,57 à 0,65, et les régions dont elle dépasse 1, jusqu'à 2,12. Si le bras des variations n'améliore que l'une des deux, la propriété de symétrie annoncée par le code est fausse et il faudra le dire.
 
 ---
 
