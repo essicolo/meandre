@@ -1507,3 +1507,19 @@ Banc de fonction de perte, 77 stations complètes, neuf régions. On déforme l'
 **Poids retenu : 1,0.** Il pèse alors environ treize pour cent du total sur une simulation réelle. ATTENDU, énoncé avant l'épreuve : il supprime la préférence pour le lissage sur environ quatre-vingt-dix pour cent des stations, et sur un peu moins de la moitié pour le rabotage des pics.
 
 **Pourquoi ne pas monter à 2,69.** Le terme pèserait trente pour cent du total, et la mesure du même jour montre que huit régions sur quatorze sont déjà trop nerveuses, avec des rapports de pointes jusqu'à 1,62. Un terme qui pousse à la nervosité les aggraverait. Le poids vise le défaut avéré, le sur-lissage des basses-terres, et non celui qui ne l'est pas.
+
+---
+
+## R107 — Les plateaux d'hiver ne sont pas récompensés par la perte : c'est la physique du gel qui est absente (2026-09-15) — ÉTABLI
+
+Deux mesures indépendantes se rejoignent, et elles déplacent la recherche.
+
+**La perte rejette déjà un hiver figé, vigoureusement.** Banc de déformation sur 77 stations : face à la série nette décalée d'un jour, un hiver remplacé par une récession exponentielle est noté 49,9 pour cent PLUS CHER par la recette, et elle ne le préfère sur AUCUNE station. Le terme des variations d'un jour le rejette aussi, sur cent pour cent des stations. Les plateaux ne sont donc pas une affaire d'incitation : aucun réglage de poids ne les fera disparaître, puisque la perte les combat déjà.
+
+**Or le modèle en produit de 74 à 116 jours.** Les six bras de l'épreuve de routage du même jour reçoivent tous le verdict de forme « FORME REFUSÉE (plateaux) », avec des platitudes de 17,6 à 46,1 pour cent contre 12 à 14 pour cent dans l'observé. Si la perte les combat et qu'ils persistent, c'est que le modèle ne SAIT PAS produire un hiver mouvant.
+
+**La physique du gel est absente ou indifférenciée.** Le champion de la Montérégie porte 37 sorties de champ sur 42. Les cinq manquantes sont `krec`, `diff_gel`, `fs_neige` et les deux écarts de canopée : elles sont remplies de zéros au chargement, donc figées au milieu de leurs bornes et identiques sur tous les tronçons. Deux d'entre elles, la diffusivité thermique apparente et l'amortissement par le couvert nival, sont précisément les paramètres du gel. Le seul paramètre de gel présent, `frost_alpha`, a une norme de ligne de 0,0562 pour une médiane de 0,0592, donc dans le dernier décile : le champ ne le différencie pas non plus.
+
+**La fonte, elle, est bien apprise,** et n'est donc pas en cause : le facteur de fonte a une norme de 0,419 et la température de fonte 0,448, soit sept fois la médiane. Les paramètres les mieux appris sont les porosités, 0,68, les épaisseurs de couche, 0,67, et les conductivités, 0,61.
+
+**Conséquence, et attendu énoncé d'avance pour l'épreuve de la nuit du 15 au 16 septembre.** Les deux bras portent des étiquettes neuves, donc aucun point de reprise ne leur correspond et ils partent à FROID, avec les quarante-deux sorties. La physique du gel y sera entraînée pour la première fois. Si les plateaux viennent bien de là, les deux bras doivent montrer des suites plates nettement plus courtes que les 74 à 116 jours mesurés le matin, et cela INDÉPENDAMMENT du terme des variations, qui ne les vise pas.

@@ -53,10 +53,12 @@ def distance_exutoire(nd, ed, lg_par_noeud):
     return d / 1000.0
 
 
-def main(appliquer):
+def main(appliquer, regions=None):
     racine = _paths.DATA_ROOT
     rapport = []
-    for reg in REGIONS:
+    # Sur une tache de grappe, une seule base est copiee sur le noeud : balayer les quinze
+    # ferait quatorze messages d'absence. On accepte donc une region en argument.
+    for reg in (regions or REGIONS):
         base = f"{racine}/quebec/{reg}.duckdb"
         if not os.path.exists(base):
             continue
@@ -130,4 +132,5 @@ def main(appliquer):
 
 
 if __name__ == "__main__":
-    sys.exit(main("--appliquer" in sys.argv))
+    _regs = [a.lower() for a in sys.argv[1:] if not a.startswith("--")]
+    sys.exit(main("--appliquer" in sys.argv, _regs or None))
