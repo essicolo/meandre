@@ -1357,3 +1357,32 @@ Essi a corrigé le 15 septembre un double comptage des rejets dans le dérivé d
 **Effet régional.** Au Saguenay, le terme net de surface change de signe, de +1,39 à -0,14 m³/s. En Gaspésie il passe de +2,90 à +1,65. Le terme souterrain ne bouge dans aucune région, ce qui confirme que le double comptage était entièrement dans les rejets de surface.
 
 **Conséquence sur les résultats publiés.** Les quinze bases régionales sont réingérées. Les caches de naturalisation, donc la carte de l'effet simulé et les hydrogrammes gérés contre naturalisés, ont été refaits le 15 septembre. Les POIDS, eux, ont été ajustés avec les rejets doublés : l'écart de naturalisation reste valide puisque les deux passes partagent les mêmes poids, mais le calage a absorbé une part d'un flux fictif, et seul un recalage le corrigera. Toute conclusion tirée de la valeur ABSOLUE des paramètres de sol des champions actuels est donc à considérer comme caduque jusqu'à ce recalage.
+
+---
+
+## R102 — L'ancrage géométrique du routage corrige les pointes et dégrade tout le reste : les vingt-quatre heures étaient une béquille (2026-09-15) — ÉTABLI
+
+Épreuve appariée sur Narval, tâche 3093071, six tâches terminées de 1 h 34 à 2 h 44, deux régions et trois bras, même graine, vingt époques. Témoin : bornes du temps de transfert 4, 48, 24 heures. Bornes : 0,2, 48, 2 sans ancre. Ancre : mêmes bornes avec K = L / c.
+
+L'ancre s'est posée comme au contrôle : médiane 0,98 heure au Saguenay et 0,61 en Gaspésie, 348 et 63 lacs laissés libres, longueur de rivière médiane 5,7 et 3,6 kilomètres.
+
+| région | bras | KGE médian | jours plats | été | suite plate | pointes sim/obs | q99 sim/obs |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Saguenay | témoin | 0,778 | 28,6 % | 21,6 % | 96 j | 0,81 | 1,21 |
+| Saguenay | bornes | 0,740 | 27,4 % | 17,5 % | 75 j | 1,08 | 1,17 |
+| Saguenay | ancre | 0,701 | 46,1 % | 47,3 % | 116 j | 1,11 | 1,23 |
+| Gaspésie | témoin | 0,810 | 25,6 % | 9,8 % | 74 j | 0,95 | 1,00 |
+| Gaspésie | bornes | 0,558 | 28,4 % | 14,5 % | 93 j | 1,46 | 1,36 |
+| Gaspésie | ancre | 0,595 | 17,6 % | 1,9 % | 79 j | 1,33 | 1,32 |
+
+Observé : 14,1 et 12,1 pour cent de jours plats, 4,1 et 4,4 pour cent en été.
+
+**Le mécanisme visé fonctionne.** Le rapport des pointes annuelles passe de 0,81 à 1,11 au Saguenay et de 0,95 à 1,33 en Gaspésie. Le rabotage est corrigé, et dépassé.
+
+**Le modèle est pourtant plus mauvais partout.** Le KGE médian perd 0,077 au Saguenay et 0,215 en Gaspésie. Au Saguenay la platitude empire fortement, de 28,6 à 46,1 pour cent de jours plats et de 96 à 116 jours pour la plus longue suite, ce qui est l'inverse du but recherché.
+
+**Erreur de méthode, celle-là même qu'une condition préalable du fichier de consignes interdit.** Le témoin doit porter le défaut à corriger. Or les pointes du témoin valaient 0,81 au Saguenay et 0,95 en Gaspésie, avec un quantile 99 à 1,00 : ces deux régions ne rabotaient presque pas, alors que la mesure régionale qui a motivé le chantier donnait 0,39 à 0,59. L'ancre ne pouvait donc que dépasser la cible.
+
+**Ce que l'épreuve établit malgré cela, et c'est la conclusion utile.** Le temps de transfert de vingt-quatre heures n'était pas un défaut exploité par l'optimiseur, c'était une compensation. La mesure du 2026-09-14 donne une variabilité des variations d'un jour de 1,350 pour la production de la colonne contre 0,437 pour l'observé, le réseau en retirant 87 pour cent. Retirer l'atténuation du canal sans corriger la colonne expose le défaut au lieu de le guérir : les pointes montent au-dessus de un, le quantile 99 monte avec elles, la corrélation se casse et le score suit.
+
+**Conséquence sur le chantier.** L'ancre n'est pas adoptée seule. La cible n'est pas le canal mais la réponse du versant, c'est-à-dire ce qui sépare la production de la colonne de l'entrée dans le canal. L'hydrogramme unitaire de versant, présent dans le dépôt et débranché, est le mécanisme prévu pour cela, et il est conçu pour aller avec un canal peu atténuant. La prochaine épreuve doit les juger ENSEMBLE, et sur une région dont le témoin porte réellement le défaut, ce que ni le Saguenay ni la Gaspésie ne font.
