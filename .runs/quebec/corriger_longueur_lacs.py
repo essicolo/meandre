@@ -90,8 +90,13 @@ def main(appliquer):
             # la seule table des aretes ne changerait rien pour le modele.
             _cx2 = duckdb.connect(base)
             try:
+                # La table territoriale stocke les canaux continus CENTRES ET REDUITS,
+                # moyenne nulle et ecart-type un ; y ecrire des kilometres bruts placerait
+                # ce canal sur une echelle cent fois celle des quinze autres. Bevue commise
+                # puis corrigee le 2026-09-15.
+                _z = (d_apres - d_apres.mean()) / (d_apres.std() + 1e-9)
                 _cx2.register("_d", pd.DataFrame({"node_idx": nd.node_idx.values.astype(int),
-                                                  "dd": d_apres.astype("float32")}))
+                                                  "dd": _z.astype("float32")}))
                 _cx2.execute("UPDATE territorial SET dist_to_outlet_km = "
                              "(SELECT dd FROM _d WHERE _d.node_idx = territorial.node_idx)")
                 print(f"{reg}: distance à l'exutoire corrigée dans la table territoriale")
