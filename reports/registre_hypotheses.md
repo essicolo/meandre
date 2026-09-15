@@ -1485,3 +1485,19 @@ Un modèle calé en Gaspésie et posé sur l'Abitibi produit donc un débit deux
 **Et la nervosité ne se prédit pas par le territoire.** Sur les 143 stations, elle forme un continuum, médiane 0,86 et du premier au neuvième décile 0,39 à 1,89, non deux amas. Le meilleur attribut explicatif est l'ordre de Strahler à -0,467, puis la fraction urbaine à -0,315. Une prédiction par l'ensemble des attributs du bassin amont donne un R² de +0,08 en retirant des stations au hasard mais de -0,27 en retirant des RÉGIONS entières, donc pire que de prédire la moyenne générale. Rien ne généralise.
 
 **Conséquence de méthode, qui vient d'Essi.** Un ancrage réglé par région ajusterait un artefact de production ; la région est un artefact et non une entité hydrologique. Le diagnostic du routage ne peut pas se trancher sur des caches qui mélangent six modèles calés et un modèle transféré six fois. Il faut un modèle unique sur tout le domaine, une validation croisée par stations et par régions retirées, et le travail porte alors sur la fonction de perte.
+
+---
+
+## R106 — Le terme des variations d'un jour est le seul qui ne préfère jamais une série lissée (2026-09-15) — ÉTABLI
+
+Banc de fonction de perte, 77 stations complètes, neuf régions. On déforme l'hydrogramme observé comme le modèle se trompe et on demande à chaque terme s'il préfère l'original. La référence n'est pas la vérité mais la série NETTE DÉCALÉE D'UN JOUR, parce que c'est le choix réel du modèle : rester net et en retard, ou lisser pour réduire l'écart quotidien.
+
+**La recette du socle récompense le lissage.** Face à un lissage sur sept jours, son total est meilleur de 8,0 pour cent pour la version lissée, et elle la préfère sur 64 pour cent des stations. Elle préfère aussi des pics rabotés sur 23 pour cent des stations. Chacun de ses cinq termes est trompé par le lissage de sept jours : biais de volume -11,0 pour cent, écart quadratique -16,9, écart quadratique logarithmique -15,1, pics -21,3. Seul le KGE résiste, +46,0.
+
+**Le terme des variations d'un jour ne l'est jamais.** Il préfère la série nette dans cent pour cent des cas, pour les six déformations. Et il est quasi insensible à un décalage pur : sa valeur sur la série nette décalée vaut 8·10⁻¹⁰, contre des ordres de grandeur au-dessus dès qu'on lisse. Il pénalise donc le défaut qu'on veut combattre et ignore l'erreur de calendrier que le modèle ne peut pas éviter.
+
+**Ce terme existe dans la perte, sous le nom `w_dq`, et n'est pas dans la recette du socle,** dont les poids sont KGE 1,0, biais de volume 0,5, écart quadratique 0,1, écart quadratique logarithmique 0,3 et pics 0,5.
+
+**Réserve sur l'ampleur.** Le banc déforme l'observation elle-même, de sorte que la série de référence est la vérité décalée et que le terme y vaut presque zéro par construction. Sur une simulation réelle, les deux séries diffèrent partout et les rapports seraient bien plus modestes. La conclusion qualitative tient, l'ampleur chiffrée non : le poids devra être trouvé, pas déduit du banc.
+
+**Ce que cela ouvre.** Une épreuve appariée à deux bras, données identiques et une seule différence, le terme ajouté ou non. C'est la question que la journée a isolée : la perte récompense-t-elle encore le lissage une fois qu'on lui adjoint le seul terme qui ne s'y laisse pas prendre.
