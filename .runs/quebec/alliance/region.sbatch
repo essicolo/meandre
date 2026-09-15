@@ -76,7 +76,8 @@ SFX=${JOINT_FX_SUFFIX:--budyko}
 # cas ou la compilation apporte le plus. ETL_COMPILE=0 pour s'en passer.
 # RECETTE DU SOCLE, identique au poste : sol impose sauf K_sat et porosites, Linacre
 # calee, seuil pluie/neige au bulbe humide, fonte regionale ancree, aquifere.
-env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \n    ETL_COMPILE=${ETL_COMPILE:-1} \
+env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \
+    ETL_COMPILE=${ETL_COMPILE:-1} \
     ETL_WSNOW=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_INIT_HYDROTEL=sauf_ks \
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
     "${AUX[@]}" ETL_SEUIL_NEIGE=0 ETL_SEUIL_TWB=-0.8 ETL_MELT_SAISON=0.5 \
