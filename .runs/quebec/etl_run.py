@@ -763,33 +763,98 @@ if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
 # et le coefficient de ponderation 0,202 a 0,006 pres, donc les deux sont constants ; la
 # ligne de poids qui les produit a une norme de 0,058 contre 0,878 pour la conductivite a
 # saturation. Le routage est reste a son initialisation, faute de gradient. Or le temps de
-# parcours physique d'un troncon median de 7,1 km vaut 2,0 h, contre 24 h initialisees.
+# parcours physique d'un troncon de riviere median, 5,7 km au Saguenay, vaut environ une
+# heure, contre 24 h initialisees.
 # L'ancre pose K = L / c par troncon et laisse le reseau moduler autour.
 if os.environ.get("ETL_ROUTAGE_ANCRE", "0") == "1":
-    _lg = None
+    # La longueur vient de l'attribut d'arete du graphe, en metres, rangee cote amont. Deux
+    # pieges ont ete payes le 2026-09-15 : le graphe est sur le GPU sur la grappe et l'etait
+    # deja quand l'affectation indexee visait un tenseur CPU, ce qui levait une erreur avalee
+    # par le except et faisait croire la donnee absente ; et la pente etait lue dans une
+    # variable posee par l'ancrage d'exutoire, donc absente des que celui-ci est inactif, si
+    # bien que l'ancre serait tombee a celerite constante sans le dire. Tout est desormais lu
+    # sur le CPU, la pente independamment, et chaque echec nomme sa cause.
+    _lg, _src = None, ""
     try:
-        _ei = td.graph.edge_index
+        _ei = td.graph.edge_index.detach().cpu().long()
         _ea = getattr(td.graph, "edge_attr", None)
-        if _ea is not None and _ea.shape[-1] >= 1:
-            _lg = torch.zeros(n_nodes)
-            _lg[_ei[0].long()] = _ea[:, 0].float() / 1000.0   # metres -> km, cote amont
+        if _ea is None:
+            raise ValueError("graphe sans attribut d'arete")
+        _ea = _ea.detach().cpu().float()
+        if _ea.shape[-1] < 1 or _ea.shape[0] != _ei.shape[1]:
+            raise ValueError(f"attribut d'arete de forme {tuple(_ea.shape)}")
+        _lg = torch.zeros(n_nodes)
+        _lg[_ei[0]] = _ea[:, 0] / 1000.0
+        _src = "attribut d'arete du graphe"
+        if float(_lg.max()) <= 0.002:
+            raise ValueError(f"longueurs constantes ou nulles (max {float(_lg.max()) * 1000:.1f} m)")
     except Exception as _e:
-        print(f"[etl] longueur de tronçon indisponible : {type(_e).__name__}")
-    if _lg is None or float(_lg.max()) <= 0:
-        print("[etl] ancrage du routage IGNORÉ : longueur de tronçon absente du graphe")
+        _lg = None
+        print(f"[etl] longueur d'arete indisponible ({type(_e).__name__}: {_e}), "
+              f"lecture directe de la table des aretes")
+        try:
+            import duckdb as _ddb
+            _cx = _ddb.connect(f"{_paths.DATA_ROOT}/quebec/{REG}.duckdb", read_only=True)
+            _ed = _cx.sql("select src, edge_attr_0 from edges").fetchdf()
+            _cx.close()
+            _lg = torch.zeros(n_nodes)
+            _lg[torch.tensor(_ed["src"].values, dtype=torch.long)] = torch.tensor(
+                _ed["edge_attr_0"].values / 1000.0, dtype=torch.float32)
+            _src = "table des aretes de la base"
+        except Exception as _e2:
+            print(f"[etl] table des aretes illisible ({type(_e2).__name__}: {_e2})")
+            _lg = None
+    if _lg is None or float(_lg.max()) <= 0.002:
+        # Le 2026-09-15, une tache de controle a tourne six heures sous l'etiquette de
+        # l'ancrage en etant en realite le temoin, parce que ce cas se contentait d'un
+        # avertissement. Un bras qui ne porte pas ce qu'il annonce est pire qu'un bras mort.
+        raise SystemExit("[etl] ancrage du routage DEMANDÉ mais aucune longueur de tronçon "
+                         "exploitable : la tâche s'arrête plutôt que de se faire passer "
+                         "pour un bras ancré")
     else:
+        # LES LACS SORTENT DE L'ANCRAGE. Mesure du 2026-09-15 sur le Saguenay : la colonne
+        # de longueur vaut 461 km en mediane sur un noeud de lac contre 5,7 km sur un
+        # troncon de riviere, et 344 des 357 aretes de plus de 50 km sont des lacs. Ce
+        # n'est donc pas une longueur de chenal mais un perimetre de rive. L'attenuation
+        # d'un lac est de toute facon portee par le module de lac et ses parametres appris.
+        # Un lac recoit NaN et garde le parametre borne libre.
+        _lac = None
+        try:
+            _lac = td.graph.is_lake.detach().cpu().bool()
+        except Exception as _e4:
+            print(f"[etl] masque de lac indisponible : {type(_e4).__name__}: {_e4}")
+        _riv = (_lg > 0) if _lac is None else ((_lg > 0) & (~_lac))
+        # Un noeud sans arete sortante, l'exutoire notamment, resterait a zero et recevrait
+        # la borne basse de la longueur. Il recoit la mediane des troncons de riviere.
+        _med = float(_lg[_riv].median())
+        _nz = int((_lg <= 0).sum())
+        _nlac = 0 if _lac is None else int(_lac.sum())
+        _lg = torch.where(_lg > 0, _lg, torch.full_like(_lg, _med))
+        if _lac is not None:
+            _lg = torch.where(_lac, torch.full_like(_lg, float("nan")), _lg)
         _pente = None
         try:
-            _pente = torch.tensor(_rw["mean_slope_pct"].values / 100.0, dtype=torch.float32)
-        except Exception:
-            pass
+            import pandas as _pda
+            _rwa = _pda.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
+            _rwa = _rwa[_rwa.region == REG]
+            if len(_rwa) == n_nodes:
+                _pente = torch.tensor(_rwa["mean_slope_pct"].values / 100.0, dtype=torch.float32)
+            else:
+                print(f"[etl] pente de versant ignorée ({len(_rwa)} vs {n_nodes} nœuds)")
+        except Exception as _e3:
+            print(f"[etl] pente de versant indisponible : {type(_e3).__name__}: {_e3}")
         model.spatial_encoder.set_routing_anchor(
             _lg, slope_frac=_pente,
             celerite_ms=float(os.environ.get("ETL_CELERITE", "1.0")))
         _ka = model.spatial_encoder._k_musk_anchor
-        print(f"[etl] ancrage du routage : K = L/c | ancre méd {float(_ka.median()):.2f} h "
-              f"| q10-q90 {float(_ka.quantile(0.1)):.2f}-{float(_ka.quantile(0.9)):.2f} h "
-              f"| longueur méd {float(_lg[_lg > 0].median()):.1f} km")
+        _fi = _ka[torch.isfinite(_ka)]
+        print(f"[etl] ancrage du routage : K = L/c | source {_src} | "
+              f"pente {'lue' if _pente is not None else 'ABSENTE, célérité constante'} | "
+              f"{_nz} nœud(s) sans arête sortante ramenés à la médiane | "
+              f"{_nlac} lac(s) laissés libres")
+        print(f"[etl] ancrage du routage : ancre méd {float(_fi.median()):.2f} h "
+              f"| q10-q90 {float(_fi.quantile(0.1)):.2f}-{float(_fi.quantile(0.9)):.2f} h "
+              f"| longueur de rivière méd {_med:.1f} km")
 if os.environ.get("ETL_LAKE_AREA", "1") == "1":
     # ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
     # DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en

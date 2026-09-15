@@ -649,7 +649,7 @@ class SpatialFieldNetwork(nn.Module):
         self._lake_k_anchor = k0 * _t.clamp((a_ref_km2 / A) ** alpha, max=1.0)
 
     def set_routing_anchor(self, length_km, slope_frac=None, celerite_ms: float = 1.0,
-                           pente_ref: float = 0.005, k_min_h: float = 0.05,
+                           pente_ref=None, k_min_h: float = 0.05,
                            k_max_h: float = 48.0):
         """Ancre le temps de transfert Muskingum sur la GEOMETRIE du troncon.
 
@@ -663,33 +663,53 @@ class SpatialFieldNetwork(nn.Module):
         0,34. Le routage est donc reste a son point de depart, faute de gradient : la perte
         y est plate, mesuree a 4 pour cent du total le 2026-08-09.
 
-        Or le temps de parcours PHYSIQUE d'un troncon median de 7,1 km vaut 2,0 h a un
-        metre par seconde, et 0,4 h au cinquieme centile. L'initialisation constante a 24 h
-        est donc douze fois trop longue, et la borne basse de 4 h reste deux fois trop
-        longue pour le troncon median : l'optimiseur ne peut pas corriger, meme s'il le
-        voulait.
+        Or le troncon de RIVIERE median mesure 5,7 km au Saguenay et 3,6 km en Gaspesie,
+        une fois ecartes les noeuds de lac, et son temps de parcours physique vaut environ
+        une heure a un metre par seconde. L'initialisation constante a 24 h est donc vingt-
+        cinq fois trop longue, et la borne basse de 4 h reste quatre fois trop longue pour
+        le troncon median : l'optimiseur ne peut pas corriger, meme s'il le voulait.
 
         L'ancre remplace la constante par L / c, ou la celerite suit l'onde cinematique,
         c = 5/3 v avec v proportionnelle a la racine de la pente selon Manning. Le reseau
         module ensuite autour de cette ancre au lieu de partir d'une valeur unique. Poser
         None retire l'ancrage et restitue exactement le comportement borne d'avant.
 
-        length_km : (n_nodes,) longueur du troncon en kilometres.
-        slope_frac : (n_nodes,) pente du troncon, sans dimension. None = pente de reference.
+        DEUX PRECISIONS POSEES LE 2026-09-15, chacune apres une mesure sur la region.
+
+        La pente disponible est la pente MOYENNE DU VERSANT du sous-bassin, pas celle du
+        chenal : sa mediane vaut 6,3 pour cent sur le Saguenay, contre les 0,5 pour cent
+        qu'une pente de reference fixe supposait. Le rapport donnait une celerite mediane
+        de six metres par seconde, qui n'est pas une riviere, et 198 troncons collaient a
+        la borne basse. La pente de reference vaut donc par defaut la MEDIANE des pentes
+        fournies : la celerite mediane redevient celle qu'on annonce, et la pente ne fait
+        plus que redistribuer autour, ce qui est la seule chose qu'on sache d'elle.
+
+        Un noeud peut porter NaN dans length_km, et il garde alors le parametre borne
+        libre. C'est le cas des lacs : leur colonne de longueur porte un perimetre de rive,
+        mediane 461 km contre 5,7 km pour un troncon de riviere, et leur attenuation est de
+        toute facon portee par le module de lac et ses propres parametres appris.
+
+        length_km : (n_nodes,) longueur du troncon en kilometres, NaN pour non ancre.
+        slope_frac : (n_nodes,) pente, sans dimension. None = celerite uniforme.
         celerite_ms : vitesse d'ecoulement a la pente de reference, en metres par seconde.
+        pente_ref : pente de reference. None = mediane des pentes fournies.
         """
         if length_km is None:
             self._k_musk_anchor = None
             return
         import torch as _t
-        L = _t.clamp(_t.as_tensor(length_km, dtype=_t.float32), min=0.05) * 1000.0
+        L0 = _t.as_tensor(length_km, dtype=_t.float32)
+        libre = ~_t.isfinite(L0)
+        L = _t.clamp(_t.nan_to_num(L0, nan=1.0), min=0.05) * 1000.0
         if slope_frac is None:
             v = _t.full_like(L, float(celerite_ms))
         else:
             S = _t.clamp(_t.as_tensor(slope_frac, dtype=_t.float32), min=1e-5)
-            v = celerite_ms * _t.sqrt(S / pente_ref)
+            ref = float(pente_ref) if pente_ref is not None else float(S[~libre].median())
+            v = celerite_ms * _t.sqrt(S / max(ref, 1e-5))
         c = (5.0 / 3.0) * _t.clamp(v, min=0.05)
-        self._k_musk_anchor = _t.clamp(L / c / 3600.0, min=k_min_h, max=k_max_h)
+        anc = _t.clamp(L / c / 3600.0, min=k_min_h, max=k_max_h)
+        self._k_musk_anchor = _t.where(libre, _t.full_like(anc, float("nan")), anc)
 
     def lake_params(self, coords: Tensor, territorial: Tensor) -> tuple[Tensor, Tensor]:
         """Paramètres de lac par nœud (k_lake, beta), bornés physiquement.
@@ -837,7 +857,10 @@ class SpatialFieldNetwork(nn.Module):
         else:
             _a = _kanc.to(cols[i].device)
             _mod = torch.exp(torch.clamp(cols[i], -1.5, 1.5))
-            constrained.append(torch.clamp(_a * _mod, min=0.05, max=_KMUSK_MAX)); i += 1
+            _anc = torch.clamp(torch.nan_to_num(_a, nan=1.0) * _mod, min=0.05, max=_KMUSK_MAX)
+            # Un noeud a ancre NaN, un lac notamment, garde le parametre borne libre.
+            constrained.append(torch.where(torch.isfinite(_a), _anc,
+                                           bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX))); i += 1
         # x_musk: Muskingum weighting factor [0.01, 0.49]
         constrained.append(bounded(cols[i], 0.01, 0.49)); i += 1
         # K_c: ETP scaling [0.3, 1.5]. Default ~1.0 (FAO-56 reference).

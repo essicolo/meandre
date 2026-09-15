@@ -4,7 +4,7 @@ Mesure du 2026-09-14 : sur 2 212 troncons du Saguenay, le temps de transfert app
 23,96 h avec un ecart-type de 0,3 h, et le coefficient de ponderation 0,202 a 0,006 pres.
 Les deux sont constants : la sortie de routage du champ n'a pas appris, sa ligne de poids
 ayant une norme quinze fois plus faible que celle de la conductivite a saturation. Or le
-temps de parcours physique d'un troncon median de 7,1 km vaut 2,0 h. L'ancrage remplace la
+temps de parcours physique d'un troncon de riviere median, 5,7 km, vaut environ 1 h. L'ancrage remplace la
 constante par la geometrie ; ces tests fixent son comportement et sa neutralite quand il
 est absent.
 """
@@ -64,7 +64,8 @@ def test_la_pente_accelere_l_ecoulement():
 
 
 def test_l_ancre_donne_un_temps_physique_sur_un_troncon_median():
-    """7,1 km a un metre par seconde : environ 1,2 h avec la celerite cinematique,
+    """7,1 km a un metre par seconde : environ 1,2 h avec la celerite cinematique (ce
+    chiffre est celui d'une arete quelconque ; le troncon de RIVIERE median mesure 5,7 km),
     soit vingt fois moins que l'initialisation constante de 24 h."""
     f, (c, t) = _champ(1), _entrees(1)
     f.set_routing_anchor(torch.tensor([7.1]))
@@ -109,3 +110,46 @@ def test_le_gradient_passe_par_la_modulation():
     assert f.fc_out.weight.grad is not None
     assert torch.isfinite(f.fc_out.weight.grad).all()
     assert float(f.fc_out.weight.grad.abs().sum()) > 0
+
+
+def test_un_noeud_nan_garde_le_parametre_borne_libre():
+    """Les lacs sortent de l'ancrage : leur colonne de longueur porte un perimetre de rive,
+    461 km en mediane contre 5,7 km pour un troncon de riviere sur le Saguenay, et leur
+    attenuation est portee par le module de lac."""
+    f, (c, t) = _champ(4), _entrees(4)
+    with torch.no_grad():
+        libre = f(c, t).K_musk_hours.clone()
+    L = torch.tensor([5.0, float("nan"), 5.0, float("nan")])
+    f.set_routing_anchor(L)
+    with torch.no_grad():
+        k = f(c, t).K_musk_hours
+    assert torch.allclose(k[1], libre[1]), (float(k[1]), float(libre[1]))
+    assert torch.allclose(k[3], libre[3])
+    assert not torch.allclose(k[0], libre[0])
+    assert torch.isfinite(k).all()
+
+
+def test_la_pente_de_reference_vaut_la_mediane_des_pentes_fournies():
+    """La pente disponible est celle du VERSANT, mediane 6,3 pour cent sur le Saguenay. Une
+    reference fixe a 0,5 pour cent donnait une celerite mediane de six metres par seconde et
+    collait 198 troncons a la borne basse."""
+    n = 64
+    f, (c, t) = _champ(n), _entrees(n)
+    torch.manual_seed(3)
+    S = torch.rand(n) * 0.10 + 0.02
+    f.set_routing_anchor(torch.full((n,), 5.0), slope_frac=S)
+    anc = f._k_musk_anchor
+    # A la pente mediane, la celerite vaut 5/3 m/s : un troncon de 5 km prend 0,83 h.
+    attendu = 5000.0 / ((5.0 / 3.0) * 1.0) / 3600.0
+    assert abs(float(anc.median()) - attendu) < 0.05, float(anc.median())
+    assert int((anc <= 0.0501).sum()) == 0
+
+
+def test_le_gradient_passe_aussi_quand_une_part_des_noeuds_est_libre():
+    f, (c, t) = _champ(8), _entrees(8)
+    L = torch.full((8,), 7.1)
+    L[::2] = float("nan")
+    f.set_routing_anchor(L)
+    f(c, t).K_musk_hours.sum().backward()
+    g = f.fc_out.weight.grad
+    assert g is not None and torch.isfinite(g).all() and float(g.abs().sum()) > 0

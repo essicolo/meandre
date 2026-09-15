@@ -18,9 +18,10 @@
 #     troncons et le coefficient de ponderation 0,202 a 0,006 pres : les deux sont
 #     CONSTANTS, la ligne de poids qui les produit ayant une norme de 0,058 contre 0,878
 #     pour la conductivite a saturation. Le routage est reste a son initialisation ;
-#   le temps de parcours physique d'un troncon median de 7,1 km vaut 2,0 h : l'init
-#     constante a 24 h est douze fois trop longue et la borne basse de 4 h reste deux
-#     fois trop longue pour le troncon median.
+#   le troncon de RIVIERE median mesure 5,7 km au Saguenay et 3,6 km en Gaspesie, une
+#     fois ecartes les noeuds de lac dont la colonne de longueur porte un perimetre de
+#     rive, et son temps de parcours physique vaut environ une heure : l'init constante a
+#     24 h est vingt-cinq fois trop longue et la borne basse de 4 h quatre fois.
 #
 # TROIS BRAS, deux regions bien instrumentees, meme graine :
 #   A temoin   bornes 4,48,24, la recette actuelle
@@ -68,6 +69,10 @@ D=$PROJET/meandre/donnees/quebec
 cp "$D/${REG}.duckdb" "$LOCAL/quebec/" 2>/dev/null || true
 cp "$D"/forcing-${REG}*.nc "$LOCAL/quebec/" 2>/dev/null || true
 cp "$D"/*.parquet "$LOCAL/quebec/" 2>/dev/null || true
+# Le dossier de reference de l'evapotranspiration : le pilote le charge des que w_et > 0,
+# et son absence tue la tache apres deux minutes sur un FileNotFoundError. Omis le
+# 2026-09-14 en degraissant region.sbatch, ce qui a coute une soumission.
+cp -r "$D/checkpoints-etbench" "$LOCAL/quebec/" 2>/dev/null || true
 export MEANDRE_DATA="$LOCAL"
 export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 
@@ -78,6 +83,16 @@ case "$BRAS_N" in
   ancre)  KMUSK="0.2,48,2" ; ANCRE=1 ;;
 esac
 echo "=== bras $BRAS_N, region $MAJ, MEANDRE_KMUSK=$KMUSK, ancre=$ANCRE"
+
+# CONTROLE DES UNITES AVANT D'ENTRAINER. Le 2026-09-15, une tache a tourne en annoncant une
+# longueur de troncon absente : le graphe etait sur le GPU et la lecture echouait dans un
+# except muet. Le meme jour, la mesure a montre que la colonne de longueur porte un perimetre
+# de rive sur les noeuds de lac, 461 km en mediane contre 5,7 km sur un troncon de riviere.
+# Ces deux controles coutent quelques secondes et repondent avant six heures de calcul.
+if [ "$ANCRE" = "1" ]; then
+  python .runs/quebec/verifier_ancrage.py || exit 1
+  python .runs/quebec/verifier_ancrage_region.py "$REG" || exit 1
+fi
 
 env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-budyko ETL_FORCE=1 ETL_REGION=$REG \
     ETL_COMPILE=${ETL_COMPILE:-1} MEANDRE_KMUSK="$KMUSK" ETL_ROUTAGE_ANCRE=$ANCRE \
