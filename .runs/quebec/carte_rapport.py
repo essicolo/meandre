@@ -37,6 +37,12 @@ from et_module import compute_demand
 # execution hors du poste d'origine impossible. Defauts inchanges.
 import os as _osp
 _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+# COMPILATION DU NOYAU DE SOL. Le cout d'une passe est domine par le lancement des noyaux
+# sur 9 132 pas journaliers en sequence : mesure du 2026-09-15 sur le Saguenay, plus de
+# trente minutes par passe sous Windows, ou Triton est absent et ou la compilation est
+# donc impossible. Sous Linux elle est disponible et le rapport mesure sur l'entrainement
+# est de trente-cinq pour un. Defaut inchange, active par MEANDRE_COMPILE_SOL=1.
+_COMPILE = _osp.environ.get("MEANDRE_COMPILE_SOL", "0") == "1"
 
 GLOBAL = "best-gasp-etl-ds"
 LOCAUX = {"gasp": "best-gasp-etl-ds", "sagu": "best-sagu-etl-ds", "mont": "best-mont-etl-ds",
@@ -108,7 +114,7 @@ for REG in REGIONS:
                    column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
                    use_latent_codes=lat, latent_mode="additive", spatial_melt=True,
                    routing_mode="operator-lagged", predict_lake_params=True,
-                   compile_soil=False, use_aquifer=True).to(DEVICE)
+                   compile_soil=_COMPILE, use_aquifer=True).to(DEVICE)
     m.load(ck)
     m.eval()
     m.vertical_column.etp_channel = 6

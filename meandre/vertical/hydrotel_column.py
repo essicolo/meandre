@@ -165,7 +165,18 @@ class HydrotelColumn(nn.Module):
                                frozen_gate_continuous=frozen_gate_continuous,
                                horton_precomputed=horton_precomputed)
         if compile_soil:
-            self.soil = torch.compile(self.soil, dynamic=False)
+            # FORMES DYNAMIQUES, opt-in (2026-09-15). A formes fixes, chaque domaine d'une
+            # taille differente recompile de zero : mesure du jour, huit minutes et demie
+            # par region, refaites quinze fois pour refaire les caches de naturalisation,
+            # alors que la passe elle-meme coute cinq minutes et demie. En dynamique, la
+            # taille du domaine devient un argument d'execution et une seule compilation
+            # sert toutes les regions, le cache de l'inductor la reportant d'un processus
+            # a l'autre. Defaut INCHANGE : le mode fixe reste celui qui a ete mesure a
+            # x17,6 sur l'entrainement, et le dynamique peut couter quelques pour cent au
+            # pas. MEANDRE_COMPILE_DYNAMIQUE=1 l'active.
+            import os as _osd
+            _dyn = _osd.environ.get("MEANDRE_COMPILE_DYNAMIQUE", "0") == "1"
+            self.soil = torch.compile(self.soil, dynamic=True if _dyn else False)
         # Ancrage OPTIONNEL sur la calibration Hydrotel (reproduce). None = init
         # NeRF/littérature (objectif ultime : découplé). Posé via set_calibrated_soil.
         self._calib_soil = None
