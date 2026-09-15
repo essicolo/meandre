@@ -74,7 +74,7 @@ def main():
     f.set_routing_anchor(torch.tensor([7.1]))
     with torch.no_grad():
         k = float(f(c, t).K_musk_hours[0])
-    verifie("tronçon médian de 7,1 km : temps physique", 0.3 < k < 6.0, f"{k:.2f} h")
+    verifie("tronçon de 7,1 km : temps physique plausible", 0.3 < k < 6.0, f"{k:.2f} h")
 
     f, (c, t) = champ(64), entrees(64)
     L = torch.full((64,), 7.1)
