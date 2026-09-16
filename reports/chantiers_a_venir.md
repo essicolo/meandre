@@ -212,3 +212,15 @@ Le mécanisme manquant est l'excès d'infiltration sous-journalier, déjà port�
 **Leçon de méthode.** Deux fois dans la même journée, un remède a été éprouvé sur un témoin sain : le terme de forme contre des plateaux qu'un témoin sans plateaux ne pouvait pas révéler, puis l'excès d'infiltration contre un déficit de pointes qu'un sous-bassin à 1,11 ne présentait pas. Vérifier que le témoin porte le défaut fait désormais partie des conditions préalables énoncées dans CLAUDE.md.
 
 **Manque connu, écarté le 2026-09-15 : l'enveloppe probabiliste n'existe que sur le scénario géré.** La passe naturalisée du pilote, `ETL_DUMP_NATUREL`, rejoue la simulation avec les prélèvements à zéro et les mêmes poids, mais elle n'écrit que les grandeurs dérivées du débit, sans les sept quantiles ; et le second étage, celui de la tête de quantiles, ne la déclenche pas du tout. Une naturalisation probabiliste, qui dirait que le débit naturalisé vaut tant plus ou moins tant, demanderait d'ajouter les quantiles à la passe naturalisée puis de reprendre le second étage. Environ une heure de travail et une de calcul. Essi l'a jugée non nécessaire pour l'instant.
+
+## 10. Couches pédologiques de l'IRDA comme attributs territoriaux
+
+Ouvert le 2026-09-16, à court terme. Le champ spatial ne reçoit que trois pourcentages granulométriques pour décrire le sol, et deux petits bassins voisins reçoivent presque sûrement les mêmes. La couverture pédologique de l'IRDA au 1:20 000 donne la classe de drainage naturel, le matériau parental et l'affleurement rocheux. D'autres couches de l'IRDA sont à inventorier et à ingérer par la même voie.
+
+La couverture est partielle et inégale selon la région. Elle touche 54 % des tronçons de Montérégie, 43 % en Outaouais aval, 25 % au Saint-Laurent nord-ouest, 23 % en Gaspésie, 8 % au Saguenay et 2 % en Outaouais moyen. Chaque couche entre donc comme une composition par tronçon : parts de chaque classe, plus une part non cartographiée. Une variable mise à zéro là où la donnée manque confondrait sol inconnu et classe absente. L'absence n'est pas aléatoire, l'IRDA ayant surtout cartographié les terres agricoles.
+
+Préalable : la table par tronçon donne une couverture moyenne de 1,32 en Saint-Laurent sud-ouest, donc des polygones comptés deux fois dans `croiser_irda.py`. À corriger avant toute ingestion.
+
+La classe de drainage est celle du sol naturel, pas la présence de drains souterrains, qui concerne justement les sols mal drainés. Le drainage artificiel, avec les bassins de rétention et l'irrigation, est la piste principale pour les stations de Montérégie trop réactives ou déficitaires en volume ; il demande une autre source, par exemple la superficie drainée du Recensement de l'agriculture, à vérifier.
+
+Test : la carte des classes se lit-elle dans le champ appris, et le KGE médian des bassins de moins de 100 km², 0,526 le 2026-09-15, progresse-t-il sans dégrader les autres ? Contrôle du masque : masquer des zones cartographiées ne doit pas changer la simulation plus que l'écart entre deux graines.
