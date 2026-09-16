@@ -112,6 +112,10 @@ SFX=-budyko
 # cas ou la compilation apporte le plus. ETL_COMPILE=0 pour s'en passer.
 # RECETTE DU SOCLE, identique au poste : sol impose sauf K_sat et porosites, Linacre
 # calee, seuil pluie/neige au bulbe humide, fonte regionale ancree, aquifere.
+# ETL_DUMP_Q exporte les series par station AVEC les sept quantiles. AUCUN
+# commentaire a l'interieur de la commande continuee ci-dessous : une ligne de
+# commentaire la TERMINE. Le 2026-09-16, cela a lance le pilote sans ETL_REGION,
+# donc sur la Gaspesie par defaut, et fait echouer ou fausser les 28 taches.
 env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \
     ETL_COMPILE=${ETL_COMPILE:-1} \
     ETL_WSNOW=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_INIT_HYDROTEL=sauf_ks \
@@ -121,8 +125,6 @@ env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \
     ETL_WDQ=$WDQ ETL_QUANTILE=1 \
     ETL_WARM_FROM="$SOCLE" \
     ETL_TAG=-q-$BRAS_N ETL_EPOCHS=${ETL_EPOCHS:-10} \
-    # Les series par station de la periode d'evaluation, AVEC les sept quantiles :
-    # sans cela la tete s'entraine et rien ne sort pour juger l'enveloppe.
     ETL_DUMP_Q="$TRAVAIL/meandre/caches/q-$REG-$BRAS_N.npz" \
     python -u .runs/quebec/etl_run.py
 
