@@ -41,7 +41,7 @@ RACINE = os.environ.get("MEANDRE_QUEBEC", f"{_DATA_ROOT}/quebec")
 SORTIE = f"{RACINE}/regime-stations.csv"
 PLATS = [a.lower() for a in sys.argv[1:]] or [
     "outv", "gasp", "mont", "sagu", "slno", "abit", "slso",
-    "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud"]
+    "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "outm", "vaud"]
 
 
 def entete(sid: str) -> tuple[str | None, float | None]:

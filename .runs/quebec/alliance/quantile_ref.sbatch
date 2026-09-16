@@ -112,6 +112,9 @@ SFX=-budyko
 # cas ou la compilation apporte le plus. ETL_COMPILE=0 pour s'en passer.
 # RECETTE DU SOCLE, identique au poste : sol impose sauf K_sat et porosites, Linacre
 # calee, seuil pluie/neige au bulbe humide, fonte regionale ancree, aquifere.
+# MEANDRE_PAS_PAR_BLOC=1 : sans lui, un seul pas d'Adam par epoque, et la tete du 2026-09-16
+# n'a bouge que de 0,004 depuis son initialisation (couverture a 90 % de 0,14 a 0,90).
+# ETL_LR=1e-2 : sur 1460 pas, couverture a 90 % de 0,84 a 0,94 en 2024, contre 0,76 a 0,87 a 5e-4.
 # ETL_DUMP_Q exporte les series par station AVEC les sept quantiles. AUCUN
 # commentaire a l'interieur de la commande continuee ci-dessous : une ligne de
 # commentaire la TERMINE. Le 2026-09-16, cela a lance le pilote sans ETL_REGION,
@@ -122,7 +125,7 @@ env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \
     ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
     "${AUX[@]}" ETL_SEUIL_NEIGE=0 ETL_SEUIL_TWB=-0.8 ETL_MELT_SAISON=0.5 \
     ETL_AQUIFER=1 ETL_KREC_LIBRE=1 ETL_KGW_FIELD=1 \
-    ETL_WDQ=$WDQ ETL_QUANTILE=1 \
+    ETL_WDQ=$WDQ ETL_QUANTILE=1 MEANDRE_PAS_PAR_BLOC=1 ETL_LR=${ETL_LR:-1e-2} \
     ETL_WARM_FROM="$SOCLE" \
     ETL_TAG=-q-$BRAS_N ETL_EPOCHS=${ETL_EPOCHS:-10} \
     ETL_DUMP_Q="$TRAVAIL/meandre/caches/q-$REG-$BRAS_N.npz" \
