@@ -1559,3 +1559,15 @@ Deux mesures indépendantes se rejoignent, et elles déplacent la recherche.
 **Piste ouverte.** Un poids inférieur à 1,0 conserverait vraisemblablement le gain sur les plateaux en réduisant la perte sur les pointes des régions déjà nerveuses. À éprouver sur l'Outaouais aval et le Saguenay, qui sont les deux qui reculent.
 
 **Le défaut qui a coûté neuf tâches.** `loss.py` lève une erreur sur `L_dq` quand un bloc d'entraînement ne garde aucune station atteignant trente observations valides. Le garde-fou existe dans le dépôt depuis le 9 septembre, mais le paquet expédié la veille ne contenait que le pilote et les scripts, pas le module. Même classe d'incident que la longueur des lacs le matin même : un correctif écrit ici et jamais parvenu là-bas. Le paquet de reprise contient désormais les 223 fichiers du module et des scripts, et le correctif a été éprouvé sur le cas exact avant la resoumission.
+
+---
+
+## R109 — Les modèles de référence du 15 septembre et leur première tête de quantiles n'ont fait qu'un pas d'optimisation par époque (2026-09-16) — ÉTABLI
+
+`reference_variations.sbatch` et `quantile_ref.sbatch` ne posaient pas `MEANDRE_PAS_PAR_BLOC=1`. La recette embarquée dans les points de reprise le confirme : aucune variable de ce nom n'y figure. Le pilote fait donc un pas d'Adam par époque, comme décrit en R78. Les trente époques du modèle déterministe valent trente pas, et les dix de la tête de quantiles en valent dix.
+
+Signature sur la tête de la Montérégie : les biais de la dernière couche valent -0,996 et 1,004 pour une initialisation à -1 et 1. Le quantile à 5 % vaut 0,87 fois la médiane et celui à 95 % 1,14 fois. Sur 2022-2024, la couverture de l'intervalle annoncé à 90 % vaut 0,37 toutes régions confondues.
+
+Tâche 3170422, même socle gelé, avec un pas par bloc et un taux de 1e-2 : couverture de 0,853 à 90 % et de 0,420 à 50 % sur 2022-2024, 144 stations. Le diagramme de Talagrand est plat de la deuxième à la dix-neuvième classe, entre 3,4 et 5,3 %. Sa première classe vaut 5,8 % et sa dernière 9,7 %. Le Saguenay reste à 0,58 et l'Abitibi à 0,66.
+
+Conséquence. R108 compare deux bras qui ne diffèrent que par le terme des variations : la comparaison reste appariée. Mais les deux modèles sont restés proches de leur initialisation, et tout énoncé sur un paramètre appris par ces points de reprise est à suspendre. Le temps de transfert de 4,4 heures en Montérégie en est un exemple : il reflète le départ, pas un choix de l'optimiseur. Le réentraînement avec un pas par bloc est le premier des chantiers à venir.
