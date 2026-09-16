@@ -42,6 +42,7 @@ dependencies = [
     "pyhdf>=0.11.6",
     "truststore>=0.10.4",
     "marimo>=0.24.0",
+    "nuee>=0.2.1",
 ]
 
 [project.optional-dependencies]
