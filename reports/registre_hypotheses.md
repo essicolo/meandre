@@ -1527,3 +1527,35 @@ Deux mesures indépendantes se rejoignent, et elles déplacent la recherche.
 **La fonte, elle, est bien apprise,** et n'est donc pas en cause : le facteur de fonte a une norme de 0,419 et la température de fonte 0,448, soit sept fois la médiane. Les paramètres les mieux appris sont les porosités, 0,68, les épaisseurs de couche, 0,67, et les conductivités, 0,61.
 
 **Conséquence, et attendu énoncé d'avance pour l'épreuve de la nuit du 15 au 16 septembre.** Les deux bras portent des étiquettes neuves, donc aucun point de reprise ne leur correspond et ils partent à FROID, avec les quarante-deux sorties. La physique du gel y sera entraînée pour la première fois. Si les plateaux viennent bien de là, les deux bras doivent montrer des suites plates nettement plus courtes que les 74 à 116 jours mesurés le matin, et cela INDÉPENDAMMENT du terme des variations, qui ne les vise pas.
+
+---
+
+## R108 — Le terme des variations d'un jour règle les plateaux d'hiver et relève le KGE, au prix des pointes là où elles étaient bonnes (2026-09-15) — ÉTABLI
+
+Épreuve appariée sur Narval, tâche 3117503, vingt-huit tâches, quatorze régions et deux bras, données corrigées et recette identique : seule différence, `w_dq` à 0 ou à 1,0. Dix-neuf tâches terminées, neuf régions avec leurs deux bras. Les neuf autres ont échoué sur un défaut du code, traité plus bas.
+
+| région | pointes témoin → variations | suite plate (j) | jours plats (%) | KGE |
+|---|---|---|---|---|
+| Montérégie | 0,74 → 0,98 | 52 → 22 | 39,8 → 7,0 | 0,510 → 0,638 |
+| Saint-Laurent nord-ouest | 0,70 → 0,87 | 59 → 35 | 22,9 → 16,7 | 0,652 → 0,677 |
+| Côte-Nord C | 0,80 → 1,09 | 62 → 21 | 33,2 → 17,7 | 0,683 → 0,709 |
+| Abitibi | 1,13 → 1,13 | 52 → 5 | 19,5 → 12,0 | 0,817 → 0,862 |
+| Outaouais aval | 1,04 → 0,81 | 57 → 20 | 31,0 → 14,8 | 0,670 → 0,664 |
+| Gaspésie | 0,95 → 0,95 | 89 → 88 | 26,1 → 29,4 | 0,725 → 0,781 |
+| Saguenay | 0,86 → 0,72 | 98 → 101 | 27,6 → 32,2 | 0,769 → 0,781 |
+| Saint-Laurent sud-ouest | 0,89 → 0,87 | 46 → 49 | 24,7 → 27,4 | 0,654 → 0,643 |
+| Outaouais moyen | 0,86 → 0,77 | 79 → 69 | 17,5 → 21,7 | 0,831 → 0,841 |
+
+**Les plateaux reculent.** La plus longue suite plate passe de 60 jours en médiane à 35. Cinq régions gagnent de 24 à 47 jours ; quatre ne bougent pas.
+
+**Le KGE monte dans sept régions sur neuf,** de +0,010 à +0,128, avec deux reculs de moins de 0,012.
+
+**Les pointes sont le point faible, et l'effet n'est pas symétrique.** Le terme les relève franchement là où elles manquaient, de 0,70 à 0,87, de 0,74 à 0,98 et de 0,80 à 1,09, mais il les abaisse là où elles étaient correctes, de 1,04 à 0,81 dans l'Outaouais aval et de 0,86 à 0,72 au Saguenay. La symétrie annoncée par le commentaire du pilote ne se vérifie donc pas sur les pointes annuelles, même si elle se vérifie sur la platitude.
+
+**ATTENDU RÉFUTÉ.** J'avais prédit, avant l'épreuve, que les suites plates raccourciraient dans les DEUX bras, le départ à froid entraînant la physique du gel pour la première fois. C'est faux : sur les deux régions comparables à l'épreuve du matin, le témoin donne 98 jours au Saguenay contre 96 et 89 en Gaspésie contre 74. Le témoin ne s'améliore pas. L'absence de `diff_gel` et `fs_neige` dans les anciens points de reprise n'explique donc pas les plateaux, et cette piste est éliminée.
+
+**Ce que l'épreuve établit.** Les plateaux d'hiver sont une affaire de fonction de perte et non de physique manquante, et le terme des variations d'un jour les traite. La Montérégie, région la plus faible du domaine, gagne 0,128 de KGE, vingt-quatre centièmes sur ses pointes et trente-trois points de platitude.
+
+**Piste ouverte.** Un poids inférieur à 1,0 conserverait vraisemblablement le gain sur les plateaux en réduisant la perte sur les pointes des régions déjà nerveuses. À éprouver sur l'Outaouais aval et le Saguenay, qui sont les deux qui reculent.
+
+**Le défaut qui a coûté neuf tâches.** `loss.py` lève une erreur sur `L_dq` quand un bloc d'entraînement ne garde aucune station atteignant trente observations valides. Le garde-fou existe dans le dépôt depuis le 9 septembre, mais le paquet expédié la veille ne contenait que le pilote et les scripts, pas le module. Même classe d'incident que la longueur des lacs le matin même : un correctif écrit ici et jamais parvenu là-bas. Le paquet de reprise contient désormais les 223 fichiers du module et des scripts, et le correctif a été éprouvé sur le cas exact avant la resoumission.
