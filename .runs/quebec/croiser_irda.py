@@ -66,11 +66,11 @@ def une_region(reg, irda):
     # Intersection : l'aire de chaque classe dans chaque unite hydrologique.
     inter = gpd.overlay(uh, ir, how="intersection", keep_geom_type=True)
     inter["aire"] = inter.geometry.area
-    uh["aire_uhrh"] = uh.geometry.area
 
     tr = _parse_troncon(Path(f"{proj}/physitel/troncon.trl"))
     lignes = []
-    a_uhrh = dict(zip(uh.uhrh, uh.aire_uhrh))
+    # Une unite hydrologique peut compter plusieurs polygones : son aire est leur somme.
+    a_uhrh = uh.assign(aire=uh.geometry.area).groupby("uhrh").aire.sum().to_dict()
     for cat, col_ in (("drainage", DRAIN), ("materiau", MATER), ("roc", ["AFFLEUREMENT"])):
         g = inter[inter[cat].notna()].groupby(["uhrh", cat]).aire.sum().reset_index()
         for r in g.itertuples():
@@ -100,7 +100,7 @@ def une_region(reg, irda):
     d["couvert"] = d[[c for c in cols if c.startswith("drainage_")]].sum(axis=1)
     print(f"{reg}: {len(d)} tronçons | couverture pédologique médiane "
           f"{100 * d.couvert.median():.0f} % | tronçons couverts à plus de 50 % : "
-          f"{int((d.couvert > 0.5).sum())}")
+          f"{int((d.couvert > 0.5).sum())} | couverture maximale {d.couvert.max():.3f}")
     return d
 
 

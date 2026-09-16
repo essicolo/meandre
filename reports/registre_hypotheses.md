@@ -1571,3 +1571,13 @@ Signature sur la tête de la Montérégie : les biais de la dernière couche val
 Tâche 3170422, même socle gelé, avec un pas par bloc et un taux de 1e-2 : couverture de 0,853 à 90 % et de 0,420 à 50 % sur 2022-2024, 144 stations. Le diagramme de Talagrand est plat de la deuxième à la dix-neuvième classe, entre 3,4 et 5,3 %. Sa première classe vaut 5,8 % et sa dernière 9,7 %. Le Saguenay reste à 0,58 et l'Abitibi à 0,66.
 
 Conséquence. R108 compare deux bras qui ne diffèrent que par le terme des variations : la comparaison reste appariée. Mais les deux modèles sont restés proches de leur initialisation, et tout énoncé sur un paramètre appris par ces points de reprise est à suspendre. Le temps de transfert de 4,4 heures en Montérégie en est un exemple : il reflète le départ, pas un choix de l'optimiseur. Le réentraînement avec un pas par bloc est prévu dans la prochaine ronde de modélisation, après le livrable du 2026-09-30.
+
+---
+
+## R110 — Le croisement de l'IRDA surestimait la couverture, et l'information du matériau parental est plus modeste qu'annoncé (2026-09-16) — ÉTABLI
+
+`croiser_irda.py` prenait l'aire d'une unité hydrologique dans un dictionnaire construit ligne à ligne. Or 2 282 des 8 623 polygones de SLSO, et 1 396 des 5 564 de la Montérégie, portent un identifiant répété : une unité peut compter jusqu'à neuf morceaux. Le dictionnaire gardait l'aire du dernier morceau, souvent 0,01 km², alors que les classes de sol étaient sommées sur tous. La couverture montait ainsi jusqu'à 630 sur un tronçon. Corrigé par la somme des aires par unité ; la couverture plafonne à 1 sur les quinze régions. Les chiffres de R104 reposaient sur la table fautive.
+
+Refait sur la table corrigée et les modèles du 15 septembre, 68 stations couvertes à plus de moitié (29 en SLSO, 20 en Montérégie). La part de till reste corrélée au biais de volume, rho de -0,40, et le sable à +0,48. Mais les attributs actuels le prédisent déjà : en validation croisée par exclusion d'une station, R² de 0,285 sans l'IRDA, 0,308 avec la seule part de till (p de 0,035 contre 200 permutations), 0,271 avec la composition complète. Aucune combinaison ne prédit le KGE. La confusion régionale est forte : le till vaut 0,74 en SLSO pour un biais de -0,16, et 0,03 au Saint-Laurent nord-ouest pour +0,29.
+
+Intégration au champ, mesurée sur le modèle de la Montérégie sans simulation. Le chargeur rembourre les nouvelles colonnes par des poids aléatoires à petite échelle : les paramètres bougent de 0,02 % en médiane et de 0,6 % au pire. Des poids nuls laissent le modèle identique à 1e-6 près. Le gradient sur les nouveaux poids vaut le quart de celui des entrées existantes.
