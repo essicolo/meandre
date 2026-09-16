@@ -35,8 +35,13 @@ def main():
     reseau = gpd.read_parquet(f"{rep}/reseau.parquet")
     contours = pd.read_parquet(f"{rep}/regions-contours.parquet")
     lignes = []
+    modeles = os.environ.get("MEANDRE_MODELES", f"{_paths.DATA_ROOT}/quebec/checkpoints-ref-2026-09-15")
+    bras = os.environ.get("MEANDRE_BRAS", "variations")
     for reg in REGIONS:
-        fa, fs = f"{rep}/rap-{reg}-avec.npz", f"{rep}/rap-{reg}-sans.npz"
+        fa, fs = f"{modeles}/ref-{reg}-{bras}.npz", f"{modeles}/ref-{reg}-{bras}-sans.npz"
+        # Vaudreuil n'a aucune station : son modèle transféré n'a pas été réentraîné.
+        if not os.path.exists(fa):
+            fa, fs = f"{rep}/rap-{reg}-avec.npz", f"{rep}/rap-{reg}-sans.npz"
         if not (os.path.exists(fa) and os.path.exists(fs)):
             continue
         a, s = np.load(fa, allow_pickle=True), np.load(fs, allow_pickle=True)
