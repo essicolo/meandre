@@ -253,9 +253,21 @@ else:
     print(f"[etl] prelevements et rejets ACTIFS"
           + (f" (somme des |termes| = {_wsum:.0f})" if _wsum is not None else ""))
 
+if os.environ.get("ETL_IRDA", "0") == "1":
+    # Propriétés de sol de l'IRDA, ajoutées à l'entrée du champ seulement : la demande
+    # évaporative ci-dessus garde ses F_STATIC colonnes. Un point de reprise sans ces
+    # colonnes les reçoit avec des poids nuls, donc un modèle inchangé au départ.
+    from irda_proprietes import colonnes_noeuds as _irda_colonnes
+    _xi, _noms_irda = _irda_colonnes(REG, r["node_ids"])
+    _terr = r["territorial"]
+    _terr.data = torch.cat([_terr.data, torch.tensor(_xi, device=_terr.data.device)], dim=1)
+    _terr.columns = list(_terr.columns) + _noms_irda
+    os.environ.setdefault("MEANDRE_REMBOURRAGE_NUL", "1")
+    print(f"[etl] IRDA : {len(_noms_irda)} colonnes ajoutées au champ | couverture médiane {float(np.median(_xi[:, -1])):.2f}")
+
 model = HydroModel(
     n_nodes=n_nodes,
-    n_territorial=F_STATIC,
+    n_territorial=r["territorial"].n_features,
     n_forcing=6,
     use_temporal=False,
     use_residual=False,

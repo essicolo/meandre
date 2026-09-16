@@ -25,8 +25,6 @@ import sqlite3
 import sys
 from pathlib import Path
 
-import geopandas as gpd
-import nuee
 import numpy as np
 import pandas as pd
 
@@ -79,6 +77,7 @@ def centre_de_gravite(sommets):
 
 
 def proprietes_composantes():
+    import nuee
     cx = sqlite3.connect(GPKG)
     pp = pd.read_sql("select Composante, Sorte, Classe_drainage, Granulo_1, Profondeur_sol from Proprietes_pedologiques", cx)
     bd = pd.read_sql("select Composante, Sable, Limon, Argile, Permeabilite, Code_structure, Groupe_hydrologique from BDHP_2026", cx)
@@ -124,6 +123,7 @@ def proprietes_polygones(comp):
 
 
 def une_region(reg, poly):
+    import geopandas as gpd
     proj = f"{_paths.PLATFORMS_ROOT}/{PLATE}/{reg.upper()}_{PLATE}_2020"
     uh = gpd.read_file(f"{proj}/physitel/uhrh.shp")
     col = "ident" if "ident" in uh.columns else uh.columns[0]
@@ -159,6 +159,7 @@ def une_region(reg, poly):
 
 
 def main(regions):
+    import geopandas as gpd
     comp = proprietes_composantes()
     print(f"{len(comp)} composantes | texture BDHP {int((comp.texture_source == 'BDHP').sum())}, centre de classe {int((comp.texture_source == 'centre de classe').sum())}, sans texture {int(comp.texture_source.isna().sum())}", flush=True)
     props = proprietes_polygones(comp)
@@ -176,3 +177,25 @@ def main(regions):
 
 if __name__ == "__main__":
     sys.exit(main([a.lower() for a in sys.argv[1:]] or REGIONS))
+
+
+RETENUES = ["ilr_1", "ilr_2", "drainage", "log_permeabilite", "lithique", "organique"]
+
+
+def colonnes_noeuds(reg, node_ids):
+    """Colonnes IRDA pour l'entrée du champ, dans l'ordre des nœuds.
+
+    Chaque propriété est centrée et réduite sur les tronçons couverts à plus de moitié de la
+    province, puis multipliée par sa couverture : un tronçon non cartographié reçoit la valeur
+    neutre 0. La dernière colonne est la couverture du drainage, qui sert de masque.
+    """
+    t = pd.read_parquet(f"{IRDA}/irda-proprietes-troncons.parquet")
+    x = np.zeros((len(node_ids), len(RETENUES) + 1), dtype=np.float32)
+    m = t[t.region == reg].set_index("troncon").reindex([int(i) for i in node_ids])
+    for j, v in enumerate(RETENUES):
+        ref = t.loc[(t[f"couv_{v}"] >= 0.5) & t[v].notna(), v]
+        couv = m[f"couv_{v}"].fillna(0.0).clip(0.0, 1.0).to_numpy()
+        z = ((m[v] - ref.mean()) / ref.std()).fillna(0.0).to_numpy()
+        x[:, j] = z * couv
+    x[:, -1] = m["couv_drainage"].fillna(0.0).clip(0.0, 1.0).to_numpy()
+    return x, [f"irda_{v}" for v in RETENUES] + ["irda_couverture"]

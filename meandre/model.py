@@ -984,6 +984,10 @@ class HydroModel(nn.Module):
                     delta = new_in - old_in
                     fan_in = new_in  # full input dim after padding
                     std = (2.0 / fan_in) ** 0.5 * 0.1  # Kaiming * 0.1 scale
+                    # MEANDRE_REMBOURRAGE_NUL=1 : poids nuls, le modèle chargé reste identique.
+                    import os as _os_pad
+                    if _os_pad.environ.get("MEANDRE_REMBOURRAGE_NUL", "0") == "1":
+                        std = 0.0
                     # fc1: small random init for new input columns
                     sd[fc1_key] = torch.cat([
                         sd[fc1_key],
@@ -993,7 +997,7 @@ class HydroModel(nn.Module):
                     fc2_key = "spatial_encoder.fc2.weight"
                     if fc2_key in sd:
                         fan_in2 = sd[fc2_key].shape[1] + delta
-                        std2 = (2.0 / fan_in2) ** 0.5 * 0.1
+                        std2 = (2.0 / fan_in2) ** 0.5 * 0.1 if std > 0 else 0.0
                         sd[fc2_key] = torch.cat([
                             sd[fc2_key],
                             torch.randn(sd[fc2_key].shape[0], delta, device=device) * std2,
