@@ -4,33 +4,20 @@ Ouvert le 2026-09-08, remis en ordre le 2026-09-16. Ce document liste les chanti
 
 ## Ordre de priorité au 2026-09-16
 
+Prochain livrable le 2026-09-30, deux semaines après la présentation. Aucune simulation globale avant : les deux premiers chantiers préparent des données, et la prochaine ronde de modélisation les intègre en une seule fois.
+
 | rang | chantier | raison du rang |
 |---|---|---|
-| 1 | Protocole d'optimisation des modèles de référence | Tout paramètre dit appris en dépend |
-| 2 | Couches pédologiques de l'IRDA et gestion agricole de l'eau | Sol trop peu décrit pour les petits bassins |
+| 1 | Couches pédologiques de l'IRDA et gestion agricole de l'eau | Sol trop peu décrit pour les petits bassins ; prépare la ronde |
+| 2 | Neige mesurée au sol | Seule cible hivernale fiable ; prépare la ronde |
 | 3 | Enveloppe probabiliste après 2022 | Couverture de 0,58 au Saguenay et 0,66 en Abitibi |
-| 4 | Neige mesurée au sol | Seule cible hivernale fiable |
-| 5 | Coût de la simulation provinciale | Condition des scénarios et de la production |
-| 6 | Forçage climatique MRCC6 et scénarios | Livrable du plan de travail, dépend des rangs 1 à 5 |
-| 7 | Poids du terme des variations d'un jour | À reprendre après le rang 1 |
-| 8 | Voie positionnelle du champ spatial | Priorité basse, décidée par Essi |
-| 9 | Enveloppe du scénario naturalisé | Jugée non nécessaire pour l'instant |
+| 4 | Coût de la simulation provinciale | Rend la ronde et les scénarios moins chers |
+| 5 | Prochaine ronde de modélisation | Un pas par bloc, couches pédologiques, neige, poids du terme des variations |
+| 6 | Forçage climatique MRCC6 et scénarios | Livrable du plan de travail, dépend de la ronde |
+| 7 | Voie positionnelle du champ spatial | Priorité basse, décidée par Essi |
+| 8 | Enveloppe du scénario naturalisé | Jugée non nécessaire pour l'instant |
 
-## 1. Protocole d'optimisation des modèles de référence
-
-Pourquoi. Les modèles du 15 septembre ont été entraînés sans `MEANDRE_PAS_PAR_BLOC=1`. Le pilote fait alors un seul pas d'Adam par époque, sur les gradients accumulés de tous les blocs. Trente époques valent trente pas, dont cinq à taux réduit par la montée progressive.
-
-La tête de quantiles entraînée ainsi le 16 septembre n'avait bougé que de 0,004 depuis son initialisation. La couverture de l'intervalle à 90 % valait 0,37. Avec un pas par bloc et un taux de 1e-2, elle vaut 0,85 sur 2022-2024.
-
-Le modèle déterministe a subi le même protocole. Ses paramètres restent donc proches de leur départ : calage d'Hydrotel pour le sol, valeurs de littérature ailleurs. Les verdicts du 15 septembre sur le terme des variations restent des comparaisons appariées valides, mais ils portent sur des modèles presque non entraînés.
-
-Ce que le chantier demande. Refaire les deux versions, avec et sans le terme des variations, avec un pas par bloc sur les quatorze régions. Entraîner ensuite la tête de quantiles sur chacune. Le script `reference_variations.sbatch` ne demande que l'ajout de la variable. Le registre avertit que ce réglage change les paramètres physiques obtenus : l'épreuve doit donc garder les modèles actuels comme témoins.
-
-Coût. Une nuit sur Narval pour le modèle déterministe, une heure pour la tête.
-
-Critère de réussite. Le KGE médian par région ne recule pas, la plus longue suite plate reste sous 35 jours en médiane, et le rapport des pointes reste entre 0,8 et 1,2. Les paramètres appris s'écartent de leur départ, mesuré sur la norme des lignes de sortie du champ.
-
-## 2. Couches pédologiques de l'IRDA et gestion agricole de l'eau
+## 1. Couches pédologiques de l'IRDA et gestion agricole de l'eau
 
 Pourquoi. Le champ spatial ne reçoit que trois pourcentages granulométriques pour décrire le sol, et deux petits bassins voisins reçoivent presque sûrement les mêmes. Le KGE médian vaut 0,526 sous 100 km² contre 0,763 entre mille et trois mille. Sur 69 stations couvertes par l'IRDA, le biais de volume suit le matériau parental, que le modèle ne reçoit pas. Sa corrélation de rang avec la part de till vaut -0,52 à aire contrôlée.
 
@@ -44,15 +31,7 @@ Gestion agricole de l'eau. La classe de drainage est celle du sol naturel, pas l
 
 Critère de réussite. La carte des classes se lit dans le champ appris, et le KGE médian des bassins de moins de 100 km² progresse sans dégrader les autres. Contrôle du masque : masquer des zones cartographiées ne change pas la simulation plus que l'écart entre deux graines.
 
-## 3. Enveloppe probabiliste après 2022
-
-Pourquoi. Sur 2022-2024, la tête de quantiles couvre 0,85 de l'intervalle annoncé à 0,90 et 0,42 de celui annoncé à 0,50. Le diagramme de Talagrand est plat sauf sa dernière classe, à 9,7 % contre 5 attendus. Deux régions décrochent des deux côtés. Au Saguenay, 18 % des observations tombent sous le quantile à 5 % et 24 % au-dessus de celui à 95 %. En Abitibi, ces parts valent 18 % et 16 %. Une enveloppe ajustée avant 2022 ne couvrait déjà que 0,61 au Saguenay : le changement de régime est la cause probable, non établie.
-
-Ce que le chantier demande. Séparer l'effet du régime de celui de la tête. Ajuster la tête sur 2019-2021 puis la juger sur 2022-2024, contre un ajustement sur 2001-2018. Si le régime domine, conditionner la tête sur une variable du climat récent plutôt que sur les seuls paramètres du champ.
-
-Critère de réussite. Couverture de l'intervalle à 90 % entre 0,85 et 0,95 dans chaque région, et dernière classe du diagramme de Talagrand sous 7 %.
-
-## 4. Neige mesurée au sol
+## 2. Neige mesurée au sol
 
 Pourquoi. Le débit d'hiver observé est reconstruit sous glace sur 49 à 95 % des jours et ne peut pas servir de cible. La masse de neige mesurée au sol le peut. La cible CanSWE est construite, rattachée au réseau et vérifiée depuis août 2026, mais son poids vaut zéro.
 
@@ -66,13 +45,47 @@ Ce qu'il faut mesurer avant de l'activer. Une paire appariée sur l'Outaouais, a
 
 Critère de réussite. La masse simulée se rapproche des relevés sans dégradation de l'évapotranspiration satellitaire ni du stockage gravimétrique.
 
-## 5. Coût de la simulation provinciale
+## 3. Enveloppe probabiliste après 2022
+
+Pourquoi. Sur 2022-2024, la tête de quantiles couvre 0,85 de l'intervalle annoncé à 0,90 et 0,42 de celui annoncé à 0,50. Le diagramme de Talagrand est plat sauf sa dernière classe, à 9,7 % contre 5 attendus. Deux régions décrochent des deux côtés. Au Saguenay, 18 % des observations tombent sous le quantile à 5 % et 24 % au-dessus de celui à 95 %. En Abitibi, ces parts valent 18 % et 16 %. Une enveloppe ajustée avant 2022 ne couvrait déjà que 0,61 au Saguenay : le changement de régime est la cause probable, non établie.
+
+Ce que le chantier demande. Séparer l'effet du régime de celui de la tête. Ajuster la tête sur 2019-2021 puis la juger sur 2022-2024, contre un ajustement sur 2001-2018. Si le régime domine, conditionner la tête sur une variable du climat récent plutôt que sur les seuls paramètres du champ.
+
+Critère de réussite. Couverture de l'intervalle à 90 % entre 0,85 et 0,95 dans chaque région, et dernière classe du diagramme de Talagrand sous 7 %.
+
+## 4. Coût de la simulation provinciale
 
 Pourquoi. Sur la RTX 2000 du poste, l'évaluation d'une région prend 18 minutes, dont 54 secondes de mise en place. Chronométré sur LABI le 16 septembre, ce temps est le même avec les données sur le disque Windows ou sur celui de WSL. Les lectures ne sont donc pas en cause. Une mesure du 15 septembre inscrite dans la colonne attribue 8,5 minutes à la compilation du sol et 5,5 minutes à la simulation. La compilation est refaite pour chaque taille de région.
 
 Ce que le chantier demande. Mesurer LABI deux fois de suite avec `MEANDRE_COMPILE_DYNAMIQUE=1` et un même cache de compilation, pour séparer compilation et simulation. Puis mesurer si deux régions tiennent ensemble sur le GPU, dont l'utilisation plafonnait à 33 %.
 
 Critère de réussite. Le Québec entier, scénario géré, en moins de deux heures sur le poste, à KGE identique au millième.
+
+## 5. Prochaine ronde de modélisation
+
+Pas avant le livrable du 2026-09-30 : une simulation globale ne se relance qu'une fois les couches pédologiques et la neige mesurée prêtes, pour n'en payer qu'une.
+
+Protocole d'optimisation.
+
+Pourquoi. Les modèles du 15 septembre ont été entraînés sans `MEANDRE_PAS_PAR_BLOC=1`. Le pilote fait alors un seul pas d'Adam par époque, sur les gradients accumulés de tous les blocs. Trente époques valent trente pas, dont cinq à taux réduit par la montée progressive.
+
+La tête de quantiles entraînée ainsi le 16 septembre n'avait bougé que de 0,004 depuis son initialisation. La couverture de l'intervalle à 90 % valait 0,37. Avec un pas par bloc et un taux de 1e-2, elle vaut 0,85 sur 2022-2024.
+
+Le modèle déterministe a subi le même protocole. Ses paramètres restent donc proches de leur départ : calage d'Hydrotel pour le sol, valeurs de littérature ailleurs. Les verdicts du 15 septembre sur le terme des variations restent des comparaisons appariées valides, mais ils portent sur des modèles presque non entraînés.
+
+Ce que la ronde demande. Refaire les deux versions, avec et sans le terme des variations, avec un pas par bloc sur les quatorze régions, et y intégrer les chantiers 1 et 2. Entraîner ensuite la tête de quantiles sur chacune. Le script `reference_variations.sbatch` ne demande que l'ajout de la variable. Le registre avertit que ce réglage change les paramètres physiques obtenus : l'épreuve doit donc garder les modèles actuels comme témoins.
+
+Coût. Une nuit sur Narval pour le modèle déterministe, une heure pour la tête.
+
+Critère de réussite. Le KGE médian par région ne recule pas, la plus longue suite plate reste sous 35 jours en médiane, et le rapport des pointes reste entre 0,8 et 1,2. Les paramètres appris s'écartent de leur départ, mesuré sur la norme des lignes de sortie du champ.
+
+Poids du terme des variations d'un jour.
+
+Pourquoi. À un poids de 1,0, le terme raccourcit les plateaux d'hiver et relève le KGE dans sept régions sur neuf. Il abaisse toutefois les pointes là où elles étaient correctes : de 1,04 à 0,81 en Outaouais aval et de 0,86 à 0,72 au Saguenay. Un poids plus faible conserverait vraisemblablement le gain sur les plateaux.
+
+Ce que la ronde demande. Ces mesures portent sur des modèles à trente pas : le poids se rejuge dans la ronde, d'abord sur l'Outaouais aval et le Saguenay.
+
+Critère de réussite. Dans ces deux régions, les suites plates ne rallongent pas et les pointes simulées valent au moins 0,8 de l'observé.
 
 ## 6. Forçage climatique MRCC6 et scénarios
 
@@ -86,15 +99,7 @@ Critère de réussite. Les signatures hydrologiques simulées sous le climat his
 
 Ce que la différentiabilité apporte. La dérivée du débit par rapport à chaque paramètre et à chaque variable de forçage est exacte. Une projection peut donc attribuer son changement à ses causes.
 
-## 7. Poids du terme des variations d'un jour
-
-Pourquoi. À un poids de 1,0, le terme raccourcit les plateaux d'hiver et relève le KGE dans sept régions sur neuf. Il abaisse toutefois les pointes là où elles étaient correctes : de 1,04 à 0,81 en Outaouais aval et de 0,86 à 0,72 au Saguenay. Un poids plus faible conserverait vraisemblablement le gain sur les plateaux.
-
-Ce que le chantier demande. Reprendre après le chantier 1, puisque ces mesures portent sur des modèles à trente pas. Éprouver d'abord sur l'Outaouais aval et le Saguenay.
-
-Critère de réussite. Dans ces deux régions, les suites plates ne rallongent pas et les pointes simulées valent au moins 0,8 de l'observé.
-
-## 8. Voie positionnelle du champ spatial
+## 7. Voie positionnelle du champ spatial
 
 Pourquoi. La voie des attributs interpole, mais celle de la position extrapole, et l'encodage de Fourier est périodique. Ses deux bandes les plus fines, de 150 et 75 km, sont plus courtes qu'une région.
 
@@ -102,7 +107,7 @@ Mesuré le 2026-09-14. Au transfert du Saguenay vers la Gaspésie, déplacer les
 
 Priorité basse, décidée par Essi le 2026-09-14. À reprendre si un transfert lointain échoue sans explication. Le script est `audit_position.py`.
 
-## 9. Enveloppe du scénario naturalisé
+## 8. Enveloppe du scénario naturalisé
 
 La passe naturalisée du pilote rejoue la simulation avec les prélèvements à zéro et les mêmes poids. Elle n'écrit pas les quantiles, et le second étage ne la déclenche pas. Une naturalisation probabiliste demanderait d'ajouter les quantiles à cette passe puis de reprendre le second étage : environ une heure de travail et une de calcul. Essi l'a jugée non nécessaire le 2026-09-15.
 
