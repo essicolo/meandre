@@ -63,3 +63,8 @@ RQH_ROOT = _os.environ.get(
 def data_path(*parts: str) -> str:
     """Path under the derived-data root."""
     return str(Path(DATA_ROOT).joinpath(*parts)).replace("\\", "/")
+
+
+# Données auxiliaires : sources brutes décrites par un source.toml, produits dérivés reconstructibles.
+SOURCES_ROOT = _os.environ.get("MEANDRE_SOURCES", str(Path(DATA_ROOT) / "sources")).replace("\\", "/")
+DERIVED_ROOT = _os.environ.get("MEANDRE_DERIVES", str(Path(DATA_ROOT) / "derives")).replace("\\", "/")
