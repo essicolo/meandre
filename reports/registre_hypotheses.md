@@ -1587,3 +1587,13 @@ Redondance avec les attributs actuels (`test_irda_redondance.py`), compositions 
 Redondance interne. Les huit propriétés n'ont qu'un rang effectif de 3,8. La structure suit la texture (r de -0,78 et -0,75) et le groupe hydrologique suit la perméabilité (r de -0,80). La BDHP dérive les deux de la texture et de la perméabilité : elles sont à retirer. Restent six variables : deux coordonnées de texture, drainage, perméabilité, contact lithique, sols organiques.
 
 Intégration au champ, mesurée sur le modèle de la Montérégie sans simulation. Le chargeur rembourre les nouvelles colonnes par des poids aléatoires à petite échelle : les paramètres bougent de 0,02 % en médiane et de 0,6 % au pire. Des poids nuls laissent le modèle identique à 1e-6 près. Le gradient sur les nouveaux poids vaut le quart de celui des entrées existantes.
+
+---
+
+## R111 — SIIGSOL et l'indice d'humidité topographique sont en grande partie redondants avec les attributs du champ (2026-09-17) — ÉTABLI
+
+Ingestion standard (`meandre/data/auxiliary`, `ingerer_auxiliaire.py`) à partir des `source.toml` de `sources/siigsol` et `sources/humidite-lidar`. SIIGSOL : texture en ilr et logarithme de la matière organique, six profondeurs, moyennés par aire sur les 28 035 tronçons, couverture médiane de 0,90 à 0,99 hors LABI et VAUD, qui débordent en Ontario. Indice d'humidité : feuillets lus à distance sur l'aperçu à 8 m, histogramme par unité hydrologique, 20 904 tronçons couverts à plus de moitié ; six feuillets de l'index ne sont pas publiés, et aucun LiDAR ne couvre CNDD ni CNDE.
+
+Redondance, gradient boosté en validation croisée par blocs d'un degré contre les 15 attributs actuels. SIIGSOL : R² hors bloc de 0,52 et 0,75 pour les deux coordonnées de texture en surface, 0,78 pour la matière organique en surface, 0,55 à 0,75 en profondeur. Les 18 variables n'ont qu'un rang effectif de 2,15 : les profondeurs se répètent. La corrélation avec la texture de PHYSITEL n'est que de 0,31 et 0,54, mais les autres attributs, altitude, pente et occupation, la reconstituent. Indice d'humidité : R² de 0,63 à 0,76 pour ses sept statistiques, rang effectif de 1,78. Deux dimensions s'en dégagent, le quantile 10 et le quantile 90, corrélés à 0,09.
+
+Contraste avec l'IRDA, dont les propriétés n'étaient prédites qu'à 0,09 à 0,37. Les deux produits ministériels sont construits à partir de covariables de télédétection et de relief proches de l'entrée du champ ; l'IRDA vient de levés de terrain. À retenir, si on les ajoute : une coordonnée de texture en surface et une en profondeur pour SIIGSOL, les quantiles 10 et 90 de l'indice d'humidité.
