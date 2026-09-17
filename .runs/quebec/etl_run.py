@@ -1343,8 +1343,14 @@ if os.environ.get("ETL_DUMP_REACH"):
     _flux = {}
     _dg_r = globals().get("_DIAG")
     _mois_r = _pdm.DatetimeIndex(times).month.to_numpy()
+    # SERIE MENSUELLE de chaque grandeur, et non seulement sa climatologie (2026-09-17). La
+    # climatologie perd l'interannuel : impossible d'y lire une annee seche, un classement
+    # d'annees ou une anomalie, ce qu'une comparaison aux nappes mesurees demande. Le
+    # journalier couterait 105 Mo par variable et par region, la serie mensuelle 3,5 Mo.
     for _att, _nom, _cumul in (("recharge", "recharge", True), ("etr", "etr", True),
-                               ("swe", "swe", False), ("q_baseflow", "debit_base", True)):
+                               ("swe", "swe", False), ("q_baseflow", "debit_base", True),
+                               ("s_gw", "stock_nappe", False), ("wet_vol", "stock_mh", False),
+                               ("etr_mh", "etr_mh", True)):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue
@@ -1361,6 +1367,9 @@ if os.environ.get("ETL_DUMP_REACH"):
         # Cycle saisonnier par noeud : douze valeurs, la climatologie mensuelle.
         _flux[f"{_nom}_mensuel"] = np.stack(
             [_a[_mois_r == _m].mean(axis=0) for _m in range(1, 13)]).astype(np.float32)
+        # Serie mensuelle, un point par mois de la simulation : porte l'interannuel.
+        _flux[f"{_nom}_mois_serie"] = np.stack(
+            [_a[_cle_mois == _m].mean(axis=0) for _m in _mois_u]).astype(np.float32)
     # ETL_DUMP_NAPPE=<chemin.npz> : stock souterrain, recharge et debit de base JOURNALIERS
     # aux noeuds portant un puits du reseau de suivi. La mesure du reseau est une profondeur
     # sous le repere du tubage : seules les VARIATIONS se comparent, jamais l'absolu.
@@ -1381,6 +1390,28 @@ if os.environ.get("ETL_DUMP_REACH"):
             print(f"[etl] nappe sauvee aux {len(_pu)} puits du reseau : {os.environ['ETL_DUMP_NAPPE']}")
         else:
             print(f"[etl] aucun puits du reseau dans {REG}")
+
+    # SERIE JOURNALIERE COMPLETE, dans un fichier a part (decision d'Essi, 2026-09-17 :
+    # « le disque D est la pour ca »). Une simulation coute des heures ; en jeter le pas de
+    # temps oblige a tout refaire des qu'une question demande l'interannuel ou le calendrier,
+    # ce qui est arrive le jour meme avec les nappes mesurees. Environ 105 Mo par variable et
+    # par region en float32. Le cache principal, lui, reste leger pour la carte et le rapport.
+    _jour = {}
+    for _att, _nom in (("recharge", "recharge"), ("etr", "etr"), ("swe", "swe"),
+                       ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
+                       ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
+                       ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3")):
+        _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
+        if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
+            continue
+        _jour[_nom] = _v.detach().cpu().numpy().astype(np.float32)
+    if _jour:
+        _fj = os.environ["ETL_DUMP_REACH"]
+        _fj = _fj[:-4] + "-journalier.npz" if _fj.endswith(".npz") else _fj + "-journalier.npz"
+        np.savez_compressed(_fj, dates=np.array([str(_t)[:10] for _t in times]),
+                            q=_Qr.astype(np.float32), **_jour)
+        print(f"[etl] series journalieres sauvees ({len(_jour) + 1} grandeurs) : {_fj} "
+              f"({os.path.getsize(_fj) / 1e6:.0f} Mo)")
 
     np.savez_compressed(os.environ["ETL_DUMP_REACH"],
                         **_flux,
