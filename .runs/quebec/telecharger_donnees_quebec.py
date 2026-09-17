@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -50,14 +51,26 @@ def empreinte(chemin):
 def telecharger(url, destination):
     if os.path.exists(destination) and os.path.getsize(destination) > 0:
         return os.path.getsize(destination), True
+    # Certains chemins du catalogue portent des espaces : ils doivent être encodés.
+    morceaux = urllib.parse.urlsplit(url)
+    url = urllib.parse.urlunsplit(morceaux._replace(path=urllib.parse.quote(morceaux.path)))
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     partiel = destination + ".partiel"
-    with urllib.request.urlopen(url, timeout=300) as r, open(partiel, "wb") as f:
-        while True:
-            bloc = r.read(1 << 20)
-            if not bloc:
-                break
-            f.write(bloc)
+    # Certains serveurs ferment la connexion quand l'agent n'est pas nommé ; trois essais.
+    requete = urllib.request.Request(url, headers={"User-Agent": "meandre/1.0"})
+    for essai in range(3):
+        try:
+            with urllib.request.urlopen(requete, timeout=300) as r, open(partiel, "wb") as f:
+                while True:
+                    bloc = r.read(1 << 20)
+                    if not bloc:
+                        break
+                    f.write(bloc)
+            break
+        except Exception:
+            if essai == 2:
+                raise
+            time.sleep(5)
     os.replace(partiel, destination)
     return os.path.getsize(destination), False
 
