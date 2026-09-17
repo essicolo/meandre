@@ -9,6 +9,8 @@ licence et la nature de la donnée ; les empreintes des fichiers vont dans empre
 import hashlib
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -18,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from meandre.utils import paths as _paths
 
+CURL = shutil.which("curl")
 API = "https://www.donneesquebec.ca/recherche/api/3/action/package_show?"
 # Un dossier de source par jeu, avec la nature de la donnée et les formats à prendre.
 JEUX = {
@@ -56,21 +59,28 @@ def telecharger(url, destination):
     url = urllib.parse.urlunsplit(morceaux._replace(path=urllib.parse.quote(morceaux.path)))
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     partiel = destination + ".partiel"
-    # Certains serveurs ferment la connexion quand l'agent n'est pas nommé ; trois essais.
-    requete = urllib.request.Request(url, headers={"User-Agent": "meandre/1.0"})
-    for essai in range(3):
-        try:
-            with urllib.request.urlopen(requete, timeout=300) as r, open(partiel, "wb") as f:
-                while True:
-                    bloc = r.read(1 << 20)
-                    if not bloc:
-                        break
-                    f.write(bloc)
-            break
-        except Exception:
-            if essai == 2:
-                raise
-            time.sleep(5)
+    # Le serveur de diffusion du ministère ferme la connexion ouverte par urllib, quel que
+    # soit l'agent annoncé, alors que curl passe. On délègue donc à curl quand il existe.
+    if CURL:
+        r = subprocess.run([CURL, "-sSL", "--retry", "3", "--retry-delay", "5", "--max-time", "7200",
+                            "-A", "meandre/1.0", "-o", partiel, url], capture_output=True, text=True)
+        if r.returncode != 0 or not os.path.exists(partiel):
+            raise RuntimeError(f"curl {r.returncode} : {(r.stderr or '').strip()[:120]}")
+    else:
+        requete = urllib.request.Request(url, headers={"User-Agent": "meandre/1.0"})
+        for essai in range(3):
+            try:
+                with urllib.request.urlopen(requete, timeout=300) as r, open(partiel, "wb") as f:
+                    while True:
+                        bloc = r.read(1 << 20)
+                        if not bloc:
+                            break
+                        f.write(bloc)
+                break
+            except Exception:
+                if essai == 2:
+                    raise
+                time.sleep(5)
     os.replace(partiel, destination)
     return os.path.getsize(destination), False
 
