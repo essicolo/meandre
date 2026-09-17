@@ -62,7 +62,7 @@ def telecharger(url, destination):
     # Le serveur de diffusion du ministère ferme la connexion ouverte par urllib, quel que
     # soit l'agent annoncé, alors que curl passe. On délègue donc à curl quand il existe.
     if CURL:
-        r = subprocess.run([CURL, "-sSL", "--retry", "3", "--retry-delay", "5", "--max-time", "7200",
+        r = subprocess.run([CURL, "-sSLf", "--retry", "3", "--retry-delay", "5", "--max-time", "7200",
                             "-A", "meandre/1.0", "-o", partiel, url], capture_output=True, text=True)
         if r.returncode != 0 or not os.path.exists(partiel):
             raise RuntimeError(f"curl {r.returncode} : {(r.stderr or '').strip()[:120]}")
