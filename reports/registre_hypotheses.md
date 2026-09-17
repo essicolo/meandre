@@ -1597,3 +1597,15 @@ Ingestion standard (`meandre/data/auxiliary`, `ingerer_auxiliaire.py`) à partir
 Redondance, gradient boosté en validation croisée par blocs d'un degré contre les 15 attributs actuels. SIIGSOL : R² hors bloc de 0,52 et 0,75 pour les deux coordonnées de texture en surface, 0,78 pour la matière organique en surface, 0,55 à 0,75 en profondeur. Les 18 variables n'ont qu'un rang effectif de 2,15 : les profondeurs se répètent. La corrélation avec la texture de PHYSITEL n'est que de 0,31 et 0,54, mais les autres attributs, altitude, pente et occupation, la reconstituent. Indice d'humidité : R² de 0,63 à 0,76 pour ses sept statistiques, rang effectif de 1,78. Deux dimensions s'en dégagent, le quantile 10 et le quantile 90, corrélés à 0,09.
 
 Contraste avec l'IRDA, dont les propriétés n'étaient prédites qu'à 0,09 à 0,37. Les deux produits ministériels sont construits à partir de covariables de télédétection et de relief proches de l'entrée du champ ; l'IRDA vient de levés de terrain. À retenir, si on les ajoute : une coordonnée de texture en surface et une en profondeur pour SIIGSOL, les quantiles 10 et 90 de l'indice d'humidité.
+
+---
+
+## R112 — Les niveaux du réseau de suivi des eaux souterraines couvrent nos régions et portent une information que le débit n'a pas (2026-09-17) — ÉTABLI
+
+Base de diffusion du réseau, 41 millions de mesures aux six heures de 1968 à 2026, réduites à une moyenne journalière par puits (`rsesq_niveaux.py`). Sur 297 puits, 186 tombent à moins de 3 km d'un tronçon. Sur 2022-2024, 171 puits ont 1 096 jours de mesures, soit la période entière ; sur 2001-2024, 184 puits en ont 5 000 en médiane, soit quatorze ans. Répartition : 53 en Saint-Laurent sud-ouest, 46 en Montérégie, 27 en Outaouais aval, 20 en Gaspésie. Le réseau est décrit par aquifère, 163 au roc et 134 en mort-terrain, par confinement, 131 libres et 130 captifs, et 50 puits sont déclarés influencés.
+
+Information propre, mesurée sans simulation. Pour les 93 paires puits-station distantes de moins de 25 km, l'anomalie mensuelle du niveau, signe inversé puisque la mesure est une profondeur, est corrélée à l'anomalie mensuelle du débit observé à 0,51 en médiane, de -0,11 à 0,81. Le débit n'explique donc qu'un quart de la variance du niveau ; les trois autres quarts sont une information que l'entraînement sur le débit seul ne voit pas. Quarante-six pour cent des paires restent sous 0,5.
+
+Le registre l'autorise déjà comme contrainte de tendance : ce sont des mesures directes de hauteur d'eau, sans assimilation de nos débits. La valeur absolue, elle, est une profondeur sous le repère du tubage et ne se compare pas au stockage simulé ; seules les variations le peuvent.
+
+Reste à mesurer, et cela demande une simulation : le stockage souterrain simulé suit-il ces variations, et une contrainte sur ce point resserre-t-elle les paramètres de l'aquifère entre deux graines. Le pilote ne sort pas encore le stockage souterrain journalier aux nœuds des puits.
