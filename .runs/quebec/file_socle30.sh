@@ -17,7 +17,7 @@ for reg in gasp sagu slno; do
       ETL_AQUIFER=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_SEUIL_NEIGE=1 \
       ETL_INIT_HYDROTEL=sauf_ks ETL_MELT_DIR="$PLAT/${reg^^}_LN24HA_2020" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${reg}-socle30.txt" 2>&1
-  echo "[s30] $(date +%H:%M) fini $reg : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${reg}-socle30.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${reg}-socle30.txt" 2>&1
+  echo "[s30] $(date +%H:%M) fini $reg : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-${reg}-socle30.txt" | tr '\n' ' ')"
 done
 echo "[s30] $(date +%H:%M) TERMINE"

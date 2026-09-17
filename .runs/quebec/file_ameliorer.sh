@@ -18,8 +18,8 @@ run() {  # $1 = tag, reste = surcharges
       ETL_ETP=linacre ETL_SEUIL_NEIGE=1 ETL_INIT_HYDROTEL=sauf_ks \
       ETL_MELT_DIR="$PLAT/OUTV_LN24HA_2020" "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-outv-${tag}.txt" 2>&1
-  echo "[amel] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-outv-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-outv-${tag}.txt" 2>&1
+  echo "[amel] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-outv-${tag}.txt" | tr '\n' ' ')"
 }
 # 1. FORCAGE : le socle tient-il sur le CaSR brut (+16 % de pluie) ? Controle puis 30 ep.
 run "am-casr0"  ETL_TAG="-am-casr0"  JOINT_FX_SUFFIX=-none ETL_EPOCHS=0

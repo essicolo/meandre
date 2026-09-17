@@ -13,7 +13,7 @@
 # masse, seuil pluie/neige). La loi est donc à REJUGER, pas à appliquer.
 cd /c/Users/parse01/documents-locaux/GitHub/meandre || exit 1
 
-while ! grep -q "TERMINE" /d/meandre-data/quebec/log-file-nuit.txt 2>/dev/null; do sleep 300; done
+while ! grep -q "TERMINE" /d/meandre-data/journaux/quebec/log-file-nuit.txt 2>/dev/null; do sleep 300; done
 
 attendre() {
   while tasklist //FI "IMAGENAME eq python.exe" //FO CSV 2>/dev/null | grep -qi '"python.exe"'; do
@@ -32,8 +32,8 @@ lancer() {
       ETL_REGION=outv ETL_KSAT1=0.04 ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 \
       ETL_KGW=0.0645 ETL_DEMAND_SCALE=0.963 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${tag}.txt" 2>&1
-  echo "[file2] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${tag}.txt" 2>&1
+  echo "[file2] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-${tag}.txt" | tr '\n' ' ')"
 }
 
 # O5-a : sol ENTIÈREMENT ancré sur bv3c.csv, le NeRF n'apprend que le reste.

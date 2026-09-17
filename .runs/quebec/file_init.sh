@@ -16,8 +16,8 @@ lancer() {
       ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 ETL_KGW=0.0645 ETL_DEMAND_SCALE=0.963 \
       ETL_INIT_HYDROTEL=1 ETL_EPOCHS=30 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${tag}.txt" 2>&1
-  echo "[init] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${tag}.txt" 2>&1
+  echo "[init] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-${tag}.txt" | tr '\n' ' ')"
 }
 lancer "outv-initH"    ETL_TAG="-initH"                    # depart Hydrotel, 30 epoques
 lancer "outv-initH5"   ETL_TAG="-initH5" ETL_EPOCHS=5      # affinage court : l'optimiseur s'eloigne-t-il tout de suite ?

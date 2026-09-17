@@ -16,8 +16,8 @@ lancer() {
       ETL_REGION=outv ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 \
       ETL_KGW=0.0645 ETL_DEMAND_SCALE=0.963 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${tag}.txt" 2>&1
-  echo "[ksat] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${tag}.txt" 2>&1
+  echo "[ksat] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-${tag}.txt" | tr '\n' ' ')"
 }
 lancer "outv-ksatlit"  ETL_TAG="-ksatlit"                      # sans ETL_KSAT1 : init litterature
 lancer "outv-ksatphys" ETL_TAG="-ksatphys" ETL_KSAT1=0.317      # valeur texture loam d'Hydrotel

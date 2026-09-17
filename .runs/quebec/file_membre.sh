@@ -16,8 +16,8 @@ run() { local tag="$1"; shift; attendre
       ETL_REGION=outv ETL_EPOCHS=30 ETL_WET=0 ETL_WSNOW=0.3 ETL_AQUIFER=0 ETL_NO_LATENT=1 \
       ETL_SEUIL_NEIGE=1 ETL_INIT_HYDROTEL=sauf_ks "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-outv-${tag}.txt" 2>&1
-  echo "[mbr] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-outv-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-outv-${tag}.txt" 2>&1
+  echo "[mbr] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-outv-${tag}.txt" | tr '\n' ' ')"
 }
 run "mgk0"  ETL_TAG="-mgk0"  ETL_MEMBRE=MG24HK ETL_ETP=mcguinness ETL_EPOCHS=0
 run "mgs0"  ETL_TAG="-mgs0"  ETL_MEMBRE=MG24HS ETL_ETP=mcguinness ETL_EPOCHS=0

@@ -19,8 +19,8 @@ lancer() {  # $1 = tag, $2... = variables
   env "$@" MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=-hyb ETL_EPOCHS=30 ETL_WET=0 ETL_FORCE=1 \
       ETL_KSAT1=0.04 ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${tag}.txt" 2>&1
-  echo "[file] $(date +%H:%M) fini $tag : $(grep -a 'JAMAIS VUES\|HELD-OUT' "/d/meandre-data/quebec/log-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${tag}.txt" 2>&1
+  echo "[file] $(date +%H:%M) fini $tag : $(grep -a 'JAMAIS VUES\|HELD-OUT' "/d/meandre-data/journaux/quebec/log-${tag}.txt" | tr '\n' ' ')"
 }
 
 # O1 — validation croisée spatiale sur OUTV : les 3 plis restants (le 0 tourne déjà).

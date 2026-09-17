@@ -30,8 +30,8 @@ run() { local tag="$1"; shift; attendre
       ETL_MELT_DIR="$PLAT/OUTV_LN24HA_2020" ETL_AQUIFER=1 ETL_KGW=0.0273 \
       ETL_KREC_LIBRE=1 ETL_KREC_GEL=1 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-outv-${tag}.txt" 2>&1
-  echo "[rech] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-outv-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-outv-${tag}.txt" 2>&1
+  echo "[rech] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-outv-${tag}.txt" | tr '\n' ' ')"
 }
 # 1) ecran en INFERENCE PURE sur les poids du champion (copie -ctl), 0 epoque
 for K in 5e-6 1e-5 2e-5 3e-5; do

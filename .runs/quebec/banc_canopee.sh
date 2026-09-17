@@ -14,11 +14,11 @@
 set -u
 REG="${1:-sagu}"
 EP="${PROV_EPOCHS:-5}"
-OUT="/d/meandre-data/quebec/log-canopee-apparie-${REG}.txt"
+OUT="/d/meandre-data/journaux/quebec/log-canopee-apparie-${REG}.txt"
 : > "$OUT"
 
 for BRAS in 0 1; do
-  LOG="/d/meandre-data/quebec/log-canopee-${REG}-${BRAS}.txt"
+  LOG="/d/meandre-data/journaux/quebec/log-canopee-${REG}-${BRAS}.txt"
   T0=$SECONDS
   # PROV_TAG DISTINCT PAR BRAS. Sans lui les deux bras ecrivent le meme
   # best-<tag>.pt et le second ECRASE le premier : les KGE survivent dans les

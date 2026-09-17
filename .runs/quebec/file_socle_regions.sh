@@ -19,8 +19,8 @@ socle() {  # $1 = region, $2 = epoques, $3 = suffixe de tag
       ETL_AQUIFER=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_SEUIL_NEIGE=1 \
       ETL_INIT_HYDROTEL=sauf_ks ETL_MELT_DIR="$PLAT/${reg^^}_LN24HA_2020" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${reg}-socle${sfx}.txt" 2>&1
-  echo "[socle] $(date +%H:%M) fini $reg$sfx : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${reg}-socle${sfx}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${reg}-socle${sfx}.txt" 2>&1
+  echo "[socle] $(date +%H:%M) fini $reg$sfx : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-${reg}-socle${sfx}.txt" | tr '\n' ' ')"
 }
 for reg in gasp sagu slno mont; do socle "$reg" 0 "0"; done   # controles a zero epoque
 echo "[socle] $(date +%H:%M) CONTROLES TERMINES"

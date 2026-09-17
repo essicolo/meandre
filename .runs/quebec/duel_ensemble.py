@@ -96,7 +96,7 @@ print(f"  MEILLEUR membre par station    : {np.nanmedian(best_par_station):.4f}"
 # journal des runs si un résultat existe pour CETTE région, sinon on ne dit rien.
 import glob as _gl
 _ms = []
-for _f in _gl.glob(f"{_DATA_ROOT}/quebec/log-{REG}-socle*.txt"):
+for _f in _gl.glob(f"{_DATA_ROOT}/journaux/quebec/log-{REG}-socle*.txt"):
     for _l in open(_f, encoding="utf-8", errors="ignore"):
         if "HELD-OUT" in _l and "médian" in _l:
             _ms.append((os.path.basename(_f), _l.split("médian")[1].split("|")[0].strip()))

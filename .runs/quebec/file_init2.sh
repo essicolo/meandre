@@ -16,8 +16,8 @@ lancer() {
       ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KGW=0.0645 ETL_DEMAND_SCALE=0.963 \
       ETL_INIT_HYDROTEL=1 ETL_EPOCHS=30 "$@" \
       .venv/Scripts/python.exe .runs/quebec/etl_run.py \
-      > "/d/meandre-data/quebec/log-${tag}.txt" 2>&1
-  echo "[init2] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/quebec/log-${tag}.txt" | tr '\n' ' ')"
+      > "/d/meandre-data/journaux/quebec/log-${tag}.txt" 2>&1
+  echo "[init2] $(date +%H:%M) fini $tag : $(grep -a 'HELD-OUT' "/d/meandre-data/journaux/quebec/log-${tag}.txt" | tr '\n' ' ')"
 }
 lancer "outv-initK1"  ETL_TAG="-initK1" ETL_EPOCHS=1     # temoin : le depart vaut-il deja 0.77 ?
 lancer "outv-initK30" ETL_TAG="-initK30"                  # puis 30 epoques d'optimisation libre

@@ -12,10 +12,10 @@ attendre
 echo "[periodes] $(date +%H:%M) modele ANCRE"
 PYTHONIOENCODING=utf-8 JOINT_FX_SUFFIX=-hyb MEANDRE_NSUBSTEP=64 \
   .venv/Scripts/python.exe .runs/quebec/eval_periodes.py outv \
-  > /d/meandre-data/quebec/log-periodes-ancre.txt 2>&1
+  > /d/meandre-data/journaux/quebec/log-periodes-ancre.txt 2>&1
 attendre
 echo "[periodes] $(date +%H:%M) modele ENTRAINE"
 PYTHONIOENCODING=utf-8 JOINT_FX_SUFFIX=-hyb MEANDRE_NSUBSTEP=64 \
   .venv/Scripts/python.exe .runs/quebec/eval_periodes.py outv .runs/quebec/checkpoints/best-outv-etl-sain.pt \
-  > /d/meandre-data/quebec/log-periodes-entraine.txt 2>&1
+  > /d/meandre-data/journaux/quebec/log-periodes-entraine.txt 2>&1
 echo "[periodes] $(date +%H:%M) TERMINE"

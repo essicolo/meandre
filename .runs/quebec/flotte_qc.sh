@@ -14,7 +14,7 @@ for R in $REGIONS; do
   JOINT_FX_SUFFIX=-none ETL_REGION=$R ETL_EPOCHS=${ETL_EPOCHS:-12} ETL_TAG=-qc \
     ETL_KSAT1=0.04 ETL_WSNOW=0.3 ETL_AQUIFER=1 ETL_KREC=5e-5 \
     ETL_KGW=$KGW ETL_DEMAND_SCALE=$DS \
-    .venv/Scripts/python.exe .runs/quebec/etl_run.py 2>&1 | tee "D:/meandre-data/quebec/log-qc-$R.txt" \
+    .venv/Scripts/python.exe .runs/quebec/etl_run.py 2>&1 | tee "D:/meandre-data/journaux/quebec/log-qc-$R.txt" \
     | grep -E "held-out|HELD|best|epoch .* val_kge|ERREUR|Traceback"
   echo "=== [$R] fini $(date '+%H:%M') ==="
 done
