@@ -1361,6 +1361,27 @@ if os.environ.get("ETL_DUMP_REACH"):
         # Cycle saisonnier par noeud : douze valeurs, la climatologie mensuelle.
         _flux[f"{_nom}_mensuel"] = np.stack(
             [_a[_mois_r == _m].mean(axis=0) for _m in range(1, 13)]).astype(np.float32)
+    # ETL_DUMP_NAPPE=<chemin.npz> : stock souterrain, recharge et debit de base JOURNALIERS
+    # aux noeuds portant un puits du reseau de suivi. La mesure du reseau est une profondeur
+    # sous le repere du tubage : seules les VARIATIONS se comparent, jamais l'absolu.
+    if os.environ.get("ETL_DUMP_NAPPE") and _dg_r is not None and _dg_r.s_gw is not None:
+        import pandas as _pdn
+        _pu = _pdn.read_parquet(f"{_paths.DERIVED_ROOT}/auxiliaires/rsesq-puits.parquet")
+        _pu = _pu[_pu.region == REG]
+        if len(_pu):
+            _idx = _pu.node_idx.to_numpy()
+            np.savez_compressed(os.environ["ETL_DUMP_NAPPE"],
+                                puits=_pu.puits.to_numpy().astype(str),
+                                node_idx=_idx.astype(np.int32),
+                                distance_km=_pu.distance_km.to_numpy().astype(np.float32),
+                                dates=np.array([str(_t)[:10] for _t in times]),
+                                s_gw=_dg_r.s_gw.cpu().numpy()[:, _idx].astype(np.float32),
+                                recharge=_dg_r.recharge.cpu().numpy()[:, _idx].astype(np.float32),
+                                q_baseflow=_dg_r.q_baseflow.cpu().numpy()[:, _idx].astype(np.float32))
+            print(f"[etl] nappe sauvee aux {len(_pu)} puits du reseau : {os.environ['ETL_DUMP_NAPPE']}")
+        else:
+            print(f"[etl] aucun puits du reseau dans {REG}")
+
     np.savez_compressed(os.environ["ETL_DUMP_REACH"],
                         **_flux,
                         q_mensuel=_qm.astype(np.float32),
