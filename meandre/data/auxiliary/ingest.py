@@ -81,3 +81,103 @@ def ingest(source: Source, region: str) -> pd.DataFrame:
     if genre not in INGESTEURS:
         raise ValueError(f"type d'ingestion inconnu : {genre} (connus : {sorted(INGESTEURS)})")
     return INGESTEURS[genre](source, region)
+
+
+def ingest_raster_tiles(source: Source, region: str) -> pd.DataFrame:
+    """Rasters découpés en feuillets, lus à distance à résolution réduite.
+
+    Chaque unité hydrologique accumule l'histogramme des valeurs entières du raster ; les
+    statistiques par tronçon se calculent sur la somme des histogrammes de ses unités. Chaque
+    feuillet traité est mis en cache, ce qui permet de reprendre une ingestion interrompue.
+    """
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+
+    import geopandas as gpd
+    import rasterio
+    from rasterio import features
+    from rasterio.transform import Affine
+
+    from meandre.data.physitel_loader import _parse_troncon
+    from meandre.data.auxiliary.units import project_dir
+    from meandre.utils import paths as _paths
+
+    ing = source.ingestion
+    units = hydro_units(region)
+    index = gpd.read_file("zip://" + source.path(ing["index"]).as_posix())
+    zone = units.to_crs(index.crs).union_all()
+    feuillets = index[index.intersects(zone)]
+    n_classes = int(ing["classes"])
+    facteur = int(ing["facteur_reduction"])
+    cache = f"{_paths.DERIVED_ROOT}/auxiliaires/cache/{source.name}/{region}"
+    os.makedirs(cache, exist_ok=True)
+    ids_max = int(units.uhrh.max()) + 1
+
+    def un_feuillet(ligne):
+        nom = ligne[ing["champ_feuillet"]]
+        f_cache = f"{cache}/{nom}.npz"
+        if os.path.exists(f_cache):
+            z = np.load(f_cache)
+            return z["hist"], float(z["pixel_area"])
+        url = "/vsicurl/" + ligne[ing["champ_url"]].rstrip("/") + "/" + ing["motif_fichier"].format(feuillet=nom)
+        for essai in range(3):
+            try:
+                with rasterio.open(url) as ds:
+                    forme = (max(1, ds.height // facteur), max(1, ds.width // facteur))
+                    data = ds.read(1, out_shape=forme)
+                    t = ds.transform * Affine.scale(ds.width / forme[1], ds.height / forme[0])
+                    locales = units.to_crs(ds.crs)
+                    gauche, bas, droite, haut = rasterio.transform.array_bounds(forme[0], forme[1], t)
+                    locales = locales.cx[gauche:droite, bas:haut]
+                    hist = np.zeros((ids_max, n_classes), dtype=np.int64)
+                    if len(locales):
+                        ids = features.rasterize(zip(locales.geometry, locales.uhrh), out_shape=forme, transform=t, fill=0, dtype="int32")
+                        ok = (ids > 0) & (data != ds.nodata) & (data < n_classes)
+                        cle = ids[ok].astype(np.int64) * n_classes + data[ok].astype(np.int64)
+                        hist = np.bincount(cle, minlength=ids_max * n_classes).reshape(ids_max, n_classes)
+                    aire = abs(t.a * t.e)
+                np.savez_compressed(f_cache, hist=hist, pixel_area=aire)
+                return hist, aire
+            except rasterio.errors.RasterioIOError as e:
+                erreur = e
+        print(f"  {nom} : lecture impossible ({erreur})", flush=True)
+        return None, None
+
+    total = np.zeros((ids_max, n_classes), dtype=np.float64)
+    with ThreadPoolExecutor(max_workers=int(ing.get("fils", 8))) as pool:
+        for hist, aire in pool.map(un_feuillet, [r for _, r in feuillets.iterrows()]):
+            if hist is not None:
+                total += hist * aire
+    valeurs = np.arange(n_classes, dtype=float)
+    seuils = ing.get("seuils", [])
+    rows = []
+    area = units.set_index("uhrh").area_m2
+    for tr in _parse_troncon(project_dir(region) / "physitel" / "troncon.trl"):
+        ids = [u for u in tr["uhrh_ids"] if u in area.index]
+        if not ids:
+            continue
+        a = float(area.loc[ids].sum())
+        h = total[ids].sum(axis=0)
+        s = h.sum()
+        row = {"region": region, "troncon": int(tr["id"]), "area_m2": a}
+        nom = ing["nom"]
+        stats = {}
+        if s > 0:
+            cumul = np.cumsum(h) / s
+            stats["moyenne"] = float((h * valeurs).sum() / s)
+            for q in (10, 50, 90):
+                stats[f"q{q}"] = float(np.searchsorted(cumul, q / 100))
+            for seuil in seuils:
+                stats[f"part_sup_{seuil}"] = float(h[seuil:].sum() / s)
+        for k in ["moyenne", "q10", "q50", "q90"] + [f"part_sup_{x}" for x in seuils]:
+            row[f"{nom}_{k}"] = stats.get(k, np.nan)
+            row[f"couv_{nom}_{k}"] = s / a if a > 0 else 0.0
+        rows.append(row)
+    table = pd.DataFrame(rows)
+    table.attrs["source"] = source.name
+    table.attrs["nature"] = source.nature
+    print(f"  {len(feuillets)} feuillets", flush=True)
+    return table
+
+
+INGESTEURS["raster_tuiles"] = ingest_raster_tiles
