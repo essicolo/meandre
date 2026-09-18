@@ -1633,3 +1633,24 @@ Trois écarts survivent à ce test : la Gaspésie à 1,55 sur 24 sites, au-dessu
 L'écart gaspésien persiste donc, à 1,6 fois la mesure contre le facteur deux relevé en août. Le déficit du Saguenay et du Saint-Laurent nord-ouest s'aggrave d'avril en avril, ce qui touche directement la crue printanière. L'Outaouais, où la contrainte de neige serait la mieux fondée avec ses 73 sites retenus, est précisément la région où le manteau est déjà juste.
 
 Conséquence pour le chantier de la neige mesurée au sol : la contrainte a un sens là où le manteau est faux, donc en Gaspésie, au Saguenay et au Saint-Laurent nord-ouest, et non sur la région la mieux couverte. Le couple couverture-défaut doit guider le choix de la région d'épreuve. Ces rapports portent sur les modèles du 15 septembre, entraînés en trente pas d'optimisation.
+
+---
+
+## R114 — Le réservoir souterrain du modèle ne respire pas : 2 mm de battement saisonnier contre 0,67 m mesuré, et en opposition de phase (2026-09-18) — ÉTABLI
+
+Évaluation seule des modèles du 15 septembre, sept régions, avec le stock souterrain journalier écrit aux nœuds portant un puits du réseau de suivi (`ETL_DUMP_NAPPE`, `comparer_nappe.py`). Cent dix-huit puits comparés, 169 mois chacun en médiane. Le stock simulé est en millimètres, le niveau mesuré en mètres sous le repère du tubage : la comparaison porte sur la dynamique.
+
+| mesure | résultat |
+|---|---|
+| corrélation des anomalies mensuelles | -0,30 en médiane, aucun puits au-dessus de 0,5 |
+| corrélation du cycle saisonnier | -0,55 |
+| mois le plus haut, mesuré | avril (53 puits), mai (52) |
+| mois le plus haut, simulé | septembre (40), août (35) |
+| amplitude saisonnière mesurée | 0,67 m de battement |
+| amplitude saisonnière simulée | 2 mm de stock |
+
+Un battement de 0,67 m correspond, pour une porosité de drainage plausible de 2 à 20 pour cent, à 13 à 130 mm de variation de stock. Le modèle en fait varier deux : son aquifère se vide presque aussi vite qu'il se remplit et ne stocke donc rien. Le peu qu'il varie culmine en fin d'été, quand la nappe réelle est au plus bas, d'où l'opposition de phase. La pente de régression du stock sur le niveau rend une porosité de drainage négative sur la totalité des puits, ce qui signale la même chose autrement.
+
+Ce constat nomme un fait déjà rencontré sans être expliqué : la nappe affamée du modèle retenu, et l'aquifère restituant qui ne paie jamais. Le temps de séjour du réservoir souterrain, et non son coefficient de recharge seul, devient le paramètre à revoir.
+
+Réserves. Ces modèles n'ont fait que trente pas d'optimisation. Le stock est pris au nœud le plus proche du puits, sans égard à la profondeur captée ni au confinement. La porosité de drainage n'est utilisée que pour juger l'ordre de grandeur.
