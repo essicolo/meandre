@@ -1717,3 +1717,28 @@ Un réservoir linéaire ne peut pas donner à la fois l'amplitude et la phase, s
 **Porte de gel innocentée.** La couche 3 du témoin atteint sa teneur en eau maximale en avril, mois où la recharge atteint son minimum annuel. Seul un facteur multiplicatif peut produire cette inversion, et la porte qui divise le drainage profond par deux sur sol gelé en était le candidat. Elle a été rendue jugeable et retirée : la recharge annuelle passe de 55 à 59 mm sur l'Outaouais, celle d'avril de 0,09 à 0,10 mm par jour, le maximum reste en août, et le débit ne bouge pas, le KGE valant 0,652 contre 0,654 en Outaouais, 0,784 contre 0,775 en Gaspésie et 0,677 contre 0,711 au Saint-Laurent nord-ouest. La porte n'est pas la cause.
 
 Le candidat restant est numérique. La boucle de sous-pas du sol s'arrête à un plafond d'itérations, et le bloc qui referme le bilan fait ruisseler la pluie du temps non traité et prélève son évapotranspiration, sans jamais accumuler son drainage profond ni son écoulement hypodermique. La documentation de ce bloc situe la fuite qu'il corrige à 210 mm par an sur l'Outaouais, concentrée en mars-avril et en octobre-décembre, nulle l'été, et l'audit de fermeture situe 86 pour cent du déficit de débit en avril. Aux mois où la nappe se recharge, l'eau qui aurait dû percoler serait donc comptée en ruissellement de surface. La part de journée non traitée est désormais exposée comme diagnostic, et sa mesure par mois tranchera.
+
+---
+
+## R119 — Au plafond de sous-pas employé, le ruissellement de surface de la colonne est un artefact de discrétisation (2026-09-18) — ÉTABLI
+
+Mesure autonome sur la colonne seule, en double précision, sol de limon silteux uniforme, pluie de 40 mm par jour pendant trois jours, sans gel. Production cumulée, en millimètres, selon le plafond d'itérations de la boucle de sous-pas.
+
+| Plafond | Surface | Hypodermique | Drainage profond | Total |
+| --- | --- | --- | --- | --- |
+| 24 | 96,81 | 0,18 | 0,00 | 96,99 |
+| 64 | 73,19 | 0,25 | 0,00 | 73,45 |
+| 128 | 46,53 | 0,29 | 0,01 | 46,82 |
+| 256 | 4,44 | 0,29 | 0,01 | 4,75 |
+| 512 | 0,00 | 0,29 | 0,01 | 0,30 |
+| 1152 | 0,00 | 0,29 | 0,01 | 0,30 |
+
+Le sol est à 80 pour cent de sa teneur en eau à saturation, situation courante et non extrême. La solution convergée ne produit aucun ruissellement de surface : les 120 mm de pluie s'infiltrent. Le plafond employé en production en produit 73. La totalité de ce ruissellement vient de la troncature de la boucle. Sur un sol à 95 pour cent de saturation, la moitié du ruissellement reste artificielle, 93,33 mm contre 44,37 convergés, et l'écoulement hypodermique est divisé par sept, 0,30 contre 2,08.
+
+La cause est arithmétique. Le sous-pas est plafonné à une heure dès qu'il y a infiltration, donc une journée de pluie exige au moins vingt-quatre itérations, et chaque subdivision imposée par la condition de Courant multiplie ce nombre. Un plafond de 48 ou de 64 ne laisse presque aucune marge. Le bloc qui referme le bilan de masse verse alors en ruissellement de surface la pluie du temps non traité, ce qui ferme le bilan sans rien dire du chemin de l'eau.
+
+Portée. Le défaut agit là où le sol est humide et la pluie forte, c'est-à-dire à la fonte et aux crues. Il porte la même signature que trois constats antérieurs restés sans cause commune : la recharge simulée minimale en avril, le déficit de débit dont l'audit de fermeture situe 86 pour cent en avril, et les bassins jugés trop réactifs. Il pourrait aussi expliquer une partie des compensations obtenues par calage sur la conductivité de la première couche.
+
+Réserves. Mesure sur la colonne isolée en mode statique, à pluie constante et sol uniforme. En production la boucle sort dès que le temps du jour est épuisé, si bien que le plafond ne mord que les jours humides ou intenses. L'effet à l'échelle d'une région, son coût en temps de calcul et son effet sur le KGE restent à mesurer.
+
+Le diagnostic qui manquait est désormais exposé : la part de journée que la boucle ne traite pas sort avec les séries journalières.
