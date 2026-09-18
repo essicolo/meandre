@@ -20,7 +20,6 @@ rend moins de 5 pour cent ne peut pas produire de pointe d'ete, quelle que soit 
 
     .venv/Scripts/python.exe .runs/quebec/banc_ruissellement.py
 """
-import os
 
 import torch
 
@@ -51,8 +50,10 @@ def params(ks_facteur):
 
 
 def part_surface(pluie_mm, theta_rel, ks_facteur, orage, n_substep=64):
-    os.environ["MEANDRE_NSUBSTEP"] = str(n_substep)
-    cl = BV3C2Clone()
+    # Le clone prend son plafond de sous-pas par argument ; MEANDRE_NSUBSTEP n'est lu que
+    # par HydrotelColumn. Pose seule, la variable laissait ce banc au defaut de 48, ou la
+    # troncature de la boucle fabrique du ruissellement (mesure du 2026-09-18).
+    cl = BV3C2Clone(n_substep=n_substep)
     p = params(ks_facteur)
     tex = SOIL_TEXTURES[TEXTURE]
     t = tex["thetapf"] + theta_rel * (tex["thetas"] - tex["thetapf"])
