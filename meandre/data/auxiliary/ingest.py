@@ -181,3 +181,52 @@ def ingest_raster_tiles(source: Source, region: str) -> pd.DataFrame:
 
 
 INGESTEURS["raster_tuiles"] = ingest_raster_tiles
+
+
+def ingest_vector_classes(source: Source, region: str) -> pd.DataFrame:
+    """Polygones portant une classe : part de chaque classe par tronçon, et couverture.
+
+    La classe se lit dans une colonne, ou se déduit d'une description par la première règle
+    de mots-clés qui s'applique. Une couche par entrée de `ingestion.couches`.
+    """
+    import re
+
+    import geopandas as gpd
+
+    from meandre.data.auxiliary.units import project_dir
+
+    units = hydro_units(region)
+    area = units.set_index("uhrh").area_m2
+    num, den = {}, {}
+    for couche in source.ingestion["couches"]:
+        g = gpd.read_file(source.path(couche["fichier"]), layer=couche["couche"], engine="pyogrio")
+        g = g.to_crs(units.crs)
+        g = g[g.intersects(units.union_all().envelope)]
+        if "regles" in couche:
+            regles = [(r["classe"], re.compile(r["motif"], re.I)) for r in couche["regles"]]
+
+            def classe(t):
+                t = t or ""
+                for nom, rx in regles:
+                    if rx.search(t):
+                        return nom
+                return couche.get("classe_defaut", "autre")
+
+            g["classe"] = g[couche["colonne"]].map(classe)
+        else:
+            g["classe"] = g[couche["colonne"]].fillna(couche.get("classe_defaut", "autre")).astype(str)
+        inter = gpd.overlay(units[["uhrh", "geometry"]], g[["classe", "geometry"]], how="intersection", keep_geom_type=True)
+        inter["aire"] = inter.geometry.area
+        piv = inter.groupby(["uhrh", "classe"]).aire.sum().unstack(fill_value=0.0)
+        couvert = piv.sum(axis=1)
+        for cl in sorted(piv.columns):
+            cle = f"{couche['nom']}_{cl}"
+            num[cle] = piv[cl].reindex(area.index).fillna(0.0)
+            den[cle] = couvert.reindex(area.index).fillna(0.0)
+    table = to_reaches(region, pd.DataFrame(num), pd.DataFrame(den), area)
+    table.attrs["source"] = source.name
+    table.attrs["nature"] = source.nature
+    return table
+
+
+INGESTEURS["vecteur_classes"] = ingest_vector_classes
