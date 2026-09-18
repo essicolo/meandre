@@ -89,11 +89,11 @@ Critère de réussite. Dans ces deux régions, les suites plates ne rallongent p
 
 ## 5 bis. Temps de séjour de l'aquifère, jugé sur les niveaux de nappe mesurés
 
-Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre, alors que 118 puits du réseau de suivi des eaux souterraines battent de 0,67 m et culminent en avril ou mai. La cause est un temps de séjour de 7 à 16 jours, imposé par un champ ajusté sur les récessions de débit et verrouillé par un prior qui interdit les valeurs longues.
+Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre. Les 118 puits appariés du réseau de suivi battent de 0,67 m et culminent en avril ou mai. La cause est un temps de séjour de 7 à 16 jours, imposé par un champ ajusté sur les récessions de débit et verrouillé par un prior qui interdit les valeurs longues.
 
-Ce que le chantier demande. Laisser le temps de séjour libre jusqu'à quelques centaines de jours, en retirant le verrou du prior et en cessant d'imposer le niveau du champ de récession, puis juger sur les anomalies mensuelles du niveau de nappe, en mode tendance comme pour l'évapotranspiration et le stockage gravimétrique. Cent dix-huit puits sont appariés et leurs séries journalières extraites ; `comparer_nappe.py` rend les quatre mesures.
+Ce que le chantier demande. Laisser le temps de séjour libre jusqu'à quelques centaines de jours, en retirant le verrou du prior et en cessant d'imposer le niveau du champ de récession. Juger ensuite sur les anomalies mensuelles du niveau de nappe, en mode tendance, comme pour l'évapotranspiration et le stockage gravimétrique. Cent dix-huit puits sont appariés et leurs séries journalières extraites ; `comparer_nappe.py` rend les quatre mesures.
 
-Critère de réussite. Corrélation médiane des anomalies mensuelles au-dessus de 0,5 sur les puits appariés, maximum simulé en avril ou mai, amplitude de stock entre 13 et 130 mm, sans recul du KGE ni des cibles satellitaires.
+Critère de réussite. Corrélation médiane des anomalies mensuelles au-dessus de 0,5 sur les puits appariés, maximum simulé en avril ou mai, amplitude de stock entre 13 et 130 mm. Ni le KGE ni les cibles satellitaires ne doivent reculer.
 
 ## 6. Forçage climatique MRCC6 et scénarios
 
