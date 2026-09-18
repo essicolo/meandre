@@ -93,6 +93,11 @@ class SimDiagnostics:
     prod_surf: Tensor | None = None
     prod_hypo: Tensor | None = None
     prod_base: Tensor | None = None
+    # Part de la journee que la boucle de sous-pas du sol n'a pas traitee (sans dimension,
+    # 0 a 1). La pluie de ce temps ruisselle et son evapotranspiration est prelevee, mais
+    # son drainage profond n'est jamais accumule : la recharge y est convertie en
+    # ruissellement. Non nulle la ou la condition de Courant exige des sous-pas courts.
+    temps_non_traite: Tensor | None = None
 
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled

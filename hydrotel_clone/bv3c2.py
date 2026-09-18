@@ -369,8 +369,14 @@ class BV3C2Clone(torch.nn.Module):
         prod_hypo = prod_hypo - prod_hypo * coef_rech
         prod_base = prod_base - prod_base * coef_rech
 
+        # Fraction de la journee que la boucle n'a PAS traitee, faute d'iterations. Sa
+        # pluie ruisselle et son evapotranspiration est retiree du stock, mais ni le
+        # drainage profond ni l'hypodermique de ce temps ne sont accumules : la recharge
+        # y est donc perdue au profit du ruissellement. Expose pour que cette perte se
+        # mesure par mois au lieu de se deduire.
         diag = dict(pinf=pinf, ruis_hortonien=ruis_rate * DT_H * 1000.0,
                     sat_t1=(t1 / (ths1 + eps)),
+                    temps_non_traite=tr / DT_H,
                     drain_mm=ldrain * fsa * 1000.0)
         return (torch.clamp(prod_surf, min=0.0) * 1000.0,      # mm
                 torch.clamp(prod_hypo, min=0.0) * 1000.0,

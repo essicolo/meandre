@@ -1422,7 +1422,8 @@ if os.environ.get("ETL_DUMP_REACH"):
     for _att, _nom in (("recharge", "recharge"), ("etr", "etr"), ("swe", "swe"),
                        ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
                        ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
-                       ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3")):
+                       ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3"),
+                       ("temps_non_traite", "temps_non_traite")):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue

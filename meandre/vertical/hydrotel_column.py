@@ -1021,7 +1021,8 @@ class HydrotelColumn(nn.Module):
                     prof_gel_cm=prof_gel_cm, couvert_nival_mm=couvert_mm,
                     prod_surf=ps_surf, prod_hypo=ph, prod_base=pb,
                     # clés attendues par model.py / SimDiagnostics
-                    etr=etr_tot, snowmelt=apport, lateral_mm=prod)
+                    etr=etr_tot, snowmelt=apport, lateral_mm=prod,
+                    temps_non_traite=sdiag["temps_non_traite"])
         # milieu humide : evaporation et STOCK, exposes le 2026-08-20 (ils existaient
         # dans la physique mais n'etaient rendus par aucune sortie, ce qui rendait le
         # bilan d'eau infermable)
