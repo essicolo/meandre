@@ -51,7 +51,14 @@ def mesures_region(region, variante, temoin):
     rech = z["recharge"].mean() * 365.25
     om = np.median(z["theta3"] / ths[None, :])
     cyc = np.array([z["recharge"][mois == m].mean() for m in range(1, 13)])
-    return {"recharge_mm_an": rech, "omega_couche3": om, "mois_max_recharge": int(cyc.argmax() + 1),
+    tnt = z["temps_non_traite"] if "temps_non_traite" in z.files else None
+    sortie = {}
+    if tnt is not None:
+        cyc_t = np.array([tnt[mois == m].mean() for m in range(1, 13)])
+        sortie["part_jour_non_traite"] = float(tnt.mean())
+        sortie["part_non_traite_avril"] = float(cyc_t[3])
+    return {**sortie,
+            "recharge_mm_an": rech, "omega_couche3": om, "mois_max_recharge": int(cyc.argmax() + 1),
             "ecart_type_debit": z["q"][:, idx].std(0).mean() / temoin["ecart_type_debit_brut"],
             "debit_moyen": z["q"][:, idx].mean() / temoin["debit_moyen_brut"],
             "etr_mm_an": z["etr"].mean() * 365.25}
