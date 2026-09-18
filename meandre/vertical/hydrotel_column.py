@@ -446,6 +446,10 @@ class HydrotelColumn(nn.Module):
         _l3n = getattr(self, "l3_drain_exp", None)
         if _l3n is not None:
             p_soil["l3_drain_exp"] = float(_l3n)
+        # Porte de gel du drainage profond, posee par le pilote. 0.5 == fidele Hydrotel.
+        _l3g = getattr(self, "l3_gel_facteur", None)
+        if _l3g is not None:
+            p_soil["l3_gel_facteur"] = float(_l3g)
 
         # Ancrage Hydrotel (reproduce) : remplace le sol NeRF par la calibration
         # par nœud si fournie. Optionnel — retiré pour découpler.

@@ -439,6 +439,12 @@ if "ETL_L3_EXP" in os.environ:
     # dessous -> L3 respire, la recharge devient saisonniere. n=1 == fidele.
     model.vertical_column.l3_drain_exp = float(os.environ["ETL_L3_EXP"])
     print(f"[etl] drainage L3 NON LINEAIRE : exposant {float(os.environ['ETL_L3_EXP'])}")
+if "ETL_L3_GEL" in os.environ:
+    # Porte de gel du drainage profond. Hydrotel divise q3 par deux des que le sol est
+    # gele, ce qui place la recharge minimale en avril, mois ou la nappe mesuree monte le
+    # plus vite. 1.0 retire la porte, 0.5 est la valeur fidele.
+    model.vertical_column.l3_gel_facteur = float(os.environ["ETL_L3_GEL"])
+    print(f"[etl] porte de gel du drainage L3 : facteur {float(os.environ['ETL_L3_GEL'])} (0.5 = fidele)")
 if "ETL_SEUIL_TWB" in os.environ:
     # Partage pluie-neige au BULBE HUMIDE (generalisation du seuil, remarque d'Essi
     # sur R35) : un seuil unique en Twb remplace le seuil AIR par region. Sur nos 6

@@ -231,7 +231,12 @@ class BV3C2Clone(torch.nn.Module):
             else:
                 q3 = krec * z3 * ths3 * torch.clamp(t3 / ths3, min=0.0) ** _n3
             qq12 = qq12 * throttle; qq23 = qq23 * throttle; q2 = q2 * throttle
-            q3 = torch.where(frozen, q3 * 0.5, q3)
+            # Porte de gel sur le drainage profond. Hydrotel le divise par deux des que le
+            # sol est gele, ce qui couvre la fonte : mesure du 2026-09-18 sur l'Outaouais,
+            # la teneur en eau de L3 culmine en avril mais la recharge y atteint son
+            # MINIMUM annuel, inversion qu'aucun autre terme de q3 ne peut produire. Le
+            # facteur est expose pour pouvoir juger la porte ; 0.5 == fidele.
+            q3 = torch.where(frozen, q3 * p.get("l3_gel_facteur", 0.5), q3)
             # CalculeRuisselement (l.2191-2201) sur t1 COURANT : si t1 saturé,
             # pinf=0 → toute la pluie part en hortonien ; sinon pinf=min(prec,ks).
             omega1_sat = t1 >= (ths1 - 1e-4)
