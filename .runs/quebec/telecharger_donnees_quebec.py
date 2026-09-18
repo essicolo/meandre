@@ -39,6 +39,7 @@ JEUX = {
     "pressions-industrielles-rejets-d-eaux-usees": ("rejets-industriels", "observe", ("CSV",)),
     "carte-des-depots-de-surface-du-nord-quebecois": ("depot-surface-nord", "interpole", ("GPKG", "SQLITE", "FGDB")),
     "resultats-d-inventaire-et-carte-ecoforestiere": ("ecoforestier", "interpole", ("GPKG",)),
+    "geologie-du-socle": ("sigeom-geologie-socle", "interpole", ("GPKG",)),
 }
 DOCS = ("PDF", "XLSX")
 
