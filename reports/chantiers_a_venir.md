@@ -12,7 +12,7 @@ Prochain livrable le 2026-09-30, deux semaines après la présentation. Aucune s
 | 2 | Neige mesurée au sol | Seule cible hivernale fiable ; prépare la ronde |
 | 3 | Enveloppe probabiliste après 2022 | Couverture de 0,58 au Saguenay et 0,66 en Abitibi |
 | 4 | Coût de la simulation provinciale | Rend la ronde et les scénarios moins chers |
-| 5 | Prochaine ronde de modélisation | Un pas par bloc, couches pédologiques, neige, poids du terme des variations |
+| 5 | Prochaine ronde de modélisation | Un pas par bloc, couches pédologiques, neige, temps de séjour de l'aquifère, poids du terme des variations |
 | 6 | Forçage climatique MRCC6 et scénarios | Livrable du plan de travail, dépend de la ronde |
 | 7 | Voie positionnelle du champ spatial | Priorité basse, décidée par Essi |
 | 8 | Enveloppe du scénario naturalisé | Jugée non nécessaire pour l'instant |
@@ -86,6 +86,14 @@ Pourquoi. À un poids de 1,0, le terme raccourcit les plateaux d'hiver et relèv
 Ce que la ronde demande. Ces mesures portent sur des modèles à trente pas : le poids se rejuge dans la ronde, d'abord sur l'Outaouais aval et le Saguenay.
 
 Critère de réussite. Dans ces deux régions, les suites plates ne rallongent pas et les pointes simulées valent au moins 0,8 de l'observé.
+
+## 5 bis. Temps de séjour de l'aquifère, jugé sur les niveaux de nappe mesurés
+
+Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre, alors que 118 puits du réseau de suivi des eaux souterraines battent de 0,67 m et culminent en avril ou mai. La cause est un temps de séjour de 7 à 16 jours, imposé par un champ ajusté sur les récessions de débit et verrouillé par un prior qui interdit les valeurs longues.
+
+Ce que le chantier demande. Laisser le temps de séjour libre jusqu'à quelques centaines de jours, en retirant le verrou du prior et en cessant d'imposer le niveau du champ de récession, puis juger sur les anomalies mensuelles du niveau de nappe, en mode tendance comme pour l'évapotranspiration et le stockage gravimétrique. Cent dix-huit puits sont appariés et leurs séries journalières extraites ; `comparer_nappe.py` rend les quatre mesures.
+
+Critère de réussite. Corrélation médiane des anomalies mensuelles au-dessus de 0,5 sur les puits appariés, maximum simulé en avril ou mai, amplitude de stock entre 13 et 130 mm, sans recul du KGE ni des cibles satellitaires.
 
 ## 6. Forçage climatique MRCC6 et scénarios
 
