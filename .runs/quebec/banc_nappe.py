@@ -64,7 +64,8 @@ def serie_recharge(forme):
     return r
 
 
-def simuler(recharge, k_b, exposant=1.0, n_substep=8, e_max=None, z_ext=None, z0=4.0):
+def simuler(recharge, k_b, exposant=1.0, n_substep=8, e_max=None, z_ext=None, z0=4.0,
+            saison_et=None):
     """Série de profondeur de nappe (m) pour PLUSIEURS jeux de paramètres à la fois.
 
     k_b, e_max et z_ext acceptent un scalaire ou une liste ; le module étant vectorisé sur
@@ -80,8 +81,11 @@ def simuler(recharge, k_b, exposant=1.0, n_substep=8, e_max=None, z_ext=None, z0
     p_e = None if e_max is None else col(e_max)
     p_z = None if z_ext is None else col(z_ext)
     zs, qs = [], []
-    for r in recharge:
-        z, q, _e = m(z, col(r), p_sy, p_k, p_riv, p_h, p_e, p_z)
+    for i, r in enumerate(recharge):
+        # La demande atmosphérique est SAISONNIÈRE : appliquer une extraction constante
+        # toute l'année déplace la moyenne sans rien dire du creux d'été.
+        e_jour = p_e if (p_e is None or saison_et is None) else p_e * float(saison_et[i])
+        z, q, _e = m(z, col(r), p_sy, p_k, p_riv, p_h, e_jour, p_z)
         zs.append(z.numpy().copy())
         qs.append(q.numpy().copy())
     return np.array(zs), np.array(qs)
@@ -179,11 +183,14 @@ def etape_5_evapotranspiration():
     print("5. Extraction depuis la zone saturée, rampe linéaire jusqu'à la profondeur")
     print("   d'extinction. Effet sur le creux d'été.")
     r = serie_recharge("impulsion")
+    # Demande atmosphérique en cloche, maximale à la mi-juillet, nulle l'hiver.
+    jour = np.arange(JOURS * ANNEES) % JOURS
+    saison = np.clip(np.cos(2 * np.pi * (jour - 196) / JOURS), 0.0, None)
     # La profondeur d'extinction doit ENCADRER la profondeur où la nappe s'établit, sinon
     # la rampe reste nulle et l'essai ne mesure rien.
-    cas = ((1e-6, 0.0), (7.0, 0.002), (9.0, 0.002), (9.0, 0.004))
-    z, _q = simuler(r, k_b=[2.0e-3] * len(cas), exposant=2.0, n_substep=32,
-                    e_max=[c[1] for c in cas], z_ext=[c[0] for c in cas])
+    cas = ((1e-6, 0.0), (7.0, 0.004), (9.0, 0.004), (9.0, 0.008))
+    z, _q = simuler(r, k_b=[2.0e-3] * len(cas), exposant=2.0, n_substep=8,
+                    e_max=[c[1] for c in cas], z_ext=[c[0] for c in cas], saison_et=saison)
     b, d = battement_et_retard(z)
     c_cycle = cycle(z)
     print(f"   profondeur moyenne de la nappe sans extraction : {z[:, 0].mean():.2f} m")
