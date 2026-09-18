@@ -1680,3 +1680,15 @@ L'effondrement n'est pas une perte d'eau. Aux quarante tronçons les plus débit
 La non-linéarité place tout de même son maximum en avril, pour tous les exposants essayés : le mécanisme est juste, l'échelle est fausse. Le remède doit être un couple, aucun de ses deux termes ne suffisant seul. Un taux de percolation d'ordre de grandeur celui du substratum, portant la courbure de Campbell pour que la couche 3 se désature et respire, calé sur une recharge de 100 à 250 mm par an. Et un temps de séjour de l'aquifère qui se compte en mois, faute de quoi la recharge ressort aussitôt en débit constant.
 
 Réserves. Passes avant seules, à poids gelés, sans réentraînement : le modèle n'a pas eu l'occasion de compenser ailleurs. Les quarante tronçons les plus débitants portent un maximum simulé de juin-juillet dans le témoin, décalage qui reste à expliquer et qui pointe vers les retards des pseudo-lacs plutôt que vers la colonne.
+
+---
+
+## R117 — En Outaouais, le temps de parcours du routage est collé à sa borne supérieure et retarde la crue de deux mois sur les grands tronçons (2026-09-18) — ÉTABLI
+
+Constat trouvé en vérifiant la réserve laissée par l'épreuve du drainage profond. Dans le modèle retenu en Outaouais, le cycle mensuel du débit simulé culmine en avril sur les tronçons de taille médiane, où il vaut 3,7 fois la moyenne annuelle, et en juin sur le décile le plus débitant. Deux mois séparent la crue de tête de bassin de celle du cours principal.
+
+Le paramètre de routage l'explique. Le temps de parcours de Muskingum vaut 46,2 heures en médiane sur les 3 412 tronçons de l'Outaouais, et 43 pour cent d'entre eux sont à moins d'une heure de la borne supérieure du domaine autorisé, fixée à 48 heures. Deux jours de parcours par tronçon, cumulés le long du réseau, donnent l'ordre de grandeur du décalage observé. Aucune autre région ne présente ce comportement : la médiane vaut 14,5 heures en Abitibi, 22,4 en Gaspésie, 25,9 sur la Côte-Nord centrale, 28,0 au Saint-Laurent nord-ouest et 33,0 au Saguenay, et aucun tronçon n'y touche la borne.
+
+Un temps de parcours de 48 heures sur un tronçon correspond à une vitesse de quelques centimètres par seconde, valeur d'un plan d'eau et non d'une rivière. L'hypothèse à éprouver est celle des pseudo-lacs déjà identifiés comme réservoirs actifs artificiels, denses sur ce territoire. Le fait est établi ; sa cause ne l'est pas.
+
+Ce constat ne concerne pas la nappe et n'entre pas dans le chantier de la recharge. Il est consigné parce qu'il porte sur la région servant de témoin à ce chantier, et qu'il déplace la crue simulée de deux mois là où la nappe mesurée culmine en avril.
