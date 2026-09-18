@@ -1,41 +1,44 @@
-"""Test de convergence du sous-pas de Courant : la partition ruissellement/hypodermique
-dépend-elle du plafond n_substep ? Reproduction autonome sur la colonne BV3C2 seule.
+"""Convergence de la colonne BV3C2 au plafond de sous-pas de la condition de Courant.
 
-Le C++ boucle jusqu'à épuisement du temps (while) ; le clone plafonne à n_substep
-itérations. Quand l'échelle de Courant descend à DT_H/1152 (gel/saturation), un jour
-exige ~1152 sous-pas ; un plafond de 64 ne traite qu'une fraction du jour et verse le
-reliquat en ruissellement de surface (fermeture de masse du 2026-08-09).
+Le binaire C++ boucle jusqu'à épuisement du temps de la journée ; le clone plafonne à
+n_substep itérations pour tenir sur le GPU. Le sous-pas étant plafonné à une heure dès
+qu'il y a infiltration, une journée de pluie exige au moins vingt-quatre itérations, et
+chaque subdivision imposée par Courant multiplie ce nombre. Sous le plafond, le temps non
+traité est versé en ruissellement de surface par la fermeture du bilan de masse : la masse
+est conservée, le chemin de l'eau ne l'est pas.
 
-  python tests/test_courant_convergence.py
+Mesuré le 2026-09-18 : sur un sol à 80 pour cent de la teneur en eau à saturation, la
+solution convergée ne ruisselle pas du tout, alors que le plafond de production produit
+73 mm en trois jours. Ces valeurs sont FIGÉES ici pour qu'une correction du défaut se
+voie, et non parce qu'elles seraient acceptables.
 """
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import torch
-from hydrotel_clone.bv3c2 import BV3C2Clone, SOIL_TEXTURES, EPAISSEUR, KREC_DEFAULT, CIN_DEFAULT, DT_H
+import os
+import sys
 
-# Ce fichier est un SCRIPT : son corps s'execute a la collecte de pytest, faute de
-# fonction de test. La double precision qu'il pose doit donc etre rendue a la fin, sinon
-# elle fuit vers tous les modules charges ensuite et en casse seize.
-_DTYPE_INITIAL = torch.get_default_dtype()
-torch.set_default_dtype(torch.float64)
-torch.manual_seed(0)
+import pytest
+import torch
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from hydrotel_clone.bv3c2 import CIN_DEFAULT, EPAISSEUR, KREC_DEFAULT, SOIL_TEXTURES, BV3C2Clone
 
 N = 200
-z1, z2, z3 = EPAISSEUR
-tex = SOIL_TEXTURES["silt_loam"]
+TEXTURE = SOIL_TEXTURES["silt_loam"]
 
-def params():
-    z = lambda v: torch.full((N,), float(v))
+
+def _params(n=N):
+    z1, z2, z3 = EPAISSEUR
+    t = TEXTURE
+    z = lambda v: torch.full((n,), float(v))
+    omegpi = (1 + 2 * t["lam"]) / (2 + 2 * t["lam"])
     return dict(
-        thetas1=z(tex["thetas"]), thetas2=z(tex["thetas"]), thetas3=z(tex["thetas"]),
-        thetacc1=z(tex["thetacc"]), thetacc2=z(tex["thetacc"]), thetacc3=z(tex["thetacc"]),
-        thetapf1=z(tex["thetapf"]), thetapf2=z(tex["thetapf"]), thetapf3=z(tex["thetapf"]),
-        ks1=z(tex["ks"]), ks2=z(tex["ks"]), ks3=z(tex["ks"]),
-        psis1=z(tex["psis"]), psis2=z(tex["psis"]), psis3=z(tex["psis"]),
-        b1=z(tex["lam"]), b2=z(tex["lam"]), b3=z(tex["lam"]),
-        omegpi1=z((1 + 2 * tex["lam"]) / (2 + 2 * tex["lam"])),
-        omegpi2=z((1 + 2 * tex["lam"]) / (2 + 2 * tex["lam"])),
-        omegpi3=z((1 + 2 * tex["lam"]) / (2 + 2 * tex["lam"])),
+        thetas1=z(t["thetas"]), thetas2=z(t["thetas"]), thetas3=z(t["thetas"]),
+        thetacc1=z(t["thetacc"]), thetacc2=z(t["thetacc"]), thetacc3=z(t["thetacc"]),
+        thetapf1=z(t["thetapf"]), thetapf2=z(t["thetapf"]), thetapf3=z(t["thetapf"]),
+        ks1=z(t["ks"]), ks2=z(t["ks"]), ks3=z(t["ks"]),
+        psis1=z(t["psis"]), psis2=z(t["psis"]), psis3=z(t["psis"]),
+        b1=z(t["lam"]), b2=z(t["lam"]), b3=z(t["lam"]),
+        omegpi1=z(omegpi), omegpi2=z(omegpi), omegpi3=z(omegpi),
         mm1=z(0.1), mm2=z(0.1), mm3=z(0.1), nn1=z(0.1), nn2=z(0.1), nn3=z(0.1),
         krec=z(KREC_DEFAULT), cin=z(CIN_DEFAULT),
         z1=z(z1), z2=z(z2), z3=z(z3),
@@ -43,45 +46,45 @@ def params():
         coef_recharge=z(0.0),
     )
 
-print("Scenario A : sol pres de saturation (0.95 thetas), SANS gel, pluie 40 mm/j, 3 jours")
-print("(saturation seule : porte binaire pinf=0 quand t1=thetas, l echelle fine vient des flux)")
-print()
-print("sous-pas | surf mm | hypo mm | L3 mm | total mm | fraction surface")
 
-for n_sub in [24, 64, 128, 256, 512, 1152]:
-    clone = BV3C2Clone(n_substep=n_sub, static=True)
-    p = params()
-    z = lambda v: torch.full((N,), float(v))
-    t1, t2, t3 = z(0.95 * tex["thetas"]), z(0.95 * tex["thetas"]), z(0.95 * tex["thetas"])
-    frozen_depth = z(0.0); swe = z(0.0)
-    tot_r = tot_h = tot_b = 0.0
-    for jour in range(3):
-        out = clone(t1, t2, t3, z(40.0), z(0.1), frozen_depth, swe, p,
-                    etr1_mm=z(0.0))
-        prod_surf, prod_hypo, prod_base, rech, thetas_new, diag = out
-        t1, t2, t3 = thetas_new
-        tot_r += float(prod_surf.mean()); tot_h += float(prod_hypo.mean()); tot_b += float(prod_base.mean())
-    tot = tot_r + tot_h + tot_b
-    frac = tot_r / tot * 100 if tot > 1e-9 else 0.0
-    print(f"{n_sub:8d} | {tot_r:7.2f} | {tot_h:7.2f} | {tot_b:6.2f} | {tot:7.2f} | {frac:5.1f} %")
+def _production(n_substep, saturation, pluie_mm=40.0, jours=3):
+    """Production cumulée (surface, hypodermique, profond) en mm, à plafond donné."""
+    dtype = torch.get_default_dtype()
+    torch.set_default_dtype(torch.float64)
+    try:
+        clone = BV3C2Clone(n_substep=n_substep, static=True)
+        p = _params()
+        z = lambda v: torch.full((N,), float(v))
+        t1 = t2 = t3 = z(saturation * TEXTURE["thetas"])
+        totaux = [0.0, 0.0, 0.0]
+        for _ in range(jours):
+            surf, hypo, base, _rech, (t1, t2, t3), _diag = clone(
+                t1, t2, t3, z(pluie_mm), z(0.1), z(0.0), z(0.0), p, etr1_mm=z(0.0))
+            for i, v in enumerate((surf, hypo, base)):
+                totaux[i] += float(v.mean())
+        return totaux
+    finally:
+        torch.set_default_dtype(dtype)
 
-print()
-print("Scenario B : sol MOYEN (0.80 thetas), sans gel, pluie 40 mm/j, 3 jours")
-for n_sub in [24, 64, 128, 256, 512, 1152]:
-    clone = BV3C2Clone(n_substep=n_sub, static=True)
-    p = params()
-    z = lambda v: torch.full((N,), float(v))
-    t1, t2, t3 = z(0.80 * tex["thetas"]), z(0.80 * tex["thetas"]), z(0.80 * tex["thetas"])
-    frozen_depth = z(0.0); swe = z(0.0)
-    tot_r = tot_h = tot_b = 0.0
-    for jour in range(3):
-        out = clone(t1, t2, t3, z(40.0), z(0.1), frozen_depth, swe, p,
-                    etr1_mm=z(0.0))
-        prod_surf, prod_hypo, prod_base, rech, thetas_new, diag = out
-        t1, t2, t3 = thetas_new
-        tot_r += float(prod_surf.mean()); tot_h += float(prod_hypo.mean()); tot_b += float(prod_base.mean())
-    tot = tot_r + tot_h + tot_b
-    frac = tot_r / tot * 100 if tot > 1e-9 else 0.0
-    print(f"{n_sub:8d} | {tot_r:7.2f} | {tot_h:7.2f} | {tot_b:6.2f} | {tot:7.2f} | {frac:5.1f} %")
 
-torch.set_default_dtype(_DTYPE_INITIAL)
+@pytest.mark.parametrize("saturation", [0.80, 0.95])
+def test_solution_convergee_stable(saturation):
+    """Au-delà de 512 sous-pas la solution ne bouge plus : la référence existe."""
+    a = _production(512, saturation)
+    b = _production(1152, saturation)
+    for x, y in zip(a, b):
+        assert abs(x - y) < 0.01, f"non convergé à 512 sous-pas : {a} contre {b}"
+
+
+def test_plafond_production_surestime_le_ruissellement():
+    """Le plafond employé fabrique un ruissellement que la solution convergée n'a pas.
+
+    Valeurs figées du 2026-09-18. Un écart à ces chiffres signale que le défaut a bougé,
+    dans un sens ou dans l'autre, et demande une relecture du registre.
+    """
+    surf_64, hypo_64, _ = _production(64, 0.80)
+    surf_ref, hypo_ref, _ = _production(512, 0.80)
+    assert surf_ref == pytest.approx(0.0, abs=0.01)
+    assert surf_64 == pytest.approx(73.19, abs=0.5)
+    assert hypo_64 == pytest.approx(0.25, abs=0.02)
+    assert hypo_ref == pytest.approx(0.29, abs=0.02)
