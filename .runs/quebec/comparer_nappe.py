@@ -11,7 +11,7 @@ Quatre mesures par puits, toutes sans hypothèse d'échelle :
 - mois du niveau le plus haut, simulé contre mesuré ;
 - porosité de drainage impliquée par la pente de régression, à comparer aux valeurs connues.
 
-    .venv/Scripts/python.exe .runs/quebec/comparer_nappe.py slso mont
+    .venv/Scripts/python.exe .runs/quebec/comparer_nappe.py slso mont [--suffixe=-variante]
 """
 import os
 import sys
@@ -35,11 +35,11 @@ def anomalies(s):
     return s - s.groupby(s.index.month).transform("mean")
 
 
-def main(regions):
+def main(regions, suffixe=""):
     obs = pd.read_parquet(f"{DERIVES}/rsesq-niveaux-journaliers.parquet")
     lignes = []
     for reg in regions:
-        f = f"{DERIVES}/nappe-{reg}.npz"
+        f = f"{DERIVES}/nappe-{reg}{suffixe}.npz"
         if not os.path.exists(f):
             print(f"{reg} : {f} absent")
             continue
@@ -70,7 +70,7 @@ def main(regions):
     if t.empty:
         print("aucun puits comparable")
         return 1
-    t.to_parquet(f"{DERIVES}/comparaison-nappe.parquet", index=False)
+    t.to_parquet(f"{DERIVES}/comparaison-nappe{suffixe}.parquet", index=False)
     dec = ((t.mois_max_sim - t.mois_max_obs + 6) % 12) - 6
     print(f"{len(t)} puits comparés, {t.mois.median():.0f} mois en médiane\n")
     print(f"anomalies mensuelles : r médian {t.r_anomalies.median():+.2f}, quartiles {t.r_anomalies.quantile(.25):+.2f} à {t.r_anomalies.quantile(.75):+.2f}, part au-dessus de 0,5 : {(t.r_anomalies > 0.5).mean():.2f}")
@@ -80,9 +80,11 @@ def main(regions):
     print(f"porosité de drainage impliquée : médiane {t.porosite_drainage.median():.3f}, quartiles {t.porosite_drainage.quantile(.25):.3f} à {t.porosite_drainage.quantile(.75):.3f}")
     print(f"   part hors de la plage plausible 0,01 à 0,30 : {((t.porosite_drainage < 0.01) | (t.porosite_drainage > 0.30)).mean():.2f}")
     print(f"amplitude saisonnière : observée {t.amplitude_obs_m.median():.2f} m, simulée {t.amplitude_sim_mm.median():.0f} mm")
-    print(f"\n{DERIVES}/comparaison-nappe.parquet")
+    print(f"\n{DERIVES}/comparaison-nappe{suffixe}.parquet")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main([a.lower() for a in sys.argv[1:]] or ["slso", "mont"]))
+    _args = [a for a in sys.argv[1:] if not a.startswith("--suffixe=")]
+    _suf = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--suffixe=")), "")
+    sys.exit(main([a.lower() for a in _args] or ["slso", "mont"], _suf))

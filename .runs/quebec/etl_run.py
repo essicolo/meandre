@@ -609,6 +609,10 @@ if os.environ.get("ETL_KGW_FIELD", "0") == "1":
     _cf = _cf[_cf.region == REG].sort_values("node_idx")
     if len(_cf) == n_nodes:
         _kv = torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE)
+        # ETL_KGW_ECHELLE : facteur sur le champ, pour allonger le temps de sejour sans
+        # retirer la structure spatiale. Le champ vient des recessions de debit, soit 7 a
+        # 16 jours, alors que les nappes mesurees demandent des mois (R114).
+        _kv = _kv * float(os.environ.get("ETL_KGW_ECHELLE", "1.0"))
         _o_se = model.spatial_encoder.forward
         # MODULATION plutot qu'ECRASEMENT (2026-09-03). `sp.k_gw = _k` remplacait la
         # sortie du champ par un tenseur SANS GRADIENT : la conductivite souterraine
