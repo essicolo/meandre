@@ -1767,3 +1767,23 @@ Conséquence. Ce que le modèle appelle sa saison de recharge n'est pas une prop
 Ce constat explique d'un seul mécanisme la nappe qui ne respire pas, le déficit de débit dont 86 pour cent tombe en avril, et l'échec de toutes les variantes du drainage profond essayées le même jour : elles réglaient une loi que la troncature rend inopérante quatre jours sur dix.
 
 Réserves. Le lien avec l'assèchement des couches de surface, net sur trois territoires, ne tient pas sur quatre : le Saguenay tronque le moins et n'a pas la première couche la plus humide. Texture et climat diffèrent aussi d'un territoire à l'autre. Ce qui reste à mesurer est l'effet d'un plafond suffisant sur le KGE, sur la recharge et sur le temps de calcul à l'échelle d'une région.
+
+---
+
+## R121 — Ce n'est pas le temps de séjour de l'aquifère qui interdit le battement mesuré, c'est la forme de la recharge (2026-09-18) — ÉTABLI
+
+Banc autonome sur une nappe libre fictive, sans réseau ni routage : recharge imposée de 150 mm par an, porosité de drainage 0,05, lit du cours d'eau à 8 m sous le sol. Cible, mesurée sur les puits appariés du réseau de suivi : 0,93 m de battement, maximum une trentaine de jours après celui de la recharge. La formulation porte la profondeur de la surface libre en variable d'état, une loi stock-débit en carré de la charge selon Dupuit-Boussinesq, et une extraction depuis la zone saturée en rampe linéaire jusqu'à une profondeur d'extinction.
+
+Le schéma converge au pas journalier : le battement vaut 1,5984 m avec un seul sous-pas et 1,5916 m avec soixante-quatre, quatre dixièmes de pour cent d'écart. Contrairement à la colonne de sol, cette pièce ne coûte rien en temps de calcul. Le cas linéaire sous recharge constante reproduit sa solution analytique à 2 pour 10^13.
+
+**Recharge sinusoïdale, réservoir linéaire.** Le battement vaut 0,162 m pour un temps de réponse de 10 jours, 0,623 m pour 50 jours, 0,917 m pour 200 jours et 0,944 m pour 400 jours, avec des retards de 9, 41, 74 et 82 jours. La simulation suit la théorie à un pour cent. Atteindre la cible exige donc un retard de 74 à 82 jours, près de trois fois celui qui est mesuré : aucun réglage ne s'en sort, ce qui confirme par le calcul l'impossibilité constatée le même jour sur les variantes.
+
+**Même réservoir, recharge en impulsion de fonte.** Le battement vaut 1,019 m pour un temps de réponse de 25 jours, avec 12 jours de retard, et 1,352 m pour 50 jours avec 16 jours. Le verrou saute. Un réservoir chargé par une impulsion culmine à la fin de l'impulsion quel que soit son temps de vidange, alors qu'un forçage sinusoïdal impose le déphasage de son filtre.
+
+C'est le renversement du diagnostic. Le temps de séjour de l'aquifère n'est pas le paramètre fautif : quelques dizaines de jours suffisent, valeur compatible avec les récessions de débit observées et donc avec le champ actuel. Ce qui manque est une recharge en impulsion, que la colonne ne produit pas, puisqu'elle livre un filet quasi constant maximal en août. Le conflit entre le débit et la nappe n'est pas une incompatibilité de paramètres.
+
+**Apport de la loi non linéaire.** À dix jours de temps de réponse, la loi en carré de la charge donne 1,054 m de battement contre 0,576 m pour la loi linéaire, à retard égal. Elle permet donc un grand battement tout en gardant une réponse de débit rapide, ce qui préserve les récessions.
+
+**Apport de l'extraction depuis la zone saturée.** Sans elle, le minimum de la nappe tombe en mars, le réservoir se vidant jusqu'à la fonte suivante. Modulée par la demande atmosphérique et avec une profondeur d'extinction supérieure à celle où la nappe s'établit, 6,2 m ici, elle place le creux en octobre à 4 mm par jour de demande maximale et en septembre à 8 mm, là où les puits le mesurent. Appliquée à taux constant sur l'année elle ne déplace que la moyenne : la modulation saisonnière est ce qui compte.
+
+Réserves. Cas fictif à paramètres uniformes, recharge imposée analytiquement. Le battement obtenu, de 1,6 à 2,2 m, dépasse la cible de 0,93 m, ce qui signifie seulement que les paramètres restent à ajuster ; le point est que la cible est désormais à l'intérieur de l'ensemble atteignable alors qu'elle en était dehors. Rien n'est encore branché sur une recharge simulée ni sur un puits réel.
