@@ -16,6 +16,7 @@ Prochain livrable le 2026-09-30, deux semaines après la présentation. Aucune s
 | 6 | Forçage climatique MRCC6 et scénarios | Livrable du plan de travail, dépend de la ronde |
 | 7 | Voie positionnelle du champ spatial | Priorité basse, décidée par Essi |
 | 8 | Enveloppe du scénario naturalisé | Jugée non nécessaire pour l'instant |
+| 9 | Plafond de sous-pas de la colonne | Ouvert le 2026-09-18 ; conditionne la nappe, les pics et le coût |
 
 ## 1. Couches pédologiques de l'IRDA et gestion agricole de l'eau
 
@@ -89,13 +90,25 @@ Critère de réussite. Dans ces deux régions, les suites plates ne rallongent p
 
 ## 5 bis. Temps de séjour de l'aquifère, jugé sur les niveaux de nappe mesurés
 
-Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre. Les 118 puits appariés du réseau de suivi battent de 0,67 m et culminent en avril ou mai. La cause est un temps de séjour de 7 à 16 jours. Il est imposé par un champ ajusté sur les récessions de débit, et un prior interdit les valeurs longues.
+Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre. Les 118 puits appariés du réseau de suivi battent de 0,67 m et culminent en avril ou mai. Le temps de séjour vaut 7 à 16 jours, imposé par un champ ajusté sur les récessions de débit, et un prior interdit les valeurs longues.
 
-La recharge elle-même est en cause, en amont du réservoir. Aux nœuds des puits du Saint-Laurent sud-ouest et de la Montérégie, elle est presque plate toute l'année, de 0,18 à 0,45 mm par jour. Elle est même minimale en avril, quand la fonte sature les couches de surface. Le drainage de la troisième couche est linéaire en sa teneur en eau, qui s'épingle à saturation. La porte de gel le divise par deux tant que le sol reste gelé sous un manteau disparu. Les variantes non linéaires du drainage et de la nappe ont été essayées en inférence sur des poids figés, jugées sur le débit seul, puis écartées. Elles n'ont jamais été entraînées contre une observation de nappe.
+Ce que l'épreuve du 2026-09-18 a retiré du chantier. Six variantes du taux de percolation et du temps de séjour, en passes avant à poids gelés sur quatre territoires, disent que le taux de drainage profond n'a pas de prise sur la saison de la recharge : le maximum passe d'août à juillet puis à juin, jamais à avril, et la valeur la plus forte essayée est déjà la borne du domaine autorisé. Le volume, lui, quitte le domaine plausible dès la première dose. La porte de gel du drainage profond, un temps désignée, ne fait rien non plus : la retirer laisse la recharge d'avril à 0,10 mm par jour contre 0,09, sans effet sur le débit. Le réglage du réservoir est donc épuisé, et un réservoir linéaire ne peut de toute façon pas donner ensemble une grande amplitude et un faible retard, les deux étant réglés par le même coefficient.
 
-Ce que le chantier demande. Laisser le temps de séjour libre jusqu'à quelques centaines de jours, en retirant le verrou du prior et en cessant d'imposer le niveau du champ de récession. Juger ensuite sur les anomalies mensuelles du niveau de nappe, en mode tendance, comme pour l'évapotranspiration et le stockage gravimétrique. Cent dix-huit puits sont appariés et leurs séries journalières extraites ; `comparer_nappe.py` rend les quatre mesures.
+Ce que l'épreuve a ajouté. La courbure de Campbell sur le drainage de la troisième couche rend, à taux égal, le KGE de 0,247 à 0,577 et les deux tiers de la variabilité du débit, et donne la meilleure amplitude de nappe de la série, 24 mm. Elle est à retenir pour la ronde. Et la recharge de printemps dépend d'abord du chantier 9, la troncature de la boucle de sous-pas envoyant en surface l'eau qui devrait s'infiltrer aux jours de fonte.
+
+Ce que le chantier demande désormais. Traiter le chantier 9 d'abord, puis reprendre l'épreuve sur une colonne qui résout ses équations. Laisser alors le temps de séjour libre jusqu'à quelques centaines de jours, prior retiré, et juger sur les anomalies mensuelles du niveau, en mode tendance comme pour l'évapotranspiration et le stockage gravimétrique. `comparer_nappe.py` et `verdict_recharge.py` rendent les mesures.
 
 Critère de réussite. Corrélation médiane des anomalies mensuelles au-dessus de 0,5 sur les puits appariés, maximum simulé en avril ou mai, amplitude de stock entre 13 et 130 mm. Ni le KGE ni les cibles satellitaires ne doivent reculer.
+
+## 9. Plafond de sous-pas de la colonne : le ruissellement de surface est en partie un artefact
+
+Ouvert le 2026-09-18. Sur un sol à 80 pour cent de sa teneur en eau à saturation recevant 40 mm de pluie par jour pendant trois jours, sans gel, la colonne ne produit aucun ruissellement de surface quand la boucle de sous-pas va jusqu'au bout. Au plafond de 64 itérations employé par toute la flotte, elle en produit 73 mm. À 95 pour cent de saturation, la moitié du ruissellement reste artificielle et l'écoulement hypodermique est divisé par sept. Le sous-pas étant plafonné à une heure dès qu'il y a infiltration, une journée de pluie exige au moins vingt-quatre itérations, et chaque subdivision imposée par la condition de Courant multiplie ce nombre : un plafond de 64 ne laisse presque aucune marge. Le bloc qui referme le bilan verse alors en ruissellement la pluie du temps non traité, ce qui conserve la masse et fausse le chemin.
+
+Le défaut agit là où le sol est humide et la pluie forte, donc à la fonte et aux crues. Il porte la même signature que trois constats restés sans cause commune : la recharge simulée minimale en avril, le déficit de débit dont 86 pour cent tombe en avril, et les bassins jugés trop réactifs.
+
+Ce que le chantier demande. Mesurer la part de journée non traitée par mois et par territoire, diagnostic désormais exposé avec les séries journalières. Chiffrer le coût en temps de calcul d'un plafond suffisant, sachant que la compilation du sol se désactive au-delà de 64 sous-pas, et chercher une réécriture qui converge sans multiplier les itérations, par exemple un sous-pas adaptatif par nœud plutôt qu'un plafond commun. Le chantier 4, sur le coût de la simulation provinciale, en dépend directement.
+
+Critère de réussite. Écart de production entre le réglage retenu et la solution convergée sous cinq pour cent sur les trois chemins, surface, hypodermique et drainage profond, pour un surcoût en temps de calcul qui laisse la ronde provinciale faisable.
 
 ## 6. Forçage climatique MRCC6 et scénarios
 
