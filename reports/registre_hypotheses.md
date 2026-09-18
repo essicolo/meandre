@@ -1787,3 +1787,25 @@ C'est le renversement du diagnostic. Le temps de séjour de l'aquifère n'est pa
 **Apport de l'extraction depuis la zone saturée.** Sans elle, le minimum de la nappe tombe en mars, le réservoir se vidant jusqu'à la fonte suivante. Modulée par la demande atmosphérique et avec une profondeur d'extinction supérieure à celle où la nappe s'établit, 6,2 m ici, elle place le creux en octobre à 4 mm par jour de demande maximale et en septembre à 8 mm, là où les puits le mesurent. Appliquée à taux constant sur l'année elle ne déplace que la moyenne : la modulation saisonnière est ce qui compte.
 
 Réserves. Cas fictif à paramètres uniformes, recharge imposée analytiquement. Le battement obtenu, de 1,6 à 2,2 m, dépasse la cible de 0,93 m, ce qui signifie seulement que les paramètres restent à ajuster ; le point est que la cible est désormais à l'intérieur de l'ensemble atteignable alors qu'elle en était dehors. Rien n'est encore branché sur une recharge simulée ni sur un puits réel.
+
+---
+
+## R122 — Le mécanisme manquant dominant est l'extraction estivale depuis la zone saturée, pas la forme de la recharge (2026-09-18) — ÉTABLI
+
+Nappe libre branchée sur la recharge simulée aux nœuds portant un puits, 62 puits sur quatre territoires, paramètres posés à des valeurs plausibles et non ajustés : temps de réponse de 100 jours, porosité de drainage 0,05, lit du cours d'eau à 8 m, extraction maximale de 4 mm par jour jusqu'à 9 m de profondeur, modulée par la demande atmosphérique.
+
+| Forçage | Corrélation des anomalies | Corrélation du cycle saisonnier | Mois le plus haut simulé | Porosité de drainage impliquée |
+| --- | --- | --- | --- | --- |
+| Aquifère actuel | -0,36 | -0,50 | août | négative |
+| Recharge simulée telle quelle | -0,23 | +0,45 | avril | 0,026 |
+| Même recharge, corrigée de la troncature | -0,22 | +0,50 | avril | 0,030 |
+| Impulsion de fonte, même total annuel | +0,08 | +0,74 | mai | 0,056 |
+| Mesuré | | | mai | |
+
+Avec exactement la recharge qui donne aujourd'hui un aquifère plat culminant en août, le module renverse le cycle saisonnier de -0,50 à +0,45 et place le maximum en avril. Le mécanisme responsable est l'extraction depuis la zone saturée quand la nappe est à portée des racines : elle creuse l'étiage d'été et place donc le maximum au sortir de la recharge hivernale. Le modèle actuel ne peut pas la représenter, son flux souterrain ne pouvant pas s'inverser.
+
+Cela corrige le constat du même jour qui faisait de la forme de la recharge le verrou. L'impulsion de fonte ajoute par-dessus, portant le cycle de 0,45 à 0,74 et calant le mois exactement, mais elle n'est pas la condition nécessaire. La correction de la troncature n'apporte que 0,05 de corrélation saisonnière, confirmant que le défaut numérique pèse sur le volume de la recharge de printemps plus que sur la dynamique de la nappe.
+
+La porosité de drainage impliquée vaut 0,026 à 0,056 selon le forçage, dans la plage du roc fracturé et du till, ce qui est cohérent avec des puits dont la majorité captent dans le socle. Elle est obtenue sans aucun ajustement. L'aquifère actuel, lui, rendait une porosité négative sur la totalité des puits : le module est donc commensurable aux mesures, donc identifiable, ce que le précédent n'était pas.
+
+Réserves. La corrélation des anomalies mensuelles reste mauvaise, de -0,23 à +0,08 : le cycle moyen est juste, la variation d'une année à l'autre ne l'est pas. Aucun paramètre n'est calé et le module tourne hors de la colonne, sans rétroaction sur le débit. Le filtre de confinement n'est pas appliqué.
