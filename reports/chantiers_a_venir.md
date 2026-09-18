@@ -89,7 +89,7 @@ Critère de réussite. Dans ces deux régions, les suites plates ne rallongent p
 
 ## 5 bis. Temps de séjour de l'aquifère, jugé sur les niveaux de nappe mesurés
 
-Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre. Les 118 puits appariés du réseau de suivi battent de 0,67 m et culminent en avril ou mai. La cause est un temps de séjour de 7 à 16 jours, imposé par un champ ajusté sur les récessions de débit et verrouillé par un prior qui interdit les valeurs longues.
+Ouvert le 2026-09-18, à intégrer à la prochaine ronde. Le réservoir souterrain du modèle bat de 2 mm par an et culmine en août ou septembre. Les 118 puits appariés du réseau de suivi battent de 0,67 m et culminent en avril ou mai. La cause est un temps de séjour de 7 à 16 jours. Il est imposé par un champ ajusté sur les récessions de débit, et un prior interdit les valeurs longues.
 
 Ce que le chantier demande. Laisser le temps de séjour libre jusqu'à quelques centaines de jours, en retirant le verrou du prior et en cessant d'imposer le niveau du champ de récession. Juger ensuite sur les anomalies mensuelles du niveau de nappe, en mode tendance, comme pour l'évapotranspiration et le stockage gravimétrique. Cent dix-huit puits sont appariés et leurs séries journalières extraites ; `comparer_nappe.py` rend les quatre mesures.
 
