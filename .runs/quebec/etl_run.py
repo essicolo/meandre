@@ -265,6 +265,18 @@ if os.environ.get("ETL_IRDA", "0") == "1":
     os.environ.setdefault("MEANDRE_REMBOURRAGE_NUL", "1")
     print(f"[etl] IRDA : {len(_noms_irda)} colonnes ajoutées au champ | couverture médiane {float(np.median(_xi[:, -1])):.2f}")
 
+# ETL_DESCRIPTEURS=source1,source2 : toute source ingérée par le cadre commun entre à l'entrée
+# du champ par `descriptors.columns_for_nodes`, compositions en ilr et masque de couverture.
+if os.environ.get("ETL_DESCRIPTEURS"):
+    from meandre.data.auxiliary.descriptors import columns_for_nodes as _descripteurs
+    _terr = r["territorial"]
+    for _src in [x.strip() for x in os.environ["ETL_DESCRIPTEURS"].split(",") if x.strip()]:
+        _xd, _noms_d = _descripteurs(_src, REG, r["node_ids"])
+        _terr.data = torch.cat([_terr.data, torch.tensor(_xd, device=_terr.data.device)], dim=1)
+        _terr.columns = list(_terr.columns) + _noms_d
+        print(f"[etl] descripteurs {_src} : {len(_noms_d)} colonnes | couverture médiane {float(np.median(_xd[:, -1])):.2f}")
+    os.environ.setdefault("MEANDRE_REMBOURRAGE_NUL", "1")
+
 model = HydroModel(
     n_nodes=n_nodes,
     n_territorial=r["territorial"].n_features,
