@@ -1609,3 +1609,23 @@ Information propre, mesurée sans simulation. Pour les 93 paires puits-station d
 Le registre l'autorise déjà comme contrainte de tendance : ce sont des mesures directes de hauteur d'eau, sans assimilation de nos débits. La valeur absolue, elle, est une profondeur sous le repère du tubage et ne se compare pas au stockage simulé ; seules les variations le peuvent.
 
 Reste à mesurer, et cela demande une simulation : le stockage souterrain simulé suit-il ces variations, et une contrainte sur ce point resserre-t-elle les paramètres de l'aquifère entre deux graines. Le pilote ne sort pas encore le stockage souterrain journalier aux nœuds des puits.
+
+---
+
+## R113 — Le manteau simulé est juste en Outaouais, trop épais en Gaspésie et trop mince au Saguenay (2026-09-18) — ÉTABLI
+
+Comparaison sans simulation, sur la climatologie mensuelle de l'équivalent en eau des caches du 15 septembre et les relevés CanSWE des bases régionales, 2001-2024. Sites retenus par représentativité : à moins de 15 km du nœud et à moins de 150 m d'écart d'altitude. Rapport du manteau simulé au manteau mesuré, médianes mensuelles :
+
+| région | sites | janvier | février | mars | avril |
+|---|---:|---:|---:|---:|---:|
+| Outaouais aval | 73 | 1,11 | 1,12 | 1,03 | 1,04 |
+| Gaspésie | 24 | 1,29 | 1,64 | 1,65 | 1,56 |
+| Saguenay | 34 | 0,78 | 0,76 | 0,76 | 0,65 |
+| Saint-Laurent nord-ouest | 30 | 0,92 | 0,91 | 0,87 | 0,76 |
+| Côte-Nord B | 33 | 1,23 | 1,24 | 1,22 | 1,32 |
+| Côte-Nord A | 20 | 0,98 | 0,97 | 0,93 | 1,03 |
+| Abitibi | 4 | 0,85 | 0,87 | 0,85 | 0,68 |
+
+L'écart gaspésien persiste donc, à 1,6 fois la mesure contre le facteur deux relevé en août. Le déficit du Saguenay et du Saint-Laurent nord-ouest s'aggrave d'avril en avril, ce qui touche directement la crue printanière. L'Outaouais, où la contrainte de neige serait la mieux fondée avec ses 73 sites retenus, est précisément la région où le manteau est déjà juste.
+
+Conséquence pour le chantier de la neige mesurée au sol : la contrainte a un sens là où le manteau est faux, donc en Gaspésie, au Saguenay et au Saint-Laurent nord-ouest, et non sur la région la mieux couverte. Le couple couverture-défaut doit guider le choix de la région d'épreuve. Ces rapports portent sur les modèles du 15 septembre, entraînés en trente pas d'optimisation.
