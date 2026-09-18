@@ -1423,7 +1423,12 @@ if os.environ.get("ETL_DUMP_REACH"):
                        ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
                        ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
                        ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3"),
-                       ("temps_non_traite", "temps_non_traite")):
+                       ("temps_non_traite", "temps_non_traite"),
+                       # Partition de la production laterale : sans elle on ne peut pas dire
+                       # par quel chemin le modele soutient ses etiages, donc si sa reponse
+                       # a un prelevement en basses eaux vient du bon reservoir.
+                       ("prod_surf", "prod_surf"), ("prod_hypo", "prod_hypo"),
+                       ("prod_base", "prod_base")):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue
