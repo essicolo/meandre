@@ -1746,3 +1746,24 @@ Coût, mesuré sur 3 412 tronçons sans compilation, pour une journée saturée 
 Réserves. Mesure sur la colonne isolée en mode statique, à pluie constante et sol uniforme. En production la boucle sort dès que le temps du jour est épuisé, si bien que le plafond ne mord que les jours humides ou intenses. L'effet à l'échelle d'une région, son coût en temps de calcul et son effet sur le KGE restent à mesurer.
 
 Le diagnostic qui manquait est désormais exposé : la part de journée que la boucle ne traite pas sort avec les séries journalières.
+
+---
+
+## R120 — La saison de la recharge simulée est le négatif de la troncature de la boucle de sous-pas (2026-09-18) — ÉTABLI
+
+Mesure directe, aux conditions exactes de production, sur quatre territoires, 2000 à 2024. La part de chaque journée que la boucle de sous-pas du sol ne traite pas est désormais exposée avec les séries journalières. Le KGE des quatre passes reproduit celui du témoin au millième près, le diagnostic n'ayant rien changé au calcul.
+
+| Territoire | Part non traitée, annuelle | Avril | Août | Couples jour-tronçon à plus de la moitié | Corrélation avec la recharge mensuelle |
+| --- | --- | --- | --- | --- | --- |
+| Saguenay | 0,29 | 0,34 | 0,15 | 0,37 | -0,94 |
+| Outaouais | 0,32 | 0,62 | 0,08 | 0,38 | -0,94 |
+| Gaspésie | 0,36 | 0,49 | 0,11 | 0,40 | -0,99 |
+| Saint-Laurent nord-ouest | 0,40 | 0,58 | 0,16 | 0,50 | -0,98 |
+
+Entre 29 et 40 pour cent de chaque journée simulée n'est pas traitée, et plus de la moitié de la journée sur 37 à 50 pour cent des couples jour-tronçon. Le maximum tombe au printemps et le minimum en été. Le cycle mensuel de la recharge est l'image inversée de ce cycle, à une corrélation de -0,94 à -0,99 selon le territoire.
+
+Conséquence. Ce que le modèle appelle sa saison de recharge n'est pas une propriété de la physique de sa colonne : c'est la trace des mois où son schéma numérique échoue. En Outaouais, la recharge d'avril vaut 0,09 mm par jour, minimum annuel, alors que 62 pour cent de la journée d'avril n'est pas traitée et que la teneur en eau de la troisième couche y atteint son maximum. L'eau de la fonte qui devrait percoler est versée en ruissellement de surface par le bloc de fermeture du bilan.
+
+Ce constat explique d'un seul mécanisme la nappe qui ne respire pas, le déficit de débit dont 86 pour cent tombe en avril, et l'échec de toutes les variantes du drainage profond essayées le même jour : elles réglaient une loi que la troncature rend inopérante quatre jours sur dix.
+
+Réserves. Le lien avec l'assèchement des couches de surface, net sur trois territoires, ne tient pas sur quatre : le Saguenay tronque le moins et n'a pas la première couche la plus humide. Texture et climat diffèrent aussi d'un territoire à l'autre. Ce qui reste à mesurer est l'effet d'un plafond suffisant sur le KGE, sur la recharge et sur le temps de calcul à l'échelle d'une région.
