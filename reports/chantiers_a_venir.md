@@ -17,6 +17,7 @@ Prochain livrable le 2026-09-30, deux semaines après la présentation. Aucune s
 | 7 | Voie positionnelle du champ spatial | Priorité basse, décidée par Essi |
 | 8 | Enveloppe du scénario naturalisé | Jugée non nécessaire pour l'instant |
 | 9 | Plafond de sous-pas de la colonne | Ouvert le 2026-09-18 ; conditionne la nappe, les pics et le coût |
+| 10 | Module de recharge et de nappe | Ouvert le 2026-09-18 ; porte l'identifiabilité et l'étiage sous prélèvement |
 
 ## 1. Couches pédologiques de l'IRDA et gestion agricole de l'eau
 
@@ -99,6 +100,20 @@ Ce que l'épreuve a ajouté. La courbure de Campbell sur le drainage de la trois
 Ce que le chantier demande désormais. Traiter le chantier 9 d'abord, puis reprendre l'épreuve sur une colonne qui résout ses équations. Laisser alors le temps de séjour libre jusqu'à quelques centaines de jours, prior retiré, et juger sur les anomalies mensuelles du niveau, en mode tendance comme pour l'évapotranspiration et le stockage gravimétrique. `comparer_nappe.py` et `verdict_recharge.py` rendent les mesures.
 
 Critère de réussite. Corrélation médiane des anomalies mensuelles au-dessus de 0,5 sur les puits appariés, maximum simulé en avril ou mai, amplitude de stock entre 13 et 130 mm. Ni le KGE ni les cibles satellitaires ne doivent reculer.
+
+## 10. Module de recharge et de nappe
+
+Ouvert le 2026-09-18, sur une remarque d'Essi. Ce qui tient lieu de recharge dans la colonne n'est pas un module mais une condition de sortie par le bas, calée sur les récessions de débit. Il n'y a pas de surface libre, la troisième couche étant un seau d'épaisseur fixe saturé neuf jours sur dix ; pas de gradient hydraulique, le flux étant proportionnel à la teneur en eau ; pas de substratum, le taux ne dépendant ni du dépôt ni du socle alors que la conductivité du sol vaut 0,38 m par jour, cinq cents fois trop pour tenir ce rôle ; pas de remontée capillaire, le flux ne pouvant pas changer de signe ; et un aquifère linéaire unique dont l'amplitude et le retard sont réglés par le même coefficient, ce qui interdit la combinaison mesurée de 0,93 m de battement avec un maximum juste après la fonte. Le débit n'identifie rien de tout cela : multiplier le temps de séjour par dix déplace le KGE de 0,001.
+
+Ce qui existe ailleurs, vérifié le 2026-09-18. Le manuel de Raven 3.8 donne douze algorithmes d'écoulement de base, dont une loi de puissance, une loi de puissance à seuil et une formulation de type TOPMODEL ; dix-sept de percolation, dont une loi de puissance ; un de remontée capillaire, de type HBV ; et des compartiments d'aquifère et d'eau souterraine distincts des couches de sol. Trois des quatre pièces manquantes y sont donc, éprouvées et paramétrées. La quatrième n'y est pas : l'expression surface libre n'apparaît que dans la définition de la remontée capillaire, et Raven n'a pas de profondeur de nappe comme variable d'état, donc pas de porosité de drainage explicite. Son solveur est un fractionnement d'opérateurs ordonné, sans sous-pas adaptatif, et n'aide donc pas sur le chantier 9. Côté Hydrotel, aucun module hydrogéologique n'a été trouvé. La connaissance québécoise de la recharge est ailleurs : HydroBudget, développé à l'UQAM dans la chaire de Marie Larocque par Emmanuel Dubois, en accès libre sur Borealis, simule la recharge à 500 m et au pas mensuel sur le sud du Québec de 1961 à 2017. C'est une cible auxiliaire candidate, pas un module à porter.
+
+Ce que le chantier demande. Reprendre de Raven les formes fonctionnelles et leurs plages de paramètres, plutôt que de les inventer. Ajouter la pièce qui n'existe nulle part et qui porte l'enjeu : une profondeur de nappe comme variable d'état, avec la porosité de drainage en paramètre du champ spatial, prédite par les mêmes covariables que le reste. C'est elle qui rend commensurables les millimètres du modèle et les mètres mesurés dans un puits. Prévoir le filtre de confinement, un puits captant sous une couche imperméable mesurant une charge et non un stock.
+
+Enjeu, formulé par Essi. Le développement vise la prédiction des effets des prélèvements et des rejets en étiage. Si l'étiage est soutenu par la nappe, la recharge est sur le chemin critique. Si le modèle soutient ses étiages par un autre chemin tout en reproduisant les débits, il aurait raison pour de mauvaises raisons et sa réponse à un prélèvement ne serait pas crédible. La partition journalière de la production entre surface, hypodermique et base est désormais enregistrée pour trancher.
+
+Préalables. Le chantier 9, faute de quoi le module serait jugé à travers le même brouillard. Et le terme de perte sur les niveaux mesurés, faute de quoi il serait aussi peu falsifiable que l'actuel.
+
+Critère de réussite. Amplitude et phase de la nappe ensemble, corrélation médiane des anomalies mensuelles au-dessus de 0,5 et maximum simulé en avril ou mai, sans recul du KGE ni des cibles satellitaires, avec des paramètres que les puits identifient.
 
 ## 9. Plafond de sous-pas de la colonne : le ruissellement de surface est en partie un artefact
 
