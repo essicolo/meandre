@@ -1626,6 +1626,10 @@ Comparaison sans simulation, sur la climatologie mensuelle de l'équivalent en e
 | Côte-Nord A | 20 | 0,98 | 0,97 | 0,93 | 1,03 |
 | Abitibi | 4 | 0,85 | 0,87 | 0,85 | 0,68 |
 
+Remarque d'Essi, vérifiée le jour même : la mesure est d'autant moins sûre que les sites sont rares. La dispersion entre sites est en effet considérable au sein d'une même région ; en Outaouais, sur 73 sites, le rapport par site va de 0,65 au premier décile à 2,42 au neuvième. En tirant n sites au hasard parmi ces 73, l'intervalle à 90 % de la médiane vaut 0,76 à 2,00 pour n = 4, 0,95 à 1,49 pour n = 20 et 1,07 à 1,34 pour n = 73. Les valeurs de l'Abitibi, du Labrador et de la Côte-Nord C, tirées de trois à cinq sites, ne distinguent donc pas un défaut du modèle d'un tirage de sites, et celle de la Côte-Nord B reste dans l'intervalle attendu.
+
+Trois écarts survivent à ce test : la Gaspésie à 1,55 sur 24 sites, au-dessus de l'intervalle ; le Saguenay à 0,84 sur 34 sites et le Saint-Laurent nord-ouest à 0,91 sur 30 sites, en dessous. Ailleurs, la médiane par site tient entre 0,84 et 1,29, soit dans le bruit de la mesure. Réserve : la dispersion de l'Outaouais sert de référence pour toutes les régions ; une région plus montagneuse en aurait davantage, ce qui rendrait le test encore plus indulgent.
+
 L'écart gaspésien persiste donc, à 1,6 fois la mesure contre le facteur deux relevé en août. Le déficit du Saguenay et du Saint-Laurent nord-ouest s'aggrave d'avril en avril, ce qui touche directement la crue printanière. L'Outaouais, où la contrainte de neige serait la mieux fondée avec ses 73 sites retenus, est précisément la région où le manteau est déjà juste.
 
 Conséquence pour le chantier de la neige mesurée au sol : la contrainte a un sens là où le manteau est faux, donc en Gaspésie, au Saguenay et au Saint-Laurent nord-ouest, et non sur la région la mieux couverte. Le couple couverture-défaut doit guider le choix de la région d'épreuve. Ces rapports portent sur les modèles du 15 septembre, entraînés en trente pas d'optimisation.
