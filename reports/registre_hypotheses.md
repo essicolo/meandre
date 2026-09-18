@@ -1813,3 +1813,26 @@ La porosité de drainage impliquée vaut 0,026 à 0,056 selon le forçage, dans 
 La conclusion change donc de sens. L'extraction estivale depuis la zone saturée reste indispensable, mais elle ne suffit pas : sur les puits recevables, la forme de la recharge fait passer le cycle de 0,12 à 0,72. Les deux mécanismes sont nécessaires, et la colonne doit produire une impulsion de printemps. L'énoncé initial, qui tenait l'impulsion pour accessoire, était un artefact des puits captifs.
 
 Réserves. Vingt-sept puits seulement après filtrage. La corrélation des anomalies mensuelles reste mauvaise, +0,07 au mieux : le cycle moyen est juste, la variation d'une année à l'autre ne l'est pas. Aucun paramètre n'est calé et le module tourne hors de la colonne, sans rétroaction sur le débit.
+
+---
+
+## R123 — Les puits identifient la présence du mécanisme souterrain, pas la valeur de ses paramètres (2026-09-18) — ÉTABLI
+
+Balayage de chaque paramètre de la nappe libre sur 27 puits en nappe libre non influencés, quatre territoires, recharge simulée telle que la colonne la produit.
+
+| Paramètre | Plage balayée | Corrélation du cycle saisonnier obtenue | Corrélation des anomalies |
+| --- | --- | --- | --- |
+| Extraction depuis la zone saturée | absente, puis 2 à 16 mm/j | -0,47 puis +0,02 à +0,12 | -0,35 puis -0,22 à -0,32 |
+| Profondeur d'extinction | 3 et 6 m, puis 9 à 30 m | -0,47 puis +0,12 à +0,22 | -0,35 puis -0,14 à -0,32 |
+| Temps de réponse | 20 à 400 j | +0,06 à +0,19 | -0,32 partout |
+| Exposant de la loi stock-débit | 1 à 5 | +0,06 à +0,18 | -0,31 à -0,32 |
+
+Les deux premières lignes sont des effets de seuil et non des sensibilités continues. Que l'extraction existe, et que sa profondeur d'extinction atteigne la nappe, fait basculer la corrélation saisonnière de -0,47 à +0,12 et le mois du maximum d'octobre à avril. Entre 2 et 8 mm par jour la mesure ne distingue presque rien. Le temps de réponse et l'exposant ne déplacent la corrélation que de 0,12 sur toute leur plage plausible.
+
+Les anomalies mensuelles ne voient AUCUN paramètre de l'aquifère : elles restent à -0,32 quel que soit le temps de réponse, l'exposant ou l'intensité de l'extraction. Seule la profondeur d'extinction les bouge, de -0,32 à -0,14. L'échec interannuel ne vient donc pas de l'aquifère et aucun réglage de l'aquifère ne le corrigera : il vient de la recharge.
+
+**Identifiabilité spatiale de la porosité de drainage : non démontrée.** La valeur ajustée par puits vaut 0,070 en médiane sur les 18 puits en dépôts granulaires et 0,034 sur les 9 puits dans le roc. Les médianes vont dans le sens attendu et chacune tombe dans sa plage physique, mais les distributions se recouvrent, le test de rang donne p = 0,46, et la nature de l'aquifère n'explique que 4 pour cent de la variance du logarithme des valeurs ajustées. Laisser un paramètre libre par puits reviendrait donc, en l'état, à laisser chaque puits absorber son erreur locale sans qu'aucune covariable ne le prédise.
+
+Conséquence pour le terme de perte. Il doit d'abord porter sur ce que les puits identifient réellement, la présence du mécanisme et la phase, en mode anomalies et sans paramètre libre supplémentaire. L'identifiabilité spatiale de la porosité est une question à reposer quand la recharge sera correcte, puisqu'elle est aujourd'hui mesurée à travers deux défauts connus, la troncature de la boucle de sous-pas et l'absence d'impulsion de printemps.
+
+Réserves. Vingt-sept puits dont neuf dans le roc, échantillon faible pour séparer deux distributions larges. La porosité ajustée absorbe aussi l'erreur sur l'amplitude de la recharge, qui varie d'un tronçon à l'autre. La nature binaire roc contre dépôts est une covariable grossière devant la lithologie du SIGÉOM et les dépôts de surface, disponibles par tronçon et non encore essayés ici.
