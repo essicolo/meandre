@@ -1692,3 +1692,28 @@ Le paramètre de routage l'explique. Le temps de parcours de Muskingum vaut 46,2
 Un temps de parcours de 48 heures sur un tronçon correspond à une vitesse de quelques centimètres par seconde, valeur d'un plan d'eau et non d'une rivière. L'hypothèse à éprouver est celle des pseudo-lacs déjà identifiés comme réservoirs actifs artificiels, denses sur ce territoire. Le fait est établi ; sa cause ne l'est pas.
 
 Ce constat ne concerne pas la nappe et n'entre pas dans le chantier de la recharge. Il est consigné parce qu'il porte sur la région servant de témoin à ce chantier, et qu'il déplace la crue simulée de deux mois là où la nappe mesurée culmine en avril.
+
+---
+
+## R118 — Aucun réglage du drainage profond ne déplace la recharge vers le printemps ; la porte de gel est innocentée (2026-09-18) — ÉTABLI
+
+Six variantes du drainage profond et du temps de séjour de l'aquifère, passes avant à poids gelés sur l'Outaouais, la Gaspésie, le Saint-Laurent nord-ouest et le Saguenay, jugées sur les puits du réseau de suivi et sur le débit tenu de côté de 2022 à 2024.
+
+| Variante | Recharge mm/an | Mois de recharge maximale | Écart-type du débit | KGE | Corrélation des anomalies | Amplitude simulée |
+| --- | --- | --- | --- | --- | --- | --- |
+| Témoin | 100 | août | 1,000 | 0,65 à 0,71 | -0,36 | 2 mm |
+| Taux x2, séjour long | 292 | juillet | 0,816 | 0,584 | -0,20 | 15 mm |
+| Taux x3, séjour long | 458 | juillet | 0,589 | 0,247 | -0,15 | 16 mm |
+| Taux x5 | 649 | juin | 0,280 | -0,087 | +0,23 | 6 mm |
+| Taux x5, séjour long | 649 | juin | 0,275 | -0,102 | +0,03 | 21 mm |
+| Taux x3, courbure de Campbell | 326 | juin | 0,714 | 0,577 | +0,01 | 24 mm |
+
+Trois enseignements. Le maximum de recharge passe d'août à juillet puis à juin, jamais à avril ni à mai : le taux de drainage n'a pas de prise sur la saison. Le volume, lui, quitte le domaine plausible dès la première dose, la recharge du témoin valant déjà 100 mm par an. Et le taux le plus fort essayé, qui seul rend la corrélation des anomalies franchement positive, est la borne supérieure du domaine autorisé : une dose quatre fois plus grande donne des résultats identiques au chiffre près, la valeur étant écrêtée.
+
+La courbure de Campbell mérite d'être retenue pour elle-même. Au même taux, elle rend le KGE de 0,247 à 0,577 et l'écart-type du débit de 0,473 à 0,714 par rapport au témoin, parce que le drainage se coupe quand la couche se vide au lieu de couler en continu. Elle donne aussi la meilleure amplitude de nappe de la série, 24 mm, dans la plage plausible de 13 à 130 mm. Elle ne déplace pas la phase.
+
+Un réservoir linéaire ne peut pas donner à la fois l'amplitude et la phase, son amplitude et son retard étant réglés par le même coefficient. La mesure le montre directement : à vidange rapide, le taux x5 donne une corrélation des anomalies de +0,23 pour 6 mm d'amplitude ; en allongeant le séjour, l'amplitude monte à 21 mm mais la corrélation retombe à +0,03 et la corrélation saisonnière à -0,47. La nappe mesurée a les deux, 0,93 m de battement et un maximum juste après la fonte, ce qui exige une recharge en impulsion de printemps et non un filet annuel.
+
+**Porte de gel innocentée.** La couche 3 du témoin atteint sa teneur en eau maximale en avril, mois où la recharge atteint son minimum annuel. Seul un facteur multiplicatif peut produire cette inversion, et la porte qui divise le drainage profond par deux sur sol gelé en était le candidat. Elle a été rendue jugeable et retirée : la recharge annuelle passe de 55 à 59 mm sur l'Outaouais, celle d'avril de 0,09 à 0,10 mm par jour, le maximum reste en août, et le débit ne bouge pas, le KGE valant 0,652 contre 0,654 en Outaouais, 0,784 contre 0,775 en Gaspésie et 0,677 contre 0,711 au Saint-Laurent nord-ouest. La porte n'est pas la cause.
+
+Le candidat restant est numérique. La boucle de sous-pas du sol s'arrête à un plafond d'itérations, et le bloc qui referme le bilan fait ruisseler la pluie du temps non traité et prélève son évapotranspiration, sans jamais accumuler son drainage profond ni son écoulement hypodermique. La documentation de ce bloc situe la fuite qu'il corrige à 210 mm par an sur l'Outaouais, concentrée en mars-avril et en octobre-décembre, nulle l'été, et l'audit de fermeture situe 86 pour cent du déficit de débit en avril. Aux mois où la nappe se recharge, l'eau qui aurait dû percoler serait donc comptée en ruissellement de surface. La part de journée non traitée est désormais exposée comme diagnostic, et sa mesure par mois tranchera.
