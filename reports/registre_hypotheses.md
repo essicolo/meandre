@@ -1790,7 +1790,7 @@ Réserves. Cas fictif à paramètres uniformes, recharge imposée analytiquement
 
 ---
 
-## R122 — Le mécanisme manquant dominant est l'extraction estivale depuis la zone saturée, pas la forme de la recharge (2026-09-18) — ÉTABLI
+## R122 — Une nappe libre branchée sur la recharge actuelle redresse le cycle, mais seule une recharge en impulsion le cale (2026-09-18) — ÉTABLI, RÉVISÉ LE JOUR MÊME
 
 Nappe libre branchée sur la recharge simulée aux nœuds portant un puits, 62 puits sur quatre territoires, paramètres posés à des valeurs plausibles et non ajustés : temps de réponse de 100 jours, porosité de drainage 0,05, lit du cours d'eau à 8 m, extraction maximale de 4 mm par jour jusqu'à 9 m de profondeur, modulée par la demande atmosphérique.
 
@@ -1808,4 +1808,8 @@ Cela corrige le constat du même jour qui faisait de la forme de la recharge le 
 
 La porosité de drainage impliquée vaut 0,026 à 0,056 selon le forçage, dans la plage du roc fracturé et du till, ce qui est cohérent avec des puits dont la majorité captent dans le socle. Elle est obtenue sans aucun ajustement. L'aquifère actuel, lui, rendait une porosité négative sur la totalité des puits : le module est donc commensurable aux mesures, donc identifiable, ce que le précédent n'était pas.
 
-Réserves. La corrélation des anomalies mensuelles reste mauvaise, de -0,23 à +0,08 : le cycle moyen est juste, la variation d'une année à l'autre ne l'est pas. Aucun paramètre n'est calé et le module tourne hors de la colonne, sans rétroaction sur le débit. Le filtre de confinement n'est pas appliqué.
+**Révision le jour même, après application du filtre de recevabilité.** Les chiffres ci-dessus mélangeaient 82 puits en nappe libre, 81 captifs et 20 semi-captifs. Un puits captif mesure une charge transmise et non le remplissage d'un réservoir : sa dynamique n'a pas à ressembler à celle d'une nappe libre. Sur les 27 puits en nappe libre et non influencés par un pompage, la corrélation du cycle saisonnier vaut +0,12 avec la recharge telle que la colonne la produit, +0,26 une fois celle-ci corrigée de la troncature, et +0,72 avec l'impulsion de fonte. La porosité de drainage impliquée vaut 0,034 à 0,070, toujours plausible.
+
+La conclusion change donc de sens. L'extraction estivale depuis la zone saturée reste indispensable, mais elle ne suffit pas : sur les puits recevables, la forme de la recharge fait passer le cycle de 0,12 à 0,72. Les deux mécanismes sont nécessaires, et la colonne doit produire une impulsion de printemps. L'énoncé initial, qui tenait l'impulsion pour accessoire, était un artefact des puits captifs.
+
+Réserves. Vingt-sept puits seulement après filtrage. La corrélation des anomalies mensuelles reste mauvaise, +0,07 au mieux : le cycle moyen est juste, la variation d'une année à l'autre ne l'est pas. Aucun paramètre n'est calé et le module tourne hors de la colonne, sans rétroaction sur le débit.

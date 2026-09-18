@@ -69,18 +69,21 @@ def impulsion(mois, jour_annee, total_m_par_jour, n_puits):
     return s * (total_m_par_jour / s.mean(axis=0, keepdims=True))
 
 
-def simuler(recharge):
+def simuler(recharge, k_b=None, e_max=None, z_ext=None, exposant=2.0):
     """Profondeur de la nappe (m) pour une recharge (jours, puits) en m/j."""
+    k_b = K_B if k_b is None else k_b
+    e_max = E_MAX if e_max is None else e_max
+    z_ext = Z_EXT if z_ext is None else z_ext
     n = recharge.shape[1]
     col = lambda v: torch.full((n,), float(v))
-    m = NappeLibre(n_substep=4, exposant=2.0)
+    m = NappeLibre(n_substep=4, exposant=exposant)
     z = col(6.0)
     jour = np.arange(len(recharge)) % 365
     saison = np.clip(np.cos(2 * np.pi * (jour - 196) / 365.0), 0.0, None)
     zs = []
     for i in range(len(recharge)):
-        z, _q, _e = m(z, torch.as_tensor(recharge[i]), col(SY), col(K_B), col(Z_RIV),
-                      col(H_REF), col(E_MAX * saison[i]), col(Z_EXT))
+        z, _q, _e = m(z, torch.as_tensor(recharge[i]), col(SY), col(k_b), col(Z_RIV),
+                      col(H_REF), col(e_max * saison[i]), col(z_ext))
         zs.append(z.numpy().copy())
     return np.array(zs)
 
@@ -90,9 +93,14 @@ def mensuel(dates, valeurs):
     return d.groupby(d.date.values.astype("datetime64[M]")).v.mean()
 
 
-def juger(region, obs, nom, z, dates, puits):
+def juger(region, obs, nom, z, dates, puits, libres=None):
+    """libres : ensemble de puits recevables. Un puits CAPTIF mesure une charge et non un
+    stock, sa dynamique n'a pas à ressembler à celle d'une nappe libre ; un puits influencé
+    par un pompage voisin mesure ce pompage."""
     lignes = []
     for j, p in enumerate(puits):
+        if libres is not None and str(p) not in libres:
+            continue
         o = obs[obs.puits == str(p)]
         if len(o) < 365 * 3:
             continue
@@ -115,8 +123,15 @@ def juger(region, obs, nom, z, dates, puits):
     return lignes
 
 
-def main(regions):
+def puits_recevables():
+    """Puits en nappe libre et non influencés par un pompage."""
+    t = pd.read_parquet(f"{DERIVES}/rsesq-puits.parquet")
+    return set(t[(t.confinement == "Libre") & (t.influence != "Oui")].puits.astype(str))
+
+
+def main(regions, filtrer=True):
     obs = pd.read_parquet(f"{DERIVES}/rsesq-niveaux-journaliers.parquet")
+    libres = puits_recevables() if filtrer else None
     toutes = []
     for reg in regions:
         f = f"{DERIVES}/nappe-{reg}-tnt.npz"
@@ -130,7 +145,7 @@ def main(regions):
         series = forcages(z0["recharge"], mois, reg)
         series["impulsion"] = impulsion(mois, jour, series["telle_quelle"].mean(axis=0), z0["recharge"].shape[1])
         for nom, r in series.items():
-            toutes += juger(reg, obs, nom, simuler(r), z0["dates"], z0["puits"])
+            toutes += juger(reg, obs, nom, simuler(r), z0["dates"], z0["puits"], libres)
     t = pd.DataFrame(toutes)
     if t.empty:
         print("aucun puits comparable")
@@ -150,5 +165,40 @@ def main(regions):
     return 0
 
 
+def sensibilite(regions):
+    """Les puits voient-ils chaque paramètre ? Un paramètre que la mesure ne distingue pas
+    ne sera pas identifié par un terme de perte, quelle que soit la qualité de celui-ci."""
+    obs = pd.read_parquet(f"{DERIVES}/rsesq-niveaux-journaliers.parquet")
+    libres = puits_recevables()
+    donnees = []
+    for reg in regions:
+        f = f"{DERIVES}/nappe-{reg}-tnt.npz"
+        if os.path.exists(f):
+            donnees.append((reg, np.load(f, allow_pickle=True)))
+    balayages = [
+        ("temps de réponse (j)", "k_b", [(20, 1.0e-2), (50, 4.0e-3), (100, 2.0e-3), (200, 1.0e-3), (400, 5.0e-4)]),
+        ("extraction max (mm/j)", "e_max", [(0, 0.0), (2, 0.002), (4, 0.004), (8, 0.008), (16, 0.016)]),
+        ("profondeur d'extinction (m)", "z_ext", [(3, 3.0), (6, 6.0), (9, 9.0), (15, 15.0), (30, 30.0)]),
+        ("exposant de la loi", "exposant", [(1, 1.0), (2, 2.0), (3, 3.0), (5, 5.0)]),
+    ]
+    for titre, cle, valeurs in balayages:
+        print(f"{titre}")
+        print("   valeur | r saison | r anomalies | mois max | porosité impliquée")
+        for etiquette, v in valeurs:
+            lignes = []
+            for reg, z0 in donnees:
+                r = z0["recharge"] / 1000.0
+                lignes += juger(reg, obs, "x", simuler(r, **{cle: v}), z0["dates"], z0["puits"], libres)
+            t = pd.DataFrame(lignes)
+            print(f"   {etiquette:6} | {t.r_saison.median():+.2f}    | {t.r_anomalies.median():+.2f}       |"
+                  f" {int(t.mois_max_sim.mode().iloc[0]):^8d} | {t.sy_implique.median():.3f}")
+        print()
+
+
 if __name__ == "__main__":
-    sys.exit(main([a.lower() for a in sys.argv[1:]] or ["outv", "slno", "gasp", "sagu"]))
+    _args = [a.lower() for a in sys.argv[1:] if not a.startswith("--")]
+    _regs = _args or ["outv", "slno", "gasp", "sagu"]
+    if "--sensibilite" in sys.argv:
+        sensibilite(_regs)
+        sys.exit(0)
+    sys.exit(main(_regs))
