@@ -1213,10 +1213,19 @@ class Trainer:
                 # avec l'accumulation par blocs sans calendrier a transporter. La serie est
                 # prise au pas journalier plutot qu'au mois : le lissage mensuel servait au
                 # diagnostic, la perte gagne a voir tous les points.
-                if _need_nappe and getattr(_diag_chunk, "profondeur_nappe", None) is not None:
+                if _need_nappe:
                     from meandre.training.loss import nappe_anomaly_loss
-                    # Sous MEANDRE_DIAG_CPU=1 les diagnostics vivent sur le processeur.
-                    _zn = _diag_chunk.profondeur_nappe[burnin:][:, data.nappe_idx]
+                    # La grandeur simulee est la PROFONDEUR de la surface libre quand la
+                    # nappe libre est active, sinon le STOCK souterrain. Le terme travaille
+                    # sur des anomalies reduites, donc l'echelle est eliminee et les deux
+                    # conviennent ; il faut seulement le meme sens que le niveau mesure, qui
+                    # est une profondeur sous le repere du tubage. Un stock qui monte est
+                    # une profondeur qui diminue, d'ou le signe. Sans cela le terme ne
+                    # s'appliquerait qu'aux configurations portant la nappe libre, et une
+                    # ronde appariee cesserait de l'etre.
+                    _pn = getattr(_diag_chunk, "profondeur_nappe", None)
+                    _zn = (_pn[burnin:] if _pn is not None else -_diag_chunk.s_gw[burnin:])
+                    _zn = _zn[:, data.nappe_idx]
                     if _zn.device != data.nappe_obs.device:
                         _zn = _zn.to(data.nappe_obs.device)
                     _on = data.nappe_obs[obs_offset + burnin:obs_offset + chunk_len]
