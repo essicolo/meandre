@@ -329,6 +329,84 @@ def tws_anomaly_loss(
     return resid.pow(2).mean()
 
 
+def nappe_anomaly_loss(
+    z_sim_month: Tensor, niveau_obs_month: Tensor, masque: Tensor | None = None,
+    sy: Tensor | float | None = None, amplitude_sim: Tensor | None = None,
+    amplitude_obs: Tensor | None = None, poids_porosite: float = 0.0,
+) -> Tensor:
+    """Anomalies mensuelles de la nappe simulée contre les niveaux mesurés, RÉDUITES.
+
+    Pourquoi réduites. Le balayage du 2026-09-18 sur 27 puits en nappe libre montre que la
+    mesure distingue fortement la PRÉSENCE des mécanismes souterrains et leur phase, et
+    faiblement la valeur de leurs paramètres : le temps de réponse et l'exposant de la loi
+    stock-débit ne déplacent la corrélation saisonnière que de 0,12 sur toute leur plage
+    plausible. Un terme qui viserait l'amplitude absolue demanderait une porosité de drainage
+    par puits, que rien ne prédit encore, et chaque puits absorberait son erreur locale. On
+    contraint donc ce qui est identifiable : la forme de la variation.
+
+    Chaque série est centrée sur SA PROPRE MOYENNE, puis divisée par son écart-type. La
+    moyenne des carrés des écarts vaut alors 2 (1 − r), avec r la corrélation : minimiser ce
+    terme maximise la corrélation, sans rien imposer à l'échelle.
+
+    Le centrage porte sur la moyenne du puits et NON sur chaque mois calendaire, si bien que
+    le cycle saisonnier reste dans l'anomalie et se trouve contraint. C'est délibéré : le
+    même balayage montre que le cycle saisonnier est ce que la mesure voit, alors que les
+    écarts d'une année à l'autre ne répondent à aucun paramètre souterrain et renvoient à la
+    recharge. Centrer par mois calendaire viserait donc précisément ce que ce terme ne peut
+    pas corriger.
+
+    La profondeur simulée et le niveau mesuré varient en SENS OPPOSÉS, une nappe qui monte
+    étant une profondeur qui diminue. La réduction se charge du signe pourvu qu'on inverse
+    l'une des deux, ce qui est fait ici sur la simulation.
+
+    Parameters
+    ----------
+    z_sim_month : (M, W) profondeur simulée de la surface libre, en mètres, par mois et puits.
+    niveau_obs_month : (M, W) niveau mesuré, en mètres, même convention de signe que la
+        profondeur simulée (profondeur sous le repère du tubage).
+    masque : (M, W) booléen, vrai là où la mesure existe. Un puits comptant moins de
+        24 mois observés est écarté : sa corrélation n'aurait pas de sens.
+    sy, amplitude_sim, amplitude_obs, poids_porosite : garde-fou physique optionnel. La
+        porosité de drainage impliquée, sy × amplitude simulée / amplitude mesurée, doit
+        rester entre 0,01 dans le roc fracturé et 0,30 dans les sables ; l'écart hors de
+        cette plage est pénalisé en logarithme. Poids nul = garde-fou inactif.
+
+    Returns
+    -------
+    Scalaire. Vaut 0 sans aucune mesure utilisable.
+    """
+    if z_sim_month.numel() == 0:
+        return torch.zeros((), device=z_sim_month.device)
+    m = torch.ones_like(z_sim_month, dtype=torch.bool) if masque is None else masque
+    n = m.sum(dim=0)
+    valide = n >= 24
+    if not bool(valide.any()):
+        return torch.zeros((), device=z_sim_month.device)
+
+    def _reduire(x):
+        # Centrage et réduction sur les seuls mois observés, colonne par colonne.
+        xm = torch.where(m, x, torch.zeros_like(x))
+        moy = xm.sum(dim=0) / torch.clamp(n, min=1)
+        ecart = torch.where(m, x - moy, torch.zeros_like(x))
+        var = (ecart.pow(2)).sum(dim=0) / torch.clamp(n - 1, min=1)
+        return ecart / torch.sqrt(torch.clamp(var, min=1e-8))
+
+    a_sim = _reduire(-z_sim_month)
+    a_obs = _reduire(-niveau_obs_month)
+    resid = torch.where(m, a_sim - a_obs, torch.zeros_like(a_sim))
+    par_puits = resid.pow(2).sum(dim=0) / torch.clamp(n, min=1)
+    perte = par_puits[valide].mean()
+
+    if poids_porosite > 0.0 and sy is not None and amplitude_sim is not None:
+        # Le garde-fou ne cale RIEN : il interdit seulement une porosité que la géologie
+        # rendrait impossible, et reste nul tant qu'on est dans la plage connue.
+        implique = sy * amplitude_sim / torch.clamp(amplitude_obs, min=1e-6)
+        trop_bas = torch.clamp(torch.log(torch.tensor(0.01)) - torch.log(torch.clamp(implique, min=1e-6)), min=0.0)
+        trop_haut = torch.clamp(torch.log(torch.clamp(implique, min=1e-6)) - torch.log(torch.tensor(0.30)), min=0.0)
+        perte = perte + poids_porosite * (trop_bas + trop_haut)[valide].pow(2).mean()
+    return perte
+
+
 def peak_weighted_mse_loss(
     q_obs: Tensor, q_sim: Tensor, q_threshold: Tensor,
     station_var: Tensor | None = None,
