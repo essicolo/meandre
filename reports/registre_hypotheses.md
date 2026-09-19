@@ -1969,3 +1969,26 @@ Conséquence directe, et elle explique la non-monotonie du plafond de substratum
 Le remède livré le même jour, `ETL_L3_LAT`, donne à la couche 3 un drainage latéral de même forme que celui de la couche 2. Il ne s'agit donc pas seulement d'une seconde sortie pour cette couche, mais du chemin hypodermique manquant du modèle.
 
 Réserves. Le témoin ne porte pas cette partition, son enregistrement datant d'avant que la sortie soit exposée ; une passe est en file pour l'obtenir. La valeur de trente à soixante pour cent pour l'hypodermique est un ordre de grandeur de la littérature sur bassins forestiers, non une mesure sur ces territoires.
+
+---
+
+## R130 — Il fallait trois pièces, et la troisième est une sortie latérale à la couche profonde (2026-09-19) — ÉTABLI
+
+Outaouais, passes avant à poids gelés. Chaque ligne ajoute une pièce à la précédente.
+
+| Configuration | Surface | Hypodermique | Base | Eau gravitaire | Recharge | Mois max | KGE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Témoin | — | — | — | 457 mm | 55 mm/an | août | 0,654 |
+| Drainage gravitaire seul | 0,11 | 0,01 | 0,88 | -7 | 537 | avril | 0,464 |
+| Drainage et plafond de substratum | 0,73 | 0,03 | 0,23 | 443 | 132 | août | 0,646 |
+| Drainage, plafond et sortie latérale | 0,11 | 0,75 | 0,14 | -16 | 89 | mai | 0,167 |
+
+Le drainage gravitaire vide la couche mais fait tout descendre, l'écoulement de base atteignant 88 pour cent du débit. Le plafond de substratum ramène le volume mais RESATURE la couche, l'eau refusée n'ayant nulle part où aller : elle remonte par la cascade de saturation et sort en ruissellement de surface, 73 pour cent du débit. Le compromis est alors total, ce que le jugement sur les puits confirme, la corrélation des anomalies retombant de +0,43 à -0,32 et l'amplitude de 61 à 3 mm.
+
+La troisième pièce le rompt. Avec une sortie latérale donnée à la couche 3, de même forme que celle de la couche 2, les trois objectifs tiennent pour la première fois ensemble : couche drainée à moins 16 mm d'eau gravitaire, recharge de 89 mm par an dans la plage plausible, maximum en mai.
+
+Le dosage reste à faire. La sortie latérale prend 75 pour cent du débit au multiplicateur 0,5, là où trente à soixante serait plausible, et l'écoulement de base tombe à 14 pour cent au lieu de quarante à soixante. Les deux boutons sont toutefois nettement séparés, ce qui rend le réglage abordable : le multiplicateur latéral règle la part hypodermique, le plafond règle la part de base, la surface est le reste.
+
+**Fermeture du bilan vérifiée.** Avec le drainage gravitaire, le plafond et la nappe libre, l'erreur vaut 0,04 pour cent de la précipitation contre 0,02 au témoin, très en dessous du seuil de 0,1. L'évapotranspiration prélevée sur la zone saturée est bien comptée comme sortie atmosphérique.
+
+Quatrième mesure, indépendante et la plus directe : l'écart de volume mensuel contre les débits observés. Le témoin manque 7,0 pour cent du total annuel en avril et le rend en mai, juin et juillet. C'est la signature de l'eau bloquée en profondeur et de la troncature, et sa réduction devient le critère d'acceptation du dosage.
