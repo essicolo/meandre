@@ -1894,3 +1894,31 @@ FLOTTE gen3, sept régions restantes, même recette unique : cnda 0.7849, cndb 0
 QUESTION D'ESSI SUR L'ETI, et elle a redressé le raisonnement : pas de règle d'activation régionale, l'ETI est la même loi partout, le partage radiatif/turbulent émergeant du forçage jour par jour au lieu d'être encodé dans un coefficient calé. Deux diagnostics chiffrés à l'appui, calculés du forçage seul : la part radiative de l'énergie de fonte vaut ~0.10 en début d'hiver contre 0.20-0.29 au printemps DANS LES DEUX RÉGIONS (le substitut sinusoïdal encodait ce cycle ; l'amplitude relative du cycle FB, 0.62, est d'ailleurs proche du 0.5 retenu au banc E) ; et le décompte des jours de fonte de mi-hiver CONTREDIT mon hypothèse maritime — GASP en a MOINS qu'OUTV en moyenne de bassin (déc 2.6 contre 3.8). R42 corrigé avant installation : les suspects gaspésiens résiduels sont un biais froid des mailles CÔTIÈRES de CaSR (les sites CanSWE vivent à 232 m près de la côte) ou la précipitation solide côtière, pas la fonte de bassin.
 
 Caches sw_in construits (FB réel, 155 W/m² moyen, 60 janvier / 259 juillet), levier ETL_ETI câblé (canal 6, libre sous Linacre), file ETI en cours : OUTV doit GARDER son manteau ~1.0 sans sinusoïde, GASP doit descendre de 1.9 vers 1.0 — sinon le verdict pointe le forçage côtier.
+
+## 2026-09-18 — LA SAISON DE LA RECHARGE ÉTAIT LE NÉGATIF D'UN DÉFAUT DE SCHÉMA
+
+Journée partie d'une question d'Essi : une chute de KGE de cette ampleur à valeur de paramètre réaliste, n'est-ce pas plutôt un problème de physique ? Réponse : pire que cela, le modèle ne résolvait pas ses équations les jours où l'eau entre dans le sol.
+
+SIX VARIANTES du taux de percolation et du temps de séjour, passes avant à poids gelés sur quatre territoires, jugées sur 118 puits du réseau de suivi et sur le débit tenu de côté. Aucune ne déplace la recharge vers le printemps : le maximum passe d'août à juillet puis à juin, jamais à avril, et la dose la plus forte est déjà la borne du domaine autorisé. Le volume, lui, quitte le plausible dès la première dose. La courbure de Campbell est le seul gain à garder : à taux égal elle rend le KGE de 0,247 à 0,577. R118.
+
+PORTE DE GEL du drainage profond, rendue jugeable et retirée : effet nul sur la recharge d'avril, 0,10 contre 0,09 mm/j, et nul sur le débit. Innocentée.
+
+CAUSE RÉELLE, mesurée après avoir exposé la part de journée que la boucle de sous-pas du sol ne traite pas. Elle vaut 29 à 40 pour cent en moyenne annuelle selon le territoire et jusqu'à 62 pour cent en avril, et le cycle mensuel de la recharge est l'image INVERSÉE de ce cycle, à une corrélation de -0,94 à -0,99. La pluie du temps non traité est versée en ruissellement par la fermeture du bilan, qui conserve la masse et fausse le chemin. R119, R120. Sur colonne isolée, un sol à 80 pour cent de saturation sous 40 mm/j ne ruisselle PAS à convergence, et produit 73 mm en trois jours au plafond employé.
+
+CONVERGENCE mesurée à 1152 sous-pas sur l'Outaouais, 3 h 45 de calcul contre 3 min : troncature exactement nulle, recharge de 55 à 80 mm/an, mais toujours plate et maximum en février. Corriger le schéma retire une fausse saison sans en créer une vraie. Le KGE passe de 0,654 à 0,627, le modèle ayant été calé avec le défaut en place.
+
+ROUTAGE, trouvé en vérifiant une réserve : en Outaouais le temps de parcours de Muskingum vaut 46,2 h en médiane et 43 pour cent des tronçons sont collés à la borne de 48 h, d'où une crue qui part en avril en tête de bassin et arrive en juin sur le cours principal. Aucune autre région ne touche la borne. R117.
+
+## 2026-09-19 — UNE NAPPE LIBRE, ET LA COUCHE 3 QUI RETIENT CINQ ANS DE RECHARGE
+
+DÉCONFONDAGE : relever le taux de percolation SUPPRIME aussi la troncature, la conductivité de Campbell chutant plus vite que le stock quand le sol s'assèche. Les variantes de la veille mesuraient donc deux effets à la fois. Comparées à troncature nulle, la couche 3 saturée donne 80 mm/an plats et la couche désaturée 612 mm/an avec maximum en mai : c'est la désaturation qui déplace la phase. R124.
+
+BANC DE NAPPE LIBRE, colonne fictive, cinq questions. Le schéma converge au pas journalier à 0,4 pour cent près, donc la pièce ne coûte rien. Sous recharge sinusoïdale la cible est démontrée inatteignable, 0,93 m de battement exigeant 74 à 82 jours de retard contre 30 mesurés. Sous impulsion de fonte elle devient atteignable avec quelques dizaines de jours de temps de réponse. L'extraction saisonnière depuis la zone saturée place le creux en septembre ou octobre. R121, R122.
+
+IDENTIFIABILITÉ, mesurée et non supposée : les puits distinguent fortement la PRÉSENCE des mécanismes et leur phase, faiblement la valeur des paramètres, et les anomalies interannuelles ne répondent à AUCUN paramètre d'aquifère. La porosité de drainage ajustée par puits ne se structure pas encore avec la géologie, p = 0,46. Le terme de perte vise donc la forme, sans paramètre libre. R123.
+
+CAUSE RACINE DE LA RECHARGE INERTE : la couche 3 retient 289 à 465 mm d'eau gravitaire en permanence sur les quatre territoires, cinq à six fois la recharge annuelle, alors que les deux couches supérieures se tiennent à leur capacité au champ à quelques millimètres près. Elle n'a que la percolation pour se ressuyer, et sa constante de temps vient des récessions de débit. D'où l'absence de capacité à la fonte et une recharge qui ne peut pas varier. R125.
+
+LIVRÉ : module de nappe libre avec profondeur en variable d'état et cinq tests, couplage qui éteint le drainage quand la surface libre affleure la base du sol, drainage de l'eau gravitaire au-dessus de la capacité au champ, terme de perte en anomalies réduites sur les niveaux mesurés, chargeur appariant les puits avec filtres de recevabilité, branchement de bout en bout. La nappe libre en région ne dégrade pas le débit, 0,666 contre 0,654 en Outaouais et 0,696 contre 0,677 au Saint-Laurent nord-ouest, mais son battement reste de 5 cm faute d'une recharge qui varie.
+
+CORRECTION : HydroBudget avait été proposé comme cible auxiliaire ; le tableau des lignes rouges le classe comme circulaire, étant calé sur le débit de base. Les niveaux mesurés restent la seule prise directe sur la nappe.
