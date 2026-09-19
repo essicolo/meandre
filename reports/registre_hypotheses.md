@@ -2130,3 +2130,23 @@ L'aquifère NON LINÉAIRE fait ce que le banc du même jour annonçait : il doub
 Il reste neuf centièmes de KGE, dont une part appartient au routage : le réseau de l'Outaouais n'y transmet que le quart de la nervosité produite, et l'écart au témoin y vaut 0,09 contre 0,06 au Saint-Laurent nord-ouest, territoire sans cette pathologie. Ce qui reste demande un réentraînement, tout ayant été calé autour des défauts corrigés.
 
 Aucune des trois lois ne contient de paramètre inventé : drainage au-dessus de la capacité au champ, conductivité du substratum, écoulement perché à constante de temps propre. Chacune a été refusée une fois sous une forme qui ne transférait pas d'un territoire à l'autre, puis réécrite.
+
+---
+
+## R137 — Ce n'est pas la nappe libre qui fait respirer l'aquifère, c'est la recharge saisonnière (2026-09-19) — ÉTABLI, CORRIGE R136
+
+Médianes sur l'Outaouais et le Saint-Laurent nord-ouest, passes avant à poids gelés. Les trois dernières lignes partagent exactement le même sol corrigé et ne diffèrent que par l'aquifère.
+
+| Variante | Indice de base | Variation de la base | Nervosité du rapide | Écart-type du débit | ETR | Recharge | Mois max | Battement | KGE |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Témoin | 0,112 | 0,314 | 2,327 | 1,000 | 459 | 76 | août | — | 0,665 |
+| Sol corrigé, aquifère linéaire d'origine | 0,359 | 0,716 | 1,995 | 1,077 | 432 | 252 | avril | — | 0,583 |
+| Sol corrigé, nappe libre en carré de la charge | 0,328 | 0,455 | 1,995 | 0,966 | 462 | 252 | avril | 0,708 m | 0,588 |
+| Sol corrigé, nappe libre à l'exposant 3 | 0,326 | 0,522 | 1,995 | 0,985 | 464 | 252 | avril | 0,660 m | 0,592 |
+| Observé | 0,58 | 0,68 | 2,24 | — | — | — | — | 1,02 m | — |
+
+L'aquifère LINÉAIRE D'ORIGINE, une fois nourri par une recharge saisonnière, donne la meilleure respiration de nappe de toutes les variantes : 0,716 contre 0,68 mesuré sur les hydrogrammes, soit la cible. La nappe libre la ramène à 0,455. La dynamique de la nappe vient donc de la recharge et non de la loi stock-débit, et la loi en carré de la charge lisse même un peu par rapport au réservoir linéaire.
+
+Ce que la nappe libre apporte est ailleurs, et reste utile. Elle rend l'évapotranspiration à sa valeur du témoin, 462 contre 432 mm par an, en prélevant sur la zone saturée, ce qui ferme le bilan au bon endroit. Et elle donne une profondeur de surface libre, 0,708 m de battement au mois observé, directement comparable aux niveaux mesurés dans les puits, là où un stock en millimètres ne l'est qu'à un facteur d'échelle près. C'est un gain d'observabilité et de bilan, non de dynamique.
+
+Correction explicite de l'énoncé du même jour qui tenait les deux pièces pour également nécessaires : la correction du drainage du sol fait l'essentiel du travail, y compris sur la nappe. La nappe libre n'était pas le remède.
