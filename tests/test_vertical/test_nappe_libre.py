@@ -148,3 +148,30 @@ def test_drainage_gravitaire_ne_vide_pas_sous_la_capacite_au_champ():
     tres_sec = float(cl(sec, sec, z(0.20), z(0.0), z(0.0), z(0.0), z(0.0), p_grav)[2][0])
     assert humide > 100.0 * fidele
     assert tres_sec == 0.0
+
+
+def test_ecoulement_hypodermique_profond_vide_la_couche_vers_le_troncon():
+    """L'eau perchée sur le substratum repart latéralement au lieu de resaturer la couche.
+
+    Sans cette sortie, plafonner la percolation force la couche 3 à se resaturer, l'eau
+    refusée n'ayant nulle part où aller, et le modèle revient à son défaut d'origine.
+    """
+    from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+
+    torch.set_default_dtype(torch.float64)
+    p = make_params("silt_loam", "loam", "loam")
+    p = {k: (v.expand(3).clone() if torch.is_tensor(v) and v.numel() == 1 else v)
+         for k, v in p.items()}
+    z = lambda v: torch.full((3,), float(v), dtype=torch.float64)
+    cl = BV3C2Clone(n_substep=32)
+    # Teneur en eau SOUS la porosité de la couche (0,434 pour le loam), sans quoi la
+    # cascade de saturation refoule l'excès avant que le latéral n'agisse.
+    args = (z(0.30), z(0.30), z(0.42), z(0.0), z(0.0), z(0.0), z(0.0))
+    sans = cl(*args, p)
+    avec = cl(*args, {**p, "l3_lateral": z(1.0)})
+    # L'hypodermique augmente, et la couche 3 se vide davantage.
+    assert float(avec[1][0]) > float(sans[1][0])
+    assert float(avec[4][2][0]) < float(sans[4][2][0])
+    # Sans la clé, rien ne change.
+    temoin = cl(*args, {**p})
+    assert float(temoin[1][0]) == pytest.approx(float(sans[1][0]), rel=1e-12)

@@ -466,6 +466,12 @@ if "ETL_L3_KSUB" in os.environ:
     # circule au-dessus de l'interface sol-depot.
     model.vertical_column.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
     print(f"[etl] plafond de percolation du substratum : {os.environ['ETL_L3_KSUB']} mm/jour")
+if "ETL_L3_LAT" in os.environ:
+    # Ecoulement hypodermique PROFOND : l'eau qui percole se perche sur le substratum et
+    # repart lateralement. Sans lui, plafonner la percolation force la couche a se
+    # resaturer et le modele revient a son defaut d'origine.
+    model.vertical_column.l3_lateral = float(os.environ["ETL_L3_LAT"])
+    print(f"[etl] ecoulement hypodermique PROFOND, multiplicateur {os.environ['ETL_L3_LAT']}")
 if "ETL_L3_GEL" in os.environ:
     # Porte de gel du drainage profond. Hydrotel divise q3 par deux des que le sol est
     # gele, ce qui place la recharge minimale en avril, mois ou la nappe mesuree monte le

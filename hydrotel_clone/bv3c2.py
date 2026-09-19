@@ -172,6 +172,19 @@ class BV3C2Clone(torch.nn.Module):
             qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)
             qq23 = k23 * (2.0 * (ps3 - ps2) / (z2 + z3) + 1.0)
             q2 = k2 * sin_slope * z2
+            # ── ECOULEMENT HYPODERMIQUE PROFOND (opt-in, 2026-09-19) ─────────
+            # La couche 2 possede un drainage lateral, la couche 3 n'a que la percolation
+            # verticale. Consequence mesuree : plafonner cette percolation par le substratum
+            # force la couche a se RESATURER, l'eau refusee n'ayant nulle part ou aller, et
+            # le modele revient a son defaut d'origine (plafond a 0,5 mm/j : eau gravitaire
+            # de nouveau a 443 mm, maximum de recharge de retour en aout). Volume et saison
+            # restent donc lies tant que la couche profonde n'a qu'une seule sortie.
+            # Dans un sol reel, l'eau qui percole se perche sur le till et repart
+            # LATERALEMENT : c'est l'ecoulement hypodermique profond. Meme forme que q2,
+            # conductivite de Campbell de la couche fois la pente. Absent = clone fidele.
+            q3_lat = torch.zeros_like(q2)
+            if "l3_lateral" in p:
+                q3_lat = p["l3_lateral"] * k3 * sin_slope * z3
             # ── DRAINAGE SOUTERRAIN AGRICOLE (opt-in, 2026-08-26) ────────────
             # La colonne n'a AUCUN chemin qui sorte de la couche 2 vers le troncon par
             # un SEUIL DE PROFONDEUR, or c'est exactement ce qu'est un drain agricole.
@@ -262,6 +275,7 @@ class BV3C2Clone(torch.nn.Module):
             else:
                 q3 = krec * z3 * ths3 * torch.clamp(t3 / ths3, min=0.0) ** _n3
             qq12 = qq12 * throttle; qq23 = qq23 * throttle; q2 = q2 * throttle
+            q3_lat = q3_lat * throttle
             # Porte de gel sur le drainage profond. Hydrotel le divise par deux des que le
             # sol est gele, ce qui couvre la fonte : mesure du 2026-09-18 sur l'Outaouais,
             # la teneur en eau de L3 culmine en avril mais la recharge y atteint son
@@ -323,7 +337,7 @@ class BV3C2Clone(torch.nn.Module):
             # est refoulée depuis la couche du dessous (l.2118), PAS masquée.
             t1 = t1 + dtc * (pinf - qq12 - e1) / z1
             t2 = t2 + dtc * (qq12 - qq23 - e2 - q2 - q_drain) / z2
-            t3 = t3 + dtc * (qq23 - q3 - e3) / z3
+            t3 = t3 + dtc * (qq23 - q3 - q3_lat - e3) / z3
             # cascade SATURATION fidèle C++ (l.2046-2116) : on REMPLIT d'abord la
             # capacité disponible (refoulement bas→haut PUIS redistribution
             # haut→bas) ; seul l'excès quand le profil est plein déborde en
@@ -351,7 +365,7 @@ class BV3C2Clone(torch.nn.Module):
             neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
             t3 = torch.clamp(t3, min=0.0)
             lruis = lruis + ruis_rate * dtc + ov1 * z1
-            lhyp = lhyp + q2 * dtc
+            lhyp = lhyp + (q2 + q3_lat) * dtc
             ldrain = ldrain + q_drain * dtc
             lbase = lbase + q3 * dtc
             tr = torch.clamp(tr - dtc, min=0.0)
