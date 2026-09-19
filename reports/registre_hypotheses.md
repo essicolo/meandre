@@ -2150,3 +2150,35 @@ L'aquifère LINÉAIRE D'ORIGINE, une fois nourri par une recharge saisonnière, 
 Ce que la nappe libre apporte est ailleurs, et reste utile. Elle rend l'évapotranspiration à sa valeur du témoin, 462 contre 432 mm par an, en prélevant sur la zone saturée, ce qui ferme le bilan au bon endroit. Et elle donne une profondeur de surface libre, 0,708 m de battement au mois observé, directement comparable aux niveaux mesurés dans les puits, là où un stock en millimètres ne l'est qu'à un facteur d'échelle près. C'est un gain d'observabilité et de bilan, non de dynamique.
 
 Correction explicite de l'énoncé du même jour qui tenait les deux pièces pour également nécessaires : la correction du drainage du sol fait l'essentiel du travail, y compris sur la nappe. La nappe libre n'était pas le remède.
+
+---
+
+## R138 — Optimiser sur le débit seul DÉGRADE activement la physique : la ronde appariée le mesure (2026-09-19) — ÉTABLI
+
+Deux bras au Saint-Laurent nord-ouest, même point de départ à chaud, huit époques d'affinage chacun, un pas d'optimisation par bloc, tout identique sauf la pile de corrections du sol et la nappe libre.
+
+| | Départ | Témoin affiné | Physique corrigée affinée | Observé |
+| --- | --- | --- | --- | --- |
+| KGE médian tenu de côté | 0,676 / 0,636 | 0,698 | 0,647 | — |
+| Indice d'écoulement de base | 0,126 | 0,017 | 0,342 | 0,54 |
+| Part de ruissellement de surface | 0,742 | 0,969 | 0,037 | — |
+| Variation relative de la base | 0,319 | 0,299 | 0,500 | 0,68 |
+| Nervosité de la composante rapide | 2,045 | 2,238 | 2,035 | 2,045 |
+| Recharge annuelle | 96 mm | 12 mm | 284 mm | — |
+| Mois de recharge maximale | août | août | mai | — |
+| Eau gravitaire de la couche 3 | 308 mm | 71 mm | -0,2 mm | — |
+| Part de journée non traitée | 0,404 | 0,468 | 0,000 | — |
+| Battement de nappe | — | — | 0,933 m | 1,02 m |
+| Temps de parcours de Muskingum, médiane | 28,0 h | 35,9 h | 27,6 h | — |
+
+Sur le débit seul, la physique fausse gagne : 0,698 contre 0,647, et elle gagne deux fois plus à l'affinage, +0,022 contre +0,011.
+
+**Mais l'affinage rend le témoin structurellement PIRE.** Son indice d'écoulement de base tombe de 0,126 à 0,017 contre 0,54 mesuré sur ses propres hydrogrammes, son ruissellement de surface monte à 97 pour cent, sa recharge annuelle passe de 96 à 12 mm, et la part de journée non calculée augmente de 0,404 à 0,468. L'optimiseur a gagné deux centièmes de KGE en détruisant ce qui restait de physique, parce qu'un modèle qui envoie tout en surface reproduit plus facilement la variabilité observée.
+
+C'est la mesure la plus directe de la thèse d'identifiabilité du projet. Le débit seul ne laisse pas les chemins de l'eau libres : il les dégrade activement.
+
+Le bras corrigé garde sa structure sous l'affinage : nervosité de 2,035 contre 2,045 mesuré, battement de nappe de 0,93 m contre 1,02, aucune troncature, recharge de printemps, couche drainée. Il perd cinq centièmes de KGE et gagne tout le reste.
+
+**Prédiction posée d'avance et vérifiée.** Le bras corrigé demande un temps de parcours de routage de 27,6 heures en médiane contre 35,9 pour le témoin, alors que les deux partaient de 28,0. Le témoin affiné a donc allongé son routage pour amortir une génération devenue plus brutale, et la colonne corrigée n'en a pas eu besoin : le retard du routage compensait bien la génération.
+
+Réserves. Huit époques d'affinage seulement, et le bras corrigé part de plus loin puisque ses paramètres héritent d'un calage fait autour des défauts. Un départ à froid ou un affinage plus long reste à essayer. Un seul territoire.
