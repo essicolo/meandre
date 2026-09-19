@@ -1229,9 +1229,12 @@ class Trainer:
                     # le processeur : on aligne AVANT d'indexer, un tenseur d'indices
                     # devant etre sur l'appareil du tenseur indexe.
                     _zn = _zn[:, data.nappe_idx.to(_zn.device)]
-                    if _zn.device != data.nappe_obs.device:
-                        _zn = _zn.to(data.nappe_obs.device)
+                    # On calcule LA OU VIT LE DIAGNOSTIC, sans le rapatrier sur la carte :
+                    # sous MEANDRE_DIAG_CPU=1 il est sur le processeur, et le ramener a
+                    # sature les 8 Go de la carte. Le gradient traverse les appareils.
                     _on = data.nappe_obs[obs_offset + burnin:obs_offset + chunk_len]
+                    if _on.device != _zn.device:
+                        _on = _on.to(_zn.device)
                     _mn = ~torch.isnan(_on)
                     L_nappe = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
                     loss_chunk = loss_chunk + self.loss_fn.w_nappe * L_nappe
