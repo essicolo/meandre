@@ -1225,7 +1225,10 @@ class Trainer:
                     # ronde appariee cesserait de l'etre.
                     _pn = getattr(_diag_chunk, "profondeur_nappe", None)
                     _zn = (_pn[burnin:] if _pn is not None else -_diag_chunk.s_gw[burnin:])
-                    _zn = _zn[:, data.nappe_idx]
+                    # L'indice des puits vit sur la carte et le diagnostic peut vivre sur
+                    # le processeur : on aligne AVANT d'indexer, un tenseur d'indices
+                    # devant etre sur l'appareil du tenseur indexe.
+                    _zn = _zn[:, data.nappe_idx.to(_zn.device)]
                     if _zn.device != data.nappe_obs.device:
                         _zn = _zn.to(data.nappe_obs.device)
                     _on = data.nappe_obs[obs_offset + burnin:obs_offset + chunk_len]
