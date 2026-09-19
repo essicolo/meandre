@@ -115,6 +115,8 @@ Couplage de la nappe à la colonne, constaté le 2026-09-19. Dans le montage liv
 
 Préalables. Le chantier 9, faute de quoi le module serait jugé à travers le même brouillard. Et le terme de perte sur les niveaux mesurés, faute de quoi il serait aussi peu falsifiable que l'actuel. Les deux sont livrés au 2026-09-19 : le diagnostic de troncature, le module de nappe libre derrière ETL_NAPPE_LIBRE, le terme de perte en anomalies réduites et le chargeur des niveaux appariés.
 
+Identifiabilité croisée, constatée le 2026-09-19. L'extraction depuis la zone saturée entre dans le bilan d'évapotranspiration : l'évapotranspiration totale simulée passe de 459 mm par an au témoin à 476 avec la nappe et 517 avec une extraction forte, alors que la littérature situe l'évapotranspiration boréale réelle entre 400 et 500. Ce paramètre est donc contraint par l'évapotranspiration satellitaire autant que par les puits, et c'est heureux puisque le balayage montre que les puits ne distinguent presque pas son intensité entre 2 et 8 mm par jour. Deux observations indépendantes tiennent la même pièce par deux bouts.
+
 Critère de réussite. Amplitude et phase de la nappe ensemble, corrélation médiane des anomalies mensuelles au-dessus de 0,5 et maximum simulé en avril ou mai, sans recul du KGE ni des cibles satellitaires, avec des paramètres que les puits identifient.
 
 ## 9. Plafond de sous-pas de la colonne : le ruissellement de surface est en partie un artefact
