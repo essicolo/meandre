@@ -1926,3 +1926,23 @@ Les trois défauts du chantier tombent d'un seul coup. La couche descend exactem
 Le prix est un volume de 537 mm par an, soit à peu près tout l'écoulement du bassin, et 0,19 de KGE. La cause est structurelle : toute la percolation descend désormais, alors que la couche saturée la refoulait vers l'écoulement hypodermique. Dans un sol réel, l'eau qui traverse le profil rencontre un dépôt et un socle bien moins perméables, et l'essentiel repart latéralement au-dessus de cette interface, ce qui EST l'écoulement hypodermique. La couche 3 du modèle se draine tout droit, sans ce plafond.
 
 Remède livré le même jour sous `ETL_L3_KSUB` : la percolation est plafonnée par la conductivité du substratum, l'excès restant dans la couche et repartant latéralement par la cascade de saturation déjà présente. Ce plafond est une propriété du dépôt et du socle, donc prédictible par la géologie ingérée la veille, et non un paramètre de calage. Valeurs en cours d'épreuve.
+
+---
+
+## R128 — Le réservoir souterrain n'était pas le problème, sa nourriture l'était (2026-09-19) — ÉTABLI
+
+Jugement sur les puits du réseau de suivi, Outaouais et Saint-Laurent nord-ouest, avec l'AQUIFÈRE LINÉAIRE D'ORIGINE et son champ de récession inchangé. Seule la loi de drainage de la couche 3 change.
+
+| | Témoin | Drainage gravitaire 2 j | Drainage gravitaire 5 j |
+| --- | --- | --- | --- |
+| Corrélation des anomalies mensuelles | -0,34 | +0,43 | +0,48 |
+| Part des puits au-dessus de 0,5 | 0,00 | 0,38 | 0,38 |
+| Corrélation du cycle saisonnier | +0,15 | +0,71 | +0,74 |
+| Décalage du mois le plus haut | 2 mois | 0 mois | 0 mois |
+| Amplitude de stock simulée | 1 mm | 61 mm | 60 mm |
+
+Le critère du chantier demandait le maximum simulé en avril ou mai, une amplitude de stock entre 13 et 130 mm, une corrélation médiane des anomalies au-dessus de 0,5, et aucun recul du débit ni des cibles satellitaires. Trois sont atteints ou frôlés : le mois est exact, l'amplitude vaut 60 mm, la corrélation atteint 0,48 contre -0,34 et un puits sur trois dépasse déjà le seuil. Le quatrième échoue, le KGE tombant de 0,654 à 0,464 à deux jours et 0,419 à cinq jours, faute du plafond de substratum.
+
+**Ce que cela retire au chantier.** Le temps de séjour de l'aquifère, son coefficient de récession et la forme de sa loi stock-débit n'étaient pas en cause : ces passes les gardent tels quels et obtiennent le bon mois, la bonne amplitude et une corrélation positive. Toute l'épreuve du 2026-09-18 sur les temps de séjour et les lois non linéaires portait donc sur une pièce qui fonctionnait dès lors qu'on l'alimentait correctement. La nappe libre reste utile pour l'identifiabilité, puisqu'elle rend une profondeur directement comparable aux puits, mais elle n'était pas le remède.
+
+Réserves. Deux territoires, aquifère non recalé, débit encore dégradé. La constante de cinq jours fait légèrement mieux sur les puits que celle de deux jours, mais moins bien sur le débit.
