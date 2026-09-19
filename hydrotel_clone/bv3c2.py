@@ -225,8 +225,22 @@ class BV3C2Clone(torch.nn.Module):
             # c'est la respiration que GRACE exige, et les deux constantes de temps
             # des recessions mesurees (37 j et 111 j) emergent de la meme courbure
             # (Wittenberg 1999 ; ici a la VANNE, pas a la nappe). n=1 == fidele exact.
+            # ── DRAINAGE DE L'EAU GRAVITAIRE (opt-in, 2026-09-19) ────────────
+            # Mesure sur l'Outaouais : la couche 3 se tient entre 0,507 et 0,523 toute
+            # l'annee alors que sa capacite au champ vaut 0,345 et sa porosite 0,519. Elle
+            # retient donc 0,175 m3/m3 sur 2,70 m, soit 472 mm d'eau GRAVITAIRE en
+            # permanence, cinq fois la recharge annuelle simulee. Par definition de la
+            # capacite au champ, cette eau s'ecoule en quelques jours : la loi fidele, dont
+            # la constante de temps est ajustee sur les recessions de DEBIT, ne l'evacue
+            # jamais. Consequences en chaine : aucune capacite disponible a la fonte, donc
+            # la crue part en surface ; teneur en eau constante, donc recharge constante.
+            # `l3_tau_fc` (heures) draine l'exces au-dessus de la capacite au champ et rien
+            # en dessous. Absent du dictionnaire = clone fidele.
+            _tau = p.get("l3_tau_fc")
             _n3 = p.get("l3_drain_exp")
-            if _n3 is None:
+            if _tau is not None:
+                q3 = torch.clamp(t3 - p["thetacc3"], min=0.0) * z3 / _tau
+            elif _n3 is None:
                 q3 = krec * z3 * t3
             else:
                 q3 = krec * z3 * ths3 * torch.clamp(t3 / ths3, min=0.0) ** _n3

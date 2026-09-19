@@ -69,21 +69,23 @@ def impulsion(mois, jour_annee, total_m_par_jour, n_puits):
     return s * (total_m_par_jour / s.mean(axis=0, keepdims=True))
 
 
-def simuler(recharge, k_b=None, e_max=None, z_ext=None, exposant=2.0):
+def simuler(recharge, k_b=None, e_max=None, z_ext=None, exposant=2.0, z_riv=None, h_ref=None):
     """Profondeur de la nappe (m) pour une recharge (jours, puits) en m/j."""
     k_b = K_B if k_b is None else k_b
     e_max = E_MAX if e_max is None else e_max
     z_ext = Z_EXT if z_ext is None else z_ext
+    z_riv = Z_RIV if z_riv is None else z_riv
+    h_ref = H_REF if h_ref is None else h_ref
     n = recharge.shape[1]
     col = lambda v: torch.full((n,), float(v))
     m = NappeLibre(n_substep=4, exposant=exposant)
-    z = col(6.0)
+    z = col(min(6.0, z_riv - 0.5))
     jour = np.arange(len(recharge)) % 365
     saison = np.clip(np.cos(2 * np.pi * (jour - 196) / 365.0), 0.0, None)
     zs = []
     for i in range(len(recharge)):
-        z, _q, _e = m(z, torch.as_tensor(recharge[i]), col(SY), col(k_b), col(Z_RIV),
-                      col(H_REF), col(e_max * saison[i]), col(z_ext))
+        z, _q, _e = m(z, torch.as_tensor(recharge[i]), col(SY), col(k_b), col(z_riv),
+                      col(h_ref), col(e_max * saison[i]), col(z_ext))
         zs.append(z.numpy().copy())
     return np.array(zs)
 
@@ -180,6 +182,8 @@ def sensibilite(regions):
         ("extraction max (mm/j)", "e_max", [(0, 0.0), (2, 0.002), (4, 0.004), (8, 0.008), (16, 0.016)]),
         ("profondeur d'extinction (m)", "z_ext", [(3, 3.0), (6, 6.0), (9, 9.0), (15, 15.0), (30, 30.0)]),
         ("exposant de la loi", "exposant", [(1, 1.0), (2, 2.0), (3, 3.0), (5, 5.0)]),
+        ("lit du cours d'eau (m)", "z_riv", [(3, 3.0), (5, 5.0), (8, 8.0), (12, 12.0)]),
+        ("charge de reference (m)", "h_ref", [(1, 1.0), (2, 2.0), (4, 4.0), (8, 8.0)]),
     ]
     for titre, cle, valeurs in balayages:
         print(f"{titre}")

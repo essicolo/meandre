@@ -124,3 +124,27 @@ def test_facteur_de_gradient_neutre_a_un_et_nul_a_zero():
     assert avec_un == pytest.approx(sans, rel=1e-12)
     assert avec_zero == 0.0
     assert sans > 0.0
+
+
+def test_drainage_gravitaire_ne_vide_pas_sous_la_capacite_au_champ():
+    """L'eau au-dessus de la capacité au champ s'écoule, celle en dessous reste.
+
+    Mesure du 2026-09-19 : la couche 3 se tient à 0,52 alors que sa capacité au champ vaut
+    0,345, soit 472 mm d'eau gravitaire immobilisés en permanence sur 2,70 m. Cette loi les
+    évacue. Absente du dictionnaire, elle ne doit rien changer au clone fidèle.
+    """
+    from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+
+    torch.set_default_dtype(torch.float64)
+    p = make_params("silt_loam", "loam", "loam")
+    p = {k: (v.expand(3).clone() if torch.is_tensor(v) and v.numel() == 1 else v)
+         for k, v in p.items()}
+    z = lambda v: torch.full((3,), float(v), dtype=torch.float64)
+    cl = BV3C2Clone(n_substep=32)
+    sec = z(0.45)
+    fidele = float(cl(sec, sec, z(0.50), z(0.0), z(0.0), z(0.0), z(0.0), p)[2][0])
+    p_grav = {**p, "l3_tau_fc": 120.0, "thetacc3": z(0.345)}
+    humide = float(cl(sec, sec, z(0.50), z(0.0), z(0.0), z(0.0), z(0.0), p_grav)[2][0])
+    tres_sec = float(cl(sec, sec, z(0.20), z(0.0), z(0.0), z(0.0), z(0.0), p_grav)[2][0])
+    assert humide > 100.0 * fidele
+    assert tres_sec == 0.0

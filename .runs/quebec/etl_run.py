@@ -454,6 +454,12 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
                couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
     model.vertical_column.activer_nappe_libre(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
+if "ETL_L3_TAU" in os.environ:
+    # Drainage de l'eau gravitaire de la couche 3, en JOURS. Remplace la loi fidele, dont
+    # la constante de temps vient des recessions de debit et laisse 472 mm d'eau gravitaire
+    # immobilises en permanence sur l'Outaouais.
+    model.vertical_column.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
+    print(f"[etl] drainage L3 au-dessus de la CAPACITE AU CHAMP, constante {os.environ['ETL_L3_TAU']} jours")
 if "ETL_L3_GEL" in os.environ:
     # Porte de gel du drainage profond. Hydrotel divise q3 par deux des que le sol est
     # gele, ce qui place la recharge minimale en avril, mois ou la nappe mesuree monte le

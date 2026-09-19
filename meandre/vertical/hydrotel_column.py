@@ -455,6 +455,13 @@ class HydrotelColumn(nn.Module):
         _l3n = getattr(self, "l3_drain_exp", None)
         if _l3n is not None:
             p_soil["l3_drain_exp"] = float(_l3n)
+        # Drainage de l'eau gravitaire de la couche 3, constante de temps en heures. La
+        # capacite au champ de cette couche vit dans le champ spatial et non dans le
+        # dictionnaire du sol, qui ne porte que les parametres de Campbell : on l'y ajoute.
+        _tau = getattr(self, "l3_tau_fc", None)
+        if _tau is not None:
+            p_soil["l3_tau_fc"] = float(_tau)
+            p_soil["thetacc3"] = sp.theta_fc_3
         # COUPLAGE NAPPE-COLONNE (opt-in, 2026-09-19). La percolation au bas du profil
         # suppose un gradient unitaire, ce qui n'a de sens que si la surface libre est
         # NETTEMENT plus bas. Quand la nappe remonte jusqu'a la base du sol, le gradient
