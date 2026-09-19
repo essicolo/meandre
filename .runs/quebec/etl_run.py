@@ -1521,6 +1521,10 @@ if os.environ.get("ETL_DUMP_REACH"):
                         q_mois_serie=_qms.astype(np.float32),
                         mois_serie=_mois_u.astype(np.int32),
                         coords=td.node_coords.cpu().numpy(),
+                        # Appariement station-troncon : il existait a l'execution mais
+                        # n'etait enregistre nulle part, ce qui interdisait de confronter
+                        # une signature mesuree par station a un attribut de troncon.
+                        station_idx=td.station_idx.cpu().numpy().astype(np.int32),
                         prelev_net_abs=_wnet.astype(np.float32),
                         prelev_net_moyen=_wmoy.astype(np.float32),
                         prelev_gw_moyen=_wgw.astype(np.float32),
@@ -1562,6 +1566,10 @@ if os.environ.get("ETL_DUMP_REACH"):
                             q_mois_serie=_qmsn.astype(np.float32),
                             mois_serie=_mois_u.astype(np.int32),
                             coords=td.node_coords.cpu().numpy(),
+                        # Appariement station-troncon : il existait a l'execution mais
+                        # n'etait enregistre nulle part, ce qui interdisait de confronter
+                        # une signature mesuree par station a un attribut de troncon.
+                        station_idx=td.station_idx.cpu().numpy().astype(np.int32),
                             prelev_net_abs=np.zeros(n_nodes, dtype=np.float32),
                             prelev_net_moyen=np.zeros(n_nodes, dtype=np.float32),
                             prelev_gw_moyen=np.zeros(n_nodes, dtype=np.float32))
