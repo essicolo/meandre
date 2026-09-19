@@ -1858,3 +1858,24 @@ Chaque dose de taux corrigeait donc simultanément deux choses, et une part du d
 Aucun point ne satisfait les quatre critères ensemble. Le maximum de mai exige un taux fort, qui porte le volume à 411 mm par an contre les 100 à 250 plausibles et fait tomber le KGE à 0,42. La courbure adoucit la facture sans l'annuler : à taux égal elle rend l'écart-type du débit de 225 à 473 et le KGE de -0,18 à 0,42. Au Saint-Laurent nord-ouest, le taux doublé avec exposant 11 donne 200 mm par an, volume plausible, pour un KGE de 0,655 contre 0,677, mais le maximum reste en juillet.
 
 Ces essais sont tous faits SANS couplage entre la nappe et la colonne. Or la couche 3 ne peut s'y désaturer qu'en permanence, sous l'effet d'un taux élevé, alors qu'une vraie nappe la ressuie par saison sous l'effet du rabattement estival. C'est ce que le couplage livré le même jour doit permettre.
+
+---
+
+## R125 — La couche 3 retient en permanence 289 à 465 mm d'eau gravitaire, et c'est la cause de la recharge inerte (2026-09-19) — ÉTABLI
+
+Teneur en eau simulée comparée à la capacité au champ du champ spatial, moyennes 2000-2024, quatre territoires. L'eau gravitaire est la lame retenue au-dessus de la capacité au champ, celle que la gravité draine par définition.
+
+| Territoire | Couche 1 | Couche 2 | Couche 3 |
+| --- | --- | --- | --- |
+| Outaouais | +2 mm | -1 mm | +465 mm |
+| Saint-Laurent nord-ouest | -7 mm | -32 mm | +325 mm |
+| Gaspésie | -6 mm | -11 mm | +342 mm |
+| Saguenay | -1 mm | -17 mm | +289 mm |
+
+Les deux couches supérieures se tiennent à leur capacité au champ à quelques millimètres près, comportement attendu d'un sol qui se remplit, se ressuie, puis s'assèche sous l'effet des racines. La troisième est engorgée sur les quatre territoires, de 289 à 465 mm, soit cinq à six fois la recharge annuelle simulée. Sur l'Outaouais elle se tient à 0,517 de teneur en eau quand sa capacité au champ vaut 0,345 et sa porosité 0,519 : elle est à saturation toute l'année.
+
+La cause est structurelle et non numérique. Les deux premières couches ont un drainage latéral et l'essentiel des racines ; la troisième n'a que la percolation vers l'aquifère, dont la constante de temps est ajustée sur les récessions de DÉBIT et non sur la physique du sol. Elle ne peut donc pas se ressuyer.
+
+Deux conséquences en chaîne, qui expliquent tout le chantier. La couche n'a aucune capacité disponible à la fonte, si bien que la crue de printemps repart en surface au lieu de s'infiltrer. Et sa teneur en eau ne variant pas de plus de trois pour cent sur l'année, la recharge qui lui est proportionnelle ne varie pas non plus, d'où une recharge plate dont le maximum tombe en août.
+
+Remède livré le même jour, sous `ETL_L3_TAU` : drainage de l'eau au-dessus de la capacité au champ avec une constante de temps de quelques jours, et rien en dessous. C'est la formulation standard, que Raven porte sous plusieurs noms dans sa famille de percolation. La recharge devient alors égale à ce qui percole réellement depuis la couche sus-jacente, donc pilotée par le climat et non par une constante de calage. Effet sur le débit et sur le volume de recharge à mesurer.
