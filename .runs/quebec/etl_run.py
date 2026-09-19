@@ -1458,7 +1458,11 @@ if os.environ.get("ETL_DUMP_REACH"):
                                 dates=np.array([str(_t)[:10] for _t in times]),
                                 s_gw=_dg_r.s_gw.cpu().numpy()[:, _idx].astype(np.float32),
                                 recharge=_dg_r.recharge.cpu().numpy()[:, _idx].astype(np.float32),
-                                q_baseflow=_dg_r.q_baseflow.cpu().numpy()[:, _idx].astype(np.float32))
+                                q_baseflow=_dg_r.q_baseflow.cpu().numpy()[:, _idx].astype(np.float32),
+                                # Profondeur de la surface libre : la seule grandeur
+                                # DIRECTEMENT comparable au niveau mesure dans un puits.
+                                **({"profondeur_nappe": _dg_r.profondeur_nappe.cpu().numpy()[:, _idx].astype(np.float32)}
+                                   if getattr(_dg_r, "profondeur_nappe", None) is not None else {}))
             print(f"[etl] nappe sauvee aux {len(_pu)} puits du reseau : {os.environ['ETL_DUMP_NAPPE']}")
         else:
             print(f"[etl] aucun puits du reseau dans {REG}")
