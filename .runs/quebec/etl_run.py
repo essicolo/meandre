@@ -1128,7 +1128,10 @@ if float(os.environ.get("ETL_WNAPPE", 0.0)) > 0:
 
     from meandre.data.rsesq_loader import _chemin_defaut, read_rsesq
 
-    _cn = read_rsesq(os.environ["ETL_REGION"].lower(), times)
+    # L'axe temporel n'est nomme `times` que plus bas, apres la construction du domaine :
+    # on le lit ici dans le dictionnaire du pilote plutot que de deplacer ce bloc, qui doit
+    # rester avant le tableau des contraintes effectives pour y figurer.
+    _cn = read_rsesq(os.environ["ETL_REGION"].lower(), r["times"])
     if _cn.n_puits == 0:
         print("[etl] niveaux de nappe : aucun puits recevable sur ce territoire, terme inactif")
     else:
@@ -1136,7 +1139,7 @@ if float(os.environ.get("ETL_WNAPPE", 0.0)) > 0:
                                  columns=["puits", "date", "niveau_m"])
         _niv = _niv[_niv.puits.isin(list(_cn.puits))]
         _tab = _niv.pivot_table(index="date", columns="puits", values="niveau_m", aggfunc="mean")
-        _tab = _tab.reindex(index=_pdn.DatetimeIndex(times), columns=list(_cn.puits))
+        _tab = _tab.reindex(index=_pdn.DatetimeIndex(r["times"]), columns=list(_cn.puits))
         td = _dc_replace(td,
                          nappe_obs=torch.tensor(_tab.to_numpy(dtype="float32"), device=DEVICE),
                          nappe_idx=torch.tensor(_cn.node_idx, dtype=torch.long, device=DEVICE))
