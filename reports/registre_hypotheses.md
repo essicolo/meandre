@@ -2031,3 +2031,22 @@ Les trois chemins tombent pour la première fois dans leurs plages attendues, av
 Le KGE tombe pourtant à 0,214, et l'écart-type du débit de 699 à 343. Toute la perte est là : la variabilité du témoin vient de ses 86 pour cent de ruissellement de surface, qui est instantané, et router l'eau par des chemins souterrains la lisse.
 
 Deux lectures, non exclusives. La sortie latérale écrite d'abord était proportionnelle à la conductivité de Campbell et répond en semaines, alors qu'un écoulement hypodermique réel sur interface sol-till répond en heures ou en quelques jours ; la forme transférable livrée le même jour porte une constante de temps explicite, et les valeurs de cinq, dix et vingt jours sont en épreuve. Et surtout, ces passes tournent à POIDS GELÉS : conductivités, routage et fonte ont été calés sur un modèle où 86 pour cent du débit sortait en surface, donc corriger les chemins rend ces paramètres inadaptés par construction. Attendre que le KGE se maintienne sans réentraînement n'a pas de sens, et c'est la ronde appariée qui doit trancher.
+
+---
+
+## R133 — L'indice d'écoulement de base observé vaut 0,58 et 0,54 ; le modèle en produit 0,10 et 0,13 (2026-09-19) — ÉTABLI
+
+Mesure sur les hydrogrammes OBSERVÉS des stations qui servent à calculer le KGE, période 2022-2024, par le filtre récursif de Lyne et Hollick à trois passes, séparateur standard depuis Nathan et McMahon (1990), coefficient 0,925 au pas journalier.
+
+| Territoire | Stations | Indice mesuré, médiane | Quartiles | Étendue | Indice du modèle retenu |
+| --- | --- | --- | --- | --- | --- |
+| Outaouais | 16 | 0,58 | 0,51 à 0,64 | 0,39 à 0,76 | 0,10 |
+| Saint-Laurent nord-ouest | 25 | 0,54 | 0,49 à 0,56 | 0,46 à 0,64 | 0,13 |
+
+L'écart vaut quatre à six fois, et aucune station observée ne descend sous 0,39. Le modèle reproduit ces mêmes hydrogrammes avec un cinquième de l'écoulement de base qu'ils contiennent.
+
+Ce résultat remplace, pour le critère du chantier, la plage de littérature de 0,3 à 0,5 sur bassins forestiers par une mesure faite sur les stations elles-mêmes. Il ne dépend d'aucune hypothèse de modèle : le filtre ne voit que le débit observé.
+
+La configuration la plus crédible obtenue le même jour, drainage gravitaire avec plafond de substratum et sortie latérale faible, en produit 0,44 : proche du mesuré, encore un peu basse, alors que le témoin en produit 0,10. Le critère devient donc : indice simulé entre 0,5 et 0,6.
+
+Conséquence pour le mandat des prélèvements. Un modèle qui fait venir dix pour cent de son débit de la nappe alors que les mesures en donnent cinquante-huit ne peut pas prédire l'effet d'un pompage souterrain en étiage, quelle que soit la qualité de son KGE.
