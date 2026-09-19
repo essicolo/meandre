@@ -83,8 +83,12 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
     2026-09-19. La moyenne est non pondérée faute d'une surface par tronçon dans le cache,
     ce qui donne plus de poids aux têtes de bassin, nombreuses et petites.
     """
-    f = f"{DERIVES}/reach-{region}-{cache}.npz"
-    if not os.path.exists(f):
+    # Le cache peut porter des noms differents d'un territoire a l'autre selon la passe
+    # qui l'a produit : on prend le premier qui existe et qui porte l'appariement.
+    f = next((c for c in (f"{DERIVES}/reach-{region}-{n}.npz"
+                          for n in (cache, "appariement", "ronde-pile"))
+              if os.path.exists(c)), None)
+    if f is None:
         return None
     z = np.load(f, allow_pickle=True)
     if "station_idx" not in z.files:
