@@ -1992,3 +1992,23 @@ Le dosage reste à faire. La sortie latérale prend 75 pour cent du débit au mu
 **Fermeture du bilan vérifiée.** Avec le drainage gravitaire, le plafond et la nappe libre, l'erreur vaut 0,04 pour cent de la précipitation contre 0,02 au témoin, très en dessous du seuil de 0,1. L'évapotranspiration prélevée sur la zone saturée est bien comptée comme sortie atmosphérique.
 
 Quatrième mesure, indépendante et la plus directe : l'écart de volume mensuel contre les débits observés. Le témoin manque 7,0 pour cent du total annuel en avril et le rend en mai, juin et juillet. C'est la signature de l'eau bloquée en profondeur et de la troncature, et sa réduction devient le critère d'acceptation du dosage.
+
+---
+
+## R131 — Le modèle de référence produit 86 pour cent de son débit en ruissellement de surface (2026-09-19) — ÉTABLI
+
+Partition de la production latérale du modèle retenu, Outaouais, moyennes 2000-2024. La sortie n'était exposée nulle part avant ce jour, ce qui explique qu'un tel écart ait pu passer inaperçu.
+
+| Chemin | Modèle retenu | Ordre de grandeur attendu en bassin forestier |
+| --- | --- | --- |
+| Ruissellement de surface | 0,86 | 0,10 à 0,30 |
+| Écoulement hypodermique | 0,04 | 0,30 à 0,60 |
+| Écoulement de base | 0,10 | 0,30 à 0,50 |
+
+Le modèle atteint son KGE de 0,654 avec une répartition des chemins de l'eau presque entièrement fausse. Le ruissellement de surface culmine en avril à 4,09 fois sa moyenne annuelle : la fonte part directement en surface.
+
+Deux causes, toutes deux établies le même jour. La couche 3 est bouchée par 457 mm d'eau gravitaire, donc la cascade de saturation refoule l'eau vers le haut où elle sort en surface. Et la troncature de la boucle de sous-pas verse en ruissellement la pluie du temps non calculé, qui représente 32 pour cent de l'année et 62 pour cent des journées d'avril.
+
+**Conséquence pour le mandat.** Un modèle dont dix pour cent du débit vient de la nappe ne peut pas représenter l'effet d'un prélèvement souterrain en étiage : il reproduit les débits observés par un chemin qui n'est pas celui que le prélèvement sollicite. La question posée par Essi le 2026-09-19, celle de savoir si le modèle a raison pour de mauvaises raisons en basses eaux, reçoit ici sa réponse chiffrée.
+
+Réserve. Une part de ces 86 pour cent est l'artefact de troncature lui-même. La valeur convergée serait plus basse, et les configurations à troncature nulle donnent 0,11 de surface. L'écart reste considérable dans les deux sens, et aucune configuration essayée à ce jour ne place les trois chemins simultanément dans leur plage attendue.
