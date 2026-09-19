@@ -73,7 +73,9 @@ def attributs_de_station(region: str, cache: str, colonnes):
     # Le tronçon est indexé à partir de 1, le nœud à partir de 0.
     lignes = geo.reindex([int(n) + 1 for n in noeuds])
     cols = [c for c in geo.columns if c.startswith(("litho_", "province_")) and not c.startswith("couv_")]
-    return lignes[cols].reset_index(drop=True)
+    # Une classe absente d'un territoire sort en valeur manquante de la table d'ingestion
+    # alors que sa part vaut ZERO : sans ce remplissage, toute station est ecartee.
+    return lignes[cols].fillna(0.0).reset_index(drop=True)
 
 
 def part_expliquee(X, y, blocs, graine=0):
