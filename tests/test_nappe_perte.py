@@ -65,3 +65,28 @@ def test_gradient_remonte_vers_la_simulation():
     nappe_anomaly_loss(z, _series(4)).backward()
     assert torch.isfinite(z.grad).all()
     assert float(z.grad.abs().sum()) > 0.0
+
+
+def test_terme_borne_meme_si_la_simulation_est_plate():
+    """Une simulation sans variance ne doit pas faire exploser le terme.
+
+    Mesure du 2026-09-19 : en réduisant chaque série par son écart-type, le terme atteignait
+    311 contre 2,2 pour tous les autres réunis, soit 9305 pour cent de la perte, parce que
+    le stock souterrain du témoin est quasi constant — précisément le défaut à corriger.
+    """
+    obs = _series()
+    plate = torch.full_like(obs, 3.0)
+    presque = plate + 1e-9 * _series(9)
+    for sim in (plate, presque):
+        v = float(nappe_anomaly_loss(sim, obs))
+        assert 0.0 <= v <= 4.0
+    # Le terme reste borné dans tous les cas de figure.
+    assert float(nappe_anomaly_loss(obs, obs)) <= 4.0
+    assert float(nappe_anomaly_loss(-obs, obs)) <= 4.0
+
+
+def test_valeur_neutre_pour_un_puits_sans_variance():
+    """Un puits que la simulation ne distingue pas reçoit la valeur neutre, soit 2."""
+    obs = _series(puits=1)
+    plate = torch.full_like(obs, 1.5)
+    assert abs(float(nappe_anomaly_loss(plate, obs)) - 2.0) < 1e-6

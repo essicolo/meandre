@@ -383,19 +383,30 @@ def nappe_anomaly_loss(
     if not bool(valide.any()):
         return torch.zeros((), device=z_sim_month.device)
 
-    def _reduire(x):
-        # Centrage et réduction sur les seuls mois observés, colonne par colonne.
+    def _centrer(x):
+        """Écart à la moyenne, sur les seuls pas observés."""
         xm = torch.where(m, x, torch.zeros_like(x))
         moy = xm.sum(dim=0) / torch.clamp(n, min=1)
-        ecart = torch.where(m, x - moy, torch.zeros_like(x))
-        var = (ecart.pow(2)).sum(dim=0) / torch.clamp(n - 1, min=1)
-        return ecart / torch.sqrt(torch.clamp(var, min=1e-8))
+        return torch.where(m, x - moy, torch.zeros_like(x))
 
-    a_sim = _reduire(-z_sim_month)
-    a_obs = _reduire(-niveau_obs_month)
-    resid = torch.where(m, a_sim - a_obs, torch.zeros_like(a_sim))
-    par_puits = resid.pow(2).sum(dim=0) / torch.clamp(n, min=1)
-    perte = par_puits[valide].mean()
+    # La perte vaut 2 (1 - r), avec r la corrélation, ce qui la BORNE entre 0 et 4. On la
+    # calcule par la corrélation plutôt qu'en réduisant chaque série : diviser par
+    # l'écart-type simulé explose quand celui-ci tend vers zéro, ce qui est PRÉCISÉMENT le
+    # cas du stock souterrain qu'on cherche à corriger. Mesuré le 2026-09-19 : le terme
+    # atteignait 311 contre 2,2 pour tous les autres réunis, soit 9305 pour cent de la
+    # perte, et écrasait l'entraînement. Un terme de perte doit être borné par construction.
+    c_sim = _centrer(-z_sim_month)
+    c_obs = _centrer(-niveau_obs_month)
+    cov = (c_sim * c_obs).sum(dim=0)
+    n_sim = torch.sqrt((c_sim.pow(2)).sum(dim=0))
+    n_obs = torch.sqrt((c_obs.pow(2)).sum(dim=0))
+    # Un puits dont la simulation ne varie pas ne porte aucune information de forme : sa
+    # corrélation n'est pas définie et on lui donne la valeur NEUTRE, ni récompense ni
+    # punition, plutôt qu'une valeur infinie.
+    plat = (n_sim < 1e-6 * torch.clamp(n_obs, min=1e-12)) | (n_obs < 1e-12)
+    r = cov / torch.clamp(n_sim * n_obs, min=1e-12)
+    r = torch.where(plat, torch.zeros_like(r), torch.clamp(r, -1.0, 1.0))
+    perte = (2.0 * (1.0 - r))[valide].mean()
 
     if poids_porosite > 0.0 and sy is not None and amplitude_sim is not None:
         # Le garde-fou ne cale RIEN : il interdit seulement une porosité que la géologie
