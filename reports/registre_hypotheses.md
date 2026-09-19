@@ -1836,3 +1836,25 @@ Les anomalies mensuelles ne voient AUCUN paramètre de l'aquifère : elles reste
 Conséquence pour le terme de perte. Il doit d'abord porter sur ce que les puits identifient réellement, la présence du mécanisme et la phase, en mode anomalies et sans paramètre libre supplémentaire. L'identifiabilité spatiale de la porosité est une question à reposer quand la recharge sera correcte, puisqu'elle est aujourd'hui mesurée à travers deux défauts connus, la troncature de la boucle de sous-pas et l'absence d'impulsion de printemps.
 
 Réserves. Vingt-sept puits dont neuf dans le roc, échantillon faible pour séparer deux distributions larges. La porosité ajustée absorbe aussi l'erreur sur l'amplitude de la recharge, qui varie d'un tronçon à l'autre. La nature binaire roc contre dépôts est une covariable grossière devant la lithologie du SIGÉOM et les dépôts de surface, disponibles par tronçon et non encore essayés ici.
+
+---
+
+## R124 — La dose de percolation supprime aussi la troncature : les variantes du 2026-09-18 étaient confondues (2026-09-19) — ÉTABLI
+
+Le diagnostic de temps non traité, appliqué aux mêmes variantes de taux de percolation, montre que relever le taux SUPPRIME le défaut numérique. Sur l'Outaouais, la part de journée non traitée passe de 0,32 au témoin à 0,06 au taux doublé et à 0,00 au taux quintuplé ; en avril, de 0,62 à 0,17 puis à 0,00. Sur le Saint-Laurent nord-ouest, de 0,40 à 0,28 puis 0,05. La raison est que la conductivité de Campbell chute bien plus vite que le stock quand le sol s'assèche, si bien que la condition de Courant se relâche et que la boucle a le temps de finir sa journée.
+
+Chaque dose de taux corrigeait donc simultanément deux choses, et une part du déplacement de phase attribué la veille à la loi de drainage venait du schéma. Le déconfondage se lit en comparant les deux passes à troncature nulle. Avec la couche 3 saturée à 0,521, la recharge vaut 80 mm par an, plate, maximum en février. Avec la couche 3 désaturée à 0,276, elle vaut 612 mm par an, maximum en mai. C'est donc la désaturation de la couche 3 qui déplace la recharge vers le printemps, et non le taux en lui-même.
+
+**Front des compromis, Outaouais, avec la courbure de Campbell.**
+
+| Configuration | Recharge | Mois max | Couche 3 | Non traité | Écart-type du débit | KGE |
+| --- | --- | --- | --- | --- | --- | --- |
+| Témoin | 55 mm/an | août | 0,517 | 0,32 | 699 | 0,654 |
+| Taux x2, exposant 11 | 270 | juin | 0,504 | 0,12 | 535 | 0,598 |
+| Taux x5, loi linéaire | 612 | mai | 0,276 | 0,00 | 225 | -0,180 |
+| Taux x5, exposant 11 | 437 | mai | 0,475 | 0,02 | 414 | 0,304 |
+| Taux x5, exposant 15 | 411 | mai | 0,485 | 0,03 | 473 | 0,421 |
+
+Aucun point ne satisfait les quatre critères ensemble. Le maximum de mai exige un taux fort, qui porte le volume à 411 mm par an contre les 100 à 250 plausibles et fait tomber le KGE à 0,42. La courbure adoucit la facture sans l'annuler : à taux égal elle rend l'écart-type du débit de 225 à 473 et le KGE de -0,18 à 0,42. Au Saint-Laurent nord-ouest, le taux doublé avec exposant 11 donne 200 mm par an, volume plausible, pour un KGE de 0,655 contre 0,677, mais le maximum reste en juillet.
+
+Ces essais sont tous faits SANS couplage entre la nappe et la colonne. Or la couche 3 ne peut s'y désaturer qu'en permanence, sous l'effet d'un taux élevé, alors qu'une vraie nappe la ressuie par saison sous l'effet du rabattement estival. C'est ce que le couplage livré le même jour doit permettre.
