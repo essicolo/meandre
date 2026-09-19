@@ -121,6 +121,20 @@ Le bilan d'eau de la colonne FERME à la précision numérique (audit `ETL_BILAN
 
 Deux termes de la physique du milieu humide n'étaient exposés nulle part et rendaient le bilan infermable : `etr_mh` (évaporation) et `wet_vol` (stock). Ils sont maintenant dans `SimDiagnostics`. Attention, `SimDiagnostics.snowmelt` est MAL NOMMÉ : il contient l'apport total au sol, pas la fonte.
 
+## Eau souterraine : nappe libre et drainage de la couche profonde (2026-09-19)
+
+Trois pièces opt-in, ajoutées après avoir mesuré que l'aquifère restituant ne pouvait pas reproduire les niveaux du réseau de suivi. Toutes sont neutres quand l'option n'est pas posée : le clone reste fidèle.
+
+`ETL_L3_TAU` (jours) draine l'eau de la couche 3 au-dessus de sa CAPACITÉ AU CHAMP, et rien en dessous. Sans elle la couche retient 289 à 465 mm d'eau gravitaire en permanence selon le territoire, cinq à six fois la recharge annuelle, parce que son seul exutoire a une constante de temps héritée des récessions de débit. Conséquences mesurées : aucune capacité disponible à la fonte, teneur en eau qui ne varie pas de plus de trois pour cent, donc recharge plate culminant en août, et sol saturé neuf jours sur dix qui resserre la condition de Courant. Avec la loi, la recharge devient une impulsion d'avril d'amplitude saisonnière seize contre deux, et la troncature de la boucle de sous-pas s'annule d'elle-même. ATTENTION à la convergence : à 2 et 5 jours la loi est convergée dès 32 sous-pas, à 15 jours elle ne l'est pas même à 128.
+
+`ETL_L3_KSUB` (mm/jour) plafonne cette percolation par la conductivité du SUBSTRATUM. Sans plafond toute l'eau descend et la recharge atteint 537 mm/an sur l'Outaouais, la quasi-totalité de l'écoulement du bassin. Dans un sol réel l'excès repart latéralement au-dessus de l'interface sol-dépôt, ce qui EST l'écoulement hypodermique. Le plafond est une propriété du dépôt et du socle, donc prédictible par la géologie, et sa plage utile de 0,5 à 2 mm/jour correspond à un till silteux.
+
+`ETL_NAPPE_LIBRE` remplace le réservoir restituant par une nappe dont la PROFONDEUR est l'état (`meandre/vertical/nappe.py`). Elle apporte ce que le réservoir n'a pas : une profondeur commensurable aux puits par la porosité de drainage, une loi stock-débit en carré de la charge (Dupuit-Boussinesq) qui découple l'amplitude du retard, et une extraction depuis la zone saturée, seul moyen de creuser l'étiage estival de la nappe. Elle ne coûte rien au débit (KGE 0,681 contre 0,665 en Outaouais) ni en calcul (convergée à un seul sous-pas). La profondeur se déduit du stock par une application affine, donc aucun champ d'état nouveau et les points de reprise restent lisibles.
+
+`ETL_WNAPPE` active le terme de perte sur les niveaux mesurés, en anomalies RÉDUITES et centrées dans le bloc. Il vise la forme et non l'amplitude : le balayage montre que les puits identifient la présence des mécanismes et la phase, non la valeur des paramètres, et qu'un facteur d'échelle libre par puits absorberait l'erreur de structure. Le chargeur `meandre/data/rsesq_loader.py` écarte les puits captifs, qui mesurent une charge et non un stock, et les puits influencés par un pompage.
+
+LIGNE ROUGE : les cartes de recharge régionales (PACES, HydroBudget, HELP) sont CIRCULAIRES, étant calées sur le débit de base. Comparaison en discussion seulement, jamais cible. Les niveaux du réseau de suivi et la gravimétrie sont les seules observations non circulaires de l'eau souterraine.
+
 ## Training safeguards
 
 - **Divergence guard**: rollback to best checkpoint if loss > 3x EMA (max 3 rollbacks)
