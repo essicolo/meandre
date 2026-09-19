@@ -2050,3 +2050,33 @@ Ce résultat remplace, pour le critère du chantier, la plage de littérature de
 La configuration la plus crédible obtenue le même jour, drainage gravitaire avec plafond de substratum et sortie latérale faible, en produit 0,44 : proche du mesuré, encore un peu basse, alors que le témoin en produit 0,10. Le critère devient donc : indice simulé entre 0,5 et 0,6.
 
 Conséquence pour le mandat des prélèvements. Un modèle qui fait venir dix pour cent de son débit de la nappe alors que les mesures en donnent cinquante-huit ne peut pas prédire l'effet d'un pompage souterrain en étiage, quelle que soit la qualité de son KGE.
+
+---
+
+## R134 — Structure de variance mesurée sur les observations, et l'hypodermique rapide rend la nervosité (2026-09-19) — ÉTABLI
+
+Séparation de Lyne et Hollick sur les hydrogrammes OBSERVÉS, 2022-2024, 16 stations en Outaouais et 25 au Saint-Laurent nord-ouest.
+
+| Territoire | Indice de base | Variation relative de la base | du rapide | du total |
+| --- | --- | --- | --- | --- |
+| Outaouais | 0,58 | 0,62 | 2,13 | 1,12 |
+| Saint-Laurent nord-ouest | 0,54 | 0,74 | 2,35 | 1,33 |
+
+L'écoulement de base réel n'est pas un filet constant : il varie de 62 à 74 pour cent de sa moyenne. Et l'écoulement rapide, qui ne porte que 40 pour cent du volume, varie de plus du double de sa moyenne. Un modèle correct doit donc avoir les deux ensemble, une nappe qui contribue beaucoup ET qui respire, une composante rapide nerveuse quoique minoritaire.
+
+**Ce que les configurations produisent**, Outaouais, passes avant à poids gelés.
+
+| Configuration | Indice de base | Variation base | Variation rapide | Écart-type du débit | Recharge | Mois max | KGE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Témoin | 0,098 | 0,309 | 2,609 | 1,000 | 55 | août | 0,654 |
+| Latéral lent, plafond 2 | 0,506 | 0,505 | 1,324 | 0,643 | 312 | mai | 0,131 |
+| Latéral rapide 5 j, plafond 1 | 0,243 | 0,251 | 1,935 | 0,997 | 150 | avril | 0,550 |
+| Observé | 0,58 | 0,62 | 2,13 | — | — | — | — |
+
+Le témoin a la bonne nervosité rapide mais un écoulement de base cinq fois trop petit et deux fois trop plat : il obtient sa variabilité en faisant tout passer par le chemin nerveux. Un aquifère linéaire plus lent aggrave le défaut au lieu de l'aider, ramenant la variation de la base à 0,309, la valeur plate du témoin, et il est éliminé sans ambiguïté.
+
+La forme LATÉRALE RAPIDE, à constante de temps propre de cinq jours, restitue presque toute la variabilité du débit, 0,997 contre 1,000, porte la nervosité du rapide à 1,94 contre 2,13 observé, et rend un KGE de 0,550 en Outaouais et 0,605 au Saint-Laurent nord-ouest, contre 0,654 et 0,676 au témoin. C'est le premier point à la fois physiquement crédible et proche du témoin sans réentraînement, avec couche drainée, troncature nulle, recharge de 150 mm par an et maximum en avril.
+
+Le compromis restant porte sur un seul arbitrage, le plafond de substratum : à plafond élevé la nappe reçoit sa part mais le rapide s'amollit, à plafond bas avec latéral rapide le rapide est juste mais la nappe est affamée. La combinaison plafond élevé et latéral rapide est en épreuve.
+
+Convergence : la constante latérale de cinq jours est convergée au plafond de production, 266,7 mm d'hypodermique cumulé à 64 sous-pas contre 267,9 à 512, alors que celle de vingt jours ne l'est pas, 168,2 contre 204,4. Le mécanisme s'inverse par rapport au drainage vertical, un écoulement latéral rapide vidant la couche, qui reste sous sa saturation et relâche la condition de Courant.
