@@ -59,23 +59,53 @@ def indices_par_station(region: str):
     return pd.DataFrame(lignes)
 
 
-def attributs_de_station(region: str, cache: str, colonnes):
-    """Attributs géologiques du tronçon portant chaque station, via l'appariement du cache."""
+def bassin_amont(edge_index, n_noeuds: int, noeud: int) -> np.ndarray:
+    """Tous les nœuds en amont d'un nœud, lui compris, par remontée du réseau."""
+    amont_de = [[] for _ in range(n_noeuds)]
+    for src, dst in zip(edge_index[0], edge_index[1]):
+        amont_de[int(dst)].append(int(src))
+    vus, pile = {int(noeud)}, [int(noeud)]
+    while pile:
+        n = pile.pop()
+        for p in amont_de[n]:
+            if p not in vus:
+                vus.add(p)
+                pile.append(p)
+    return np.fromiter(vus, dtype=np.int64)
+
+
+def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True):
+    """Attributs géologiques de chaque station, moyennés sur son BASSIN AMONT.
+
+    Une signature de station intègre tout son amont ; la comparer à l'attribut du seul
+    tronçon qui la porte n'a pas de sens, et c'est ce qui invalidait le premier essai du
+    2026-09-19. La moyenne est non pondérée faute d'une surface par tronçon dans le cache,
+    ce qui donne plus de poids aux têtes de bassin, nombreuses et petites.
+    """
     f = f"{DERIVES}/reach-{region}-{cache}.npz"
     if not os.path.exists(f):
         return None
     z = np.load(f, allow_pickle=True)
     if "station_idx" not in z.files:
         return None
+    if amont and "edge_index" not in z.files:
+        return None
     noeuds = z["station_idx"][colonnes]
     geo = pd.read_parquet(f"{DERIVES}/sigeom-geologie-socle-troncons.parquet")
     geo = geo[geo.region.str.lower() == region.lower()].set_index("troncon")
-    # Le tronçon est indexé à partir de 1, le nœud à partir de 0.
-    lignes = geo.reindex([int(n) + 1 for n in noeuds])
     cols = [c for c in geo.columns if c.startswith(("litho_", "province_")) and not c.startswith("couv_")]
     # Une classe absente d'un territoire sort en valeur manquante de la table d'ingestion
     # alors que sa part vaut ZERO : sans ce remplissage, toute station est ecartee.
-    return lignes[cols].fillna(0.0).reset_index(drop=True)
+    table = geo[cols].fillna(0.0)
+    if not amont:
+        return table.reindex([int(n) + 1 for n in noeuds]).fillna(0.0).reset_index(drop=True)
+    n_noeuds = int(z["coords"].shape[0])
+    lignes = []
+    for n in noeuds:
+        # Le tronçon est indexé à partir de 1, le nœud à partir de 0.
+        bassin = bassin_amont(z["edge_index"], n_noeuds, int(n)) + 1
+        lignes.append(table.reindex(bassin).fillna(0.0).mean())
+    return pd.DataFrame(lignes).reset_index(drop=True)
 
 
 def part_expliquee(X, y, blocs, graine=0):
@@ -100,6 +130,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("regions", nargs="+")
     p.add_argument("--cache", default="finale-n2")
+    p.add_argument("--ponctuel", action="store_true", help="attribut du seul tronçon de la station")
     a = p.parse_args()
     morceaux = []
     for reg in [r.lower() for r in a.regions]:
@@ -107,7 +138,7 @@ def main():
         if ind.empty:
             print(f"{reg} : aucune série de station")
             continue
-        att = attributs_de_station(reg, a.cache, ind.colonne.to_numpy())
+        att = attributs_de_station(reg, a.cache, ind.colonne.to_numpy(), amont=not a.ponctuel)
         if att is None:
             print(f"{reg} : cache {a.cache} sans appariement station-tronçon")
             continue
