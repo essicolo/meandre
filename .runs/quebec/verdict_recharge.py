@@ -53,6 +53,17 @@ def mesures_region(region, variante, temoin):
     cyc = np.array([z["recharge"][mois == m].mean() for m in range(1, 13)])
     tnt = z["temps_non_traite"] if "temps_non_traite" in z.files else None
     sortie = {}
+    # Eau gravitaire de la couche 3 : la lame retenue au-dessus de la capacite au champ,
+    # celle que la gravite draine par definition. 289 a 465 mm au temoin selon le territoire.
+    if "param_theta_fc_3" in r.files and "param_Z3" in r.files:
+        sortie["eau_gravitaire_mm"] = float(
+            np.mean((z["theta3"].mean(axis=0) - r["param_theta_fc_3"]) * r["param_Z3"]) * 1000.0)
+    if "profondeur_nappe" in z.files:
+        pn = z["profondeur_nappe"]
+        cyc_n = np.array([pn[mois == m].mean() for m in range(1, 13)])
+        sortie["nappe_m"] = float(pn.mean())
+        sortie["battement_m"] = float(cyc_n.max() - cyc_n.min())
+        sortie["mois_nappe_haute"] = int(cyc_n.argmin() + 1)
     if tnt is not None:
         cyc_t = np.array([tnt[mois == m].mean() for m in range(1, 13)])
         sortie["part_jour_non_traite"] = float(tnt.mean())
@@ -99,7 +110,9 @@ def main():
         ligne = {"variante": v, "n_regions": len(par_region)}
         for k in par_region[0]:
             ligne[k] = float(np.median([m[k] for m in par_region]))
-        ligne["mois_max_recharge"] = int(ligne["mois_max_recharge"])
+        for _k in ("mois_max_recharge", "mois_nappe_haute"):
+            if _k in ligne:
+                ligne[_k] = int(ligne[_k])
         ligne["kge"] = float(np.median([kge_du_log(r, v) for r in regions]))
         ligne.update(nappe_variante(regions, "" if v == "nappe" else v))
         lignes.append(ligne)
