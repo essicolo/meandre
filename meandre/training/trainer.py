@@ -1239,17 +1239,25 @@ class Trainer:
                     # de surface (8 mm). Le decalage constant s'annulait au centrage,
                     # l'amplitude non. Corrige le 2026-08-21.
                     _z1 = getattr(self.model.vertical_column, "z1", 0.15)
-                    _soil_mm = ((_diag_chunk.theta1 * _z1
-                                 + _diag_chunk.theta2 * _sp.Z2
-                                 + _diag_chunk.theta3 * _sp.Z3) * 1000.0)
+                    # MEANDRE_DIAG_CPU=1 accumule les diagnostics sur le PROCESSEUR pour
+                    # tenir dans la memoire de la carte. Les parametres du champ, eux,
+                    # restent sur la carte : sans alignement la multiplication leve une
+                    # exception et tout entrainement devient impossible sous ce reglage
+                    # (mesure 2026-09-19). Un bloc pese quelques megaoctets, le transfert
+                    # est negligeable.
+                    _dev = _sp.Z2.device
+                    _al = lambda x: x if (x is None or x.device == _dev) else x.to(_dev)
+                    _soil_mm = ((_al(_diag_chunk.theta1) * _z1
+                                 + _al(_diag_chunk.theta2) * _sp.Z2
+                                 + _al(_diag_chunk.theta3) * _sp.Z3) * 1000.0)
                     # `_diag_chunk.wetland` est le champ MORT (recopie tel quel d'un pas
                     # a l'autre en mode hydrotel) : constant, donc invisible apres
                     # centrage. Le vrai stock est `wet_vol`, expose le 2026-08-20.
-                    _wet = getattr(_diag_chunk, "wet_vol", None)
+                    _wet = _al(getattr(_diag_chunk, "wet_vol", None))
                     if _wet is None:
-                        _wet = torch.zeros_like(_diag_chunk.swe)
-                    _stor = (_soil_mm + _diag_chunk.swe + _diag_chunk.s_gw
-                             + _diag_chunk.canopy + _wet)  # (T, n_nodes) mm
+                        _wet = torch.zeros_like(_soil_mm)
+                    _stor = (_soil_mm + _al(_diag_chunk.swe) + _al(_diag_chunk.s_gw)
+                             + _al(_diag_chunk.canopy) + _wet)  # (T, n_nodes) mm
                     _grp = getattr(data, "tws_group", None)
                     if _grp is None:
                         _stor_basin = _stor.mean(dim=1)[burnin:]  # (T-burnin,) moy-bassin
