@@ -193,6 +193,14 @@ class BV3C2Clone(torch.nn.Module):
                 # MEME multiplicateur, la conductivite de la couche 3 y valant quatre fois
                 # plus. Un parametre non transferable est redhibitoire pour une recette
                 # provinciale unique.
+                # CONVERGENCE mesuree le 2026-09-19, couche de 2,70 m partant de 0,52 sous
+                # 2 mm/j de pluie, hypodermique cumule sur 30 jours : a 5 jours de constante
+                # la loi est convergee au plafond de production, 266,7 mm a 64 sous-pas
+                # contre 267,9 a 512 ; a 20 jours elle ne l'est pas, 168,2 contre 204,4.
+                # Le mecanisme s'inverse par rapport au drainage vertical : un ecoulement
+                # lateral RAPIDE vide la couche, qui reste sous sa saturation, ce qui
+                # relache la condition de Courant. Une constante longue laisse la couche
+                # pleine et la troncature revient.
                 q3_lat = torch.clamp(t3 - p["thetacc3"], min=0.0) * z3 / p["l3_tau_lat"]
             elif "l3_lateral" in p:
                 # Forme initiale, gardee pour rejouer les essais du 2026-09-19.
