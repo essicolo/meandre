@@ -1879,3 +1879,25 @@ La cause est structurelle et non numérique. Les deux premières couches ont un 
 Deux conséquences en chaîne, qui expliquent tout le chantier. La couche n'a aucune capacité disponible à la fonte, si bien que la crue de printemps repart en surface au lieu de s'infiltrer. Et sa teneur en eau ne variant pas de plus de trois pour cent sur l'année, la recharge qui lui est proportionnelle ne varie pas non plus, d'où une recharge plate dont le maximum tombe en août.
 
 Remède livré le même jour, sous `ETL_L3_TAU` : drainage de l'eau au-dessus de la capacité au champ avec une constante de temps de quelques jours, et rien en dessous. C'est la formulation standard, que Raven porte sous plusieurs noms dans sa famille de percolation. La recharge devient alors égale à ce qui percole réellement depuis la couche sus-jacente, donc pilotée par le climat et non par une constante de calage. Effet sur le débit et sur le volume de recharge à mesurer.
+
+---
+
+## R126 — La nappe libre ne coûte rien au débit, et le couplage par étranglement ne peut rien guérir (2026-09-19) — ÉTABLI
+
+Nappe libre branchée dans la colonne, passes avant à poids gelés sur l'Outaouais et le Saint-Laurent nord-ouest, profondeur de la surface libre en variable d'état, loi en carré de la charge, extraction depuis la zone saturée pilotée par l'évapotranspiration potentielle de la colonne.
+
+| Variante | Eau gravitaire L3 | Recharge | Mois max | Écart-type du débit | KGE | Battement | Mois haut |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Témoin | 382 mm | 76 mm/an | août | 1,000 | 0,665 | — | — |
+| Nappe libre | 382 | 76 | août | 1,019 | 0,681 | 0,083 m | juin |
+| Nappe et taux x2 courbé | 361 | 235 | juin | 0,849 | 0,648 | 0,163 m | août |
+| Nappe et extraction forte | 361 | 235 | juin | 0,859 | 0,639 | 0,243 m | mars |
+| Taux x2 courbé seul | 361 | 235 | juin | 0,836 | 0,627 | — | — |
+
+La nappe libre seule est un gain net : KGE de 0,665 à 0,681 et écart-type du débit de deux pour cent. Elle récupère aussi une part de ce que la correction du drainage coûte au débit, 0,648 contre 0,627 sans elle. L'extraction forte porte le battement à 0,243 m et ramène le mois le plus haut d'août à mars, donc du côté du printemps, tout en restant loin des 0,93 m mesurés et d'un maximum en mai.
+
+**Couplage par étranglement : sans effet, et la raison est structurelle.** Le facteur de gradient qui éteint le drainage quand la surface libre approche la base du sol s'active bien : avec le lit du cours d'eau posé à 4 m, la nappe s'établit à 3,31 m contre une base de sol à 3,17 m, et le facteur vaut 0,14. Mais la teneur en eau de la couche 3, la recharge et l'eau gravitaire restent identiques au millimètre près, 0,517, 55 mm par an et 457 mm. Un étranglement ne peut pas guérir un système déjà étranglé : le drainage profond est trop lent et non trop rapide. La pièce reste utile comme garde-fou une fois le drainage gravitaire actif, pas comme remède.
+
+Effet mécanique seul du balayage de géométrie : une nappe plus proche de la surface bat davantage, 0,127 m à 4 m de profondeur de lit contre 0,048 m à 8 m, la loi en carré de la charge y répondant plus lentement.
+
+**Identifiabilité croisée constatée.** L'évapotranspiration totale passe de 459 mm par an au témoin à 476 avec la nappe et 517 avec l'extraction forte, contre 400 à 500 mm par an pour l'évapotranspiration boréale réelle. L'intensité de l'extraction est donc contrainte par l'évapotranspiration satellitaire, alors que les puits ne la distinguent presque pas entre 2 et 8 mm par jour. Deux observations indépendantes tiennent la même pièce par deux bouts.
