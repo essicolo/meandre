@@ -2012,3 +2012,22 @@ Deux causes, toutes deux établies le même jour. La couche 3 est bouchée par 4
 **Conséquence pour le mandat.** Un modèle dont dix pour cent du débit vient de la nappe ne peut pas représenter l'effet d'un prélèvement souterrain en étiage : il reproduit les débits observés par un chemin qui n'est pas celui que le prélèvement sollicite. La question posée par Essi le 2026-09-19, celle de savoir si le modèle a raison pour de mauvaises raisons en basses eaux, reçoit ici sa réponse chiffrée.
 
 Réserve. Une part de ces 86 pour cent est l'artefact de troncature lui-même. La valeur convergée serait plus basse, et les configurations à troncature nulle donnent 0,11 de surface. L'écart reste considérable dans les deux sens, et aucune configuration essayée à ce jour ne place les trois chemins simultanément dans leur plage attendue.
+
+---
+
+## R132 — Les trois chemins de l'eau entrent dans leurs plages, et la variabilité du débit s'effondre (2026-09-19) — ÉTABLI
+
+Configuration : drainage gravitaire à deux jours, plafond de substratum à 1 mm par jour, sortie latérale au multiplicateur 0,05. Outaouais, passe avant à poids gelés.
+
+| | Surface | Hypodermique | Base | Eau gravitaire | Non traité | Écart-type du débit | KGE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Témoin | 0,86 | 0,04 | 0,10 | 457 mm | 0,320 | 699 | 0,654 |
+| Plafond seul | 0,44 | 0,02 | 0,54 | 375 | 0,104 | 365 | 0,541 |
+| Latéral faible et plafond | 0,15 | 0,42 | 0,44 | 138 | 0,005 | 343 | 0,214 |
+| Plage attendue en bassin forestier | 0,10-0,30 | 0,30-0,60 | 0,30-0,50 | — | ~0 | — | — |
+
+Les trois chemins tombent pour la première fois dans leurs plages attendues, avec une troncature nulle et l'eau gravitaire ramenée de 457 à 138 mm. C'est la configuration la plus crédible physiquement obtenue à ce jour.
+
+Le KGE tombe pourtant à 0,214, et l'écart-type du débit de 699 à 343. Toute la perte est là : la variabilité du témoin vient de ses 86 pour cent de ruissellement de surface, qui est instantané, et router l'eau par des chemins souterrains la lisse.
+
+Deux lectures, non exclusives. La sortie latérale écrite d'abord était proportionnelle à la conductivité de Campbell et répond en semaines, alors qu'un écoulement hypodermique réel sur interface sol-till répond en heures ou en quelques jours ; la forme transférable livrée le même jour porte une constante de temps explicite, et les valeurs de cinq, dix et vingt jours sont en épreuve. Et surtout, ces passes tournent à POIDS GELÉS : conductivités, routage et fonte ont été calés sur un modèle où 86 pour cent du débit sortait en surface, donc corriger les chemins rend ces paramètres inadaptés par construction. Attendre que le KGE se maintienne sans réentraînement n'a pas de sens, et c'est la ronde appariée qui doit trancher.
