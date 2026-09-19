@@ -1946,3 +1946,26 @@ Le critère du chantier demandait le maximum simulé en avril ou mai, une amplit
 **Ce que cela retire au chantier.** Le temps de séjour de l'aquifère, son coefficient de récession et la forme de sa loi stock-débit n'étaient pas en cause : ces passes les gardent tels quels et obtiennent le bon mois, la bonne amplitude et une corrélation positive. Toute l'épreuve du 2026-09-18 sur les temps de séjour et les lois non linéaires portait donc sur une pièce qui fonctionnait dès lors qu'on l'alimentait correctement. La nappe libre reste utile pour l'identifiabilité, puisqu'elle rend une profondeur directement comparable aux puits, mais elle n'était pas le remède.
 
 Réserves. Deux territoires, aquifère non recalé, débit encore dégradé. La constante de cinq jours fait légèrement mieux sur les puits que celle de deux jours, mais moins bien sur le débit.
+
+---
+
+## R129 — L'écoulement hypodermique du modèle n'existe pas : un à trois pour cent du débit (2026-09-19) — ÉTABLI
+
+Partition de la production latérale entre surface, hypodermique et base, Outaouais, sous quatre configurations du drainage profond.
+
+| Configuration | Surface | Hypodermique | Base | Eau gravitaire L3 | Écart-type du débit | KGE |
+| --- | --- | --- | --- | --- | --- | --- |
+| Drainage gravitaire sans plafond | 0,11 | 0,01 | 0,88 | -7 mm | 742 | 0,487 |
+| Plafond de substratum 0,5 mm/j | 0,73 | 0,03 | 0,23 | 443 | 597 | 0,661 |
+| Plafond 1,0 mm/j | 0,44 | 0,02 | 0,54 | 375 | 365 | 0,565 |
+| Plafond 2,0 mm/j | 0,14 | 0,01 | 0,85 | 101 | 340 | 0,094 |
+
+L'écoulement hypodermique vaut un à trois pour cent du débit dans TOUTES les configurations. Le modèle n'a donc que deux chemins, la surface et la nappe, alors qu'un bassin forestier sur till en a trois et que l'hypodermique y porte typiquement trente à soixante pour cent.
+
+La cause est lisible dans les paramètres. Le drainage latéral vient de la seule couche 2 et vaut sa conductivité de Campbell fois la pente. Cette couche se tient à 0,175 de teneur en eau pour une porosité de 0,259, soit 68 pour cent de saturation ; avec un exposant de huit, sa conductivité tombe à trois pour cent de sa valeur à saturation. La voie latérale est étranglée par la non-linéarité dans une couche qui vit sous sa capacité au champ, et la couche 3 n'a aucune voie latérale du tout.
+
+Conséquence directe, et elle explique la non-monotonie du plafond de substratum. L'eau que le plafond refuse ne repart pas latéralement : elle remonte par la cascade de saturation et sort en RUISSELLEMENT DE SURFACE, jusqu'à 73 pour cent du débit au plafond serré. Et au plafond de 2 mm par jour, la couche garde 101 mm d'eau gravitaire qui amortissent le signal, d'où un écart-type de 340 contre 742 sans plafond et un KGE de 0,094, plus mauvais que sans plafond du tout.
+
+Le remède livré le même jour, `ETL_L3_LAT`, donne à la couche 3 un drainage latéral de même forme que celui de la couche 2. Il ne s'agit donc pas seulement d'une seconde sortie pour cette couche, mais du chemin hypodermique manquant du modèle.
+
+Réserves. Le témoin ne porte pas cette partition, son enregistrement datant d'avant que la sortie soit exposée ; une passe est en file pour l'obtenir. La valeur de trente à soixante pour cent pour l'hypodermique est un ordre de grandeur de la littérature sur bassins forestiers, non une mesure sur ces territoires.
