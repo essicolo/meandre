@@ -111,7 +111,9 @@ Ce que le chantier demande. Reprendre de Raven les formes fonctionnelles et leur
 
 Enjeu, formulé par Essi. Le développement vise la prédiction des effets des prélèvements et des rejets en étiage. Si l'étiage est soutenu par la nappe, la recharge est sur le chemin critique. Si le modèle soutient ses étiages par un autre chemin tout en reproduisant les débits, il aurait raison pour de mauvaises raisons et sa réponse à un prélèvement ne serait pas crédible. La partition journalière de la production entre surface, hypodermique et base est désormais enregistrée pour trancher.
 
-Préalables. Le chantier 9, faute de quoi le module serait jugé à travers le même brouillard. Et le terme de perte sur les niveaux mesurés, faute de quoi il serait aussi peu falsifiable que l'actuel.
+Couplage de la nappe à la colonne, constaté le 2026-09-19. Dans le montage livré, la surface libre est posée sous la colonne et la troisième couche s'y draine comme dans un vide : rien ne relie la position de la nappe à la saturation de la couche qui la surplombe. Dans un sol réel, une nappe remontée à un ou deux mètres sature cette couche, et une nappe basse lui rend de la capacité pour absorber la fonte suivante. C'est vraisemblablement ce qui empêche la recharge de printemps : la couche 3 reste saturée à 0,50 quelle que soit la loi de drainage essayée, donc elle n'a jamais de place au moment de la fonte. Le couplage est une étape du chantier, à faire après la première épreuve régionale.
+
+Préalables. Le chantier 9, faute de quoi le module serait jugé à travers le même brouillard. Et le terme de perte sur les niveaux mesurés, faute de quoi il serait aussi peu falsifiable que l'actuel. Les deux sont livrés au 2026-09-19 : le diagnostic de troncature, le module de nappe libre derrière ETL_NAPPE_LIBRE, le terme de perte en anomalies réduites et le chargeur des niveaux appariés.
 
 Critère de réussite. Amplitude et phase de la nappe ensemble, corrélation médiane des anomalies mensuelles au-dessus de 0,5 et maximum simulé en avril ou mai, sans recul du KGE ni des cibles satellitaires, avec des paramètres que les puits identifient.
 
