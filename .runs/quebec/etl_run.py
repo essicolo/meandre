@@ -460,6 +460,12 @@ if "ETL_L3_TAU" in os.environ:
     # immobilises en permanence sur l'Outaouais.
     model.vertical_column.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
     print(f"[etl] drainage L3 au-dessus de la CAPACITE AU CHAMP, constante {os.environ['ETL_L3_TAU']} jours")
+if "ETL_L3_KSUB" in os.environ:
+    # Plafond de percolation du substratum, en mm/JOUR. L'exces reste dans la couche et
+    # repart lateralement par la cascade de saturation, comme dans un sol reel ou l'eau
+    # circule au-dessus de l'interface sol-depot.
+    model.vertical_column.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
+    print(f"[etl] plafond de percolation du substratum : {os.environ['ETL_L3_KSUB']} mm/jour")
 if "ETL_L3_GEL" in os.environ:
     # Porte de gel du drainage profond. Hydrotel divise q3 par deux des que le sol est
     # gele, ce qui place la recharge minimale en avril, mois ou la nappe mesuree monte le

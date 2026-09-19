@@ -246,6 +246,17 @@ class BV3C2Clone(torch.nn.Module):
             _n3 = p.get("l3_drain_exp")
             if _tau is not None:
                 q3 = torch.clamp(t3 - p["thetacc3"], min=0.0) * z3 / _tau
+                # PLAFOND DU SUBSTRATUM. Le sol se ressuie vite, mais l'eau qui quitte le
+                # profil doit traverser le depot et le socle, dont la conductivite est de
+                # plusieurs ordres de grandeur inferieure a celle du sol. Sans ce plafond,
+                # toute la percolation descend et la recharge atteint 537 mm/an sur
+                # l'Outaouais, soit la quasi-totalite de l'ecoulement du bassin (mesure du
+                # 2026-09-19). Dans un sol reel l'exces repart LATERALEMENT au-dessus de
+                # l'interface : c'est l'ecoulement hypodermique, que la cascade de
+                # saturation de la couche produit deja. Le plafond est une propriete du
+                # substratum, donc du depot et du socle, que la geologie decrit par troncon.
+                if "l3_k_sub" in p:
+                    q3 = torch.minimum(q3, p["l3_k_sub"])
             elif _n3 is None:
                 q3 = krec * z3 * t3
             else:

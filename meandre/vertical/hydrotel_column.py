@@ -462,6 +462,9 @@ class HydrotelColumn(nn.Module):
         if _tau is not None:
             p_soil["l3_tau_fc"] = float(_tau)
             p_soil["thetacc3"] = sp.theta_fc_3
+            _ksub = getattr(self, "l3_k_sub", None)
+            if _ksub is not None:
+                p_soil["l3_k_sub"] = torch.full_like(like, float(_ksub))
         # COUPLAGE NAPPE-COLONNE (opt-in, 2026-09-19). La percolation au bas du profil
         # suppose un gradient unitaire, ce qui n'a de sens que si la surface libre est
         # NETTEMENT plus bas. Quand la nappe remonte jusqu'a la base du sol, le gradient
