@@ -455,6 +455,17 @@ class HydrotelColumn(nn.Module):
         _l3n = getattr(self, "l3_drain_exp", None)
         if _l3n is not None:
             p_soil["l3_drain_exp"] = float(_l3n)
+        # COUPLAGE NAPPE-COLONNE (opt-in, 2026-09-19). La percolation au bas du profil
+        # suppose un gradient unitaire, ce qui n'a de sens que si la surface libre est
+        # NETTEMENT plus bas. Quand la nappe remonte jusqu'a la base du sol, le gradient
+        # disparait et le drainage cesse. Sans ce terme, la couche 3 se draine dans un vide
+        # et reste saturee a 0,50 quelle que soit la loi essayee, si bien qu'elle n'a jamais
+        # de place pour absorber la fonte. Le facteur est calcule sur l'etat de la VEILLE,
+        # ce qui evite un point fixe dans le pas de temps ; le decalage d'un jour est
+        # negligeable devant le temps de reponse de la nappe.
+        _grad = getattr(self, "_l3_gradient", None)
+        if _grad is not None:
+            p_soil["l3_gradient"] = _grad
         # Porte de gel du drainage profond, posee par le pilote. 0.5 == fidele Hydrotel.
         _l3g = getattr(self, "l3_gel_facteur", None)
         if _l3g is not None:
@@ -677,6 +688,17 @@ class HydrotelColumn(nn.Module):
         # module supervisé MOD16, injectée comme canal de forçage. Remplace formule ETP × K_c ;
         # l'extraction par couche et les scaling factors restent intacts (conservation).
         etp_ext = enriched[:, self.etp_channel] if getattr(self, "etp_channel", None) is not None else None
+        # Facteur de gradient pour le drainage profond, lu sur la nappe de la veille.
+        self._l3_gradient = None
+        if self._nappe is not None and self._nappe.get("couplage", 0.0) > 0.0:
+            _p = self._nappe
+            _z_veille = _p["z_riv"] - state.S_gw / (1000.0 * _p["sy"])
+            # Profondeur de la base du sol, sous laquelle la nappe doit se tenir pour que
+            # le drainage garde son gradient. `couplage` est l'epaisseur, en metres, sur
+            # laquelle le facteur passe de 0 a 1 : c'est la frange capillaire effective.
+            _sol = self._static["soil"]
+            _z_sol = _sol["z1"] + _sol["z2"] + _sol["z3"]
+            self._l3_gradient = torch.clamp((_z_veille - _z_sol) / _p["couplage"], 0.0, 1.0)
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
                                      doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours,
                                      etp_ext=etp_ext)
@@ -761,7 +783,7 @@ class HydrotelColumn(nn.Module):
             diag=(diag if return_diagnostics else None))
 
     def activer_nappe_libre(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
-                            z_ext=9.0, exposant=2.0, n_substep=4):
+                            z_ext=9.0, exposant=2.0, n_substep=4, couplage=0.0):
         """Remplace le réservoir restituant par une nappe libre, paramètres uniformes.
 
         Valeurs par défaut issues du banc du 2026-09-18 : temps de réponse de 100 jours,
@@ -773,7 +795,8 @@ class HydrotelColumn(nn.Module):
 
         self.nappe_libre = NappeLibre(n_substep=n_substep, exposant=exposant)
         self._nappe = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
-                           h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext))
+                           h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext),
+                           couplage=float(couplage))
 
     # ── Split de phase pluie/neige FIDÈLE (THIESSEN::PassagePluieNeige, thiessen1.cpp:259-279) ──
     def _split_precip(self, P, tmin, tmax, ea=None):

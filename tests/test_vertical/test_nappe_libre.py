@@ -100,3 +100,27 @@ def test_amplitude_et_retard_du_cas_lineaire_suivent_la_theorie():
     gain_lent, retard_lent = NappeLibre.reponse_analytique(k / 10.0)
     assert gain_lent > gain
     assert retard_lent > retard
+
+
+def test_facteur_de_gradient_neutre_a_un_et_nul_a_zero():
+    """Le couplage nappe-colonne éteint le drainage profond quand la nappe affleure.
+
+    Absent du dictionnaire de paramètres, il ne doit rien changer : c'est la condition
+    pour que le clone reste fidèle tant que le couplage n'est pas demandé.
+    """
+    from hydrotel_clone.bv3c2 import SOIL_TEXTURES, BV3C2Clone, make_params
+
+    torch.set_default_dtype(torch.float64)
+    p = make_params("silt_loam", "loam", "loam")
+    p = {k: (v.expand(4).clone() if torch.is_tensor(v) and v.numel() == 1 else v)
+         for k, v in p.items()}
+    z = lambda v: torch.full((4,), float(v), dtype=torch.float64)
+    t = z(0.9 * SOIL_TEXTURES["silt_loam"]["thetas"])
+    cl = BV3C2Clone(n_substep=16)
+    args = (t, t, t, z(10.0), z(0.5), z(0.0), z(0.0))
+    sans = float(cl(*args, p)[2][0])
+    avec_un = float(cl(*args, {**p, "l3_gradient": z(1.0)})[2][0])
+    avec_zero = float(cl(*args, {**p, "l3_gradient": z(0.0)})[2][0])
+    assert avec_un == pytest.approx(sans, rel=1e-12)
+    assert avec_zero == 0.0
+    assert sans > 0.0

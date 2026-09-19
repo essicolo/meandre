@@ -450,7 +450,8 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
                h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)),
                e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)),
                z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)),
-               exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)))
+               exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)),
+               couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
     model.vertical_column.activer_nappe_libre(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
 if "ETL_L3_GEL" in os.environ:

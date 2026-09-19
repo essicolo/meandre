@@ -237,6 +237,10 @@ class BV3C2Clone(torch.nn.Module):
             # MINIMUM annuel, inversion qu'aucun autre terme de q3 ne peut produire. Le
             # facteur est expose pour pouvoir juger la porte ; 0.5 == fidele.
             q3 = torch.where(frozen, q3 * p.get("l3_gel_facteur", 0.5), q3)
+            # Gradient disponible sous le profil : 1 quand la nappe est loin, 0 quand elle
+            # affleure la base du sol. Absent du dictionnaire = clone fidele.
+            if "l3_gradient" in p:
+                q3 = q3 * p["l3_gradient"]
             # CalculeRuisselement (l.2191-2201) sur t1 COURANT : si t1 saturé,
             # pinf=0 → toute la pluie part en hortonien ; sinon pinf=min(prec,ks).
             omega1_sat = t1 >= (ths1 - 1e-4)
