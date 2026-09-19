@@ -323,6 +323,13 @@ class TrainingData:
     # bassins pour les confronter à une seule série satellitaire. `tws_group` donne le
     # bassin de chaque nœud et `tws_obs` devient (T, n_bassins).
     tws_group: Tensor | None = None   # (n_nodes,) indice de bassin, None = un seul bassin
+    # NIVEAUX DE NAPPE MESURES (2026-09-19). Seule observation directe et non circulaire de
+    # l'eau souterraine : les cartes de recharge regionales sont calees sur le debit de base
+    # et le tableau des lignes rouges les ecarte. Profondeur sous le repere du tubage, en
+    # metres, par PUITS et non par noeud, NaN quand la mesure manque. Puits captifs et puits
+    # influences deja retires par le chargeur.
+    nappe_obs: Tensor | None = None   # (n_timesteps, n_puits)
+    nappe_idx: Tensor | None = None   # (n_puits,) indice du noeud portant chaque puits
     # CanSWE : MASSE du manteau mesurée au sol, par SITE et non par nœud (R24). Plusieurs
     # sites peuvent viser le même tronçon et les agréger détruirait la dispersion
     # intra-nœud, qui EST la mesure de l'incertitude de représentativité ponctuelle.
@@ -940,6 +947,7 @@ class Trainer:
         for poids, cible, nom in (
             (getattr(self.loss_fn, "w_snow", 0.0), data.swe_obs, "w_snow / swe_obs (MODIS snow cover)"),
             (getattr(self.loss_fn, "w_tws", 0.0), data.tws_obs, "w_tws / tws_obs (GRACE TWS)"),
+            (getattr(self.loss_fn, "w_nappe", 0.0), data.nappe_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
             (max(getattr(self.loss_fn, "w_et", 0.0), getattr(self.loss_fn, "w_nll_et", 0.0)),
              data.et_obs, "w_et / et_obs (MODIS MOD16)"),
             (getattr(self.loss_fn, "w_swe_mass", 0.0), data.swe_mass_obs,
@@ -1088,6 +1096,8 @@ class Trainer:
             _need_et = ((self.loss_fn.w_nll_et > 0 or self.loss_fn.w_et > 0)
                         and data.et_obs is not None)
             _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
+            _need_nappe = (getattr(self.loss_fn, "w_nappe", 0.0) > 0
+                           and data.nappe_obs is not None and data.nappe_idx is not None)
             # Neige : MODIS snow cover (fraction) cale le taux de FONTE (sp_fonte).
             # On compare une fraction de couverture SIMULÉE = 1-exp(-SWE/SWE_REF)
             # (différentiable, monotone) à snow_frac MODIS. data.swe_obs porte le
@@ -1197,6 +1207,21 @@ class Trainer:
                 if _kge_continu:
                     _hist_o.append(q_obs_chunk.detach())
                     _hist_s.append(Q_chunk_loss[:, data.station_mask].detach())
+
+                # ── NIVEAUX DE NAPPE MESURES : contrainte de FORME ──────────
+                # Anomalies REDUITES, centrees et normalisees DANS LE BLOC, donc compatible
+                # avec l'accumulation par blocs sans calendrier a transporter. La serie est
+                # prise au pas journalier plutot qu'au mois : le lissage mensuel servait au
+                # diagnostic, la perte gagne a voir tous les points.
+                if _need_nappe and getattr(_diag_chunk, "profondeur_nappe", None) is not None:
+                    from meandre.training.loss import nappe_anomaly_loss
+                    _zn = _diag_chunk.profondeur_nappe[burnin:][:, data.nappe_idx]
+                    _on = data.nappe_obs[obs_offset + burnin:obs_offset + chunk_len]
+                    _mn = ~torch.isnan(_on)
+                    L_nappe = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
+                    loss_chunk = loss_chunk + self.loss_fn.w_nappe * L_nappe
+                    all_components["nappe_loss"] = (
+                        all_components.get("nappe_loss", 0.0) + float(L_nappe.detach()))
 
                 # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
                 # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).

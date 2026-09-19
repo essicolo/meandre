@@ -1092,6 +1092,34 @@ tconf = TrainingConfig(
     patience=int(tcfg.get("patience", 0)),
     val_every=1,
 )
+# ── NIVEAUX DE NAPPE MESURES (ETL_WNAPPE > 0) ───────────────────────────────
+# Seule observation directe et non circulaire de l'eau souterraine : les cartes de recharge
+# regionales sont calees sur le debit de base et le tableau des lignes rouges les ecarte.
+# Contrainte de FORME, en anomalies reduites : le balayage du 2026-09-18 montre que la
+# mesure identifie la phase et la presence des mecanismes, non la valeur des parametres.
+# Le chargeur a deja retire les puits captifs, les puits influences et les series trop
+# courtes ; il ne reste ici qu'a aligner la serie journaliere sur les pas de la simulation.
+if float(os.environ.get("ETL_WNAPPE", 0.0)) > 0:
+    import pandas as _pdn
+
+    from meandre.data.rsesq_loader import _chemin_defaut, read_rsesq
+
+    _cn = read_rsesq(os.environ["ETL_REGION"].lower(), times)
+    if _cn.n_puits == 0:
+        print("[etl] niveaux de nappe : aucun puits recevable sur ce territoire, terme inactif")
+    else:
+        _niv = _pdn.read_parquet(f"{_chemin_defaut()}/rsesq-niveaux-journaliers.parquet",
+                                 columns=["puits", "date", "niveau_m"])
+        _niv = _niv[_niv.puits.isin(list(_cn.puits))]
+        _tab = _niv.pivot_table(index="date", columns="puits", values="niveau_m", aggfunc="mean")
+        _tab = _tab.reindex(index=_pdn.DatetimeIndex(times), columns=list(_cn.puits))
+        td = _dc_replace(td,
+                         nappe_obs=torch.tensor(_tab.to_numpy(dtype="float32"), device=DEVICE),
+                         nappe_idx=torch.tensor(_cn.node_idx, dtype=torch.long, device=DEVICE))
+        r["train_data"] = td
+        r["loss_fn"].w_nappe = float(os.environ["ETL_WNAPPE"])
+        print(f"[etl] niveaux de nappe : {_cn.resume()}, poids {r['loss_fn'].w_nappe}")
+
 # CE QUI CONTRAINT REELLEMENT LE MODELE, lu dans l'objet de perte et dans les donnees,
 # jamais dans la config (dette #15 : une ligne codee en dur a fait croire pendant des
 # semaines que la demande ET apprise etait active alors que la colonne l'ignorait ;
@@ -1105,7 +1133,8 @@ for _nom, _poids, _cible in (
         ("MODIS couverture nivale", getattr(_lf, "w_snow", 0.0), td.swe_obs),
         ("CanSWE masse du manteau", getattr(_lf, "w_swe_mass", 0.0), td.swe_mass_obs),
         ("GRACE TWS mensuel", getattr(_lf, "w_tws", 0.0), td.tws_obs),
-        ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs)):
+        ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs),
+        ("Niveaux de nappe mesures", getattr(_lf, "w_nappe", 0.0), td.nappe_obs)):
     if _nom == "  mode ET":
         print(f"        {_nom:<26s} {_poids}")
         continue

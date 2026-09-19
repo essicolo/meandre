@@ -754,6 +754,7 @@ class HydroLoss(nn.Module):
         w_et: float = 0.0,
         et_mode: str = "level",
         w_tws: float = 0.0,
+        w_nappe: float = 0.0,
         w_tws_clim: float = 0.0,
         w_quantile: float = 0.0,
         w_mixture: float = 0.0,
@@ -806,6 +807,8 @@ class HydroLoss(nn.Module):
             raise ValueError(f"et_mode inconnu : {et_mode!r} (attendu 'level' ou 'anomaly')")
         self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
+        # Niveaux de nappe mesurés (2026-09-19), contrainte de FORME en anomalies réduites.
+        self.w_nappe = w_nappe
         # Biais saisonnier GRACE par mois calendaire (R23). Le terme mensuel
         # ci-dessus juge à l'incertitude d'UNE observation (25 mm) et laisse
         # passer un biais systématique de 26 mm ; celui-ci le juge à
