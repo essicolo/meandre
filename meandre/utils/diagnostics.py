@@ -98,6 +98,11 @@ class SimDiagnostics:
     # son drainage profond n'est jamais accumule : la recharge y est convertie en
     # ruissellement. Non nulle la ou la condition de Courant exige des sous-pas courts.
     temps_non_traite: Tensor | None = None
+    # Nappe libre (opt-in) : profondeur de la surface libre sous le sol (m), directement
+    # comparable au niveau mesuré dans un puits, et évapotranspiration prélevée sur la zone
+    # saturée (mm/jour), sortie atmosphérique à compter au bilan.
+    profondeur_nappe: Tensor | None = None
+    etr_nappe: Tensor | None = None
 
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled

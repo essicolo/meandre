@@ -134,6 +134,15 @@ class HydrotelColumn(nn.Module):
         # variante puissance de la nappe (opt-in via gw_power_law = (q_ref, b))
         from meandre.vertical.aquifer import PowerLawAquifer
         self._pl_aquifer = PowerLawAquifer() if self.use_aquifer else None
+        # NAPPE LIBRE (opt-in, 2026-09-19) : remplace le réservoir par une surface libre dont
+        # la profondeur est l'état. Posée par le pilote via `nappe_libre = dict(...)`. Elle
+        # apporte les trois mécanismes que le réservoir n'a pas : une profondeur commensurable
+        # aux puits par la porosité de drainage, une loi stock-débit en carré de la charge qui
+        # découple l'amplitude du retard, et une extraction depuis la zone saturée, seul
+        # moyen de creuser l'étiage estival de la nappe.
+        self.nappe_libre = None
+        self._nappe = None
+
         self.t_neige_seuil = t_neige_seuil   # seuil pluie/neige (split de phase, TODO: règle Hydrotel exacte)
         self.snow = DegreJourModifie(pas_de_temps=24)
         self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
@@ -705,6 +714,29 @@ class HydrotelColumn(nn.Module):
                     q_ref=torch.full_like(pb, float(_qr)),
                     b=torch.full_like(pb, float(_b)),
                     gw_withdrawal=gw_withdrawal_mm)
+            elif self._nappe is not None:
+                # La profondeur de la surface libre se DÉDUIT du stock, l'application étant
+                # affine : z = z_riv − S / (1000 Sy). Aucun champ d'état nouveau, donc les
+                # points de reprise restent lisibles.
+                p = self._nappe
+                sy = torch.full_like(pb, p["sy"])
+                z = torch.full_like(pb, p["z_riv"]) - state.S_gw / (1000.0 * sy)
+                # La demande atmosphérique vient de la colonne elle-même, pas d'une saison
+                # imposée : c'est la même ETP qui sèche le sol au-dessus.
+                e_max = torch.clamp(diag["etp"], min=0.0) * p["e_frac"] / 1000.0
+                prel = None if gw_withdrawal_mm is None else -gw_withdrawal_mm / 1000.0
+                z_new, q_m, e_m = self.nappe_libre(
+                    z, pb / 1000.0, sy, torch.full_like(pb, p["k_b"]),
+                    torch.full_like(pb, p["z_riv"]), torch.full_like(pb, p["h_ref"]),
+                    e_max, torch.full_like(pb, p["z_ext"]), prelevement=prel)
+                Q_bf = q_m * 1000.0
+                S_gw_new = torch.clamp(torch.full_like(pb, p["z_riv"]) - z_new, min=0.0) * sy * 1000.0
+                # L'eau évaporée depuis la zone saturée est une SORTIE ATMOSPHÉRIQUE : sans
+                # elle au bilan, l'audit de fermeture lirait une fuite du volume de la nappe.
+                etr_nappe = e_m * 1000.0
+                diag["etr_nappe"] = etr_nappe
+                diag["etr"] = diag["etr"] + etr_nappe
+                diag["profondeur_nappe_m"] = z_new
             else:
                 Q_bf, S_gw_new = self.aquifer(pb, state.S_gw, kgw, gw_withdrawal=gw_withdrawal_mm)
             prod = prod - pb + Q_bf
@@ -727,6 +759,21 @@ class HydrotelColumn(nn.Module):
             lateral_inflow=prod, state=new_state, snowmelt=diag["apport"],
             recharge=recharge_mm, Q_baseflow=diag["prod_base"],
             diag=(diag if return_diagnostics else None))
+
+    def activer_nappe_libre(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
+                            z_ext=9.0, exposant=2.0, n_substep=4):
+        """Remplace le réservoir restituant par une nappe libre, paramètres uniformes.
+
+        Valeurs par défaut issues du banc du 2026-09-18 : temps de réponse de 100 jours,
+        porosité de drainage du till et du roc fracturé, profondeur d'extinction supérieure
+        à celle où la nappe s'établit. `e_frac` est la part de l'évapotranspiration
+        potentielle que la zone saturée peut fournir quand la surface libre affleure.
+        """
+        from meandre.vertical.nappe import NappeLibre
+
+        self.nappe_libre = NappeLibre(n_substep=n_substep, exposant=exposant)
+        self._nappe = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
+                           h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext))
 
     # ── Split de phase pluie/neige FIDÈLE (THIESSEN::PassagePluieNeige, thiessen1.cpp:259-279) ──
     def _split_precip(self, P, tmin, tmax, ea=None):

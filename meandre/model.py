@@ -449,7 +449,8 @@ class HydroModel(nn.Module):
                              # l'epaisseur de la couche 1 (15 cm) : au-dela, un gel plus
                              # profond ne change plus rien. On ne pouvait meme pas
                              # verifier si le front simule est realiste (2026-08-27).
-                             "prof_gel_cm", "temps_non_traite")}
+                             "prof_gel_cm", "temps_non_traite",
+                             "profondeur_nappe_m", "etr_nappe")}
             if return_diagnostics else {}
         )
         outflow_buffer = OutflowRingBuffer(
@@ -663,7 +664,8 @@ class HydroModel(nn.Module):
                 diag_lists["etp"].append(vc_out.diag["etp"])
                 diag_lists["etr"].append(vc_out.diag["etr"])
                 diag_lists["snowmelt"].append(vc_out.diag["snowmelt"])
-                for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm", "prof_gel_cm", "temps_non_traite"):
+                for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm", "prof_gel_cm", "temps_non_traite",
+                           "profondeur_nappe_m", "etr_nappe"):
                     if _k in vc_out.diag:
                         diag_lists[_k].append(vc_out.diag[_k])
                 for _k in ("prod_surf", "prod_hypo", "prod_base"):
@@ -743,6 +745,10 @@ class HydroModel(nn.Module):
                        if diag_lists["prod_base"] else None),
             temps_non_traite=(torch.stack(diag_lists["temps_non_traite"], dim=0)
                               if diag_lists.get("temps_non_traite") else None),
+            profondeur_nappe=(torch.stack(diag_lists["profondeur_nappe_m"], dim=0)
+                              if diag_lists.get("profondeur_nappe_m") else None),
+            etr_nappe=(torch.stack(diag_lists["etr_nappe"], dim=0)
+                       if diag_lists.get("etr_nappe") else None),
             q_lateral=torch.stack(diag_lists["q_lateral"], dim=0),
             q_upstream=torch.stack(diag_lists["q_upstream"], dim=0),
             recharge=torch.stack(diag_lists["recharge"], dim=0),

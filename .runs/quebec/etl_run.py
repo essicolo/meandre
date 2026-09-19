@@ -439,6 +439,20 @@ if "ETL_L3_EXP" in os.environ:
     # dessous -> L3 respire, la recharge devient saisonniere. n=1 == fidele.
     model.vertical_column.l3_drain_exp = float(os.environ["ETL_L3_EXP"])
     print(f"[etl] drainage L3 NON LINEAIRE : exposant {float(os.environ['ETL_L3_EXP'])}")
+if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
+    # Nappe libre a la place du reservoir restituant. Le banc du 2026-09-18 montre qu'un
+    # reservoir lineaire ne peut pas tenir ensemble les 0,93 m de battement mesures et un
+    # maximum un mois apres la fonte, et que l'extraction depuis la zone saturee est le
+    # seul mecanisme qui creuse l'etiage estival de la nappe.
+    _np = dict(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)),
+               k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)),
+               z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)),
+               h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)),
+               e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)),
+               z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)),
+               exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)))
+    model.vertical_column.activer_nappe_libre(**_np)
+    print(f"[etl] NAPPE LIBRE active : {_np}")
 if "ETL_L3_GEL" in os.environ:
     # Porte de gel du drainage profond. Hydrotel divise q3 par deux des que le sol est
     # gele, ce qui place la recharge minimale en avril, mois ou la nappe mesuree monte le
@@ -1428,7 +1442,8 @@ if os.environ.get("ETL_DUMP_REACH"):
                        # par quel chemin le modele soutient ses etiages, donc si sa reponse
                        # a un prelevement en basses eaux vient du bon reservoir.
                        ("prod_surf", "prod_surf"), ("prod_hypo", "prod_hypo"),
-                       ("prod_base", "prod_base")):
+                       ("prod_base", "prod_base"), ("profondeur_nappe", "profondeur_nappe"),
+                       ("etr_nappe", "etr_nappe")):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue
