@@ -2099,3 +2099,34 @@ Le réseau de l'Outaouais ne transmet que 23 à 27 pour cent de la nervosité pr
 Deux conséquences. Juger la génération sur l'Outaouais revient à la juger à travers un filtre qui en absorbe les trois quarts : une part du déficit de nervosité attribué à la colonne appartient au routage, et le Saint-Laurent nord-ouest est un meilleur banc pour cette question. Et la saturation de la borne de Muskingum cesse d'être une curiosité : elle coûte la moitié de la variabilité disponible par rapport à un territoire comparable, ce qui en fait un préalable au jugement de la colonne sur ce territoire.
 
 Cohérent avec l'écart systématique entre les deux territoires : la meilleure configuration perd 0,10 de KGE en Outaouais contre 0,07 au Saint-Laurent nord-ouest.
+
+---
+
+## R136 — Configuration retenue : trois lois de sol et un aquifère non linéaire, à neuf centièmes de KGE du témoin sans réentraînement (2026-09-19) — ÉTABLI
+
+Drainage de l'eau gravitaire à deux jours, plafond de percolation du substratum à 2 mm par jour, écoulement hypodermique profond à cinq jours, nappe libre en loi de Dupuit-Boussinesq avec extraction depuis la zone saturée. Passe avant à poids gelés, aucun paramètre du modèle réajusté.
+
+| Outaouais | Témoin | Latéral rapide seul | Configuration retenue | Observé |
+| --- | --- | --- | --- | --- |
+| Indice d'écoulement de base | 0,098 | 0,243 | 0,337 | 0,58 |
+| Variation relative de la base | 0,309 | 0,251 | 0,493 | 0,62 |
+| Nervosité de la composante rapide | 2,609 | 1,935 | 2,187 | 2,13 |
+| Écart-type du débit, rapporté au témoin | 1,000 | 0,997 | 0,987 | — |
+| Évapotranspiration | 547 mm/an | 515 | 548 | — |
+| Recharge | 55 mm/an | 150 | 230 | — |
+| Mois de recharge maximale | août | avril | avril | — |
+| Eau gravitaire de la couche 3 | 457 mm | -4 | -5 | — |
+| Part de journée non traitée | 0,320 | 0,001 | 0,001 | — |
+| Battement de nappe | — | — | 0,687 m | 1,02 m |
+| Mois de nappe haute | — | — | mai | mai |
+| KGE médian tenu de côté | 0,654 | 0,550 | 0,562 | — |
+
+Au Saint-Laurent nord-ouest, la même configuration rend 0,6135 contre 0,6762 au témoin.
+
+La nervosité de la composante rapide est juste à trois pour cent près. Le battement de nappe atteint les deux tiers du mesuré, au mois observé. L'évapotranspiration revient exactement à celle du témoin. La couche est drainée, la troncature nulle, et la recharge culmine en avril à 230 mm par an.
+
+L'aquifère NON LINÉAIRE fait ce que le banc du même jour annonçait : il double la respiration de la nappe, de 0,251 à 0,493, sans coûter de nervosité, là où un aquifère linéaire plus lent la ramenait à la valeur plate du témoin. Les deux pièces développées en parallèle, correction du sol et nappe libre, sont complémentaires et non concurrentes.
+
+Il reste neuf centièmes de KGE, dont une part appartient au routage : le réseau de l'Outaouais n'y transmet que le quart de la nervosité produite, et l'écart au témoin y vaut 0,09 contre 0,06 au Saint-Laurent nord-ouest, territoire sans cette pathologie. Ce qui reste demande un réentraînement, tout ayant été calé autour des défauts corrigés.
+
+Aucune des trois lois ne contient de paramètre inventé : drainage au-dessus de la capacité au champ, conductivité du substratum, écoulement perché à constante de temps propre. Chacune a été refusée une fois sous une forme qui ne transférait pas d'un territoire à l'autre, puis réécrite.
