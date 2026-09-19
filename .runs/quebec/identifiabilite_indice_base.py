@@ -74,7 +74,8 @@ def bassin_amont(edge_index, n_noeuds: int, noeud: int) -> np.ndarray:
     return np.fromiter(vus, dtype=np.int64)
 
 
-def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True):
+def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
+                         sources=("sigeom-geologie-socle",)):
     """Attributs géologiques de chaque station, moyennés sur son BASSIN AMONT.
 
     Une signature de station intègre tout son amont ; la comparer à l'attribut du seul
@@ -91,9 +92,20 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True):
     if amont and "edge_index" not in z.files:
         return None
     noeuds = z["station_idx"][colonnes]
-    geo = pd.read_parquet(f"{DERIVES}/sigeom-geologie-socle-troncons.parquet")
-    geo = geo[geo.region.str.lower() == region.lower()].set_index("troncon")
-    cols = [c for c in geo.columns if c.startswith(("litho_", "province_")) and not c.startswith("couv_")]
+    morceaux = []
+    for src in sources:
+        f_src = f"{DERIVES}/{src}-troncons.parquet"
+        if not os.path.exists(f_src):
+            continue
+        t = pd.read_parquet(f_src)
+        t = t[t.region.str.lower() == region.lower()].set_index("troncon")
+        garde = [c for c in t.columns
+                 if c not in ("region", "area_m2") and not c.startswith("couv_")]
+        morceaux.append(t[garde].add_prefix(f"{src}__"))
+    if not morceaux:
+        return None
+    geo = pd.concat(morceaux, axis=1)
+    cols = list(geo.columns)
     # Une classe absente d'un territoire sort en valeur manquante de la table d'ingestion
     # alors que sa part vaut ZERO : sans ce remplissage, toute station est ecartee.
     table = geo[cols].fillna(0.0)
@@ -117,7 +129,12 @@ def part_expliquee(X, y, blocs, graine=0):
         ap, te = blocs != b, blocs == b
         if te.sum() == 0 or ap.sum() < 5:
             continue
-        m = HistGradientBoostingRegressor(max_depth=2, max_iter=120, random_state=graine)
+        # min_samples_leaf VAUT 20 PAR DEFAUT : avec quelques dizaines de stations le
+        # modele ne peut faire AUCUNE coupure et rend la moyenne, donc exactement zero de
+        # variance expliquee quelle que soit la covariable. Piege tombe le 2026-09-19, qui
+        # aurait fait conclure a tort que rien ne predit l'indice.
+        m = HistGradientBoostingRegressor(max_depth=2, max_iter=120, random_state=graine,
+                                          min_samples_leaf=3, l2_regularization=1.0)
         m.fit(X[ap], y[ap])
         residus.append(((y[te] - m.predict(X[te])) ** 2).sum())
         total.append(((y[te] - y[ap].mean()) ** 2).sum())
@@ -131,6 +148,7 @@ def main():
     p.add_argument("regions", nargs="+")
     p.add_argument("--cache", default="finale-n2")
     p.add_argument("--ponctuel", action="store_true", help="attribut du seul tronçon de la station")
+    p.add_argument("--sources", nargs="+", default=["sigeom-geologie-socle"])
     a = p.parse_args()
     morceaux = []
     for reg in [r.lower() for r in a.regions]:
@@ -138,7 +156,8 @@ def main():
         if ind.empty:
             print(f"{reg} : aucune série de station")
             continue
-        att = attributs_de_station(reg, a.cache, ind.colonne.to_numpy(), amont=not a.ponctuel)
+        att = attributs_de_station(reg, a.cache, ind.colonne.to_numpy(), amont=not a.ponctuel,
+                                   sources=a.sources)
         if att is None:
             print(f"{reg} : cache {a.cache} sans appariement station-tronçon")
             continue
@@ -146,8 +165,8 @@ def main():
     if not morceaux:
         return 1
     t = pd.concat(morceaux, ignore_index=True).dropna()
-    cols = [c for c in t.columns if c.startswith(("litho_", "province_"))]
-    print(f"{len(t)} stations, {len(cols)} attributs géologiques")
+    cols = [c for c in t.columns if "__" in c]
+    print(f"{len(t)} stations, {len(cols)} attributs")
     print(f"indice observé : médiane {t.indice_base.median():.2f}, "
           f"étendue {t.indice_base.min():.2f} à {t.indice_base.max():.2f}")
     # Blocs spatiaux : un par région, plus un découpage en deux par la médiane de l'indice
