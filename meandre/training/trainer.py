@@ -1215,7 +1215,10 @@ class Trainer:
                 # diagnostic, la perte gagne a voir tous les points.
                 if _need_nappe and getattr(_diag_chunk, "profondeur_nappe", None) is not None:
                     from meandre.training.loss import nappe_anomaly_loss
+                    # Sous MEANDRE_DIAG_CPU=1 les diagnostics vivent sur le processeur.
                     _zn = _diag_chunk.profondeur_nappe[burnin:][:, data.nappe_idx]
+                    if _zn.device != data.nappe_obs.device:
+                        _zn = _zn.to(data.nappe_obs.device)
                     _on = data.nappe_obs[obs_offset + burnin:obs_offset + chunk_len]
                     _mn = ~torch.isnan(_on)
                     L_nappe = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)

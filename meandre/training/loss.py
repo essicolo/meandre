@@ -1169,6 +1169,10 @@ class HydroLoss(nn.Module):
                       "peak_loss": L_peak}
 
         if self.w_snow > 0 and swe_obs is not None and swe_sim is not None:
+            # Meme piege que pour l'evapotranspiration : sous MEANDRE_DIAG_CPU=1 le simule
+            # arrive sur le processeur et l'observe sur la carte.
+            if swe_sim.device != swe_obs.device:
+                swe_sim = swe_sim.to(swe_obs.device)
             valid = ~torch.isnan(swe_obs) & ~torch.isnan(swe_sim)
             if valid.any():
                 L_snow = ((swe_obs[valid] - swe_sim[valid]) ** 2).mean()
@@ -1183,6 +1187,12 @@ class HydroLoss(nn.Module):
             # statistique de variance. On moyenne donc le simulé sur la même fenêtre.
             # `et_window` = 8 par défaut ; 1 restaure l'ancien comportement.
             et_sim = rolling_mean(et_sim, int(getattr(self, "et_window", 8)))
+            # MEANDRE_DIAG_CPU=1 accumule les diagnostics sur le processeur pour tenir dans
+            # la memoire de la carte : l'evapotranspiration simulee arrive alors sur un
+            # appareil different de l'observee et la comparaison levait une exception, ce
+            # qui rendait tout entrainement impossible sous ce reglage (mesure 2026-09-19).
+            if et_sim.device != et_obs.device:
+                et_sim = et_sim.to(et_obs.device)
             valid = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
             if valid.any():
                 L_et = ((et_obs[valid] - et_sim[valid]) ** 2).mean()
