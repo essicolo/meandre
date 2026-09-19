@@ -236,6 +236,12 @@ class BV3C2Clone(torch.nn.Module):
             # la crue part en surface ; teneur en eau constante, donc recharge constante.
             # `l3_tau_fc` (heures) draine l'exces au-dessus de la capacite au champ et rien
             # en dessous. Absent du dictionnaire = clone fidele.
+            # CONVERGENCE mesuree le 2026-09-19 sur une couche de 2,70 m partant de 0,52,
+            # drainage cumule sur 30 jours : a 2 et 5 jours de constante, la loi est
+            # convergee des 32 sous-pas (269 et 266 mm contre 269 et 268 a 512). A 15 jours
+            # elle ne l'est PAS meme a 128 sous-pas (223 contre 229). Une constante longue
+            # demande donc un plafond releve, sans quoi le resultat lu est un artefact de
+            # troncature.
             _tau = p.get("l3_tau_fc")
             _n3 = p.get("l3_drain_exp")
             if _tau is not None:
