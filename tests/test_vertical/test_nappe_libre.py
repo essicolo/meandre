@@ -175,3 +175,30 @@ def test_ecoulement_hypodermique_profond_vide_la_couche_vers_le_troncon():
     # Sans la clé, rien ne change.
     temoin = cl(*args, {**p})
     assert float(temoin[1][0]) == pytest.approx(float(sans[1][0]), rel=1e-12)
+
+
+def test_hypodermique_profond_suit_sa_propre_constante_de_temps():
+    """La forme retenue vide l'eau gravitaire latéralement avec sa propre constante.
+
+    La forme initiale, proportionnelle à la conductivité de Campbell, donnait 0,75
+    d'hypodermique en Outaouais et 0,91 au Saint-Laurent nord-ouest au même multiplicateur,
+    la conductivité de la couche 3 y valant quatre fois plus : un paramètre non transférable,
+    rédhibitoire pour une recette provinciale unique. La forme retenue ne dépend que de
+    l'eau gravitaire et d'une constante de temps, donc doubler celle-ci doit diviser le
+    flux latéral par deux.
+    """
+    from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+
+    torch.set_default_dtype(torch.float64)
+    z = lambda v: torch.full((3,), float(v), dtype=torch.float64)
+    cl = BV3C2Clone(n_substep=64)
+    p = make_params("silt_loam", "loam", "loam")
+    p = {k: (v.expand(3).clone() if torch.is_tensor(v) and v.numel() == 1 else v)
+         for k, v in p.items()}
+    p = {**p, "thetacc3": z(0.25)}
+    args = (z(0.20), z(0.20), z(0.40), z(0.0), z(0.0), z(0.0), z(0.0))
+    sans = float(cl(*args, p)[1][0])
+    court = float(cl(*args, {**p, "l3_tau_lat": 120.0})[1][0]) - sans
+    long = float(cl(*args, {**p, "l3_tau_lat": 240.0})[1][0]) - sans
+    assert court > 0.0
+    assert court == pytest.approx(2.0 * long, rel=0.1)

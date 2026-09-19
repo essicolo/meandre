@@ -466,6 +466,12 @@ if "ETL_L3_KSUB" in os.environ:
     # circule au-dessus de l'interface sol-depot.
     model.vertical_column.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
     print(f"[etl] plafond de percolation du substratum : {os.environ['ETL_L3_KSUB']} mm/jour")
+if "ETL_L3_TAULAT" in os.environ:
+    # Constante de temps de l'ecoulement hypodermique profond, en JOURS. Forme transferable :
+    # la partition entre chemin lateral et chemin vertical est le rapport de deux constantes,
+    # sans dependre du champ de conductivite, qui varie d'un facteur quatre entre territoires.
+    model.vertical_column.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
+    print(f"[etl] hypodermique PROFOND, constante {os.environ['ETL_L3_TAULAT']} jours")
 if "ETL_L3_LAT" in os.environ:
     # Ecoulement hypodermique PROFOND : l'eau qui percole se perche sur le substratum et
     # repart lateralement. Sans lui, plafonner la percolation force la couche a se

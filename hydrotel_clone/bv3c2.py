@@ -183,7 +183,19 @@ class BV3C2Clone(torch.nn.Module):
             # LATERALEMENT : c'est l'ecoulement hypodermique profond. Meme forme que q2,
             # conductivite de Campbell de la couche fois la pente. Absent = clone fidele.
             q3_lat = torch.zeros_like(q2)
-            if "l3_lateral" in p:
+            if "l3_tau_lat" in p:
+                # FORME RETENUE : on vide l'eau gravitaire LATERALEMENT avec sa propre
+                # constante de temps, comme on la vide verticalement. La partition entre
+                # les deux chemins devient alors le rapport de deux constantes, sans
+                # dependre d'un champ tiers. Mesure du 2026-09-19 qui a impose cette
+                # forme : la variante proportionnelle a la conductivite de Campbell donnait
+                # 0,75 d'hypodermique en Outaouais et 0,91 au Saint-Laurent nord-ouest au
+                # MEME multiplicateur, la conductivite de la couche 3 y valant quatre fois
+                # plus. Un parametre non transferable est redhibitoire pour une recette
+                # provinciale unique.
+                q3_lat = torch.clamp(t3 - p["thetacc3"], min=0.0) * z3 / p["l3_tau_lat"]
+            elif "l3_lateral" in p:
+                # Forme initiale, gardee pour rejouer les essais du 2026-09-19.
                 q3_lat = p["l3_lateral"] * k3 * sin_slope * z3
             # ── DRAINAGE SOUTERRAIN AGRICOLE (opt-in, 2026-08-26) ────────────
             # La colonne n'a AUCUN chemin qui sorte de la couche 2 vers le troncon par
