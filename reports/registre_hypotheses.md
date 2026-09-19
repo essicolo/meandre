@@ -1901,3 +1901,28 @@ La nappe libre seule est un gain net : KGE de 0,665 à 0,681 et écart-type du d
 Effet mécanique seul du balayage de géométrie : une nappe plus proche de la surface bat davantage, 0,127 m à 4 m de profondeur de lit contre 0,048 m à 8 m, la loi en carré de la charge y répondant plus lentement.
 
 **Identifiabilité croisée constatée.** L'évapotranspiration totale passe de 459 mm par an au témoin à 476 avec la nappe et 517 avec l'extraction forte, contre 400 à 500 mm par an pour l'évapotranspiration boréale réelle. L'intensité de l'extraction est donc contrainte par l'évapotranspiration satellitaire, alors que les puits ne la distinguent presque pas entre 2 et 8 mm par jour. Deux observations indépendantes tiennent la même pièce par deux bouts.
+
+---
+
+## R127 — Drainer l'eau gravitaire de la couche 3 fait tomber les trois défauts ensemble, au prix du volume (2026-09-19) — ÉTABLI
+
+Loi de drainage de l'eau au-dessus de la capacité au champ, constante de deux jours, passe avant à poids gelés sur l'Outaouais. La loi est convergée dès trente-deux sous-pas à cette constante, vérification faite avant lecture.
+
+| Outaouais | Témoin | Drainage gravitaire |
+| --- | --- | --- |
+| Teneur en eau de la couche 3 | 0,507 à 0,523 | 0,338 à 0,352 |
+| Eau gravitaire immobilisée | +457 mm | -7 mm |
+| Recharge, cycle mensuel | 0,09 à 0,21 mm/j | 0,35 à 5,51 mm/j |
+| Amplitude saisonnière de la recharge | 2,28 | 15,9 |
+| Mois de recharge maximale | août | avril |
+| Part de journée non traitée | 0,32 | 0,00 |
+| Recharge annuelle | 55 mm | 537 mm |
+| Écart-type du débit | 699 | 742 |
+| Débit moyen | 1131 m³/s | 1268 |
+| KGE médian tenu de côté | 0,654 | 0,464 |
+
+Les trois défauts du chantier tombent d'un seul coup. La couche descend exactement à sa capacité au champ et y reste, donc l'eau gravitaire disparaît. La recharge devient une impulsion de printemps, maximum en avril, d'amplitude saisonnière seize contre deux. Et la troncature de la boucle de sous-pas s'annule d'elle-même, le sol n'étant plus saturé : c'était bien la saturation permanente qui resserrait la condition de Courant.
+
+Le prix est un volume de 537 mm par an, soit à peu près tout l'écoulement du bassin, et 0,19 de KGE. La cause est structurelle : toute la percolation descend désormais, alors que la couche saturée la refoulait vers l'écoulement hypodermique. Dans un sol réel, l'eau qui traverse le profil rencontre un dépôt et un socle bien moins perméables, et l'essentiel repart latéralement au-dessus de cette interface, ce qui EST l'écoulement hypodermique. La couche 3 du modèle se draine tout droit, sans ce plafond.
+
+Remède livré le même jour sous `ETL_L3_KSUB` : la percolation est plafonnée par la conductivité du substratum, l'excès restant dans la couche et repartant latéralement par la cascade de saturation déjà présente. Ce plafond est une propriété du dépôt et du socle, donc prédictible par la géologie ingérée la veille, et non un paramètre de calage. Valeurs en cours d'épreuve.
