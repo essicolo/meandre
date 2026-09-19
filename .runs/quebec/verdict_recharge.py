@@ -64,6 +64,15 @@ def mesures_region(region, variante, temoin):
         sortie["nappe_m"] = float(pn.mean())
         sortie["battement_m"] = float(cyc_n.max() - cyc_n.min())
         sortie["mois_nappe_haute"] = int(cyc_n.argmin() + 1)
+    # INDICE D'ECOULEMENT DE BASE : la part du debit qui vient de la nappe. C'est le bon
+    # critere de volume, mesurable sur les hydrogrammes observes (0,4 a 0,6 dans ces
+    # bassins), la ou le volume de recharge n'est directement observe nulle part. La
+    # production laterale totale est la somme des trois chemins.
+    if all(k in z.files for k in ("prod_surf", "prod_hypo", "prod_base")):
+        tot = z["prod_surf"].mean() + z["prod_hypo"].mean() + z["prod_base"].mean()
+        if tot > 0:
+            sortie["indice_base"] = float(z["prod_base"].mean() / tot)
+            sortie["part_surface"] = float(z["prod_surf"].mean() / tot)
     if tnt is not None:
         cyc_t = np.array([tnt[mois == m].mean() for m in range(1, 13)])
         sortie["part_jour_non_traite"] = float(tnt.mean())
