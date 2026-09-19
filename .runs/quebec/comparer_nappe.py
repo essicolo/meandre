@@ -21,9 +21,12 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from meandre.utils import paths as _paths
+_racine = os.environ.get("MEANDRE_DERIVES")
+if not _racine:
+    from meandre.utils import paths as _paths
 
-DERIVES = f"{_paths.DERIVED_ROOT}/auxiliaires"
+    _racine = _paths.DERIVED_ROOT
+DERIVES = f"{_racine}/auxiliaires"
 
 
 def mensuel(dates, valeurs):
