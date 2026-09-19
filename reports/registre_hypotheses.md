@@ -2080,3 +2080,22 @@ La forme LATÉRALE RAPIDE, à constante de temps propre de cinq jours, restitue 
 Le compromis restant porte sur un seul arbitrage, le plafond de substratum : à plafond élevé la nappe reçoit sa part mais le rapide s'amollit, à plafond bas avec latéral rapide le rapide est juste mais la nappe est affamée. La combinaison plafond élevé et latéral rapide est en épreuve.
 
 Convergence : la constante latérale de cinq jours est convergée au plafond de production, 266,7 mm d'hypodermique cumulé à 64 sous-pas contre 267,9 à 512, alors que celle de vingt jours ne l'est pas, 168,2 contre 204,4. Le mécanisme s'inverse par rapport au drainage vertical, un écoulement latéral rapide vidant la couche, qui reste sous sa saturation et relâche la condition de Courant.
+
+---
+
+## R135 — Le routage de l'Outaouais absorbe les trois quarts de la variabilité produite (2026-09-19) — ÉTABLI
+
+Nervosité, mesurée comme l'écart-type rapporté à la moyenne, de la production latérale rapide avant routage et du débit après routage aux quarante tronçons les plus débitants.
+
+| Territoire | Configuration | Production rapide | Débit | Part transmise |
+| --- | --- | --- | --- | --- |
+| Outaouais | Témoin | 2,61 | 0,59 | 0,23 |
+| Outaouais | Drainage corrigé, latéral rapide | 1,93 | 0,53 | 0,27 |
+| Saint-Laurent nord-ouest | Témoin | 2,05 | 0,94 | 0,46 |
+| Saint-Laurent nord-ouest | Drainage corrigé, latéral rapide | 1,63 | 0,90 | 0,55 |
+
+Le réseau de l'Outaouais ne transmet que 23 à 27 pour cent de la nervosité produite par la colonne, contre 46 à 55 pour cent au Saint-Laurent nord-ouest. Il en détruit donc deux fois plus, sur un territoire où 43 pour cent des tronçons ont leur temps de parcours de Muskingum collé à la borne supérieure du domaine autorisé, 48 heures, alors qu'aucun autre territoire n'y touche.
+
+Deux conséquences. Juger la génération sur l'Outaouais revient à la juger à travers un filtre qui en absorbe les trois quarts : une part du déficit de nervosité attribué à la colonne appartient au routage, et le Saint-Laurent nord-ouest est un meilleur banc pour cette question. Et la saturation de la borne de Muskingum cesse d'être une curiosité : elle coûte la moitié de la variabilité disponible par rapport à un territoire comparable, ce qui en fait un préalable au jugement de la colonne sur ce territoire.
+
+Cohérent avec l'écart systématique entre les deux territoires : la meilleure configuration perd 0,10 de KGE en Outaouais contre 0,07 au Saint-Laurent nord-ouest.
