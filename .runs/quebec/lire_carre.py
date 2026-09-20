@@ -107,8 +107,18 @@ def main():
     if len(resume) < 4:
         print("\nCarre incomplet : les effets ne se lisent pas encore.")
         return 0
+    # La dispersion depend de la CONFIGURATION et pas seulement du taux : sur l'Outaouais a
+    # 3e-5 la case pile s'ecarte de 0,0075 entre deux graines et la case temoin contraint de
+    # 0,068, neuf fois plus, parce que le temoin jette des blocs pour gradient non fini et pas
+    # les memes d'un tirage a l'autre. Juger un effet contre la dispersion d'une SEULE case,
+    # comme cela a ete fait a tort le 2026-09-20, fait conclure a des effets qui n'existent pas.
+    # Le seuil retenu est donc la plus grande des dispersions, et il reste optimiste : deux
+    # tirages par case donnent une etendue qui sous-estime l'ecart-type.
+    for (phys, contr), k in resume.items():
+        if len(k) > 1:
+            print(f"  dispersion de la case {phys + ' ' + contr:20s} : {k.max() - k.min():.4f}")
     disp = max(k.max() - k.min() for k in resume.values())
-    print(f"\ndispersion maximale entre graines d'une meme case : {disp:.4f}")
+    print(f"seuil retenu, la plus grande des dispersions : {disp:.4f} (optimiste, deux tirages)")
     eff_phys = (np.mean(list(resume[("pile", "libre")]) + list(resume[("pile", "contraint")]))
                 - np.mean(list(resume[("temoin", "libre")]) + list(resume[("temoin", "contraint")])))
     eff_contr = (np.mean(list(resume[("temoin", "contraint")]) + list(resume[("pile", "contraint")]))
