@@ -91,7 +91,9 @@ def main():
     print(f"{'physique':9s} {'contrainte':11s} | {'KGE tenu de cote':22s} | {'blocs jetes':13s} | validation")
     resume = {}
     for (phys, contr), noms in CASES.items():
-        passes = [r for n in noms if (r := lire(n, a.region)) is not None]
+        # Une passe en cours a deja son journal mais pas encore de KGE : l'ecarter, faute de
+        # quoi elle empoisonne toutes les moyennes du carre en valeur manquante.
+        passes = [r for n in noms if (r := lire(n, a.region)) is not None and np.isfinite(r["kge"])]
         if not passes:
             print(f"{phys:9s} {contr:11s} | pas encore de sortie")
             continue
