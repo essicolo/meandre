@@ -78,6 +78,38 @@ class HydroModel(nn.Module):
         Old checkpoints may have 7; new models have 9.
     """
 
+    # Diagnostics dont une perte DÉRIVE : évapotranspiration MODIS, neige CanSWE, niveaux du
+    # réseau de puits, et gravimétrie GRACE qui somme le sol, le manteau et le souterrain.
+    # Ceux-là ne peuvent pas être détachés, sous peine d'un terme qui garde sa valeur, s'affiche
+    # dans le journal et ne produit aucun gradient. Les autres le sont, c'est tout l'intérêt.
+    DIAGNOSTICS_DERIVES = frozenset({"etr", "swe", "theta1", "theta2", "theta3", "s_gw",
+                                     "profondeur_nappe_m", "profondeur_nappe"})
+
+    @staticmethod
+    def _liste_diagnostics():
+        """Fabrique la liste d'accumulation d'un diagnostic, selon `MEANDRE_DIAG_CPU`.
+
+        Sur le processeur, une série journalière pèse environ 105 Mo sur une région de 2 900
+        tronçons et vingt-cinq ans ; la vingtaine de variables dépasse les 8 Go d'une carte
+        portable et la simulation meurt en les empilant (mesuré sur le Saint-Laurent
+        sud-ouest, 2026-09-17). On déplace donc, mais on ne détache QUE ce dont aucune perte
+        ne dérive : le gradient traverse les appareils, le détachement non.
+        """
+        import os as _os_diag
+
+        class _ListeProcesseur(list):
+            def append(self, t):
+                super().append(t.detach().to("cpu") if torch.is_tensor(t) else t)
+
+        class _ListeProcesseurDerivable(list):
+            def append(self, t):
+                super().append(t.to("cpu") if torch.is_tensor(t) else t)
+
+        if _os_diag.environ.get("MEANDRE_DIAG_CPU", "0") != "1":
+            return lambda nom: list()
+        return lambda nom: (_ListeProcesseurDerivable()
+                            if nom in HydroModel.DIAGNOSTICS_DERIVES else _ListeProcesseur())
+
     def __init__(
         self,
         n_nodes: int,
@@ -428,15 +460,9 @@ class HydroModel(nn.Module):
         # les 8 Go d'une carte portable, et la simulation meurt au moment de les empiler
         # (mesuré sur le Saint-Laurent sud-ouest, 2026-09-17). Les diagnostics ne sont
         # jamais dérivés : les déplacer ne change aucun résultat.
-        import os as _os_diag
-
-        class _ListeProcesseur(list):
-            def append(self, t):
-                super().append(t.detach().to("cpu") if torch.is_tensor(t) else t)
-
-        _Liste = _ListeProcesseur if _os_diag.environ.get("MEANDRE_DIAG_CPU", "0") == "1" else list
+        _Liste = self._liste_diagnostics()
         diag_lists: dict[str, list[Tensor]] = (
-            {k: _Liste() for k in ("etp", "etr", "snowmelt", "lateral_mm",
+            {k: _Liste(k) for k in ("etp", "etr", "snowmelt", "lateral_mm",
                              "q_lateral", "q_upstream", "recharge",
                              "q_baseflow", "T_water", "swe",
                              "theta1", "theta2", "theta3",
