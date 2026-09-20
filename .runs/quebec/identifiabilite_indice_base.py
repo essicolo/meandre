@@ -1,11 +1,16 @@
-"""La géologie explique-t-elle la dispersion de l'indice d'écoulement de base entre stations ?
+"""Quelles covariables prédisent l'indice d'écoulement de base d'une station.
 
-Ce test décide du chantier de spatialisation. L'indice d'écoulement de base, mesuré sur les
-hydrogrammes OBSERVÉS par le filtre de Lyne et Hollick, vaut 0,58 en médiane sur les 16
-stations de l'Outaouais mais s'étend de 0,39 à 0,76 : sa dispersion est surtout INTRA-régionale.
-Or c'est le plafond de percolation du substratum qui règle cette part dans le modèle. Un
-plafond uniforme ne peut donc pas la reproduire, et il faut savoir si les covariables
-disponibles le prédisent avant d'en faire un paramètre du champ spatial.
+Ce test décide du chantier de spatialisation. L'indice d'écoulement de base, part du débit
+venant de la nappe, est mesuré sur les hydrogrammes OBSERVÉS par le filtre de Lyne et Hollick.
+Il vaut 0,54 en médiane sur 95 stations de cinq territoires et s'étend de 0,34 à 0,76, pour un
+écart-type de 0,080 : sa dispersion est surtout INTRA-territoriale. Or c'est le plafond de
+percolation du substratum qui règle cette part dans le modèle. Un plafond uniforme ne peut donc
+pas la reproduire, et il faut savoir quelles covariables le prédisent avant d'en faire un
+paramètre du champ spatial.
+
+Verdict du 2026-09-20, contre le témoin qui prédit la moyenne des autres territoires : la
+texture du sol SIIGSOL vaut +27 %, l'indice d'humidité topographique LiDAR +11 %, la géologie
+du socle +3 %, donc rien. Une seule profondeur de texture suffit, les six étant redondantes.
 
 Le test est délibérément simple et il porte sur une grandeur OBSERVÉE, non sur un paramètre
 ajusté : l'erreur de prédiction de l'indice par les covariables, chaque territoire étant prédit
@@ -156,12 +161,14 @@ def erreur_hors_bloc(X, y, blocs, graine=0, evalue=None):
     return float(np.concatenate(erreurs).mean()), float(np.concatenate(temoins).mean())
 
 
-def part_expliquee(X, y, blocs, graine=0):
+def part_expliquee(X, y, blocs, graine=0, evalue=None):
     """Part de variance expliquée hors bloc. NE PAS LIRE SEULE : voir l'en-tête du module."""
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     residus, total = [], []
     for b in np.unique(blocs):
+        if evalue is not None and b != evalue:
+            continue
         ap, te = blocs != b, blocs == b
         if te.sum() == 0 or ap.sum() < 5:
             continue
