@@ -168,7 +168,9 @@ Règle posée par Essi le 2026-09-13, après une journée où la plupart des heu
 ## Common pitfalls
 
 - Don't use chunk_steps > 0 with NSE/KGE loss (they need full-sequence stats). Use MSE + log-MSE + PBIAS for chunk-safe training.
-- Warm-start changes LR to lr_finetune and skips warmup; `melt_factor_scale` is automatically IGNORED on warm-start (double-application bug, fixed 2026-07-13).
+- Warm-start changes LR to lr_finetune and skips warmup ON THE SLSO PILOT ONLY (`slso.py` passes `warmup_epochs = 0 if WARM_START else 5`). The Quebec pilot does NOT: `etl_run.py` keeps the default 5 warmup epochs except in the quantile phase, so a warm-started 8-epoch fine-tune spends five epochs ramping from a thousandth of the rate up to it. Measured 2026-09-20.
+- `ETL_LR` defaults to 5e-4 on the Quebec pilot, and 34 of 36 shell scripts of the 2026-09-19 weekend left it unset. At that rate an 8-epoch fine-tune is BISTABLE: six identical passes gave exactly two held-out values, 0.7056 and 0.5975, and the better validation gave the worse held-out. Dispersion falls to 0.0075 at 3e-5 and to 0.0000 at 1e-5. Comparisons of variants by short fine-tuning run at 1e-5; forward passes at frozen weights (`ETL_EPOCHS=0`) are unaffected.
+- `melt_factor_scale` is automatically IGNORED on warm-start (double-application bug, fixed 2026-07-13).
 - In quantile mode the held-out block prints BOTH sigma-head coverages (obsolete) and "(quantile)" coverages — only the quantile lines are meaningful.
 - reach_parquet `reach_id` is 1-indexed: compare with node_idx + 1.
 - Dev metrics are selection metrics; only held-out 2022-2024 counts, against the FULL 6-member Hydrotel ensemble (posttraitement_{LN24HA,MG24Hx}.zarr) on common stations/days.
