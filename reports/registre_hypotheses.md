@@ -2256,3 +2256,28 @@ Prédiction posée le 2026-09-19 : si le temps de parcours de Muskingum sature s
 C'est l'inverse. Les bras à physique corrigée saturent la borne à 92 et 93 pour cent, contre 36 pour le témoin libre et zéro pour le témoin contraint. La colonne corrigée demande donc DAVANTAGE d'amortissement, ce qui s'explique : son écoulement hypodermique à trois jours de constante est lui-même nerveux, et le réseau doit l'étaler.
 
 Conséquence pour le chantier du routage. La borne de 48 heures devient contraignante pour la physique corrigée, et le paramètre y est saturé sur presque tout le domaine. Ou bien la borne est mal placée, ou bien la constante de l'écoulement hypodermique est trop courte et compense un routage trop rapide. Les deux chantiers cessent d'être indépendants, contrairement à ce que la prédiction supposait.
+
+---
+
+## R142 — Huit époques d'affinage donnent un résultat non reproductible : aucune comparaison de ce protocole n'est interprétable (2026-09-20) — ÉTABLI
+
+Quatre passes sur l'Outaouais, croisant la contrainte sur les niveaux de nappe et deux graines, même point de départ à chaud, même taux d'apprentissage de 1e-4, un pas d'optimisation par bloc.
+
+| Configuration | Graine 1234 | Graine 7 |
+| --- | --- | --- |
+| Pile avec contrainte | 0,7056 | 0,5975 |
+| Pile sans contrainte | 0,5974 | 0,7056 |
+
+Deux valeurs seulement, et elles permutent d'une graine à l'autre : la configuration ne détermine pas le résultat.
+
+La cause se lit dans les trajectoires. La perte d'entraînement oscille entre 3 et 14 d'une époque à l'autre sans qu'aucun garde-fou ne se déclenche, la courbe de validation est bruitée, et la sélection du meilleur point tombe sur l'époque 2 dans un cas et l'époque 3 dans l'autre. Ces deux époques diffèrent de onze centièmes sur le tenu de côté.
+
+Le piège de sélection déjà consigné au dépôt se referme au passage : le bras dont la validation est la MEILLEURE, 0,693 contre 0,683, a le tenu de côté le PIRE, 0,597 contre 0,706. Sur des époques aussi instables, la métrique de sélection n'ordonne pas le tenu de côté.
+
+**Ce qui est annulé.** Le gain de la contrainte sur la physique corrigée, annoncé le matin même à 0,706 contre 0,654, et toutes les comparaisons de KGE entre les quatre bras. La ronde appariée du 2026-09-19 tombe sous la même critique, son écart de cinq centièmes étant inférieur à la dispersion mesurée ici.
+
+**Ce qui survit**, parce que ce sont des écarts d'ordre de grandeur sur des grandeurs structurelles et non sur un score. Contraindre le témoin fait tomber sa recharge de 45 à 3 mm par an et son indice d'écoulement de base de 0,082 à 0,006. Six puits au Saint-Laurent nord-ouest ne changent RIEN, les bras contraints rendant exactement les chiffres des libres. Et tout le diagnostic des 18 et 19 septembre, qui repose sur des mesures de partition, de variance et de teneur en eau, et non sur des scores.
+
+**Reste inexpliqué**, et je ne l'explique pas : les modèles des paires croisées sont identiques AU BIT PRÈS, écart maximal nul sur les paramètres, alors qu'ils proviennent de fonctions de perte différentes. L'étiquetage est vérifié, le terme est actif dans les bras contraints et absent des libres.
+
+Conséquence de protocole. Toute comparaison de KGE par affinage court exige plusieurs graines et un rapport de dispersion. Un affinage plus long, un taux plus faible ou une sélection moyennée restent à essayer avant de rejuger la pile.
