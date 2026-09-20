@@ -2182,3 +2182,24 @@ Le bras corrigé garde sa structure sous l'affinage : nervosité de 2,035 contre
 **Prédiction posée d'avance et vérifiée.** Le bras corrigé demande un temps de parcours de routage de 27,6 heures en médiane contre 35,9 pour le témoin, alors que les deux partaient de 28,0. Le témoin affiné a donc allongé son routage pour amortir une génération devenue plus brutale, et la colonne corrigée n'en a pas eu besoin : le retard du routage compensait bien la génération.
 
 Réserves. Huit époques d'affinage seulement, et le bras corrigé part de plus loin puisque ses paramètres héritent d'un calage fait autour des défauts. Un départ à froid ou un affinage plus long reste à essayer. Un seul territoire.
+
+---
+
+## R139 — La géologie et les sols expliquent un dixième de la variance de l'indice d'écoulement de base (2026-09-19) — ÉTABLI
+
+Test posé sur une grandeur OBSERVÉE et non sur un paramètre ajusté : l'indice d'écoulement de base mesuré par le filtre de Lyne et Hollick sur les hydrogrammes de 100 stations réparties sur huit territoires, médiane 0,54, étendue 0,34 à 0,76. Les attributs sont moyennés sur le BASSIN AMONT de chaque station, une signature intégrée ne pouvant se comparer à un attribut ponctuel. Validation croisée par blocs.
+
+| Covariables | Blocs par territoire | Blocs aléatoires |
+| --- | --- | --- |
+| Géologie du socle, SIGÉOM | +0,11 | +0,25 |
+| Système d'information sur les sols | +0,13 | +0,20 |
+| Humidité lidar | +0,05 | +0,06 |
+| Les trois ensemble | +0,11 | +0,26 |
+
+Seule la colonne de gauche compte, puisqu'elle prédit des territoires jamais vus à l'entraînement. Un dixième de la variance d'une signature hydrologique observée s'explique donc par des attributs de terrain, ce qui rend le plafond de percolation du substratum prédictible par le champ spatial et non condamné à rester uniforme.
+
+L'humidité lidar, qui décrit la topographie, n'apporte presque rien, ce qui est cohérent : le paramètre visé est une propriété du sous-sol et non du relief.
+
+**Correction d'un résultat annoncé deux heures plus tôt.** Sur 25 stations d'un seul territoire, le même test donnait -0,48 à -0,04 selon la source. Ce n'était pas un vrai zéro mais un manque de puissance, signalé alors comme réserve sans que son ampleur soit mesurée. Deux pièges ont été levés au passage. Le réglage par défaut du modèle de régression exige vingt échantillons par feuille : avec 25 stations il ne pouvait faire aucune coupure et rendait exactement zéro pour toute covariable, valeur trop propre pour être vraie. Et l'attribut était d'abord pris sur le seul tronçon portant la station au lieu de son bassin amont.
+
+Réserves. Cent stations pour quatorze à trente-neuf attributs reste modeste. Les dépôts de surface, qui limitent la percolation davantage que le socle, ne sont pas ingérés pour ces territoires. Et l'indice d'écoulement de base dépend aussi du climat et de la taille du bassin, non contrôlés ici.
