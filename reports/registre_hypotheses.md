@@ -2183,9 +2183,13 @@ Le bras corrigé garde sa structure sous l'affinage : nervosité de 2,035 contre
 
 Réserves. Huit époques d'affinage seulement, et le bras corrigé part de plus loin puisque ses paramètres héritent d'un calage fait autour des défauts. Un départ à froid ou un affinage plus long reste à essayer. Un seul territoire.
 
+RÉSERVE AJOUTÉE LE 2026-09-20, sur le protocole. Cette ronde ne posait pas de taux d'apprentissage et tournait donc au défaut du pilote, 5e-4, dont il a depuis été mesuré qu'il rend l'issue d'un affinage de huit époques BISTABLE, avec deux valeurs de KGE séparées de cent huit millièmes. Les deux chiffres de KGE du tableau, 0,698 et 0,647, sont séparés de cinquante et un millièmes, soit moins que cette dispersion : ils ne départagent rien. Les écarts de STRUCTURE, eux, sont d'un tout autre ordre et ne s'expliquent pas par le pas d'optimisation : l'indice d'écoulement de base passe de 0,126 à 0,017 côté témoin et à 0,342 côté corrigé, la part de ruissellement de surface de 0,742 à 0,969 contre 0,037. La thèse de l'entrée tient donc, mais sur la structure et non sur le débit. Un carré croisant physique et contrainte à taux stable, deux graines par case, est en cours pour la trancher proprement.
+
 ---
 
-## R139 — La géologie et les sols expliquent un dixième de la variance de l'indice d'écoulement de base (2026-09-19) — ÉTABLI
+## R139 — La géologie et les sols expliquent un dixième de la variance de l'indice d'écoulement de base (2026-09-19) — CADUC, REMPLACÉ LE 2026-09-20
+
+CE QUI SUIT EST CONSERVÉ POUR MÉMOIRE ET NE DOIT PLUS ÊTRE CITÉ. La mesure employée, la part de variance expliquée, est dominée par les territoires à une ou deux stations, dont le dénominateur s'effondre. Reprise sur l'ERREUR de prédiction et sur les seuls territoires d'au moins quinze stations, elle donne un verdict différent : la texture du sol vaut +27 % contre le témoin, l'humidité topographique +11 %, la géologie du socle +3 %, donc rien, et lui ajouter le socle dégrade la prédiction. Voir l'entrée du 2026-09-20 sur les covariables de l'indice d'écoulement de base.
 
 Test posé sur une grandeur OBSERVÉE et non sur un paramètre ajusté : l'indice d'écoulement de base mesuré par le filtre de Lyne et Hollick sur les hydrogrammes de 100 stations réparties sur huit territoires, médiane 0,54, étendue 0,34 à 0,76. Les attributs sont moyennés sur le BASSIN AMONT de chaque station, une signature intégrée ne pouvant se comparer à un attribut ponctuel. Validation croisée par blocs.
 
