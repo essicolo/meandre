@@ -53,6 +53,37 @@ def lire(nom, region="outv"):
             "n_sauvegardes": len(epoque)}
 
 
+def structure(nom, region="outv"):
+    """Chemins de l'eau, troncature et recharge, lus dans la sortie journalière de la passe.
+
+    Ce sont les grandeurs qui décident, le KGE ne départageant pas les variantes. L'indice
+    d'écoulement de base vaut 0,54 en médiane sur les hydrogrammes observés, la nervosité de
+    la composante rapide 2,045.
+    """
+    f = f"{DERIVES}/reach-{region}-{nom}-journalier.npz"
+    if not os.path.exists(f):
+        return None
+    z = np.load(f, allow_pickle=True)
+    if not all(k in z.files for k in ("prod_surf", "prod_hypo", "prod_base")):
+        return None
+    base, surf, hypo = z["prod_base"], z["prod_surf"], z["prod_hypo"]
+    tot = base.mean() + surf.mean() + hypo.mean()
+    rapide = (surf + hypo).mean(axis=1)
+    b = base.mean(axis=1)
+    out = {"indice_base": float(base.mean() / tot) if tot > 0 else np.nan,
+           "part_surface": float(surf.mean() / tot) if tot > 0 else np.nan,
+           "variation_base": float(b.std() / max(b.mean(), 1e-9)),
+           "nervosite_rapide": float(rapide.std() / max(rapide.mean(), 1e-9))}
+    if "temps_non_traite" in z.files:
+        out["part_non_traitee"] = float(z["temps_non_traite"].mean())
+    if "recharge" in z.files:
+        out["recharge_mm_an"] = float(z["recharge"].mean() * 365.25)
+    return out
+
+
+OBSERVE = {"indice_base": 0.54, "nervosite_rapide": 2.045, "variation_base": 0.68}
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--region", default="outv")
@@ -87,6 +118,19 @@ def main():
                      ("interaction des deux", inter)]:
         verdict = "lisible" if abs(val) > disp else "SOUS la dispersion, non lisible"
         print(f"{nom:36s} : {val:+.4f}  {verdict}")
+    print("\nStructure des chemins de l'eau, moyenne des deux graines :")
+    cles = ["indice_base", "part_surface", "variation_base", "nervosite_rapide",
+            "part_non_traitee", "recharge_mm_an"]
+    print(f"{'case':22s} | " + " | ".join(f"{c[:15]:>15s}" for c in cles))
+    for (phys, contr), noms in CASES.items():
+        st = [s for n in noms if (s := structure(n, a.region)) is not None]
+        if not st:
+            continue
+        moy = {c: np.mean([s[c] for s in st if c in s]) for c in cles if any(c in s for s in st)}
+        print(f"{phys + ' ' + contr:22s} | "
+              + " | ".join(f"{moy[c]:15.3f}" if c in moy else f"{'':>15s}" for c in cles))
+    print(f"{'observe':22s} | "
+          + " | ".join(f"{OBSERVE[c]:15.3f}" if c in OBSERVE else f"{'':>15s}" for c in cles))
     return 0
 
 
