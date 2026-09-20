@@ -2281,3 +2281,29 @@ Le piège de sélection déjà consigné au dépôt se referme au passage : le b
 **Reste inexpliqué**, et je ne l'explique pas : les modèles des paires croisées sont identiques AU BIT PRÈS, écart maximal nul sur les paramètres, alors qu'ils proviennent de fonctions de perte différentes. L'étiquetage est vérifié, le terme est actif dans les bras contraints et absent des libres.
 
 Conséquence de protocole. Toute comparaison de KGE par affinage court exige plusieurs graines et un rapport de dispersion. Un affinage plus long, un taux plus faible ou une sélection moyennée restent à essayer avant de rejuger la pile.
+
+---
+
+## R143 — L'affinage de la physique corrigée est BISTABLE : deux issues seulement, et la configuration ne décide pas laquelle (2026-09-20) — ÉTABLI
+
+Six passes de la pile de corrections sur l'Outaouais, croisant la contrainte sur les niveaux de nappe et trois graines, même point de départ à chaud, même taux d'apprentissage de 1e-4, huit époques, un pas par bloc.
+
+| Graine | Avec contrainte | Sans contrainte |
+| --- | --- | --- |
+| 1234 | 0,7056 | 0,5974 |
+| 7 | 0,5975 | 0,7056 |
+| 99 | 0,7056 | 0,7056 |
+
+Six passes, deux valeurs, jamais rien entre les deux. La contrainte ne décide pas l'issue : elle apparaît des deux côtés. La graine non plus, puisque le tirage 99 donne la même valeur dans les deux bras.
+
+Les modèles des paires croisées sont le MÊME MODÈLE, vérifié sur cinq paramètres appris dont le coefficient de vidange, la conductivité de surface, le coefficient de Manning et le temps de parcours de routage : les écarts valent de 1e-8 à 1e-5, soit la précision du calcul en simple précision. Le coefficient de vidange n'est pas gelé, il diffère bel et bien entre les deux issues de 5,7e-2, ce qui écarte l'explication d'un paramètre figé.
+
+Mécanisme lisible dans les trajectoires. La perte d'entraînement oscille entre 3 et 14 d'une époque à l'autre sans qu'aucun garde-fou de divergence ne se déclenche, la courbe de validation est bruitée, et la sélection du meilleur point tombe sur l'époque 2 ou sur l'époque 3 selon la passe. Ces deux époques diffèrent de onze centièmes sur le tenu de côté. Le piège de sélection déjà consigné se referme : le bras dont la validation est la meilleure, 0,693 contre 0,683, a le tenu de côté le pire, 0,597 contre 0,706.
+
+Le TÉMOIN n'a pas cette propriété : ses deux passes rendent 0,6198 et 0,6430, deux valeurs distinctes et non répétées, pour une dispersion de deux centièmes contre onze. C'est donc la physique corrigée qui rend le paysage d'optimisation accidenté, ce qui se comprend puisqu'elle déplace le modèle loin de l'optimum autour duquel tout avait été calé.
+
+**Ce qui est annulé.** Toute comparaison de KGE entre configurations par affinage court, y compris le gain de la contrainte annoncé le matin même et l'écart de cinq centièmes de la ronde appariée de la veille.
+
+**Ce qui survit**, parce que mesuré sur des grandeurs structurelles et non sur un score : les écarts d'ordre de grandeur, comme la recharge du témoin contraint tombant à 3 mm par an ; l'absence totale d'effet de six puits au Saint-Laurent nord-ouest ; et tout le diagnostic des 18 et 19 septembre, qui repose sur des passes avant à poids gelés, dont le déterminisme est vérifié par deux exécutions de la même configuration sous deux noms rendant des chiffres identiques.
+
+Épreuve en cours : le même protocole à 3e-5 et 1e-5 de taux d'apprentissage, deux graines chacun, pour savoir si la bistabilité vient du pas d'optimisation ou du paysage lui-même.
