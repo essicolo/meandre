@@ -2327,3 +2327,24 @@ La valeur atteinte aux taux faibles, environ 0,697, correspond au HAUT des deux 
 Conséquence de protocole, à appliquer à toute comparaison par affinage court. Le taux de 1e-4 hérité du calage n'est pas utilisable pour juger une modification de physique : il fabrique une dispersion de onze centièmes, soit plusieurs fois l'effet qu'on cherche à mesurer. À 1e-5 la comparaison devient exacte et ne demande même plus de réplication, ce qui la rend moins coûteuse et non plus.
 
 Le carré complet à taux stable, croisant physique et contrainte sur deux graines, est en cours : c'est la première comparaison défendable de ce chantier.
+
+---
+
+## R145 — La texture du sol prédit l'indice d'écoulement de base, la géologie du socle ne le fait pas (2026-09-20) — ÉTABLI
+
+L'indice d'écoulement de base, part du débit venant de la nappe, mesuré par le filtre de Lyne et Hollick sur les hydrogrammes OBSERVÉS de 95 stations réparties sur cinq territoires. Médiane 0,54, étendue 0,34 à 0,76, écart-type 0,079. Covariables moyennées sur le BASSIN AMONT de chaque station. Épreuve par transfert : chaque territoire est prédit par un modèle ajusté sur les quatre autres, donc aucune station de son voisinage.
+
+| Covariables | Erreur absolue moyenne sur l'indice | Contre la moyenne |
+| --- | --- | --- |
+| aucune, moyenne des autres territoires | 0,070 | témoin |
+| géologie du socle, 14 variables | 0,068 | +3 % |
+| texture du sol SIIGSOL, 18 variables | 0,051 | +27 % |
+| les deux, 32 variables | 0,058 | +17 % |
+
+Deux conclusions, dont une qui contredit ce qui avait été annoncé la veille.
+
+Le socle n'apporte rien et NUIT quand on l'ajoute : la lithologie et la province géologique ne prédisent pas la part souterraine du débit à cette échelle. La part de variance expliquée annoncée le 2026-09-19, de +0,11 à +0,13 par covariable, était trompeuse, non par erreur de calcul mais par choix de mesure : elle était dominée par deux territoires ne portant qu'une ou deux stations, dont le dénominateur s'effondre. Le territoire du Saguenay obtient la PLUS PETITE erreur du tableau, 0,049, et la plus mauvaise part expliquée, −0,76, parce que ses stations se ressemblent. Sur une population hétérogène en effectif, l'erreur se lit, la part de variance ne se lit pas.
+
+La texture porte l'information, et une seule profondeur suffit. Les six profondeurs de SIIGSOL donnent chacune le même gain, entre +22 et +24 %, et les empiler toutes les douze redescend à +17 % par redondance. Elles viennent du même modèle d'apprentissage avec la profondeur en covariable : c'est UNE information, pas six. La prédiction physique posée d'avance, selon laquelle la texture PROFONDE devait porter puisque c'est la percolation au bas de la colonne qui est en jeu, est donc réfutée.
+
+Conséquence pour le chantier de spatialisation du plafond de percolation : `ETL_L3_KSUB` prend en entrée UN triplet de texture par tronçon, trois nombres en coordonnées ilr, et non la pile des six profondeurs ni la géologie du socle. Le gain disponible est le quart de l'erreur d'un plafond uniforme.
