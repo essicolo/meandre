@@ -2206,7 +2206,7 @@ Réserves. Cent stations pour quatorze à trente-neuf attributs reste modeste. L
 
 ---
 
-## R140 — La contrainte sur les niveaux de nappe améliore le débit quand la physique peut la satisfaire, et le dégrade sinon (2026-09-20) — ÉTABLI
+## R140 — La contrainte sur les niveaux de nappe : effet ANNULÉ par la dispersion de tirage (2026-09-20) — RÉFUTÉ LE JOUR MÊME
 
 Quatre bras sur l'Outaouais, douze puits recevables, même point de départ à chaud, huit époques chacun, un pas d'optimisation par bloc. Croisement de la pile de corrections du sol et de la contrainte sur les niveaux mesurés.
 
@@ -2231,4 +2231,28 @@ C'est la démonstration complète de la thèse d'identifiabilité du projet : un
 
 **Effectif de puits déterminant.** Au Saint-Laurent nord-ouest, qui ne compte que six puits recevables pour 3 362 tronçons, les deux bras contraints rendent EXACTEMENT les mêmes chiffres que les libres, 0,6977 et 0,6470. Six puits ne contraignent pas un champ spatial ; douze le font basculer. C'est une contrainte de conception pour toute future application du terme.
 
-Réserves. Un seul territoire pour l'effet positif, huit époques, et l'Outaouais porte par ailleurs une pathologie de routage. La recharge de 229 mm par an et l'indice de base de 0,313 restent en deçà des 0,58 mesurés. Le battement de nappe atteint les trois quarts du mesuré.
+**RÉFUTATION, le jour même, par réplication.** La configuration gagnante rejouée avec une autre graine rend 0,5975 au lieu de 0,7056. L'écart entre deux tirages de la MÊME configuration vaut donc onze centièmes, c'est-à-dire exactement la taille de l'effet célébré. Le 0,706 est un tirage favorable et non un gain de la contrainte, et aucune des comparaisons de ce tableau ne survit à la dispersion.
+
+Ce qui reste vrai indépendamment du tirage, parce que mesuré sur des grandeurs structurelles et non sur un score : la contrainte appliquée au témoin fait tomber sa recharge à 3 mm par an et son indice de base à 0,006, ce qui est un écart d'ordre de grandeur et non de bruit. Et au Saint-Laurent nord-ouest, six puits ne changent RIEN, les bras contraints rendant exactement les chiffres des libres.
+
+Leçon de méthode. Le résultat était joli, confirmait exactement l'hypothèse espérée, et il aurait été facile de le garder. Le dépôt garde la trace d'un banc où deux passes identiques s'écartaient de 0,029 faute de graine ; ici la dispersion vaut quatre fois cela sur huit époques d'affinage. Toute comparaison de KGE sur ce protocole exige désormais plusieurs tirages.
+
+Réserves antérieures, maintenues : un seul territoire, huit époques, et l'Outaouais porte une pathologie de routage.
+
+---
+
+## R141 — La colonne corrigée demande PLUS de retard de routage, non moins : prédiction réfutée (2026-09-20) — RÉFUTÉ
+
+Prédiction posée le 2026-09-19 : si le temps de parcours de Muskingum sature sa borne parce que le routage compense une génération trop brutale, alors la colonne corrigée, qui ramène le ruissellement de surface de 0,86 à 0,24, devrait demander moins de retard.
+
+| Bras, Outaouais | Temps de parcours médian | Part à la borne de 48 h |
+| --- | --- | --- |
+| Référence | 46,2 h | 0,43 |
+| Témoin libre, affiné | 33,2 h | 0,36 |
+| Témoin contraint, affiné | 20,9 h | 0,00 |
+| Physique corrigée, libre | 48,0 h | 0,92 |
+| Physique corrigée, contrainte | 47,9 h | 0,93 |
+
+C'est l'inverse. Les bras à physique corrigée saturent la borne à 92 et 93 pour cent, contre 36 pour le témoin libre et zéro pour le témoin contraint. La colonne corrigée demande donc DAVANTAGE d'amortissement, ce qui s'explique : son écoulement hypodermique à trois jours de constante est lui-même nerveux, et le réseau doit l'étaler.
+
+Conséquence pour le chantier du routage. La borne de 48 heures devient contraignante pour la physique corrigée, et le paramètre y est saturé sur presque tout le domaine. Ou bien la borne est mal placée, ou bien la constante de l'écoulement hypodermique est trop courte et compense un routage trop rapide. Les deux chantiers cessent d'être indépendants, contrairement à ce que la prédiction supposait.
