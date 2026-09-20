@@ -2310,25 +2310,23 @@ Le TÉMOIN n'a pas cette propriété : ses deux passes rendent 0,6198 et 0,6430,
 
 ---
 
-## R144 — La bistabilité de l'affinage est un artefact du pas d'optimisation, et elle disparaît sous 1e-4 (2026-09-20) — ÉTABLI
+## R144 — La bistabilité de l'affinage est un artefact du pas d'optimisation, et le taux en cause est 5e-4, non 1e-4 (2026-09-20, corrigé le jour même) — ÉTABLI
 
 Même configuration de la pile de corrections sur l'Outaouais, huit époques, un pas par bloc, deux graines par taux d'apprentissage.
 
-| Taux d'apprentissage | Graine 1234 | Graine 7 | Écart |
-| --- | --- | --- | --- |
-| 1e-4 | 0,7056 ou 0,5974 selon la passe | idem, bimodal | 0,108 |
-| 3e-5 | 0,6990 | 0,6915 | 0,0075 |
-| 1e-5 | 0,6969 | 0,6969 | 0,0000 |
+| Taux demandé | Sommet réellement atteint | Graine 1234 | Graine 7 | Écart |
+| --- | --- | --- | --- | --- |
+| défaut du pilote | 5,0e-4 | 0,7056 ou 0,5974 selon la passe | idem, bimodal | 0,108 |
+| 3e-5 | 3,0e-5 | 0,6990 | 0,6915 | 0,0075 |
+| 1e-5 | 1,0e-5 | 0,6969 | 0,6969 | 0,0000 |
 
-La relation est monotone et le protocole se répare entièrement. À 1e-5 les deux graines donnent le MÊME chiffre à quatre décimales ; à 3e-5 elles diffèrent de sept millièmes ; à 1e-4 l'issue saute entre deux valeurs séparées de cent huit millièmes.
+La relation est monotone et le protocole se répare entièrement. À 1e-5 les deux graines donnent le MÊME chiffre à quatre décimales ; à 3e-5 elles diffèrent de sept millièmes ; au défaut l'issue saute entre deux valeurs séparées de cent huit millièmes. La valeur atteinte aux taux faibles, environ 0,697, est le HAUT des deux bassins observés au défaut : celui-ci faisait manquer le bon bassin environ une fois sur trois.
 
-La valeur atteinte aux taux faibles, environ 0,697, correspond au HAUT des deux bassins observés à 1e-4. Un pas de 1e-4 faisait donc manquer le bon bassin environ une fois sur trois, et la bistabilité n'était pas une propriété du paysage mais du pas qui le parcourait.
+CORRECTION du même jour, sur une erreur d'étiquette de ma part. Les passes bistables avaient d'abord été décrites comme tournant à 1e-4. Elles ne posaient aucune valeur de taux et prenaient donc le défaut du pilote régional, qui vaut 5e-4. Le barème monte linéairement du millième du taux jusqu'au taux lui-même sur cinq époques, puis redescend en cosinus ; il ne multiplie rien. Le rapport entre le régime instable et le régime stable est donc de dix-sept, et non de trois.
 
-Conséquence de protocole, à appliquer à toute comparaison par affinage court. Le taux de 1e-4 hérité du calage n'est pas utilisable pour juger une modification de physique : il fabrique une dispersion de onze centièmes, soit plusieurs fois l'effet qu'on cherche à mesurer. À 1e-5 la comparaison devient exacte et ne demande même plus de réplication, ce qui la rend moins coûteuse et non plus.
+Deux conséquences de portée inégale. Pour le protocole, toute comparaison de variantes par affinage court se fait à 1e-5 : la réplication y devient inutile, ce qui coûte moins cher qu'un protocole faux. Pour l'inventaire du chantier, trente-quatre scripts de la fin de semaine sur trente-six laissaient le taux par défaut, mais vingt-trois d'entre eux ne faisaient aucune époque : ce sont des passes avant à poids gelés, reproductibles, et le corps du diagnostic tient. Huit scripts entraînaient effectivement au taux bistable, et ce sont exactement ceux dont les verdicts de performance ont été retirés.
 
-Le carré complet à taux stable, croisant physique et contrainte sur deux graines, est en cours : c'est la première comparaison défendable de ce chantier.
-
----
+Sur huit époques, cinq sont consommées par la montée en régime, malgré un départ à chaud. La note du projet affirmant que le départ à chaud saute la montée en régime ne décrit pas ce que fait le pilote régional.
 
 ## R145 — La texture du sol prédit l'indice d'écoulement de base, la géologie du socle ne le fait pas (2026-09-20) — ÉTABLI
 
