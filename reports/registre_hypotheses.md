@@ -2265,7 +2265,7 @@ Conséquence pour le chantier du routage. La borne de 48 heures devient contraig
 
 ## R142 — Huit époques d'affinage donnent un résultat non reproductible : aucune comparaison de ce protocole n'est interprétable (2026-09-20) — ÉTABLI
 
-Quatre passes sur l'Outaouais, croisant la contrainte sur les niveaux de nappe et deux graines, même point de départ à chaud, même taux d'apprentissage de 1e-4, un pas d'optimisation par bloc.
+Quatre passes sur l'Outaouais, croisant la contrainte sur les niveaux de nappe et deux graines, même point de départ à chaud, même taux d'apprentissage, celui du défaut du pilote (5e-4 ; ces entrées l'ont d'abord noté 1e-4, par erreur), un pas d'optimisation par bloc.
 
 | Configuration | Graine 1234 | Graine 7 |
 | --- | --- | --- |
@@ -2290,7 +2290,7 @@ Conséquence de protocole. Toute comparaison de KGE par affinage court exige plu
 
 ## R143 — L'affinage de la physique corrigée est BISTABLE : deux issues seulement, et la configuration ne décide pas laquelle (2026-09-20) — ÉTABLI
 
-Six passes de la pile de corrections sur l'Outaouais, croisant la contrainte sur les niveaux de nappe et trois graines, même point de départ à chaud, même taux d'apprentissage de 1e-4, huit époques, un pas par bloc.
+Six passes de la pile de corrections sur l'Outaouais, croisant la contrainte sur les niveaux de nappe et trois graines, même point de départ à chaud, même taux d'apprentissage, celui du défaut du pilote (5e-4 ; ces entrées l'ont d'abord noté 1e-4, par erreur), huit époques, un pas par bloc.
 
 | Graine | Avec contrainte | Sans contrainte |
 | --- | --- | --- |
