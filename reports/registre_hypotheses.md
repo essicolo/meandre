@@ -2307,3 +2307,23 @@ Le TÉMOIN n'a pas cette propriété : ses deux passes rendent 0,6198 et 0,6430,
 **Ce qui survit**, parce que mesuré sur des grandeurs structurelles et non sur un score : les écarts d'ordre de grandeur, comme la recharge du témoin contraint tombant à 3 mm par an ; l'absence totale d'effet de six puits au Saint-Laurent nord-ouest ; et tout le diagnostic des 18 et 19 septembre, qui repose sur des passes avant à poids gelés, dont le déterminisme est vérifié par deux exécutions de la même configuration sous deux noms rendant des chiffres identiques.
 
 Épreuve en cours : le même protocole à 3e-5 et 1e-5 de taux d'apprentissage, deux graines chacun, pour savoir si la bistabilité vient du pas d'optimisation ou du paysage lui-même.
+
+---
+
+## R144 — La bistabilité de l'affinage est un artefact du pas d'optimisation, et elle disparaît sous 1e-4 (2026-09-20) — ÉTABLI
+
+Même configuration de la pile de corrections sur l'Outaouais, huit époques, un pas par bloc, deux graines par taux d'apprentissage.
+
+| Taux d'apprentissage | Graine 1234 | Graine 7 | Écart |
+| --- | --- | --- | --- |
+| 1e-4 | 0,7056 ou 0,5974 selon la passe | idem, bimodal | 0,108 |
+| 3e-5 | 0,6990 | 0,6915 | 0,0075 |
+| 1e-5 | 0,6969 | 0,6969 | 0,0000 |
+
+La relation est monotone et le protocole se répare entièrement. À 1e-5 les deux graines donnent le MÊME chiffre à quatre décimales ; à 3e-5 elles diffèrent de sept millièmes ; à 1e-4 l'issue saute entre deux valeurs séparées de cent huit millièmes.
+
+La valeur atteinte aux taux faibles, environ 0,697, correspond au HAUT des deux bassins observés à 1e-4. Un pas de 1e-4 faisait donc manquer le bon bassin environ une fois sur trois, et la bistabilité n'était pas une propriété du paysage mais du pas qui le parcourait.
+
+Conséquence de protocole, à appliquer à toute comparaison par affinage court. Le taux de 1e-4 hérité du calage n'est pas utilisable pour juger une modification de physique : il fabrique une dispersion de onze centièmes, soit plusieurs fois l'effet qu'on cherche à mesurer. À 1e-5 la comparaison devient exacte et ne demande même plus de réplication, ce qui la rend moins coûteuse et non plus.
+
+Le carré complet à taux stable, croisant physique et contrainte sur deux graines, est en cours : c'est la première comparaison défendable de ce chantier.
