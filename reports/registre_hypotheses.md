@@ -2354,3 +2354,38 @@ La texture porte l'information, et une seule profondeur suffit. Les six profonde
 SIIGSOL étant une carte PRÉDITE par apprentissage à partir de covariables de télédétection et de relief, son pouvoir prédictif pourrait venir du relief plutôt que du sol. Le témoin lève le doute sans le supprimer : l'indice d'humidité topographique LiDAR, seul, vaut +11 % contre le témoin, et joint à la texture il redescend l'ensemble à +23 %. Le relief explique donc une partie du gain, moins de la moitié, et la texture porte une information qu'il ne contient pas. Aucune donnée de débit n'entre dans SIIGSOL, la circularité de la ligne rouge des cartes de recharge n'est pas en cause ici.
 
 Conséquence pour le chantier de spatialisation du plafond de percolation : `ETL_L3_KSUB` prend en entrée UN triplet de texture par tronçon, trois nombres en coordonnées ilr, et non la pile des six profondeurs ni la géologie du socle. Le gain disponible est le quart de l'erreur d'un plafond uniforme.
+
+---
+
+## R146 — Le carré physique contre contrainte : aucun effet sur le débit n'est lisible, et le modèle de référence est numériquement instable (2026-09-20) — ÉTABLI
+
+Croisement de la pile de corrections du drainage profond et de la contrainte sur les niveaux de puits, sur l'Outaouais, huit passes : quatre cases, deux graines chacune, taux d'apprentissage de 3e-5, huit époques, un pas d'optimisation par bloc, tout identique par ailleurs. C'est le premier protocole répliqué du chantier.
+
+| Case | KGE médian tenu de côté | Étendue sur deux graines | Blocs jetés pour gradient non fini |
+| --- | --- | --- | --- |
+| témoin, libre | 0,7078 | 0,0224 | 60 |
+| témoin, contraint | 0,6878 | 0,0683 | 20 |
+| pile, libre | 0,6952 | 0,0075 | 0 |
+| pile, contrainte | 0,6928 | 0,0043 | 0 |
+
+Aucun des trois effets ne sort du bruit : la pile vaut −0,0038, la contrainte −0,0112, leur interaction +0,0176, contre un seuil de 0,0683. Ce seuil est lui-même optimiste, une étendue sur deux tirages sous-estimant l'écart-type. Sur le débit, à ce budget de calcul, le carré ne départage rien, et toute annonce du contraire serait une lecture du bruit.
+
+LE RÉSULTAT EST AILLEURS, et il n'était pas cherché. La dispersion dépend de la CONFIGURATION et pas seulement du taux d'apprentissage. Les deux cases portant la physique corrigée se répliquent à quatre et sept millièmes ; les deux cases témoin se répliquent à vingt-deux et soixante-huit millièmes, cinq à seize fois plus mal. La correspondance avec le nombre de blocs jetés pour gradient non fini est exacte : zéro d'un côté, vingt à cent vingt de l'autre. Le modèle de référence produit des gradients non finis sur un dixième de ses blocs, en jette des différents selon le tirage, et c'est cette instabilité qui fabrique sa dispersion. La physique corrigée n'en produit aucun.
+
+L'explication est cohérente avec la cause racine du chantier. La couche 3 du témoin reste saturée, ce qui resserre la condition de Courant jusqu'à la troncature de la boucle de sous-pas ; les lois de drainage la désaturent et la boucle redevient régulière. La correction du drainage profond est donc aussi un correctif numérique, ce qui n'avait été ni prévu ni recherché.
+
+Structure des chemins de l'eau, moyenne des deux graines, contre les valeurs mesurées sur les hydrogrammes observés.
+
+| Case | Indice de base | Part de surface | Variation de la base | Nervosité rapide | Part de journée non traitée | Recharge |
+| --- | --- | --- | --- | --- | --- | --- |
+| témoin, libre | 0,387 | 0,493 | 0,155 | 2,633 | 0,101 | 216 mm |
+| témoin, contraint | 0,439 | 0,472 | 0,146 | 2,797 | 0,081 | 245 mm |
+| pile, libre | 0,289 | 0,275 | 0,611 | 2,477 | 0,007 | 204 mm |
+| pile, contrainte | 0,286 | 0,282 | 0,615 | 2,488 | 0,007 | 202 mm |
+| observé | 0,540 | — | 0,680 | 2,045 | — | — |
+
+Le partage est net et va dans les deux sens. Le témoin s'approche mieux de la PART souterraine du débit, 0,39 à 0,44 contre 0,29 pour la pile, là où les hydrogrammes en donnent 0,54. La pile s'approche mieux de tout le reste : la variation de l'écoulement de base, 0,61 contre 0,15 pour 0,68 mesuré, la nervosité de la composante rapide, et la troncature, réduite de 0,10 à 0,007. Le témoin produit donc beaucoup d'eau de base qui ne respire pas, ce qui est la signature d'un réservoir alimenté par une recharge plate.
+
+La contrainte sur les puits est INERTE sur la physique corrigée, qui ne bouge pas de trois millièmes entre la case libre et la case contrainte, et elle déplace le témoin, dont l'indice de base monte de 0,387 à 0,439 et la troncature descend de 0,101 à 0,081. Une contrainte n'agit que là où il y a quelque chose à corriger ; c'est le comportement attendu, mais il ne se paie pas en débit de façon mesurable, contrairement à ce qui avait été avancé en cours de journée sur la seule première graine.
+
+Portée. Un seul territoire, huit époques, un seul point de départ. Le transfert au Saint-Laurent nord-ouest est en cours au taux de 1e-5, où la dispersion s'annule sur l'Outaouais, avec une passe supplémentaire pour vérifier que ce déterminisme vaut aussi pour la configuration témoin, la seule dont il n'ait pas été montré.
