@@ -8,10 +8,17 @@ plafond uniforme ne peut donc pas la reproduire, et il faut savoir si les covari
 disponibles le prédisent avant d'en faire un paramètre du champ spatial.
 
 Le test est délibérément simple et il porte sur une grandeur OBSERVÉE, non sur un paramètre
-ajusté : la part de variance de l'indice expliquée par la géologie du socle et les dépôts, en
-validation croisée par blocs spatiaux pour ne pas se laisser tromper par l'autocorrélation.
-Une part nulle ou négative signifie que ces covariables ne sont pas les bonnes, et non que le
-plafond doit rester uniforme.
+ajusté : l'erreur de prédiction de l'indice par les covariables, chaque territoire étant prédit
+par un modèle ajusté sur les AUTRES. Une erreur au niveau de celle du témoin, qui prédit la
+moyenne des autres territoires, signifie que ces covariables ne sont pas les bonnes, et non que
+le plafond doive rester uniforme.
+
+La mesure est l'ERREUR, pas la part de variance expliquée. Celle-ci rapporte le résidu à la
+dispersion du territoire testé : là où les stations se ressemblent, le dénominateur s'effondre
+et le chiffre part très bas pour une erreur minuscule. Le piège est tombé le 2026-09-19, où
+deux territoires d'une et de deux stations dominaient la moyenne et faisaient conclure que la
+géologie du socle prédisait l'indice ; sur l'erreur, elle ne le prédit pas. Les territoires
+sous `--minimum` stations sont donc écartés du bilan.
 
     .venv/bin/python .runs/quebec/identifiabilite_indice_base.py outv slno --cache <suffixe>
 """
@@ -124,8 +131,33 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
     return pd.DataFrame(lignes).reset_index(drop=True)
 
 
+def erreur_hors_bloc(X, y, blocs, graine=0, evalue=None):
+    """Erreur absolue moyenne hors bloc, et celle du témoin qui prédit la moyenne du reste.
+
+    `evalue` restreint le bilan à ce seul bloc, les autres ne servant qu'à l'ajustement.
+    """
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    erreurs, temoins = [], []
+    for b in np.unique(blocs):
+        if evalue is not None and b != evalue:
+            continue
+        ap, te = blocs != b, blocs == b
+        if te.sum() == 0 or ap.sum() < 5:
+            continue
+        # min_samples_leaf VAUT 20 PAR DEFAUT : voir la note de part_expliquee plus bas.
+        m = HistGradientBoostingRegressor(max_depth=2, max_iter=120, random_state=graine,
+                                          min_samples_leaf=3, l2_regularization=1.0)
+        m.fit(X[ap], y[ap])
+        erreurs.append(np.abs(y[te] - m.predict(X[te])))
+        temoins.append(np.abs(y[te] - y[ap].mean()))
+    if not erreurs:
+        return np.nan, np.nan
+    return float(np.concatenate(erreurs).mean()), float(np.concatenate(temoins).mean())
+
+
 def part_expliquee(X, y, blocs, graine=0):
-    """Part de variance expliquée hors bloc, par un gradient boosté peu profond."""
+    """Part de variance expliquée hors bloc. NE PAS LIRE SEULE : voir l'en-tête du module."""
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     residus, total = [], []
@@ -153,6 +185,7 @@ def main():
     p.add_argument("--cache", default="finale-n2")
     p.add_argument("--ponctuel", action="store_true", help="attribut du seul tronçon de la station")
     p.add_argument("--sources", nargs="+", default=["sigeom-geologie-socle"])
+    p.add_argument("--minimum", type=int, default=15, help="stations minimales pour qu'un territoire compte")
     a = p.parse_args()
     morceaux = []
     for reg in [r.lower() for r in a.regions]:
@@ -169,21 +202,34 @@ def main():
     if not morceaux:
         return 1
     t = pd.concat(morceaux, ignore_index=True).dropna()
+    gros = t.region.value_counts()
+    garde = gros[gros >= a.minimum].index
+    if len(garde) < 2:
+        print(f"moins de deux territoires atteignent {a.minimum} stations : rien a transferer")
+        return 1
+    ecartes = sorted(set(t.region) - set(garde))
+    t = t[t.region.isin(garde)].reset_index(drop=True)
     cols = [c for c in t.columns if "__" in c]
-    print(f"{len(t)} stations, {len(cols)} attributs")
-    print(f"indice observé : médiane {t.indice_base.median():.2f}, "
-          f"étendue {t.indice_base.min():.2f} à {t.indice_base.max():.2f}")
-    # Blocs spatiaux : un par région, plus un découpage en deux par la médiane de l'indice
-    # de station pour ne pas prédire par la seule appartenance régionale.
+    print(f"{len(t)} stations, {len(garde)} territoires, {len(cols)} attributs"
+          + (f" | ecartes faute de {a.minimum} stations : {', '.join(ecartes)}" if ecartes else ""))
+    print(f"indice observe : mediane {t.indice_base.median():.2f}, "
+          f"etendue {t.indice_base.min():.2f} a {t.indice_base.max():.2f}, "
+          f"ecart-type {t.indice_base.std():.3f}")
+    y = t.indice_base.to_numpy()
+    X = t[cols].to_numpy()
     blocs = t.region.astype("category").cat.codes.to_numpy()
-    r2 = part_expliquee(t[cols].to_numpy(), t.indice_base.to_numpy(), blocs)
-    print(f"part de variance expliquée hors bloc, blocs = territoires : {r2:+.2f}")
-    if len(t) >= 20:
-        rng = np.random.default_rng(0)
-        alea = rng.integers(0, 4, size=len(t))
-        r2b = part_expliquee(t[cols].to_numpy(), t.indice_base.to_numpy(), alea)
-        print(f"part de variance expliquée hors bloc, blocs aléatoires  : {r2b:+.2f}")
-    print("\nUne part nulle ou négative dit que ces covariables ne prédisent pas l'indice,")
+    err, temoin = erreur_hors_bloc(X, y, blocs)
+    print(f"erreur du temoin, moyenne des autres territoires : {temoin:.3f}")
+    print(f"erreur avec les covariables : {err:.3f}, soit {100 * (1 - err / temoin):+.0f} %")
+    print("detail par territoire, chacun predit par un modele ajuste sur les autres :")
+    for reg in sorted(t.region.unique()):
+        te = (t.region == reg).to_numpy()
+        # Seul le territoire tenu de cote est evalue : un decoupage en deux blocs moyennerait
+        # aussi la prediction du reste par ce territoire, qui ne repond pas a la question.
+        e, w = erreur_hors_bloc(X, y, np.where(te, 0, -1), evalue=0)
+        print(f"  {reg:6s} {te.sum():3d} stations | indice median {np.median(y[te]):.2f}"
+              f" | erreur {e:.3f} contre {w:.3f}")
+    print("Une erreur au niveau du temoin dit que ces covariables ne predisent pas l'indice,")
     print("non que le plafond doive rester uniforme.")
     return 0
 
