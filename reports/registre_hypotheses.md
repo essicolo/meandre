@@ -2203,3 +2203,32 @@ L'humidité lidar, qui décrit la topographie, n'apporte presque rien, ce qui es
 **Correction d'un résultat annoncé deux heures plus tôt.** Sur 25 stations d'un seul territoire, le même test donnait -0,48 à -0,04 selon la source. Ce n'était pas un vrai zéro mais un manque de puissance, signalé alors comme réserve sans que son ampleur soit mesurée. Deux pièges ont été levés au passage. Le réglage par défaut du modèle de régression exige vingt échantillons par feuille : avec 25 stations il ne pouvait faire aucune coupure et rendait exactement zéro pour toute covariable, valeur trop propre pour être vraie. Et l'attribut était d'abord pris sur le seul tronçon portant la station au lieu de son bassin amont.
 
 Réserves. Cent stations pour quatorze à trente-neuf attributs reste modeste. Les dépôts de surface, qui limitent la percolation davantage que le socle, ne sont pas ingérés pour ces territoires. Et l'indice d'écoulement de base dépend aussi du climat et de la taille du bassin, non contrôlés ici.
+
+---
+
+## R140 — La contrainte sur les niveaux de nappe améliore le débit quand la physique peut la satisfaire, et le dégrade sinon (2026-09-20) — ÉTABLI
+
+Quatre bras sur l'Outaouais, douze puits recevables, même point de départ à chaud, huit époques chacun, un pas d'optimisation par bloc. Croisement de la pile de corrections du sol et de la contrainte sur les niveaux mesurés.
+
+| | Référence | Témoin libre | Témoin contraint | Pile libre | Pile contrainte | Observé |
+| --- | --- | --- | --- | --- | --- | --- |
+| KGE médian tenu de côté | 0,654 | 0,620 | 0,560 | 0,597 | **0,706** | — |
+| Indice d'écoulement de base | 0,098 | 0,082 | 0,006 | 0,047 | 0,313 | 0,58 |
+| Part de ruissellement de surface | 0,863 | 0,538 | 0,560 | 0,549 | 0,241 | — |
+| Variation relative de la base | 0,309 | 0,157 | 0,105 | 0,637 | 0,545 | 0,62 |
+| Nervosité de la composante rapide | 2,609 | 2,260 | 2,064 | 2,281 | 2,486 | 2,13 |
+| Recharge annuelle | 55 mm | 45 | 3 | 35 | 229 | — |
+| Mois de recharge maximale | août | mai | juin | avril | avril | — |
+| Part de journée non traitée | 0,320 | 0,059 | 0,091 | 0,061 | 0,028 | — |
+| Battement de nappe | — | — | — | 0,179 m | 0,774 m | 1,02 m |
+| Écart-type du débit, rapporté | 1,000 | 1,055 | 1,112 | 1,082 | 1,159 | — |
+
+**L'interaction est le résultat.** Contraindre le témoin le dégrade sur tout : le KGE tombe de 0,620 à 0,560, la recharge de 45 à 3 mm par an, l'indice de base de 0,082 à 0,006. Le modèle ne peut pas satisfaire une demande de dynamique de nappe avec un aquifère affamé, alors il sacrifie le débit sans rien gagner, les deux objectifs se combattant.
+
+Contraindre la physique corrigée fait l'inverse et sur tout : le KGE monte de 0,597 à 0,706, l'indice de base de 0,047 à 0,313, la recharge de 35 à 229 mm par an, le battement de nappe de 0,18 à 0,77 m, et le ruissellement de surface tombe à 0,24. Ce point DÉPASSE la référence d'origine de cinq centièmes sur le débit tenu de côté, avec une structure des chemins de l'eau incomparablement meilleure.
+
+C'est la démonstration complète de la thèse d'identifiabilité du projet : une observation indépendante améliore la prédiction quand le modèle a la physique pour la satisfaire, et la dégrade quand il ne l'a pas. Le complément de la mesure du 2026-09-19, où l'optimisation sur le débit seul détruisait les chemins de l'eau.
+
+**Effectif de puits déterminant.** Au Saint-Laurent nord-ouest, qui ne compte que six puits recevables pour 3 362 tronçons, les deux bras contraints rendent EXACTEMENT les mêmes chiffres que les libres, 0,6977 et 0,6470. Six puits ne contraignent pas un champ spatial ; douze le font basculer. C'est une contrainte de conception pour toute future application du terme.
+
+Réserves. Un seul territoire pour l'effet positif, huit époques, et l'Outaouais porte par ailleurs une pathologie de routage. La recharge de 229 mm par an et l'indice de base de 0,313 restent en deçà des 0,58 mesurés. Le battement de nappe atteint les trois quarts du mesuré.
