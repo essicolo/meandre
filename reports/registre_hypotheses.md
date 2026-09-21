@@ -2829,4 +2829,6 @@ ESPACE : non identifiable. 3412 tronçons pour 16 stations de débit, soit 213 t
 
 PARAMÈTRES : non identifiables séparément. Les puits donnent la présence et la phase, et les anomalies interannuelles ne répondent à aucun paramètre d'aquifère.
 
+CE QUE LE FILTRE NE PEUT PAS FAIRE, et c'est une borne sur tout le chantier. Il attribue au débit de base 70 pour cent de l'écoulement hypodermique du modèle. Il ne distingue donc PAS les deux chemins lents que le travail des 18 et 19 septembre a séparés dans la colonne : un modèle qui mettrait tout dans l'hypodermique et rien dans la nappe obtiendrait le même indice, pourvu que les constantes de temps y soient. L'indice d'écoulement de base identifie la partition entre RAPIDE et LENT, pas celle entre hypodermique et souterrain. Pour cette dernière, seuls les niveaux de puits voient la nappe elle-même, et il est établi qu'ils n'en donnent que la présence et la phase.
+
 CE QUE CELA PERMET. Pour prédire l'effet d'un prélèvement sur un étiage, la phase et l'ordre de grandeur suffisent probablement, puisque ce qui décide est la variation RELATIVE du soutien d'étiage et non la valeur absolue de la recharge. Pour publier une carte de recharge, non : ni le niveau à mieux qu'un facteur et demi, ni la répartition spatiale ne sont tenus par les observations dont nous disposons.
