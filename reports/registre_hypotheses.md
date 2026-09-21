@@ -2425,3 +2425,24 @@ L'exposant désigne une forme précise, et c'est celle qui est déjà implément
 Ce que le test ne dit pas. Les 28 % d'étalement résiduel restent compatibles avec un second temps de séjour, ou avec un exposant qui varie avec le débit ; le départager demande une autre épreuve. Et la sortie latérale profonde réglée à trois jours vit SOUS la plage des récessions mesurées, dont la borne rapide est de huit à onze jours : cette analyse ne la contraint pas.
 
 La Montérégie fait exception sur les deux plans, exposant de 1,31 et étalement de 2,4 seulement. C'est le territoire drainé et cultivé, dont le drain agricole convertit un interflux lent en chemin rapide à seuil. Le comportement mesuré est cohérent avec ce mécanisme.
+
+---
+
+## R148 — Les contraintes auxiliaires coûtent trois centièmes de KGE et divisent par quatre la dispersion entre tirages (2026-09-20) — ÉTABLI
+
+Sonde du correctif livré le même jour, qui rend leur gradient aux quatre contraintes auxiliaires. Configuration strictement identique de part et d'autre : témoin de l'Outaouais, taux 1e-5, huit époques, un pas par bloc, deux graines. Le seul changement est que l'évapotranspiration MODIS, la neige CanSWE, les niveaux du réseau de puits et la gravimétrie GRACE transmettent enfin leur gradient, au lieu de garder une valeur affichée sans effet.
+
+| | Contraintes inertes | Contraintes actives |
+| --- | --- | --- |
+| graine 1234 | 0,7315 | 0,7082 |
+| graine 7 | 0,7456 | 0,7046 |
+| moyenne | 0,7386 | 0,7064 |
+| dispersion entre graines | 0,0141 | **0,0036** |
+
+Deux lectures, et la seconde n'était pas attendue.
+
+Les contraintes coûtent 0,032 de KGE sur le débit tenu de côté. L'écart dépasse les deux dispersions et se lit donc, pour la première fois de ce chantier. Il est du signe attendu : une contrainte qui porte sur l'évapotranspiration, le manteau, les niveaux de nappe et le stock total d'eau retire des degrés de liberté au débit, et l'optimiseur ne peut plus l'ajuster aussi librement. Juger ces données sur le KGE serait donc les juger sur le critère qu'elles sont faites pour contredire.
+
+Elles DIVISENT PAR QUATRE la dispersion entre tirages, de 0,0141 à 0,0036. C'est le résultat utile. Le même protocole, le même taux, le même point de départ, et un résultat quatre fois plus reproductible dès que quatre observations indépendantes du débit entrent dans la perte. Une fonction objectif qui ne regarde que le débit laisse l'optimiseur choisir entre des solutions équivalentes selon le tirage ; ajouter des observations qui distinguent ces solutions referme cette liberté. C'est l'identifiabilité mesurée directement, sur la reproductibilité plutôt que sur la performance.
+
+Conséquence de protocole, qui renverse une consigne posée le matin même. La reproductibilité d'un affinage ne s'obtient pas seulement en baissant le pas d'optimisation, elle s'obtient aussi en contraignant davantage. Les deux leviers agissent, et le second est celui qui a un sens physique.
