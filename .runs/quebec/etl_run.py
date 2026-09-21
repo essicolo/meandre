@@ -484,8 +484,7 @@ if _profile is not None:
     print(f"[etl] profil de sol declare : {_profile.layers} couches, "
           f"{len(_profile.processes)} processus")
     for _pr in _profile.processes:
-        print(f"[etl]   couche {_pr.layer} {_pr.kind} {_pr.form} {_pr.params}"
-              + (f" plafond {_pr.ceiling:.3e} m/h" if _pr.ceiling is not None else ""))
+        print(f"[etl]   {_pr.decrire()}")
 
 if "ETL_L3_TAU" in os.environ:
     # Drainage de l'eau gravitaire de la couche 3, en JOURS. Remplace la loi fidele, dont

@@ -144,3 +144,21 @@ def test_une_section_soil_sans_processus_ne_declare_aucun_profil():
     avec = sp.from_toml({"hydrotel_calib_dir": "/quelque/part", "layers": 3,
                          "process": [{"layer": 2, "kind": "lateral", "form": "BASE_LINEAR"}]})
     assert avec is not None and len(avec.processes) == 1
+
+
+def test_la_description_supporte_les_deux_types_de_plafond():
+    """Le formatage vit dans le module et non dans le pilote, qu'aucun test ne couvre.
+
+    Une première version imprimait le plafond avec un format numérique, ce qui plante dès
+    qu'il nomme une sortie du champ spatial. Deux passes perdues le 2026-09-21.
+    """
+    nombre = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
+                            params={"tau": 48.0}, ceiling=1.25e-4)
+    nomme = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
+                           params={"tau": 48.0}, ceiling="k_sub")
+    sans = sp.SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR")
+    assert "1.250e-04" in nombre.decrire()
+    assert "k_sub" in nomme.decrire() and "champ spatial" in nomme.decrire()
+    assert "plafond" not in sans.decrire()
+    for proc in (nombre, nomme, sans):
+        assert isinstance(proc.decrire(), str) and proc.decrire()

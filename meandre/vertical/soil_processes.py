@@ -125,6 +125,24 @@ class SoilProcess:
         if self.layer < 1:
             raise ValueError("les couches sont numerotees a partir de 1")
 
+    def decrire(self) -> str:
+        """Une ligne lisible dans un journal, quel que soit le type du plafond.
+
+        Le formatage vit ICI et non dans le pilote : une premiere version imprimait le
+        plafond avec un format numerique, ce qui plante des qu'il nomme une sortie du champ
+        au lieu de porter un nombre. Le defaut a coute deux passes le 2026-09-21, dans un
+        script qu'aucun test ne couvre. Sous test, il ne peut plus se reproduire.
+        """
+        bout = f"couche {self.layer} {self.kind} {self.form}"
+        if self.params:
+            bout += " " + " ".join(f"{k}={v:g}" if isinstance(v, (int, float)) else f"{k}={v}"
+                                   for k, v in sorted(self.params.items()))
+        if self.ceiling is None:
+            return bout
+        if isinstance(self.ceiling, str):
+            return f"{bout} | plafond pris du champ spatial : {self.ceiling}"
+        return f"{bout} | plafond {float(self.ceiling):.3e} m/h"
+
     def resolved(self, fields: dict):
         """Remplace les valeurs SYMBOLIQUES par les tenseurs du champ spatial.
 
