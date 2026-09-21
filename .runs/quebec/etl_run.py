@@ -99,7 +99,14 @@ if "ETL_WSNOW" in os.environ:
               "CanSWE. Mettre ETL_WSNOW=0 tant que la cible n'est pas CanSWE (masse) "
               "plutot que MOD10 (couverture).")
 for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", "w_pbias"),
-                   ("ETL_WLOGMSE", "w_log_mse"), ("ETL_WPEAK", "w_peak")):
+                   ("ETL_WLOGMSE", "w_log_mse"), ("ETL_WPEAK", "w_peak"),
+                   # KGE DECOMPOSE (2026-09-20). Porte entier, le KGE melange calendrier,
+                   # volume et amplitude en un nombre, et l'optimiseur ne peut pas choisir
+                   # lequel reduire. Separes, les trois facteurs recoivent chacun leur poids.
+                   # A cinq termes contre cinq, le banc de redondance mesure 2,8 % de manque
+                   # moyen pour la version decomposee contre 14,2 % pour la recette en
+                   # vigueur, dont l'angle mort principal, 48,2 %, est le soutien d'etiage.
+                   ("ETL_WR", "w_r"), ("ETL_WBETA", "w_beta"), ("ETL_WGAMMA", "w_gamma")):
     # Poids des termes de debit, exposes le 2026-09-05 : le balayage de neuf pertes du
     # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
     # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle
