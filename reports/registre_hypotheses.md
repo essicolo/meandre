@@ -2554,3 +2554,30 @@ La conséquence se voit sur la recette entière. Une erreur de calendrier d'un j
 La leçon de méthode vaut plus que le réglage. Une sensibilité RELATIVE ne se compare pas entre termes dont les valeurs de référence diffèrent de plusieurs ordres de grandeur ; c'est la variation absolue qui décide, et il faut la rapporter à celle d'une erreur qu'on ne peut pas éliminer, ici le décalage d'une journée qu'impose la résolution du forçage.
 
 Réserve. La sensibilité n'est pas tout : un terme très sensible peut aussi être bruité, et ce banc ne mesure pas son rapport signal sur bruit entre stations. Il dit ce qu'un terme peut voir, pas ce qu'il peut apprendre.
+
+---
+
+## R152 — La contrainte sur les puits coûte au modèle de référence et rapporte à la physique corrigée : l'interaction est lisible (2026-09-20) — ÉTABLI
+
+Reprise du carré du matin après le correctif qui rend leur gradient aux contraintes auxiliaires. Huit passes sur l'Outaouais, quatre cases croisant la pile de corrections du drainage profond et la contrainte sur les niveaux de puits, deux graines par case, taux 1e-5, huit époques, un pas d'optimisation par bloc, tout identique par ailleurs. C'est la première fois que ce croisement mesure quelque chose : le matin même, le terme de contrainte gardait sa valeur sans produire de gradient, et son axe était mort.
+
+| Case | KGE médian tenu de côté | Dispersion entre graines |
+| --- | --- | --- |
+| témoin, libre | 0,7064 | 0,0036 |
+| témoin, contraint | 0,6903 | 0,0011 |
+| pile, libre | 0,6895 | 0,0003 |
+| pile, contrainte | 0,6936 | 0,0005 |
+
+| Effet | Valeur | Contre un seuil de 0,0036 |
+| --- | --- | --- |
+| contrainte sur le témoin | −0,0162 | lisible, 4,5 fois |
+| contrainte sur la pile | +0,0041 | à la limite, 1,1 fois |
+| INTERACTION | **+0,0203** | lisible, 5,6 fois |
+| effet moyen de la pile | −0,0068 | lisible, 1,9 fois |
+| effet moyen de la contrainte | −0,0060 | lisible, 1,7 fois |
+
+L'interaction est le résultat, et elle était l'hypothèse posée au départ du chantier. La contrainte sur les niveaux de puits COÛTE seize millièmes de KGE au modèle de référence et lui en RAPPORTE quatre à la physique corrigée. Une contrainte n'est gratuite que là où la physique peut la satisfaire ; là où elle ne le peut pas, le débit paie pour elle. Le modèle de référence n'a pas de nappe qui respire, donc suivre des niveaux mesurés l'oblige à déformer ce qu'il sait faire ; la colonne corrigée les suit sans rien sacrifier, et y gagne même un peu.
+
+Les effets moyens sont lisibles mais faibles, moins de deux fois le bruit, et il ne faut pas les surinterpréter : la pile coûte sept millièmes en moyenne, la contrainte six. Le chantier ne se justifie pas par le débit, il ne l'a jamais fait, et ces deux chiffres disent seulement qu'il ne le détruit pas.
+
+La reproductibilité par case mérite d'être lue à part. Les quatre cases se répliquent entre trois dixièmes de millième et trois millièmes et demi, là où le même croisement à 3e-5 avec les contraintes inertes donnait jusqu'à soixante-huit millièmes. Deux leviers y concourent, le pas d'optimisation abaissé et les observations auxiliaires qui referment les libertés de l'optimiseur, et la case la plus reproductible du carré est celle qui porte à la fois la physique corrigée et la contrainte.
