@@ -2789,3 +2789,29 @@ La recette en vigueur demande presque exclusivement de monter les crues et ne to
 Les poids comptent donc plus que la décomposition. Les deux recettes décomposées portent les mêmes termes et ne diffèrent que par leurs poids, et l'une pousse dans le mauvais sens quand l'autre pousse dans le bon.
 
 LEÇON DE MÉTHODE, et c'est la plus importante de la journée. Six entraînements de huit époques, trois heures de carte, avaient été mis en file pour cette question. Une passe avant-arrière y répond, et mieux : elle donne la DIRECTION du gradient, là où un entraînement n'aurait donné qu'un point d'arrivée mêlant la direction, le pas et la capacité du modèle à suivre. La règle du projet le disait déjà, un test rapide vaut mieux qu'un long, et je l'ai appliquée après avoir lancé la flotte au lieu d'avant.
+
+---
+
+## R162 — La recharge est identifiable en PHASE et en ordre de grandeur, pas en valeur ni en répartition spatiale (2026-09-21) — ÉTABLI
+
+Question d'Essi : la recharge est-elle identifiable. Elle n'a pas de réponse unique, la recharge ayant quatre facettes qui n'ont pas le même sort. Mesure sur l'Outaouais, physique corrigée, en s'appuyant sur l'hypothèse qu'une collègue formule ainsi : à l'échelle d'une station hydrométrique, toute la recharge finit par faire résurgence en débit de base.
+
+VOLUME : identifiable à un facteur 1,6 près, et le modèle est sous la borne basse.
+
+| Source | Lame de recharge |
+| --- | --- |
+| modèle, physique corrigée | 206 mm/an |
+| observation, filtre d'Eckhardt à 0,50 | 287 mm/an |
+| observation, Lyne et Hollick | 335 mm/an |
+| observation, Eckhardt à 0,65 | 370 mm/an |
+| observation, Eckhardt à 0,80 | 454 mm/an |
+
+Le seul choix du filtre étale l'estimation d'un facteur 1,58. Le modèle produit 28 pour cent de moins que la borne la plus conservatrice. RÉSERVE sur ce calcul : faute d'une aire de drainage dans le cache, l'indice observé est appliqué à la lame écoulée du MODÈLE, si bien qu'un biais de volume du modèle se propage à l'estimation. L'ordre de grandeur tient, le chiffre exact non.
+
+PHASE : identifiable, et c'est ce que les puits achètent. Le cycle simulé culmine en avril à 24,7 pour cent du total annuel et creuse en août à 3,2, soit un rapport de huit entre le mois fort et le mois faible. Il avait été établi que les puits identifient fortement la PRÉSENCE des mécanismes et leur phase, et faiblement la valeur des paramètres : c'est exactement la facette qu'ils contraignent, et la seule.
+
+ESPACE : non identifiable. 3412 tronçons pour 16 stations de débit, soit 213 tronçons par observation, et aucune covariable disponible ne prédit la variation intra-territoriale de l'écoulement de base. La dispersion de 0,23 que le champ produit n'est contrainte par rien et suit la position.
+
+PARAMÈTRES : non identifiables séparément. Les puits donnent la présence et la phase, et les anomalies interannuelles ne répondent à aucun paramètre d'aquifère.
+
+CE QUE CELA PERMET. Pour prédire l'effet d'un prélèvement sur un étiage, la phase et l'ordre de grandeur suffisent probablement, puisque ce qui décide est la variation RELATIVE du soutien d'étiage et non la valeur absolue de la recharge. Pour publier une carte de recharge, non : ni le niveau à mieux qu'un facteur et demi, ni la répartition spatiale ne sont tenus par les observations dont nous disposons.
