@@ -6,9 +6,10 @@ ne gouverne pas la conductivité d'un till, la compaction le fait, et elle n'est
 nulle part. Avec 3412 tronçons pour 16 stations et 27 puits sur l'Outaouais, une variation
 libre par nœud n'est pas identifiable : elle est ajustée.
 
-Le prior traite donc ce paramètre autrement que krec et k_gw, dont seule la moyenne est
-ancrée. Il ancre la moyenne ET fait coûter la dispersion, ce qui est un rétrécissement et non
-un gel : la variation reste possible, elle n'est plus gratuite.
+Le prior traite donc ce paramètre COMME krec et k_gw : il ancre la moyenne en espace
+logarithmique et laisse la variation spatiale libre. Une première version y ajoutait un terme
+de variance, retiré le jour même : c'est la forme que la revue du 2026-07-01 a diagnostiquée
+comme la cause du collapse du champ, et un test interdit désormais son retour.
 """
 import math
 
@@ -53,8 +54,14 @@ def test_la_moyenne_est_ancree():
         assert loin > ref + 0.05, f"un plafond {facteur} fois la reference doit couter"
 
 
-def test_la_dispersion_coute_meme_a_moyenne_juste():
-    """Le point qui distingue ce prior de celui de krec."""
+def test_la_dispersion_spatiale_NE_coute_PAS():
+    """Le point qui a failli casser le champ, et que la revue du 2026-07-01 avait déjà tranché.
+
+    Pénaliser la variance spatiale est structurellement anti-NeRF : `((p - c)**2).mean()` se
+    décompose en biais de moyenne au carré PLUS variance, et c'est la cause mathématique du
+    collapse de k_gw, f_vert, vg_n et frost_alpha. Une première version de ce prior ajoutait
+    ce terme ; il est retiré, et ce test interdit son retour.
+    """
     net = _reseau()
     n = 64
     uniforme = torch.full((n,), KSUB_REF)
@@ -62,17 +69,8 @@ def test_la_dispersion_coute_meme_a_moyenne_juste():
     disperse = torch.tensor([KSUB_REF * (3.0 if i % 2 else 1 / 3.0) for i in range(n)])
     a = float(net.physical_prior_loss(_params(net, uniforme)))
     b = float(net.physical_prior_loss(_params(net, disperse)))
-    assert b > a + 0.1, "une variation gratuite doit desormais couter"
-
-
-def test_le_poids_regle_la_force_du_retrecissement():
-    n = 64
-    disperse = torch.tensor([KSUB_REF * (3.0 if i % 2 else 1 / 3.0) for i in range(n)])
-    faible = _reseau(poids=0.1)
-    fort = _reseau(poids=1.0)
-    a = float(faible.physical_prior_loss(_params(faible, disperse)))
-    b = float(fort.physical_prior_loss(_params(fort, disperse)))
-    assert b > a, "un poids plus grand doit retrecir davantage"
+    assert b == pytest.approx(a, abs=1e-6), (
+        "la variation spatiale doit rester GRATUITE : seule la moyenne est ancree")
 
 
 def test_le_prior_reste_derivable():

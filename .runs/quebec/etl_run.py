@@ -780,12 +780,14 @@ if os.environ.get("ETL_KREC_LIBRE", "0") == "1" and "ETL_KREC_GEL" not in os.env
     print("[etl] krec APPRIS par le champ, moyenne ancree par le prior physique "
           "(cible 2e-5 m/h, ~34 % de debit de base ; le calage Hydrotel donne 1.3e-7)")
 
-# PLAFOND DE PERCOLATION : moyenne ancree ET variation RETRECIE. Laisse libre, ce plafond
-# apprend un motif positionnel, sa variation etant expliquee a 0,67 par les seules coordonnees
-# et a 0,30 par la texture (mesure du 2026-09-21). La granulometrie ne gouverne pas la
-# conductivite d'un till, la compaction le fait, et aucune carte provinciale ne la porte. Avec
-# 3412 troncons pour 16 stations et 27 puits, une variation libre par noeud est ajustee et non
-# identifiee : ETL_KSUB_PRIOR la fait donc couter, sans l'interdire.
+# PLAFOND DE PERCOLATION : moyenne ancree, comme krec et k_gw. La variation spatiale reste
+# LIBRE, et c'est une decision du projet et non un oubli : penaliser la variance du champ est
+# la cause mathematique du collapse diagnostique le 2026-07-01. Mesure du 2026-09-21 : laisse
+# libre, ce plafond apprend un motif positionnel, sa variation etant expliquee a 0,67 par les
+# seules coordonnees et a 0,30 par la texture, parce que la granulometrie ne gouverne pas la
+# conductivite d'un till. Le remede n'est pas d'ecraser la variance mais de tenir ce plafond
+# UNIFORME, par la valeur constante d'un profil declare, tant qu'aucune observation ne
+# l'identifie.
 if os.environ.get("ETL_KSUB_PRIOR", "0") != "0":
     model.spatial_encoder.prior_on_k_sub = True
     model.spatial_encoder.poids_k_sub = float(os.environ["ETL_KSUB_PRIOR"])

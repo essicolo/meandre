@@ -1105,28 +1105,20 @@ class SpatialFieldNetwork(nn.Module):
             loss = loss + ((torch.log(params.krec + 1e-12).mean()
                             - math.log(tg("krec", KREC_REF))) ** 2) * 0.3
 
-        # PLAFOND DE PERCOLATION DU SUBSTRATUM : ancrage de la moyenne ET RÉTRÉCISSEMENT
-        # de la variation spatiale. Opt-in par `prior_on_k_sub`, force par `poids_k_sub`.
+        # PLAFOND DE PERCOLATION DU SUBSTRATUM : ancrage de la MOYENNE SEULE, comme krec
+        # et k_gw. Opt-in par `prior_on_k_sub`.
         #
-        # Pourquoi un traitement différent de krec et de k_gw, dont seule la moyenne est
-        # ancrée. Mesuré le 2026-09-21 : laissée libre, la variation apprise de ce plafond
-        # est expliquée à 0,67 par les seules coordonnées et à 0,30 par la texture. Le champ
-        # apprend un motif POSITIONNEL, ce qui est le comportement attendu d'un encodage de
-        # position libre devant un descripteur faible. Et il l'est : la granulométrie ne
-        # gouverne pas la conductivité d'un till, la compaction le fait, et elle n'est
-        # cartographiée nulle part à l'échelle provinciale.
-        #
-        # L'arithmétique de l'identifiabilité dit le reste. Sur l'Outaouais, 3412 tronçons
-        # pour 16 stations de débit et 27 puits : une variation libre par nœud n'est pas
-        # identifiable, elle est ajustée. Le second terme fait donc COÛTER la dispersion, de
-        # sorte que le plafond reste quasi uniforme sauf là où une observation la réclame.
-        # C'est un rétrécissement au sens statistique, pas un gel : la variation reste
-        # possible, elle n'est plus gratuite.
+        # UNE PREMIÈRE VERSION AJOUTAIT UN TERME DE VARIANCE SPATIALE, retiré le jour même.
+        # C'était exactement la forme que la revue du 2026-07-01 a diagnostiquée et enlevée :
+        # `((p - c)**2).mean()` se décompose en (p_bar - c)² + Var(p), pénalise donc la
+        # différenciation du champ au même poids que le biais de moyenne, et c'est la cause
+        # mathématique du collapse de k_gw, f_vert, vg_n et frost_alpha. Le motif invoqué,
+        # 3412 tronçons pour 16 stations et 27 puits, est réel mais ne se traite PAS ainsi :
+        # la réponse du projet à un paramètre non identifiable est de le mesurer ailleurs ou
+        # de le tenir uniforme, jamais d'écraser la variance du champ.
         if getattr(self, "prior_on_k_sub", False) and hasattr(params, "k_sub"):
-            _lk = torch.log(params.k_sub + 1e-12)
-            _p = float(getattr(self, "poids_k_sub", 0.3))
-            loss = loss + ((_lk.mean() - math.log(tg("k_sub", KSUB_REF))) ** 2) * _p
-            loss = loss + _lk.var(unbiased=False) * _p
+            loss = loss + ((torch.log(params.k_sub + 1e-12).mean()
+                            - math.log(tg("k_sub", KSUB_REF))) ** 2)                 * float(getattr(self, "poids_k_sub", 0.3))
 
         # K_c (aligné sur la cible d'init, ex. 0.6 via [literature_prior])
         if hasattr(params, 'K_c'):
