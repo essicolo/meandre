@@ -2332,6 +2332,14 @@ Deux conséquences de portée inégale. Pour le protocole, toute comparaison de 
 
 Sur huit époques, cinq sont consommées par la montée en régime, malgré un départ à chaud. La note du projet affirmant que le départ à chaud saute la montée en régime ne décrit pas ce que fait le pilote régional.
 
+## R145 — La texture du sol prédit l'indice d'écoulement de base, la géologie du socle ne le fait pas (2026-09-20) — ÉTABLI MAIS FORTEMENT RESTREINT LE 2026-09-21
+
+RESTRICTION MAJEURE, qui change la conséquence opérationnelle et pas le chiffre. Le +27 % ci-dessous est mesuré en TRANSFERT entre territoires : chaque territoire est prédit par un modèle ajusté sur les autres. Ce protocole récompense l'information qui distingue les territoires, où le climat et la géologie grossière diffèrent aussi. Repris en validation croisée À L'INTÉRIEUR de chaque territoire, le même jeu de texture donne +5 % en moyenne : +24 en Outaouais, +11 au Saint-Laurent nord-ouest, +2 en Gaspésie, 0 au Saguenay et −19 en Montérégie.
+
+Or la dispersion de l'indice est à 63 % INTRA-territoriale, variance de 0,0040 contre 0,0023 entre territoires. C'est donc la part que la texture n'explique pas qui domine, et c'est exactement celle qu'un champ spatial doit reproduire. La texture ne convient pas comme base d'un plafond de percolation spatial.
+
+Remarque d'Essi, 2026-09-21, qui donne la raison physique : la granulométrie ne gouverne pas le drainage. Au Québec, deux tills de même texture peuvent différer de plusieurs ordres de grandeur en conductivité hydraulique selon leur COMPACTION, que le tamis ne voit pas. Le +27 % mesurait donc un proxy faible, et le champ spatial ne s'y est pas trompé : mis devant ce descripteur, il a préféré la position.
+
 ## R145 — La texture du sol prédit l'indice d'écoulement de base, la géologie du socle ne le fait pas (2026-09-20) — ÉTABLI
 
 L'indice d'écoulement de base, part du débit venant de la nappe, mesuré par le filtre de Lyne et Hollick sur les hydrogrammes OBSERVÉS de 95 stations réparties sur cinq territoires. Médiane 0,54, étendue 0,34 à 0,76, écart-type 0,079. Covariables moyennées sur le BASSIN AMONT de chaque station. Épreuve par transfert : chaque territoire est prédit par un modèle ajusté sur les quatre autres, donc aucune station de son voisinage.
@@ -2722,3 +2730,17 @@ Troisième question, la corrélation de rang entre plafond appris et indice d'é
 Conséquence pour le chantier, qui change de nature plutôt que de se fermer. Donner une sortie de plus au champ ne le fait pas se servir de la bonne information ; il faut la lui imposer. Deux voies, et la seconde est la plus propre. Ancrer le plafond appris à sa valeur prédite par la texture, au moyen d'un terme de prior comme il en existe déjà pour les paramètres de littérature. Ou faire prédire ce plafond par la TEXTURE SEULE, dans une tête séparée qui ne voit pas les coordonnées, ce qui est cohérent avec la mesure du 2026-09-20 : la texture explique la part souterraine à +27 % contre le témoin, et la position ne fait pas partie de ce qui la prédit.
 
 Sur le débit, la variante spatiale coûte 0,0055 de KGE contre la variante à plafond constant, 0,6862 contre 0,6917, cette dernière étant identique à quatre décimales sur ses deux graines. L'écart est petit et ne porte aucune conclusion : ce n'est pas sur le KGE que ce chantier se juge.
+
+---
+
+## R159 — Aucune covariable disponible ne prédit la variation INTRA-territoriale de l'écoulement de base : le chantier de spatialisation se referme (2026-09-21) — ÉTABLI
+
+Remarque d'Essi qui a ouvert la question : la granulométrie ne gouverne pas le drainage, deux tills de même texture pouvant différer de plusieurs ordres de grandeur en conductivité selon leur compaction, et l'IRDA possède des classes de drainage qui, elles, décrivent la structure.
+
+Ce que l'inventaire donne, et ce qu'il ne donne pas. Le rang de drainage de l'IRDA existe, il est ingéré au tronçon sur quinze territoires, et le registre le classait déjà comme la moins redondante des huit propriétés pédologiques, R² hors bloc de 0,37 contre 0,13 et 0,14 pour les coordonnées de texture. Mais sa COUVERTURE s'arrête au sud agricole : 92 % des tronçons couverts au Saint-Laurent sud-ouest, 50 % en Montérégie, 42 % en Outaouais, 19 à 21 % en Gaspésie, au Saguenay et au Saint-Laurent nord-ouest, et zéro à 4 % sur les neuf autres. La médiane provinciale de couverture est NULLE. Comme entrée d'un champ provincial, c'est inutilisable.
+
+Ce qu'il vaut là où il existe. Sur la Montérégie, seul territoire à la fois couvert et pourvu d'un cache apparié, validation croisée interne sur 22 stations : le drainage seul donne +4 % contre le témoin, les propriétés IRDA complètes +5 %, la texture IRDA −2 %, la perméabilité −6 %, la texture SIIGSOL −19 %. Le drainage est donc le meilleur des descripteurs disponibles, et son gain reste négligeable.
+
+Le verdict d'ensemble. La dispersion de l'indice d'écoulement de base est à 63 % intra-territoriale. Aucune covariable disponible ne prédit cette part : texture +5 % en moyenne interne et négative sur un territoire, drainage +4 % là où il existe, socle et relief déjà écartés. Le chantier de spatialisation du plafond de percolation par covariables se referme donc, et il se referme pour une raison physique et non par manque d'effort : la grandeur qui gouverne la conductivité d'un till est sa compaction, qui n'est cartographiée nulle part à l'échelle provinciale.
+
+Ce qu'il faut faire à la place. Quand le facteur de contrôle n'est pas cartographié, un descripteur faible vaut moins qu'un paramètre LIBRE par nœud contraint par des observations. Le dépôt possède déjà cette machinerie, l'effet aléatoire additif par nœud, qui est la meilleure recette déterministe connue, et deux observations pour le contraindre, les niveaux du réseau de puits et l'exposant de récession mesuré par territoire. C'est la voie honnête : cesser de prétendre prédire ce qu'aucune carte ne porte, et laisser les données de débit et de nappe l'identifier là où elles le peuvent.
