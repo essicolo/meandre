@@ -120,6 +120,32 @@ Prédiction posée d'avance, vérifiable sans passe supplémentaire puisque le p
 
 Ce qui reste ouvert. Le couplage par étranglement livré le 2026-09-19 n'a aucun effet tant que le drainage est lent, et n'a de sens qu'une fois le drainage gravitaire actif, où il empêchera la couche de se vider dans une nappe déjà haute. La corrélation des anomalies plafonne à 0,48 sans calage. Et l'identifiabilité spatiale de la porosité de drainage n'est toujours pas démontrée.
 
+## 5 ter. Spatialiser le plafond de percolation, et lui seul — OUVERT, la moitié est livrée
+
+Ouvert le 2026-09-20 après que la mesure eut coupé le chantier en deux.
+
+Ce qui est décidé par la mesure. Sur 95 stations de cinq territoires, chacun prédit par un modèle ajusté sur les AUTRES, la texture du sol explique la part souterraine du débit à +27 % contre le témoin qui prédit la moyenne, la géologie du socle à +3 % donc rien, le relief LiDAR à +11 %. Les six profondeurs de SIIGSOL sont redondantes : trois coordonnées d'une seule suffisent, et les empiler toutes ramène le gain à +17 %. Mais AUCUNE covariable ne prédit la dynamique : l'exposant de récession sort à −8 %, les temps de vidange à +3 % et −19 %. Les attributs de terrain disent combien d'eau passe par le souterrain, pas à quelle vitesse elle revient.
+
+Ce qui est livré. Le plafond de percolation du substratum est la quarante-troisième sortie du champ spatial, construite pour rendre exactement sa référence de 1 mm/jour à sortie brute nulle, donc sans effet sur un ancien point de reprise. Un profil de sol déclaré peut la nommer au lieu de donner un nombre, et le plafond devient une valeur par tronçon. Profil `pile-spatiale` dans `.runs/quebec/config/soil-profiles.toml`.
+
+Ce qui reste. Vérifier en entraînement que le champ apprend effectivement un plafond structuré par la texture, et non un plafond uniforme déguisé ; l'épreuve est le transfert entre territoires, pas le KGE. Décider ensuite du sort de l'exposant et des constantes de temps, qui restent uniformes faute de covariable : soit les laisser ainsi, soit les rendre libres par nœud et les contraindre par les niveaux de puits, qui identifient la présence et la phase du mécanisme sans en identifier les paramètres.
+
+Borne du gain, à dire d'avance : une prédiction PARFAITE de la part souterraine ferait passer l'erreur de transfert de 0,070 à 0,051, sur une grandeur dont l'écart-type vaut 0,080. Le chantier ne peut donc pas rapporter beaucoup, et c'est une raison de le garder petit.
+
+---
+
+## 5 quater. Fonction de perte : retirer la redondance — OUVERT, l'outil est livré
+
+Ouvert le 2026-09-20 sur une remarque d'Essi : la perte porte le KGE, l'écart quadratique et le biais, soit plusieurs fois la même information.
+
+Mesuré, sans aucune simulation, sur 32 stations et 9 déformations (`.runs/quebec/redondance_perte.py`) : huit termes de débit, mais trois directions indépendantes portent 90 % de leur variation. Le KGE est expliqué à 96,9 % par les autres, l'écart quadratique à 99,1 %, les pics à 98,5 %. Écart quadratique et pics corrèlent à 0,99 : ce sont pratiquement le même terme, pesant 0,1 et 0,5. Seuls le biais de volume et le soutien d'étiage sont distincts, et le soutien d'étiage, plus grand angle mort de la recette à 48,2 %, est à poids NUL. C'est la grandeur que le projet vise.
+
+Livré : `w_r`, `w_beta` et `w_gamma` portent séparément les trois facteurs du KGE, à poids nuls par défaut, exposés par le pilote. À nombre de termes égal, cinq contre cinq, la recette en vigueur laisse 14,2 % de manque moyen et la version décomposée 2,8 %.
+
+Reste : choisir la recette et la mesurer en entraînement. Candidat à égalité de termes, calendrier, volume, amplitude, soutien d'étiage, variations journalières. L'issue à énoncer d'avance : si la version décomposée ne change pas le tenu de côté mais réduit la dispersion entre tirages, elle est retenue, la reproductibilité étant le critère qui a servi pour les contraintes auxiliaires.
+
+---
+
 ## 6. Forçage climatique MRCC6 et scénarios
 
 Pourquoi. Le plan de travail prévoit une modélisation exploratoire selon des scénarios de prélèvements et de rejets. Le Modèle régional canadien du climat de sixième génération, développé à l'UQAM avec Ouranos, est la source régionale naturelle pour le Québec.
