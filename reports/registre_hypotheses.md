@@ -2829,6 +2829,16 @@ ESPACE : non identifiable. 3412 tronçons pour 16 stations de débit, soit 213 t
 
 PARAMÈTRES : non identifiables séparément. Les puits donnent la présence et la phase, et les anomalies interannuelles ne répondent à aucun paramètre d'aquifère.
 
-CE QUE LE FILTRE NE PEUT PAS FAIRE, et c'est une borne sur tout le chantier. Il attribue au débit de base 70 pour cent de l'écoulement hypodermique du modèle. Il ne distingue donc PAS les deux chemins lents que le travail des 18 et 19 septembre a séparés dans la colonne : un modèle qui mettrait tout dans l'hypodermique et rien dans la nappe obtiendrait le même indice, pourvu que les constantes de temps y soient. L'indice d'écoulement de base identifie la partition entre RAPIDE et LENT, pas celle entre hypodermique et souterrain. Pour cette dernière, seuls les niveaux de puits voient la nappe elle-même, et il est établi qu'ils n'en donnent que la présence et la phase.
+CE QUE LE FILTRE VOIT DE LA PARTITION ENTRE LES DEUX CHEMINS LENTS, et la réponse dépend du filtre. Un filtre d'Eckhardt attribue au débit de base 70 pour cent de l'écoulement hypodermique du modèle, ce qui donnait à penser que la partition lui est invisible. Épreuve directe, sur des hydrogrammes construits où la part du volume lent passant par le chemin rapide varie de zéro à cent pour cent, à VOLUME LENT CONSTANT.
+
+| Part du lent passant par l'hypodermique | Eckhardt 0,65 | Lyne et Hollick | Constante de récession |
+| --- | --- | --- | --- |
+| 0 % | 0,649 | 0,773 | 0,966 |
+| 50 % | 0,643 | 0,678 | 0,899 |
+| 100 % | 0,649 | 0,571 | 0,735 |
+
+L'indice d'Eckhardt ne bouge pas, six millièmes d'amplitude ; celui de Lyne et Hollick bouge de 0,20 ; la constante de récession va de 0,966 à 0,735. La raison est mécanique : Eckhardt AJUSTE sa constante de récession sur la série et absorbe ainsi exactement l'information cherchée, quand Lyne et Hollick garde un amortissement fixé à 0,925, donc une référence de temps.
+
+Deux filtres, deux usages, et il faut le dire chaque fois : Eckhardt pour estimer un VOLUME de débit de base, Lyne et Hollick ou directement la constante de récession pour identifier la PARTITION entre les deux chemins lents. La partition est donc identifiable, contrairement à ce que j'avais écrit une heure plus tôt, et elle l'est par la FORME de la récession et non par le volume. Cela rejoint l'ancrage de l'exposant de vidange, mesuré par territoire sur les mêmes récessions.
 
 CE QUE CELA PERMET. Pour prédire l'effet d'un prélèvement sur un étiage, la phase et l'ordre de grandeur suffisent probablement, puisque ce qui décide est la variation RELATIVE du soutien d'étiage et non la valeur absolue de la recharge. Pour publier une carte de recharge, non : ni le niveau à mieux qu'un facteur et demi, ni la répartition spatiale ne sont tenus par les observations dont nous disposons.
