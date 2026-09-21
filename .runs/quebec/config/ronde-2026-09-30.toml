@@ -1,0 +1,139 @@
+# ─── Ronde provinciale du 30 septembre 2026 ───────────────────────────────────
+# Recette de la ronde UNIQUE prévue pour le livrable. Elle hérite de `socle.toml` et y ajoute
+# ce que les mesures du 18 au 21 septembre ont établi. Chaque ligne porte la mesure qui la
+# justifie ; une ligne sans justification n'a rien à faire ici.
+#
+# S'emploie comme le socle, la météo restant posée au lancement :
+#   ETL_CONFIG=.runs/quebec/config/ronde-2026-09-30.toml JOINT_FX_SUFFIX=-budyko \
+#   ETL_REGION=GASP python .runs/quebec/etl_run.py
+#
+# CE QUI RESTE À DÉCIDER AVANT DE SOUMETTRE : la composition de la fonction de perte. Les deux
+# jeux de poids candidats sont écrits plus bas, l'un actif et l'autre en commentaire, et la
+# section qui les sépare dit ce qui les départage et ce qu'il manque pour trancher.
+
+[recette]
+
+# -- Ancrages, inchangés depuis le socle --------------------------------------
+ETL_INIT_HYDROTEL = "sauf_ks"
+ETL_ETP = "linacre"
+ETL_NO_LATENT = 1
+ETL_SEUIL_NEIGE = 0
+ETL_SEUIL_TWB = -0.8
+ETL_MELT_SAISON = 0.5
+ETL_WSNOW = 0                   # couverture MODIS : ne mesure pas une masse, reste à zéro
+
+# -- Protocole d'entraînement --------------------------------------------------
+# Un pas d'optimisation par bloc. Absent des modèles du 15 septembre, et c'est la raison
+# première pour laquelle une ronde est refaite.
+MEANDRE_PAS_PAR_BLOC = 1
+MEANDRE_ETAT_CONTINU = 1
+MEANDRE_KGE_CONTINU = 1
+MEANDRE_Z_TENSEUR = 1
+
+# -- Drainage profond et nappe libre ------------------------------------------
+# Justification, et c'est la plus forte du chantier. Sur 34 puits du réseau de suivi répartis
+# sur deux territoires, la colonne ainsi corrigée place le maximum de nappe au mois mesuré,
+# reproduit le cycle saisonnier à 0,84 et 0,86, et garde des anomalies interannuelles
+# positives sur la TOTALITÉ des puits. La colonne d'origine est anticorrélée et ne bat que de
+# deux à sept centimètres contre environ un mètre mesuré. Aucune de ces grandeurs n'était dans
+# la fonction objectif des simulations comparées.
+# Sur le débit, cette correction ne coûte ni ne rapporte : l'effet mesuré vaut sept millièmes
+# de KGE pour un bruit de trois millièmes et demi.
+ETL_L3_TAU = 2                  # drainage de l'eau gravitaire de la couche 3, en jours
+ETL_L3_KSUB = 3.0               # plafond de percolation du substratum, en mm/jour
+ETL_L3_TAULAT = 3               # sortie latérale de la couche 3, en jours
+ETL_NAPPE_LIBRE = 1
+ETL_NAPPE_SY = 0.05
+ETL_NAPPE_KB = 1.5e-3
+ETL_NAPPE_ZRIV = 5.0
+ETL_NAPPE_HREF = 2.0
+ETL_NAPPE_ZEXT = 6.0
+ETL_NAPPE_EFRAC = 0.15
+# Exposant de vidange MESURÉ sur les récessions observées du territoire, et non appris.
+# Aucune covariable de terrain ne le prédit, texture à -8 % contre le témoin, socle à -22 %,
+# relief à -26 %. Mais il se lit dans les hydrogrammes, sans circularité : 1,36 en Montérégie
+# drainée, 2,06 au Saint-Laurent sud-ouest, 2,30 au nord-ouest, 2,44 au Saguenay, 2,70 en
+# Gaspésie, 4,65 en Outaouais. Un territoire de moins de cinq stations garde 2,0, la loi de
+# Dupuit-Boussinesq, qui est aussi la médiane des 76 stations mesurées.
+ETL_NAPPE_EXP = "mesure"
+
+# -- Souterrain, inchangé ------------------------------------------------------
+ETL_AQUIFER = 1
+ETL_KREC_LIBRE = 1
+ETL_KGW_FIELD = 1
+MEANDRE_KGW_MODULE = 1
+
+# -- Descripteurs de sol de l'IRDA ---------------------------------------------
+# Six propriétés par tronçon, plus une part non cartographiée. Elles ne sont pas prédictibles
+# par les attributs actuels, R² hors bloc de 0,09 à 0,37, et distinguent 40 % des voisins que
+# ces attributs confondent. Un point de reprise sans ces colonnes les reçoit à poids nuls,
+# donc un modèle inchangé au départ.
+# RÉSERVE : la couverture s'arrête au sud agricole, 92 % des tronçons au Saint-Laurent
+# sud-ouest, 50 % en Montérégie, 42 % en Outaouais, 19 à 21 % ailleurs et presque rien sur la
+# Côte-Nord et en Abitibi. La part non cartographiée entre comme une variable à part entière,
+# pour ne pas confondre sol inconnu et classe absente.
+ETL_IRDA = 1
+
+# -- Contraintes auxiliaires ---------------------------------------------------
+# Elles ne transmettaient AUCUN gradient jusqu'au 20 septembre : les diagnostics dont elles
+# dérivent étaient détachés du graphe sous MEANDRE_DIAG_CPU=1. Correctif livré, avec une garde
+# qui signale tout terme actif dont le diagnostic serait détaché.
+# Effet mesuré du correctif, à configuration identique : les contraintes coûtent 0,032 de KGE
+# tenu de côté et DIVISENT PAR QUATRE la dispersion entre tirages, de 0,0141 à 0,0036.
+ETL_WET = 0.4                   # évapotranspiration MODIS
+ETL_WSWE = 0.2                  # masse du manteau mesurée au sol, CanSWE
+# Les niveaux de puits restent HORS de la perte, et c'est un choix délibéré. La physique
+# corrigée les satisfait déjà sans être contrainte, l'effet mesuré valant quatre millièmes de
+# KGE. Les y mettre coûterait la seule vérification indépendante dont le projet dispose.
+ETL_WNAPPE = 0
+
+# -- Numérique et routage, inchangés ------------------------------------------
+MEANDRE_NSUBSTEP = 64
+MEANDRE_KMUSK = "4,48,24"
+MEANDRE_DIAG_CPU = 1
+
+# ─── Fonction de perte : LA DÉCISION QUI RESTE ────────────────────────────────
+# Trois mesures, toutes sans simuler, disent que la recette en vigueur est mal posée pour la
+# grandeur que le projet doit prédire.
+#
+# 1. Elle PRÉFÈRE un hydrogramme lissé sur sept jours à un hydrogramme net décalé d'un jour,
+#    sur 64 % des stations. Le terme de pics y contribue pour -0,0951, dix-huit fois le
+#    deuxième, parce qu'un écart quadratique restreint aux hauts débits est minimal là où un
+#    décalage coûte le plus cher. Le KGE entier est le seul terme qui l'en empêche.
+# 2. Ses cinq termes de débit n'engendrent que trois directions indépendantes, et son plus
+#    grand angle mort, 48 %, est le soutien d'étiage, dont le poids vaut zéro.
+# 3. Une erreur de calendrier d'un jour y pèse 23 fois un prélèvement estival de 5 % du débit
+#    moyen annuel. Avec les poids équilibrés ci-dessous, ce rapport tombe à 0,83.
+#
+# Et le gradient, pris sur la sortie réelle du modèle, dit la même chose : la recette en
+# vigueur demande de monter les crues et ne touche pas les étiages, contraste -2,59 ; la
+# recette équilibrée monte les étiages et baisse les crues, contraste +0,32. Elle est la seule
+# des trois essayées à pousser vers l'écoulement de base.
+#
+# CE QUI MANQUE POUR TRANCHER. Le seul essai d'entraînement comparant ces recettes a tourné
+# sur la physique de RÉFÉRENCE, dont la couche 3 est engorgée et qui envoie 86 % de l'eau en
+# surface. Le terme d'étiage y réclame une eau souterraine que la colonne ne peut pas produire,
+# et les deux recettes décomposées y ont coûté 0,049 de KGE. Cet essai ne dit donc rien de leur
+# comportement sur la physique corrigée. Une passe de huit époques sur l'Outaouais, trente
+# minutes, le dirait.
+
+# Recette en vigueur, celle des modèles du 15 septembre. Conservatrice.
+ETL_WKGE = 1.0
+ETL_WPBIAS = 0.5
+ETL_WMSE = 0.1
+ETL_WLOGMSE = 0.3
+ETL_WPEAK = 0.5
+
+# Recette équilibrée, poids posés par équilibrage mesuré sur six défauts de référence.
+# À activer en lieu et place des cinq lignes ci-dessus si la passe d'essai le confirme.
+# ETL_WKGE = 0
+# ETL_WPBIAS = 0
+# ETL_WMSE = 0
+# ETL_WLOGMSE = 0
+# ETL_WPEAK = 0
+# ETL_WR = 0.15          # calendrier, facteur r du KGE
+# ETL_WBETA = 1.0        # volume, facteur beta
+# ETL_WGAMMA = 0.15      # amplitude, facteur gamma
+# ETL_WPEAKRATIO = 0.15  # pics par rapport des magnitudes, immunisé contre l'aplatissement
+# ETL_WFDC = 1.0         # soutien d'étiage
+# ETL_WDQ = 0.15         # variations d'un jour à l'autre
