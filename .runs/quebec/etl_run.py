@@ -189,9 +189,10 @@ with torch.no_grad():
     C = torch.cat([torch.zeros(1, n_nodes, 6, device=DEVICE), F[:, :, :6].cumsum(0)], dim=0)
     t_ar = torch.arange(T, device=DEVICE)
     lo8 = torch.clamp(t_ar - (H_COMP - 1), min=0)
-    a8 = (C[t_ar + 1] - C[lo8]) / (t_ar + 1 - lo8).reshape(-1, 1, 1)
     hi90, lo90 = torch.clamp(t_ar - (H_COMP - 1), min=1), torch.clamp(t_ar - (H_COMP - 1) - H_HIST, min=0)
-    a90 = (C[hi90] - C[lo90]) / torch.clamp(hi90 - lo90, min=1).reshape(-1, 1, 1)
+    # Les moyennes glissantes se prennent PAR TRANCHE dans la boucle plus bas : materialisees
+    # sur toute la periode elles pesent 748 Mio chacune sur un territoire de 3412 nœuds, et
+    # le total depassait la memoire de la carte avant meme le premier pas de simulation.
     # NB : fenêtres TRAÎNANTES (8 j finissant à t, 90 j avant) — au banc la fenêtre 8 j
     # était le composite [t, t+8) ; décalage ~4 j << cycle saisonnier de l'ET.
     doy = td.day_of_year
@@ -202,8 +203,8 @@ with torch.no_grad():
     demand = torch.empty(T, n_nodes, device=DEVICE)
     for lo in range(0, T, 365):
         hi = min(lo + 365, T)
-        a8n = (a8[lo:hi] - mean) / std
-        a90n = (a90[lo:hi] - mean) / std
+        a8n = ((C[t_ar[lo:hi] + 1] - C[lo8[lo:hi]]) / (t_ar[lo:hi] + 1 - lo8[lo:hi]).reshape(-1, 1, 1) - mean) / std
+        a90n = ((C[hi90[lo:hi]] - C[lo90[lo:hi]]) / torch.clamp(hi90[lo:hi] - lo90[lo:hi], min=1).reshape(-1, 1, 1) - mean) / std
         scb = sc[lo:hi, None, :].expand(hi - lo, n_nodes, 2)
         x = torch.cat([a8n, a90n, stat[None, :, :-1].expand(hi - lo, -1, -1), scb, stat[None, :, -1:].expand(hi - lo, -1, -1)], dim=2)
         demand[lo:hi] = mlp(x.reshape(-1, x.shape[-1])).reshape(hi - lo, n_nodes)
@@ -1166,7 +1167,12 @@ tconf = TrainingConfig(
     lake_lr_mult=_lake_lr,
     n_epochs=N_EPOCHS,
     lr=float(os.environ.get("ETL_LR", tcfg.get("lr", 5e-4))),
-    chunk_steps=int(tcfg.get("chunk_steps", 45)),
+    # ETL_CHUNK : taille du bloc d'accumulation, en jours. Reglage absent jusqu'au
+    # 2026-09-21, alors qu'il commande la memoire de la carte. La recette provinciale,
+    # toutes contraintes actives, retient six diagnostics rattaches au graphe et depasse
+    # huit gigaoctets a 45 jours ; sur une carte de grappe elle passe, sur une carte
+    # portable il faut pouvoir descendre.
+    chunk_steps=int(os.environ.get("ETL_CHUNK", tcfg.get("chunk_steps", 45))),
     tbptt_steps=int(tcfg.get("tbptt_steps", 365)),
     # la cle TOML s'appelle `grad_clip` ; `clip_grad_norm` (lu jusqu'au 2026-08-22)
     # n'existe dans aucune config -- benin car la valeur egale le defaut (1.0),

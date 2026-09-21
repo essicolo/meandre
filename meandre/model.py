@@ -102,8 +102,11 @@ class HydroModel(nn.Module):
                 super().append(t.detach().to("cpu") if torch.is_tensor(t) else t)
 
         class _ListeProcesseurDerivable(list):
+            # On ne deplace PAS : un tenseur qui garde son graphe maintient de toute facon
+            # les activations sur la carte, si bien que la copie sur le processeur ne libere
+            # rien et place l'indice et l'indexe sur deux appareils differents.
             def append(self, t):
-                super().append(t.to("cpu") if torch.is_tensor(t) else t)
+                super().append(t)
 
         if _os_diag.environ.get("MEANDRE_DIAG_CPU", "0") != "1":
             return lambda nom: list()

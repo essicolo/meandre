@@ -1568,7 +1568,12 @@ class Trainer:
                     _sm_obs = data.swe_mass_obs[obs_offset + burnin:obs_offset + chunk_len]
                     _vm = ~torch.isnan(_sm_obs)
                     if bool(_vm.any()):
-                        _sm_sim = _diag_chunk.swe[burnin:][:, data.swe_mass_node]
+                        _sw = _diag_chunk.swe[burnin:]
+                        # Meme alignement que pour les puits : l'indice doit vivre sur
+                        # l'appareil du tenseur indexe, et l'observe sur celui du simule.
+                        _sm_sim = _sw[:, data.swe_mass_node.to(_sw.device)]
+                        if _sm_obs.device != _sm_sim.device:
+                            _sm_obs, _vm = _sm_obs.to(_sm_sim.device), _vm.to(_sm_sim.device)
                         _SWE_SCALE = 100.0
                         L_swe_mass = (((_sm_sim[_vm] - _sm_obs[_vm]) / _SWE_SCALE) ** 2).mean()
                         loss_chunk = loss_chunk + self.loss_fn.w_swe_mass * L_swe_mass

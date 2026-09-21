@@ -69,36 +69,50 @@ def main():
     uniques, inverse = np.unique(np.stack([ilon, ilat], axis=1), axis=0, return_inverse=True)
     print(f"{len(uniques)} points de grille distincts pour {n} sites", flush=True)
 
-    import netCDF4 as nc
+    # La lecture complete prend quelques minutes : on la garde, la comparaison qui suit se
+    # reprend alors en secondes.
+    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "neisim_aux_sites.npz")
+    if os.path.exists(cache):
+        _c = np.load(cache)
+        sorties = _c["sorties"] if _c["uniques"].shape == uniques.shape else None
+    else:
+        sorties = None
+    if sorties is None:
+        import netCDF4 as nc
 
-    racine = nc.Dataset(f)
-    var = racine.variables["een"]
-    n_t = var.shape[2]
-    bloc = 512
-    sorties = np.empty((len(uniques), n_t), dtype="float32")
-    for a0 in range(0, n_t, bloc):
-        a1 = min(a0 + bloc, n_t)
-        tranche = var[:, :, a0:a1]
-        sorties[:, a0:a1] = np.asarray(tranche)[uniques[:, 0], uniques[:, 1], :]
-        if a0 % (bloc * 8) == 0:
-            print(f"  {100 * a1 / n_t:3.0f} %", flush=True)
-    racine.close()
+        racine = nc.Dataset(f)
+        var = racine.variables["een"]
+        n_t = var.shape[2]
+        bloc = 512
+        sorties = np.empty((len(uniques), n_t), dtype="float32")
+        for a0 in range(0, n_t, bloc):
+            a1 = min(a0 + bloc, n_t)
+            tranche = var[:, :, a0:a1]
+            sorties[:, a0:a1] = np.ma.filled(tranche, np.nan)[uniques[:, 0], uniques[:, 1], :]
+            if a0 % (bloc * 8) == 0:
+                print(f"  {100 * a1 / n_t:3.0f} %", flush=True)
+        racine.close()
+        np.savez_compressed(cache, sorties=sorties, uniques=uniques)
     # NEISIM horodate ses journees a 05 h UTC et le reseau au sol a minuit : sans
     # normalisation a la DATE, l'intersection des deux index est vide.
     jour = pd.DataFrame(sorties.T, index=t_n.normalize())
     print("lecture faite, comparaison", flush=True)
 
     lignes = []
+    ecartes = {"hors periode": 0, "trop peu de couples": 0, "grille sans valeur": 0}
     for k in range(n):
-        s = jour.iloc[:, int(inverse[k])]
+        s = jour.iloc[:, int(np.ravel(inverse)[k])]
         o = pd.Series(snw[k], index=temps_obs.normalize()).dropna()
         o = o[o.index.month.isin(MOIS_NEIGE)]
         commun = s.index.intersection(o.index)
         if len(commun) < 30:
+            ecartes["hors periode"] += 1
             continue
         a, b = o.loc[commun].to_numpy(), s.loc[commun].to_numpy()
         fini = np.isfinite(a) & np.isfinite(b)
         if fini.sum() < 30:
+            ecartes["grille sans valeur" if np.isfinite(b).sum() < 30
+                     else "trop peu de couples"] += 1
             continue
         a, b = a[fini], b[fini]
         lignes.append({"site": k, "n": int(fini.sum()),
@@ -106,6 +120,7 @@ def main():
                        "rapport": float(np.mean(b) / max(np.mean(a), 1e-9)),
                        "r": float(np.corrcoef(a, b)[0, 1]) if a.std() > 0 and b.std() > 0 else np.nan,
                        "erreur": float(np.mean(np.abs(b - a)))})
+    print("sites ecartes : " + ", ".join(f"{v} {c}" for c, v in ecartes.items()))
     if not lignes:
         print("aucun site comparable")
         return 1
