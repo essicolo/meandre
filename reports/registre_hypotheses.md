@@ -2855,3 +2855,28 @@ L'indice d'Eckhardt ne bouge pas, six millièmes d'amplitude ; celui de Lyne et 
 Deux filtres, deux usages, et il faut le dire chaque fois : Eckhardt pour estimer un VOLUME de débit de base, Lyne et Hollick ou directement la constante de récession pour identifier la PARTITION entre les deux chemins lents. La partition est donc identifiable, contrairement à ce que j'avais écrit une heure plus tôt, et elle l'est par la FORME de la récession et non par le volume. Cela rejoint l'ancrage de l'exposant de vidange, mesuré par territoire sur les mêmes récessions.
 
 CE QUE CELA PERMET. Pour prédire l'effet d'un prélèvement sur un étiage, la phase et l'ordre de grandeur suffisent probablement, puisque ce qui décide est la variation RELATIVE du soutien d'étiage et non la valeur absolue de la recharge. Pour publier une carte de recharge, non : ni le niveau à mieux qu'un facteur et demi, ni la répartition spatiale ne sont tenus par les observations dont nous disposons.
+
+---
+
+## R163 — La fluctuation de nappe est reproduite SANS avoir été mise dans la perte : première corroboration indépendante (2026-09-21) — ÉTABLI
+
+Question d'Essi, posée après que tout le reste de la discussion eut montré que les accords obtenus découlaient de l'ajustement aux hydrogrammes. Le carré du 2026-09-20 fournit la paire qu'il fallait : une passe portant la physique corrigée avec le terme de puits ACTIF, une autre avec le même terme à poids NUL, toutes deux dotées de la sortie de nappe aux puits appariés.
+
+Comparaison aux 21 puits de l'Outaouais, passe SANS contrainte.
+
+| Mesure | Simulé | Observé |
+| --- | --- | --- |
+| mois du niveau le plus haut | avril 11, mai 10 | avril 13, mai 8 |
+| décalage médian du mois du maximum | 0 mois | — |
+| corrélation du cycle saisonnier moyen | +0,84 | — |
+| corrélation des anomalies mensuelles | +0,53, positive sur 100 % des puits | — |
+| battement saisonnier | 0,80 m | 1,13 m |
+| porosité de drainage impliquée par la régression | 0,027, quartiles 0,021 à 0,041 | plage plausible 0,01 à 0,30 |
+
+Aucune de ces grandeurs n'était dans la fonction objectif de cette passe. C'est donc la première corroboration réellement indépendante de tout ce chantier : le modèle n'a pas été ajusté sur les niveaux de nappe et il les reproduit, en phase exactement et en amplitude à 78 pour cent.
+
+Le témoin, avec la même contrainte ACTIVE, place son maximum en juillet, décalé de deux mois, avec une amplitude de stock d'un millimètre et une porosité impliquée nulle. La contrainte ne le sauve donc pas : elle ne peut pas fabriquer un mécanisme absent.
+
+Et avec la contrainte activée sur la physique corrigée, les chiffres sont identiques à un centième près, battement de 0,79 m, corrélations de +0,52 et +0,84. Cela explique enfin pourquoi l'interaction mesurée le 2026-09-20 donnait une contrainte inerte sur la pile et coûteuse sur le témoin : la physique corrigée satisfaisait déjà la contrainte avant qu'on la pose.
+
+RÉSERVES. Le battement simulé se déduit du stock souterrain en le divisant par une porosité de drainage IMPOSÉE à 0,05 ; avec les 0,027 que la régression implique, le rapport dépasserait un. L'accord d'amplitude est donc conditionnel à ce choix, alors que la phase et les deux corrélations n'en dépendent pas. Un seul territoire, une seule graine, 21 puits.
