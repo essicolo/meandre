@@ -15,7 +15,9 @@ trained and concatenated to the forcing on the SLSO bench. Do not call it inacti
 
 ## Language
 
-The codebase is in English. Comments, config, and conversation with the developer are in French.
+Every IDENTIFIER is in English: variable, function, class, module, file name, and CONFIG KEY. TOML sections and keys read `[soil]`, `layer`, `process`, never `[sol]`, `couche`, `processus`. Naming identifiers in English is the worldwide convention in programming, and meandre follows it (Essi, 2026-09-20). The `[recette]` section predates this rule and is kept for compatibility; it is the exception, not the model.
+
+Everything a human READS is in French: comments, docstrings, printed output, reports, and conversation with the developer.
 
 ## Code style
 

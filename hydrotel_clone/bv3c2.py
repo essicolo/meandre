@@ -294,6 +294,25 @@ class BV3C2Clone(torch.nn.Module):
                 q3 = krec * z3 * t3
             else:
                 q3 = krec * z3 * ths3 * torch.clamp(t3 / ths3, min=0.0) ** _n3
+            # ── PROFIL DE SOL DECLARE (opt-in, 2026-09-20) ───────────────────
+            # Quand une section `[soil]` declare des processus par couche, elle REMPLACE
+            # les sorties calculees ci-dessus. Une couche sans processus declare n'a pas
+            # de flux : la declaration est complete, comme chez Raven, et non un ajout aux
+            # branches historiques. Sans declaration, rien de ce qui precede ne change et
+            # le clone reste fidele au binaire C++.
+            _profile = p.get("soil_profile")
+            if _profile is not None:
+                _ctx2 = {"theta": t2, "theta_fc": p.get("thetacc2"), "thickness": z2,
+                         "conductivity": k2, "sin_slope": sin_slope, "porosity": ths2}
+                _ctx3 = {"theta": t3, "theta_fc": p.get("thetacc3"), "thickness": z3,
+                         "conductivity": k3, "sin_slope": sin_slope, "porosity": ths3}
+                _zero = torch.zeros_like(q2)
+                _q2 = _profile.total(2, "lateral", _ctx2)
+                q2 = _zero if _q2 is None else _q2
+                _q3l = _profile.total(3, "lateral", _ctx3)
+                q3_lat = _zero if _q3l is None else _q3l
+                _q3 = _profile.total(3, "percolation", _ctx3)
+                q3 = _zero if _q3 is None else _q3
             qq12 = qq12 * throttle; qq23 = qq23 * throttle; q2 = q2 * throttle
             q3_lat = q3_lat * throttle
             # Porte de gel sur le drainage profond. Hydrotel le divise par deux des que le
