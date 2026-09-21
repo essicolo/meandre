@@ -1183,6 +1183,34 @@ class Trainer:
                     else:
                         log_sigma_chunk = self.model.noise_head(Q_det)
                 # ET sim de ce chunk (avec gradient) + σ_ET (détaché, comme Q)
+                # GARDE CONTRE UN TERME PRESENT ET INERTE (2026-09-20). Trois fois le
+                # meme jour, une piece s'est revelee declaree, affichee et sans effet :
+                # les diagnostics detaches sous MEANDRE_DIAG_CPU=1, la table des poids de
+                # l'affichage qui ne couvrait que huit termes sur vingt, et un profil de
+                # sol vide. La plus couteuse a tourne deux jours en imprimant dans le
+                # journal un terme GRACE qui ne produisait aucun gradient. Une grandeur
+                # simulee qui n'est pas rattachee au graphe ne peut RIEN contraindre : on
+                # le dit une fois par execution, fort, au lieu de le decouvrir en
+                # constatant que deux passes different d'un terme donnent le meme chiffre.
+                if not getattr(self, "_garde_gradient_faite", False):
+                    self._garde_gradient_faite = True
+                    _a_verifier = [("evapotranspiration MODIS", _need_et, "etr"),
+                                   ("neige", _need_snow, "swe"),
+                                   ("niveaux de puits", _need_nappe, "s_gw"),
+                                   ("gravimetrie GRACE", _need_tws, "theta3")]
+                    for _nom_terme, _actif, _cle in _a_verifier:
+                        if not _actif:
+                            continue
+                        _t = getattr(_diag_chunk, _cle, None)
+                        if _t is None or not torch.is_tensor(_t):
+                            continue
+                        if not _t.requires_grad:
+                            print(f"[garde] TERME INERTE : « {_nom_terme} » est active mais "
+                                  f"son diagnostic « {_cle} » est DETACHE du graphe. Le terme "
+                                  f"gardera sa valeur dans le journal et ne produira aucun "
+                                  f"gradient. Verifier MEANDRE_DIAG_CPU et "
+                                  f"HydroModel.DIAGNOSTICS_DERIVES.", flush=True)
+
                 et_sim_chunk = et_obs_chunk = log_sigma_et_chunk = None
                 if _need_et:
                     et_sim_chunk = _diag_chunk.etr[burnin:]
