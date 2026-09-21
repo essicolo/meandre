@@ -107,8 +107,18 @@ class HydroModel(nn.Module):
 
         if _os_diag.environ.get("MEANDRE_DIAG_CPU", "0") != "1":
             return lambda nom: list()
+        # NE RETENIR QUE CE QUI SERT (2026-09-21). Garder le graphe d'un diagnostic coute la
+        # memoire que `MEANDRE_DIAG_CPU` economise : avec toutes les contraintes actives, la
+        # recette provinciale ne tenait plus dans huit gigaoctets. `MEANDRE_DIAG_DERIVES`
+        # restreint la liste aux diagnostics dont un terme ACTIF derive ; le pilote la pose
+        # depuis les poids reellement non nuls. Sans elle, tous sont retenus, ce qui reste le
+        # comportement sur : un terme actif dont le diagnostic serait detache ne produirait
+        # aucun gradient, defaut qui a coute deux jours.
+        _demande = _os_diag.environ.get("MEANDRE_DIAG_DERIVES")
+        _derives = (frozenset(x.strip() for x in _demande.split(",") if x.strip())
+                    if _demande is not None else HydroModel.DIAGNOSTICS_DERIVES)
         return lambda nom: (_ListeProcesseurDerivable()
-                            if nom in HydroModel.DIAGNOSTICS_DERIVES else _ListeProcesseur())
+                            if nom in _derives else _ListeProcesseur())
 
     def __init__(
         self,

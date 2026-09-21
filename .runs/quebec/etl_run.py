@@ -1278,6 +1278,19 @@ if os.environ.get("ETL_QUANTILE", "0") == "1":
     print(f"[etl] PHASE QUANTILE : socle gele, {_libres:,} parametres libres "
           f"(tete K=6), best_metric nll, pertes de debit a zero")
 
+# DIAGNOSTICS A RETENIR POUR LE GRADIENT. Un diagnostic rattache au graphe coute la memoire
+# que MEANDRE_DIAG_CPU economise. On ne retient donc que ceux dont un terme ACTIF derive, et
+# on le calcule depuis les poids reellement poses, pour qu'activer un terme suffise.
+_besoins = {"etr": lcfg.get("w_et", 0.0) or lcfg.get("w_nll_et", 0.0),
+            "swe": lcfg.get("w_snow", 0.0) or lcfg.get("w_swe_mass", 0.0),
+            "s_gw": lcfg.get("w_nappe", 0.0) or lcfg.get("w_tws", 0.0),
+            "profondeur_nappe_m": lcfg.get("w_nappe", 0.0),
+            "theta1": lcfg.get("w_tws", 0.0), "theta2": lcfg.get("w_tws", 0.0),
+            "theta3": lcfg.get("w_tws", 0.0)}
+_garde = sorted(k for k, v in _besoins.items() if float(v or 0.0) > 0.0)
+os.environ["MEANDRE_DIAG_DERIVES"] = ",".join(_garde)
+print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
+
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
 tr.fit()
