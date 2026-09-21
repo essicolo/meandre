@@ -2654,3 +2654,33 @@ Trois lectures. L'exposant de 2 codé dans la nappe n'est pas à changer : il es
 Conséquence pour la suite, et elle évite un chantier. Il a été mesuré la veille qu'aucune covariable de terrain ne prédit l'exposant de récession, texture à −8 pour cent, socle à −22, relief à −26. Il ne faut donc pas chercher à le faire prédire par le champ spatial. Mais il se MESURE directement sur les hydrogrammes observés de chaque territoire, sans simulation et sans circularité, exactement comme le multiplicateur d'évapotranspiration et les taux de fonte entrent déjà par la loi des ancrages. C'est la voie à suivre : un exposant par territoire, tiré de ses propres récessions, plutôt qu'un paramètre appris ou un chantier de régionalisation.
 
 La Montérégie reste l'exception et son cas se comprend : c'est le territoire drainé et cultivé, dont le drain agricole convertit un interflux lent en chemin rapide à seuil, et son exposant de 1,36 dit que sa vidange est presque linéaire.
+
+---
+
+## R156 — Audit de l'ORDRE de réponse de tous les termes : trois familles, un seul défaut restant (2026-09-21) — ÉTABLI
+
+Le même défaut de forme ayant été trouvé trois fois en deux jours, sur des termes écrits à des dates et par des mains différentes, il fallait cesser d'attendre le quatrième. Mesure sur toutes les stations et sur quatre déformations élémentaires, chacune ne touchant qu'une dimension de l'erreur : on applique une erreur de deux pour cent, puis de quatre, et on lit l'exposant p tel que la perte varie comme e^p. Un terme du premier ordre rend 1, un terme du second rend 2.
+
+| Terme | Amplitude | Pointes | Volume | Étiage |
+| --- | --- | --- | --- | --- |
+| KGE entier | 1,00 | 1,01 | 1,00 | 1,02 |
+| biais de volume | — | 1,00 | 1,00 | 1,00 |
+| volume, facteur beta | — | 1,00 | 1,00 | 1,00 |
+| amplitude, facteur gamma | 1,00 | 1,02 | — | 1,01 |
+| pics par rapport | 1,01 | 1,01 | 0,99 | 1,00 |
+| soutien d'étiage | 0,98 | insensible | — | 0,88 |
+| variations, APRÈS correction | 1,00 | 1,00 | 1,00 | 1,08 |
+| calendrier, 1 − r | — | 2,07 | — | 2,00 |
+| pics, écart quadratique seuillé | 2,00 | 2,00 | 2,00 | 2,00 |
+| écart quadratique | 2,00 | 2,00 | 2,00 | 2,00 |
+| écart quadratique logarithmique | 1,94 | 2,03 | 1,97 | 2,08 |
+
+Trois familles, et il faut les distinguer pour ne pas corriger ce qui va bien.
+
+Les termes du premier ordre comparent des STATISTIQUES par un écart absolu. C'est la forme visée partout où l'on veut détecter un petit signal.
+
+Les termes du second ordre par NATURE sont les écarts quadratiques : l'écart quadratique, sa version logarithmique et le terme de pics seuillé. Un écart quadratique est quadratique, ce n'est pas un défaut de forme, c'est sa définition. Mais cela en fait de mauvais détecteurs de petit signal, ce qui est une raison de plus de les retirer de la recette.
+
+Le terme de calendrier est du second ordre par une propriété mathématique et non par choix : une corrélation est stationnaire à son optimum, donc 1 − r ne bouge pas au premier ordre. On peut le rendre linéaire par une racine, mais il ne faut PAS le faire ici, et c'est un résultat utile. Dans la recette décomposée, ce terme porte le plus gros poids et vise l'erreur de calendrier, qui est irréductible à la résolution du forçage. Qu'il réponde au second ordre signifie qu'une petite erreur de date coûte peu, tandis que les erreurs de volume, d'amplitude et d'étiage, elles du premier ordre, comptent pleinement. C'est exactement ce qui fait passer de 23 à 7 le rapport entre le coût d'un retard d'un jour et celui d'un prélèvement de cinq pour cent.
+
+Un seul vrai défaut restait, le terme de variations journalières, quatrième de la famille des rapports pénalisés au carré. Corrigé, il passe de 2,00 à 1,00, et sa symétrie entre plateau et signal trop nerveux, qui est sa raison d'être, est conservée.

@@ -175,7 +175,12 @@ def differentiable_dq_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     d_s = q_sim[1:] - q_sim[:-1]
     s_o = torch.sqrt((d_o ** 2).mean() + 1e-12)
     s_s = torch.sqrt((d_s ** 2).mean() + 1e-12)
-    return (s_s / s_o.clamp(min=1e-8) - 1.0) ** 2
+    # ECART ABSOLU (2026-09-21). Un rapport de statistiques penalise au CARRE repond au
+    # second ordre : l'audit de tous les termes ce jour-la le mesure a 2,00. Quatrieme terme
+    # de la meme famille, apres les facteurs du KGE, le soutien d'etiage et les pics par
+    # rapport. La symetrie entre plateau et signal trop nerveux, qui est la raison d'etre du
+    # terme, est conservee.
+    return torch.abs(s_s / s_o.clamp(min=1e-8) - 1.0)
 
 
 def differentiable_dq_log_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
@@ -195,7 +200,8 @@ def differentiable_dq_log_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     d_o, d_s = lo[1:] - lo[:-1], ls[1:] - ls[:-1]
     s_o = torch.sqrt((d_o ** 2).mean() + 1e-12)
     s_s = torch.sqrt((d_s ** 2).mean() + 1e-12)
-    return (s_s / s_o.clamp(min=1e-8) - 1.0) ** 2
+    # Ecart absolu, meme raison que pour la version lineaire ci-dessus.
+    return torch.abs(s_s / s_o.clamp(min=1e-8) - 1.0)
 
 
 def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
