@@ -29,7 +29,18 @@ _ib = SourceFileLoader("ib", os.path.join(os.path.dirname(os.path.abspath(__file
                                           "indice_base_observe.py")).load_module()
 
 
-def indices(region, variante):
+def _separateur(a):
+    """Fonction de séparation retenue, nommée par la ligne de commande."""
+    if a.filtre == "eckhardt":
+        from importlib.machinery import SourceFileLoader
+
+        _fdb = SourceFileLoader("fdb", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                    "filtres_debit_base.py")).load_module()
+        return lambda q: _fdb.eckhardt(q, _fdb.constante_recession(q), a.bfi_max)
+    return _ib.lyne_hollick
+
+
+def indices(region, variante, sep=None):
     """Indice simulé par station, et indice observé aux mêmes stations."""
     import glob
 
@@ -59,8 +70,8 @@ def indices(region, variante):
         if not np.isfinite(s).all() or s.sum() <= 0:
             continue
         o = np.where(fini, o, np.nanmedian(o[fini]))
-        sims.append(_ib.lyne_hollick(s).sum() / s.sum())
-        obss.append(_ib.lyne_hollick(o).sum() / o.sum())
+        sims.append(sep(s).sum() / s.sum())
+        obss.append(sep(o).sum() / o.sum())
     return (np.array(sims), np.array(obss)) if sims else None
 
 
@@ -68,11 +79,25 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("regions", nargs="+")
     p.add_argument("--variantes", nargs="+", required=True)
+    # LE FILTRE DOIT ETRE NOMME (2026-09-21). L'indice d'ecoulement de base n'est pas une
+    # observation mais une sortie de filtre : sa mediane va de 0,48 a 0,74 selon le filtre et
+    # son parametre, et Lyne-Hollick ne classe meme pas les stations comme Eckhardt, la
+    # correlation de rang ne valant que 0,54. Un indice cite sans son filtre ne veut rien dire.
+    p.add_argument("--filtre", default="lyne-hollick",
+                   choices=("lyne-hollick", "eckhardt"),
+                   help="methode de separation ; eckhardt est mieux fonde, son parametre "
+                        "ayant un sens physique")
+    p.add_argument("--bfi-max", type=float, default=0.65,
+                   help="part maximale du debit de base, pour Eckhardt : 0,50 sur socle "
+                        "fracture, 0,80 sur aquifere poreux")
     a = p.parse_args()
+    _sep = _separateur(a)
+    print(f"filtre employe : {a.filtre}"
+          + (f", part maximale {a.bfi_max}" if a.filtre == "eckhardt" else ", amortissement 0,925"))
     print(f"{'territoire':11s} {'variante':18s} | {'simule':>8s} | {'observe':>8s} | ecart")
     for reg in [r.lower() for r in a.regions]:
         for v in a.variantes:
-            res = indices(reg, v)
+            res = indices(reg, v, _sep)
             if res is None:
                 continue
             s, o = res
