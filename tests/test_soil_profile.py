@@ -128,3 +128,19 @@ def test_un_nom_inconnu_du_champ_est_refuse():
          "tau_days": 2.0, "ceiling_mm_per_day": "parametre_inexistant"}]})
     with pytest.raises(KeyError, match="absent du champ"):
         profil.resolved({"k_sub": torch.tensor([1e-4])})
+
+
+def test_une_section_soil_sans_processus_ne_declare_aucun_profil():
+    """Piège évité de justesse : `[soil]` existe déjà pour `hydrotel_calib_dir`.
+
+    Rendre un profil dès que la section est présente aurait donné un profil VIDE, c'est-à-dire
+    un sol sans aucun flux, sur toutes les configurations régionales existantes, et sans un
+    mot dans le journal.
+    """
+    assert sp.from_toml({"hydrotel_calib_dir": "/quelque/part"}) is None
+    assert sp.from_toml({}) is None
+    assert sp.from_toml(None) is None
+    assert sp.from_toml({"layers": 3}) is None
+    avec = sp.from_toml({"hydrotel_calib_dir": "/quelque/part", "layers": 3,
+                         "process": [{"layer": 2, "kind": "lateral", "form": "BASE_LINEAR"}]})
+    assert avec is not None and len(avec.processes) == 1

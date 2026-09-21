@@ -223,9 +223,16 @@ def from_toml(section: dict | None) -> SoilProfile | None:
     Les unites de la configuration sont le jour et le millimetre par jour ; la conversion
     vers les heures et les metres par heure de la boucle se fait ici.
     """
+    # PIEGE EVITE DE JUSTESSE (2026-09-20). Une section `[soil]` existe DEJA dans les
+    # configurations regionales, pour `hydrotel_calib_dir`. Rendre un profil des qu'elle est
+    # presente aurait donne un profil VIDE, donc un sol sans aucun flux, sur toutes les
+    # configurations existantes, et silencieusement. Le profil n'existe que si des processus
+    # sont effectivement declares.
     if not section:
         return None
     raw = section.get("process") or section.get("processes") or []
+    if not raw:
+        return None
     if isinstance(raw, dict):
         raw = [raw]
     declared = []
