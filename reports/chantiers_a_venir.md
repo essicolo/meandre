@@ -156,6 +156,25 @@ Reste : choisir la recette et la mesurer en entraînement. Candidat à égalité
 
 ---
 
+## 2 bis. NEISIM, neige et apport au sol sur grille — OUVERT le 2026-09-21
+
+Fourni à l'interne par le gouvernement du Québec. Quatre fichiers, 8,4 Go, couvrant tout le Québec méridional de 1980 à 2025, soit quarante-cinq ans.
+
+| Produit | Grandeur | Grille | Pas |
+| --- | --- | --- | --- |
+| EENEIG, deux versions | équivalent en eau de la neige, mm | 245 × 105, un dixième de degré | 3 heures |
+| APPVER, deux versions | apport vertical au sol, mm | 733 × 313, environ trois kilomètres | 1 jour |
+
+Ce que cela change par rapport à CanSWE. La couverture du réseau au sol est très inégale, 76 sites en Outaouais, 30 au Saint-Laurent nord-ouest, 1 en Montérégie et aucun au Saint-Laurent sud-ouest, si bien que la contrainte de neige n'existe aujourd'hui que par endroits. NEISIM couvre tout le domaine.
+
+L'APPORT VERTICAL est le produit le plus intéressant, et ce n'était pas attendu. C'est exactement la grandeur que la colonne calcule en interne et que `SimDiagnostics` expose sous le nom trompeur de `snowmelt`, puisqu'elle contient l'apport total au sol et non la fonte. Une cible gridée sur quarante-cinq ans pour cette variable contraindrait le CALENDRIER de la fonte, qui commande la crue printanière, et pas seulement la masse accumulée. Aucune observation disponible ne le fait aujourd'hui.
+
+RÉSERVE DÉCISIVE. NEISIM est un MODÈLE, pas une mesure, et l'employer comme cible imposerait ses biais aux nôtres. La question préalable, en cours de mesure, est de savoir s'il s'accorde aux relevés au sol du réseau CanSWE là où les deux existent. S'il s'en écarte autant que notre propre modèle, il n'apporte qu'une seconde opinion et n'a pas sa place comme cible. Banc : `.runs/quebec/neisim_contre_canswe.py`.
+
+Le repère de comparaison est connu : le maximum hivernal simulé vaut 121 mm sur l'Outaouais contre 238 mm mesurés au sol, soit la moitié.
+
+---
+
 ## 6. Forçage climatique MRCC6 et scénarios
 
 Pourquoi. Le plan de travail prévoit une modélisation exploratoire selon des scénarios de prélèvements et de rejets. Le Modèle régional canadien du climat de sixième génération, développé à l'UQAM avec Ouranos, est la source régionale naturelle pour le Québec.
