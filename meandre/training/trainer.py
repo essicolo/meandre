@@ -731,13 +731,30 @@ class Trainer:
                           # pas pour ce terme-la.
                           "prior": getattr(self.config, "w_prior", 1.0),
                           "diversity": getattr(self.config, "w_diversity", 1.0)}
+
+                def _poids_de(nom):
+                    """Poids d'un terme, cherché par son nom plutôt que dans une table tenue
+                    à la main. Celle-ci ne couvrait que huit termes sur la vingtaine
+                    existante ; tous les autres, dont le KGE, l'écart quadratique et le
+                    biais de volume, tombaient sur le défaut de un et s'imprimaient BRUTS
+                    au milieu de termes pondérés, sous un en-tête annonçant le contraire.
+                    C'est le piège décrit juste au-dessus pour le prior, qui valait pour
+                    presque tous les termes de débit (constaté le 2026-09-20)."""
+                    if nom in _poids:
+                        return _poids[nom]
+                    for source in (self.loss_fn, self.config):
+                        w = getattr(source, f"w_{nom}", None)
+                        if w is not None:
+                            return float(w)
+                    return 1.0
+
                 _nz = {}
                 for k, v in train_comps.items():
                     v = float(v)
                     if abs(v) <= 1e-9 or math.isnan(v):
                         continue
                     _nom = k.replace("_loss", "")
-                    _nz[_nom] = v * _poids.get(_nom, 1.0)
+                    _nz[_nom] = v * _poids_de(_nom)
                 if _nz:
                     _tot = float(train_loss) or 1.0
                     print("            composantes ponderees | " + "  ".join(

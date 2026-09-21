@@ -70,6 +70,24 @@ def differentiable_kge_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return 1.0 - kge
 
 
+def differentiable_r_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
+    """Premier facteur du KGE, isolé : 1 − r, l'erreur de CALENDRIER. Parfait = 0."""
+    r, _, _, _ = _kge_components(q_obs, q_sim)
+    return 1.0 - r
+
+
+def differentiable_beta_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
+    """Deuxième facteur du KGE, isolé : (beta − 1)², l'erreur de VOLUME. Parfait = 0."""
+    _, beta, _, _ = _kge_components(q_obs, q_sim)
+    return (beta - 1.0) ** 2
+
+
+def differentiable_gamma_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
+    """Troisième facteur du KGE, isolé : (gamma − 1)², l'erreur d'AMPLITUDE. Parfait = 0."""
+    _, _, gamma, _ = _kge_components(q_obs, q_sim)
+    return (gamma - 1.0) ** 2
+
+
 def differentiable_composite_kge_loss(
     q_obs: Tensor, q_sim: Tensor, alpha: float = 0.5, eps: float = 1.0,
 ) -> tuple[Tensor, dict[str, Tensor]]:
@@ -773,6 +791,9 @@ class HydroLoss(nn.Module):
         w_dq: float = 0.0,
         w_dq_log: float = 0.0,
         w_fdc_bas: float = 0.0,
+        w_r: float = 0.0,
+        w_beta: float = 0.0,
+        w_gamma: float = 0.0,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
@@ -832,6 +853,16 @@ class HydroLoss(nn.Module):
         self.w_dq = w_dq
         self.w_dq_log = w_dq_log
         self.w_fdc_bas = w_fdc_bas
+        # KGE DECOMPOSE (2026-09-20, proposition d'Essi). Porte entier, le KGE melange une
+        # erreur de calendrier, une erreur de volume et une erreur d'amplitude en un seul
+        # nombre, et l'optimiseur ne peut plus choisir laquelle reduire. Mesure du banc de
+        # redondance sur 32 stations et 9 deformations : la recette a cinq termes laisse
+        # 14,2 % de manque moyen et un angle mort de 48,2 % sur le soutien d'etiage ; les
+        # trois facteurs separes plus l'etiage plus les variations, cinq termes aussi,
+        # tombent a 2,8 % et 5,4 %. Poids nuls par defaut : rien ne change sans declaration.
+        self.w_r = w_r
+        self.w_beta = w_beta
+        self.w_gamma = w_gamma
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -883,6 +914,10 @@ class HydroLoss(nn.Module):
             components: dict of named loss terms for logging
         """
         q_sim_at_stations = q_sim[:, station_mask]  # (T, n_stations)
+        # Les trois facteurs du KGE sont initialises AVANT le branchement par station ou en
+        # commun : la somme finale les lit dans les deux cas, alors que seul le chemin par
+        # station les remplissait, d'ou une variable non liee sur l'autre.
+        L_r = L_beta = L_gamma = torch.tensor(0.0, device=q_sim.device)
 
         if self.per_station:
             n_stations = q_sim_at_stations.shape[1]
@@ -994,10 +1029,12 @@ class HydroLoss(nn.Module):
                 L_dq = L_fdc = L_dql = zero
                 need_loop = (self.w_nse > 0 or self.w_kge > 0
                              or self.w_nrmse > 0 or self.w_log_nse > 0
-                             or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0)
+                             or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0
+                             or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     dq_v, fdc_v, dql_v = [], [], []
+                    r_v, beta_v, gamma_v = [], [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -1045,6 +1082,12 @@ class HydroLoss(nn.Module):
                             nse_v.append(_remis(differentiable_nse_loss(q_o_v, q_s_v)))
                         if self.w_kge > 0:
                             kge_v.append(_remis(differentiable_kge_loss(q_o_v, q_s_v)))
+                        if self.w_r > 0:
+                            r_v.append(_remis(differentiable_r_loss(q_o_v, q_s_v)))
+                        if self.w_beta > 0:
+                            beta_v.append(_remis(differentiable_beta_loss(q_o_v, q_s_v)))
+                        if self.w_gamma > 0:
+                            gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
                         if self.w_dq > 0:
                             dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
                         if self.w_dq_log > 0:
@@ -1072,6 +1115,12 @@ class HydroLoss(nn.Module):
                         L_nse = (torch.stack(nse_v) * w).sum()
                     if self.w_kge > 0 and kge_v:
                         L_kge = (torch.stack(kge_v) * w).sum()
+                    if self.w_r > 0 and r_v:
+                        L_r = (torch.stack(r_v) * w).sum()
+                    if self.w_beta > 0 and beta_v:
+                        L_beta = (torch.stack(beta_v) * w).sum()
+                    if self.w_gamma > 0 and gamma_v:
+                        L_gamma = (torch.stack(gamma_v) * w).sum()
                     if self.w_nrmse > 0 and nrmse_v:
                         L_nrmse = (torch.stack(nrmse_v) * w).sum()
                     if self.w_log_nse > 0 and lnse_v:
@@ -1167,10 +1216,12 @@ class HydroLoss(nn.Module):
                 + self.w_peak * L_peak
                 + self.w_dq * L_dq
                 + self.w_dq_log * L_dql
-                + self.w_fdc_bas * L_fdc)
+                + self.w_fdc_bas * L_fdc
+                + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc,
                       "kge_loss": L_kge, "mse_loss": L_mse,
+                      "r_loss": L_r, "beta_loss": L_beta, "gamma_loss": L_gamma,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
