@@ -2819,7 +2819,20 @@ CORRECTION DU MÊME JOUR, sur une comparaison fautive de ma part. J'avais conclu
 | base du filtre sur l'hydrogramme SIMULÉ | 351 mm/an |
 | base du filtre sur l'hydrogramme OBSERVÉ | 370 mm/an |
 
-Le filtre attribue à la base 180 des 257 mm/an du chemin horizontal, soit 70 pour cent de celui-ci. Comparé à grandeur égale, filtre contre filtre aux mêmes stations, le modèle est court de 19 mm/an, c'est-à-dire de CINQ pour cent et non de vingt-huit. Le volume de débit de base de la physique corrigée est donc essentiellement juste.
+Le filtre attribue à la base 180 des 257 mm/an du chemin horizontal, soit 70 pour cent de celui-ci.
+
+SECONDE CORRECTION, sur ma façon de présenter l'accord. J'ai écrit que le modèle rendait 351 mm/an contre 370 observés, soit cinq pour cent d'écart. Ces deux nombres ne sont PAS deux estimations indépendantes : j'ai multiplié les deux indices par la même lame écoulée, celle du modèle, si bien que 0,597 × 587 donne 351 et 0,630 × 587 donne 370. C'était une comparaison d'indices habillée en comparaison de volumes.
+
+Refaite station par station sur les volumes réels, sur les 16 stations de l'Outaouais :
+
+| Grandeur | Médiane du rapport simulé sur observé | Étendue entre stations |
+| --- | --- | --- |
+| débit total | 1,040 | 0,87 à 1,15 |
+| débit de base, filtre d'Eckhardt | 0,998 | 0,79 à 1,11 |
+
+Le volume de débit de base est donc juste à deux millièmes près EN MÉDIANE, avec une dispersion de plus ou moins vingt pour cent d'une station à l'autre. C'est la dispersion qui est le chiffre honnête ; la médiane la masque.
+
+CE QUE CET ACCORD VAUT COMME PREUVE, et la réponse est : peu. Le modèle a été entraîné sur le débit de ces mêmes stations, et l'indice d'écoulement de base est une statistique de ce débit ; reproduire l'un découle en grande partie d'avoir ajusté l'autre. Deux nuances toutefois. L'indice n'était pas dans la perte, son poids valant zéro dans cette passe. Et la gravimétrie GRACE et l'évapotranspiration MODIS l'étaient, qui sont indépendantes du débit. L'accord n'est donc ni tautologique ni une corroboration : il est ce qu'on attend d'un modèle qui reproduit correctement les hydrogrammes sur lesquels il a été ajusté.
 
 C'est la troisième fois que je confonds une part de PRODUCTION avec une sortie de FILTRE, après l'erreur du 2026-09-20 sur l'indice et celle du 2026-09-21 sur les covariables. La règle est simple et je la pose ici : une grandeur issue d'un filtre ne se compare qu'à la même grandeur issue du même filtre, appliqué aux deux séries.
 
