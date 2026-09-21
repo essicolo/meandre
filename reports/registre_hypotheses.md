@@ -2465,3 +2465,39 @@ La séparation est franche et elle a un sens physique. La texture du sol dit com
 Conséquence directe pour le chantier de spatialisation, qui se trouve donc coupé en deux. Le plafond de percolation du substratum devient un paramètre du champ spatial prédit par la texture, un triplet de coordonnées ilr par tronçon suffisant puisque les six profondeurs de SIIGSOL sont redondantes. L'exposant et les constantes de temps ne le deviennent pas : ils restent uniformes, ou libres par nœud et contraints par les niveaux du réseau de puits, qui sont précisément l'observation qui identifie la présence et la phase du mécanisme souterrain sans en identifier les paramètres.
 
 La borne du gain disponible reste modeste et il faut la dire : prédire parfaitement l'indice d'écoulement de base ferait passer l'erreur de transfert de 0,070 à 0,051 sur une grandeur dont l'écart-type vaut 0,080.
+
+---
+
+## R150 — Le terme de pics PAIE le modèle pour aplatir, et le KGE est le seul terme qui l'en empêche (2026-09-20) — ÉTABLI
+
+Le banc de perte pose le bon choix : le modèle ne choisit pas entre la vérité et une déformation, il choisit entre DEUX ERREURS. Il est en retard d'une journée, ce qui est la règle dès qu'une averse est mal localisée, et il peut alors rester net et en retard, ou lisser pour réduire l'écart quotidien. Épreuve sur 32 stations de neuf territoires, hydrogrammes observés, sans aucune simulation.
+
+La recette en vigueur PRÉFÈRE la version lissée sur sept jours à la version nette en retard, sur 64 % des stations. Elle paie donc le nivellement.
+
+| Terme, avec son poids | Contribution médiane au choix | Part des stations où il récompense le lissage |
+| --- | --- | --- |
+| pics, 0,5 | −0,0951 | 78 % |
+| écart quadratique, 0,1 | −0,0040 | 74 % |
+| écart quadratique logarithmique, 0,3 | −0,0021 | 97 % |
+| biais de volume, 0,5 | −0,0001 | 91 % |
+| KGE, 1,0 | +0,0412 | 0 % |
+| total pondéré | −0,0463 | 64 % |
+
+Le résultat est contre-intuitif et il porte sur le terme ajouté pour PROTÉGER les pics. Le terme de pics est un écart quadratique restreint aux hauts débits, c'est-à-dire exactement là où un décalage d'un jour coûte le plus cher ; lisser y réduit l'erreur davantage qu'ailleurs. Il récompense donc l'aplatissement dix-huit fois plus fort que le deuxième terme de la liste. Le KGE entier est le SEUL qui pénalise le lissage, sur la totalité des stations, parce que son facteur d'amplitude voit la variance disparaître.
+
+Le mécanisme se vérifie sur les composantes : lisser sur sept jours une série déjà en retard d'un jour AMÉLIORE la corrélation, de 0,941 à 0,945, et dégrade le rapport des écarts-types, de 1,000 à 0,917. Un terme qui ne regarde que l'écart quotidien encaisse le premier effet et ignore le second.
+
+La recette décomposée corrige le défaut. Rapport de la note du lissage à celle du retard, valeur supérieure à un signifiant que la recette préfère le retard, donc le bon choix.
+
+| Façon de mal faire | Recette en vigueur | Recette décomposée |
+| --- | --- | --- |
+| retard puis lissage 7 jours | 0,92, mauvaise sur 64 % des stations | 1,38, mauvaise sur 3 % |
+| retard puis lissage 15 jours | 1,48, mauvaise sur 10 % | 2,38, mauvaise sur 0 % |
+| retard puis lissage 30 jours | 2,07 | 3,37 |
+| retard puis hiver figé | 1,50 | 1,51 |
+
+Les deux recettes portent cinq termes et le même poids total, 2,4 ; seule la composition diffère. Remplacer l'écart quadratique et les pics par le facteur d'amplitude du KGE supprime la prime à l'aplatissement, sans rien coûter sur les autres défauts.
+
+Cela éclaire deux constats anciens qui n'avaient pas reçu d'explication : le rapport des écarts-types restait coincé alors que le poids des pics mangeait la majeure partie de la perte, et la perte était décrite comme favorable à la platitude sans qu'on sache par quel terme. C'était le terme de pics.
+
+Le terme d'étiage ne change rien ici, les déformations testées ne touchant pas les basses eaux ; son intérêt, mesuré ailleurs, est qu'il est le seul terme non redondant absent de la recette.
