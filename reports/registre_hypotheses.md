@@ -2879,4 +2879,17 @@ Le témoin, avec la même contrainte ACTIVE, place son maximum en juillet, déca
 
 Et avec la contrainte activée sur la physique corrigée, les chiffres sont identiques à un centième près, battement de 0,79 m, corrélations de +0,52 et +0,84. Cela explique enfin pourquoi l'interaction mesurée le 2026-09-20 donnait une contrainte inerte sur la pile et coûteuse sur le témoin : la physique corrigée satisfaisait déjà la contrainte avant qu'on la pose.
 
-RÉSERVES. Le battement simulé se déduit du stock souterrain en le divisant par une porosité de drainage IMPOSÉE à 0,05 ; avec les 0,027 que la régression implique, le rapport dépasserait un. L'accord d'amplitude est donc conditionnel à ce choix, alors que la phase et les deux corrélations n'en dépendent pas. Un seul territoire, une seule graine, 21 puits.
+TRANSFERT À UN SECOND TERRITOIRE, le même jour. Le Saint-Laurent nord-ouest possède les mêmes sorties, et son bras à physique corrigée n'avait lui non plus aucun poids sur les puits.
+
+| Territoire | Colonne | Puits | Cycle saisonnier | Anomalies | Puits à corrélation positive | Battement simulé | Mesuré |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Outaouais | corrigée | 21 | +0,84 | +0,53 | 100 % | 0,80 m | 1,13 m |
+| Outaouais | d'origine | 21 | +0,10 | −0,33 | 38 % | 0,02 m | 1,13 m |
+| Saint-Laurent nord-ouest | corrigée | 13 | +0,86 | +0,40 | 100 % | 1,10 m | 0,98 m |
+| Saint-Laurent nord-ouest | d'origine | 13 | −0,18 | −0,33 | 8 % | 0,07 m | 0,98 m |
+
+Sur 34 puits et deux territoires, la colonne corrigée reproduit le cycle saisonnier à 0,84 et 0,86, place le maximum au mois mesuré dans les deux cas, avril puis mai, et garde des anomalies interannuelles positives sur la TOTALITÉ des puits. La colonne d'origine est anticorrélée dans les deux territoires et ne bat que de deux à sept centimètres contre environ un mètre mesuré.
+
+Et son échec ne dépend pas du terme de perte : il est identique que ce terme soit ACTIF, comme en Outaouais, ou de poids NUL, comme au Saint-Laurent nord-ouest. Le résultat n'est donc pas une propriété d'un réglage mais de la structure de la colonne.
+
+RÉSERVES. Le battement simulé se déduit du stock souterrain en le divisant par une porosité de drainage IMPOSÉE à 0,05 ; avec les 0,023 à 0,027 que la régression implique selon le territoire, le rapport dépasserait un. L'accord d'amplitude est donc conditionnel à ce choix, alors que la phase et les deux corrélations n'en dépendent pas. Deux territoires du Québec méridional, 34 puits.
