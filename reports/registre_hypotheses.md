@@ -2399,3 +2399,29 @@ Le reste du partage tient. La pile s'approche mieux de tout le reste : la variat
 La contrainte sur les puits est INERTE sur la physique corrigée, qui ne bouge pas de trois millièmes entre la case libre et la case contrainte, et elle déplace le témoin, dont l'indice de base monte de 0,387 à 0,439 et la troncature descend de 0,101 à 0,081. Une contrainte n'agit que là où il y a quelque chose à corriger ; c'est le comportement attendu, mais il ne se paie pas en débit de façon mesurable, contrairement à ce qui avait été avancé en cours de journée sur la seule première graine.
 
 Portée. Un seul territoire, huit époques, un seul point de départ. Le transfert au Saint-Laurent nord-ouest est en cours au taux de 1e-5, où la dispersion s'annule sur l'Outaouais, avec une passe supplémentaire pour vérifier que ce déterminisme vaut aussi pour la configuration témoin, la seule dont il n'ait pas été montré.
+
+---
+
+## R147 — Les récessions observées réclament un réservoir NON LINÉAIRE, pas une pile de compartiments (2026-09-20) — ÉTABLI
+
+Question posée par Essi le 2026-09-20 : découper le sol en trois tranches est une convention, pas de la physique. Ce que les données peuvent trancher n'est pas le nombre de tranches mais le nombre de constantes de temps que la vidange réclame. Épreuve sur les hydrogrammes OBSERVÉS de 94 stations réparties sur cinq territoires, sans aucune simulation, par la méthode de Brutsaert et Nieber : sur les segments de décrue franche, ajustement de l'enveloppe inférieure de −dQ/dt = a·Q^b.
+
+| Territoire | Exposant b | Temps aux hautes eaux | Temps aux basses eaux |
+| --- | --- | --- | --- |
+| Gaspésie, 15 stations | 1,63 | 10,9 j | 69,0 j |
+| Montérégie, 21 stations | 1,31 | 5,3 j | 12,5 j |
+| Outaouais, 16 stations | 1,82 | 8,4 j | 43,0 j |
+| Saguenay, 17 stations | 1,83 | 9,5 j | 111,5 j |
+| Saint-Laurent nord-ouest, 25 stations | 1,75 | 8,0 j | 53,5 j |
+
+Trois lectures, dans l'ordre de leur portée.
+
+Une seule constante de temps ne suffit pas. L'exposant médian vaut 1,65 sur 94 stations et dépasse 1,25 au premier décile presque partout : un réservoir linéaire, qui donnerait exactement 1, est exclu. Les temps de vidange apparents s'étalent d'un facteur 5,4 entre hautes et basses eaux, de huit à dix jours vers quarante à cent dix jours.
+
+Mais une pile de compartiments n'est pas la bonne façon de fabriquer cet étalement. Pour −dQ/dt = a·Q^b, le temps apparent vaut Q^(1−b)/a, si bien que l'étalement se DÉDUIT de l'exposant et du rapport des débits, sans invoquer un second réservoir. Prédit ainsi, il vaut 3,0 contre 5,4 mesuré, soit 72 % de l'étalement expliqué en logarithme par la seule non-linéarité. L'essentiel du spectre est donc une propriété d'un réservoir unique, pas d'un empilement.
+
+L'exposant désigne une forme précise, et c'est celle qui est déjà implémentée. Une valeur de 1,65 est proche de 1,5, solution de Boussinesq en temps long pour une nappe libre, c'est-à-dire la loi en carré de la charge de `ETL_NAPPE_LIBRE`. La littérature était donc en avance sur le réglage à la main : l'exposant libre de `BASE_THRESH_POWER` et la nappe de Dupuit-Boussinesq visent tous deux le bon objet.
+
+Ce que le test ne dit pas. Les 28 % d'étalement résiduel restent compatibles avec un second temps de séjour, ou avec un exposant qui varie avec le débit ; le départager demande une autre épreuve. Et la sortie latérale profonde réglée à trois jours vit SOUS la plage des récessions mesurées, dont la borne rapide est de huit à onze jours : cette analyse ne la contraint pas.
+
+La Montérégie fait exception sur les deux plans, exposant de 1,31 et étalement de 2,4 seulement. C'est le territoire drainé et cultivé, dont le drain agricole convertit un interflux lent en chemin rapide à seuil. Le comportement mesuré est cohérent avec ce mécanisme.
