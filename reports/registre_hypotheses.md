@@ -2684,3 +2684,25 @@ Les termes du second ordre par NATURE sont les écarts quadratiques : l'écart q
 Le terme de calendrier est du second ordre par une propriété mathématique et non par choix : une corrélation est stationnaire à son optimum, donc 1 − r ne bouge pas au premier ordre. On peut le rendre linéaire par une racine, mais il ne faut PAS le faire ici, et c'est un résultat utile. Dans la recette décomposée, ce terme porte le plus gros poids et vise l'erreur de calendrier, qui est irréductible à la résolution du forçage. Qu'il réponde au second ordre signifie qu'une petite erreur de date coûte peu, tandis que les erreurs de volume, d'amplitude et d'étiage, elles du premier ordre, comptent pleinement. C'est exactement ce qui fait passer de 23 à 7 le rapport entre le coût d'un retard d'un jour et celui d'un prélèvement de cinq pour cent.
 
 Un seul vrai défaut restait, le terme de variations journalières, quatrième de la famille des rapports pénalisés au carré. Corrigé, il passe de 2,00 à 1,00, et sa symétrie entre plateau et signal trop nerveux, qui est sa raison d'être, est conservée.
+
+---
+
+## R157 — Les poids de la perte posés par équilibrage mesuré : le prélèvement devient aussi visible qu'une erreur de calendrier (2026-09-21) — ÉTABLI
+
+Les poids de la recette en vigueur ont été choisis un par un, au fil des hypothèses, et jamais comparés entre eux. Le critère proposé ici est l'ÉQUILIBRE et non la maximisation, qui serait dégénérée : on se donne six défauts de référence d'une sévérité qu'un hydrologue juge comparable, on mesure la sensibilité de chaque terme à chacun, et on cherche les poids qui rendent la détection la plus uniforme possible. Le jugement de sévérité est le SEUL ingrédient subjectif, et il est explicite au lieu d'être caché dans des poids.
+
+| Recette | Coût d'un prélèvement de 5 % | Coût d'un retard d'un jour | Rapport | Préfère le lissage |
+| --- | --- | --- | --- | --- |
+| en vigueur | 0,0248 | 0,574 | 23,2 | 64 % des stations |
+| décomposée, poids au jugé | 0,0167 | 0,119 | 7,1 | jamais |
+| décomposée, poids équilibrés | **0,0273** | 0,0227 | **0,83** | jamais |
+
+Poids retenus : calendrier 0,15, volume 1,0, amplitude 0,15, pics par rapport 0,15, soutien d'étiage 1,0, variations 0,15. Un prélèvement coûte donc un peu PLUS qu'un décalage d'une journée, là où il coûtait vingt-trois fois moins.
+
+Le comportement aux grands décalages reste sain, ce qu'il fallait vérifier avant de conclure : le coût croît de 1 à 3,2 puis 5,7 puis 11,9 fois entre un et trente jours de retard, comme dans les autres recettes, et un décalage de trente jours coûte encore dix fois un prélèvement. La recette n'est pas aveugle au calendrier, elle lui donne un poids absolu plus faible, ce qui est justifié puisque l'erreur d'une journée est irréductible à la résolution du forçage.
+
+Deux enseignements de méthode, dont un sur une erreur de ma part.
+
+La première version de l'optimisation N'AVAIT PAS DE PLANCHER et rendait une solution de coin, annulant l'amplitude, les pics et les variations. L'uniformité de la détection ne peut pas être le seul objectif : un terme sert aussi de CONTRAINTE, il interdit une façon de tricher, et le terme d'amplitude est précisément celui qui empêche le modèle d'aplatir. Trois poids se collent d'ailleurs au plancher, ce qui dit que pour la seule détection ils sont redondants et qu'ils gagnent leur place autrement.
+
+Le prélèvement reste le défaut le moins détecté même après équilibrage, cinq fois moins qu'une amputation d'amplitude de vingt pour cent. Ma liste de sévérités supposées comparables ne l'était donc pas : une ponction estivale de cinq pour cent du débit moyen annuel est une perturbation intrinsèquement plus petite que les autres défauts de la liste. C'est une information utile sur la difficulté du problème, pas un défaut de la méthode.
