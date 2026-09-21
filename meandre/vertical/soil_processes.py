@@ -107,7 +107,9 @@ class SoilProcess:
     kind: str
     form: str
     params: dict = field(default_factory=dict)
-    ceiling: float | None = None       # plafond du flux, mm/j ; None pour aucun
+    # Plafond du flux, en unites internes, ou le NOM d'une sortie du champ spatial a
+    # resoudre par troncon. None pour aucun plafond.
+    ceiling: float | str | None = None
 
     def __post_init__(self):
         if self.kind not in KINDS:
@@ -123,10 +125,36 @@ class SoilProcess:
         if self.layer < 1:
             raise ValueError("les couches sont numerotees a partir de 1")
 
+    def resolved(self, fields: dict):
+        """Remplace les valeurs SYMBOLIQUES par les tenseurs du champ spatial.
+
+        Une valeur de configuration peut nommer une sortie du champ au lieu de donner un
+        nombre, par exemple `ceiling_mm_per_day = "k_sub"`. C'est ce qui rend un plafond
+        spatial : le champ le prédit par tronçon depuis la texture du sol, qui l'explique à
+        27 % contre le témoin, là où l'exposant et les constantes de temps ne sont prédits
+        par aucune covariable disponible et restent donc uniformes.
+        """
+        from dataclasses import replace
+
+        plafond = self.ceiling
+        if isinstance(plafond, str):
+            if plafond not in fields:
+                raise KeyError(f"plafond « {plafond} » absent du champ spatial : "
+                               f"sorties connues {sorted(fields)}")
+            plafond = fields[plafond]
+        params = {k: (fields[v] if isinstance(v, str) and v in fields else v)
+                  for k, v in self.params.items()}
+        if plafond is self.ceiling and params == self.params:
+            return self
+        return replace(self, ceiling=plafond, params=params)
+
     def flux(self, ctx):
         """Flux en mètres par heure, dans les unités internes de la boucle de sous-pas."""
         q = FORMS[self.form][0](ctx, self.params)
         if self.ceiling is not None:
+            if isinstance(self.ceiling, str):
+                raise RuntimeError(f"plafond « {self.ceiling} » non resolu : appeler "
+                                   f"SoilProfile.resolved() avec les sorties du champ")
             q = torch.minimum(q, torch.as_tensor(self.ceiling, dtype=q.dtype, device=q.device))
         return q
 
@@ -148,6 +176,13 @@ class SoilProfile:
             if proc.layer > self.layers:
                 raise ValueError(f"processus sur la couche {proc.layer} d'un profil qui en "
                                  f"compte {self.layers}")
+
+    def resolved(self, fields: dict):
+        """Profil dont les valeurs symboliques sont remplacées par les tenseurs du champ."""
+        pris = tuple(p.resolved(fields) for p in self.processes)
+        if all(a is b for a, b in zip(pris, self.processes)):
+            return self
+        return SoilProfile(layers=self.layers, processes=pris)
 
     def of(self, layer: int, kind: str):
         """Les processus d'un type attachés à une couche, dans l'ordre de déclaration."""
@@ -199,7 +234,11 @@ def from_toml(section: dict | None) -> SoilProfile | None:
         if "tau_days" in entry:
             params["tau"] = float(entry["tau_days"]) * HOURS_PER_DAY
         ceiling = entry.get("ceiling_mm_per_day")
-        if ceiling is not None:
+        if isinstance(ceiling, str):
+            # Nom d'une sortie du champ spatial, resolu plus tard contre les parametres du
+            # troncon. Le champ travaille deja en metres par heure : aucune conversion.
+            pass
+        elif ceiling is not None:
             ceiling = float(ceiling) * M_PER_MM / HOURS_PER_DAY
         declared.append(SoilProcess(layer=int(entry["layer"]), kind=str(entry["kind"]),
                                     form=str(entry["form"]), params=params, ceiling=ceiling))

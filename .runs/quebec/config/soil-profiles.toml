@@ -76,3 +76,36 @@ kind = "percolation"
 form = "PERC_THRESH_POWER"
 tau_days = 2.0
 ceiling_mm_per_day = 3.0
+
+# ─── Plafond de percolation prédit par le champ spatial ───────────────────────
+# Même pile que ci-dessus, à ceci près que le plafond ne vient plus d'une constante mais du
+# champ spatial, qui le prédit par tronçon. Le nom entre guillemets désigne une sortie du
+# champ et non un nombre ; il est résolu contre les paramètres du tronçon au moment du calcul.
+#
+# Pourquoi seulement le plafond. Épreuve par transfert sur 95 stations et cinq territoires,
+# chacun prédit par un modèle ajusté sur les autres : la texture du sol explique la part
+# souterraine du débit à 27 % contre le témoin, quand la géologie du socle n'en explique que
+# 3 %. Mais aucune covariable ne prédit la DYNAMIQUE : l'exposant de récession est prédit à
+# −8 % par la texture, les temps de vidange à +3 % et −19 %, donc pas du tout. Les attributs
+# de terrain disent combien d'eau passe par le souterrain, pas à quelle vitesse elle revient.
+# Les constantes de temps restent donc uniformes ici, et c'est un choix mesuré.
+[pile-spatiale.soil]
+layers = 3
+
+[[pile-spatiale.soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[pile-spatiale.soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+
+[[pile-spatiale.soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = "k_sub"

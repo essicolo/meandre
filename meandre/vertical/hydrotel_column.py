@@ -459,7 +459,14 @@ class HydrotelColumn(nn.Module):
         # les formes a seuil puissent s'en servir.
         _profile = getattr(self, "soil_profile", None)
         if _profile is not None:
-            p_soil["soil_profile"] = _profile
+            # Les valeurs symboliques de la declaration, par exemple un plafond nomme
+            # `k_sub`, sont remplacees ici par la sortie du champ spatial, qui donne une
+            # valeur PAR TRONCON. C'est ce qui rend le plafond de percolation spatial sans
+            # que la declaration ait a connaitre le champ.
+            _champ = {"k_sub": getattr(sp, "k_sub", None), "krec": sp.krec,
+                      "k_gw": getattr(sp, "k_gw", None)}
+            _champ = {k: v for k, v in _champ.items() if v is not None}
+            p_soil["soil_profile"] = _profile.resolved(_champ)
             p_soil["thetacc2"] = sp.theta_fc_2
             p_soil["thetacc3"] = sp.theta_fc_3
         _l3n = getattr(self, "l3_drain_exp", None)

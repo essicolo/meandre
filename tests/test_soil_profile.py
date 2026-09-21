@@ -95,3 +95,36 @@ def test_une_forme_inconnue_ou_mal_placee_est_refusee():
     with pytest.raises(ValueError, match="compte"):
         sp.SoilProfile(layers=2, processes=(sp.SoilProcess(layer=3, kind="lateral",
                                                            form="BASE_LINEAR"),))
+
+
+def test_un_plafond_peut_venir_du_champ_spatial():
+    """Une valeur symbolique est remplacée par le tenseur du champ, par tronçon.
+
+    C'est le mécanisme qui rend le plafond de percolation spatial. La texture du sol le
+    prédit à 27 % contre le témoin sur l'indice d'écoulement de base, là où l'exposant et
+    les constantes de temps ne sont prédits par aucune covariable disponible.
+    """
+    par_troncon = torch.tensor([1e-6, 1e-4, 1e-3])
+    profil = sp.from_toml({"layers": 3, "process": [
+        {"layer": 3, "kind": "percolation", "form": "PERC_THRESH_POWER",
+         "tau_days": 2.0, "ceiling_mm_per_day": "k_sub"}]})
+    proc = profil.of(3, "percolation")[0]
+    assert proc.ceiling == "k_sub", "le nom reste symbolique tant qu'il n'est pas resolu"
+    with pytest.raises(RuntimeError, match="non resolu"):
+        proc.flux({"theta": torch.tensor([0.4]), "theta_fc": torch.tensor([0.3]),
+                   "thickness": torch.tensor([2.7]), "porosity": torch.tensor([0.5]),
+                   "conductivity": torch.tensor([1e-3]), "sin_slope": torch.tensor([0.04])})
+    resolu = profil.resolved({"k_sub": par_troncon})
+    ctx = {"theta": torch.full((3,), 0.49), "theta_fc": torch.full((3,), 0.30),
+           "thickness": torch.full((3,), 2.70), "porosity": torch.full((3,), 0.50),
+           "conductivity": torch.full((3,), 1e-3), "sin_slope": torch.full((3,), 0.04)}
+    q = resolu.total(3, "percolation", ctx)
+    assert torch.allclose(q, par_troncon), "chaque troncon doit etre borne par SON plafond"
+
+
+def test_un_nom_inconnu_du_champ_est_refuse():
+    profil = sp.from_toml({"layers": 3, "process": [
+        {"layer": 3, "kind": "percolation", "form": "PERC_THRESH_POWER",
+         "tau_days": 2.0, "ceiling_mm_per_day": "parametre_inexistant"}]})
+    with pytest.raises(KeyError, match="absent du champ"):
+        profil.resolved({"k_sub": torch.tensor([1e-4])})

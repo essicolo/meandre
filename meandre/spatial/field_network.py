@@ -39,6 +39,14 @@ from meandre.spatial.positional_encoding import FourierPositionalEncoding
 # Le debit SEUL prefere une recharge quasi nulle : c'est un arbitrage assume, pas un
 # optimum de score (voir la note d'enjeu au registre).
 KREC_REF = 2e-5
+# PLAFOND DE PERCOLATION DU SUBSTRATUM (2026-09-20). Un millimetre par jour en reference,
+# soit le milieu de la plage utile mesuree de 0,5 a 2 mm/j, qui correspond a un till silteux.
+# C'est une propriete du DEPOT et du socle, non du sol : l'eau qui quitte le profil doit les
+# traverser, et leur conductivite est de plusieurs ordres inferieure a celle du sol. Sortie du
+# champ spatial parce que la texture du sol la predit : epreuve par transfert sur 95 stations
+# et cinq territoires, +27 % contre le temoin sur l'indice d'ecoulement de base, la ou la
+# geologie du socle ne donne que +3 %.
+KSUB_REF = 1.0e-3 / 24.0
 
 
 @dataclass
@@ -186,8 +194,13 @@ class SpatialParams:
     # precisement pourquoi ils entrent comme PRIOR FAIBLE et non comme ancrage.
     dT_canopee_feu: Tensor    # retard de fonte sous feuillu, vs decouvert (C) [0, 3]
     dT_canopee_conif: Tensor  # retard SUPPLEMENTAIRE sous conifere (C) [0, 3]
+    # ── PLAFOND DE PERCOLATION DU SUBSTRATUM ────────────────────────────────
+    # Derniere sortie, et c'est voulu : la construction rend exactement KSUB_REF quand la
+    # sortie brute vaut zero, si bien qu'un ancien point de reprise, dont fc_out est complete
+    # par des zeros en poids ET en biais, se charge sans rien changer.
+    k_sub: Tensor           # plafond de percolation du substratum (m/h) [2e-6, 2e-3]
 
-    N_PARAMS: ClassVar[int] = 42
+    N_PARAMS: ClassVar[int] = 43
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -440,6 +453,7 @@ class SpatialFieldNetwork(nn.Module):
             # d'ordre plus les observables faire le travail.
             "dT_canopee_feu": 1.0,
             "dT_canopee_conif": 1.0,
+            "k_sub": KSUB_REF,
         }
         if targets:
             d.update(targets)
@@ -539,6 +553,8 @@ class SpatialFieldNetwork(nn.Module):
         raw[i] = inv_bounded(d["fs_neige"], 0.5, 6.0); i += 1
         raw[i] = inv_bounded(d["dT_canopee_feu"], 0.0, 3.0); i += 1
         raw[i] = inv_bounded(d["dT_canopee_conif"], 0.0, 3.0); i += 1
+        # k_sub : exp(clamp(raw*0.3 + log(KSUB_REF))), donc raw nul rend la reference.
+        raw[i] = (math.log(d["k_sub"]) - math.log(KSUB_REF)) / 0.3; i += 1
 
         return raw
 
@@ -919,6 +935,12 @@ class SpatialFieldNetwork(nn.Module):
         # famille sagu) et qu'au-dela le manteau ne fondrait plus du tout en avril.
         constrained.append(bounded(cols[i], 0.0, 3.0)); i += 1        # dT_canopee_feu
         constrained.append(bounded(cols[i], 0.0, 3.0)); i += 1        # dT_canopee_conif
+        # k_sub : plafond de percolation du substratum (m/h), log-normal CENTRE sur la
+        # reference, meme construction que krec et k_gw. Bornes [2e-6, 2e-3] m/h, soit
+        # 0,05 a 50 mm/j, ce qui couvre du socle fracture peu permeable au depot sableux.
+        exponent = torch.clamp(cols[i] * 0.3 + math.log(KSUB_REF),
+                               min=math.log(2e-6), max=math.log(2e-3))
+        constrained.append(torch.exp(exponent)); i += 1
 
         return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
 

@@ -14,7 +14,14 @@ def test_n_params_coherent():
     import dataclasses
     noms = [f.name for f in dataclasses.fields(SpatialParams)]
     assert len(noms) == SpatialParams.N_PARAMS
-    assert noms[-2:] == ["dT_canopee_feu", "dT_canopee_conif"]
+    # Les deux retards de fonte sous couvert restent ADJACENTS et dans cet ordre, la
+    # construction du conifere ajoutant son retard a celui du feuillu. Ils ne sont plus en
+    # queue depuis l'ajout du plafond de percolation le 2026-09-20 : toute sortie ajoutee va
+    # en DERNIER, pour que le remplissage par zeros d'un ancien point de reprise reste
+    # inoffensif, ce qui deplace mecaniquement ce qui precede.
+    i = noms.index("dT_canopee_feu")
+    assert noms[i:i + 2] == ["dT_canopee_feu", "dT_canopee_conif"]
+    assert noms[-1] == "k_sub", "la derniere sortie ajoutee doit rester en queue"
 
 
 def test_index_krec_suit_le_champ():
