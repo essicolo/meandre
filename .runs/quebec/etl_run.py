@@ -780,6 +780,18 @@ if os.environ.get("ETL_KREC_LIBRE", "0") == "1" and "ETL_KREC_GEL" not in os.env
     print("[etl] krec APPRIS par le champ, moyenne ancree par le prior physique "
           "(cible 2e-5 m/h, ~34 % de debit de base ; le calage Hydrotel donne 1.3e-7)")
 
+# PLAFOND DE PERCOLATION : moyenne ancree ET variation RETRECIE. Laisse libre, ce plafond
+# apprend un motif positionnel, sa variation etant expliquee a 0,67 par les seules coordonnees
+# et a 0,30 par la texture (mesure du 2026-09-21). La granulometrie ne gouverne pas la
+# conductivite d'un till, la compaction le fait, et aucune carte provinciale ne la porte. Avec
+# 3412 troncons pour 16 stations et 27 puits, une variation libre par noeud est ajustee et non
+# identifiee : ETL_KSUB_PRIOR la fait donc couter, sans l'interdire.
+if os.environ.get("ETL_KSUB_PRIOR", "0") != "0":
+    model.spatial_encoder.prior_on_k_sub = True
+    model.spatial_encoder.poids_k_sub = float(os.environ["ETL_KSUB_PRIOR"])
+    print(f"[etl] plafond de percolation : moyenne ancree et variation retrecie, "
+          f"poids {model.spatial_encoder.poids_k_sub}")
+
 if "ETL_KREC" in os.environ:
     import math as _mk
     _kv = float(os.environ["ETL_KREC"])
