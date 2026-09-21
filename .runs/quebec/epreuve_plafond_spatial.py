@@ -54,6 +54,27 @@ def champ(region, variante):
     return z["param_k_sub"] * MM_PAR_JOUR, z
 
 
+def attributs_par_troncon(region, sources, n_noeuds):
+    """Attributs de terrain de chaque tronçon, alignés sur l'indice de nœud.
+
+    Le tronçon est indexé à partir de 1 dans les tables d'ingestion, le nœud à partir de 0.
+    """
+    morceaux = []
+    for src in sources:
+        f = f"{DERIVES}/{src}-troncons.parquet"
+        if not os.path.exists(f):
+            continue
+        t = pd.read_parquet(f)
+        t = t[t.region.str.lower() == region.lower()].set_index("troncon")
+        garde = [c for c in t.columns
+                 if c not in ("region", "area_m2") and not c.startswith("couv_")]
+        morceaux.append(t[garde].add_prefix(f"{src}__"))
+    if not morceaux:
+        return None
+    table = pd.concat(morceaux, axis=1).fillna(0.0)
+    return table.reindex(np.arange(1, n_noeuds + 1)).fillna(0.0).reset_index(drop=True)
+
+
 def rang(x, y):
     """Corrélation de rang, sans dépendance à scipy."""
     rx = np.argsort(np.argsort(x)).astype(float)
@@ -94,10 +115,11 @@ def main():
         k, z = champ(reg, a.variante)
         if k is None:
             continue
-        att = _idb.attributs_de_station(reg, a.variante, np.arange(len(k)), amont=False,
-                                        sources=a.sources)
+        # Les attributs se lisent PAR TRONCON et non par station : le plafond est une sortie
+        # du champ sur chaque troncon, pas une signature integree sur un bassin amont.
+        att = attributs_par_troncon(reg, a.sources, len(k))
         if att is None:
-            print(f"  {reg:6s} : cache sans appariement, attributs indisponibles")
+            print(f"  {reg:6s} : attributs de troncon indisponibles")
             continue
         lignes.append(pd.concat([pd.DataFrame({"region": reg, "k_sub": k}), att], axis=1))
     if len(lignes) >= 2:

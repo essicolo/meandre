@@ -2706,3 +2706,19 @@ Deux enseignements de méthode, dont un sur une erreur de ma part.
 La première version de l'optimisation N'AVAIT PAS DE PLANCHER et rendait une solution de coin, annulant l'amplitude, les pics et les variations. L'uniformité de la détection ne peut pas être le seul objectif : un terme sert aussi de CONTRAINTE, il interdit une façon de tricher, et le terme d'amplitude est précisément celui qui empêche le modèle d'aplatir. Trois poids se collent d'ailleurs au plancher, ce qui dit que pour la seule détection ils sont redondants et qu'ils gagnent leur place autrement.
 
 Le prélèvement reste le défaut le moins détecté même après équilibrage, cinq fois moins qu'une amputation d'amplitude de vingt pour cent. Ma liste de sévérités supposées comparables ne l'était donc pas : une ponction estivale de cinq pour cent du débit moyen annuel est une perturbation intrinsèquement plus petite que les autres défauts de la liste. C'est une information utile sur la difficulté du problème, pas un défaut de la méthode.
+
+---
+
+## R158 — Le champ apprend un plafond qui varie, mais par la POSITION et non par la texture (2026-09-21) — ÉTABLI
+
+Épreuve du plafond de percolation spatial, écrite AVANT la simulation avec ses trois seuils de décision. Huit époques sur l'Outaouais, taux 1e-5, profil de sol déclaré dont le plafond nomme la sortie `k_sub` du champ spatial.
+
+Première question, le plafond varie-t-il. Oui : médiane 3,01 mm/jour, étendue 2,60 à 4,97, coefficient de variation 0,27 contre un seuil de 0,15. Le champ n'a pas ignoré la sortie, et il l'a relevée de la référence de 1 mm/jour jusqu'à 3, c'est-à-dire exactement la valeur que la variante à plafond constant emploie. Le chantier ne se referme donc pas.
+
+Deuxième question, et c'est elle qui tranche. Sur les 3412 tronçons, la variation du plafond appris est expliquée à **0,67 par la POSITION seule**, longitude et latitude, et à 0,30 par la texture du sol. Le champ a appris un motif positionnel, pas un motif de texture. C'est le mode d'échec que la règle de décision anticipait, et c'est le défaut connu d'un encodage positionnel libre : il peut ajuster n'importe quoi à partir des coordonnées, donc il le fait, et la covariable physiquement pertinente reste inutilisée bien qu'elle soit disponible dans les descripteurs.
+
+Troisième question, la corrélation de rang entre plafond appris et indice d'écoulement de base observé vaut −0,09 sur 16 stations. Ce chiffre NE RÉFUTE RIEN, et ma règle de décision était mal posée : avec seize stations, une corrélation de rang doit dépasser environ 0,50 pour se distinguer de zéro, si bien que l'épreuve ne pouvait détecter qu'un lien très fort. J'aurais dû calculer cette puissance en écrivant la règle. La question reste donc ouverte, et elle demande de mettre plusieurs territoires en commun.
+
+Conséquence pour le chantier, qui change de nature plutôt que de se fermer. Donner une sortie de plus au champ ne le fait pas se servir de la bonne information ; il faut la lui imposer. Deux voies, et la seconde est la plus propre. Ancrer le plafond appris à sa valeur prédite par la texture, au moyen d'un terme de prior comme il en existe déjà pour les paramètres de littérature. Ou faire prédire ce plafond par la TEXTURE SEULE, dans une tête séparée qui ne voit pas les coordonnées, ce qui est cohérent avec la mesure du 2026-09-20 : la texture explique la part souterraine à +27 % contre le témoin, et la position ne fait pas partie de ce qui la prédit.
+
+Sur le débit, la variante spatiale coûte 0,0055 de KGE contre la variante à plafond constant, 0,6862 contre 0,6917, cette dernière étant identique à quatre décimales sur ses deux graines. L'écart est petit et ne porte aucune conclusion : ce n'est pas sur le KGE que ce chantier se juge.
