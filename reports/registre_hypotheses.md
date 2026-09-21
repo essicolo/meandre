@@ -2806,7 +2806,22 @@ VOLUME : identifiable à un facteur 1,6 près, et le modèle est sous la borne b
 | observation, Eckhardt à 0,65 | 370 mm/an |
 | observation, Eckhardt à 0,80 | 454 mm/an |
 
-Le seul choix du filtre étale l'estimation d'un facteur 1,58. Le modèle produit 28 pour cent de moins que la borne la plus conservatrice. RÉSERVE sur ce calcul : faute d'une aire de drainage dans le cache, l'indice observé est appliqué à la lame écoulée du MODÈLE, si bien qu'un biais de volume du modèle se propage à l'estimation. L'ordre de grandeur tient, le chiffre exact non.
+Le seul choix du filtre étale l'estimation d'un facteur 1,58.
+
+CORRECTION DU MÊME JOUR, sur une comparaison fautive de ma part. J'avais conclu que le modèle produisait 28 pour cent de moins que la borne la plus conservatrice. C'est faux : je comparais la RECHARGE du modèle, 206 mm/an, à ce qu'un FILTRE appelle débit de base, qui ne sont pas la même grandeur. Le filtre sépare le lent du rapide et compte comme base une bonne part de l'écoulement hypodermique.
+
+| Grandeur, physique corrigée | Lame annuelle |
+| --- | --- |
+| production de surface | 159 mm/an |
+| production horizontale, hypodermique | 257 mm/an |
+| production souterraine | 171 mm/an |
+| recharge vers l'aquifère | 206 mm/an |
+| base du filtre sur l'hydrogramme SIMULÉ | 351 mm/an |
+| base du filtre sur l'hydrogramme OBSERVÉ | 370 mm/an |
+
+Le filtre attribue à la base 180 des 257 mm/an du chemin horizontal, soit 70 pour cent de celui-ci. Comparé à grandeur égale, filtre contre filtre aux mêmes stations, le modèle est court de 19 mm/an, c'est-à-dire de CINQ pour cent et non de vingt-huit. Le volume de débit de base de la physique corrigée est donc essentiellement juste.
+
+C'est la troisième fois que je confonds une part de PRODUCTION avec une sortie de FILTRE, après l'erreur du 2026-09-20 sur l'indice et celle du 2026-09-21 sur les covariables. La règle est simple et je la pose ici : une grandeur issue d'un filtre ne se compare qu'à la même grandeur issue du même filtre, appliqué aux deux séries.
 
 PHASE : identifiable, et c'est ce que les puits achètent. Le cycle simulé culmine en avril à 24,7 pour cent du total annuel et creuse en août à 3,2, soit un rapport de huit entre le mois fort et le mois faible. Il avait été établi que les puits identifient fortement la PRÉSENCE des mécanismes et leur phase, et faiblement la valeur des paramètres : c'est exactement la facette qu'ils contraignent, et la seule.
 
