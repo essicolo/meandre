@@ -113,7 +113,15 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
                    # le modele pour aplatir la ou on voulait le proteger. La forme par
                    # rapport ne prefere JAMAIS le lissage, sur 77 stations, trois seuils
                    # et trois durees.
-                   ("ETL_WPEAKRATIO", "w_peak_ratio")):
+                   ("ETL_WPEAKRATIO", "w_peak_ratio"),
+                   # VITESSE DE VIDANGE (2026-09-21). Seul terme dont la reponse a la
+                   # partition entre ecoulement hypodermique et nappe n'est pas confondue
+                   # avec le volume : 0,0001 contre 0,20 pour le terme de variations.
+                   # Comme le volume est deja tenu par le biais et par le facteur beta, un
+                   # terme qui y reagit s'y fait absorber. Sa specificite vaut 2,37 contre
+                   # 1,58 pour le meilleur des autres, au prix d'une reponse brute 23 %
+                   # plus faible.
+                   ("ETL_WRECESS", "w_recession")):
     # Poids des termes de debit, exposes le 2026-09-05 : le balayage de neuf pertes du
     # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
     # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle

@@ -99,6 +99,54 @@ def differentiable_peak_ratio_loss(q_obs: Tensor, q_sim: Tensor, seuil: Tensor) 
     return torch.abs(torch.log(moy_sim / moy_obs))
 
 
+def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delai: int = 2,
+                                  duree_min: int = 5) -> Tensor:
+    """Écart sur la VITESSE DE VIDANGE, mesurée sur les jours de décrue franche.
+
+    POURQUOI CE TERME EXISTE. La colonne a deux chemins lents, l'écoulement hypodermique et
+    la nappe, et aucune observation ne les séparait. Mesuré le 2026-09-21 : à volume lent
+    constant, basculer tout ce volume d'un chemin à l'autre déplace l'indice d'écoulement de
+    base d'Eckhardt de six millièmes seulement, parce que ce filtre ajuste sa constante de
+    récession sur la série et absorbe l'information. La même bascule déplace la constante de
+    récession de 0,966 à 0,735. C'est donc la FORME de la vidange qui identifie la partition,
+    et aucun terme de la perte ne la regardait.
+
+    LA GRANDEUR. Sur les jours où l'OBSERVATION décroît franchement, on prend la moyenne du
+    logarithme du rapport d'un jour au précédent : c'est l'opposé de l'inverse du temps de
+    vidange. Le masque vient de l'observation et ne bouge donc pas avec la simulation, sans
+    quoi un modèle plat déplacerait ses propres jours de décrue. Le délai après la pointe
+    écarte le ressuyage rapide, dont la constante est celle du versant et non de la nappe.
+
+    DEUX BANDES. La vidange est plus rapide aux hauts débits qu'aux bas, d'un facteur cinq à
+    six sur les hydrogrammes québécois, et c'est cet étalement qui porte l'information. Une
+    moyenne unique serait dominée par la bande la mieux représentée : on sépare donc les jours
+    de décrue par la médiane du débit observé et on somme les deux écarts.
+
+    ÉCART ABSOLU, premier ordre, conformément à l'audit de tous les termes du 2026-09-21.
+    """
+    if q_obs.numel() < 20:
+        return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
+    eps = (1e-3 * q_obs.median().abs()).clamp(min=1e-8)
+    decroit = q_obs[1:] < q_obs[:-1]
+    # Un jour compte s'il decroit ET si les `delai` jours precedents decroissent aussi : on
+    # ecarte ainsi mecaniquement le sommet de la pointe et le ressuyage qui le suit.
+    garde = decroit.clone()
+    for k in range(1, delai + 1):
+        garde[k:] = garde[k:] & decroit[:-k]
+    if int(garde.sum()) < duree_min * 4:
+        return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
+    ratio_obs = torch.log((q_obs[1:] + eps) / (q_obs[:-1] + eps))
+    ratio_sim = torch.log((q_sim[1:] + eps) / (q_sim[:-1] + eps))
+    niveau = q_obs[:-1]
+    seuil = niveau[garde].median()
+    perte = torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
+    for bande in (garde & (niveau >= seuil), garde & (niveau < seuil)):
+        if int(bande.sum()) < duree_min:
+            continue
+        perte = perte + torch.abs(ratio_sim[bande].mean() - ratio_obs[bande].mean())
+    return perte
+
+
 def differentiable_r_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     """Premier facteur du KGE, isolé : 1 − r, l'erreur de CALENDRIER. Parfait = 0."""
     r, _, _, _ = _kge_components(q_obs, q_sim)
@@ -843,6 +891,7 @@ class HydroLoss(nn.Module):
         w_beta: float = 0.0,
         w_gamma: float = 0.0,
         w_peak_ratio: float = 0.0,
+        w_recession: float = 0.0,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
@@ -914,6 +963,9 @@ class HydroLoss(nn.Module):
         self.w_gamma = w_gamma
         # Terme de pics par RAPPORT des magnitudes, immunise contre l'aplatissement.
         self.w_peak_ratio = w_peak_ratio
+        # Vitesse de vidange sur les jours de decrue : seule grandeur qui identifie la
+        # partition entre ecoulement hypodermique et nappe.
+        self.w_recession = w_recession
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -969,6 +1021,7 @@ class HydroLoss(nn.Module):
         # commun : la somme finale les lit dans les deux cas, alors que seul le chemin par
         # station les remplissait, d'ou une variable non liee sur l'autre.
         L_r = L_beta = L_gamma = L_peak_ratio = torch.tensor(0.0, device=q_sim.device)
+        L_recession = torch.tensor(0.0, device=q_sim.device)
 
         if self.per_station:
             n_stations = q_sim_at_stations.shape[1]
@@ -1082,12 +1135,12 @@ class HydroLoss(nn.Module):
                              or self.w_nrmse > 0 or self.w_log_nse > 0
                              or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0
                              or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0
-                             or self.w_peak_ratio > 0)
+                             or self.w_peak_ratio > 0 or self.w_recession > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     dq_v, fdc_v, dql_v = [], [], []
                     r_v, beta_v, gamma_v = [], [], []
-                    pr_v = []
+                    pr_v, rec_v = [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -1141,6 +1194,8 @@ class HydroLoss(nn.Module):
                             beta_v.append(_remis(differentiable_beta_loss(q_o_v, q_s_v)))
                         if self.w_gamma > 0:
                             gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
+                        if self.w_recession > 0:
+                            rec_v.append(_remis(differentiable_recession_loss(q_o_v, q_s_v)))
                         if self.w_peak_ratio > 0 and self.peak_threshold is not None:
                             _seuil = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
                             pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _seuil)))
@@ -1179,6 +1234,8 @@ class HydroLoss(nn.Module):
                         L_gamma = (torch.stack(gamma_v) * w).sum()
                     if self.w_peak_ratio > 0 and pr_v:
                         L_peak_ratio = (torch.stack(pr_v) * w).sum()
+                    if self.w_recession > 0 and rec_v:
+                        L_recession = (torch.stack(rec_v) * w).sum()
                     if self.w_nrmse > 0 and nrmse_v:
                         L_nrmse = (torch.stack(nrmse_v) * w).sum()
                     if self.w_log_nse > 0 and lnse_v:
@@ -1276,12 +1333,12 @@ class HydroLoss(nn.Module):
                 + self.w_dq_log * L_dql
                 + self.w_fdc_bas * L_fdc
                 + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma
-                + self.w_peak_ratio * L_peak_ratio)
+                + self.w_peak_ratio * L_peak_ratio + self.w_recession * L_recession)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "r_loss": L_r, "beta_loss": L_beta, "gamma_loss": L_gamma,
-                      "peak_ratio_loss": L_peak_ratio,
+                      "peak_ratio_loss": L_peak_ratio, "recession_loss": L_recession,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
