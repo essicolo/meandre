@@ -2893,3 +2893,26 @@ Sur 34 puits et deux territoires, la colonne corrigée reproduit le cycle saison
 Et son échec ne dépend pas du terme de perte : il est identique que ce terme soit ACTIF, comme en Outaouais, ou de poids NUL, comme au Saint-Laurent nord-ouest. Le résultat n'est donc pas une propriété d'un réglage mais de la structure de la colonne.
 
 RÉSERVES. Le battement simulé se déduit du stock souterrain en le divisant par une porosité de drainage IMPOSÉE à 0,05 ; avec les 0,023 à 0,027 que la régression implique selon le territoire, le rapport dépasserait un. L'accord d'amplitude est donc conditionnel à ce choix, alors que la phase et les deux corrélations n'en dépendent pas. Deux territoires du Québec méridional, 34 puits.
+
+---
+
+## R164 — Un terme sur la vitesse de vidange, seul à identifier la partition sans passer par le volume (2026-09-21) — ÉTABLI
+
+La colonne possède deux chemins lents, l'écoulement hypodermique et la nappe, et il a été établi le même jour qu'aucune observation employée ne les sépare : à volume lent constant, basculer tout ce volume d'un chemin à l'autre déplace l'indice d'écoulement de base d'Eckhardt de six millièmes, alors qu'il déplace la constante de récession de 0,966 à 0,735. Un terme de perte portant sur la FORME de la vidange a donc été écrit.
+
+La grandeur est la moyenne du logarithme du rapport d'un jour au précédent, sur les jours où l'OBSERVATION décroît franchement, séparément au-dessus et au-dessous de la médiane du débit observé. Le masque vient de l'observation et ne bouge pas avec la simulation, comme le seuil du terme de pics. Deux bandes parce que la vidange est cinq à six fois plus rapide aux hauts débits qu'aux bas, et que c'est cet étalement qui porte l'information.
+
+PROPRIÉTÉS MESURÉES, et toutes ne sont pas favorables.
+
+| Critère | Valeur | Lecture |
+| --- | --- | --- |
+| ordre de réponse | 0,95 à 1,11 | premier ordre, conforme |
+| préfère le lissage au retard | 0 % des stations, à 7 et 15 jours | ne récompense pas l'aplatissement |
+| réponse à un prélèvement de 5 % | +0,0064 | voit la grandeur visée |
+| réponse à la bascule de partition | 0,244 | MOINS que le terme de variations, 0,315 |
+| réponse à un volume +20 % | 0,0001 | insensible au volume |
+| spécificité, partition sur pire autre défaut | 2,37 | meilleure des six termes comparés |
+
+Le terme ne gagne donc PAS sur la force brute : le terme de variations journalières répond un tiers plus fort à la bascule de partition. Il gagne sur la spécificité, 2,37 contre 1,58, et pour une raison qui compte : sa réponse à la partition n'est pas confondue avec le volume, 0,0001 contre 0,20 pour le terme de variations. Le volume étant déjà tenu par le biais et par le facteur beta du KGE, un terme qui y réagit se fait absorber par eux ; celui-ci apporte une information qu'aucun autre ne porte isolément.
+
+RÉSERVE, et elle est réelle. Sur le catalogue de déformations du banc de perte, qui ne contient aucune bascule de partition, ce terme est redondant à 95,4 pour cent avec les autres. Sa justification tient entièrement à une déformation que le banc ne testait pas, et qui a dû être fabriquée sur des hydrogrammes synthétiques à deux réservoirs. Aucune mesure sur des données réelles n'établit pour l'instant que la partition simulée est fausse, ni de combien.
