@@ -471,11 +471,15 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
 # PROFIL DE SOL DECLARE (2026-09-20). Une section `[soil]` du TOML remplace les variables
 # d'environnement ci-dessous, qui etaient dix-sept a s'etre accumulees. Elle est COMPLETE :
 # une couche sans processus declare n'a pas de flux. Sans la section, rien ne change.
-_soil_section = cfg.get("soil")
-if _soil_section:
-    from meandre.vertical import soil_processes as _soil_proc
+from meandre.vertical import soil_processes as _soil_proc
 
-    _profile = _soil_proc.from_toml(_soil_section)
+# `from_toml` rend None quand la section ne declare AUCUN processus, ce qui est le cas de
+# toutes les configurations existantes : elles portent un `[soil]` pour les epaisseurs de
+# couches et le repertoire de calage. Tester la presence de la SECTION au lieu de celle du
+# PROFIL faisait planter chaque execution au demarrage (huit passes perdues la nuit du
+# 2026-09-20). Le garde-fou contre un profil vide en avait cree un autre.
+_profile = _soil_proc.from_toml(cfg.get("soil"))
+if _profile is not None:
     model.vertical_column.soil_profile = _profile
     print(f"[etl] profil de sol declare : {_profile.layers} couches, "
           f"{len(_profile.processes)} processus")
