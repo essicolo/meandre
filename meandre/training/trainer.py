@@ -1198,6 +1198,13 @@ class Trainer:
                                    ("neige", _need_snow, "swe"),
                                    ("niveaux de puits", _need_nappe, "s_gw"),
                                    ("gravimetrie GRACE", _need_tws, "theta3")]
+                    # Le terme de pics par rapport a besoin d'un SEUIL venu de
+                    # l'observation. Sans lui il est silencieusement nul, et c'est justement
+                    # le cas quand on remplace l'ancien terme de pics par le nouveau.
+                    if getattr(self.loss_fn, "w_peak_ratio", 0.0) > 0 and                             getattr(self.loss_fn, "peak_threshold", None) is None:
+                        print("[garde] TERME INERTE : « pics par rapport » est active mais "
+                              "aucun seuil de pointe n'a ete construit. Le terme vaudra zero.",
+                              flush=True)
                     for _nom_terme, _actif, _cle in _a_verifier:
                         if not _actif:
                             continue

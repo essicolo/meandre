@@ -303,7 +303,12 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
         w_peak=ref.w_peak, w_physics=ref.w_physics, w_residual=ref.w_residual,
         per_station=True, station_weights=None,
         station_var=torch.cat(st_var).to(device),
-        peak_threshold=torch.cat(st_peak).to(device) if ref.w_peak > 0 else None,
+        # Le seuil sert aux DEUX termes de pics : celui en ecart quadratique et celui
+        # par rapport des magnitudes, ajoute le 2026-09-20. Ne le construire que pour le
+        # premier rendait le second inerte precisement quand on remplace l'un par l'autre.
+        peak_threshold=(torch.cat(st_peak).to(device)
+                        if (ref.w_peak > 0 or getattr(ref, 'w_peak_ratio', 0.0) > 0)
+                        else None),
     )
 
     train_sl = parts[0]["train_data"].train_slice
