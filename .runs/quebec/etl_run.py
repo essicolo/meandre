@@ -106,7 +106,14 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
                    # A cinq termes contre cinq, le banc de redondance mesure 2,8 % de manque
                    # moyen pour la version decomposee contre 14,2 % pour la recette en
                    # vigueur, dont l'angle mort principal, 48,2 %, est le soutien d'etiage.
-                   ("ETL_WR", "w_r"), ("ETL_WBETA", "w_beta"), ("ETL_WGAMMA", "w_gamma")):
+                   ("ETL_WR", "w_r"), ("ETL_WBETA", "w_beta"), ("ETL_WGAMMA", "w_gamma"),
+                   # TERME DE PICS PAR RAPPORT DES MAGNITUDES (2026-09-20). Le terme
+                   # en ecart quadratique prefere un hydrogramme lisse sur sept jours a
+                   # un hydrogramme net decale d'un jour, sur 78 % des stations : il paie
+                   # le modele pour aplatir la ou on voulait le proteger. La forme par
+                   # rapport ne prefere JAMAIS le lissage, sur 77 stations, trois seuils
+                   # et trois durees.
+                   ("ETL_WPEAKRATIO", "w_peak_ratio")):
     # Poids des termes de debit, exposes le 2026-09-05 : le balayage de neuf pertes du
     # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
     # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle

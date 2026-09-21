@@ -70,6 +70,31 @@ def differentiable_kge_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return 1.0 - kge
 
 
+def differentiable_peak_ratio_loss(q_obs: Tensor, q_sim: Tensor, seuil: Tensor) -> Tensor:
+    """Rapport des pointes simulées aux pointes observées, en carré du logarithme.
+
+    REMPLACE le terme de pics en écart quadratique, dont il a été mesuré le 2026-09-20 qu'il
+    RÉCOMPENSE l'aplatissement sur 78 % des stations. Celui-là est un écart jour par jour
+    restreint aux hauts débits, c'est-à-dire à l'endroit exact où un décalage d'une journée
+    coûte le plus cher ; lisser y réduit l'erreur plus qu'ailleurs, et il paie pour cela.
+
+    Cette forme compare des STATISTIQUES de magnitude et ne peut pas être dupée par un
+    décalage : lisser abaisse la pointe simulée, et le terme le voit. Mesuré sur 77 stations,
+    trois seuils et trois durées de lissage, il ne préfère JAMAIS le lissage au retard.
+
+    Le seuil vient de l'OBSERVATION et ne bouge pas avec la simulation, sans quoi un modèle
+    plat déplacerait son propre seuil. Le logarithme rend la pénalité symétrique entre
+    sur-estimation et sous-estimation, une pointe deux fois trop forte coûtant autant qu'une
+    pointe deux fois trop faible.
+    """
+    haut = q_obs >= seuil
+    if haut.sum() < 10:
+        return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
+    moy_obs = q_obs[haut].mean().clamp(min=1e-8)
+    moy_sim = q_sim[haut].mean().clamp(min=1e-8)
+    return torch.log(moy_sim / moy_obs) ** 2
+
+
 def differentiable_r_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     """Premier facteur du KGE, isolé : 1 − r, l'erreur de CALENDRIER. Parfait = 0."""
     r, _, _, _ = _kge_components(q_obs, q_sim)
@@ -794,6 +819,7 @@ class HydroLoss(nn.Module):
         w_r: float = 0.0,
         w_beta: float = 0.0,
         w_gamma: float = 0.0,
+        w_peak_ratio: float = 0.0,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
@@ -863,6 +889,8 @@ class HydroLoss(nn.Module):
         self.w_r = w_r
         self.w_beta = w_beta
         self.w_gamma = w_gamma
+        # Terme de pics par RAPPORT des magnitudes, immunise contre l'aplatissement.
+        self.w_peak_ratio = w_peak_ratio
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -917,7 +945,7 @@ class HydroLoss(nn.Module):
         # Les trois facteurs du KGE sont initialises AVANT le branchement par station ou en
         # commun : la somme finale les lit dans les deux cas, alors que seul le chemin par
         # station les remplissait, d'ou une variable non liee sur l'autre.
-        L_r = L_beta = L_gamma = torch.tensor(0.0, device=q_sim.device)
+        L_r = L_beta = L_gamma = L_peak_ratio = torch.tensor(0.0, device=q_sim.device)
 
         if self.per_station:
             n_stations = q_sim_at_stations.shape[1]
@@ -1030,11 +1058,13 @@ class HydroLoss(nn.Module):
                 need_loop = (self.w_nse > 0 or self.w_kge > 0
                              or self.w_nrmse > 0 or self.w_log_nse > 0
                              or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0
-                             or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0)
+                             or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0
+                             or self.w_peak_ratio > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     dq_v, fdc_v, dql_v = [], [], []
                     r_v, beta_v, gamma_v = [], [], []
+                    pr_v = []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -1088,6 +1118,9 @@ class HydroLoss(nn.Module):
                             beta_v.append(_remis(differentiable_beta_loss(q_o_v, q_s_v)))
                         if self.w_gamma > 0:
                             gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
+                        if self.w_peak_ratio > 0 and self.peak_threshold is not None:
+                            _seuil = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
+                            pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _seuil)))
                         if self.w_dq > 0:
                             dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
                         if self.w_dq_log > 0:
@@ -1121,6 +1154,8 @@ class HydroLoss(nn.Module):
                         L_beta = (torch.stack(beta_v) * w).sum()
                     if self.w_gamma > 0 and gamma_v:
                         L_gamma = (torch.stack(gamma_v) * w).sum()
+                    if self.w_peak_ratio > 0 and pr_v:
+                        L_peak_ratio = (torch.stack(pr_v) * w).sum()
                     if self.w_nrmse > 0 and nrmse_v:
                         L_nrmse = (torch.stack(nrmse_v) * w).sum()
                     if self.w_log_nse > 0 and lnse_v:
@@ -1217,11 +1252,13 @@ class HydroLoss(nn.Module):
                 + self.w_dq * L_dq
                 + self.w_dq_log * L_dql
                 + self.w_fdc_bas * L_fdc
-                + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma)
+                + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma
+                + self.w_peak_ratio * L_peak_ratio)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "r_loss": L_r, "beta_loss": L_beta, "gamma_loss": L_gamma,
+                      "peak_ratio_loss": L_peak_ratio,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
