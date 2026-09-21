@@ -2744,3 +2744,26 @@ Ce qu'il vaut là où il existe. Sur la Montérégie, seul territoire à la fois
 Le verdict d'ensemble. La dispersion de l'indice d'écoulement de base est à 63 % intra-territoriale. Aucune covariable disponible ne prédit cette part : texture +5 % en moyenne interne et négative sur un territoire, drainage +4 % là où il existe, socle et relief déjà écartés. Le chantier de spatialisation du plafond de percolation par covariables se referme donc, et il se referme pour une raison physique et non par manque d'effort : la grandeur qui gouverne la conductivité d'un till est sa compaction, qui n'est cartographiée nulle part à l'échelle provinciale.
 
 Ce qu'il faut faire à la place. Quand le facteur de contrôle n'est pas cartographié, un descripteur faible vaut moins qu'un paramètre LIBRE par nœud contraint par des observations. Le dépôt possède déjà cette machinerie, l'effet aléatoire additif par nœud, qui est la meilleure recette déterministe connue, et deux observations pour le contraindre, les niveaux du réseau de puits et l'exposant de récession mesuré par territoire. C'est la voie honnête : cesser de prétendre prédire ce qu'aucune carte ne porte, et laisser les données de débit et de nappe l'identifier là où elles le peuvent.
+
+---
+
+## R160 — L'indice d'écoulement de base n'est pas une observation mais une sortie de filtre, et tout ce qui en dépend finement s'effondre quand on change de filtre (2026-09-21) — ÉTABLI
+
+Question posée par la réponse d'une collègue qui modélise les mêmes étiages : elle n'emploie pas la piézométrie, dont dériver une recharge demande toute une méthodologie et ne représente que les environs du puits, et elle utilise à la place un débit de base obtenu par le filtre d'Eckhardt, en posant qu'à l'échelle d'une station toute la recharge finit par faire résurgence.
+
+Tous les chiffres d'indice cités depuis le 2026-09-19 venaient du filtre de Lyne et Hollick à trois passes. Comparaison sur les mêmes stations de cinq territoires, la constante de récession d'Eckhardt étant mesurée station par station sur les segments de décrue franche et non devinée.
+
+| Filtre | Indice médian | Écart à Lyne-Hollick |
+| --- | --- | --- |
+| Lyne et Hollick, amortissement 0,925 | 0,535 | — |
+| Eckhardt, part maximale 0,50 (socle fracturé) | 0,479 | −0,054 |
+| Eckhardt, part maximale 0,65 | 0,605 | +0,074 |
+| Eckhardt, part maximale 0,80 (aquifère poreux) | 0,735 | +0,206 |
+
+Deux constats, et le second est le plus sérieux. Le NIVEAU varie de 0,48 à 0,74 selon le filtre et son paramètre, soit une plage plus large que tous les écarts que nous discutons depuis deux jours. Et le CLASSEMENT des stations n'est pas conservé : la corrélation de rang entre Lyne-Hollick et Eckhardt vaut 0,54 à 0,59, alors que les trois variantes d'Eckhardt s'accordent entre elles à 0,88 et 0,96. Les deux familles de filtres ne désignent donc pas les mêmes bassins comme les plus soutenus.
+
+CONSÉQUENCE DIRECTE, et elle annule un résultat que j'avais consigné. Le test d'identifiabilité, repris à l'identique en changeant seulement le filtre qui définit la cible : la texture du sol explique +28 % contre le témoin avec Lyne-Hollick, +1 % avec Eckhardt à 0,50 et +9 % avec Eckhardt à 0,80. Le résultat d'hier était donc un artefact du choix de filtre, en plus d'être un effet inter-territorial. C'est la troisième raison indépendante de fermer le chantier de spatialisation du plafond de percolation, et la plus dure des trois.
+
+CE QUI SURVIT. L'écart entre le modèle de référence, dont l'indice vaut 0,10 à 0,13, et l'observation reste massif sous n'importe quel filtre et quel que soit son paramètre : c'est un facteur quatre à sept, très au-delà de la plage de 0,48 à 0,74. Le diagnostic de la couche engorgée ne dépend donc pas de ce choix. Ce qui ne survit pas est tout ce qui se joue à quelques centièmes : comparer 0,532 pour la physique corrigée à 0,581 observé n'a pas de sens tant que le filtre n'est pas fixé et justifié.
+
+CE QU'IL FAUT FAIRE. Fixer le filtre et son paramètre par une raison explicite et non par héritage. Eckhardt est mieux fondé, puisque son paramètre de part maximale a un sens physique et se choisit par type d'aquifère, 0,50 sur le Bouclier et 0,80 dans les basses-terres du Saint-Laurent, et sa constante de récession se mesure au lieu de se poser. Tout chiffre d'indice publié doit nommer son filtre et son paramètre.
