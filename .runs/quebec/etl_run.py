@@ -458,13 +458,36 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
     # reservoir lineaire ne peut pas tenir ensemble les 0,93 m de battement mesures et un
     # maximum un mois apres la fonte, et que l'extraction depuis la zone saturee est le
     # seul mecanisme qui creuse l'etiage estival de la nappe.
+    def _exposant_de_nappe():
+        """Exposant de vidange : valeur posee, ou MESUREE sur les hydrogrammes du territoire.
+
+        `ETL_NAPPE_EXP=mesure` declenche l'ancrage. Il a ete etabli le 2026-09-20 qu'aucune
+        covariable de terrain ne predit cet exposant, texture a -8 pour cent contre le temoin,
+        socle a -22, relief a -26 : le faire sortir du champ spatial est condamne d'avance.
+        Mais il se mesure sur les debits OBSERVES du territoire, par Brutsaert et Nieber, sans
+        simulation et sans circularite, comme l'evapotranspiration de Linacre et les taux de
+        fonte entrent deja par la loi des ancrages. Mesures du 2026-09-21 : 1,36 en Monteregie
+        drainee, 2,06 au Saint-Laurent sud-ouest, 4,65 en Outaouais.
+        """
+        brut = os.environ.get("ETL_NAPPE_EXP", "2.0")
+        if brut.lower() not in ("mesure", "mesuré", "ancrage"):
+            return float(brut)
+        from meandre.data.recession_anchor import ancrage as _ancrage
+
+        a = _ancrage(td.q_obs.detach().cpu().numpy())
+        etat = "" if a.fiable else " (PEU DE STATIONS, defaut de Boussinesq conserve)"
+        print(f"[etl] exposant de nappe MESURE sur {a.n_stations} stations : "
+              f"{a.exposant_stock:.2f} (recession b = {a.exposant_recession:.2f}, "
+              f"quartiles {a.etendue[0]:.2f} a {a.etendue[1]:.2f}){etat}")
+        return a.exposant_stock if a.fiable else 2.0
+
     _np = dict(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)),
                k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)),
                z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)),
                h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)),
                e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)),
                z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)),
-               exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)),
+               exposant=_exposant_de_nappe(),
                couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
     model.vertical_column.activer_nappe_libre(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
