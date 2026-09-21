@@ -2370,7 +2370,15 @@ Croisement de la pile de corrections du drainage profond et de la contrainte sur
 
 Aucun des trois effets ne sort du bruit : la pile vaut −0,0038, la contrainte −0,0112, leur interaction +0,0176, contre un seuil de 0,0683. Ce seuil est lui-même optimiste, une étendue sur deux tirages sous-estimant l'écart-type. Sur le débit, à ce budget de calcul, le carré ne départage rien, et toute annonce du contraire serait une lecture du bruit.
 
-LE RÉSULTAT EST AILLEURS, et il n'était pas cherché. La dispersion dépend de la CONFIGURATION et pas seulement du taux d'apprentissage. Les deux cases portant la physique corrigée se répliquent à quatre et sept millièmes ; les deux cases témoin se répliquent à vingt-deux et soixante-huit millièmes, cinq à seize fois plus mal. La correspondance avec le nombre de blocs jetés pour gradient non fini est exacte : zéro d'un côté, vingt à cent vingt de l'autre. Le modèle de référence produit des gradients non finis sur un dixième de ses blocs, en jette des différents selon le tirage, et c'est cette instabilité qui fabrique sa dispersion. La physique corrigée n'en produit aucun.
+LE RÉSULTAT EST AILLEURS, et il n'était pas cherché. La dispersion dépend de la CONFIGURATION et pas seulement du taux d'apprentissage. Les deux cases portant la physique corrigée se répliquent à quatre et sept millièmes ; les deux cases témoin se répliquent à vingt-deux et soixante-huit millièmes, cinq à seize fois plus mal. Les blocs jetés pour gradient non fini accompagnent le phénomène sans l'expliquer entièrement, et j'ai d'abord écrit à tort que la correspondance était exacte. Mesures complémentaires du même jour, sur le témoin de l'Outaouais à 1e-5 : aucun bloc jeté, et pourtant 0,0141 de dispersion entre deux graines. Les blocs jetés dépendent donc du TAUX, ils disparaissent en dessous de 3e-5 ; la moindre reproductibilité du témoin, elle, subsiste sans eux.
+
+| Configuration | Taux 3e-5 | Taux 1e-5 |
+| --- | --- | --- |
+| pile, Outaouais | 0,0075 pour 0 bloc | 0,0000 pour 0 bloc |
+| témoin, Outaouais | 0,0224 pour 60 blocs | 0,0141 pour 0 bloc |
+| témoin, Saint-Laurent nord-ouest | non mesuré | 0,0000 pour 0 bloc |
+
+La physique corrigée est donc reproductible aux deux taux, et le témoin de l'Outaouais ne l'est à aucun. Une comparaison par affinage court se fait à 1e-5 ET exige de mesurer la dispersion de CHAQUE configuration, l'abaissement du taux ne suffisant pas à la garantir.
 
 L'explication est cohérente avec la cause racine du chantier. La couche 3 du témoin reste saturée, ce qui resserre la condition de Courant jusqu'à la troncature de la boucle de sous-pas ; les lois de drainage la désaturent et la boucle redevient régulière. La correction du drainage profond est donc aussi un correctif numérique, ce qui n'avait été ni prévu ni recherché.
 
