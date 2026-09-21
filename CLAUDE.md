@@ -151,6 +151,18 @@ Les termes de débit portent plusieurs fois la même information. Mesure sur 32 
 
 `w_r`, `w_beta` et `w_gamma` portent séparément les trois facteurs du KGE, à poids nuls par défaut. À nombre de termes égal, cinq contre cinq, la recette en vigueur laisse 14,2 % de manque moyen et la version décomposée 2,8 %.
 
+LE TERME DE PICS PAIE L'APLATISSEMENT. Devant le choix réel du modèle, rester net et en retard d'un jour ou lisser, la recette en vigueur préfère le lissage sur 64 % des stations. Le terme de pics y contribue pour −0,0951, dix-huit fois le deuxième, parce que c'est un écart quadratique restreint aux hauts débits, donc à l'endroit où un décalage coûte le plus cher. Le KGE entier est le SEUL terme qui l'en empêche. `w_peak_ratio` le remplace par un rapport des magnitudes au-dessus du seuil observé, qui ne préfère JAMAIS le lissage : 77 stations, trois seuils, trois durées.
+
+FORME DES TERMES : ÉCART ABSOLU, JAMAIS LE CARRÉ. Un rapport de statistiques pénalisé au carré répond au SECOND ordre, donc quasiment pas à une petite erreur. Quatre termes portaient ce défaut, écrits à des dates différentes : les deux facteurs du KGE, le soutien d'étiage, les variations journalières, plus `w_peak_ratio` à sa première écriture. Pour un prélèvement estival de 5 % du débit moyen, la forme absolue répond 56 à 63 fois plus fort. `.runs/quebec/ordre_de_reponse.py` mesure l'ordre de tous les termes ; y rester à 1,0 est la règle, sauf pour les écarts quadratiques et `1 − r`, du second ordre par nature.
+
+POIDS PAR ÉQUILIBRAGE (`.runs/quebec/equilibrer_poids.py`). Recette retenue : `w_r` 0,15, `w_beta` 1,0, `w_gamma` 0,15, `w_peak_ratio` 0,15, `w_fdc_bas` 1,0, `w_dq` 0,15. Un prélèvement de 5 % y coûte un peu PLUS qu'un retard d'un jour, contre 23 fois moins pour la recette en vigueur, et le coût d'un décalage croît normalement jusqu'à trente jours. Un plancher sur les poids est indispensable : sans lui l'optimisation annule les termes redondants pour la DÉTECTION, dont celui qui interdit d'aplatir.
+
+## Eau souterraine : exposant de vidange mesuré, non appris (2026-09-21)
+
+Pour un réservoir Q = c·S^n sans recharge, l'exposant de Brutsaert-Nieber vaut exactement b = 2 − 1/n. Un réservoir linéaire donne 1, la loi en carré de Dupuit-Boussinesq donne 1,5. Mesuré sur 76 stations : b = 1,60 en médiane, soit n = 2,27, donc le carré codé dans `ETL_NAPPE_EXP` est une valeur centrale défendable et le réservoir LINÉAIRE est condamné, ne convenant qu'à 17 % des stations.
+
+Aucune covariable de terrain ne prédit cet exposant, texture à −8 % contre le témoin, socle à −22 %, relief à −26 % : il ne sort PAS du champ spatial. Mais il se mesure sur les débits observés sans circularité, et entre par la loi des ancrages. `ETL_NAPPE_EXP=mesure` le déclenche (`meandre/data/recession_anchor.py`). Valeurs : MONT 1,36, SLSO 2,06, SLNO 2,30, SAGU 2,44, GASP 2,70, OUTV 4,65 ; sous cinq stations, le défaut de Boussinesq est conservé.
+
 ## Training safeguards
 
 - **Divergence guard**: rollback to best checkpoint if loss > 3x EMA (max 3 rollbacks)
