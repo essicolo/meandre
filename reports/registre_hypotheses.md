@@ -2512,3 +2512,33 @@ REMÈDE, mesuré le même jour sur 77 stations. Le défaut vient de ce que le te
 | rapport des moyennes au-dessus du seuil observé | **0 %** | **0 %** |
 
 Le rapport des moyennes au-dessus du seuil reste immunisé aux trois seuils essayés, troisième quartile, neuvième et quatre-vingt-quinzième centile, et aux trois durées de lissage, sept, quinze et trente jours : zéro pour cent partout. Il est livré sous `w_peak_ratio`, pénalisé en carré du logarithme du rapport pour que la sanction soit symétrique, une pointe deux fois trop forte coûtant autant qu'une pointe deux fois trop faible. Le seuil vient de l'OBSERVATION et ne bouge pas avec la simulation, sans quoi un modèle plat déplacerait son propre seuil et le terme ne verrait rien.
+
+---
+
+## R151 — La perte voit un prélèvement, mais par le seul terme qui est à poids nul (2026-09-20) — ÉTABLI
+
+Question de la cible du projet : prédire l'effet d'un prélèvement ou d'un rejet sur le débit d'étiage suppose que la fonction objectif RÉAGISSE à une ponction de cette taille. Si aucun terme ne la distingue, le modèle ne l'apprendra jamais, quel que soit l'entraînement. La question porte sur la perte et se répond sur la perte. Épreuve sur les hydrogrammes observés, une ponction constante retirée de juillet à septembre, exprimée en pour cent du débit moyen annuel, et la sensibilité relative de chaque terme mesurée contre une référence légèrement bruitée.
+
+| Terme | Prélèvement 5 % | Étiage creusé de 20 % | Récession estivale accélérée |
+| --- | --- | --- | --- |
+| volume, facteur beta du KGE | 75,3 | 85,9 | 3151 |
+| amplitude, facteur gamma | 38,0 | 53,8 | 15750 |
+| soutien d'étiage | 23,6 | **1293** | 176 |
+| écart quadratique logarithmique | 10,6 | 23,3 | 145 |
+| biais de volume | 7,7 | 8,3 | 55 |
+| KGE entier | 6,1 | 6,0 | 101 |
+| pics par rapport | 5,7 | 0,0 | 4152 |
+| écart quadratique | 0,63 | 0,46 | 483 |
+| calendrier, facteur r | 0,47 | 0,32 | 276 |
+| pics, écart quadratique | 0,18 | **0,00** | 492 |
+| variations d'un jour | 0,00 | −0,10 | 9166 |
+
+Trois choses en ressortent.
+
+Le terme de soutien d'étiage est quinze fois plus sensible que le suivant au creusement de l'étiage, qui est la signature même d'un prélèvement. C'est le seul terme qui regarde vraiment cette grandeur, et son poids vaut ZÉRO dans la recette en vigueur. Le banc de redondance disait déjà qu'il est le seul terme non redondant absent ; celui-ci dit pourquoi il faut l'ajouter.
+
+Le terme de pics est STRICTEMENT aveugle aux basses eaux, sensibilité nulle aux deux déformations d'étiage, ce qui est cohérent avec sa définition mais signifie qu'un demi-point du poids total de la recette ne regarde jamais la grandeur visée. Le terme de variations journalières l'est aussi pour le prélèvement, à sensibilité rigoureusement nulle.
+
+Les facteurs du KGE pris séparément sont plus sensibles que le KGE entier, et d'un ordre de grandeur : 75 et 38 pour le volume et l'amplitude contre 6 pour le composite. La racine carrée d'une somme de trois carrés écrase la variation de chaque facteur quand les deux autres restent à leur optimum. C'est un argument de plus pour les porter séparément, indépendant de celui sur l'aplatissement.
+
+Réserve. La sensibilité n'est pas tout : un terme très sensible peut aussi être bruité, et ce banc ne mesure pas son rapport signal sur bruit entre stations. Il dit ce qu'un terme peut voir, pas ce qu'il peut apprendre.
