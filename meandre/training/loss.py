@@ -101,16 +101,24 @@ def differentiable_r_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return 1.0 - r
 
 
+# ECART ABSOLU ET NON CARRE (correction du 2026-09-20). La premiere version portait ces deux
+# facteurs au CARRE, ce qui les rend du second ordre : pour une petite erreur sur un seul
+# facteur, un carre repond en e^2 quand le KGE composite, qui passe par une racine de somme de
+# carres, repond en |e|. Mesure sur 32 stations, prelevement estival de cinq pour cent du debit
+# moyen : la forme au carre bouge de 0,0002 et la forme absolue de 0,0126, soit soixante-trois
+# fois plus. Prendre des carres aurait donc rendu la perte AVEUGLE a la grandeur meme que le
+# projet doit predire, tout en pretendant l'exposer. L'ecart absolu garde la sensibilite au
+# premier ordre du composite et lui ajoute la separation des trois causes.
 def differentiable_beta_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
-    """Deuxième facteur du KGE, isolé : (beta − 1)², l'erreur de VOLUME. Parfait = 0."""
+    """Deuxième facteur du KGE, isolé : |beta − 1|, l'erreur de VOLUME. Parfait = 0."""
     _, beta, _, _ = _kge_components(q_obs, q_sim)
-    return (beta - 1.0) ** 2
+    return torch.abs(beta - 1.0)
 
 
 def differentiable_gamma_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
-    """Troisième facteur du KGE, isolé : (gamma − 1)², l'erreur d'AMPLITUDE. Parfait = 0."""
+    """Troisième facteur du KGE, isolé : |gamma − 1|, l'erreur d'AMPLITUDE. Parfait = 0."""
     _, _, gamma, _ = _kge_components(q_obs, q_sim)
-    return (gamma - 1.0) ** 2
+    return torch.abs(gamma - 1.0)
 
 
 def differentiable_composite_kge_loss(

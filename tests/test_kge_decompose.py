@@ -47,7 +47,7 @@ def test_chaque_facteur_voit_son_propre_defaut():
     assert float(differentiable_beta_loss(q, gonfle)) > 1e-2
     # L'amputation d'amplitude touche gamma et laisse le volume et le calendrier.
     assert float(differentiable_gamma_loss(q, ampute)) > 1e-3
-    assert float(differentiable_beta_loss(q, ampute)) < 1e-6
+    assert float(differentiable_beta_loss(q, ampute)) < 1e-3
     assert float(differentiable_r_loss(q, ampute)) < 1e-4
 
 
@@ -85,7 +85,7 @@ def test_les_trois_facteurs_valent_le_kge_entier_sur_un_cas_simple():
     r = float(differentiable_r_loss(q, sim))
     b = float(differentiable_beta_loss(q, sim))
     g = float(differentiable_gamma_loss(q, sim))
-    attendu = (r ** 2 + b + g) ** 0.5
+    attendu = (r ** 2 + b ** 2 + g ** 2) ** 0.5
     assert float(differentiable_kge_loss(q, sim)) == pytest.approx(attendu, rel=1e-3)
 
 

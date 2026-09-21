@@ -2539,6 +2539,18 @@ Le terme de soutien d'étiage est quinze fois plus sensible que le suivant au cr
 
 Le terme de pics est STRICTEMENT aveugle aux basses eaux, sensibilité nulle aux deux déformations d'étiage, ce qui est cohérent avec sa définition mais signifie qu'un demi-point du poids total de la recette ne regarde jamais la grandeur visée. Le terme de variations journalières l'est aussi pour le prélèvement, à sensibilité rigoureusement nulle.
 
-Les facteurs du KGE pris séparément sont plus sensibles que le KGE entier, et d'un ordre de grandeur : 75 et 38 pour le volume et l'amplitude contre 6 pour le composite. La racine carrée d'une somme de trois carrés écrase la variation de chaque facteur quand les deux autres restent à leur optimum. C'est un argument de plus pour les porter séparément, indépendant de celui sur l'aplatissement.
+Les facteurs du KGE pris séparément paraissent plus sensibles que le composite, 75 et 38 contre 6, MAIS CE CHIFFRE EST TROMPEUR ET JE L'AI D'ABORD LU DE TRAVERS. Il s'agit d'une sensibilité RELATIVE, rapportée à la valeur du terme sur une série non déformée, et cette valeur de référence diffère d'un facteur mille entre un carré presque nul et un composite qui ne l'est pas. Mesurée en variation ABSOLUE, la conclusion s'inverse.
+
+C'est une question de forme, et elle décide. Un facteur porté au CARRÉ répond au second ordre : pour une petite erreur sur un seul facteur, il bouge comme le carré de cette erreur, quand le KGE composite, qui passe par une racine d'une somme de carrés, bouge comme sa valeur absolue. Mesure sur 32 stations, prélèvement estival de cinq pour cent du débit moyen annuel, terme de volume seul : la forme au carré varie de 0,0002 et la forme absolue de 0,0126, soit soixante-trois fois plus. Porter les facteurs au carré aurait donc rendu la perte presque AVEUGLE à la grandeur même que le projet doit prédire, tout en prétendant l'exposer.
+
+La conséquence se voit sur la recette entière. Une erreur de calendrier d'un jour pèse 23 fois un prélèvement de cinq pour cent dans la recette en vigueur, et 252 fois dans une recette décomposée AU CARRÉ. Corrigé en écart absolu, le rapport tombe à 9,0, soit deux fois et demie MIEUX que la recette en vigueur. Les termes `w_beta` et `w_gamma` portent donc |beta − 1| et |gamma − 1|, ce qui garde la sensibilité au premier ordre du composite et lui ajoute la séparation des trois causes.
+
+| Recette | Effet d'un prélèvement de 5 % | Effet d'un retard d'un jour | Rapport |
+| --- | --- | --- | --- |
+| en vigueur | 0,0248 | 0,574 | 23,2 |
+| décomposée, facteurs au carré | 0,00043 | 0,109 | 252 |
+| décomposée, écart absolu | 0,0123 | 0,111 | **9,0** |
+
+La leçon de méthode vaut plus que le réglage. Une sensibilité RELATIVE ne se compare pas entre termes dont les valeurs de référence diffèrent de plusieurs ordres de grandeur ; c'est la variation absolue qui décide, et il faut la rapporter à celle d'une erreur qu'on ne peut pas éliminer, ici le décalage d'une journée qu'impose la résolution du forçage.
 
 Réserve. La sensibilité n'est pas tout : un terme très sensible peut aussi être bruité, et ce banc ne mesure pas son rapport signal sur bruit entre stations. Il dit ce qu'un terme peut voir, pas ce qu'il peut apprendre.
