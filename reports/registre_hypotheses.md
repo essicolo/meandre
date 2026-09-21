@@ -2629,3 +2629,28 @@ L'effet sur la recette entière se mesure sur le rapport entre ce que coûte une
 La recette décomposée rend donc un prélèvement 3,3 fois plus visible que la recette en vigueur, là où sa première version le rendait onze fois moins visible. Tout l'écart tient à la forme, pas aux poids.
 
 La leçon de méthode est celle de la veille sur la part de variance expliquée, sous un autre habit : une grandeur qui paraît petite parce qu'elle est proche de zéro n'est pas pour autant négligeable, et une grandeur normalisée par quelque chose de minuscule n'est pas pour autant grande. Ce qui décide est la variation ABSOLUE rapportée à celle d'une erreur irréductible. Un test épingle désormais l'ordre de réponse : on double l'erreur et on vérifie que la perte double.
+
+---
+
+## R155 — La loi en carré de la charge est une valeur centrale défendable, et l'exposant se mesure territoire par territoire (2026-09-21) — ÉTABLI
+
+Contrôle de cohérence entre trois choses qui doivent s'accorder : la loi écrite dans le code, l'algèbre qui la relie à l'exposant de récession, et la mesure sur les stations. Aucune carte, quelques secondes.
+
+L'algèbre d'abord. Pour un réservoir vidangé par Q = c·S^n sans recharge, l'exposant de Brutsaert-Nieber vaut exactement b = 2 − 1/n. Une loi linéaire donne b = 1, la loi en carré de la charge de Dupuit-Boussinesq donne b = 1,5, et il faut n proche de 2,9 pour atteindre 1,65. La relation est vérifiée à trois décimales pour six exposants, et la nappe libre du dépôt, interrogée telle qu'elle tourne, rend bien b = 1,5.
+
+L'observation ensuite, sur les 76 stations dont l'exposant reste sous 1,95, seuil au-delà duquel la conversion n = 1/(2 − b) diverge et ne veut plus rien dire.
+
+| Territoire | Exposant de récession | Exposant de stock impliqué |
+| --- | --- | --- |
+| Montérégie, 20 stations | 1,26 | 1,36 |
+| Saint-Laurent nord-ouest, 17 | 1,57 | 2,30 |
+| Saguenay, 11 | 1,59 | 2,44 |
+| Gaspésie, 14 | 1,63 | 2,70 |
+| Outaouais, 14 | 1,78 | 4,65 |
+| toutes stations | 1,60 | **2,27**, quartiles 1,53 à 4,49 |
+
+Trois lectures. L'exposant de 2 codé dans la nappe n'est pas à changer : il est proche de la médiane de 2,27 et 39 pour cent des stations tombent dans sa plage. Un réservoir linéaire, lui, ne convient qu'à 17 pour cent des stations et jamais en médiane, ce qui condamne définitivement l'aquifère linéaire d'origine. Et l'étalement territorial est réel, d'un facteur trois entre la Montérégie et l'Outaouais.
+
+Conséquence pour la suite, et elle évite un chantier. Il a été mesuré la veille qu'aucune covariable de terrain ne prédit l'exposant de récession, texture à −8 pour cent, socle à −22, relief à −26. Il ne faut donc pas chercher à le faire prédire par le champ spatial. Mais il se MESURE directement sur les hydrogrammes observés de chaque territoire, sans simulation et sans circularité, exactement comme le multiplicateur d'évapotranspiration et les taux de fonte entrent déjà par la loi des ancrages. C'est la voie à suivre : un exposant par territoire, tiré de ses propres récessions, plutôt qu'un paramètre appris ou un chantier de régionalisation.
+
+La Montérégie reste l'exception et son cas se comprend : c'est le territoire drainé et cultivé, dont le drain agricole convertit un interflux lent en chemin rapide à seuil, et son exposant de 1,36 dit que sa vidange est presque linéaire.
