@@ -25,7 +25,7 @@ Everything a human READS is in French: comments, docstrings, printed output, rep
 
 ## Key architecture decisions
 
-- **NeRF spatial params**: `meandre/spatial/field_network.py` maps (lon, lat, territorial_features) -> 37 hydrological parameters per node via an MLP with Fourier positional encoding (isotropic haversine projection — raw degrees caused NeRF collapse). Constraints via sigmoid/softplus. Optional per-node additive latent codes `z_n` (`use_latent_codes`) = best deterministic recipe.
+- **NeRF spatial params**: `meandre/spatial/field_network.py` maps (lon, lat, territorial_features) -> 43 hydrological parameters per node (count as of 2026-09-20; the docstring said 37 long after it was 42) via an MLP with Fourier positional encoding (isotropic haversine projection — raw degrees caused NeRF collapse). Constraints via sigmoid/softplus. Optional per-node additive latent codes `z_n` (`use_latent_codes`) = best deterministic recipe.
 - **Vertical column**: `meandre/vertical/hydrotel_column.py` orchestrates the FAITHFUL clones from `hydrotel_clone/` (ports of Hydrotel C++ 4.3.6, each validated per-UHRH to the decimal against the binary): snow degree-day modified -> frost Rankinen -> ETP (mcguinness | linacre regional | penman | oudin) -> BV3C2 soil (3 layers) -> wetland -> optional restituting aquifer / hillslope Nash UH.
 - **Regional anchors** (Quebec scale-up): `[et].mode="linacre"` + `linacre_project_dir` loads the per-UHRH optimized ETP multiplier; `[snow].melt_project_dir` loads calibrated melt rates AND thresholds. LAW OF ANCHORS, REVISED 2026-08-15 (the old form cost weeks by pointing at obsolete checkpoints): the winning configuration is the SOCLE — impose the whole Hydrotel soil calibration EXCEPT K_sat and porosities, which stay with the field, plus calibrated Linacre ETP and the project rain/snow threshold. Measured on held-out 2022-2024: OUTV 0.739 with zero training and 0.781 after 30 epochs, against 0.499 for the previously trained champion; SLNO 0.711 against 0.546; GASP 0.775 against 0.749. Freezing the retention curve alone (0.592) or nothing at all (0.563) both lose. The `-gen1` fleet (`.runs/quebec/file_generalisation.sh`) carries this recipe and its env block is the reference for any deployment: a checkpoint alone does NOT define a model.
 - **Routing**: Muskingum-Cunge; `routing_mode = "operator"` (triangular solve, ~25-30x faster) is the default for training. Lakes with learned k/beta (NeRF). Message passing along topological sort.
@@ -137,6 +137,20 @@ Trois pièces opt-in, ajoutées après avoir mesuré que l'aquifère restituant 
 
 LIGNE ROUGE : les cartes de recharge régionales (PACES, HydroBudget, HELP) sont CIRCULAIRES, étant calées sur le débit de base. Comparaison en discussion seulement, jamais cible. Les niveaux du réseau de suivi et la gravimétrie sont les seules observations non circulaires de l'eau souterraine.
 
+## Sol : processus déclarés par couche (2026-09-20)
+
+Les sorties de la colonne étaient codées en dur, une branche par hypothèse, et dix-sept variables d'environnement s'étaient accumulées pour les activer. Une section `[soil]` du TOML les remplace par une déclaration, à la manière de Raven : un profil porte des couches, chaque couche porte des processus, chaque processus a une forme du catalogue `BASE_LINEAR`, `BASE_THRESH_POWER`, `PERC_LINEAR`, `PERC_THRESH_POWER`, `PERC_POWER_LAW`. Les noms sont ceux de Raven 3.8 pour que les plages de paramètres publiées s'appliquent sans traduction.
+
+La déclaration est COMPLÈTE : une couche sans processus déclaré n'a pas de flux, elle ne complète pas les branches historiques. Sans section `[soil]`, le chemin d'origine est intact et le clone reproduit le binaire C++ ; un test vérifie que la déclaration qui décrit Hydrotel donne la même sortie au bit près. Le nombre de couches est un champ du profil, jamais une constante, pour qu'en changer soit une extension. Bibliothèque de profils prêts à coller : `.runs/quebec/config/soil-profiles.toml`.
+
+Un plafond ou un paramètre peut nommer une sortie du champ spatial au lieu de donner un nombre, par exemple `ceiling_mm_per_day = "k_sub"`, et devient alors une valeur par tronçon. Seul le PLAFOND de percolation mérite ce traitement, et c'est mesuré : sur 95 stations et cinq territoires, chacun prédit par un modèle ajusté sur les autres, la texture du sol explique la part souterraine du débit à +27 % contre le témoin, la géologie du socle à +3 %, le relief LiDAR à +11 %. Mais aucune covariable ne prédit la DYNAMIQUE, l'exposant de récession sortant à −8 % et les temps de vidange à +3 % et −19 %. Les attributs de terrain disent combien d'eau passe par le souterrain, pas à quelle vitesse elle revient.
+
+## Fonction de perte : redondance mesurée et KGE décomposé (2026-09-20)
+
+Les termes de débit portent plusieurs fois la même information. Mesure sur 32 stations et 9 déformations (`.runs/quebec/redondance_perte.py`) : huit termes, mais trois directions indépendantes portent 90 % de leur variation. Le KGE est expliqué à 96,9 % par les autres, l'écart quadratique à 99,1 %, les pics à 98,5 % ; écart quadratique et pics corrèlent à 0,99, ce sont pratiquement le même terme. Seuls le biais de volume et le soutien d'étiage sont distincts, et le second est à poids NUL dans la recette alors que c'est le plus grand angle mort, 48,2 %.
+
+`w_r`, `w_beta` et `w_gamma` portent séparément les trois facteurs du KGE, à poids nuls par défaut. À nombre de termes égal, cinq contre cinq, la recette en vigueur laisse 14,2 % de manque moyen et la version décomposée 2,8 %.
+
 ## Training safeguards
 
 - **Divergence guard**: rollback to best checkpoint if loss > 3x EMA (max 3 rollbacks)
@@ -178,3 +192,5 @@ Règle posée par Essi le 2026-09-13, après une journée où la plupart des heu
 - Dev metrics are selection metrics; only held-out 2022-2024 counts, against the FULL 6-member Hydrotel ensemble (posttraitement_{LN24HA,MG24Hx}.zarr) on common stations/days.
 - Kill background fleets by killing the PARENT loop, then verify; a surviving bash loop silently relaunches trainings.
 - The `physical_prior_loss` targets should be consistent with `init_from_literature()` defaults.
+- A loss term can display a VALUE and contribute NO gradient. `MEANDRE_DIAG_CPU=1` detached the diagnostics, and MODIS ET, CanSWE snow, well levels and GRACE TWS all derive from diagnostics: for two days they were printed in the loss breakdown while training on nothing. Fixed 2026-09-20 (`HydroModel.DIAGNOSTICS_DERIVES`), with tests. The symptom to watch for: two runs that differ only by a constraint give the SAME held-out value to four decimals at every epoch.
+- Activating the four auxiliary constraints costs 0.032 of held-out KGE on the OUTV témoin and DIVIDES the seed-to-seed dispersion by four, from 0.0141 to 0.0036. Judge auxiliary data on identifiability and reproducibility, never on KGE.
