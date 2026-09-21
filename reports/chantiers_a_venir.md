@@ -120,7 +120,7 @@ Prédiction posée d'avance, vérifiable sans passe supplémentaire puisque le p
 
 Ce qui reste ouvert. Le couplage par étranglement livré le 2026-09-19 n'a aucun effet tant que le drainage est lent, et n'a de sens qu'une fois le drainage gravitaire actif, où il empêchera la couche de se vider dans une nappe déjà haute. La corrélation des anomalies plafonne à 0,48 sans calage. Et l'identifiabilité spatiale de la porosité de drainage n'est toujours pas démontrée.
 
-## 5 ter. Spatialiser le plafond de percolation, et lui seul — OUVERT, la moitié est livrée
+## 5 ter. Spatialiser le plafond de percolation — REFERMÉ LE 2026-09-21, pour une raison physique
 
 Ouvert le 2026-09-20 après que la mesure eut coupé le chantier en deux.
 
@@ -131,6 +131,16 @@ Ce qui est livré. Le plafond de percolation du substratum est la quarante-trois
 Ce qui reste. Vérifier en entraînement que le champ apprend effectivement un plafond structuré par la texture, et non un plafond uniforme déguisé ; l'épreuve est le transfert entre territoires, pas le KGE. Décider ensuite du sort de l'exposant et des constantes de temps, qui restent uniformes faute de covariable : soit les laisser ainsi, soit les rendre libres par nœud et les contraindre par les niveaux de puits, qui identifient la présence et la phase du mécanisme sans en identifier les paramètres.
 
 Borne du gain, à dire d'avance : une prédiction PARFAITE de la part souterraine ferait passer l'erreur de transfert de 0,070 à 0,051, sur une grandeur dont l'écart-type vaut 0,080. Le chantier ne peut donc pas rapporter beaucoup, et c'est une raison de le garder petit.
+
+POURQUOI IL SE REFERME, le jour même. Remarque d'Essi : la granulométrie ne gouverne pas le drainage, deux tills de même texture pouvant différer de plusieurs ordres de grandeur en conductivité selon leur COMPACTION. Trois mesures ont suivi et se recoupent.
+
+Le +27 % de la texture était du transfert ENTRE territoires. Repris en validation croisée interne, il tombe à +5 % en moyenne et à −19 % en Montérégie, alors que la dispersion de l'indice d'écoulement de base est à 63 % intra-territoriale. La texture explique donc ce qui distingue les territoires, pas ce qu'un champ doit reproduire.
+
+Le champ spatial, mis devant ce descripteur, a appris un motif POSITIONNEL : la variation de son plafond est expliquée à 0,67 par les seules coordonnées et à 0,30 par la texture. Il ne s'est pas trompé, on lui offrait un signal faible.
+
+Le rang de drainage de l'IRDA, qui décrit la structure et non la granulométrie, est meilleur là où il existe, +4 % contre −19 % pour la texture en Montérégie. Mais sa couverture s'arrête au sud agricole, deux territoires sur quinze au-dessus de la moitié, médiane provinciale NULLE.
+
+CE QUI REMPLACE CE CHANTIER. Quand le facteur de contrôle n'est pas cartographié, un descripteur faible vaut moins qu'un paramètre LIBRE par nœud contraint par des observations. La machinerie existe déjà, l'effet aléatoire additif par nœud, et deux observations la contraignent : les niveaux du réseau de puits et l'exposant de récession mesuré par territoire. Le code livré reste utile, le plafond étant désormais une sortie du champ que l'on peut laisser libre au lieu de la faire prédire.
 
 ---
 
