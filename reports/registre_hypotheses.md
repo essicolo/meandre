@@ -2446,3 +2446,22 @@ Les contraintes coûtent 0,032 de KGE sur le débit tenu de côté. L'écart dé
 Elles DIVISENT PAR QUATRE la dispersion entre tirages, de 0,0141 à 0,0036. C'est le résultat utile. Le même protocole, le même taux, le même point de départ, et un résultat quatre fois plus reproductible dès que quatre observations indépendantes du débit entrent dans la perte. Une fonction objectif qui ne regarde que le débit laisse l'optimiseur choisir entre des solutions équivalentes selon le tirage ; ajouter des observations qui distinguent ces solutions referme cette liberté. C'est l'identifiabilité mesurée directement, sur la reproductibilité plutôt que sur la performance.
 
 Conséquence de protocole, qui renverse une consigne posée le matin même. La reproductibilité d'un affinage ne s'obtient pas seulement en baissant le pas d'optimisation, elle s'obtient aussi en contraignant davantage. Les deux leviers agissent, et le second est celui qui a un sens physique.
+
+---
+
+## R149 — Les attributs de terrain prédisent COMBIEN d'eau passe par le souterrain, pas à quelle vitesse elle revient (2026-09-20) — ÉTABLI
+
+Même protocole de transfert que pour l'indice d'écoulement de base, sur les mêmes 94 stations et cinq territoires : covariables moyennées sur le bassin amont, chaque territoire prédit par un modèle ajusté sur les autres, mesure sur l'erreur. Seule la grandeur visée change.
+
+| Grandeur visée | Ce qu'elle décrit | Texture SIIGSOL | Socle | Relief LiDAR |
+| --- | --- | --- | --- | --- |
+| indice d'écoulement de base | la PART souterraine | **+27 %** | +3 % | +11 % |
+| exposant de récession | la NON-LINÉARITÉ de la vidange | −8 % | −22 % | −26 % |
+| temps de vidange aux hautes eaux | la dynamique rapide | +3 % | — | — |
+| temps de vidange aux basses eaux | la dynamique lente | −19 % | — | — |
+
+La séparation est franche et elle a un sens physique. La texture du sol dit combien d'eau prend le chemin souterrain, ce qui est cohérent avec son rôle : elle gouverne la capacité d'infiltration et de percolation, donc le partage. Elle ne dit rien de la vitesse à laquelle cette eau revient, qui dépend de la géométrie de l'aquifère, de sa transmissivité et de la densité du réseau de drainage, aucune de ces trois n'étant décrite par les covariables disponibles. Un gain NÉGATIF, jusqu'à −26 %, signifie que le modèle apprend sur les autres territoires une relation qui ne vaut pas sur celui qu'il prédit : c'est pire que la moyenne, et il faut le lire comme une absence d'information, pas comme une information inverse.
+
+Conséquence directe pour le chantier de spatialisation, qui se trouve donc coupé en deux. Le plafond de percolation du substratum devient un paramètre du champ spatial prédit par la texture, un triplet de coordonnées ilr par tronçon suffisant puisque les six profondeurs de SIIGSOL sont redondantes. L'exposant et les constantes de temps ne le deviennent pas : ils restent uniformes, ou libres par nœud et contraints par les niveaux du réseau de puits, qui sont précisément l'observation qui identifie la présence et la phase du mécanisme souterrain sans en identifier les paramètres.
+
+La borne du gain disponible reste modeste et il faut la dire : prédire parfaitement l'indice d'écoulement de base ferait passer l'erreur de transfert de 0,070 à 0,051 sur une grandeur dont l'écart-type vaut 0,080.
