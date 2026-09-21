@@ -2581,3 +2581,24 @@ L'interaction est le résultat, et elle était l'hypothèse posée au départ du
 Les effets moyens sont lisibles mais faibles, moins de deux fois le bruit, et il ne faut pas les surinterpréter : la pile coûte sept millièmes en moyenne, la contrainte six. Le chantier ne se justifie pas par le débit, il ne l'a jamais fait, et ces deux chiffres disent seulement qu'il ne le détruit pas.
 
 La reproductibilité par case mérite d'être lue à part. Les quatre cases se répliquent entre trois dixièmes de millième et trois millièmes et demi, là où le même croisement à 3e-5 avec les contraintes inertes donnait jusqu'à soixante-huit millièmes. Deux leviers y concourent, le pas d'optimisation abaissé et les observations auxiliaires qui referment les libertés de l'optimiseur, et la case la plus reproductible du carré est celle qui porte à la fois la physique corrigée et la contrainte.
+
+---
+
+## R153 — Le modèle de référence occupe à demeure le seul état où son schéma numérique ne converge pas (2026-09-21) — ÉTABLI
+
+Mesure sur une colonne fictive, sans carte, en application de la règle qui veut qu'une pièce soit validée sur la plus petite unité avant d'être intégrée. Le catalogue de formes ouvert la veille expose des exposants libres, dont le domaine de convergence n'avait été mesuré que pour l'exposant un. Critère : production cumulée sur trente jours sous 4 mm/jour de pluie, rapportée à la solution à 512 sous-pas, convergence déclarée sous deux pour cent d'écart.
+
+Premier résultat, rassurant : l'exposant libre ne coûte rien. À cinq jours de constante de temps, les exposants 1, 1,5, 2 et 3 convergent tous dès 64 sous-pas, avec 0,7 à 1,0 pour cent d'écart. La non-linéarité que les récessions observées réclament est donc utilisable telle quelle. Une constante de vingt jours ne converge toujours pas à 128, ce qui confirme la borne déjà connue.
+
+Second résultat, qui dépasse la question posée. La percolation d'Hydrotel, seule sortie de la couche 3 dans le clone fidèle, ne converge pas non plus, et l'écart atteint 68 pour cent à 128 sous-pas. Mais il dépend entièrement de l'état de la couche.
+
+| Loi de percolation de la couche 3 | Départ sec, 0,32 | Moyen, 0,38 | Humide, 0,45 |
+| --- | --- | --- | --- |
+| Hydrotel, sans sortie latérale | 0,0 % | 0,0 % | **67,8 %** |
+| à seuil, constante de 2 jours | 0,0 % | 0,0 % | 0,0 % |
+
+La non-convergence n'est donc pas une propriété de la LOI, c'est une propriété de l'ÉTAT saturé : la condition de Courant se resserre quand la teneur en eau approche la porosité, et le plafond de sous-pas est atteint. Or il est établi que la couche 3 du modèle de référence retient en permanence 289 à 465 mm d'eau gravitaire, c'est-à-dire qu'elle se tient à demeure dans ce régime. Le modèle de référence occupe donc en permanence le seul état où son propre schéma ne converge pas, et il y reste à 64 comme à 128 sous-pas.
+
+Cela réunit trois constats qui semblaient distincts. La couche engorgée, la troncature de la boucle qui laisse 29 à 40 pour cent de la journée non traitée, et la moindre reproductibilité du modèle de référence d'un tirage à l'autre sont une seule et même chose vue sous trois angles. Les lois à seuil vident la couche, la sortent du régime raide, et la convergence redevient acquise dès 32 sous-pas.
+
+Portée. Un seul profil de sol, une seule intensité de pluie, une colonne fictive sans forçage réel. Le chiffre de 68 pour cent est celui d'un cas construit pour être défavorable, pas une erreur attendue en simulation régionale. Ce qui transfère est la STRUCTURE du résultat : la loi est convergente partout sauf près de la saturation, et le modèle de référence y vit.
