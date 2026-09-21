@@ -454,6 +454,21 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
                couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
     model.vertical_column.activer_nappe_libre(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
+# PROFIL DE SOL DECLARE (2026-09-20). Une section `[soil]` du TOML remplace les variables
+# d'environnement ci-dessous, qui etaient dix-sept a s'etre accumulees. Elle est COMPLETE :
+# une couche sans processus declare n'a pas de flux. Sans la section, rien ne change.
+_soil_section = cfg.get("soil")
+if _soil_section:
+    from meandre.vertical import soil_processes as _soil_proc
+
+    _profile = _soil_proc.from_toml(_soil_section)
+    model.vertical_column.soil_profile = _profile
+    print(f"[etl] profil de sol declare : {_profile.layers} couches, "
+          f"{len(_profile.processes)} processus")
+    for _pr in _profile.processes:
+        print(f"[etl]   couche {_pr.layer} {_pr.kind} {_pr.form} {_pr.params}"
+              + (f" plafond {_pr.ceiling:.3e} m/h" if _pr.ceiling is not None else ""))
+
 if "ETL_L3_TAU" in os.environ:
     # Drainage de l'eau gravitaire de la couche 3, en JOURS. Remplace la loi fidele, dont
     # la constante de temps vient des recessions de debit et laisse 472 mm d'eau gravitaire

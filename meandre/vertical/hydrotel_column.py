@@ -452,6 +452,16 @@ class HydrotelColumn(nn.Module):
             p_soil["drain_frac"] = torch.clamp(
                 float(_drn.get("part_cultive", 0.6)) * torch.as_tensor(_fag).to(like),
                 0.0, 1.0)
+        # PROFIL DE SOL DECLARE (2026-09-20). Quand une section `[soil]` a ete lue, elle
+        # REMPLACE les branches historiques ci-dessous : la declaration est complete. Les
+        # capacites au champ des couches 2 et 3 vivent dans le champ spatial et non dans le
+        # dictionnaire de Campbell, qui ne porte que la retention ; on les y ajoute pour que
+        # les formes a seuil puissent s'en servir.
+        _profile = getattr(self, "soil_profile", None)
+        if _profile is not None:
+            p_soil["soil_profile"] = _profile
+            p_soil["thetacc2"] = sp.theta_fc_2
+            p_soil["thetacc3"] = sp.theta_fc_3
         _l3n = getattr(self, "l3_drain_exp", None)
         if _l3n is not None:
             p_soil["l3_drain_exp"] = float(_l3n)

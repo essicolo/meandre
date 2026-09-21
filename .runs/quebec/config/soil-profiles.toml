@@ -1,0 +1,78 @@
+# ─── Profils de sol déclarés ──────────────────────────────────────────────────
+# Sections `[soil]` prêtes à coller dans une configuration de territoire. Elles remplacent
+# les variables d'environnement ETL_L3_* qui s'étaient accumulées au nombre de dix-sept.
+#
+# Une déclaration est COMPLÈTE, comme chez Raven : une couche sans processus déclaré n'a
+# aucun flux. Elle ne complète pas les branches historiques, elle les remplace. Sans section
+# `[soil]`, la colonne garde son chemin d'origine et reproduit le binaire C++ au bit près.
+#
+# Les noms de formes sont ceux de Raven 3.8, de sorte que les plages de paramètres publiées
+# s'appliquent sans traduction. Les unités sont celles d'un hydrologue : le jour pour une
+# constante de temps, le millimètre par jour pour un plafond de flux.
+#
+# Catalogue disponible :
+#   latéral      BASE_LINEAR          K(theta) · sin(pente) · épaisseur, la loi d'Hydrotel
+#                BASE_THRESH_POWER    vide l'eau gravitaire, tau_days, exponent facultatif
+#   percolation  PERC_LINEAR          krec · épaisseur · theta, la loi d'Hydrotel
+#                PERC_THRESH_POWER    vide l'eau gravitaire vers le bas, tau_days
+#                PERC_POWER_LAW       krec · épaisseur · theta_s · (theta/theta_s)^exponent
+#
+# Ce fichier n'est pas exécutable seul : il sert de bibliothèque à copier.
+
+# ─── Hydrotel tel quel ────────────────────────────────────────────────────────
+# Équivalent déclaratif du clone fidèle. La couche 2 draine latéralement, la couche 3
+# percole verticalement, et rien d'autre. Un test vérifie que cette déclaration donne
+# exactement la même sortie que l'absence de déclaration.
+[hydrotel.soil]
+layers = 3
+
+[[hydrotel.soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[hydrotel.soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_LINEAR"
+krec = 1.0e-6
+
+# ─── Pile de corrections du drainage profond ──────────────────────────────────
+# La configuration mesurée les 18 et 19 septembre 2026. La couche 3 y gagne une sortie
+# latérale, ce que le clone n'a pas, et sa percolation devient une vidange de l'eau
+# gravitaire plafonnée par la conductivité du substratum.
+#
+# Mesuré sur l'Outaouais : l'eau gravitaire retenue en permanence passe de 289-465 mm à
+# zéro, la troncature de la boucle de sous-pas de 0,10 à 0,007, et la part de ruissellement
+# de surface de 0,51 à 0,27. Filtré comme l'observation, l'indice d'écoulement de base passe
+# de 0,695 à 0,532 pour 0,581 mesuré.
+#
+# ATTENTION AU TRANSFERT. Ces trois constantes ont été réglées à la main sur l'Outaouais et
+# ne transfèrent pas : au Saint-Laurent nord-ouest elles rendent l'hydrogramme trop lent de
+# douze centièmes d'indice et coûtent huit centièmes de KGE. Le plafond de percolation est
+# une propriété du dépôt, que la texture du sol prédit à 27 % contre le témoin ; en faire un
+# champ spatial est le chantier ouvert.
+#
+# CONVERGENCE. À deux et cinq jours de constante, les lois sont convergées dès 32 sous-pas ;
+# à quinze jours elles ne le sont pas même à 128. Une constante longue laisse la couche
+# pleine, ce qui resserre la condition de Courant.
+[pile.soil]
+layers = 3
+
+[[pile.soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[pile.soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+
+[[pile.soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = 3.0
