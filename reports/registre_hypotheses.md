@@ -2769,3 +2769,23 @@ CE QUI SURVIT. L'écart entre le modèle de référence, dont l'indice vaut 0,10
 CE QUI SURVIT AUSSI, et c'est ce qui décide. Le CLASSEMENT entre le modèle de référence et la physique corrigée tient sous les deux filtres, même si le signe de l'erreur s'inverse. Sous Lyne-Hollick, le témoin rend 0,695 contre 0,581 observé, donc trop lisse de onze centièmes, et la pile 0,532, trop nerveuse de cinq. Sous Eckhardt à 0,65, le témoin rend 0,583 contre 0,626, donc trop nerveux de quatre centièmes, et la pile 0,599, trop nerveuse de trois. La pile est plus proche dans les deux cas, d'un facteur 2,3 puis 1,6. Une comparaison de MODÈLES reste donc possible, une comparaison à une valeur absolue ne l'est pas.
 
 CE QU'IL FAUT FAIRE. Fixer le filtre et son paramètre par une raison explicite et non par héritage. Eckhardt est mieux fondé, puisque son paramètre de part maximale a un sens physique et se choisit par type d'aquifère, 0,50 sur le Bouclier et 0,80 dans les basses-terres du Saint-Laurent, et sa constante de récession se mesure au lieu de se poser. Tout chiffre d'indice publié doit nommer son filtre et son paramètre.
+
+---
+
+## R161 — Seule la recette équilibrée pousse vers l'écoulement de base ; mesuré en une passe avant-arrière (2026-09-21) — ÉTABLI
+
+Le banc de perte dit ce qu'une recette PRÉFÈRE ; il ne dit pas ce que la descente de gradient en fait. C'était la seule question du chantier qui semblait demander d'entraîner, et six passes avaient été mises en file pour elle. Elle se répond en une passe avant-arrière, en quelques secondes : on prend la sortie RÉELLE du modèle aux stations, on calcule la perte de chaque recette et on lit moins le gradient par rapport au débit simulé, c'est-à-dire le changement que la recette demande jour par jour.
+
+Sur les 16 stations de l'Outaouais, à partir de la sortie de la physique corrigée, changement demandé normalisé par l'amplitude moyenne du gradient.
+
+| Recette | Jours d'étiage | Jours de crue | Contraste |
+| --- | --- | --- | --- |
+| en vigueur | +0,04 | +2,63 | **−2,59** |
+| décomposée, poids au jugé | +0,24 | +1,71 | −1,47 |
+| décomposée, poids équilibrés | +0,24 | −0,08 | **+0,32** |
+
+La recette en vigueur demande presque exclusivement de monter les crues et ne touche pas les étiages, ce qui est cohérent avec le déficit de pointes connu mais signifie qu'elle ne travaille pas la grandeur que le projet doit prédire. La version au jugé monte les étiages six fois plus qu'elle, mais pousse encore les crues trois fois plus fort. Seule la version équilibrée a un contraste POSITIF : elle monte les étiages et baisse légèrement les crues, donc elle pousse vers plus d'écoulement de base.
+
+Les poids comptent donc plus que la décomposition. Les deux recettes décomposées portent les mêmes termes et ne diffèrent que par leurs poids, et l'une pousse dans le mauvais sens quand l'autre pousse dans le bon.
+
+LEÇON DE MÉTHODE, et c'est la plus importante de la journée. Six entraînements de huit époques, trois heures de carte, avaient été mis en file pour cette question. Une passe avant-arrière y répond, et mieux : elle donne la DIRECTION du gradient, là où un entraînement n'aurait donné qu'un point d'arrivée mêlant la direction, le pas et la capacité du modèle à suivre. La règle du projet le disait déjà, un test rapide vaut mieux qu'un long, et je l'ai appliquée après avoir lancé la flotte au lieu d'avant.
