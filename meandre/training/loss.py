@@ -92,7 +92,11 @@ def differentiable_peak_ratio_loss(q_obs: Tensor, q_sim: Tensor, seuil: Tensor) 
         return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
     moy_obs = q_obs[haut].mean().clamp(min=1e-8)
     moy_sim = q_sim[haut].mean().clamp(min=1e-8)
-    return torch.log(moy_sim / moy_obs) ** 2
+    # VALEUR ABSOLUE DU LOGARITHME, non son carre : le carre repondrait au second ordre pour
+    # une petite erreur de pointe, defaut mesure le meme jour sur les facteurs du KGE et sur
+    # le terme d'etiage. La symetrie entre sur-estimation et sous-estimation est conservee,
+    # |log(r)| valant |log(1/r)|.
+    return torch.abs(torch.log(moy_sim / moy_obs))
 
 
 def differentiable_r_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
@@ -211,7 +215,12 @@ def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
     qb_s = torch.quantile(q_sim, bas); qr_s = torch.quantile(q_sim, ref)
     r_o = qb_o / qr_o.clamp(min=1e-8)
     r_s = qb_s / qr_s.clamp(min=1e-8)
-    return (r_s - r_o) ** 2
+    # ECART ABSOLU ET NON CARRE (2026-09-21). Un carre repond au SECOND ordre : pour un
+    # prelevement estival de cinq pour cent du debit moyen, la forme au carre bouge de
+    # 0,00022 et la forme absolue de 0,0124, soit cinquante-six fois plus. Comme ce terme est
+    # celui qui voit le mieux un prelevement, et que c'est la grandeur que le projet doit
+    # predire, le carre le rendait presque aveugle a sa raison d'etre.
+    return torch.abs(r_s - r_o)
 
 
 def box_cox(x: Tensor, lam: float, eps: float = 1e-3) -> Tensor:

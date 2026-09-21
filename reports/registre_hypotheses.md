@@ -2602,3 +2602,30 @@ La non-convergence n'est donc pas une propriété de la LOI, c'est une propriét
 Cela réunit trois constats qui semblaient distincts. La couche engorgée, la troncature de la boucle qui laisse 29 à 40 pour cent de la journée non traitée, et la moindre reproductibilité du modèle de référence d'un tirage à l'autre sont une seule et même chose vue sous trois angles. Les lois à seuil vident la couche, la sortent du régime raide, et la convergence redevient acquise dès 32 sous-pas.
 
 Portée. Un seul profil de sol, une seule intensité de pluie, une colonne fictive sans forçage réel. Le chiffre de 68 pour cent est celui d'un cas construit pour être défavorable, pas une erreur attendue en simulation régionale. Ce qui transfère est la STRUCTURE du résultat : la loi est convergente partout sauf près de la saturation, et le modèle de référence y vit.
+
+---
+
+## R154 — Trois termes de forme répondaient au SECOND ordre, donc presque aveugles aux petites erreurs (2026-09-21) — ÉTABLI
+
+Défaut de forme trouvé trois fois de suite, sur des termes écrits à des dates différentes et par des mains différentes, dont la mienne. Un terme qui pénalise le CARRÉ d'un écart relatif répond au second ordre : pour une erreur relative de e, il varie comme e², quand une forme en valeur absolue varie comme e. Sur des erreurs de quelques pour cent, le facteur entre les deux se compte en dizaines.
+
+| Terme | Forme d'origine | Variation pour un prélèvement estival de 5 % | Rapport |
+| --- | --- | --- | --- |
+| volume, facteur beta du KGE | (beta − 1)² | 0,00020 contre 0,01258 en absolu | 63 |
+| soutien d'étiage | (r_sim − r_obs)² | 0,00022 contre 0,01238 en absolu | 56 |
+| pics par rapport | log(r)² | corrigé avant usage | — |
+
+Les trois portent désormais l'écart absolu. La symétrie du terme de pics est conservée, |log r| valant |log(1/r)|, et son immunité à l'aplatissement aussi, une valeur absolue étant une transformation monotone du carré : il reste à zéro pour cent sur trois seuils et trois durées de lissage.
+
+L'effet sur la recette entière se mesure sur le rapport entre ce que coûte une erreur de calendrier d'un jour, qu'on ne peut pas éliminer, et ce que coûte un prélèvement de cinq pour cent, qu'on veut détecter.
+
+| Recette | Rapport retard sur prélèvement |
+| --- | --- |
+| en vigueur | 23,2 |
+| décomposée, tous termes au carré | 252 |
+| décomposée, facteurs du KGE en absolu | 9,0 |
+| décomposée, les trois termes en absolu | **7,1** |
+
+La recette décomposée rend donc un prélèvement 3,3 fois plus visible que la recette en vigueur, là où sa première version le rendait onze fois moins visible. Tout l'écart tient à la forme, pas aux poids.
+
+La leçon de méthode est celle de la veille sur la part de variance expliquée, sous un autre habit : une grandeur qui paraît petite parce qu'elle est proche de zéro n'est pas pour autant négligeable, et une grandeur normalisée par quelque chose de minuscule n'est pas pour autant grande. Ce qui décide est la variation ABSOLUE rapportée à celle d'une erreur irréductible. Un test épingle désormais l'ordre de réponse : on double l'erreur et on vérifie que la perte double.

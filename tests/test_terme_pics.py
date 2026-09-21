@@ -73,3 +73,27 @@ def test_le_terme_est_derivable():
 def test_trop_peu_de_pointes_rend_zero_sans_planter():
     q = _serie(n=20)
     assert float(differentiable_peak_ratio_loss(q, q * 0.5, torch.quantile(q, 0.99))) == 0.0
+
+
+def test_les_termes_de_forme_repondent_au_PREMIER_ordre():
+    """Un carré répondrait au second ordre et rendrait le terme aveugle aux petites erreurs.
+
+    Défaut trouvé trois fois le 2026-09-20 et le 2026-09-21 : sur les facteurs du KGE, sur le
+    terme d'étiage, et sur ce terme-ci que j'avais écrit moi-même. Pour une erreur relative e
+    petite, une forme du premier ordre varie comme e et une forme du second comme e carré. Le
+    test le vérifie en comparant deux tailles d'erreur : si le rapport des pertes suit le
+    rapport des erreurs, la forme est du premier ordre.
+    """
+    q = _serie()
+    seuil = torch.quantile(q, 0.75)
+    haut = q >= seuil
+    petite, grande = 1.02, 1.04
+    a = q.clone()
+    a[haut] = a[haut] * petite
+    b = q.clone()
+    b[haut] = b[haut] * grande
+    pa = float(differentiable_peak_ratio_loss(q, a, seuil))
+    pb = float(differentiable_peak_ratio_loss(q, b, seuil))
+    # Erreur doublee : une forme du premier ordre double, une du second quadruple.
+    assert pb / pa == pytest.approx(2.0, rel=0.05), (
+        f"rapport {pb / pa:.2f} : la forme n'est pas du premier ordre")
