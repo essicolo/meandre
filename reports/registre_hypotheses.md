@@ -2501,3 +2501,14 @@ Les deux recettes portent cinq termes et le même poids total, 2,4 ; seule la co
 Cela éclaire deux constats anciens qui n'avaient pas reçu d'explication : le rapport des écarts-types restait coincé alors que le poids des pics mangeait la majeure partie de la perte, et la perte était décrite comme favorable à la platitude sans qu'on sache par quel terme. C'était le terme de pics.
 
 Le terme d'étiage ne change rien ici, les déformations testées ne touchant pas les basses eaux ; son intérêt, mesuré ailleurs, est qu'il est le seul terme non redondant absent de la recette.
+
+REMÈDE, mesuré le même jour sur 77 stations. Le défaut vient de ce que le terme compare des écarts JOUR PAR JOUR ; une forme qui compare des STATISTIQUES de magnitude ne peut pas être dupée par un décalage, puisque lisser abaisse la pointe simulée et qu'elle le voit. Quatre formes mises devant le même choix, part des stations où chacune préfère le lissage au retard.
+
+| Forme du terme de pics | Lissage 7 jours | Lissage 15 jours |
+| --- | --- | --- |
+| écart quadratique au-dessus du troisième quartile, en vigueur | 78 % | 31 % |
+| écart-type des hauts débits | 21 % | 3 % |
+| rapport des maxima annuels | 0 % | 0 % |
+| rapport des moyennes au-dessus du seuil observé | **0 %** | **0 %** |
+
+Le rapport des moyennes au-dessus du seuil reste immunisé aux trois seuils essayés, troisième quartile, neuvième et quatre-vingt-quinzième centile, et aux trois durées de lissage, sept, quinze et trente jours : zéro pour cent partout. Il est livré sous `w_peak_ratio`, pénalisé en carré du logarithme du rapport pour que la sanction soit symétrique, une pointe deux fois trop forte coûtant autant qu'une pointe deux fois trop faible. Le seuil vient de l'OBSERVATION et ne bouge pas avec la simulation, sans quoi un modèle plat déplacerait son propre seuil et le terme ne verrait rien.
