@@ -3063,3 +3063,33 @@ LA CAUSE EST GRACE, ET L'ÉCHELLE EST MESURÉE. Sur une époque, les quatre cont
 CE QUE CELA LAISSE. Un intervalle à explorer entre zéro, où le débit monte et la partition s'affaisse, et 0,2, où rien n'apprend. Balayage en cours à 0, 0,02 et 0,05, évapotranspiration et masse du manteau tenues aux valeurs de la ronde puisqu'à 12 % et 1 % elles ne sont pas ce qui bloque.
 
 CONSÉQUENCE IMMÉDIATE POUR LA RONDE. Sa configuration actuelle ne peut pas partir telle quelle : elle produirait le point de départ.
+
+---
+
+## R172 — NEISIM ne gagne rien en identifiabilité là où le réseau au sol existe, et tout là où il n'existe pas (2026-09-22) — ÉTABLI
+
+Une donnée auxiliaire se juge sur l'identifiabilité. Comparer 35 millions de valeurs de NEISIM à 2154 relevés du réseau ne dit rien : les 3900 séries de NEISIM viennent d'une grille de deux kilomètres et demi et sont massivement redondantes. La grandeur qui compte est le nombre de directions INDÉPENDANTES que chaque source contraint.
+
+Mesure sur les moyennes mensuelles de la saison de neige, corrélation calculée sur les mois communs à chaque paire, traitement identique des deux côtés. Composantes principales portant 95 % de la variance, et rapport de participation, qui vaut 1 quand une seule direction porte tout et le nombre de séries quand elles sont indépendantes.
+
+| territoire | source | séries | composantes à 95 % | participation | reproductible | au hasard |
+| --- | --- | --- | --- | --- | --- | --- |
+| Outaouais | réseau | 62 | 12 | 2,5 | 0,58 | 0,09 |
+| Outaouais | NEISIM, tout le territoire | 3397 | 2 | 1,3 | 0,66 | 0,00 |
+| Outaouais | NEISIM aux nœuds du réseau | 97 | 3 | 1,4 | 0,73 | 0,04 |
+| Gaspésie | réseau | 16 | 7 | 1,9 | 0,71 | 0,25 |
+| Gaspésie | NEISIM aux nœuds du réseau | 49 | 2 | 1,1 | 0,73 | 0,08 |
+| Saguenay | réseau | 33 | 10 | 3,6 | 0,77 | 0,22 |
+| Saguenay | NEISIM aux nœuds du réseau | 37 | 2 | 1,2 | 0,78 | 0,11 |
+| Saint-Laurent nord-ouest | réseau | 26 | 7 | 2,3 | 0,60 | 0,36 |
+| Saint-Laurent nord-ouest | NEISIM aux nœuds du réseau | 33 | 3 | 1,2 | 0,62 | 0,12 |
+
+AUX MÊMES ENDROITS, le réseau porte trois à cinq fois plus de directions indépendantes que NEISIM. Le champ de NEISIM est lisse : son rapport de participation de 1,1 à 1,4 dit qu'une seule direction porte presque tout, et ses 3900 séries se ramènent à deux à quatre nombres par mois.
+
+CE N'EST PAS DU BRUIT. Un rang effectif ne distingue pas une direction indépendante d'un bruit indépendant, et c'est l'objection qui tue ce genre de mesure. Elle se traite en coupant la période en deux et en demandant si les quatre premières directions de chaque moitié se retrouvent dans l'autre. Le recouvrement des deux sous-espaces vaut 0,58 à 0,77 pour le réseau contre 0,09 à 0,36 pour le hasard, et 0,56 à 0,78 pour NEISIM. Les deux sources sont donc reproductibles au même degré ; le réseau l'est en portant trois à cinq fois plus de directions.
+
+LÀ OÙ LE RÉSEAU N'EXISTE PAS, NEISIM PORTE TOUT. Au Saint-Laurent sud-ouest, 2879 séries, quatre directions, et en Montérégie, 1913 séries, cinq directions, contre aucun site passant les filtres de représentativité. Le gain y est entier, et c'est le seul endroit où il l'est.
+
+CONSÉQUENCE. NEISIM en REMPLACEMENT du réseau est une perte ; NEISIM en COMPLÉMENT, là où le réseau se tait, est le seul usage défendable. C'est `ETL_SWE_SOURCE=les-deux`, ou `neisim` sur les seuls territoires sans site.
+
+DEUX LIMITES. Ce banc borne ce que la donnée POURRAIT contraindre, pas ce que le modèle en fait : au seul poids essayé, aucune des deux sources ne déplace le manteau. Et une direction reproductible du réseau peut être l'idiosyncrasie stable d'un site, une cuvette qui accumule toujours plus, reproductible sans rien dire du bassin.
