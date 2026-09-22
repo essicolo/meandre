@@ -1336,12 +1336,25 @@ if os.environ.get("ETL_QUANTILE", "0") == "1":
 # DIAGNOSTICS A RETENIR POUR LE GRADIENT. Un diagnostic rattache au graphe coute la memoire
 # que MEANDRE_DIAG_CPU economise. On ne retient donc que ceux dont un terme ACTIF derive, et
 # on le calcule depuis les poids reellement poses, pour qu'activer un terme suffise.
-_besoins = {"etr": lcfg.get("w_et", 0.0) or lcfg.get("w_nll_et", 0.0),
-            "swe": lcfg.get("w_snow", 0.0) or lcfg.get("w_swe_mass", 0.0),
-            "s_gw": lcfg.get("w_nappe", 0.0) or lcfg.get("w_tws", 0.0),
-            "profondeur_nappe_m": lcfg.get("w_nappe", 0.0),
-            "theta1": lcfg.get("w_tws", 0.0), "theta2": lcfg.get("w_tws", 0.0),
-            "theta3": lcfg.get("w_tws", 0.0)}
+# Les poids se lisent sur l'OBJET DE PERTE et non dans la configuration : certains y sont
+# poses apres coup, et `w_nappe` etait dans ce cas. Lu dans la configuration, il valait zero,
+# le diagnostic du souterrain n'etait pas retenu, et le terme des puits tournait sans
+# gradient. La garde du trainer l'a signale ; la source de verite doit etre la meme des deux
+# cotes (2026-09-22).
+def _poids(nom):
+    # L'objet de perte prime DES LORS qu'il porte l'attribut, y compris a zero : le pilote
+    # peut eteindre un terme que la configuration allumait, et un repli sur la configuration
+    # le rallumerait en douce.
+    v = getattr(r["loss_fn"], nom, None)
+    return float(v if v is not None else lcfg.get(nom, 0.0) or 0.0)
+
+
+_besoins = {"etr": _poids("w_et") or _poids("w_nll_et"),
+            "swe": _poids("w_snow") or _poids("w_swe_mass"),
+            "s_gw": _poids("w_nappe") or _poids("w_tws"),
+            "profondeur_nappe_m": _poids("w_nappe"),
+            "theta1": _poids("w_tws"), "theta2": _poids("w_tws"),
+            "theta3": _poids("w_tws")}
 _garde = sorted(k for k, v in _besoins.items() if float(v or 0.0) > 0.0)
 os.environ["MEANDRE_DIAG_DERIVES"] = ",".join(_garde)
 print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
