@@ -2991,3 +2991,25 @@ CE QUE CELA DIT DE LA MÉTHODE. Une fonction objectif peut être meilleure au se
 DÉCISION. La ronde du 30 septembre garde la recette en vigueur. Les poids équilibrés restent inscrits en commentaire dans sa configuration, avec ce verdict.
 
 RÉSERVE, ET ELLE COMPTE. La sortie du point de reprise lui-même n'existait pas au moment de la comparaison : les deux bras se comparent entre eux, sans qu'on sache si l'un a amélioré l'indice d'écoulement de base ou seulement moins dégradé. La mesure du point zéro est en file.
+
+---
+
+## R169 — Le KGE monte et la partition de l'eau se dégrade, sur cinq modèles de la même lignée (2026-09-21) — OUVERT
+
+Les cinq modèles entraînés sur l'Outaouais dont la sortie par tronçon existe, rangés par KGE médian sur la période d'évaluation, avec leur indice d'écoulement de base filtré de la même façon que l'observation, qui vaut 0,581 :
+
+| modèle | KGE médian | indice de base | écart |
+| --- | --- | --- | --- |
+| finale-n2 | 0,562 | 0,565 | −0,017 |
+| finale-n3 | 0,565 | 0,553 | −0,029 |
+| essai3, recette équilibrée | 0,657 | 0,467 | −0,114 |
+| g-pile | 0,690 | 0,518 | −0,063 |
+| essai3, recette en vigueur | 0,712 | 0,490 | −0,091 |
+
+Corrélation de rang entre les deux colonnes : −0,70, et −0,79 en valeur. Le meilleur modèle au sens du débit est à 0,091 de l'indice mesuré, le moins bon à 0,017. Autrement dit, ce que ces modèles gagnent sur l'hydrogramme, ils le paient sur le chemin que l'eau emprunte pour y arriver.
+
+C'EST EXACTEMENT L'ÉQUIFINALITÉ QUE LE PROJET ANNONCE COMBATTRE. Le KGE ne distingue pas un débit obtenu par le bon partage d'un débit obtenu par le mauvais, et l'optimisation le montre en acte : elle trouve le second. C'est aussi l'argument le plus direct en faveur des contraintes auxiliaires, seules capables de tenir la partition pendant que le débit s'améliore.
+
+CE QUI MANQUE POUR L'ÉTABLIR, et c'est pourquoi ce constat reste ouvert. Cinq points seulement, donc une corrélation de rang de −0,70 au seuil de 0,19 : elle ne serait pas retenue seule. Et les cinq modèles ne diffèrent pas que par leur fonction de perte : recettes physiques, nombres d'époques et points de reprise diffèrent aussi. C'est une association sur un ensemble hétérogène, pas une expérience contrôlée.
+
+CE QUE LA RONDE DOIT MESURER. Le même couple de grandeurs sur des bras qui ne diffèrent que par la présence des contraintes auxiliaires. Si l'association tient, l'indice d'écoulement de base devient un critère de sélection au même titre que le KGE ; si elle tombe, elle aura coûté une lecture de journaux.
