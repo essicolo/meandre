@@ -145,7 +145,9 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
     # GRACE et SWOT n'etaient pas dans le banc : le premier faute d'un resume de stockage
     # total, le second faute d'un niveau d'eau, que le modele ne produit pas. Les deux se
     # calculent ici sans toucher au modele.
-    _sp = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
+    # Le champ spatial se recalcule A CHAQUE BLOC. Calcule une seule fois hors de la boucle,
+    # son graphe est libere par la derniere retropropagation du premier bloc, et le bloc
+    # suivant echoue en voulant y repasser.
     _geom = _largeur_et_pente(model, td, device)
     cumul, compte = {}, {}
     etat = HydroState.zeros(td.forcing.shape[1], device=device)
@@ -182,7 +184,8 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
         # nous n'avons pas ; SWOT se comparerait donc en ANOMALIES, comme les puits.
         if _geom is not None:
             _w, _pente = _geom
-            _n_man = getattr(_sp, "manning_n", None)
+            _n_man = getattr(model.spatial_encoder(td.node_coords, td.territorial.to_tensor()),
+                             "manning_n", None)
             if _n_man is not None:
                 _h = (Q.clamp(min=1e-3) * _n_man / (_w * _pente.clamp(min=1e-5).sqrt())) ** 0.6
                 familles_sup.append(("niveau", _h))

@@ -412,7 +412,25 @@ ETL_IRDA = 1
 # 2026-08-26, divise chaque cote par son propre ecart-type et ne retient que la phase et la
 # forme ; il n'avait jamais ete branche par aucune configuration. Le terme de biais
 # saisonnier s'eteint de lui-meme dans ce mode.
+# GRACE ETEINT POUR LA RONDE (2026-09-22), sur les deux criteres a la fois.
+#
+# KGE : trois bras en Outaouais, huit epoques depuis le meme point de reprise. Depart 0,5667,
+# contraintes auxiliaires eteintes 0,7117, recette complete 0,5667. La recette complete ne bat
+# JAMAIS son epoque zero : le terme de gravimetrie passe de 0,9 a 10,5 sur huit epoques et
+# finit a 79 % de la perte. En mode FORME, deja, ou le mode en niveau est pire.
+#
+# DIFFERENCIATION DES CHAMPS, le critere qui justifiait GRACE : il la reduit a tous les poids.
+# Variation spatiale de la conductivite de surface, 0,900 sans lui, 0,627 a 0,02, 0,647 a 0,05
+# et 0,391 a 0,2. Capacite au champ de la couche profonde, 0,476 sans lui contre 0,281. Et le
+# partage vertical, qu'il etait cense decollapser, ne bouge a aucun poids.
+#
+# RESERVE : un territoire, huit epoques, un point de reprise deja differencie. Le resultat de
+# mai, decollapse d'un facteur six a huit, venait d'un entrainement long depuis un etat
+# effondre et du mode en NIVEAU. Ce qui est mesure ici est que GRACE ne sert pas dans CE
+# regime, pas qu'il ne sert jamais.
 ETL_TWS_FORME = 1
+ETL_WTWS = 0
+ETL_WTWSCLIM = 0
 ETL_WET = 0.4                   # évapotranspiration MODIS
 ETL_WSWE = 0.2                  # masse du manteau mesurée au sol, CanSWE
 # Les niveaux de puits restent HORS de la perte, et c'est un choix délibéré. La physique

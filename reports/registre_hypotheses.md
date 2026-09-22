@@ -3119,7 +3119,7 @@ C'est aussi un plafond, pas un acquis : que le modèle atteigne ces 28 direction
 
 ---
 
-## R174 — Les trois produits sur grille n'ajoutent AUCUNE direction à ce que portent les trois réseaux de points (2026-09-22) — ÉTABLI
+## R174 — Les trois produits sur grille n'ajoutent AUCUNE direction à ce que portent les trois réseaux de points (2026-09-22) — LE CHIFFRE NE TIENT PAS, voir plus bas
 
 Compter les directions de chaque source séparément surestime le total, puisque les sources se recouvrent. Ce qui décide est l'apport PROPRE : le rang effectif de l'ensemble, moins celui de l'ensemble privé de la source. Une source qui duplique le débit ne lève aucune équifinalité du débit, quel que soit le nombre de directions qu'elle porte seule.
 
@@ -3298,3 +3298,26 @@ CE QUE CELA DIT DE LA LOI DES ANCRAGES. Le socle du Québec impose « tout le ca
 DÉCISION. La déduction devient opt-in par `MEANDRE_THETA_FC_COURBE=1` et la capacité au champ redevient une sortie du champ spatial. Le raisonnement qui la motivait reste juste — une capacité au champ doit s'accorder à sa courbe de rétention — mais sa prémisse est fausse ici : la courbe n'est pas une courbe.
 
 CE QUE CELA OUVRE, ET QUI N'EST PAS TRANCHÉ. Si l'exposant imposé est hors plage physique, les autres pièces du calage imposé méritent le même contrôle. La loi des ancrages est le socle de toute la ligne québécoise et sa révision d'août l'a mesurée sur le KGE, jamais sur la plausibilité physique de ce qu'elle impose.
+
+---
+
+## R181 — Le rang effectif ne permet pas de comparer des sources, le témoin de bruit le montre (2026-09-22) — ÉTABLI
+
+Le tableau des apports propres, publié le matin même, donnait sept directions au réseau de neige au sol, quatre aux puits, deux au débit et zéro aux trois produits sur grille. Essi a relevé que les bancs ne portaient pas de témoin. Ajouté, il défait le tableau.
+
+| source | apport propre mesuré | bruit de même forme et de mêmes trous |
+| --- | --- | --- |
+| neige, réseau au sol | 7 | 30 |
+| nappes du réseau de suivi | 4 | 8 |
+| débit | 2 | 11 |
+| évapotranspiration MODIS | 0 | 6 |
+| neige NEISIM | 0 | 6 |
+| gravimétrie GRACE | 0 | 1 |
+
+Du bruit indépendant apporte PLUS de directions que la donnée dans tous les cas. Le rang effectif mesure donc le nombre de colonnes autant que l'information, et le classement entre sources ne tient pas. Le témoin est de surcroît contaminé par un plafond de colonnes imposé par source, qui rapetisse celui des produits sur grille.
+
+Même conclusion sur le rang par source : le bruit rend 14 directions là où le débit en rend 5, 38 là où le réseau de neige en rend 12, 272 là où l'évapotranspiration MODIS en rend une.
+
+CE QUI SURVIT, ET C'EST PLUS FAIBLE QUE CE QUE J'AI ÉCRIT. Le rapport de participation ne dépend d'aucun plafond : 1,1 pour l'évapotranspiration MODIS, 1,3 pour NEISIM, contre 2,5 pour le réseau de neige et 3,6 pour les puits. Les produits sur grille sont bien une seule direction modulée dans le temps. Et la reproductibilité discrimine nettement, 0,58 à 0,75 pour la donnée contre 0,00 à 0,40 pour le bruit. La direction qualitative tient donc ; le classement chiffré, non.
+
+LEÇON DE CONCEPTION, et elle vaut pour tous les bancs du projet. Un banc qui rapporte une statistique doit rapporter à côté ce que cette statistique donne sur un témoin nul : bruit de même forme, permutation, ou observation déformée jusqu'à la même condition. Sans échelle, un chiffre se fait dire n'importe quoi. Trois bancs du 2026-09-22 en manquaient et deux ont produit une conclusion fausse.

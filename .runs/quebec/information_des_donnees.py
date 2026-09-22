@@ -83,13 +83,22 @@ def _apport_marginal(sources, axe, _rec=24):
     print("")
     print(f"ensemble des sources : {n_tout} directions a 95 %, participation {part_tout:.1f}")
     print("")
-    print(f"{'source retiree':<26s} {'directions restantes':>21s} {'apport propre':>15s}")
+    print(f"{'source retiree':<26s} {'directions restantes':>21s} {'apport propre':>15s} "
+          f"{'bruit de meme forme':>20s}")
+    rng = np.random.default_rng(1234)
     for n in noms:
         reste = np.concatenate([blocs[m] for m in noms if m != n], axis=1)
         n_sans, _p, _c = _inf._rang_effectif(reste, recouvrement_min=_rec)
         if not (np.isfinite(n_tout) and np.isfinite(n_sans)):
             continue
-        print(f"{n:<26s} {n_sans:>21d} {n_tout - n_sans:>15d}")
+        # TEMOIN : la meme source remplacee par du bruit de meme forme et de memes trous.
+        # Si le bruit apporte autant, l'apport mesure ne vient pas de l'information mais du
+        # nombre de colonnes.
+        faux = np.where(np.isfinite(blocs[n]), rng.standard_normal(blocs[n].shape), np.nan)
+        avec_bruit = np.concatenate([faux] + [blocs[m] for m in noms if m != n], axis=1)
+        n_bruit, _pb, _cb = _inf._rang_effectif(avec_bruit, recouvrement_min=_rec)
+        t = f"{n_bruit - n_sans:>20d}" if np.isfinite(n_bruit) else f"{'—':>20s}"
+        print(f"{n:<26s} {n_sans:>21d} {n_tout - n_sans:>15d} {t}")
 
 
 def main():
@@ -171,11 +180,23 @@ def main():
         mm = _inf._mensualise(mat, axe, masque)
         n95, part, cols = _inf._rang_effectif(mm, recouvrement_min=_rec)
         rep, pp = _inf._reproductibilite(mm, recouvrement_min=max(3, _rec // 2))
+        # TEMOIN NUL, sans lequel le chiffre n'a pas d'echelle. Du bruit independant de meme
+        # forme et de memes trous gonfle le rang effectif a lui seul : mesure sur l'altimetrie
+        # satellitaire le 2026-09-22, il rend 28 directions quand la donnee en rend 19. Le
+        # rang seul ne discrimine donc rien, et c'est la reproductibilite qui tranche.
+        _rng = np.random.default_rng(1234)
+        _faux = np.where(np.isfinite(mm), _rng.standard_normal(mm.shape), np.nan)
+        _nb, _pb, _ = _inf._rang_effectif(_faux, recouvrement_min=_rec)
+        _rb, _ = _inf._reproductibilite(_faux, recouvrement_min=max(3, _rec // 2))
         n95_t = f"{n95:>7d}" if np.isfinite(n95) else f"{'—':>7s}"
         part_t = f"{part:>14.1f}" if np.isfinite(part) else f"{'—':>14s}"
         rep_t = f"{rep:>14.2f}" if np.isfinite(rep) else f"{'—':>14s}"
         haz = f"{4.0 / pp:>8.2f}" if pp and np.isfinite(rep) else f"{'—':>8s}"
         print(f"{nom:<26s} {cols:>8d} {n95_t} {part_t} {rep_t} {haz}")
+        _nbt = f"{_nb:>7d}" if np.isfinite(_nb) else f"{'—':>7s}"
+        _pbt = f"{_pb:>14.1f}" if np.isfinite(_pb) else f"{'—':>14s}"
+        _rbt = f"{_rb:>14.2f}" if np.isfinite(_rb) else f"{'—':>14s}"
+        print(f"{'  temoin de bruit':<26s} {'':>8s} {_nbt} {_pbt} {_rbt} {haz}")
     _apport_marginal(sources, axe, _rec)
     return 0
 
