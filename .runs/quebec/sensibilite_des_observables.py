@@ -58,6 +58,34 @@ def _rang_effectif(j, seuil=0.95):
     return int(np.searchsorted(part, seuil) + 1), float(vp.sum() ** 2 / (vp ** 2).sum())
 
 
+def _largeur_et_pente(model, td, device):
+    """Largeur du tronçon et pente, pour tirer un niveau d'eau du débit.
+
+    La largeur vient de `physio/troncon_width_depth.csv` du projet Hydrotel, la pente du
+    calage. Le modèle n'a aucune géométrie de lit : sa table des tronçons ne porte que
+    l'identifiant, les coordonnées, un drapeau de lac et l'ordre topologique.
+    """
+    import pandas as pd
+
+    plat = os.environ.get("ETL_MELT_DIR")
+    if not plat:
+        return None
+    f = os.path.join(plat, "physio", "troncon_width_depth.csv")
+    if not os.path.exists(f):
+        print(f"[sensibilite] pas de geometrie de tronçon : {f}")
+        return None
+    t = pd.read_csv(f, sep=";", skipinitialspace=True)
+    w = torch.tensor(t.iloc[:, 2].to_numpy(dtype="float32"), device=device)
+    n = td.forcing.shape[1]
+    if w.numel() < n:
+        return None
+    w = w[:n].clamp(min=1.0)
+    pente = getattr(model.vertical_column, "slope", None)
+    if pente is None or not torch.is_tensor(pente):
+        pente = torch.full((n,), 0.01, device=device)
+    return w, pente.to(device).clamp(min=1e-5)
+
+
 def _resumes(nom, serie, mois, noeuds=None):
     """Quatre moyennes saisonnières d'un observable, éventuellement restreint à des nœuds."""
     out = {}
@@ -114,6 +142,11 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
 
     familles = [("debit", None), ("evapotranspiration", "etr"), ("neige", "swe"),
                 ("nappe", "s_gw"), ("recharge", "recharge")]
+    # GRACE et SWOT n'etaient pas dans le banc : le premier faute d'un resume de stockage
+    # total, le second faute d'un niveau d'eau, que le modele ne produit pas. Les deux se
+    # calculent ici sans toucher au modele.
+    _sp = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
+    _geom = _largeur_et_pente(model, td, device)
     cumul, compte = {}, {}
     etat = HydroState.zeros(td.forcing.shape[1], device=device)
     stations = td.station_idx.detach().cpu().numpy()
@@ -126,8 +159,37 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
             return_diagnostics=True)
         mois = mois_tout[a0:a1]
         sommes = {}
-        for nom, att in familles:
-            if att is None:
+        # STOCKAGE TOTAL, ce que la gravimetrie mesure : sol, manteau, souterrain, canopee.
+        _stock = None
+        for _att, _ep in (("theta1", 0.3), ("theta2", None), ("theta3", None)):
+            _v = getattr(diag, _att, None)
+            if _v is None or not torch.is_tensor(_v) or not _v.requires_grad:
+                _stock = None
+                break
+            _z = (_ep if _ep is not None
+                  else float(getattr(model.vertical_column, "z2_ref", 1.0)))
+            _stock = _v * _z * 1000.0 if _stock is None else _stock + _v * _z * 1000.0
+        if _stock is not None:
+            for _att in ("swe", "s_gw", "canopy"):
+                _v = getattr(diag, _att, None)
+                if _v is not None and torch.is_tensor(_v) and _v.requires_grad:
+                    _stock = _stock + _v
+            familles_sup = [("gravimetrie", _stock)]
+        else:
+            familles_sup = []
+        # NIVEAU D'EAU, ce que SWOT mesure. Manning en section large : la profondeur vaut
+        # (Q n / (w racine(S)))^(3/5). Le niveau absolu demanderait l'altitude du lit, que
+        # nous n'avons pas ; SWOT se comparerait donc en ANOMALIES, comme les puits.
+        if _geom is not None:
+            _w, _pente = _geom
+            _n_man = getattr(_sp, "manning_n", None)
+            if _n_man is not None:
+                _h = (Q.clamp(min=1e-3) * _n_man / (_w * _pente.clamp(min=1e-5).sqrt())) ** 0.6
+                familles_sup.append(("niveau", _h))
+        for nom, att in familles + familles_sup:
+            if torch.is_tensor(att):
+                serie = att
+            elif att is None:
                 serie = torch.log(Q.clamp(min=1e-3))[:, stations]
             else:
                 v = getattr(diag, att, None)

@@ -15,6 +15,7 @@ l'aire UHRH (cohérente avec _build_territorial), par troncon dans l'ordre node_
 """
 from __future__ import annotations
 from pathlib import Path
+import os as _os
 import torch
 
 from hydrotel_clone.hydrotel_params import load_project, uhrh_fractions
@@ -52,13 +53,22 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
     def up(u):
         tx = sol[tex[u]]; b = bv[u]
         fsa, fse, fsi, _ = uhrh_fractions(proj, u)
+        # La CAPACITE AU CHAMP et le POINT DE FLETRISSEMENT sont dans la table de sol du
+        # projet, par texture, et n'en sortaient pas (2026-09-22). Faute de les porter, la
+        # colonne prenait la capacite au champ dans le champ spatial, librement apprise a
+        # cote d'une courbe de retention imposee. La deduire de cette courbe ne marchait pas
+        # non plus : le lambda d'Hydrotel n'est pas l'indice de Brooks-Corey au sens de Clapp
+        # et Hornberger, son sable donnant 1,44 la ou eux donnent 4,05. La table du projet est
+        # la seule source coherente avec elle-meme.
         return dict(thetas=tx["thetas"], ks=tx["ks"], psis=tx["psis"], lam=tx["lam"],
+                    thetacc=tx.get("thetacc", float("nan")),
+                    thetapf=tx.get("thetapf", float("nan")),
                     z1=b["z1"], z2=b["z2"], z3=b["z3"], krec=b["krec"], cin=b["cin"],
                     recharge=b["recharge"], slope=uhrh[u]["slope"],
                     fsa=fsa, fse=fse, fsi=fsi, area=max(uhrh[u]["area_km2"], 1e-9))
 
-    keys = ("thetas", "ks", "psis", "lam", "z1", "z2", "z3", "krec", "cin", "recharge",
-            "slope", "fsa", "fse", "fsi")
+    keys = ("thetas", "ks", "psis", "lam", "thetacc", "thetapf", "z1", "z2", "z3", "krec",
+            "cin", "recharge", "slope", "fsa", "fse", "fsi")
     cols = {k: [] for k in keys}
     n_missing = 0
     for tid in node_ids:
@@ -68,7 +78,8 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
             n_missing += 1
             # défaut neutre (loam) si troncon sans UHRH calibré
             cols["thetas"].append(0.434); cols["ks"].append(0.0132); cols["psis"].append(0.40)
-            cols["lam"].append(0.252); cols["z1"].append(0.21941); cols["z2"].append(0.15725); cols["z3"].append(2.65)
+            cols["lam"].append(0.252); cols["thetacc"].append(0.270); cols["thetapf"].append(0.117)
+            cols["z1"].append(0.21941); cols["z2"].append(0.15725); cols["z3"].append(2.65)
             cols["krec"].append(1.2869e-7); cols["cin"].append(0.03); cols["recharge"].append(0.0)
             cols["slope"].append(0.04); cols["fsa"].append(1.0); cols["fse"].append(0.0); cols["fsi"].append(0.0)
             continue
@@ -85,7 +96,9 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
     p = dict(z1=T("z1"), z2=T("z2"), z3=T("z3"),   # z CALIBRÉS Hydrotel (pas z1_fixed)
              slope=torch.clamp(T("slope"), min=1e-4), krec=T("krec"), cin=T("cin"),
              fsa=T("fsa"), fse=T("fse"), fsi=T("fsi"), coef_recharge=T("recharge"))
+    _tcc, _tpf = T("thetacc"), T("thetapf")
     for i in (1, 2, 3):
+        p[f"thetacc{i}"] = _tcc.clone(); p[f"thetapf{i}"] = _tpf.clone()
         p[f"thetas{i}"] = thetas.clone(); p[f"ks{i}"] = ks.clone(); p[f"psis{i}"] = psis.clone()
         p[f"b{i}"] = b.clone(); p[f"omegpi{i}"] = omegpi.clone()
         p[f"mm{i}"] = mm.clone(); p[f"nn{i}"] = nn.clone()
@@ -111,7 +124,14 @@ def imposed_retention_curve(cs: dict, use_aquifer: bool) -> dict:
     et le pilote non. Sixième occurrence de « la recette d'exécution ne se déduit pas
     du point de reprise ».
     """
+    # LA CAPACITE AU CHAMP ET LE POINT DE FLETRISSEMENT RESTENT AU CHAMP SPATIAL (Essi,
+    # 2026-09-22). Ils sont dans la table de sol du projet, mais cette table et la carte des
+    # textures qui l'indexe sont ajustees pour le debit : les imposer remplacerait notre
+    # ajustement par le leur, sans rien gagner en physique. `MEANDRE_THETA_CC_CALAGE=1` les
+    # impose pour qui veut comparer.
     exclus_prefixes = ("ks", "thetas")
+    if _os.environ.get("MEANDRE_THETA_CC_CALAGE") != "1":
+        exclus_prefixes = exclus_prefixes + ("thetacc", "thetapf")
     exclus_cles = ("krec", "coef_recharge") if use_aquifer else ()
     return {k: v for k, v in cs.items()
             if not k.startswith(exclus_prefixes) and k not in exclus_cles}
