@@ -177,6 +177,32 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
             swe_mass_node = swe_mass_node.to(device)
             _n = int(torch.isfinite(swe_mass_obs).sum())
             print(f"[canswe] {reg}: {len(_gard)}/{len(_sit)} sites retenus, {_n} releves de masse")
+    # NEISIM EN EXTENSION DU RESEAU AU SOL (2026-09-21). Le reseau compte 76 sites en
+    # Outaouais et AUCUN au Saint-Laurent sud-ouest : la ou il se tait, rien ne contraint la
+    # masse du manteau. NEISIM est un MODELE, pas une mesure, et la condition prealable a ete
+    # mesuree avant de l'employer : sur 246 sites du reseau et 111 532 couples journaliers,
+    # rapport median 0,98, correlation mediane 0,87, erreur absolue moyenne 33 mm pour une
+    # moyenne observee de 112 mm. Il entre par la MEME cible que le reseau, sans poids
+    # nouveau, et la SOURCE est dite a voix haute dans le journal.
+    _src = os.environ.get("ETL_SWE_SOURCE", "canswe").lower()
+    if _src in ("neisim", "les-deux") and lcfg.get("w_swe_mass", 0.0) >= 0:
+        _f = f"{_mpaths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
+        if not os.path.exists(_f):
+            raise FileNotFoundError(f"cible NEISIM absente : {_f} "
+                                    "(construire avec .runs/quebec/build_neisim_targets.py)")
+        _z = np.load(_f)
+        _v = torch.tensor(_z["valeurs"], dtype=torch.float32, device=device)
+        _n_idx = torch.tensor(_z["node_idx"], dtype=torch.long, device=device)
+        assert _v.shape[0] == len(times), f"{reg}: axe de temps NEISIM {_v.shape[0]} vs {len(times)}"
+        if _src == "neisim" or swe_mass_obs is None:
+            swe_mass_obs, swe_mass_node = _v, _n_idx
+        else:
+            swe_mass_obs = torch.cat([swe_mass_obs, _v], dim=1)
+            swe_mass_node = torch.cat([swe_mass_node, _n_idx])
+        if lcfg.get("w_swe_mass", 0.0) <= 0:
+            print(f"[neisim] {reg}: cible chargee mais w_swe_mass vaut 0, elle n'agit pas")
+        print(f"[neisim] {reg}: source {_src}, {swe_mass_obs.shape[1]} series, "
+              f"{int(torch.isfinite(swe_mass_obs).sum())} valeurs")
     tws_obs = None
     con = duckdb.connect(db_path, read_only=True)
     if "grace_tws" in [t[0] for t in con.execute("show tables").fetchall()]:
