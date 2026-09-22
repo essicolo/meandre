@@ -1,4 +1,4 @@
-﻿"""River network graph construction and utilities.
+"""River network graph construction and utilities.
 
 Builds a PyTorch Geometric Data object from a river network description.
 Nodes are subbasins/reaches; edges are upstream -> downstream connections.
@@ -74,6 +74,15 @@ class RiverGraph:
     topo_order: Tensor          # (n_nodes,) int
     is_lake: Tensor             # (n_nodes,) bool
     travel_time_days: Tensor    # (n_edges,) int
+    # LARGEUR DU TRONÇON, en metres, quand le projet la fournit (2026-09-22). Le modele
+    # n'avait aucune geometrie de lit : sa table des tronçons ne porte que l'identifiant, les
+    # coordonnees, un drapeau de lac et l'ordre topologique. Sans largeur, aucun niveau d'eau
+    # ne se calcule, donc le coefficient de Manning sort du champ spatial sans que rien ne le
+    # lise, et l'altimetrie satellitaire reste inutilisable.
+    reach_width_m: Tensor | None = None
+    # Pente du tronçon, sans dimension, par nœud. Elle existe par ARÊTE dans `edge_attr`,
+    # mais la loi de Manning en demande une par nœud.
+    node_slope: Tensor | None = None
 
     def __post_init__(self) -> None:
         n_nodes = int(self.topo_order.shape[0])

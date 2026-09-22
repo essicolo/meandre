@@ -103,6 +103,12 @@ class SimDiagnostics:
     # saturée (mm/jour), sortie atmosphérique à compter au bilan.
     profondeur_nappe: Tensor | None = None
     etr_nappe: Tensor | None = None
+    # PROFONDEUR D'EAU DANS LE TRONÇON, en metres (2026-09-22). Manning en section large :
+    # h = (Q n / (w racine(pente)))^(3/5). C'est l'observable de l'altimetrie satellitaire,
+    # qui mesure une elevation de surface libre et non un debit. L'ELEVATION absolue
+    # demanderait l'altitude du lit, que nous n'avons pas : la comparaison se fait en
+    # ANOMALIES, comme pour les puits et la gravimetrie.
+    profondeur_eau_m: Tensor | None = None
 
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled

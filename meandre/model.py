@@ -806,8 +806,36 @@ class HydroModel(nn.Module):
             canopy=torch.stack(diag_lists["canopy"], dim=0),
             wetland=torch.stack(diag_lists["wetland"], dim=0),
             T_water=torch.stack(diag_lists["T_water"], dim=0),
+            profondeur_eau_m=self._profondeur_deau(Q_sim, graph, spatial_params),
         )
         return Q_sim, state, diagnostics
+
+    @staticmethod
+    def _profondeur_deau(Q, graph, sp):
+        """Profondeur d'eau par tronçon, en mètres, quand la largeur est connue.
+
+        Manning en section large, où le rayon hydraulique se confond avec la profondeur :
+        Q = (1/n) w h^(5/3) racine(S), donc h = (Q n / (w racine(S)))^(3/5). L'approximation
+        vaut tant que la largeur dépasse vingt fois la profondeur, ce qui est le cas des
+        tronçons que l'altimétrie satellitaire observe, larges de plus de cent mètres.
+
+        C'est l'observable de SWOT, qui mesure une élévation de surface libre et non un débit,
+        et c'est le seul endroit du modèle où le coefficient de Manning agit : il sort du
+        champ spatial depuis toujours et rien ne le lisait.
+
+        Retourne None faute de largeur : la géométrie du lit n'existe pas dans toutes les
+        bases, et une profondeur inventée serait pire qu'une absence.
+        """
+        largeur = getattr(graph, "reach_width_m", None)
+        manning = getattr(sp, "manning_n", None) if sp is not None else None
+        if largeur is None or manning is None:
+            return None
+        pente = getattr(graph, "node_slope", None)
+        if pente is None:
+            return None
+        w = largeur.to(Q.device).clamp(min=1.0)
+        s_ = pente.to(Q.device).clamp(min=1e-5)
+        return (Q.clamp(min=1e-4) * manning.to(Q.device) / (w * s_.sqrt())) ** 0.6
 
     # ---- Uncertainty regularisation ----
 

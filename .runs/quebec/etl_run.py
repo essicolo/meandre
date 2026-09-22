@@ -849,6 +849,36 @@ if "ETL_KREC" in os.environ:
     if os.environ.get("ETL_KREC_GEL", "0") == "1":
         model.spatial_encoder.freeze_krec()
         print(f"[etl] krec GELÉ à {_kv:.1e} (sortie exclue de l'apprentissage)")
+# GEOMETRIE DU LIT (2026-09-22). Le modele n'en avait aucune : sa table des tronçons ne porte
+# que l'identifiant, les coordonnees, un drapeau de lac et l'ordre topologique. Sans largeur ni
+# pente par nœud, aucune profondeur d'eau ne se calcule, le coefficient de Manning sort du
+# champ spatial sans que rien ne le lise, et l'altimetrie satellitaire reste inutilisable. Le
+# projet Hydrotel fournit pourtant la largeur par tronçon depuis toujours.
+if "ETL_MELT_DIR" in os.environ:
+    _fw = os.path.join(os.environ["ETL_MELT_DIR"], "physio", "troncon_width_depth.csv")
+    if os.path.exists(_fw):
+        import pandas as _pdw
+
+        _tw = _pdw.read_csv(_fw, sep=";", skipinitialspace=True)
+        _lg = torch.tensor(_tw.iloc[:, 2].to_numpy(dtype="float32"), device=DEVICE)
+        if _lg.numel() >= n_nodes:
+            td.graph.reach_width_m = _lg[:n_nodes].clamp(min=1.0)
+            print(f"[etl] largeur de tronçon chargee : mediane "
+                  f"{float(td.graph.reach_width_m.median()):.0f} m")
+    else:
+        print(f"[etl] pas de geometrie de lit : {os.path.basename(_fw)} absent")
+    # La pente par nœud vient du calage, seule source qui en porte une ; elle sert deja au
+    # sol. Sans elle la loi de Manning n'a pas de gradient hydraulique.
+    try:
+        from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs_pente
+
+        _csp = _lcs_pente(os.environ["ETL_MELT_DIR"], r["node_ids"], 0.15, device=DEVICE)
+        td.graph.node_slope = _csp["slope"].float().clamp(min=1e-5)
+        print(f"[etl] pente de tronçon chargee : mediane "
+              f"{float(td.graph.node_slope.median()):.4f}")
+    except Exception as _e_p:
+        print(f"[etl] pente de tronçon non chargee : {type(_e_p).__name__}")
+
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
     # A/B inférence 2026-07-25 : +0.149 KGE sur checkpoint gasp (v7 : +0.088 entraîné).
