@@ -2967,3 +2967,27 @@ CE QUE NEISIM APPORTE QUE LE RÉSEAU N'A PAS. Au Saint-Laurent sud-ouest, 2889 n
 LA RÉSERVE D'ÉCHANTILLONNAGE EST LEVÉE. NEISIM est pris au nœud le plus proche du site, un centroïde de tronçon situé à 3,8 km du site en médiane et à 14,4 km au plus. Lu aux deux endroits sur la même population, le rapport au réseau vaut en Outaouais 0,79 au site contre 0,81 au nœud en mars, 0,48 contre 0,50 en avril, 0,67 contre 0,69 en décembre. Le déplacement vaut donc deux à trois centièmes, et dans le sens qui RAPPROCHE le nœud du réseau. Il n'explique pas l'écart.
 
 RÉSERVE QUI DEMEURE. Le manteau simulé est comparé en moyenne mensuelle, une grandeur dont l'unité d'agrégation diffère de celle du maximum saisonnier par site employée en août. Les deux ne se citent pas l'une pour l'autre.
+
+---
+
+## R168 — La recette de perte équilibrée perd à l'entraînement, y compris sur ce pour quoi elle était faite (2026-09-21) — ÉTABLI
+
+Trois mesures statiques avaient motivé le remaniement de la fonction de perte : à nombre de termes égal la version décomposée laisse 2,8 % de manque moyen contre 14,2 %, elle ne préfère jamais le lissage là où la recette en vigueur le préfère sur 64 % des stations, et son gradient est le seul à pousser vers l'écoulement de base. Aucune ne portait sur ce que l'optimiseur ATTEINT.
+
+Épreuve sur la physique corrigée, en Outaouais, deux bras ne différant que par les poids des termes de débit, mêmes contraintes auxiliaires éteintes des deux côtés, même graine, même point de reprise, huit époques à 1e-5.
+
+| Critère | en vigueur | équilibrée |
+| --- | --- | --- |
+| KGE médian, période d'évaluation | 0,7118 | 0,6568 |
+| corrélation médiane | 0,787 | 0,769 |
+| facteur beta | 1,033 | 1,032 |
+| facteur gamma | 1,132 | 1,141 |
+| indice d'écoulement de base, observé 0,581 | 0,490 | 0,467 |
+
+La recette équilibrée perd de 0,055 de KGE et de 0,023 d'indice d'écoulement de base, alors qu'elle consacre 27 % de sa perte au soutien d'étiage et que c'est précisément l'angle mort qu'elle devait combler. Elle porte bien ses six termes cette fois, la répartition mesurée étant beta 34 %, soutien d'étiage 27 %, corrélation 10 %, variations journalières 10 %, gamma 9 %, rapport des pointes 8 %.
+
+CE QUE CELA DIT DE LA MÉTHODE. Une fonction objectif peut être meilleure au sens de la détection, c'est-à-dire mieux distinguer un hydrogramme déformé de l'original, et pire au sens de l'optimisation. Les bancs statiques mesurent la première, et rien de ce qui a été fait avant cette épreuve ne mesurait la seconde. La règle du projet posait déjà que l'entraînement n'est nécessaire que pour la dernière question ; elle l'est donc réellement, et la conclusion ne pouvait pas venir d'ailleurs.
+
+DÉCISION. La ronde du 30 septembre garde la recette en vigueur. Les poids équilibrés restent inscrits en commentaire dans sa configuration, avec ce verdict.
+
+RÉSERVE, ET ELLE COMPTE. La sortie du point de reprise lui-même n'existait pas au moment de la comparaison : les deux bras se comparent entre eux, sans qu'on sache si l'un a amélioré l'indice d'écoulement de base ou seulement moins dégradé. La mesure du point zéro est en file.

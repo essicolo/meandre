@@ -444,7 +444,13 @@ ETL_WLOGMSE = 0.3
 ETL_WPEAK = 0.5
 
 # Recette équilibrée, poids posés par équilibrage mesuré sur six défauts de référence.
-# À activer en lieu et place des cinq lignes ci-dessus si la passe d'essai le confirme.
+# LA PASSE D'ESSAI L'A REFUSÉE (2026-09-21). Deux bras en Outaouais sur la physique corrigée,
+# ne différant que par ces poids, contraintes auxiliaires éteintes des deux côtés, même graine
+# et même point de reprise : KGE médian 0,6568 contre 0,7118 sur la période d'évaluation, et
+# indice d'écoulement de base 0,467 contre 0,490 pour 0,581 observé. Elle perd donc aussi sur
+# le soutien d'étiage, auquel elle consacre 27 % de sa perte et qui était le motif du
+# remaniement. Une fonction objectif peut mieux DÉTECTER une déformation et moins bien se
+# faire OPTIMISER ; les trois bancs statiques mesuraient la première.
 # ETL_WKGE = 0
 # ETL_WPBIAS = 0
 # ETL_WMSE = 0
