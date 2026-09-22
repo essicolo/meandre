@@ -237,7 +237,20 @@ Test qui dira s'il tient, et il se fait AVANT tout entraînement : apparier les 
 
 Manning, les coefficients de Muskingum et la géométrie des tronçons ne sont observés que par le débit à seize jauges. SWOT mesure l'élévation et la pente de la surface libre par tronçon d'environ dix kilomètres et par nœud de deux cents mètres, depuis 2023, distribué par le centre de données océanographiques de la NASA. C'est une observation directe des objets que le modèle route.
 
-Réserves, et elles sont sérieuses : la mission n'observe de façon fiable que les rivières de plus de cent mètres de large, donc une petite part des tronçons du Québec méridional, et la série ne fait que trois ans. Le test préalable ne coûte rien : compter les tronçons de la base de rivières de SWOT qui tombent dans chaque territoire. Sous quelques dizaines, le chantier ne vaut pas la peine.
+LE TEST PRÉALABLE EST FAIT, ET IL EST CONCLUANT (2026-09-22). Un cycle complet de vingt-et-un jours, 54 granules et 267 Mo, donne les tronçons réellement observés :
+
+| territoire | tronçons vus | dont au moins cent mètres de large |
+| --- | --- | --- |
+| Outaouais | 429 | 335 |
+| Saint-Laurent nord-ouest | 382 | 210 |
+| Saguenay | 274 | 152 |
+| Saint-Laurent sud-ouest | 248 | 200 |
+| Montérégie | 112 | 91 |
+| Gaspésie | 64 | 20 |
+
+Mille huit tronçons larges sur les six territoires, revisités tous les vingt-et-un jours depuis 2023. Le seuil que je m'étais fixé avant de regarder, quelques dizaines par territoire, est franchi d'un ordre de grandeur, et ce sont les cours d'eau principaux, donc là où le routage compte. Le banc est `.runs/quebec/swot_troncons_observables.py`.
+
+CE QUI RESTE À MESURER AVANT D'ALLER PLUS LOIN, et c'est le critère du chantier : combien de directions INDÉPENDANTES ces mille tronçons portent. L'élévation de deux tronçons voisins de la même rivière est presque la même variable, et le compte brut ne dit rien. La mesure demande plusieurs cycles, donc quelques gigaoctets, à passer dans le banc d'apport propre. La réserve de durée demeure : trois ans de série contre vingt-cinq pour le débit.
 
 ### Ce qui est déconseillé, et c'est mesuré
 
