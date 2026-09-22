@@ -3207,3 +3207,28 @@ LE TÉMOIN DE BRUIT EST L'ARGUMENT QUI COMPTE. Avec quarante-quatre visites seul
 CE QUE SWOT OBSERVE N'EST OBSERVÉ PAR RIEN D'AUTRE. Le coefficient de Manning, les coefficients de Muskingum et la géométrie des tronçons ne sont contraints aujourd'hui que par le débit à seize jauges en Outaouais. SWOT regarde ces mêmes objets, sur 145 tronçons pour une seule passe.
 
 RÉSERVES. La série ne fait que trois ans, contre vingt-cinq pour le débit. La reproductibilité de SWOT, 0,38, reste inférieure à celle des puits, 0,63, sur la même fenêtre : une part de ses dix-neuf directions est probablement du bruit de mesure mal reproductible. Et cette mesure porte sur l'espace des DONNÉES ; ce que SWOT contraint dans l'espace des PARAMÈTRES demande la matrice de sensibilité.
+
+---
+
+## R177 — Les trois leviers, mesurés contre un témoin identique (2026-09-22) — ÉTABLI
+
+Trois bras en Outaouais, huit époques à 1e-5 depuis le même point de reprise, ne différant du témoin que par un levier chacun. Le témoin porte l'évapotranspiration par tronçon à 0,4 et la masse du manteau à 0,2, gravimétrie éteinte, et rend 0,7024 de KGE médian sur la période d'évaluation.
+
+| levier | KGE médian | ce qui change |
+| --- | --- | --- |
+| témoin | 0,7024 | |
+| évapotranspiration en mode bassin | 0,7064 | 3150 séries de moins en mémoire |
+| plafond de percolation suivant le champ | 0,7085 | le champ k_sub passe de 0,0000 à 0,2822 de variation spatiale |
+| niveaux de nappe, une époque | — | le terme pèse 0,182 contre 2,31, soit 7 % |
+
+AUCUN NE COÛTE DE KGE. Les écarts, quatre et six millièmes, sont sous la dispersion de graine.
+
+LE PLAFOND DE PERCOLATION EST POSÉ DANS LA RONDE. Il était à une constante de 3 mm/jour et sa sortie de champ était rigoureusement uniforme, alors que c'est le seul paramètre dont la spatialisation soit mesurée comme payante : la texture du sol explique la part souterraine du débit à +27 % contre le témoin, contre +3 % pour la géologie du socle et +11 % pour le relief. Un champ plat de moins sur quarante-trois.
+
+LES PUITS SONT POSÉS DANS LA RONDE, à poids 2,0, la moitié tenue de côté par un ordre stable. Le poids vient de la mesure : 7 % à poids 1, et la contrainte de neige à 6 % n'a rien déplacé en huit époques, donc 2,0 porte le terme à environ 14 %.
+
+L'ÉVAPOTRANSPIRATION EN MODE BASSIN RESTE DISPONIBLE SANS ÊTRE LE DÉFAUT. Elle garde la différenciation des champs hydrauliques du sol, conductivité de surface 0,853 contre 0,900 et porosité 0,233 contre 0,244, et ne perd que celle du coefficient cultural, 0,021 contre 0,042, les deux étant de toute façon sous le seuil de platitude. Mais la seule valeur jamais démontrée de cette contrainte est le décollapse de la partition verticale d'un facteur six à huit, obtenu par tronçon sur un entraînement long depuis un état effondré ; huit époques depuis un état déjà différencié n'ont pas la puissance de le voir. Le mode servira quand la mémoire l'exigera, ce qui arrivera sur la simulation provinciale.
+
+UN DÉFAUT ATTRAPÉ PAR LA GARDE POSÉE LA VEILLE. Le premier bras a signalé que le terme des puits était actif et son diagnostic détaché du graphe : `w_nappe` est posé sur l'objet de perte après sa construction, alors que la liste des diagnostics à retenir était lue dans la configuration, où il vaut zéro. Le terme aurait affiché sa valeur sans produire aucun gradient. C'est exactement la classe de défaut pour laquelle la garde avait été écrite.
+
+ET UN MESSAGE DE JOURNAL QUI DÉCRIVAIT UN MÉCANISME DISPARU. Le pilote annonçait, pour l'ancrage du plafond, une variation spatiale RÉTRÉCIE. C'était la première version du prior, retirée le jour même parce qu'elle pénalisait la variance du champ au même poids que le biais de moyenne. Le calcul était bon ; seul le texte survivait.

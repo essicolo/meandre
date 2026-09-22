@@ -350,7 +350,21 @@ MEANDRE_Z_TENSEUR = 1
 # Sur le débit, cette correction ne coûte ni ne rapporte : l'effet mesuré vaut sept millièmes
 # de KGE pour un bruit de trois millièmes et demi.
 ETL_L3_TAU = 2                  # drainage de l'eau gravitaire de la couche 3, en jours
-ETL_L3_KSUB = 3.0               # plafond de percolation du substratum, en mm/jour
+# PLAFOND DE PERCOLATION SUIVANT LE CHAMP SPATIAL (2026-09-22). Il etait pose a une constante
+# de 3 mm/jour, et la sortie k_sub du champ sortait rigoureusement uniforme. C'est pourtant le
+# SEUL parametre dont la spatialisation soit mesuree comme payante : sur 95 stations et cinq
+# territoires, chacun predit par un modele ajuste sur les autres, la texture du sol explique la
+# part souterraine du debit a +27 % contre le temoin, quand la geologie du socle donne +3 % et
+# le relief +11 %.
+#
+# MESURE, huit epoques en Outaouais contre un temoin identique : le champ passe d'un
+# coefficient de variation spatial de 0,0000 a 0,2822, et le KGE median sur la periode
+# d'evaluation vaut 0,7085 contre 0,7024, donc rien. Un champ plat de moins sur quarante-trois.
+#
+# L'ancrage de la MOYENNE du logarithme est obligatoire dans ce mode : sans lui rien ne tient
+# la sortie. La variation spatiale, elle, reste LIBRE.
+ETL_L3_KSUB = "champ"
+ETL_KSUB_PRIOR = 0.3
 ETL_L3_TAULAT = 3               # sortie latérale de la couche 3, en jours
 ETL_NAPPE_LIBRE = 1
 ETL_NAPPE_SY = 0.05
