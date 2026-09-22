@@ -3010,9 +3010,17 @@ Corrélation de rang entre les deux colonnes : −0,70, et −0,79 en valeur. Le
 
 C'EST EXACTEMENT L'ÉQUIFINALITÉ QUE LE PROJET ANNONCE COMBATTRE. Le KGE ne distingue pas un débit obtenu par le bon partage d'un débit obtenu par le mauvais, et l'optimisation le montre en acte : elle trouve le second. C'est aussi l'argument le plus direct en faveur des contraintes auxiliaires, seules capables de tenir la partition pendant que le débit s'améliore.
 
-CE QUI MANQUE POUR L'ÉTABLIR, et c'est pourquoi ce constat reste ouvert. Cinq points seulement, donc une corrélation de rang de −0,70 au seuil de 0,19 : elle ne serait pas retenue seule. Et les cinq modèles ne diffèrent pas que par leur fonction de perte : recettes physiques, nombres d'époques et points de reprise diffèrent aussi. C'est une association sur un ensemble hétérogène, pas une expérience contrôlée.
+LE POINT ZÉRO, MESURÉ DEPUIS, REND DEUX DE CES POINTS CONTRÔLÉS. Le point de reprise dont partent les deux bras de la passe de perte vaut 0,5630 de KGE médian et 0,550 d'indice d'écoulement de base. Les deux bras en partent avec la même recette physique, la même graine et le même nombre d'époques, et ne diffèrent que par les poids des termes de débit :
 
-CE QUE LA RONDE DOIT MESURER. Le même couple de grandeurs sur des bras qui ne diffèrent que par la présence des contraintes auxiliaires. Si l'association tient, l'indice d'écoulement de base devient un critère de sélection au même titre que le KGE ; si elle tombe, elle aura coûté une lecture de journaux.
+| | KGE médian | indice de base |
+| --- | --- | --- |
+| point de départ | 0,5630 | 0,550 |
+| après huit époques, recette en vigueur | 0,7118 | 0,490 |
+| après huit époques, recette équilibrée | 0,6568 | 0,467 |
+
+L'affaissement de la partition n'est donc pas un artefact de comparaison entre lignées : le même modèle, affiné huit époques, gagne 0,149 de KGE et perd 0,060 d'indice d'écoulement de base, ou gagne 0,094 et perd 0,083 selon la recette. Les deux recettes de débit essayées vont dans le même sens.
+
+CE QUI RESTE OUVERT. Le mécanisme, et le remède. Les contraintes auxiliaires sont le remède supposé ; à leurs poids actuels elles ne tiennent pas la partition, elles empêchent d'apprendre.
 
 ---
 
@@ -3035,3 +3043,23 @@ Que l'apprentissage ait bien eu lieu est vérifié sur la métrique de sélectio
 CE QUE L'ÉPREUVE NE DIT PAS. Elle ne compare pas le réseau au sol à NEISIM comme sources, puisque ni l'un ni l'autre ne déplace quoi que ce soit. La question de la source reste entière et demande un poids auquel la contrainte agisse.
 
 CONSÉQUENCE. Le poids des contraintes auxiliaires doit être posé sur une part mesurée de la perte, non hérité. Six pour cent ne suffisent pas. La mesure d'échelle des quatre contraintes, impossible à lire avant ce soir, donne le moyen de choisir.
+
+---
+
+## R171 — Aux poids de la ronde, les contraintes auxiliaires n'empêchent pas la dérive, elles empêchent l'apprentissage (2026-09-22) — ÉTABLI
+
+Bras contrôlé en Outaouais, ne différant du bras sans contrainte que par les quatre contraintes auxiliaires aux poids de la ronde du 30 septembre, GRACE posé en FORME puisque le mode en niveau est déclaré insatisfaisable.
+
+| | KGE médian, évaluation | indice d'écoulement de base |
+| --- | --- | --- |
+| point de départ | 0,5630 | 0,550 |
+| huit époques sans contrainte | 0,7118 | 0,490 |
+| huit époques avec contraintes | 0,5630 | 0,550 |
+
+Le bras contraint n'a jamais battu son époque zéro : sa métrique de sélection tombe de 0,5630 à 0,4687 dès la première époque et culmine à 0,4761 à la septième, si bien que le point de reprise retenu est le départ lui-même. Ses deux mesures sont donc celles du départ, au chiffre près.
+
+LA CAUSE EST GRACE, ET L'ÉCHELLE EST MESURÉE. Sur une époque, les quatre contraintes pèsent, en part du total des termes de débit : GRACE en niveau 19 % plus 4 % pour son biais saisonnier, GRACE en forme 15 %, évapotranspiration 12 %, masse du manteau 1 % en Outaouais et 6 % en Gaspésie. Le mode forme divise donc bien la part de GRACE par un tiers, mais il ne la rend pas satisfaisable : sur huit époques le terme passe de 0,348 à 1,52, atteignant 40 % du total des termes de débit. Le modèle le combat et perd.
+
+CE QUE CELA LAISSE. Un intervalle à explorer entre zéro, où le débit monte et la partition s'affaisse, et 0,2, où rien n'apprend. Balayage en cours à 0, 0,02 et 0,05, évapotranspiration et masse du manteau tenues aux valeurs de la ronde puisqu'à 12 % et 1 % elles ne sont pas ce qui bloque.
+
+CONSÉQUENCE IMMÉDIATE POUR LA RONDE. Sa configuration actuelle ne peut pas partir telle quelle : elle produirait le point de départ.
