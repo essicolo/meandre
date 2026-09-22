@@ -163,6 +163,20 @@ Pour un réservoir Q = c·S^n sans recharge, l'exposant de Brutsaert-Nieber vaut
 
 Aucune covariable de terrain ne prédit cet exposant, texture à −8 % contre le témoin, socle à −22 %, relief à −26 % : il ne sort PAS du champ spatial. Mais il se mesure sur les débits observés sans circularité, et entre par la loi des ancrages. `ETL_NAPPE_EXP=mesure` le déclenche (`meandre/data/recession_anchor.py`). Valeurs : MONT 1,36, SLSO 2,06, SLNO 2,30, SAGU 2,44, GASP 2,70, OUTV 4,65 ; sous cinq stations, le défaut de Boussinesq est conservé.
 
+## Neige : NEISIM, et ce que le réseau au sol ne dit pas (2026-09-21)
+
+NEISIM est un produit du gouvernement du Québec, équivalent en eau de la neige sur grille d'environ 2,5 km, journalier, 1980-2025, à `D:/meandre-data/neisim`. C'est un MODÈLE. La condition préalable a été mesurée avant tout usage : sur 246 sites du réseau CanSWE et 111 532 couples journaliers, rapport médian par site 0,98, corrélation médiane 0,87, erreur absolue moyenne 33 mm pour une moyenne observée de 112 mm.
+
+Le chargeur est `meandre/data/neisim_loader.py` et le constructeur de cibles `.runs/quebec/build_neisim_targets.py`, qui traverse le fichier UNE fois pour tous les territoires demandés : le découpage interne est une carte complète par pas de temps, si bien que lire la série d'un point décompresse tout le fichier. `ETL_SWE_SOURCE` vaut `canswe`, `neisim` ou `les-deux` et entre par la MÊME cible que le réseau, sans poids nouveau.
+
+CE QU'IL APPREND. Sur les 3412 nœuds de l'Outaouais, notre manteau et le sien s'accordent à 1,04 avec une corrélation saisonnière de 1,00 et interannuelle de 0,96. Aux nœuds portant un site du réseau, en mars, le rapport au réseau vaut 0,77 pour le modèle et 0,81 pour NEISIM en Outaouais, 0,80 et 0,88 au Saguenay, 0,91 et 0,81 au Saint-Laurent nord-ouest, 1,62 et 1,17 en Gaspésie. Deux modèles indépendants sous le réseau dans des proportions voisines désignent la représentativité des SITES. La Gaspésie est le seul territoire où la neige simulée est en cause. Au Saint-Laurent sud-ouest et en Montérégie, aucun site ne passe les filtres et NEISIM est la seule contrainte disponible.
+
+Le chiffre « 121 mm simulé contre 238 mesurés sur OUTV » est un ARTEFACT D'AGRÉGATION réfuté au registre le 2026-08-22 ; il a été retiré de treize configurations et de quatre autres fichiers le 2026-09-21. Ne pas le réintroduire.
+
+## GRACE : comparer la FORME, jamais le niveau
+
+`ETL_TWS_FORME=1` (`tws_shape_only`) divise chaque côté par son propre écart-type et ne retient que la phase et la forme ; le terme de biais saisonnier s'éteint alors de lui-même. Le mode en niveau compare des millimètres à une incertitude de 25 mm par estimation mensuelle, alors que rien ne garantit que la colonne, qui respire sur trois mètres de sol plus la neige et la nappe, ait la même amplitude qu'une empreinte satellitaire de plusieurs centaines de kilomètres. Mesuré le 2026-08-26 : en niveau, même borné, le modèle tombait de 0,52 à 0,34. Le mode forme a pourtant attendu le 2026-09-21 pour être branché : il existait depuis un mois sans qu'aucune configuration ni aucun pilote ne le pose.
+
 ## Training safeguards
 
 - **Divergence guard**: rollback to best checkpoint if loss > 3x EMA (max 3 rollbacks)
@@ -204,5 +218,7 @@ Règle posée par Essi le 2026-09-13, après une journée où la plupart des heu
 - Dev metrics are selection metrics; only held-out 2022-2024 counts, against the FULL 6-member Hydrotel ensemble (posttraitement_{LN24HA,MG24Hx}.zarr) on common stations/days.
 - Kill background fleets by killing the PARENT loop, then verify; a surviving bash loop silently relaunches trainings.
 - The `physical_prior_loss` targets should be consistent with `init_from_literature()` defaults.
+- Un poids de perte peut être lu, imprimé par le pilote, et JAMAIS posé sur l'objet de perte. `w_r`, `w_beta`, `w_gamma`, `w_peak_ratio` et `w_recession` étaient dans ce cas : la recette équilibrée a tourné avec deux de ses six termes. Le défaut est invisible, le bilan écartant les termes de valeur nulle, donc un terme oublié se lit comme un terme éteint volontairement. Une garde dans `load_region` compare désormais terme à terme, et `tests/test_poids_poses.py` balaie toutes les configurations. Corrigé 2026-09-21.
+- Le bilan des composantes mélangeait des SOMMES et des MOYENNES. Les termes de la fonction de perte sont accumulés avec la part du bloc dans l'époque ; les treize termes ajoutés dans la boucle du pilote, dont GRACE, la neige, les nappes et l'ancrage sur la littérature, ne l'étaient pas, donc s'additionnaient sur les quelque deux cents blocs d'une époque. Le bilan portait un facteur deux cents entre deux familles, et m'a fait écrire que GRACE dominait l'entraînement alors qu'il en pèse un dixième à huit dixièmes. Corrigé 2026-09-21. Avant de conclure d'un bilan de perte, vérifier l'unité d'agrégation des deux côtés.
 - A loss term can display a VALUE and contribute NO gradient. `MEANDRE_DIAG_CPU=1` detached the diagnostics, and MODIS ET, CanSWE snow, well levels and GRACE TWS all derive from diagnostics: for two days they were printed in the loss breakdown while training on nothing. Fixed 2026-09-20 (`HydroModel.DIAGNOSTICS_DERIVES`), with tests. The symptom to watch for: two runs that differ only by a constraint give the SAME held-out value to four decimals at every epoch.
 - Activating the four auxiliary constraints costs 0.032 of held-out KGE on the OUTV témoin and DIVIDES the seed-to-seed dispersion by four, from 0.0141 to 0.0036. Judge auxiliary data on identifiability and reproducibility, never on KGE.
