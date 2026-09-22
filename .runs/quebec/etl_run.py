@@ -1178,6 +1178,14 @@ tconf = TrainingConfig(
     # n'existe dans aucune config -- benin car la valeur egale le defaut (1.0),
     # mais c'est le meme motif que la dette #16, attrape par le test de famille.
     grad_clip=float(tcfg.get("grad_clip", 1.0)),
+    # GRACE EN FORME PLUTOT QU'EN NIVEAU. Le mode forme existe depuis le 2026-08-26 et
+    # n'avait jamais ete branche : aucune configuration ni aucun pilote ne le posait. Le
+    # terme en niveau, compare en millimetres a sigma = 25 mm, valait 37 a 395 sur huit
+    # epoques en Outaouais, soit six a vingt ecarts-types, contre 0,41 a 0,53 pour
+    # l'ensemble des termes de debit. C'est la situation que le code annonce lui-meme comme
+    # insatisfaisable, et qui avait fait tomber le modele de 0,52 a 0,34 a la mesure du
+    # 2026-08-26.
+    tws_shape_only=os.environ.get("ETL_TWS_FORME", str(int(tcfg.get("tws_shape_only", 0)))) == "1",
     w_prior=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_prior", 0.005)),
     w_latent_reg=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_latent_reg", 1e-3)),
     best_metric="kge_median",

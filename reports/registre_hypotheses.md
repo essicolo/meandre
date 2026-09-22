@@ -2937,4 +2937,8 @@ Mesuré sur huit époques d'un affinage en Outaouais, en perte pondérée : le s
 
 Le terme GRACE n'est pas non plus stable : sur huit époques il oscille entre 7,4 et 28 sans décroître, alors que les termes de débit varient de moins d'un cinquième.
 
-CE QUI RESTE À DÉCIDER. Poser les poids auxiliaires sur une part déclarée de la perte plutôt que sur des valeurs héritées d'un temps où ils ne servaient à rien. La part visée est une décision, pas une mesure.
+LA CAUSE N'EST PAS LE POIDS, C'EST LE MODE. GRACE est comparé en millimètres absolus, à une incertitude de 25 mm par estimation mensuelle. Un terme de 37 à 395 en valeur brute correspond à un écart de six à vingt fois cette incertitude. Le dépôt porte depuis le 2026-08-26 un mode de rechange où chaque côté est divisé par son propre écart-type, de sorte que seules la phase et la forme comptent, avec un commentaire qui déclare le mode en niveau INSATISFAISABLE parce que rien ne garantit que la colonne, qui respire sur trois mètres de sol plus la neige et la nappe, ait la même amplitude qu'une empreinte satellitaire de plusieurs centaines de kilomètres. La mesure de ce jour-là : en niveau, même borné, le modèle tombait de 0,52 à 0,34.
+
+Ce mode n'avait JAMAIS été branché. Aucune configuration et aucun pilote ne le posaient, et le seul mode jamais exécuté est celui que le code annonce comme insatisfaisable. Un levier `ETL_TWS_FORME` le pose désormais, et le terme de biais saisonnier s'éteint de lui-même dans ce mode, le terme de forme comparant déjà les anomalies normalisées mois par mois.
+
+RESTE OUVERT. La masse de neige CanSWE, à six à huit fois les termes de débit, n'est pas expliquée par ce mécanisme et demande sa propre mesure.
