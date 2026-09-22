@@ -212,3 +212,37 @@ Modèle trop lissé et temps de transfert du routage. Un temps de transfert fix�
 Erreur d'amplitude du forçage. La précipitation cumulée avant chaque pointe n'a pas de biais mesurable alors que le pic simulé vaut la moitié de l'observé. Le déficit est dans la transformation pluie-débit, et le rabotage qui motivait le chantier est localisé aux basses-terres.
 
 Écoulement rapide d'été. Le modèle déployé produit déjà 53 % de son écoulement estival en ruissellement de surface, et l'excès d'infiltration sous-journalier n'ajoute que 0,6 point. Le canal de durée d'averse reste disponible, désactivé par défaut.
+
+## 10. Données candidates pour l'identifiabilité — OUVERT le 2026-09-22, avec son critère
+
+Le critère a changé, et c'est le résultat le plus utile de la journée. Ce qui compte n'est ni la résolution ni le volume : c'est le nombre de directions indépendantes qu'une source ajoute À CE QUE LES AUTRES PORTENT DÉJÀ. Mesuré sur l'Outaouais, au pas mensuel, l'apport propre de chaque source vaut sept pour le réseau de neige au sol, quatre pour les puits, deux pour le débit, et ZÉRO pour la gravimétrie, l'évapotranspiration MODIS et NEISIM. Les trois produits sur grille totalisent des dizaines de millions de valeurs et n'ajoutent rien.
+
+La conséquence pour toute donnée candidate : un produit sur grille dérivé d'un modèle météorologique lisse portera presque sûrement une seule direction, quelle que soit sa résolution. Ce qui ajoute est un réseau de POINTS, ou un observable d'une autre nature que ceux déjà employés.
+
+### Ce qui reste à prendre dans les données déjà détenues
+
+Les puits écartés. Sur 186 puits du réseau de suivi, 88 passent les filtres : 81 sont captifs et 33 sont influencés par un pompage. Les influencés sont récupérables sans donnée nouvelle, puisque le modèle simule déjà les prélèvements ; il suffit de comparer le niveau simulé sous prélèvement au niveau mesuré. Les captifs mesurent une charge et non un stock, et demandent une physique de nappe captive, donc un chantier de modélisation et non d'acquisition.
+
+Le déséquilibre entre territoires. L'Outaouais a 16 jauges et 110 sites de neige, le Saint-Laurent sud-ouest 41 jauges et 4 sites, la Montérégie 28 jauges et 1 site. Mais le Saint-Laurent sud-ouest compte 54 puits et la Montérégie 46, les deux plus riches du domaine. Une recette provinciale à poids fixes sur-contraindra ou sous-contraindra selon l'endroit ; les poids devraient suivre ce que le territoire porte réellement.
+
+### Conductivité du Réseau-rivières — le meilleur candidat externe
+
+Le défaut mesuré le 2026-09-22 est un déficit d'écoulement lent d'environ huit centièmes d'indice à variabilité égale, présent dans tous les modèles y compris avant tout entraînement. Il n'est mesuré qu'à travers un filtre numérique, lequel n'est qu'un proxy : la séparation par TRACEUR CHIMIQUE est la méthode physique du partage entre eau d'événement et eau pré-événement.
+
+Le suivi physicochimique des rivières et du fleuve du ministère de l'Environnement mesure la conductivité et la température, de 2000 à 2023, sous licence CC-BY 4.0, en CSV. C'est un réseau de points, donc du bon côté du critère, et c'est un observable d'une nature que le modèle n'a jamais confrontée. Réserve : l'échantillonnage est un prélèvement ponctuel et non une mesure continue, ce qui interdit la séparation d'un hydrogramme de crue mais autorise la fraction saisonnière, qui est justement la grandeur en défaut.
+
+Test qui dira s'il tient, et il se fait AVANT tout entraînement : apparier les stations de conductivité aux jauges, séparer par bilan de masse à deux composantes, et comparer la fraction lente obtenue à celle du filtre numérique. Si les deux s'accordent, le déficit de huit centièmes est confirmé par une seconde méthode et devient une cible. S'ils divergent, c'est le filtre qui est en cause et non le modèle.
+
+### Altimétrie SWOT — pour les paramètres de routage, qui ne sont contraints par rien
+
+Manning, les coefficients de Muskingum et la géométrie des tronçons ne sont observés que par le débit à seize jauges. SWOT mesure l'élévation et la pente de la surface libre par tronçon d'environ dix kilomètres et par nœud de deux cents mètres, depuis 2023, distribué par le centre de données océanographiques de la NASA. C'est une observation directe des objets que le modèle route.
+
+Réserves, et elles sont sérieuses : la mission n'observe de façon fiable que les rivières de plus de cent mètres de large, donc une petite part des tronçons du Québec méridional, et la série ne fait que trois ans. Le test préalable ne coûte rien : compter les tronçons de la base de rivières de SWOT qui tombent dans chaque territoire. Sous quelques dizaines, le chantier ne vaut pas la peine.
+
+### Ce qui est déconseillé, et c'est mesuré
+
+Ajouter un produit satellitaire sur grille de plus. Les trois en place apportent zéro direction propre. Un quatrième dérivé des mêmes forçages météorologiques n'a aucune raison de faire mieux, et il coûtera de la mémoire sur une carte qui déborde déjà.
+
+### La mesure qui trancherait vraiment, et que seul ce modèle peut faire
+
+Tout ce qui précède mesure la redondance des SÉRIES. La grandeur qui répond à la question est le rang de la matrice de sensibilité des observations aux PARAMÈTRES : une source prédictible à partir du débit peut contraindre une combinaison que le débit ne contraint pas, puisqu'elle regarde une autre sortie du modèle. C'est ce qui s'est produit en mai, quand l'évapotranspiration et la gravimétrie ont décollapsé la partition verticale d'un facteur six à huit alors qu'elles n'ajoutent ici aucune direction. Le modèle étant différentiable, cette matrice se calcule. C'est le seul endroit où la revendication centrale du projet se vérifie en acte, et c'est le banc à écrire avant de télécharger quoi que ce soit.
