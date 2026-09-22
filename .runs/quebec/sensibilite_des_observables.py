@@ -124,7 +124,9 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
     # carte : bien PIRE que l'entrainement, et la colonne deborde des le premier bloc. On garde
     # le mecanisme de restriction et on nomme exactement ce dont on derive.
     os.environ["MEANDRE_DIAG_CPU"] = "1"
-    os.environ["MEANDRE_DIAG_DERIVES"] = "etr,swe,s_gw,recharge"
+    # Les teneurs en eau des trois couches servent au stockage total, ce que la gravimetrie
+    # mesure : sans elles ce terme sortait absent du tableau.
+    os.environ["MEANDRE_DIAG_DERIVES"] = "etr,swe,s_gw,recharge,theta1,theta2,theta3"
     bloc = int(bloc or os.environ.get("MEANDRE_SENSIBILITE_BLOC", "15"))
     # Le pilote a deja fait tourner la colonne : on rend la memoire avant de construire un
     # graphe, faute de quoi le premier bloc part avec la carte a moitie pleine.
@@ -235,9 +237,18 @@ def _rapport(J, noms, champs):
         part_t = f"{part:>14.1f}" if np.isfinite(part) else f"{'—':>14s}"
         print(f"{fam:<22s} {len(idx):>8d} {d:>11d} {part_t}")
     d_tout, part_tout = _rang_effectif(J)
+    # TEMOIN NUL. Une matrice de meme forme, de memes normes de ligne, remplie de directions
+    # tirees au hasard : c'est ce que le rang donnerait sans aucune structure. Sans lui, le
+    # chiffre n'a pas d'echelle, defaut qui a produit deux conclusions fausses le meme jour.
+    rng = np.random.default_rng(1234)
+    faux = rng.standard_normal(J.shape)
+    faux *= np.linalg.norm(J, axis=1, keepdims=True) / np.clip(
+        np.linalg.norm(faux, axis=1, keepdims=True), 1e-30, None)
+    d_bruit, part_bruit = _rang_effectif(faux)
     print("")
     print(f"ensemble : {d_tout} directions de parametres sur {len(champs)}, "
           f"participation {part_tout:.1f}")
+    print(f"temoin de bruit : {d_bruit} directions, participation {part_bruit:.1f}")
     print("")
     print(f"{'observable retire':<22s} {'directions restantes':>21s} {'apport propre':>15s}")
     for fam in familles:

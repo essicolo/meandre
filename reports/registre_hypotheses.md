@@ -3321,3 +3321,22 @@ Même conclusion sur le rang par source : le bruit rend 14 directions là où le
 CE QUI SURVIT, ET C'EST PLUS FAIBLE QUE CE QUE J'AI ÉCRIT. Le rapport de participation ne dépend d'aucun plafond : 1,1 pour l'évapotranspiration MODIS, 1,3 pour NEISIM, contre 2,5 pour le réseau de neige et 3,6 pour les puits. Les produits sur grille sont bien une seule direction modulée dans le temps. Et la reproductibilité discrimine nettement, 0,58 à 0,75 pour la donnée contre 0,00 à 0,40 pour le bruit. La direction qualitative tient donc ; le classement chiffré, non.
 
 LEÇON DE CONCEPTION, et elle vaut pour tous les bancs du projet. Un banc qui rapporte une statistique doit rapporter à côté ce que cette statistique donne sur un témoin nul : bruit de même forme, permutation, ou observation déformée jusqu'à la même condition. Sans échelle, un chiffre se fait dire n'importe quoi. Trois bancs du 2026-09-22 en manquaient et deux ont produit une conclusion fausse.
+
+---
+
+## R182 — La recette de la ronde apprend de nouveau une fois GRACE éteint (2026-09-22) — ÉTABLI
+
+Trois bras en Outaouais, même point de reprise, même graine, huit époques à 1e-5.
+
+| bras | KGE médian, période d'évaluation |
+| --- | --- |
+| départ, zéro époque | 0,5667 |
+| recette complète AVEC gravimétrie | 0,5667 |
+| recette complète SANS gravimétrie | 0,6996 |
+| toutes contraintes auxiliaires éteintes | 0,7171 |
+
+Avec la gravimétrie, le modèle ne bat jamais son époque zéro : le terme passe de 0,9 à 10,5 sur huit époques et finit à 79 % de la perte, en mode FORME, le mode en niveau étant pire. Sans elle, la recette gagne 0,133 depuis son départ.
+
+CE QUE COÛTENT LES CONTRAINTES QUI RESTENT : 0,0175 de KGE médian, pour l'évapotranspiration à 0,4, la masse du manteau à 0,2 et les niveaux de nappe à 2,0. C'est le prix de la partition, et il est petit.
+
+La configuration de la ronde du 30 septembre porte donc `ETL_WTWS = 0` et `ETL_WTWSCLIM = 0`, avec la mesure et sa réserve inscrites à côté : un territoire, huit époques, un point de reprise déjà différencié, et le résultat de mai obtenu en mode NIVEAU depuis un état effondré.
