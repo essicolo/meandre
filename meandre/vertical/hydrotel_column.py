@@ -481,8 +481,13 @@ class HydrotelColumn(nn.Module):
             # La capacite au champ se DEDUIT de la courbe de retention quand celle-ci est
             # imposee par le calage : une capacite apprise a cote d'une courbe imposee decrit
             # un autre sol. `theta_fc_du_champ` retablit l'ancien comportement.
-            _deduite = (None if getattr(self, "theta_fc_du_champ", False)
-                        else self.capacite_au_champ_de_la_courbe(p_soil, 3))
+            import os as _os_tfc
+
+            # `MEANDRE_THETA_FC_CHAMP=1` retablit la capacite APPRISE, pour separer l'effet
+            # de la deduction de celui des autres changements dans une meme epreuve.
+            _du_champ = (getattr(self, "theta_fc_du_champ", False)
+                         or _os_tfc.environ.get("MEANDRE_THETA_FC_CHAMP") == "1")
+            _deduite = None if _du_champ else self.capacite_au_champ_de_la_courbe(p_soil, 3)
             p_soil["thetacc3"] = sp.theta_fc_3 if _deduite is None else _deduite
             _ksub = getattr(self, "l3_k_sub", None)
             if _ksub is not None:
