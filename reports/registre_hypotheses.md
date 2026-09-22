@@ -2916,3 +2916,25 @@ PROPRIÉTÉS MESURÉES, et toutes ne sont pas favorables.
 Le terme ne gagne donc PAS sur la force brute : le terme de variations journalières répond un tiers plus fort à la bascule de partition. Il gagne sur la spécificité, 2,37 contre 1,58, et pour une raison qui compte : sa réponse à la partition n'est pas confondue avec le volume, 0,0001 contre 0,20 pour le terme de variations. Le volume étant déjà tenu par le biais et par le facteur beta du KGE, un terme qui y réagit se fait absorber par eux ; celui-ci apporte une information qu'aucun autre ne porte isolément.
 
 RÉSERVE, et elle est réelle. Sur le catalogue de déformations du banc de perte, qui ne contient aucune bascule de partition, ce terme est redondant à 95,4 pour cent avec les autres. Sa justification tient entièrement à une déformation que le banc ne testait pas, et qui a dû être fabriquée sur des hydrogrammes synthétiques à deux réservoirs. Aucune mesure sur des données réelles n'établit pour l'instant que la partition simulée est fausse, ni de combien.
+
+---
+
+## R165 — Cinq poids de perte déclarés, imprimés, et jamais posés sur la perte (2026-09-21) — ÉTABLI
+
+La recette équilibrée a tourné sur l'Outaouais avec deux de ses six termes. `w_r`, `w_beta`, `w_gamma`, `w_peak_ratio` et `w_recession` étaient lus dans la configuration, posés dans le dictionnaire de perte, imprimés par le pilote à leur valeur demandée, puis omis de l'appel qui construit l'objet de perte. Ils valaient donc zéro pendant toute l'exécution. Le seuil de pics souffrait du même défaut, n'étant construit que si le terme en écart quadratique était actif, jamais pour le terme en rapport des magnitudes.
+
+Le défaut est invisible par construction : le pilote imprime ce qu'il a demandé, et le bilan des composantes écarte les termes de valeur nulle. Un terme absent du bilan se lit donc comme un terme éteint volontairement.
+
+Une garde compare maintenant, terme à terme, les poids demandés et ceux que porte l'objet construit, et refuse de démarrer sur un écart. Elle ne vérifie que les poids que la perte accepte en argument, les autres étant posés ailleurs.
+
+C'est la deuxième fois en deux jours qu'un terme de perte affiche une valeur sans agir, après les diagnostics détachés du graphe. Les deux se lisaient pareil dans les journaux : une exécution normale.
+
+## R166 — Depuis que les diagnostics portent le gradient, GRACE gouverne l'entraînement (2026-09-21) — OUVERT
+
+Tant que les diagnostics étaient détachés, les contraintes auxiliaires affichaient une valeur et ne produisaient aucun gradient. Leurs poids n'ont donc jamais été étalonnés contre les termes de débit. Depuis le correctif, ils agissent, et l'échelle ne va pas.
+
+Mesuré sur huit époques d'un affinage en Outaouais, en perte pondérée : le stockage GRACE vaut 7,4 à 79 et son biais saisonnier 9,4 à 21, contre 0,41 à 0,53 pour l'ensemble des termes de débit. Le rapport va de 20 à 190 selon l'époque. La masse de neige CanSWE vaut 3,2, soit six à huit fois les termes de débit. À la première époque du bras en vigueur, le KGE médian tombe de 0,563 à 0,465 pendant que le terme GRACE passe de 79 à 8,4 : l'optimiseur abandonne le débit pour le stockage.
+
+Le terme GRACE n'est pas non plus stable : sur huit époques il oscille entre 7,4 et 28 sans décroître, alors que les termes de débit varient de moins d'un cinquième.
+
+CE QUI RESTE À DÉCIDER. Poser les poids auxiliaires sur une part déclarée de la perte plutôt que sur des valeurs héritées d'un temps où ils ne servaient à rien. La part visée est une décision, pas une mesure.

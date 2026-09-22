@@ -225,10 +225,29 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         # gagne 0.008 de KGE et 0.015 de gamma.
         w_dq=lcfg.get("w_dq", 0.0), w_fdc_bas=lcfg.get("w_fdc_bas", 0.0),
         w_dq_log=lcfg.get("w_dq_log", 0.0),
+        # KGE DECOMPOSE, RAPPORT DES POINTES ET VITESSE DE VIDANGE (2026-09-21). Ces cinq
+        # poids etaient poses dans la configuration, imprimes par le pilote, et jamais
+        # passes ici : la recette equilibree a tourne avec deux termes sur six.
+        w_r=lcfg.get("w_r", 0.0), w_beta=lcfg.get("w_beta", 0.0),
+        w_gamma=lcfg.get("w_gamma", 0.0), w_peak_ratio=lcfg.get("w_peak_ratio", 0.0),
+        w_recession=lcfg.get("w_recession", 0.0),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
-        peak_threshold=peak_thr if lcfg.get("w_peak", 0.0) > 0 else None,
+        peak_threshold=(peak_thr if (lcfg.get("w_peak", 0.0) > 0
+                                     or lcfg.get("w_peak_ratio", 0.0) > 0) else None),
     )
+    # GARDE CONTRE LA CLASSE DE DEFAUT (2026-09-21). Un poids de la configuration qui
+    # n'arrive pas jusqu'a la perte ne se voit nulle part : le pilote l'imprime, le bilan
+    # l'ecarte parce que sa valeur est nulle, et l'entrainement tourne sans lui. On compare
+    # donc terme a terme ce qui a ete demande et ce qui a ete construit.
+    import inspect as _inspect
+
+    _acceptes = set(_inspect.signature(HydroLoss.__init__).parameters)
+    _oubliees = [k for k, v in lcfg.items()
+                 if k.startswith("w_") and k in _acceptes and float(v or 0.0) > 0
+                 and abs(float(getattr(loss_fn, k, 0.0)) - float(v)) > 1e-12]
+    if _oubliees:
+        raise ValueError("poids demandes et non poses sur la perte : " + ", ".join(sorted(_oubliees)))
 
     def mk(sl_):
         return TrainingData(

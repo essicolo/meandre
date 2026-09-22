@@ -106,7 +106,13 @@ class HydroModel(nn.Module):
             # les activations sur la carte, si bien que la copie sur le processeur ne libere
             # rien et place l'indice et l'indexe sur deux appareils differents.
             def append(self, t):
-                super().append(t)
+                if torch.is_tensor(t) and not t.requires_grad:
+                    # Hors entrainement le tenseur ne porte pas de graphe : le deplacer
+                    # libere reellement la carte, et c'est la que la simulation complete
+                    # d'evaluation empilait vingt-cinq ans de series.
+                    super().append(t.to("cpu"))
+                else:
+                    super().append(t)
 
         if _os_diag.environ.get("MEANDRE_DIAG_CPU", "0") != "1":
             return lambda nom: list()
