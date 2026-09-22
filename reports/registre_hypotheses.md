@@ -3116,3 +3116,30 @@ LA DENSITÉ D'INFORMATION S'INVERSE. Les puits sont la source la plus dense du l
 CE QUE CELA BORNE, ET CE QUE CELA NE BORNE PAS. Vingt-huit directions est un plafond pour ce que l'observation peut distinguer dans la dimension SPATIALE, à comparer aux 43 champs par tronçon. Ce n'est pas un plafond dans la dimension TEMPORELLE : la moyenne mensuelle détruit précisément la forme de la vidange, sur laquelle l'exposant de récession se mesure station par station sans aucune donnée nouvelle, et qui a fourni l'identification de la loi de drainage profond. Le levier qui reste n'est donc pas plus de données, c'est la structure temporelle de celles qu'on a, et la loi physique, qui contraint sans rien coûter : pour un réservoir Q = c·S^n, l'exposant de Brutsaert-Nieber vaut exactement 2 − 1/n, ce qui identifie n sur le débit observé seul.
 
 C'est aussi un plafond, pas un acquis : que le modèle atteigne ces 28 directions suppose que sa sensibilité les couvre, ce que cette mesure ne dit pas.
+
+---
+
+## R174 — Les trois produits sur grille n'ajoutent AUCUNE direction à ce que portent les trois réseaux de points (2026-09-22) — ÉTABLI
+
+Compter les directions de chaque source séparément surestime le total, puisque les sources se recouvrent. Ce qui décide est l'apport PROPRE : le rang effectif de l'ensemble, moins celui de l'ensemble privé de la source. Une source qui duplique le débit ne lève aucune équifinalité du débit, quel que soit le nombre de directions qu'elle porte seule.
+
+Ensemble des six sources de l'Outaouais, au pas mensuel : 17 directions à 95 % de la variance, rapport de participation 3,8.
+
+| source retirée | directions restantes | apport propre |
+| --- | --- | --- |
+| neige, réseau au sol | 10 | 7 |
+| nappes du réseau de suivi | 13 | 4 |
+| débit, en logarithme | 15 | 2 |
+| gravimétrie GRACE | 17 | 0 |
+| évapotranspiration MODIS | 17 | 0 |
+| neige NEISIM | 17 | 0 |
+
+LES TROIS PRODUITS SUR GRILLE APPORTENT ZÉRO. Tout ce qu'ils portent est déjà dans le débit, le réseau de neige au sol et les puits. NEISIM à zéro en Outaouais est cohérent avec la mesure de la veille : il est redondant là où le réseau existe, et il porte tout là où le réseau se tait.
+
+Le classement s'inverse par rapport à l'intuition : 62 sites de neige valent sept directions, treize puits en valent quatre, seize jauges de débit deux, et des dizaines de millions de valeurs satellitaires zéro.
+
+LA LIMITE DE CETTE MESURE EST SÉRIEUSE, ET ELLE VA DANS LE SENS FAVORABLE AUX PRODUITS ÉCARTÉS. La redondance mesurée est LINÉAIRE et porte sur les SÉRIES, pas sur les PARAMÈTRES. Une observation peut être prédictible à partir du débit et contraindre pourtant une combinaison de paramètres que le débit ne contraint pas, puisqu'elle regarde une autre sortie du modèle. C'est exactement ce qui a été mesuré en mai : l'évapotranspiration et la gravimétrie ont décollapsé la partition verticale d'un facteur six à huit, alors qu'elles n'ajoutent ici aucune direction. Une source linéairement redondante peut donc rester indispensable.
+
+CE QUE CELA DÉSIGNE COMME BONNE MESURE. La grandeur qui répond vraiment est le rang de la matrice de sensibilité des observations aux paramètres, et non celui des observations entre elles. Le modèle étant différentiable, cette matrice est calculable : c'est le seul endroit où la revendication centrale du projet, la différentiabilité comme voie vers l'identifiabilité, se vérifie en acte plutôt que par analogie.
+
+Second garde-fou : le pas mensuel détruit la structure infra-mensuelle, donc la mesure est aveugle à ce que la forme d'une décrue ou la date d'une fonte apportent.

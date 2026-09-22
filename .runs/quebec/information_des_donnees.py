@@ -47,6 +47,51 @@ def _serie_large(df, col_id, col_date, col_val, axe):
     return m.to_numpy()
 
 
+def _apport_marginal(sources, axe):
+    """Ce qu'une source ajoute AUX AUTRES, et non ce qu'elle porte seule.
+
+    Une source qui duplique le debit ne leve aucune equifinalite du debit. On mesure donc le
+    rang effectif de l'ENSEMBLE, puis celui de l'ensemble prive de chaque source : la
+    difference est ce que la source apporte en propre. Une source redondante donne zero,
+    meme si elle porte beaucoup de directions a elle seule.
+
+    Toutes les series sont mises au meme pas mensuel et empilees en colonnes ; le rang
+    effectif de l'ensemble tient compte des correlations entre sources.
+    """
+    blocs = {}
+    plein = np.ones(len(axe), dtype=bool)
+    for nom, mat, masque in sources:
+        # Toutes les sources sur le MEME axe mensuel : une source saisonniere est mise a
+        # l'absence hors de sa saison plutot que raccourcie, sinon les blocs ne s'empilent pas.
+        mm = _inf._mensualise(np.where(masque[:, None], mat, np.nan), axe, plein)
+        # On ne garde qu'un nombre borne de colonnes par source : au-dela, une source tres
+        # redondante gonflerait la matrice sans rien ajouter, et le calcul deviendrait lourd.
+        n95, _part, _c = _inf._rang_effectif(mm)
+        k = int(n95) * 4 if np.isfinite(n95) else 8
+        v = np.isfinite(mm).sum(axis=0)
+        ordre = np.argsort(v)[::-1][:max(k, 8)]
+        bloc = mm[:, ordre]
+        # Une source dont aucune colonne n'a de recouvrement utilisable ne peut pas entrer
+        # dans l'ensemble sans le trouer : on la nomme et on l'ecarte.
+        if np.isfinite(bloc).sum(axis=0).max() < 12:
+            print(f"[apport] {nom} ecartee : recouvrement mensuel insuffisant")
+            continue
+        blocs[nom] = bloc
+    noms = list(blocs)
+    ensemble = np.concatenate([blocs[n] for n in noms], axis=1)
+    n_tout, part_tout, _ = _inf._rang_effectif(ensemble)
+    print("")
+    print(f"ensemble des sources : {n_tout} directions a 95 %, participation {part_tout:.1f}")
+    print("")
+    print(f"{'source retiree':<26s} {'directions restantes':>21s} {'apport propre':>15s}")
+    for n in noms:
+        reste = np.concatenate([blocs[m] for m in noms if m != n], axis=1)
+        n_sans, _p, _c = _inf._rang_effectif(reste)
+        if not (np.isfinite(n_tout) and np.isfinite(n_sans)):
+            continue
+        print(f"{n:<26s} {n_sans:>21d} {n_tout - n_sans:>15d}")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("region")
@@ -79,6 +124,16 @@ def main():
         print(f"[modis_et] non lu : {exc}")
     con.close()
 
+    from meandre.data.basin_cache import BasinCache
+    from meandre.data.canswe_loader import build_swe_targets
+
+    cache = BasinCache(f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb")
+    if cache.has_canswe():
+        _mes, _sit = cache.load_canswe(DATE_START, DATE_END)
+        _obs, _ni, _g = build_swe_targets(_mes, _sit, axe)
+        if _obs is not None:
+            sources.append(("neige, reseau au sol", _obs.cpu().numpy(), hiver))
+
     f = f"{DERIVES}/neisim-{reg}.npz"
     if os.path.exists(f):
         sources.append(("neige NEISIM", np.load(f)["valeurs"], hiver))
@@ -105,6 +160,7 @@ def main():
         rep_t = f"{rep:>14.2f}" if np.isfinite(rep) else f"{'—':>14s}"
         haz = f"{4.0 / pp:>8.2f}" if pp and np.isfinite(rep) else f"{'—':>8s}"
         print(f"{nom:<26s} {cols:>8d} {n95_t} {part_t} {rep_t} {haz}")
+    _apport_marginal(sources, axe)
     return 0
 
 
