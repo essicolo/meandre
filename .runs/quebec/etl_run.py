@@ -163,6 +163,12 @@ if "ETL_WTWSCLIM" in os.environ:
     # a 0.05 dans les configs : ce levier existe pour la balayer.
     lcfg["w_tws_clim"] = float(os.environ["ETL_WTWSCLIM"])
     print(f"[etl] w_tws_clim override = {lcfg['w_tws_clim']} (biais saisonnier GRACE)")
+if "ETL_ET_MODE" in os.environ:
+    # "level", "anomaly" ou "bassin". Le mode bassin ne compare que la MOYENNE du territoire :
+    # mesure du 2026-09-22, MOD16 porte UNE direction independante sur 3150 nœuds, rapport de
+    # participation 1,1, et son apport PROPRE au reste des observations vaut zero.
+    lcfg["et_mode"] = os.environ["ETL_ET_MODE"]
+    print(f"[etl] mode ET = {lcfg['et_mode']}")
 if "ETL_WET" in os.environ:
     # mode appris : w_et(MOD16) est un DOUBLE ancrage (le module encode déjà MOD16,
     # biaisé +15-30 % à l'est vs bilan) — il poussait K_c à 1.07 malgré beta 0.78 (etl2)

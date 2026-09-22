@@ -933,8 +933,14 @@ class HydroLoss(nn.Module):
         # pour la TWS corrigée le 2026-08-10). Motivation : MOD16 sur-estime le NIVEAU
         # (~593 vs 450 mm/an aux tours de flux) ; en mode anomaly on ne contraint que
         # la saisonnalité, la phase et l'interannuel, pas le niveau biaisé.
-        if et_mode not in ("level", "anomaly"):
-            raise ValueError(f"et_mode inconnu : {et_mode!r} (attendu 'level' ou 'anomaly')")
+        # "bassin" (2026-09-22) : la contrainte porte sur la MOYENNE du territoire, pas sur
+        # chaque tronçon. Motif mesuré : sur 3150 nœuds au pas de huit jours, MOD16 porte UNE
+        # direction indépendante et un rapport de participation de 1,1, c'est-à-dire une seule
+        # courbe saisonnière. Prétendre en faire une contrainte spatiale est faux, et coûte
+        # 3150 séries en mémoire sur une carte qui débordait déjà.
+        if et_mode not in ("level", "anomaly", "bassin"):
+            raise ValueError(f"et_mode inconnu : {et_mode!r} "
+                             "(attendu 'level', 'anomaly' ou 'bassin')")
         self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
         # Niveaux de nappe mesurés (2026-09-19), contrainte de FORME en anomalies réduites.
@@ -1372,6 +1378,14 @@ class HydroLoss(nn.Module):
             # qui rendait tout entrainement impossible sous ce reglage (mesure 2026-09-19).
             if et_sim.device != et_obs.device:
                 et_sim = et_sim.to(et_obs.device)
+            if self.et_mode == "bassin":
+                # Moyenne sur les nœuds avant comparaison : un nœud sans observation ne doit
+                # pas tirer la moyenne, d'où le compte des valides au dénominateur.
+                _vo = ~torch.isnan(et_obs)
+                _n = _vo.sum(dim=1).clamp(min=1)
+                et_obs = torch.nan_to_num(et_obs, nan=0.0).sum(dim=1) / _n
+                et_sim = (et_sim * _vo).sum(dim=1) / _n
+                et_obs = torch.where(_vo.any(dim=1), et_obs, torch.full_like(et_obs, float("nan")))
             valid = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
             if valid.any():
                 L_et = ((et_obs[valid] - et_sim[valid]) ** 2).mean()

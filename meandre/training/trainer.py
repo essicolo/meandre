@@ -988,7 +988,7 @@ class Trainer:
         par nœud, détachée (la moyenne long-terme n'est pas connue d'avance).
         Retourne (et_sim_centré, et_obs_centré) ; identité en mode "level".
         """
-        if getattr(self.loss_fn, "et_mode", "level") != "anomaly":
+        if getattr(self.loss_fn, "et_mode", "level") not in ("anomaly", "bassin"):
             return et_sim, et_obs
         base_obs = getattr(self, "_et_obs_base", None)
         if base_obs is None:
