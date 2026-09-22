@@ -3093,3 +3093,26 @@ LÀ OÙ LE RÉSEAU N'EXISTE PAS, NEISIM PORTE TOUT. Au Saint-Laurent sud-ouest, 
 CONSÉQUENCE. NEISIM en REMPLACEMENT du réseau est une perte ; NEISIM en COMPLÉMENT, là où le réseau se tait, est le seul usage défendable. C'est `ETL_SWE_SOURCE=les-deux`, ou `neisim` sur les seuls territoires sans site.
 
 DEUX LIMITES. Ce banc borne ce que la donnée POURRAIT contraindre, pas ce que le modèle en fait : au seul poids essayé, aucune des deux sources ne déplace le manteau. Et une direction reproductible du réseau peut être l'idiosyncrasie stable d'un site, une cuvette qui accumule toujours plus, reproductible sans rien dire du bassin.
+
+---
+
+## R173 — Toutes observations confondues, l'Outaouais porte environ 28 directions indépendantes, et les produits sur grille en donnent 4 (2026-09-22) — ÉTABLI
+
+Même mesure appliquée à toutes les sources d'un territoire : moyennes mensuelles, corrélation sur les mois communs à chaque paire, composantes portant 95 % de la variance, rapport de participation, et recouvrement des quatre premières directions entre les deux moitiés de la période.
+
+| source | séries | valeurs | directions à 95 % | participation | reproductible | au hasard |
+| --- | --- | --- | --- | --- | --- | --- |
+| réseau de neige au sol | 62 | 32 386 | 12 | 2,5 | 0,58 | 0,09 |
+| nappes du réseau de suivi | 13 | 981 561 au Québec | 7 | 3,6 | non calculable | |
+| débit, en logarithme | 16 | journalier sur 25 ans | 5 | 1,7 | 0,72 | 0,31 |
+| neige NEISIM | 3397 | 31 021 404 | 2 | 1,3 | 0,66 | 0,00 |
+| évapotranspiration MODIS | 3150 | 8 jours sur 25 ans | 1 | 1,1 | 0,75 | 0,00 |
+| gravimétrie GRACE | 1 | mensuel | 1 par construction | | | |
+
+Environ 28 directions en tout. VINGT-QUATRE VIENNENT DES TROIS RÉSEAUX DE POINTS, quatre des trois produits sur grille qui totalisent des dizaines de millions de valeurs. L'évapotranspiration MODIS, 3150 nœuds au pas de huit jours, porte UNE direction : son rapport de participation de 1,1 dit que le produit entier est une seule courbe saisonnière. Comme contrainte spatiale, elle n'apporte rien.
+
+LA DENSITÉ D'INFORMATION S'INVERSE. Les puits sont la source la plus dense du lot, sept directions pour treize séries et un rapport de participation de 3,6, le plus élevé mesuré. Ils sont à poids NUL dans la ronde du 30 septembre. Leur reproductibilité ne se calcule pas : un seul puits remonte à 2005, les autres commencent entre 2013 et 2020, si bien que la première moitié de la période est vide.
+
+CE QUE CELA BORNE, ET CE QUE CELA NE BORNE PAS. Vingt-huit directions est un plafond pour ce que l'observation peut distinguer dans la dimension SPATIALE, à comparer aux 43 champs par tronçon. Ce n'est pas un plafond dans la dimension TEMPORELLE : la moyenne mensuelle détruit précisément la forme de la vidange, sur laquelle l'exposant de récession se mesure station par station sans aucune donnée nouvelle, et qui a fourni l'identification de la loi de drainage profond. Le levier qui reste n'est donc pas plus de données, c'est la structure temporelle de celles qu'on a, et la loi physique, qui contraint sans rien coûter : pour un réservoir Q = c·S^n, l'exposant de Brutsaert-Nieber vaut exactement 2 − 1/n, ce qui identifie n sur le débit observé seul.
+
+C'est aussi un plafond, pas un acquis : que le modèle atteigne ces 28 directions suppose que sa sensibilité les couvre, ce que cette mesure ne dit pas.
