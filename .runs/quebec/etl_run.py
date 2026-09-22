@@ -193,7 +193,14 @@ with torch.no_grad():
     F = td.forcing            # (T, N, 6+) sur device
     T = F.shape[0]
     mean, std = norm["mean"].to(DEVICE), norm["std"].to(DEVICE)
-    C = torch.cat([torch.zeros(1, n_nodes, 6, device=DEVICE), F[:, :, :6].cumsum(0)], dim=0)
+    # LA SOMME CUMULEE VIT SUR LE PROCESSEUR. Elle pese 748 Mio sur un territoire de 3412
+    # nœuds et vingt-cinq ans, et son calcul en demande le double d'un coup : c'est la
+    # derniere grosse allocation du pre-calcul, et elle debordait encore la carte avec la
+    # recette complete, dont les cibles d'observation occupent deja la place. Les tranches
+    # remontent sur la carte dans la boucle, une annee a la fois.
+    _Fc = F[:, :, :6].to("cpu")
+    C = torch.cat([torch.zeros(1, n_nodes, 6), _Fc.cumsum(0)], dim=0)
+    del _Fc
     t_ar = torch.arange(T, device=DEVICE)
     lo8 = torch.clamp(t_ar - (H_COMP - 1), min=0)
     hi90, lo90 = torch.clamp(t_ar - (H_COMP - 1), min=1), torch.clamp(t_ar - (H_COMP - 1) - H_HIST, min=0)
@@ -210,8 +217,12 @@ with torch.no_grad():
     demand = torch.empty(T, n_nodes, device=DEVICE)
     for lo in range(0, T, 365):
         hi = min(lo + 365, T)
-        a8n = ((C[t_ar[lo:hi] + 1] - C[lo8[lo:hi]]) / (t_ar[lo:hi] + 1 - lo8[lo:hi]).reshape(-1, 1, 1) - mean) / std
-        a90n = ((C[hi90[lo:hi]] - C[lo90[lo:hi]]) / torch.clamp(hi90[lo:hi] - lo90[lo:hi], min=1).reshape(-1, 1, 1) - mean) / std
+        _t = t_ar[lo:hi].cpu()
+        _l8, _h9, _l9 = lo8[lo:hi].cpu(), hi90[lo:hi].cpu(), lo90[lo:hi].cpu()
+        _a8 = ((C[_t + 1] - C[_l8]) / (_t + 1 - _l8).reshape(-1, 1, 1)).to(DEVICE)
+        _a90 = ((C[_h9] - C[_l9]) / torch.clamp(_h9 - _l9, min=1).reshape(-1, 1, 1)).to(DEVICE)
+        a8n = (_a8 - mean) / std
+        a90n = (_a90 - mean) / std
         scb = sc[lo:hi, None, :].expand(hi - lo, n_nodes, 2)
         x = torch.cat([a8n, a90n, stat[None, :, :-1].expand(hi - lo, -1, -1), scb, stat[None, :, -1:].expand(hi - lo, -1, -1)], dim=2)
         demand[lo:hi] = mlp(x.reshape(-1, x.shape[-1])).reshape(hi - lo, n_nodes)
