@@ -3181,3 +3181,29 @@ TROIS CORRECTIONS À PORTER. Le constat « le KGE monte et la partition se dégr
 CE QUI DEVIENT LE DÉFAUT À TRAITER, et il est double. D'abord un excès de variabilité : l'affinage pousse gamma de 0,92 à 1,13, donc au-delà de un, le modèle devenant plus variable que la mesure. Ensuite un déficit structurel d'écoulement lent d'environ huit centièmes d'indice à variabilité égale, présent partout, y compris avant tout affinage, et qu'aucune contrainte auxiliaire essayée ne touche.
 
 LEÇON DE MÉTHODE, la même que celle du 2026-08-22 sur le pic de manteau. Une statistique qui porte une conclusion doit être recalculée d'une seconde façon avant d'être citée. Ici la seconde façon consistait à appliquer la même mesure à l'observation seule, ce qui ne coûtait que quelques minutes.
+
+---
+
+## R176 — L'altimétrie SWOT porte plus du double de l'information indépendante de tout ce qui est employé aujourd'hui (2026-09-22) — ÉTABLI
+
+SWOT mesure l'élévation et la pente de la surface libre par tronçon d'une dizaine de kilomètres, tous les vingt-et-un jours depuis août 2023. Sur un cycle complet, 54 granules et 267 Mo, la mission voit 1008 tronçons de plus de cent mètres de large sur les six territoires : 335 en Outaouais, 210 au Saint-Laurent nord-ouest, 200 au sud-ouest, 152 au Saguenay, 91 en Montérégie, 20 en Gaspésie.
+
+La mesure d'information se fait sur UNE passe, la 326, quarante-quatre répétitions, pour que le même ensemble de tronçons revienne à chaque visite. Toutes les sources sont ramenées à la MÊME fenêtre, août 2023 à décembre 2024, faute de quoi on comparerait trois ans à vingt-cinq.
+
+| source | séries | directions à 95 % | participation | reproductible | au hasard |
+| --- | --- | --- | --- | --- | --- |
+| SWOT, pente de surface libre | 60 | 19 | 12,6 | 0,23 | 0,05 |
+| SWOT, élévation de surface libre | 145 | 19 | 7,3 | 0,38 | 0,02 |
+| nappes du réseau de suivi | 12 | 5 | 3,6 | 0,63 | 0,33 |
+| débit, en logarithme | 16 | 5 | 1,8 | 0,74 | 0,25 |
+| neige, réseau au sol | 26 | 3 | 1,5 | 0,36 | 0,16 |
+| neige NEISIM | 3397 | 2 | 1,4 | 0,46 | 0,00 |
+| évapotranspiration MODIS | 3150 | 1 | 1,1 | 0,31 | 0,00 |
+
+L'ENSEMBLE des six sources employées aujourd'hui porte 8 directions sur cette fenêtre, avec un rapport de participation de 3,9. L'élévation SWOT à elle seule en porte 19, à 7,3. Plus du double de tout le reste réuni, depuis une seule passe d'un seul territoire.
+
+LE TÉMOIN DE BRUIT EST L'ARGUMENT QUI COMPTE. Avec quarante-quatre visites seulement, du bruit indépendant gonfle le rang effectif à lui seul : une matrice de même forme et de mêmes trous, remplie de bruit, donne 28 directions et un rapport de participation de 25,7, donc PLUS que la donnée. Le rang ne discrimine donc pas. La reproductibilité, elle, discrimine nettement : 0,38 pour l'élévation et 0,23 pour la pente, contre 0,03 et 0,04 pour le bruit. La structure est réelle.
+
+CE QUE SWOT OBSERVE N'EST OBSERVÉ PAR RIEN D'AUTRE. Le coefficient de Manning, les coefficients de Muskingum et la géométrie des tronçons ne sont contraints aujourd'hui que par le débit à seize jauges en Outaouais. SWOT regarde ces mêmes objets, sur 145 tronçons pour une seule passe.
+
+RÉSERVES. La série ne fait que trois ans, contre vingt-cinq pour le débit. La reproductibilité de SWOT, 0,38, reste inférieure à celle des puits, 0,63, sur la même fenêtre : une part de ses dix-neuf directions est probablement du bruit de mesure mal reproductible. Et cette mesure porte sur l'espace des DONNÉES ; ce que SWOT contraint dans l'espace des PARAMÈTRES demande la matrice de sensibilité.

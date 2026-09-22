@@ -47,7 +47,7 @@ def _serie_large(df, col_id, col_date, col_val, axe):
     return m.to_numpy()
 
 
-def _apport_marginal(sources, axe):
+def _apport_marginal(sources, axe, _rec=24):
     """Ce qu'une source ajoute AUX AUTRES, et non ce qu'elle porte seule.
 
     Une source qui duplique le debit ne leve aucune equifinalite du debit. On mesure donc le
@@ -66,27 +66,27 @@ def _apport_marginal(sources, axe):
         mm = _inf._mensualise(np.where(masque[:, None], mat, np.nan), axe, plein)
         # On ne garde qu'un nombre borne de colonnes par source : au-dela, une source tres
         # redondante gonflerait la matrice sans rien ajouter, et le calcul deviendrait lourd.
-        n95, _part, _c = _inf._rang_effectif(mm)
+        n95, _part, _c = _inf._rang_effectif(mm, recouvrement_min=_rec)
         k = int(n95) * 4 if np.isfinite(n95) else 8
         v = np.isfinite(mm).sum(axis=0)
         ordre = np.argsort(v)[::-1][:max(k, 8)]
         bloc = mm[:, ordre]
         # Une source dont aucune colonne n'a de recouvrement utilisable ne peut pas entrer
         # dans l'ensemble sans le trouer : on la nomme et on l'ecarte.
-        if np.isfinite(bloc).sum(axis=0).max() < 12:
+        if np.isfinite(bloc).sum(axis=0).max() < max(4, _rec // 2):
             print(f"[apport] {nom} ecartee : recouvrement mensuel insuffisant")
             continue
         blocs[nom] = bloc
     noms = list(blocs)
     ensemble = np.concatenate([blocs[n] for n in noms], axis=1)
-    n_tout, part_tout, _ = _inf._rang_effectif(ensemble)
+    n_tout, part_tout, _ = _inf._rang_effectif(ensemble, recouvrement_min=_rec)
     print("")
     print(f"ensemble des sources : {n_tout} directions a 95 %, participation {part_tout:.1f}")
     print("")
     print(f"{'source retiree':<26s} {'directions restantes':>21s} {'apport propre':>15s}")
     for n in noms:
         reste = np.concatenate([blocs[m] for m in noms if m != n], axis=1)
-        n_sans, _p, _c = _inf._rang_effectif(reste)
+        n_sans, _p, _c = _inf._rang_effectif(reste, recouvrement_min=_rec)
         if not (np.isfinite(n_tout) and np.isfinite(n_sans)):
             continue
         print(f"{n:<26s} {n_sans:>21d} {n_tout - n_sans:>15d}")
@@ -95,11 +95,15 @@ def _apport_marginal(sources, axe):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("region")
+    p.add_argument("--debut", default=DATE_START)
+    p.add_argument("--fin", default=DATE_END)
+    p.add_argument("--recouvrement", type=int, default=0,
+                   help="mois communs exiges par paire ; 0 = la moitie de la fenetre")
     a = p.parse_args()
     reg = a.region.lower()
     import duckdb
 
-    axe = pd.date_range(DATE_START, DATE_END, freq="D")
+    axe = pd.date_range(a.debut, a.fin, freq="D")
     tout = pd.Series(True, index=axe).to_numpy()
     hiver = np.isin(axe.month, (11, 12, 1, 2, 3, 4, 5))
     con = duckdb.connect(f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb", read_only=True)
@@ -129,14 +133,22 @@ def main():
 
     cache = BasinCache(f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb")
     if cache.has_canswe():
-        _mes, _sit = cache.load_canswe(DATE_START, DATE_END)
+        _mes, _sit = cache.load_canswe(a.debut, a.fin)
         _obs, _ni, _g = build_swe_targets(_mes, _sit, axe)
         if _obs is not None:
             sources.append(("neige, reseau au sol", _obs.cpu().numpy(), hiver))
 
     f = f"{DERIVES}/neisim-{reg}.npz"
     if os.path.exists(f):
-        sources.append(("neige NEISIM", np.load(f)["valeurs"], hiver))
+        _z = np.load(f)
+        # La cible NEISIM porte son propre axe : on la recale sur la fenetre demandee plutot
+        # que de supposer qu'elles coincident.
+        _t = pd.DatetimeIndex(_z["times"])
+        _pos = pd.Series(np.arange(len(_t)), index=_t).reindex(axe).to_numpy()
+        _v = np.full((len(axe), _z["valeurs"].shape[1]), np.nan, dtype="float32")
+        _vu = np.isfinite(_pos)
+        _v[_vu] = _z["valeurs"][_pos[_vu].astype(int)]
+        sources.append(("neige NEISIM", _v, hiver))
     pu = f"{DERIVES}/rsesq-niveaux-journaliers.parquet"
     if os.path.exists(pu):
         d = pd.read_parquet(pu)
@@ -148,19 +160,23 @@ def main():
         if mn is not None:
             sources.append(("nappes RSESQ", mn, tout))
 
-    print(f"{reg} : directions independantes par source\n")
+    # Le recouvrement minimal exige doit suivre la LONGUEUR de la fenetre : a vingt-quatre
+    # mois sur une fenetre de dix-sept, toute colonne est ecartee et le tableau sort vide.
+    _n_mois = max(1, len(pd.PeriodIndex(axe, freq="M").unique()))
+    _rec = int(a.recouvrement) if a.recouvrement else max(4, min(24, _n_mois // 2))
+    print(f"{reg} : {_n_mois} mois, recouvrement minimal {_rec} mois\n")
     print(f"{'source':<26s} {'series':>8s} {'95 %':>7s} {'participation':>14s} "
           f"{'reproductible':>14s} {'hasard':>8s}")
     for nom, mat, masque in sources:
         mm = _inf._mensualise(mat, axe, masque)
-        n95, part, cols = _inf._rang_effectif(mm)
-        rep, pp = _inf._reproductibilite(mm)
+        n95, part, cols = _inf._rang_effectif(mm, recouvrement_min=_rec)
+        rep, pp = _inf._reproductibilite(mm, recouvrement_min=max(3, _rec // 2))
         n95_t = f"{n95:>7d}" if np.isfinite(n95) else f"{'—':>7s}"
         part_t = f"{part:>14.1f}" if np.isfinite(part) else f"{'—':>14s}"
         rep_t = f"{rep:>14.2f}" if np.isfinite(rep) else f"{'—':>14s}"
         haz = f"{4.0 / pp:>8.2f}" if pp and np.isfinite(rep) else f"{'—':>8s}"
         print(f"{nom:<26s} {cols:>8d} {n95_t} {part_t} {rep_t} {haz}")
-    _apport_marginal(sources, axe)
+    _apport_marginal(sources, axe, _rec)
     return 0
 
 
