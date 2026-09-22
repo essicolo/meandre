@@ -817,8 +817,12 @@ if os.environ.get("ETL_KREC_LIBRE", "0") == "1" and "ETL_KREC_GEL" not in os.env
 if os.environ.get("ETL_KSUB_PRIOR", "0") != "0":
     model.spatial_encoder.prior_on_k_sub = True
     model.spatial_encoder.poids_k_sub = float(os.environ["ETL_KSUB_PRIOR"])
-    print(f"[etl] plafond de percolation : moyenne ancree et variation retrecie, "
-          f"poids {model.spatial_encoder.poids_k_sub}")
+    # Le message annoncait une variation RETRECIE : c'etait la premiere version du prior,
+    # retiree le jour meme parce qu'elle penalisait la variance spatiale au meme poids que le
+    # biais de moyenne, forme diagnostiquee en juillet comme la cause mathematique du collapse
+    # du champ. Seule la MOYENNE du logarithme est ancree.
+    print(f"[etl] plafond de percolation : moyenne du logarithme ancree, variation spatiale "
+          f"LIBRE, poids {model.spatial_encoder.poids_k_sub}")
 
 if "ETL_KREC" in os.environ:
     import math as _mk
