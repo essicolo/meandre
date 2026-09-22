@@ -159,6 +159,10 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     # plus tot alors qu'il lit deja moins de neige que le reseau au sol, 0,77 en mars sur
     # OUTV. Filtres de representativite dans build_swe_targets.
     swe_mass_obs = swe_mass_node = None
+    # Le poids demande est retenu AVANT la branche du reseau au sol, qui l'eteint quand
+    # aucun site ne passe les filtres. Sans cela, poser NEISIM sur un territoire sans site,
+    # ce qui est precisement l'interet de NEISIM, chargeait une cible de poids nul.
+    _w_swe_demande = float(lcfg.get("w_swe_mass", 0.0))
     if lcfg.get("w_swe_mass", 0.0) > 0 and cache.has_canswe():
         from meandre.data.canswe_loader import build_swe_targets
         _mes, _sit = cache.load_canswe(DATE_START, DATE_END)
@@ -199,7 +203,11 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         else:
             swe_mass_obs = torch.cat([swe_mass_obs, _v], dim=1)
             swe_mass_node = torch.cat([swe_mass_node, _n_idx])
-        if lcfg.get("w_swe_mass", 0.0) <= 0:
+        if lcfg.get("w_swe_mass", 0.0) <= 0 < _w_swe_demande:
+            lcfg["w_swe_mass"] = _w_swe_demande
+            print(f"[neisim] {reg}: aucun site au sol, le poids demande {_w_swe_demande} "
+                  "est rendu a la cible NEISIM")
+        elif _w_swe_demande <= 0:
             print(f"[neisim] {reg}: cible chargee mais w_swe_mass vaut 0, elle n'agit pas")
         print(f"[neisim] {reg}: source {_src}, {swe_mass_obs.shape[1]} series, "
               f"{int(torch.isfinite(swe_mass_obs).sum())} valeurs")
