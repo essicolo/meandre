@@ -70,13 +70,20 @@ def _resumes(nom, serie, mois, noeuds=None):
     return out
 
 
-def mesurer(model, td, times, device, jours=365, sortie=None):
+def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
     """Mesure appelée PAR LE PILOTE, une fois le modèle et les données construits.
 
     L'inversion est voulue : le pilote lit soixante-dix-neuf variables d'environnement et
     c'est lui qui définit le modèle. Reconstruire un modèle à côté mesurerait autre chose,
     piège que ce projet paie depuis des mois. Le pilote se termine par un arrêt brutal du
     processus, il ne peut donc pas rendre la main : c'est lui qui appelle.
+
+    PAR BLOCS, comme l'entraînement. Le graphe d'une année entière sur trois mille tronçons
+    ne tient pas dans huit gigaoctets, et celui de cent vingt jours non plus : mesuré le
+    2026-09-22, la colonne déborde dans la conductivité de Campbell. On simule donc par blocs
+    de quarante-cinq jours en détachant l'état entre eux, exactement l'approximation que la
+    rétropropagation tronquée fait déjà pendant l'entraînement. Ce qui se perd est la part du
+    gradient qui passerait par l'état porté d'un bloc au suivant.
     """
     import dataclasses
 
@@ -84,42 +91,67 @@ def mesurer(model, td, times, device, jours=365, sortie=None):
 
     from meandre.utils.state import HydroState
 
-    # Les diagnostics doivent porter le graphe : on annule le deplacement sur le processeur,
-    # qui est pose pour l'entrainement.
-    os.environ["MEANDRE_DIAG_CPU"] = "0"
-    mois = pd.DatetimeIndex(times[:jours]).month.to_numpy()
+    # NE RETENIR QUE LES QUATRE DIAGNOSTICS MESURES. Poser MEANDRE_DIAG_CPU a zero rend
+    # toutes les listes ordinaires, donc une vingtaine de variables gardent leur graphe sur la
+    # carte : bien PIRE que l'entrainement, et la colonne deborde des le premier bloc. On garde
+    # le mecanisme de restriction et on nomme exactement ce dont on derive.
+    os.environ["MEANDRE_DIAG_CPU"] = "1"
+    os.environ["MEANDRE_DIAG_DERIVES"] = "etr,swe,s_gw,recharge"
+    bloc = int(bloc or os.environ.get("MEANDRE_SENSIBILITE_BLOC", "15"))
+    # Le pilote a deja fait tourner la colonne : on rend la memoire avant de construire un
+    # graphe, faute de quoi le premier bloc part avec la carte a moitie pleine.
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    mois_tout = pd.DatetimeIndex(times[:jours]).month.to_numpy()
     sp0 = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
     champs = [f.name for f in dataclasses.fields(type(sp0))
               if torch.is_tensor(getattr(sp0, f.name))]
     mults = {c: torch.ones((), device=device, requires_grad=True) for c in champs}
     model.spatial_encoder.multiplicateurs = mults
-    print(f"[sensibilite] passe avant sur {jours} jours, {len(champs)} champs", flush=True)
-
-    Q, _etat, diag = model.simulate(
-        forcing=td.forcing[:jours],
-        initial_state=HydroState.zeros(td.forcing.shape[1], device=device),
-        graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
-        withdrawals=td.withdrawals, day_of_year=td.day_of_year[:jours],
-        return_diagnostics=True)
-
-    obs = {}
-    obs.update(_resumes("debit", torch.log(Q.clamp(min=1e-3)), mois,
-                        td.station_idx.detach().cpu().numpy()))
-    for nom, att in (("evapotranspiration", "etr"), ("neige", "swe"),
-                     ("nappe", "s_gw"), ("recharge", "recharge")):
-        v = getattr(diag, att, None)
-        if v is not None and torch.is_tensor(v) and v.requires_grad:
-            obs.update(_resumes(nom, v, mois))
-    print(f"[sensibilite] {len(obs)} resumes, retropropagation", flush=True)
-
-    lignes, noms = [], []
     cles = list(mults)
-    for k, (nom, valeur) in enumerate(obs.items()):
-        g = torch.autograd.grad(valeur, [mults[c] for c in cles],
-                                retain_graph=(k < len(obs) - 1), allow_unused=True)
-        lignes.append([float(x) if x is not None else 0.0 for x in g])
-        noms.append(nom)
-    J = np.array(lignes)
+    n_blocs = (jours + bloc - 1) // bloc
+    print(f"[sensibilite] {jours} jours en {n_blocs} blocs de {bloc}, {len(champs)} champs",
+          flush=True)
+
+    familles = [("debit", None), ("evapotranspiration", "etr"), ("neige", "swe"),
+                ("nappe", "s_gw"), ("recharge", "recharge")]
+    cumul, compte = {}, {}
+    etat = HydroState.zeros(td.forcing.shape[1], device=device)
+    stations = td.station_idx.detach().cpu().numpy()
+    for b in range(n_blocs):
+        a0, a1 = b * bloc, min((b + 1) * bloc, jours)
+        Q, etat, diag = model.simulate(
+            forcing=td.forcing[a0:a1], initial_state=etat,
+            graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
+            withdrawals=td.withdrawals, day_of_year=td.day_of_year[a0:a1],
+            return_diagnostics=True)
+        mois = mois_tout[a0:a1]
+        sommes = {}
+        for nom, att in familles:
+            if att is None:
+                serie = torch.log(Q.clamp(min=1e-3))[:, stations]
+            else:
+                v = getattr(diag, att, None)
+                if v is None or not torch.is_tensor(v) or not v.requires_grad:
+                    continue
+                serie = v
+            for sais, m in SAISONS.items():
+                masque = torch.tensor(np.isin(mois, m), device=serie.device)
+                n = int(masque.sum())
+                if not n:
+                    continue
+                cle = f"{nom}:{sais}"
+                sommes[cle] = serie[masque].sum()
+                compte[cle] = compte.get(cle, 0) + n * serie.shape[1]
+        for k, (cle, valeur) in enumerate(sommes.items()):
+            g = torch.autograd.grad(valeur, [mults[c] for c in cles],
+                                    retain_graph=(k < len(sommes) - 1), allow_unused=True)
+            v = np.array([float(x) if x is not None else 0.0 for x in g])
+            cumul[cle] = cumul.get(cle, 0.0) + v
+        etat = etat.detach()
+        print(f"[sensibilite] bloc {b + 1}/{n_blocs}, {len(sommes)} resumes", flush=True)
+
+    noms = sorted(cumul)
+    J = np.array([cumul[n] / max(compte[n], 1) for n in noms])
     _rapport(J, noms, cles)
     if sortie:
         np.savez_compressed(sortie, J=J, observables=np.array(noms), champs=np.array(cles))

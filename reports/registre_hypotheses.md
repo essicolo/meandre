@@ -3232,3 +3232,21 @@ L'ÉVAPOTRANSPIRATION EN MODE BASSIN RESTE DISPONIBLE SANS ÊTRE LE DÉFAUT. Ell
 UN DÉFAUT ATTRAPÉ PAR LA GARDE POSÉE LA VEILLE. Le premier bras a signalé que le terme des puits était actif et son diagnostic détaché du graphe : `w_nappe` est posé sur l'objet de perte après sa construction, alors que la liste des diagnostics à retenir était lue dans la configuration, où il vaut zéro. Le terme aurait affiché sa valeur sans produire aucun gradient. C'est exactement la classe de défaut pour laquelle la garde avait été écrite.
 
 ET UN MESSAGE DE JOURNAL QUI DÉCRIVAIT UN MÉCANISME DISPARU. Le pilote annonçait, pour l'ancrage du plafond, une variation spatiale RÉTRÉCIE. C'était la première version du prior, retirée le jour même parce qu'elle pénalisait la variance du champ au même poids que le biais de moyenne. Le calcul était bon ; seul le texte survivait.
+
+---
+
+## R178 — Dix des quarante-trois champs du NeRF n'ont AUCUNE influence sur aucune observation (2026-09-22) — ÉTABLI
+
+Premier passage du banc de sensibilité, qui mesure la dérivée de chaque observable par rapport à un facteur multiplicatif par champ. Une année en Outaouais, vingt-cinq blocs de quinze jours, cinq observables résumés par saison, quatre-vingt-quinze rétropropagations.
+
+DIX CHAMPS SORTENT À ZÉRO EXACT : `theta_fc_2`, `theta_wp_2`, `theta_wp_3`, `f_root_1`, `f_root_2`, `f_root_3`, `f_vert_1`, `f_vert_3`, `k_gw`, `T_gw`. Aucun observable ne les touche. Ils ne sont pas mal identifiés, ils ne le sont pas du tout : l'entraînement ne peut que les laisser là où l'initialisation les pose, et tout ce que le champ spatial calcule pour eux est du travail perdu.
+
+LA CAUSE EST VÉRIFIÉE DANS LE CODE, et elle est double. La loi des ancrages impose par nœud la courbe de rétention du calage d'Hydrotel : le sol lit donc les valeurs imposées et jamais les sorties du champ correspondantes. Et la nappe libre remplace le réservoir restituant, ce qui rend `k_gw` et `T_gw` sans emploi. Ce ne sont pas des défauts, ce sont les conséquences de deux décisions prises ailleurs ; mais personne ne les avait comptées.
+
+UNE INCOHÉRENCE APPARAÎT DU MÊME COUP. `theta_fc_3` est le deuxième champ le plus sensible de tous, parce que la loi de drainage profond lit `sp.theta_fc_3` directement dans le champ spatial, alors que `theta_fc_1` et `theta_fc_2` viennent du calage imposé. La capacité au champ de la couche profonde s'apprend donc, celle des deux couches du dessus est imposée, et cette asymétrie n'a été décidée par personne : elle vient de ce que la loi de drainage, ajoutée le 2026-09-19, court-circuite l'ancrage pour cette seule couche.
+
+LES CHAMPS QUE LES OBSERVATIONS VOIENT VRAIMENT, par norme de sensibilité : `porosity_3` 6,9, `theta_fc_3` 5,4, `K_c` 4,6, `K_musk_hours` 1,9, `C_f` 0,87, `theta_fc_1` 0,80, `porosity_1` 0,59.
+
+DANS L'ESPACE DES PARAMÈTRES, LES OBSERVABLES SONT PRESQUE REDONDANTS. Les quatre saisons d'un même observable pointent dans UNE direction, l'amplitude seule changeant ; l'ensemble des cinq observables couvre trois directions sur quarante-trois. En apport propre, seule la neige ajoute une direction que les autres ne portent pas ; le débit, l'évapotranspiration, la nappe et la recharge apportent zéro chacun.
+
+TROIS LIMITES, et elles sont sérieuses. La perturbation est un facteur UNIFORME par champ : la mesure ne dit rien de ce qui contraint le MOTIF spatial d'un champ, seulement son niveau. Les lignes sont normalisées avant décomposition, ce qui écarte la magnitude de la sensibilité, or une direction cent fois plus faible n'est pas identifiable en pratique. Et quatre résumés saisonniers par observable plafonnent à quatre le rang que chaque famille peut atteindre.
