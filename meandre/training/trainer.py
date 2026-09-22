@@ -1106,6 +1106,13 @@ class Trainer:
                 t_end = data.train_slice.stop
             sl = slice(t_start, t_end)
             chunk_len = t_end - t_start
+            # PART DU BLOC DANS L'EPOQUE. Les termes ajoutes dans le bloc s'accumulent avec
+            # cette part, de sorte que le bilan imprime compare des MOYENNES d'epoque. Sans
+            # elle ils s'additionnaient sur les quelque deux cents blocs d'une epoque alors
+            # que ceux de la fonction de perte etaient ponderes plus bas : le bilan portait
+            # un facteur deux cents entre les deux familles, et se lisait comme une
+            # domination de GRACE qui n'existait pas (2026-09-21).
+            _part_bloc = chunk_len / n_train
 
             # ET multi-objectif : on récupère et_sim depuis CE forward (avec
             # gradient) plutôt qu'un 2e forward détaché — sinon le terme ET
@@ -1291,7 +1298,7 @@ class Trainer:
                     L_nappe = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
                     loss_chunk = loss_chunk + self.loss_fn.w_nappe * L_nappe
                     all_components["nappe_loss"] = (
-                        all_components.get("nappe_loss", 0.0) + float(L_nappe.detach()))
+                        all_components.get("nappe_loss", 0.0) + float(L_nappe.detach()) * _part_bloc)
 
                 # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
                 # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).
@@ -1423,7 +1430,7 @@ class Trainer:
                             L_tws = ((_rs / _ss) - (_ro / _so)).pow(2).mean()
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                             all_components["tws_loss"] = (
-                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
+                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()) * _part_bloc)
                             _skip_niveau = True
                         else:
                             _skip_niveau = False
@@ -1440,7 +1447,7 @@ class Trainer:
                         if not _skip_niveau:
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                             all_components["tws_loss"] = (
-                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()))
+                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()) * _part_bloc)
 
                         # ── TERME CLIMATOLOGIQUE (2026-08-21, R23) ──────────────
                         # Le terme ci-dessus compare des mois INDIVIDUELS a sigma=25 mm,
@@ -1545,7 +1552,7 @@ class Trainer:
                             loss_chunk = loss_chunk + _w_clim * L_tws_clim
                             all_components["tws_clim_loss"] = (
                                 all_components.get("tws_clim_loss", 0.0)
-                                + float(L_tws_clim.detach()))
+                                + float(L_tws_clim.detach()) * _part_bloc)
 
                 # ── CanSWE : MASSE du manteau mesurée au sol (2026-08-21, R24) ──
                 # La cible existante (w_snow) est la FRACTION DE COUVERTURE MODIS, qui
@@ -1579,7 +1586,7 @@ class Trainer:
                         loss_chunk = loss_chunk + self.loss_fn.w_swe_mass * L_swe_mass
                         all_components["swe_mass_loss"] = (
                             all_components.get("swe_mass_loss", 0.0)
-                            + float(L_swe_mass.detach()))
+                            + float(L_swe_mass.detach()) * _part_bloc)
 
                 # ── Régression quantile (Phase 2 v2) : q_τ = μ + δ_τ ─────
                 # δ_τ via quantile_head (avec gradient), μ détaché (la tête
@@ -1608,7 +1615,7 @@ class Trainer:
                         L_q = _qloss(_y, _q, _taus)
                         loss_chunk = loss_chunk + self.loss_fn.w_quantile * L_q
                         all_components["quantile_loss"] = (
-                            all_components.get("quantile_loss", 0.0) + float(L_q.detach()))
+                            all_components.get("quantile_loss", 0.0) + float(L_q.detach()) * _part_bloc)
 
                 # ── ContextualQuantileHead (IHI, Phase A) — pinball loss
                 # avec features riches : sp + Q_sim + log Q_sim + indices IHI + DOY.
@@ -1656,7 +1663,7 @@ class Trainer:
                         )
                         loss_chunk = loss_chunk + self.loss_fn.w_quantile * L_cqh
                         all_components["cqh_pinball"] = (
-                            all_components.get("cqh_pinball", 0.0) + float(L_cqh.detach()))
+                            all_components.get("cqh_pinball", 0.0) + float(L_cqh.detach()) * _part_bloc)
 
                 # ── Mixture Density Network (option 2b) — NLL non-paramétrique ──
                 # p(y | x) = Σ_k π_k · N(y | μ_k, σ_k²) ; loss = -log_prob.
@@ -1685,7 +1692,7 @@ class Trainer:
                         L_mdn = -self.model.mixture_head.log_prob(y_flat, sp_flat, q_flat).mean()
                         loss_chunk = loss_chunk + self.loss_fn.w_mixture * L_mdn
                         all_components["mixture_nll"] = (
-                            all_components.get("mixture_nll", 0.0) + float(L_mdn.detach()))
+                            all_components.get("mixture_nll", 0.0) + float(L_mdn.detach()) * _part_bloc)
 
 
             # BLOC SANS DONNEE (2026-09-04). Si la perte de donnees n'a pas de gradient
@@ -1703,24 +1710,24 @@ class Trainer:
                 if self.config.w_prior > 0:
                     prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
                     loss_chunk = loss_chunk + self.config.w_prior * prior_loss
-                    all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach())
+                    all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach()) * _part_bloc
                 if self.config.w_diversity > 0:
                     div_loss = self.model.spatial_encoder.param_diversity_loss(
                         params_t, cv_target=self.config.diversity_cv_target)
                     loss_chunk = loss_chunk + self.config.w_diversity * div_loss
-                    all_components["diversity"] = all_components.get("diversity", 0.0) + float(div_loss.detach())
+                    all_components["diversity"] = all_components.get("diversity", 0.0) + float(div_loss.detach()) * _part_bloc
 
             if self.config.w_latent_reg > 0 and getattr(self.model.spatial_encoder, "use_latent_codes", False):
                 latent_loss = self.model.spatial_encoder.latent_reg()
                 loss_chunk = loss_chunk + self.config.w_latent_reg * latent_loss
-                all_components["latent_reg"] = all_components.get("latent_reg", 0.0) + float(latent_loss.detach())
+                all_components["latent_reg"] = all_components.get("latent_reg", 0.0) + float(latent_loss.detach()) * _part_bloc
 
             if self.config.w_boundary > 0:
                 boundary_loss = self.model.spatial_encoder.boundary_regularization(
                     data.node_coords, data.territorial.to_tensor()
                 )
                 loss_chunk = loss_chunk + self.config.w_boundary * boundary_loss
-                all_components["boundary"] = all_components.get("boundary", 0.0) + float(boundary_loss.detach())
+                all_components["boundary"] = all_components.get("boundary", 0.0) + float(boundary_loss.detach()) * _part_bloc
 
             # Noise head σ anchor — counters NLL degeneracy (σ inflates to
             # mask a bad μ). Applied symmetrically to Q / ET / SWE heads.
@@ -1755,7 +1762,7 @@ class Trainer:
                     )
                 loss_chunk = loss_chunk + self.config.w_sigma_anchor * anchor
                 all_components["sigma_anchor"] = (
-                    all_components.get("sigma_anchor", 0.0) + float(anchor.detach())
+                    all_components.get("sigma_anchor", 0.0) + float(anchor.detach()) * _part_bloc
                 )
 
             # Concrete Dropout KL regularisation (epistemic uncertainty).
@@ -1764,11 +1771,11 @@ class Trainer:
                 concrete_kl = self.model.temporal_encoder.concrete_kl()
                 loss_chunk = loss_chunk + self.config.w_concrete_kl * concrete_kl
                 all_components["concrete_kl"] = (
-                    all_components.get("concrete_kl", 0.0) + float(concrete_kl.detach())
+                    all_components.get("concrete_kl", 0.0) + float(concrete_kl.detach()) * _part_bloc
                 )
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
-            weight = chunk_len / n_train
+            weight = _part_bloc
             if os.environ.get("MEANDRE_DEBUG_GRAD", "0") == "1" and n_chunks < 3:
                 # QUI POUSSE LE PLUS FORT (2026-09-05). Norme du gradient de chaque terme
                 # pondere, mesuree sur les trois premiers blocs, pour savoir quel terme
