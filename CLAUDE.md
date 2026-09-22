@@ -177,6 +177,18 @@ Le chiffre « 121 mm simulé contre 238 mesurés sur OUTV » est un ARTEFACT D'A
 
 `ETL_TWS_FORME=1` (`tws_shape_only`) divise chaque côté par son propre écart-type et ne retient que la phase et la forme ; le terme de biais saisonnier s'éteint alors de lui-même. Le mode en niveau compare des millimètres à une incertitude de 25 mm par estimation mensuelle, alors que rien ne garantit que la colonne, qui respire sur trois mètres de sol plus la neige et la nappe, ait la même amplitude qu'une empreinte satellitaire de plusieurs centaines de kilomètres. Mesuré le 2026-08-26 : en niveau, même borné, le modèle tombait de 0,52 à 0,34. Le mode forme a pourtant attendu le 2026-09-21 pour être branché : il existait depuis un mois sans qu'aucune configuration ni aucun pilote ne le pose.
 
+## Identifiabilité : ce que les observations contraignent vraiment (2026-09-22)
+
+Deux mesures, deux espaces, et elles ne disent pas la même chose.
+
+DANS L'ESPACE DES SÉRIES, `.runs/quebec/information_des_donnees.py` compte les directions indépendantes qu'une source apporte AUX AUTRES. Sur l'Outaouais : réseau de neige au sol +7, nappes du réseau de suivi +4, débit +2, gravimétrie 0, évapotranspiration MODIS 0, neige NEISIM 0. Les trois produits sur grille totalisent des dizaines de millions de valeurs et n'ajoutent rien. L'altimétrie SWOT, mesurée sur la même fenêtre, porte à elle seule 19 directions contre 8 pour l'ensemble des six sources employées.
+
+DANS L'ESPACE DES PARAMÈTRES, `.runs/quebec/sensibilite_des_observables.py` dérive chaque observable par rapport à un facteur multiplicatif par champ. C'est la seule mesure qui réponde vraiment, puisqu'une source prédictible à partir du débit peut contraindre une combinaison de paramètres que le débit ne contraint pas. Le pilote APPELLE le banc, jamais l'inverse : il lit 79 variables d'environnement et c'est lui qui définit le modèle.
+
+DIX DES QUARANTE-TROIS CHAMPS ONT UNE SENSIBILITÉ RIGOUREUSEMENT NULLE : `theta_fc_2`, `theta_wp_2`, `theta_wp_3`, `f_root_1/2/3`, `f_vert_1/3`, `k_gw`, `T_gw`. Rien ne les lit, donc rien ne les identifie, et le champ dépense de la capacité à les calculer. `k_gw` et `T_gw` sont morts parce que la nappe libre remplace le réservoir restituant ; les autres parce que le clone ne consomme de capacité au champ qu'aux couches 1 et 3.
+
+QUAND LA DONNÉE NE PEUT PAS IDENTIFIER, CE QUI RESTE EST UN AJUSTEMENT (Essi, 2026-09-22). Un paramètre sensible mais non rattaché à une observation indépendante prend la valeur qui arrange l'hydrogramme, quitte à contredire la physique. Le remède est une contrainte physique, pas un poids de perte : la capacité au champ, deuxième champ le plus sensible, se DÉDUIT désormais de la courbe de rétention imposée, theta = thetas (psi_s/psi)^(1/b) à −33 kPa, au lieu d'être apprise à côté d'elle.
+
 ## Training safeguards
 
 - **Divergence guard**: rollback to best checkpoint if loss > 3x EMA (max 3 rollbacks)
