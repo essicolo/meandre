@@ -1363,6 +1363,21 @@ _garde = sorted(k for k, v in _besoins.items() if float(v or 0.0) > 0.0)
 os.environ["MEANDRE_DIAG_DERIVES"] = ",".join(_garde)
 print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
 
+# BANC DE SENSIBILITE. Le pilote appelle le banc plutot que l'inverse : il lit
+# soixante-dix-neuf variables d'environnement et c'est lui qui definit le modele, si bien
+# qu'en reconstruire un a cote mesurerait autre chose. Il se termine par ailleurs sur un arret
+# brutal du processus et ne peut donc pas rendre la main.
+if os.environ.get("MEANDRE_SENSIBILITE") == "1":
+    from importlib.machinery import SourceFileLoader as _SFL
+
+    _banc = _SFL("sensibilite", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                             "sensibilite_des_observables.py")).load_module()
+    _banc.mesurer(model, td, r["times"], DEVICE,
+                  jours=int(os.environ.get("MEANDRE_SENSIBILITE_JOURS", "365")),
+                  sortie=os.environ.get("MEANDRE_SENSIBILITE_SORTIE"))
+    sys.stdout.flush()
+    os._exit(0)
+
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
 tr.fit()

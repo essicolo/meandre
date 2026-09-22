@@ -942,7 +942,29 @@ class SpatialFieldNetwork(nn.Module):
                                min=math.log(2e-6), max=math.log(2e-3))
         constrained.append(torch.exp(exponent)); i += 1
 
-        return SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
+        sp = SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
+        return self._applique_multiplicateurs(sp)
+
+    def _applique_multiplicateurs(self, sp: SpatialParams) -> SpatialParams:
+        """Multiplie chaque champ par son facteur, quand `multiplicateurs` est posé.
+
+        Sert à mesurer la SENSIBILITÉ des observables aux paramètres : un facteur par champ,
+        valant un par défaut, donne une dérivée sans dimension, celle de l'observable à une
+        variation relative uniforme du champ. Neutre quand l'attribut n'existe pas, ce qui est
+        le cas de tout entraînement.
+        """
+        m = getattr(self, "multiplicateurs", None)
+        if not m:
+            return sp
+        from dataclasses import replace as _remplace
+
+        modifs = {}
+        for nom, facteur in m.items():
+            champ = getattr(sp, nom, None)
+            if champ is None:
+                raise AttributeError(f"multiplicateur pose sur '{nom}', absent du champ spatial")
+            modifs[nom] = champ * facteur
+        return _remplace(sp, **modifs)
 
 
     # ── Recharge : poser ou geler le champ ────────────────────────────────────
