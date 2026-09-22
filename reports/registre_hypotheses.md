@@ -3273,3 +3273,28 @@ CE QUE L'AJUSTEMENT LIBRE ACHETAIT. Quatre millièmes de KGE moyen et un centiè
 La variabilité monte un peu, gamma de 1,028 à 1,063, ce qui va dans le mauvais sens puisque le modèle dépasse déjà un. L'indice d'écoulement de base ne bouge pas.
 
 RÉSERVE. Une graine, seize stations, huit époques, un territoire. La conclusion porte sur le COÛT de la contrainte, pas sur un gain : rien n'établit ici que la capacité déduite soit plus juste, seulement qu'elle est cohérente avec la courbe et qu'elle ne coûte rien. La succion de référence de 3,37 m est une convention pédologique, pas une mesure sur ce territoire.
+
+---
+
+## R180 — La courbe de rétention imposée par la loi des ancrages n'est pas une propriété de texture (2026-09-22) — ÉTABLI
+
+Déduire la capacité au champ de la courbe imposée, changement posé le matin même, coûte 0,394 de KGE médian en Gaspésie et 0,041 en Outaouais, au départ et sans aucune époque d'entraînement. Un écart d'un ordre de grandeur entre deux territoires appelait une erreur d'unité. Il n'y en a pas : la succion d'entrée vaut 0,21 à 0,51 m et la porosité 0,40 à 0,49, tout est sain.
+
+L'EXPOSANT DE CAMPBELL EST HORS DE LA PLAGE DES SOLS RÉELS.
+
+| territoire | b médian | part des nœuds sous 4 | capacité au champ déduite |
+| --- | --- | --- | --- |
+| Saint-Laurent nord-ouest | 1,81 | 97 % | 0,085 |
+| Centre-du-Québec | 1,81 | 100 % | 0,085 |
+| Gaspésie | 1,99 | 96 % | 0,108 |
+| Saguenay | 2,06 | 99 % | 0,115 |
+| Outaouais | 3,97 | 92 % | 0,254 |
+| Abitibi | 4,27 | 43 % | 0,312 |
+
+Chez Clapp et Hornberger, b vaut 4,05 pour un sable, 4,90 pour un loam sableux, 5,39 pour un loam et jusqu'à 11,4 pour une argile. AUCUNE texture réelle ne descend sous 4. Cinq territoires sur six sont donc sous la borne physique sur 92 à 100 % de leurs nœuds. Et b est IDENTIQUE aux trois couches partout : ce n'est pas une texture par horizon, c'est un levier d'ajustement unique par nœud.
+
+CE QUE CELA DIT DE LA LOI DES ANCRAGES. Le socle du Québec impose « tout le calage du sol sauf K_sat et les porosités », et cette courbe en fait partie. Elle porte donc un artefact d'ajustement, pas une propriété du sol. Tant qu'on n'en tire que la forme de rétention, cet artefact reste caché dans un calage qui fonctionne. Dès qu'on en DÉDUIT une autre grandeur, il ressort, et proportionnellement à son invraisemblance : la Gaspésie, à b = 1,99, perd 0,394 ; l'Outaouais, à 3,97, seule valeur presque plausible du lot, perd 0,041.
+
+DÉCISION. La déduction devient opt-in par `MEANDRE_THETA_FC_COURBE=1` et la capacité au champ redevient une sortie du champ spatial. Le raisonnement qui la motivait reste juste — une capacité au champ doit s'accorder à sa courbe de rétention — mais sa prémisse est fausse ici : la courbe n'est pas une courbe.
+
+CE QUE CELA OUVRE, ET QUI N'EST PAS TRANCHÉ. Si l'exposant imposé est hors plage physique, les autres pièces du calage imposé méritent le même contrôle. La loi des ancrages est le socle de toute la ligne québécoise et sa révision d'août l'a mesurée sur le KGE, jamais sur la plausibilité physique de ce qu'elle impose.

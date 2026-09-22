@@ -483,11 +483,18 @@ class HydrotelColumn(nn.Module):
             # un autre sol. `theta_fc_du_champ` retablit l'ancien comportement.
             import os as _os_tfc
 
-            # `MEANDRE_THETA_FC_CHAMP=1` retablit la capacite APPRISE, pour separer l'effet
-            # de la deduction de celui des autres changements dans une meme epreuve.
-            _du_champ = (getattr(self, "theta_fc_du_champ", False)
-                         or _os_tfc.environ.get("MEANDRE_THETA_FC_CHAMP") == "1")
-            _deduite = None if _du_champ else self.capacite_au_champ_de_la_courbe(p_soil, 3)
+            # LA DEDUCTION EST OPT-IN, ET LE MOTIF EST MESURE (2026-09-22). Deduire la
+            # capacite au champ de la courbe imposee suppose que cette courbe soit une
+            # propriete du SOL. Elle ne l'est pas : l'exposant de Campbell du calage vaut 1,81
+            # a 2,06 sur cinq territoires et descend sous 4 sur 92 a 100 % des nœuds, alors
+            # que la plus sableuse des textures de Clapp et Hornberger donne 4,05. Il est
+            # identique aux trois couches, donc ce n'est pas une texture par horizon mais un
+            # levier d'ajustement. Deduire de cette courbe propage l'artefact : la deduction
+            # coute 0,394 de KGE en Gaspesie, ou b vaut 1,99, contre 0,041 en Outaouais, ou il
+            # vaut 3,97, seule valeur presque plausible du lot.
+            _deduite = (self.capacite_au_champ_de_la_courbe(p_soil, 3)
+                        if _os_tfc.environ.get("MEANDRE_THETA_FC_COURBE") == "1"
+                        else None)
             p_soil["thetacc3"] = sp.theta_fc_3 if _deduite is None else _deduite
             _ksub = getattr(self, "l3_k_sub", None)
             if _ksub is not None:
