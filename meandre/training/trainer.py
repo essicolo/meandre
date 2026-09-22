@@ -1558,8 +1558,7 @@ class Trainer:
                 # La cible existante (w_snow) est la FRACTION DE COUVERTURE MODIS, qui
                 # sature dès qu'il y a un peu de neige (SCF = 1-exp(-SWE/15)) et ne dit
                 # donc presque rien de la quantité d'eau stockée -- justement ce qui
-                # manque au modèle : 121 mm de manteau simulé contre 238 mesurés sur
-                # OUTV. Pire, MODIS mesure une réflectance et sous-estime la neige sous
+                # manque au modèle. Pire, MODIS mesure une réflectance et sous-estime la neige sous
                 # couvert forestier, si bien que le terme de couverture demandait au
                 # modèle de fondre PLUS TÔT, contre GRACE. Les relevés CanSWE sont des
                 # mesures de masse au sol, insensibles au couvert.

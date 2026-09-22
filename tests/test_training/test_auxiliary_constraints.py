@@ -167,11 +167,12 @@ def test_masse_et_couverture_sont_des_cibles_DISTINCTES():
 
     SCF = 1-exp(-SWE/15) vaut deja 0.96 a 50 mm et 0.9997 a 121 mm : entre un manteau
     de 121 mm et un de 238, la couverture ne bouge plus du tout. Une contrainte sur la
-    couverture ne peut donc PAS corriger un deficit de masse, quelle que soit son poids.
+    couverture ne peut donc PAS corriger un ecart de masse, quelle que soit son poids.
+    Les deux valeurs illustrent la saturation ; elles ne chiffrent aucun ecart mesure.
     """
     couverture = lambda swe: 1.0 - torch.exp(-torch.tensor(swe) / 15.0)
-    simule, mesure = couverture(121.0), couverture(238.0)
-    assert float(mesure - simule) < 1e-3, "la couverture ne distingue plus 121 de 238 mm"
+    mince, epais = couverture(121.0), couverture(238.0)
+    assert float(epais - mince) < 1e-3, "la couverture ne distingue plus 121 de 238 mm"
     assert abs(238.0 - 121.0) / 100.0 > 1.0, "la masse, elle, voit un ecart de 1.2 unite"
 
 

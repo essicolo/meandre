@@ -171,7 +171,7 @@ L'APPORT VERTICAL est le produit le plus intéressant, et ce n'était pas attend
 
 RÉSERVE DÉCISIVE. NEISIM est un MODÈLE, pas une mesure, et l'employer comme cible imposerait ses biais aux nôtres. La question préalable, en cours de mesure, est de savoir s'il s'accorde aux relevés au sol du réseau CanSWE là où les deux existent. S'il s'en écarte autant que notre propre modèle, il n'apporte qu'une seconde opinion et n'a pas sa place comme cible. Banc : `.runs/quebec/neisim_contre_canswe.py`.
 
-Le repère de comparaison est connu : le maximum hivernal simulé vaut 121 mm sur l'Outaouais contre 238 mm mesurés au sol, soit la moitié.
+Le repère de comparaison est connu : le manteau simulé vaut 0,77 de celui du réseau au sol en mars sur l'Outaouais, et NEISIM 0,81, de sorte que l'écart est partagé par un modèle indépendant.
 
 ---
 

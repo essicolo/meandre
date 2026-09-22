@@ -2940,3 +2940,28 @@ Ce qui avait été lu comme une conséquence du correctif de gradient de la veil
 Le mode de comparaison en forme de GRACE, branché le même jour, garde son propre motif : le mode en niveau compare des millimètres à une incertitude de 25 mm par estimation mensuelle, le code le déclare insatisfaisable depuis le 2026-08-26, et il n'avait jamais été branché par aucune configuration. Ce motif ne dépend pas du bilan imprimé.
 
 RESTE OUVERT. L'échelle relative des contraintes auxiliaires n'a toujours jamais été étalonnée, puisque jusqu'au correctif de la veille elles ne produisaient aucun gradient. La mesure est maintenant lisible ; elle reste à faire.
+
+---
+
+## R167 — NEISIM arbitre la neige là où le réseau au sol se tait, et désigne un seul territoire fautif (2026-09-21) — ÉTABLI
+
+NEISIM est un produit du gouvernement du Québec, équivalent en eau de la neige sur grille d'environ deux kilomètres et demi, journalier, de 1980 à 2025. C'est un modèle, pas une mesure, et la condition préalable à tout usage a été mesurée d'abord : sur 246 sites du réseau CanSWE du Québec méridional et 111 532 couples de valeurs journalières, le rapport médian par site vaut 0,98 avec des quartiles de 0,85 à 1,29, la corrélation médiane 0,87 avec 78 % des sites au-dessus de 0,80, et l'erreur absolue moyenne 33 mm pour une moyenne observée de 112 mm.
+
+PREMIER RÉSULTAT, SUR TOUT LE TERRITOIRE. En Outaouais, sur les 3412 nœuds et vingt-cinq ans, le maximum annuel moyen du manteau simulé vaut 188 à 193 mm selon la variante contre 181 mm pour NEISIM, soit un rapport de 1,02 à 1,04. La corrélation du cycle saisonnier vaut 1,00 en médiane par nœud, celle de la série mensuelle interannuelle 0,96, et les deux placent le maximum en mars. Trois variantes d'entraînement distinctes donnent le même résultat.
+
+SECOND RÉSULTAT, AUX NŒUDS QUI PORTENT UN SITE DU RÉSEAU. Les trois sources posées sur la même population et la même grandeur, la moyenne mensuelle, donnent en mars :
+
+| Territoire | sites | relevés en mars | au sol | simulé | NEISIM | simulé sur sol | NEISIM sur sol |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Outaouais | 97 | 4306 | 133 mm | 102 mm | 108 mm | 0,77 | 0,81 |
+| Saguenay | 37 | 3649 | 240 mm | 193 mm | 212 mm | 0,80 | 0,88 |
+| Saint-Laurent nord-ouest | 33 | 3939 | 209 mm | 189 mm | 169 mm | 0,91 | 0,81 |
+| Gaspésie | 49 | 851 | 161 mm | 260 mm | 187 mm | 1,62 | 1,17 |
+
+Sur trois territoires sur quatre, les deux modèles lisent la même chose et tous deux sous le réseau au sol, dans des proportions voisines. Un écart partagé par deux modèles indépendants dont l'un s'accorde au réseau à 0,98 sur l'ensemble du domaine désigne la REPRÉSENTATIVITÉ DES SITES, non un défaut de colonne. C'est la deuxième des deux explications laissées ouvertes en août, et la première corroboration indépendante qu'elle reçoit.
+
+La Gaspésie fait exception et dans l'autre sens : le manteau simulé y dépasse le réseau de 62 % et NEISIM de 39 % en mars. Le réseau y est mince, 851 relevés en mars contre 3649 au Saguenay, mais NEISIM ne l'est pas. C'est le seul territoire où la neige simulée est mise en cause, et il n'était pas identifiable avant.
+
+CE QUE NEISIM APPORTE QUE LE RÉSEAU N'A PAS. Au Saint-Laurent sud-ouest, 2889 nœuds, et en Montérégie, 1916 nœuds, aucun site du réseau ne passe les filtres de représentativité : aucune observation de masse du manteau n'y contraignait quoi que ce soit. NEISIM y couvre 99,7 et 99,8 % des jours.
+
+RÉSERVE. NEISIM est échantillonné au nœud le plus proche du site, un centroïde de tronçon qui peut être à quinze kilomètres du site, alors que le banc site par site l'échantillonnait à la cellule de grille la plus proche du site. Une part de l'écart au réseau tient à ce déplacement, non quantifiée.

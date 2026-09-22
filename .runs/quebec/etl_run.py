@@ -154,7 +154,8 @@ if "ETL_WTWS" in os.environ:
     print(f"[etl] w_tws override = {lcfg['w_tws']} (GRACE)")
 if "ETL_WSWE" in os.environ:
     # CanSWE : masse du manteau mesuree au sol (R24). Cible distincte de MOD10, qui ne
-    # mesure qu'une couverture. Le pic simule vaut 121 mm sur OUTV contre 238 mesures.
+    # mesure qu'une couverture. Le manteau simule vaut 0,77 du reseau au sol en mars sur
+    # OUTV, et NEISIM 0,81 : l'ecart au reseau est partage par un modele independant.
     lcfg["w_swe_mass"] = float(os.environ["ETL_WSWE"])
     print(f"[etl] w_swe_mass = {lcfg['w_swe_mass']} (masse du manteau, CanSWE)")
 if "ETL_WTWSCLIM" in os.environ:

@@ -263,7 +263,7 @@ w_swe_mass = 0.0  # CanSWE : MASSE du manteau mesuree au sol (R24, 2026-08-21). 
              # par defaut : la cible est cablee et testee mais jamais encore entrainee. w_snow
              # (couverture MOD10) sature des qu'il y a un peu de neige et sous-estime sous
              # couvert forestier, au point de demander au modele de fondre PLUS TOT alors qu'il
-             # a deja moitie moins de neige que le mesure (121 mm contre 238 sur OUTV). La masse
+             # lit moins de neige que le reseau au sol (0,77 en mars sur OUTV). La masse
              # n'a pas ce defaut. Echelle interne 100 mm ; filtres de representativite 15 km et
              # 150 m dans build_swe_targets. Sites retenus : outv 97, sagu 37, slno 33, gasp 49,
              # abit 12 ; mont et slso n'en ont aucun et le poids s'y eteint tout seul.

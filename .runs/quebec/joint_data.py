@@ -156,8 +156,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     # CanSWE : MASSE du manteau mesuree au sol (R24, 2026-08-21). Complete MOD10, qui
     # ne mesure qu'une COUVERTURE : la fraction sature des qu'il y a un peu de neige et
     # sous-estime sous couvert forestier, si bien qu'elle demandait au modele de fondre
-    # plus tot alors qu'il a deja moitie moins de neige que le mesure (121 mm contre 238
-    # sur OUTV). Filtres de representativite dans build_swe_targets.
+    # plus tot alors qu'il lit deja moins de neige que le reseau au sol, 0,77 en mars sur
+    # OUTV. Filtres de representativite dans build_swe_targets.
     swe_mass_obs = swe_mass_node = None
     if lcfg.get("w_swe_mass", 0.0) > 0 and cache.has_canswe():
         from meandre.data.canswe_loader import build_swe_targets
