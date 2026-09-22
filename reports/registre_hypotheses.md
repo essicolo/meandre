@@ -2964,4 +2964,6 @@ La Gaspésie fait exception et dans l'autre sens : le manteau simulé y dépasse
 
 CE QUE NEISIM APPORTE QUE LE RÉSEAU N'A PAS. Au Saint-Laurent sud-ouest, 2889 nœuds, et en Montérégie, 1916 nœuds, aucun site du réseau ne passe les filtres de représentativité : aucune observation de masse du manteau n'y contraignait quoi que ce soit. NEISIM y couvre 99,7 et 99,8 % des jours.
 
-RÉSERVE. NEISIM est échantillonné au nœud le plus proche du site, un centroïde de tronçon qui peut être à quinze kilomètres du site, alors que le banc site par site l'échantillonnait à la cellule de grille la plus proche du site. Une part de l'écart au réseau tient à ce déplacement, non quantifiée.
+LA RÉSERVE D'ÉCHANTILLONNAGE EST LEVÉE. NEISIM est pris au nœud le plus proche du site, un centroïde de tronçon situé à 3,8 km du site en médiane et à 14,4 km au plus. Lu aux deux endroits sur la même population, le rapport au réseau vaut en Outaouais 0,79 au site contre 0,81 au nœud en mars, 0,48 contre 0,50 en avril, 0,67 contre 0,69 en décembre. Le déplacement vaut donc deux à trois centièmes, et dans le sens qui RAPPROCHE le nœud du réseau. Il n'explique pas l'écart.
+
+RÉSERVE QUI DEMEURE. Le manteau simulé est comparé en moyenne mensuelle, une grandeur dont l'unité d'agrégation diffère de celle du maximum saisonnier par site employée en août. Les deux ne se citent pas l'une pour l'autre.
