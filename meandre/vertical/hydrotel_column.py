@@ -478,7 +478,12 @@ class HydrotelColumn(nn.Module):
         _tau = getattr(self, "l3_tau_fc", None)
         if _tau is not None:
             p_soil["l3_tau_fc"] = float(_tau)
-            p_soil["thetacc3"] = sp.theta_fc_3
+            # La capacite au champ se DEDUIT de la courbe de retention quand celle-ci est
+            # imposee par le calage : une capacite apprise a cote d'une courbe imposee decrit
+            # un autre sol. `theta_fc_du_champ` retablit l'ancien comportement.
+            _deduite = (None if getattr(self, "theta_fc_du_champ", False)
+                        else self.capacite_au_champ_de_la_courbe(p_soil, 3))
+            p_soil["thetacc3"] = sp.theta_fc_3 if _deduite is None else _deduite
             _ksub = getattr(self, "l3_k_sub", None)
             if _ksub is not None:
                 # PLAFOND SPATIAL (2026-09-22). Le plafond est une propriete du depot et du
@@ -903,6 +908,36 @@ class HydrotelColumn(nn.Module):
         _static_params : classes de neige (conifères / feuillus / découvert), split
         fsa/fse/fsi, phénologie de l'ETR."""
         self._land_cover = lc
+
+    # Succion de reference de la capacite au champ, en metres de colonne d'eau. La valeur
+    # usuelle en pedologie est -33 kPa, soit -3,37 m ; la convention du clone porte des
+    # succions POSITIVES en metres.
+    PSI_CAPACITE_AU_CHAMP = 3.37
+
+    @staticmethod
+    def capacite_au_champ_de_la_courbe(p_soil, couche, psi_fc=None):
+        """Capacite au champ DEDUITE de la courbe de retention imposee, et non apprise.
+
+        INCOHERENCE CORRIGEE (2026-09-22). Le calage d'Hydrotel impose par nœud la courbe de
+        Campbell, b et psi_s, mais ne fournit AUCUNE capacite au champ : celle-ci sortait du
+        champ spatial, librement. Une capacite au champ et une courbe de retention qui ne
+        s'accordent pas decrivent deux sols differents. Or la capacite au champ n'est pas une
+        propriete independante : c'est la teneur en eau a une succion de reference sur cette
+        meme courbe. On la deduit donc, par l'inverse de la branche en puissance,
+        theta = thetas x (psi_s / psi)^(1/b).
+
+        Le banc de sensibilite a montre que `theta_fc_3` est le deuxieme champ le plus
+        sensible de tous les quarante-trois : le laisser libre revenait a ajuster un parametre
+        de premier ordre sans qu'aucune donnee ne le rattache a la texture du sol.
+        """
+        b = p_soil.get(f"b{couche}")
+        psis = p_soil.get(f"psis{couche}")
+        thetas = p_soil.get(f"thetas{couche}")
+        if b is None or psis is None or thetas is None:
+            return None
+        psi = float(psi_fc if psi_fc is not None else HydrotelColumn.PSI_CAPACITE_AU_CHAMP)
+        omega = (psis.abs().clamp(min=1e-6) / psi) ** (1.0 / b.clamp(min=0.1))
+        return thetas * omega.clamp(0.05, 0.95)
 
     @staticmethod
     def plafond_substratum(valeur, sp, like):
