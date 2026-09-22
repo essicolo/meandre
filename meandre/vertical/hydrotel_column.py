@@ -481,7 +481,13 @@ class HydrotelColumn(nn.Module):
             p_soil["thetacc3"] = sp.theta_fc_3
             _ksub = getattr(self, "l3_k_sub", None)
             if _ksub is not None:
-                p_soil["l3_k_sub"] = torch.full_like(like, float(_ksub))
+                # PLAFOND SPATIAL (2026-09-22). Le plafond est une propriete du depot et du
+                # socle, donc predictible par le terrain : sur 95 stations et cinq
+                # territoires, la texture explique la part souterraine du debit a +27 %
+                # contre le temoin. C'est le SEUL parametre dont la spatialisation soit
+                # mesuree comme payante. `l3_k_sub` vaut donc soit un nombre, en metres par
+                # heure, soit le nom d'une sortie du champ spatial.
+                p_soil["l3_k_sub"] = self.plafond_substratum(_ksub, sp, like)
             _lat = getattr(self, "l3_lateral", None)
             if _lat is not None:
                 p_soil["l3_lateral"] = torch.full_like(like, float(_lat))
@@ -897,6 +903,23 @@ class HydrotelColumn(nn.Module):
         _static_params : classes de neige (conifères / feuillus / découvert), split
         fsa/fse/fsi, phénologie de l'ETR."""
         self._land_cover = lc
+
+    @staticmethod
+    def plafond_substratum(valeur, sp, like):
+        """Plafond de percolation par nœud, en mètres par heure.
+
+        `valeur` est soit un nombre, soit un tenseur, soit le NOM d'une sortie du champ
+        spatial. Nommer un champ absent échoue bruyamment : retomber silencieusement sur une
+        constante ferait tourner une recette qui n'est pas celle qu'on croit.
+        """
+        if isinstance(valeur, str):
+            champ = getattr(sp, valeur, None)
+            if champ is None:
+                raise AttributeError(f"l3_k_sub nomme '{valeur}', absent du champ spatial")
+            return champ
+        if torch.is_tensor(valeur):
+            return valeur.to(like.device).expand_as(like)
+        return torch.full_like(like, float(valeur))
 
     def set_melt_params(self, mp: dict):
         """Params fonte RÉGIONAUX par nœud (degre_jour_modifie.csv du calage

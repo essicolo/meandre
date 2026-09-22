@@ -2994,7 +2994,7 @@ RÉSERVE, ET ELLE COMPTE. La sortie du point de reprise lui-même n'existait pas
 
 ---
 
-## R169 — Le KGE monte et la partition de l'eau se dégrade, sur cinq modèles de la même lignée (2026-09-21) — OUVERT
+## R169 — Le KGE monte et la partition de l'eau se dégrade, sur cinq modèles de la même lignée (2026-09-21) — RÉFUTÉ AUX TROIS QUARTS, voir plus bas
 
 Les cinq modèles entraînés sur l'Outaouais dont la sortie par tronçon existe, rangés par KGE médian sur la période d'évaluation, avec leur indice d'écoulement de base filtré de la même façon que l'observation, qui vaut 0,581 :
 
@@ -3143,3 +3143,41 @@ LA LIMITE DE CETTE MESURE EST SÉRIEUSE, ET ELLE VA DANS LE SENS FAVORABLE AUX P
 CE QUE CELA DÉSIGNE COMME BONNE MESURE. La grandeur qui répond vraiment est le rang de la matrice de sensibilité des observations aux paramètres, et non celui des observations entre elles. Le modèle étant différentiable, cette matrice est calculable : c'est le seul endroit où la revendication centrale du projet, la différentiabilité comme voie vers l'identifiabilité, se vérifie en acte plutôt que par analogie.
 
 Second garde-fou : le pas mensuel détruit la structure infra-mensuelle, donc la mesure est aveugle à ce que la forme d'une décrue ou la date d'une fonte apportent.
+
+---
+
+## R175 — L'affaissement de l'indice d'écoulement de base est aux trois quarts une réponse du FILTRE à la variabilité (2026-09-22) — ÉTABLI, et il corrige deux constats de la veille
+
+Sur neuf modèles, l'indice d'écoulement de base et le facteur gamma du KGE, qui est le rapport des variabilités simulée et observée, vont en sens contraires : corrélation de rang −0,93, corrélation de valeur −0,95, pente −0,357 par unité de gamma. J'en avais conclu que l'affinage dégrade la partition de l'eau.
+
+LE CONTRÔLE SE FAIT SUR L'OBSERVATION, QUI N'A PAS DE PARAMÈTRES. En déformant chaque hydrogramme observé en logarithme pour lui donner la variabilité voulue, à moyenne géométrique constante, le filtre de Lyne et Hollick rend :
+
+| facteur en log | gamma obtenu | indice de base |
+| --- | --- | --- |
+| 0,80 | 0,738 | 0,673 |
+| 0,90 | 0,866 | 0,634 |
+| 1,00 | 1,000 | 0,596 |
+| 1,10 | 1,139 | 0,560 |
+| 1,20 | 1,286 | 0,525 |
+| 1,30 | 1,441 | 0,492 |
+
+La pente mécanique vaut −0,271 par unité de gamma, soit 76 % de la pente mesurée sur les modèles. L'affaissement observé est donc aux trois quarts une propriété du filtre, et non des chemins de l'eau.
+
+CE QUI RESTE, ET QUI EST LE VRAI DÉFAUT. Comparé à l'observation déformée jusqu'à SA PROPRE variabilité, chaque modèle garde un déficit :
+
+| modèle | gamma | indice | attendu à ce gamma | déficit |
+| --- | --- | --- | --- | --- |
+| finale-n2 | 0,892 | 0,565 | 0,627 | −0,062 |
+| point de départ | 0,921 | 0,550 | 0,618 | −0,068 |
+| g-pile | 0,969 | 0,518 | 0,605 | −0,087 |
+| GRACE à poids nul | 1,028 | 0,495 | 0,589 | −0,094 |
+| essai3, recette en vigueur | 1,132 | 0,490 | 0,562 | −0,072 |
+| essai3, recette équilibrée | 1,141 | 0,467 | 0,560 | −0,093 |
+
+Le déficit vaut −0,06 à −0,10 et NE SUIT PAS l'affinage : le modèle le plus affiné, à −0,072, fait mieux que deux modèles moins affinés. Il est présent dans le point de départ lui-même.
+
+TROIS CORRECTIONS À PORTER. Le constat « le KGE monte et la partition se dégrade » est faux aux trois quarts : l'affinage ne dégrade pas la partition à variabilité égale. Le bras contrôlé avec et sans contraintes auxiliaires garde sa conclusion sur l'APPRENTISSAGE, GRACE empêchant bien de battre l'époque zéro, mais perd sa lecture de la partition. Et le balayage du poids de GRACE, qui ne redressait pas l'indice, ne le redressait pas parce qu'il n'y avait rien à redresser de ce côté.
+
+CE QUI DEVIENT LE DÉFAUT À TRAITER, et il est double. D'abord un excès de variabilité : l'affinage pousse gamma de 0,92 à 1,13, donc au-delà de un, le modèle devenant plus variable que la mesure. Ensuite un déficit structurel d'écoulement lent d'environ huit centièmes d'indice à variabilité égale, présent partout, y compris avant tout affinage, et qu'aucune contrainte auxiliaire essayée ne touche.
+
+LEÇON DE MÉTHODE, la même que celle du 2026-08-22 sur le pic de manteau. Une statistique qui porte une conclusion doit être recalculée d'une seconde façon avant d'être citée. Ici la seconde façon consistait à appliquer la même mesure à l'observation seule, ce qui ne coûtait que quelques minutes.

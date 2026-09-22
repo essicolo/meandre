@@ -529,8 +529,18 @@ if "ETL_L3_KSUB" in os.environ:
     # Plafond de percolation du substratum, en mm/JOUR. L'exces reste dans la couche et
     # repart lateralement par la cascade de saturation, comme dans un sol reel ou l'eau
     # circule au-dessus de l'interface sol-depot.
-    model.vertical_column.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
-    print(f"[etl] plafond de percolation du substratum : {os.environ['ETL_L3_KSUB']} mm/jour")
+    _v_ksub = os.environ["ETL_L3_KSUB"]
+    if _v_ksub.strip().lower() in ("champ", "k_sub", "field"):
+        # Le plafond suit le champ spatial plutot qu'une constante. La sortie k_sub est
+        # decodee en log-normal centree sur 1 mm/jour et bornee a [0,048 ; 48] mm/jour ; son
+        # ancrage de MOYENNE est pose par ETL_KSUB_PRIOR, sans quoi rien ne la tient.
+        model.vertical_column.l3_k_sub = "k_sub"
+        if "ETL_KSUB_PRIOR" not in os.environ:
+            raise SystemExit("ETL_L3_KSUB=champ demande un ancrage : poser ETL_KSUB_PRIOR")
+        print("[etl] plafond de percolation du substratum : CHAMP SPATIAL k_sub")
+    else:
+        model.vertical_column.l3_k_sub = float(_v_ksub) / 1000.0 / 24.0
+        print(f"[etl] plafond de percolation du substratum : {_v_ksub} mm/jour")
 if "ETL_L3_TAULAT" in os.environ:
     # Constante de temps de l'ecoulement hypodermique profond, en JOURS. Forme transferable :
     # la partition entre chemin lateral et chemin vertical est le rapport de deux constantes,
@@ -1232,12 +1242,36 @@ if float(os.environ.get("ETL_WNAPPE", 0.0)) > 0:
         _niv = _niv[_niv.puits.isin(list(_cn.puits))]
         _tab = _niv.pivot_table(index="date", columns="puits", values="niveau_m", aggfunc="mean")
         _tab = _tab.reindex(index=_pdn.DatetimeIndex(r["times"]), columns=list(_cn.puits))
+        _puits = list(_cn.puits)
+        _idx_n = list(_cn.node_idx)
+        # PART TENUE DE COTE (2026-09-22). Les niveaux mesures sont la seule corroboration
+        # INDEPENDANTE que la physique de drainage profond ait recue : elle vaut parce que
+        # les puits n'etaient dans aucune perte. Les mettre tous dans la perte detruirait la
+        # preuve en meme temps qu'elle servirait. ETL_NAPPE_VALID tient de cote une part des
+        # puits, choisis par un ordre stable et non par un tirage, pour que deux executions
+        # tiennent les memes de cote.
+        _part = float(os.environ.get("ETL_NAPPE_VALID", "0.5"))
+        _garde = []
+        if 0.0 < _part < 1.0 and len(_puits) >= 4:
+            _rang = sorted(range(len(_puits)), key=lambda i: str(_puits[i]))
+            _n_val = max(1, int(round(_part * len(_puits))))
+            _garde = sorted(_rang[::max(len(_puits) // _n_val, 1)][:_n_val])
+        _entraine = [i for i in range(len(_puits)) if i not in set(_garde)]
+        if not _entraine:
+            _entraine, _garde = list(range(len(_puits))), []
+        _val = _tab.to_numpy(dtype="float32")
         td = _dc_replace(td,
-                         nappe_obs=torch.tensor(_tab.to_numpy(dtype="float32"), device=DEVICE),
-                         nappe_idx=torch.tensor(_cn.node_idx, dtype=torch.long, device=DEVICE))
+                         nappe_obs=torch.tensor(_val[:, _entraine], device=DEVICE),
+                         nappe_idx=torch.tensor([_idx_n[i] for i in _entraine],
+                                                dtype=torch.long, device=DEVICE))
         r["train_data"] = td
+        r["nappe_valid"] = {"puits": [_puits[i] for i in _garde],
+                            "node_idx": [_idx_n[i] for i in _garde],
+                            "niveaux": _val[:, _garde] if _garde else None}
         r["loss_fn"].w_nappe = float(os.environ["ETL_WNAPPE"])
         print(f"[etl] niveaux de nappe : {_cn.resume()}, poids {r['loss_fn'].w_nappe}")
+        print(f"[etl] puits : {len(_entraine)} dans la perte, {len(_garde)} tenus de cote "
+              f"pour la validation independante")
 
 # CE QUI CONTRAINT REELLEMENT LE MODELE, lu dans l'objet de perte et dans les donnees,
 # jamais dans la config (dette #15 : une ligne codee en dur a fait croire pendant des
