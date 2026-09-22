@@ -3013,3 +3013,25 @@ C'EST EXACTEMENT L'ÉQUIFINALITÉ QUE LE PROJET ANNONCE COMBATTRE. Le KGE ne dis
 CE QUI MANQUE POUR L'ÉTABLIR, et c'est pourquoi ce constat reste ouvert. Cinq points seulement, donc une corrélation de rang de −0,70 au seuil de 0,19 : elle ne serait pas retenue seule. Et les cinq modèles ne diffèrent pas que par leur fonction de perte : recettes physiques, nombres d'époques et points de reprise diffèrent aussi. C'est une association sur un ensemble hétérogène, pas une expérience contrôlée.
 
 CE QUE LA RONDE DOIT MESURER. Le même couple de grandeurs sur des bras qui ne diffèrent que par la présence des contraintes auxiliaires. Si l'association tient, l'indice d'écoulement de base devient un critère de sélection au même titre que le KGE ; si elle tombe, elle aura coûté une lecture de journaux.
+
+---
+
+## R170 — La contrainte de neige à 6 % de la perte ne déplace pas le manteau d'un millimètre (2026-09-22) — ÉTABLI
+
+Épreuve en Gaspésie, le seul territoire où la neige simulée est mise en cause : elle y vaut 1,29 du manteau de NEISIM sur les 3917 nœuds et 1,64 du réseau au sol en mars. Le témoin porte donc bien le défaut, ce qui est la condition d'une épreuve valide. Trois bras ne différant que par la contrainte de masse du manteau, même graine, même point de reprise, huit époques à 1e-5.
+
+| bras | KGE médian, évaluation | manteau sur NEISIM, tous nœuds | manteau sur réseau, mars |
+| --- | --- | --- | --- |
+| sans contrainte | 0,7044 | 1,29 | 1,64 |
+| réseau au sol, 49 sites | 0,7079 | 1,29 | 1,63 |
+| NEISIM, 3917 séries | 0,6982 | 1,29 | 1,63 |
+
+Le manteau de mars passe de 263 à 262 mm, celui d'avril de 200 à 196. L'écart de KGE entre les trois bras, un centième, est du même ordre que la dispersion de graine.
+
+LA CONTRAINTE N'EST PAS INERTE, ELLE EST DOMINÉE. Elle produit bien un gradient, le diagnostic requis étant retenu dans les deux bras, et elle pèse 6 % de la perte. Mais sur huit époques sa valeur ne baisse pas : 0,0675 à la première, 0,0709 à la dernière pour le réseau, 0,0685 à 0,0723 pour NEISIM. Elle monte légèrement pendant que les 94 % restants font gagner cinq centièmes de KGE. L'optimiseur la traîne sans la satisfaire.
+
+Que l'apprentissage ait bien eu lieu est vérifié sur la métrique de sélection, qui passe de 0,7042 à 0,755 dans les trois bras.
+
+CE QUE L'ÉPREUVE NE DIT PAS. Elle ne compare pas le réseau au sol à NEISIM comme sources, puisque ni l'un ni l'autre ne déplace quoi que ce soit. La question de la source reste entière et demande un poids auquel la contrainte agisse.
+
+CONSÉQUENCE. Le poids des contraintes auxiliaires doit être posé sur une part mesurée de la perte, non hérité. Six pour cent ne suffisent pas. La mesure d'échelle des quatre contraintes, impossible à lire avant ce soir, donne le moyen de choisir.
