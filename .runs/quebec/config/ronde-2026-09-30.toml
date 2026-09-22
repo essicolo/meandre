@@ -404,7 +404,22 @@ ETL_WSWE = 0.2                  # masse du manteau mesurée au sol, CanSWE
 # Les niveaux de puits restent HORS de la perte, et c'est un choix délibéré. La physique
 # corrigée les satisfait déjà sans être contrainte, l'effet mesuré valant quatre millièmes de
 # KGE. Les y mettre coûterait la seule vérification indépendante dont le projet dispose.
-ETL_WNAPPE = 0
+# NIVEAUX DE NAPPE MESURES : POIDS RENDU (2026-09-22). Ils etaient a zero pour garder les
+# puits hors de toute perte, la corroboration de la physique de drainage profond valant
+# precisement par la. ETL_NAPPE_VALID tient desormais la moitie des puits de cote, par un
+# ordre stable et non par un tirage, ce qui rend le poids sans perdre la preuve : en
+# Outaouais, six puits dans la perte et six tenus de cote.
+#
+# LE POIDS EST MESURE, NON HERITE. A poids 1, le terme vaut 0,182 en perte ponderee contre
+# 2,31 pour l'ensemble des termes de debit, soit 7 %. La contrainte de neige a 6 % n'a rien
+# deplace en huit epoques ; 2,0 porte le terme a environ 14 %.
+#
+# CE QUI JUSTIFIE DE LE RENDRE : sur l'Outaouais, l'apport PROPRE des puits au reste des
+# observations vaut quatre directions independantes, contre zero pour la gravimetrie,
+# l'evapotranspiration MODIS et la neige NEISIM. Treize puits portent plus d'information
+# independante que des dizaines de millions de valeurs satellitaires.
+ETL_WNAPPE = 2.0
+ETL_NAPPE_VALID = 0.5
 
 # -- Numérique et routage, inchangés ------------------------------------------
 MEANDRE_NSUBSTEP = 64
