@@ -3254,3 +3254,22 @@ LES CHAMPS QUE LES OBSERVATIONS VOIENT VRAIMENT, par norme de sensibilité : `po
 DANS L'ESPACE DES PARAMÈTRES, LES OBSERVABLES SONT PRESQUE REDONDANTS. Les quatre saisons d'un même observable pointent dans UNE direction, l'amplitude seule changeant ; l'ensemble des cinq observables couvre trois directions sur quarante-trois. En apport propre, seule la neige ajoute une direction que les autres ne portent pas ; le débit, l'évapotranspiration, la nappe et la recharge apportent zéro chacun.
 
 TROIS LIMITES, et elles sont sérieuses. La perturbation est un facteur UNIFORME par champ : la mesure ne dit rien de ce qui contraint le MOTIF spatial d'un champ, seulement son niveau. Les lignes sont normalisées avant décomposition, ce qui écarte la magnitude de la sensibilité, or une direction cent fois plus faible n'est pas identifiable en pratique. Et quatre résumés saisonniers par observable plafonnent à quatre le rang que chaque famille peut atteindre.
+
+---
+
+## R179 — Déduire la capacité au champ de la courbe imposée ne coûte rien (2026-09-22) — ÉTABLI
+
+Bras contrôlé en Outaouais, ne différant du témoin que par la source de la capacité au champ, huit époques à 1e-5 depuis le même point de reprise, même graine.
+
+| | KGE médian | KGE moyen | r | beta | gamma | indice d'écoulement de base |
+| --- | --- | --- | --- | --- | --- | --- |
+| capacité apprise, témoin | 0,7024 | 0,6809 | 0,779 | 1,071 | 1,028 | 0,495 |
+| capacité déduite de la courbe | 0,7024 | 0,6769 | 0,768 | 1,067 | 1,063 | 0,494 |
+
+Le KGE médian est identique à quatre décimales, ce qui est une coïncidence de la station médiane et non un signe que rien n'a changé : les moyennes, les trois facteurs et l'indice diffèrent tous, donc la déduction a bien agi.
+
+CE QUE L'AJUSTEMENT LIBRE ACHETAIT. Quatre millièmes de KGE moyen et un centième de corrélation. C'est tout. Un paramètre de premier ordre, le deuxième champ le plus sensible des quarante-trois, était libre de contredire la texture du sol pour gagner quatre millièmes.
+
+La variabilité monte un peu, gamma de 1,028 à 1,063, ce qui va dans le mauvais sens puisque le modèle dépasse déjà un. L'indice d'écoulement de base ne bouge pas.
+
+RÉSERVE. Une graine, seize stations, huit époques, un territoire. La conclusion porte sur le COÛT de la contrainte, pas sur un gain : rien n'établit ici que la capacité déduite soit plus juste, seulement qu'elle est cohérente avec la courbe et qu'elle ne coûte rien. La succion de référence de 3,37 m est une convention pédologique, pas une mesure sur ce territoire.
