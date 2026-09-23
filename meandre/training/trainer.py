@@ -742,8 +742,6 @@ class Trainer:
                     presque tous les termes de débit (constaté le 2026-09-20)."""
                     if nom == "nappe" and "nappe_poids_applique" in train_comps:
                         return float(train_comps["nappe_poids_applique"])
-                    if nom == "nappe_poids_applique":
-                        return 0.0
                     if nom in _poids:
                         return _poids[nom]
                     for source in (self.loss_fn, self.config):
@@ -755,10 +753,17 @@ class Trainer:
                 _nz = {}
                 for k, v in train_comps.items():
                     v = float(v)
-                    if abs(v) <= 1e-9 or math.isnan(v):
+                    if abs(v) <= 1e-9 or math.isnan(v) or k == "nappe_poids_applique":
                         continue
                     _nom = k.replace("_loss", "")
                     _nz[_nom] = v * _poids_de(_nom)
+                # Le poids APPLIQUE aux puits s'imprime en clair : le plafond peut le reduire
+                # sous le poids demande, et le produit seul ne permet pas de le voir.
+                if "nappe" in _nz and "nappe_poids_applique" in train_comps:
+                    _nz["nappe"] = _nz["nappe"]
+                    _pa = float(train_comps["nappe_poids_applique"])
+                    print(f"            puits : poids demande {self.loss_fn.w_nappe:.2f}, "
+                          f"poids applique moyen {_pa:.2f}", flush=True)
                 if _nz:
                     _tot = float(train_loss) or 1.0
                     print("            composantes ponderees | " + "  ".join(
@@ -1307,6 +1312,10 @@ class Trainer:
                     # 1,05 a 0,90 en huit epoques. On borne sa part aux termes de debit du
                     # bloc par un facteur DETACHE : la direction du gradient est conservee,
                     # seule son amplitude est limitee.
+                    # La reference est le reste de la perte du bloc a cet instant : les
+                    # termes de debit, plus l'evapotranspiration et la neige que la fonction
+                    # de perte a deja ajoutes. La gravimetrie et la masse du manteau viennent
+                    # apres et n'en font pas partie.
                     _part_max = float(os.environ.get("ETL_NAPPE_PART_MAX", "0.15"))
                     _poids_n = self.loss_fn.w_nappe
                     _ref = float(loss_chunk.detach())
