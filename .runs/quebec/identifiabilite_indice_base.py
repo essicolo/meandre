@@ -50,25 +50,41 @@ _ib = SourceFileLoader("ib", os.path.join(os.path.dirname(os.path.abspath(__file
 
 
 def indices_par_station(region: str):
-    """Indice observé et identifiant, pour les stations à série suffisante."""
-    import glob
+    """Indice observé et identifiant, pour les stations à série suffisante.
 
-    flotte = os.environ.get("MEANDRE_FLOTTE", f"{os.environ.get('MEANDRE_DATA', '.')}/quebec/flotte")
-    fichiers = sorted(glob.glob(f"{flotte}/q-{region}-*.npz"))
-    if not fichiers:
+    Les séries viennent de la BASE, table des observations, 2000-2024. La première version
+    les lisait dans les sorties d'une flotte de simulations, qui n'existaient que pour
+    certains territoires et sur une période courte : le 2026-09-23, deux territoires sur cinq
+    manquaient et le test portait sur 54 stations au lieu de 95. Une grandeur observée ne doit
+    dépendre d'aucune simulation.
+    """
+    import duckdb
+
+    from meandre.utils import paths as _paths
+
+    base = f"{_paths.DATA_ROOT}/quebec/{region.lower()}.duckdb"
+    if not os.path.exists(base):
         return pd.DataFrame()
-    z = np.load(fichiers[0], allow_pickle=True)
-    obs, ids = z["q_obs"], [str(x) for x in z["station_ids"]]
+    con = duckdb.connect(base, read_only=True)
+    obs = con.execute("SELECT station_id, date, discharge FROM observations "
+                      "WHERE discharge IS NOT NULL AND date >= '2000-01-01'").df()
+    ordre = con.execute("SELECT station_id, node_idx FROM stations").df()
+    con.close()
+    if obs.empty:
+        return pd.DataFrame()
+    # Le NŒUD de la station, et non sa position dans une table : le cache par tronçon et la
+    # base ne comptent pas toujours le meme nombre de stations, et une position dans l'un
+    # sort du tableau de l'autre.
+    rang = {str(sid): int(n) for sid, n in zip(ordre.station_id, ordre.node_idx)}
     lignes = []
-    for j in range(obs.shape[1]):
-        s = obs[:, j]
-        fini = np.isfinite(s)
-        if fini.sum() < 700:
+    for sid, g in obs.groupby("station_id"):
+        s = g.sort_values("date").discharge.to_numpy(dtype="float64")
+        if s.size < 700 or not np.isfinite(s).sum() >= 700 or s.sum() <= 0:
             continue
-        s = np.where(fini, s, np.nanmedian(s))
-        lignes.append({"region": region, "station": ids[j], "colonne": j,
+        s = np.where(np.isfinite(s), s, np.nanmedian(s))
+        lignes.append({"region": region, "station": str(sid), "noeud": rang.get(str(sid), -1),
                        "indice_base": float(_ib.lyne_hollick(s).sum() / s.sum())})
-    return pd.DataFrame(lignes)
+    return pd.DataFrame([l for l in lignes if l["noeud"] >= 0])
 
 
 def bassin_amont(edge_index, n_noeuds: int, noeud: int) -> np.ndarray:
@@ -97,17 +113,22 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
     """
     # Le cache peut porter des noms differents d'un territoire a l'autre selon la passe
     # qui l'a produit : on prend le premier qui existe et qui porte l'appariement.
-    f = next((c for c in (f"{DERIVES}/reach-{region}-{n}.npz"
-                          for n in (cache, "appariement", "ronde-pile"))
-              if os.path.exists(c)), None)
-    if f is None:
+    # Le premier cache qui porte le RESEAU, et non le premier qui existe : les caches plus
+    # anciens n'ont pas edge_index, et prendre le premier existant ecartait deux territoires
+    # sur cinq alors qu'un cache complet les suivait dans la liste (2026-09-23).
+    z = None
+    for n in (cache, "appariement", "ronde-pile"):
+        c = f"{DERIVES}/reach-{region}-{n}.npz"
+        if not os.path.exists(c):
+            continue
+        zc = np.load(c, allow_pickle=True)
+        if not amont or "edge_index" in zc.files:
+            z = zc
+            break
+    if z is None:
         return None
-    z = np.load(f, allow_pickle=True)
-    if "station_idx" not in z.files:
-        return None
-    if amont and "edge_index" not in z.files:
-        return None
-    noeuds = z["station_idx"][colonnes]
+    # `colonnes` porte directement les nœuds des stations, dans l'ordre du domaine.
+    noeuds = np.asarray(colonnes, dtype=np.int64)
     morceaux = []
     for src in sources:
         f_src = f"{DERIVES}/{src}-troncons.parquet"
@@ -115,8 +136,9 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
             continue
         t = pd.read_parquet(f_src)
         t = t[t.region.str.lower() == region.lower()].set_index("troncon")
-        garde = [c for c in t.columns
-                 if c not in ("region", "area_m2") and not c.startswith("couv_")]
+        # Les colonnes de COUVERTURE sont gardees pour filtrer les stations dont l'amont
+        # n'est pas couvert par la source ; elles sont retirees avant l'ajustement.
+        garde = [c for c in t.columns if c not in ("region", "area_m2", "aire_m2")]
         morceaux.append(t[garde].add_prefix(f"{src}__"))
     if not morceaux:
         return None
@@ -193,6 +215,8 @@ def main():
     p.add_argument("--ponctuel", action="store_true", help="attribut du seul tronçon de la station")
     p.add_argument("--sources", nargs="+", default=["sigeom-geologie-socle"])
     p.add_argument("--minimum", type=int, default=15, help="stations minimales pour qu'un territoire compte")
+    p.add_argument("--couverture-min", type=float, default=0.0,
+                   help="ne garder que les stations dont l'amont est couvert au moins a cette part par chaque source qui porte une couverture")
     a = p.parse_args()
     morceaux = []
     for reg in [r.lower() for r in a.regions]:
@@ -200,7 +224,7 @@ def main():
         if ind.empty:
             print(f"{reg} : aucune série de station")
             continue
-        att = attributs_de_station(reg, a.cache, ind.colonne.to_numpy(), amont=not a.ponctuel,
+        att = attributs_de_station(reg, a.cache, ind.noeud.to_numpy(), amont=not a.ponctuel,
                                    sources=a.sources)
         if att is None:
             print(f"{reg} : cache {a.cache} sans appariement station-tronçon")
@@ -209,6 +233,12 @@ def main():
     if not morceaux:
         return 1
     t = pd.concat(morceaux, ignore_index=True).dropna()
+    couv = [c for c in t.columns if "__couv_" in c]
+    if couv and a.couverture_min > 0:
+        avant = len(t)
+        t = t[(t[couv] >= a.couverture_min).all(axis=1)].reset_index(drop=True)
+        print(f"couverture minimale {a.couverture_min:.2f} : {len(t)} stations gardees sur {avant}")
+    t = t.drop(columns=couv)
     gros = t.region.value_counts()
     garde = gros[gros >= a.minimum].index
     if len(garde) < 2:

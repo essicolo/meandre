@@ -3372,3 +3372,38 @@ Là où la nappe est mal simulée, le terme prend la moitié de la perte et l'op
 CORRECTIF. La part du terme des puits est plafonnée à 15 % des termes de débit du bloc, par un facteur détaché qui conserve la direction du gradient et n'en borne que l'amplitude. `ETL_NAPPE_PART_MAX` le règle. Et le pilote évalue désormais les puits tenus de côté en fin d'exécution, corrélation médiane et minimale : sans cela on ignorait si l'échange achetait de la nappe. La vérification territoriale est relancée avec les deux.
 
 CE QUI RESTE VRAI SANS LE PLAFOND. Le facteur gamma dépasse un après affinage sur les quatre territoires, 1,10 en Outaouais, 1,11 au Saint-Laurent nord-ouest, 1,18 au Saguenay, 1,27 en Gaspésie. L'excès de variabilité n'est pas une affaire de puits.
+
+---
+
+## R184 — La classe de drainage prédit la part souterraine du débit aussi bien que la texture, d'un seul attribut, là où elle existe (2026-09-23) — ÉTABLI
+
+Une collègue d'Essi construit une carte de perméabilité des dépôts en trois étages : classe de drainage de l'IRDA quand elle existe, sinon classe de drainage de l'inventaire écoforestier, sinon dépôts de surface du SIGEOM regroupés en cinq classes de perméabilité validées par un géologue du Quaternaire. Le premier étage est déjà croisé par tronçon dans le dépôt, colonne `drainage` du croisement IRDA, échelle ordinale de sept niveaux pondérée par l'aire, avec sa fraction de couverture. Couverture médiane par tronçon : 0,92 au Saint-Laurent sud-ouest, 0,49 en Montérégie, ZÉRO partout ailleurs. L'IRDA cartographie les basses terres agricoles ; les bassins forestiers, où sont la plupart des stations, n'en ont pas.
+
+Le banc est celui qui prédit l'indice d'écoulement de base OBSERVÉ des stations par les covariables de leur bassin amont, chaque territoire prédit par un modèle ajusté sur les autres, contre le témoin qui prédit la moyenne des autres territoires. Il lit désormais les observations dans la base, 2000-2024, et non dans des sorties de simulation, ce qui rend 115 stations sur cinq territoires au lieu de 95 ; et il prend le premier cache par tronçon qui porte le réseau, non le premier qui existe, faute de quoi deux territoires manquaient.
+
+SUR LES 115 STATIONS, drainage comblé par la moyenne régionale là où l'IRDA ne couvre pas :
+
+| covariables | gain contre le témoin |
+| --- | --- |
+| texture SIIGSOL seule | +37 % |
+| drainage IRDA seul | +4 % |
+| texture et drainage | +31 % |
+| texture et humidité LiDAR | +38 % |
+| texture, LiDAR et drainage | +33 % |
+
+Le drainage ainsi comblé fait BAISSER le gain de la texture de six points. Le comblement par une constante régionale injecte un signal par territoire que le transfert prend pour de l'information.
+
+SUR LES STATIONS DONT L'AMONT EST COUVERT à plus de 50 %, 44 stations sur trois territoires, Montérégie, Outaouais et Saint-Laurent nord-ouest, Gaspésie et Saguenay tombant sous huit stations :
+
+| covariables | gain contre le témoin |
+| --- | --- |
+| drainage IRDA seul, un attribut | +37 % |
+| texture et drainage | +39 % |
+
+À 80 % de couverture, 36 stations : drainage seul +31 %, texture et drainage +39 %.
+
+Un seul nombre ordinal par tronçon prédit donc la part souterraine aussi bien que les dix-huit attributs de texture. Ajouté à la texture il n'apporte que deux points, les deux portant en partie la même information ; sa valeur est de couvrir ce que la texture couvre mal, non de s'y ajouter.
+
+DEUX DÉCISIONS. La classe de drainage entre comme covariable du champ spatial pour le plafond de percolation du substratum, dès que la carte fusionnée de la collègue existe, parce que c'est elle qui apporte la couverture des bassins forestiers. Et une valeur manquante se MASQUE, elle ne se comble jamais par une constante : la mesure ci-dessus montre ce que le comblement coûte.
+
+RÉSERVES. Quarante-quatre stations et trois territoires pour le résultat couvert, huit stations en Outaouais au seuil de 80 %. Le Saint-Laurent sud-ouest, le mieux couvert avec 41 jauges, manque au test faute d'un cache par tronçon portant le réseau sur la machine de calcul.
