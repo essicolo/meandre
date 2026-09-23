@@ -740,6 +740,10 @@ class Trainer:
                     au milieu de termes pondérés, sous un en-tête annonçant le contraire.
                     C'est le piège décrit juste au-dessus pour le prior, qui valait pour
                     presque tous les termes de débit (constaté le 2026-09-20)."""
+                    if nom == "nappe" and "nappe_poids_applique" in train_comps:
+                        return float(train_comps["nappe_poids_applique"])
+                    if nom == "nappe_poids_applique":
+                        return 0.0
                     if nom in _poids:
                         return _poids[nom]
                     for source in (self.loss_fn, self.config):
@@ -1311,6 +1315,12 @@ class Trainer:
                     loss_chunk = loss_chunk + _poids_n * L_nappe
                     all_components["nappe_loss"] = (
                         all_components.get("nappe_loss", 0.0) + float(L_nappe.detach()) * _part_bloc)
+                    # Le bilan multiplie chaque terme par son poids NOMINAL. Pour les puits le
+                    # poids applique peut etre plus petit, a cause du plafond : on garde le
+                    # poids reellement applique, moyenne sur l'epoque, pour que le bilan
+                    # montre ce que l'optimiseur a vu et non ce que la configuration demandait.
+                    all_components["nappe_poids_applique"] = (
+                        all_components.get("nappe_poids_applique", 0.0) + _poids_n * _part_bloc)
 
                 # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
                 # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).
