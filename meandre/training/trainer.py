@@ -1296,7 +1296,19 @@ class Trainer:
                         _on = _on.to(_zn.device)
                     _mn = ~torch.isnan(_on)
                     L_nappe = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
-                    loss_chunk = loss_chunk + self.loss_fn.w_nappe * L_nappe
+                    # PART PLAFONNEE (2026-09-23). Le terme vaut 2(1 - r) en moyenne sur les
+                    # puits : la ou la nappe est mal simulee, il prend jusqu'a la moitie de la
+                    # perte a poids egal, 53 % au Saint-Laurent nord-ouest et 49 % en Gaspesie
+                    # contre 15 % en Outaouais, et tire le volume du debit, beta tombant de
+                    # 1,05 a 0,90 en huit epoques. On borne sa part aux termes de debit du
+                    # bloc par un facteur DETACHE : la direction du gradient est conservee,
+                    # seule son amplitude est limitee.
+                    _part_max = float(os.environ.get("ETL_NAPPE_PART_MAX", "0.15"))
+                    _poids_n = self.loss_fn.w_nappe
+                    _ref = float(loss_chunk.detach())
+                    if _part_max > 0 and _ref > 0 and float(L_nappe.detach()) > 0:
+                        _poids_n = min(_poids_n, _part_max * _ref / float(L_nappe.detach()))
+                    loss_chunk = loss_chunk + _poids_n * L_nappe
                     all_components["nappe_loss"] = (
                         all_components.get("nappe_loss", 0.0) + float(L_nappe.detach()) * _part_bloc)
 

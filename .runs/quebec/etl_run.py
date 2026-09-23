@@ -1661,6 +1661,10 @@ if os.environ.get("ETL_DUMP_REACH"):
     for _att, _nom, _cumul in (("recharge", "recharge", True), ("etr", "etr", True),
                                ("swe", "swe", False), ("q_baseflow", "debit_base", True),
                                ("s_gw", "stock_nappe", False), ("wet_vol", "stock_mh", False),
+                               # PROFONDEUR D'EAU : l'observable de l'altimetrie satellitaire.
+                               # Elle se compare en ANOMALIES, l'elevation absolue demandant
+                               # l'altitude du lit, donc c'est la serie mensuelle qui sert.
+                               ("profondeur_eau_m", "profondeur_eau", False),
                                ("etr_mh", "etr_mh", True)):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
@@ -1684,6 +1688,30 @@ if os.environ.get("ETL_DUMP_REACH"):
     # ETL_DUMP_NAPPE=<chemin.npz> : stock souterrain, recharge et debit de base JOURNALIERS
     # aux noeuds portant un puits du reseau de suivi. La mesure du reseau est une profondeur
     # sous le repere du tubage : seules les VARIATIONS se comparent, jamais l'absolu.
+    # PUITS TENUS DE COTE : la seule preuve que le terme achete de la nappe et non seulement
+    # du debit perdu. Correlation entre la profondeur simulee et le niveau mesure, sur les
+    # puits qui n'etaient dans aucune perte, en moyennes mensuelles.
+    _nv = r.get("nappe_valid")
+    if _nv and _nv.get("niveaux") is not None and _dg_r is not None:
+        _zsim = getattr(_dg_r, "profondeur_nappe", None)
+        _zsim = _zsim if _zsim is not None else getattr(_dg_r, "s_gw", None)
+        if _zsim is not None:
+            import pandas as _pdv
+
+            _zs = _zsim.detach().cpu().numpy()[:, _nv["node_idx"]]
+            _ax = _pdv.DatetimeIndex(times)
+            _rs = []
+            for _j in range(_zs.shape[1]):
+                _o = _pdv.Series(_nv["niveaux"][:, _j], index=_ax).resample("MS").mean()
+                _s = _pdv.Series(_zs[:, _j], index=_ax).resample("MS").mean()
+                _ok = _o.notna() & _s.notna()
+                if int(_ok.sum()) >= 24:
+                    _rs.append(float(np.corrcoef(-_s[_ok], -_o[_ok])[0, 1]))
+            if _rs:
+                print(f"[etl] PUITS TENUS DE COTE : {len(_rs)} puits, correlation mediane "
+                      f"{float(np.median(_rs)):.2f}, minimum {float(np.min(_rs)):.2f}")
+            else:
+                print("[etl] puits tenus de cote : aucun avec 24 mois communs")
     if os.environ.get("ETL_DUMP_NAPPE") and _dg_r is not None and _dg_r.s_gw is not None:
         import pandas as _pdn
         _pu = _pdn.read_parquet(f"{_paths.DERIVED_ROOT}/auxiliaires/rsesq-puits.parquet")

@@ -3340,3 +3340,35 @@ Avec la gravimétrie, le modèle ne bat jamais son époque zéro : le terme pass
 CE QUE COÛTENT LES CONTRAINTES QUI RESTENT : 0,0175 de KGE médian, pour l'évapotranspiration à 0,4, la masse du manteau à 0,2 et les niveaux de nappe à 2,0. C'est le prix de la partition, et il est petit.
 
 La configuration de la ronde du 30 septembre porte donc `ETL_WTWS = 0` et `ETL_WTWSCLIM = 0`, avec la mesure et sa réserve inscrites à côté : un territoire, huit époques, un point de reprise déjà différencié, et le résultat de mai obtenu en mode NIVEAU depuis un état effondré.
+
+---
+
+## R183 — Un poids de puits mesuré sur un territoire prend la moitié de la perte sur un autre (2026-09-23) — ÉTABLI
+
+Vérification territoriale de la recette de la ronde, six territoires, deux bras chacun, départ à zéro époque et affinage de huit époques à 1e-5.
+
+| territoire | stations | départ | affiné | écart | sélection en fin d'affinage |
+| --- | --- | --- | --- | --- | --- |
+| Outaouais | 16 | 0,5667 | 0,6996 | +0,133 | 0,660 |
+| Gaspésie | 15 | 0,7594 | 0,6137 | −0,146 | 0,714 |
+| Saguenay | 19 | 0,6957 | 0,7023 | +0,007 | 0,700 |
+| Saint-Laurent nord-ouest | 27 | 0,6467 | 0,6187 | −0,028 | 0,563 |
+| Abitibi | 3 | 0,7640 | 0,7742 | +0,010 | 0,827 |
+| Centre-du-Québec | 2 | 0,6661 | 0,6786 | +0,013 | 0,546 |
+
+Les deux derniers territoires n'ont que deux et trois stations, leur médiane ne dit rien. Sur les quatre autres : un gain net, une perte nette, un neutre, une petite perte. Et la métrique de sélection ne voit pas la perte gaspésienne : elle vaut 0,714 en fin d'affinage, au-dessus de son départ, pendant que la période d'évaluation tombe de 0,146.
+
+LA CAUSE EST LE TERME DES PUITS, À POIDS FIXE. Il vaut 2(1 − r) en moyenne sur les puits, r étant la corrélation entre nappe simulée et niveau mesuré ; il ne dépend donc pas du nombre de puits mais de la qualité de la nappe simulée. Le poids de 2,0 avait été mesuré en Outaouais, où r vaut 0,89 et le terme 15 % des termes de débit. Ailleurs :
+
+| territoire | puits dans la perte | r au départ | part du terme au départ |
+| --- | --- | --- | --- |
+| Outaouais | 6 | 0,89 | 15 % |
+| Saguenay | 2 | 0,74 | 34 % |
+| Gaspésie | 5 | 0,66 | 49 % |
+| Saint-Laurent nord-ouest | 3 | 0,38 | 53 % |
+
+Là où la nappe est mal simulée, le terme prend la moitié de la perte et l'optimiseur sacrifie le débit pour la corrélation aux puits. En Gaspésie le facteur beta sur la période de sélection tombe de 1,05 à 0,90 en huit époques, et vaut 0,80 sur la période d'évaluation, qui est de surcroît 7 % plus sèche que la période de sélection.
+
+CORRECTIF. La part du terme des puits est plafonnée à 15 % des termes de débit du bloc, par un facteur détaché qui conserve la direction du gradient et n'en borne que l'amplitude. `ETL_NAPPE_PART_MAX` le règle. Et le pilote évalue désormais les puits tenus de côté en fin d'exécution, corrélation médiane et minimale : sans cela on ignorait si l'échange achetait de la nappe. La vérification territoriale est relancée avec les deux.
+
+CE QUI RESTE VRAI SANS LE PLAFOND. Le facteur gamma dépasse un après affinage sur les quatre territoires, 1,10 en Outaouais, 1,11 au Saint-Laurent nord-ouest, 1,18 au Saguenay, 1,27 en Gaspésie. L'excès de variabilité n'est pas une affaire de puits.
