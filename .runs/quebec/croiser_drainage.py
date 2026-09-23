@@ -61,6 +61,38 @@ CODE_VERS_GROUPE = {c: g for g, codes in SIGEOM_GROUPE.items() for c in codes}
 CODE_VERS_GROUPE.update({c: g for g, codes in SIGEOM_EXTENSION.items() for c in codes if c not in CODE_VERS_GROUPE})
 
 
+# Depots de surface de l'inventaire ecoforestier, places sur la meme echelle par la cle de la
+# collegue transposee aux familles genetiques du code MFFP : 1 glaciaire (till), 2 fluvio-
+# glaciaire, 3 fluviatile, 4 lacustre, 5 marin, 6 littoral, 7 organique, 8 pente et
+# alteration, 9 eolien. Le roc (R, RC, RS) et l'anthropique restent vides ; les prefixes M et R
+# (depot mince sur roc) sont retires pour lire la famille.
+DEPOT_ECOFOR_RANG = {
+    "1": 4.0,
+    "2A": 1.0, "2B": 1.0, "2": 1.0,
+    "3A": 2.5, "3D": 1.0, "3": 2.5,
+    "4A": 2.5, "4G": 7.0, "4P": 2.5, "4": 2.5,
+    "5A": 7.0, "5G": 7.0, "5L": 5.5, "5S": 2.5, "5": 7.0,
+    "6": 2.5,
+    "7": 7.0,
+    "8A": 4.0, "8C": 4.0, "8E": 1.0, "8F": 1.0, "8G": 5.5, "8P": 5.5, "8": 4.0,
+    "9": 1.0,
+}
+
+
+def rang_depot_ecoforestier(codes):
+    """Rang de permeabilite du depot ecoforestier ; vide pour le roc, l'anthropique et l'absent."""
+    out = []
+    for c in codes:
+        c = str(c).strip().upper() if isinstance(c, str) else ""
+        if len(c) >= 2 and c[0] in "MR" and c[1].isdigit():
+            c = c[1:]
+        r = DEPOT_ECOFOR_RANG.get(c[:2]) if len(c) >= 2 else None
+        if r is None and c[:1].isdigit():
+            r = DEPOT_ECOFOR_RANG.get(c[:1])
+        out.append(np.nan if r is None else r)
+    return np.array(out, dtype=float)
+
+
 def rang_ecoforestier(code):
     """Dizaine du code `cl_drai` plus un ; 16 (complexe) et les codes absents restent vides."""
     v = pd.to_numeric(code, errors="coerce")
@@ -126,7 +158,8 @@ def couche_ecoforestier(crs, emprise_4326, feuillets):
         emprise = gpd.GeoSeries.from_xy([emprise_4326[0], emprise_4326[2]], [emprise_4326[1], emprise_4326[3]], crs=4326).to_crs("EPSG:32198").total_bounds + np.array([-5e3, -5e3, 5e3, 5e3])
         pee = gpd.read_file(g, layer=lay, columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(emprise))
         pee["drainage"] = rang_ecoforestier(pee.cl_drai)
-        morceaux.append(pee[["drainage", "geometry"]])
+        pee["depot"] = rang_depot_ecoforestier(pee.dep_sur)
+        morceaux.append(pee[["drainage", "depot", "geometry"]])
     if not morceaux:
         return None
     return pd.concat(morceaux, ignore_index=True).set_crs("EPSG:32198").to_crs(crs)
@@ -177,6 +210,7 @@ def une_region(reg):
     couches["irda"] = rasteriser(couche_irda(crs, emprise_4326), "drainage", transform, forme)
     eco = couche_ecoforestier(crs, emprise_4326, feuillets_de(emprise_4326))
     couches["ecoforestier"] = rasteriser(eco, "drainage", transform, forme) if eco is not None else np.full(forme, np.nan, dtype=np.float32)
+    depot_eco = rasteriser(eco, "depot", transform, forme) if eco is not None else np.full(forme, np.nan, dtype=np.float32)
     sig = couche_sigeom(crs, emprise_4326)
     couches["sigeom"] = rasteriser(sig, "drainage", transform, forme)
     for g in SIGEOM_GROUPE:
@@ -196,6 +230,14 @@ def une_region(reg):
     num = np.bincount(ids[dans & fini], weights=valeur[dans & fini], minlength=len(n_uhrh))
     den = somme(fini)
     par_uhrh = pd.DataFrame({"n": n_uhrh, "num": num, "den": den, "irda": somme(source == 1), "ecoforestier": somme(source == 2), "sigeom": somme(source == 3)})
+    # Chaque source seule, hors hierarchie, et le depot ecoforestier : pour juger quel etage
+    # porte l'information, pas seulement la carte fusionnee.
+    seules = dict(couches)
+    seules["depot_ecoforestier"] = depot_eco
+    for nom, r in seules.items():
+        ok = np.isfinite(r)
+        par_uhrh[f"num_{nom}"] = np.bincount(ids[dans & ok], weights=r[dans & ok], minlength=len(n_uhrh))
+        par_uhrh[f"den_{nom}"] = somme(ok)
     for g, r in groupes.items():
         par_uhrh[f"sigeom_{g}"] = somme(np.isfinite(r) & (r > 0.5))
     par_uhrh = par_uhrh[par_uhrh.n > 0]
@@ -213,21 +255,33 @@ def une_region(reg):
             row[f"part_{k}"] = float(s[k] / s.n)
         for g in SIGEOM_GROUPE:
             row[f"sigeom_{g}"] = float(s[f"sigeom_{g}"] / s.n)
+        for nom in seules:
+            row[f"drainage_{nom}"] = float(s[f"num_{nom}"] / s[f"den_{nom}"]) if s[f"den_{nom}"] > 0 else np.nan
+            row[f"couv_drainage_{nom}"] = float(s[f"den_{nom}"] / s.n)
         out.append(row)
     d = pd.DataFrame(out)
     print(f"{reg}: {len(d)} tronçons | couverture mediane {d.couv_drainage.median():.2f} | part IRDA {d.part_irda.mean():.2f}, ecoforestier {d.part_ecoforestier.mean():.2f}, SIGEOM {d.part_sigeom.mean():.2f} | drainage median {d.drainage.median():.2f} | {time.time() - t0:.0f} s", flush=True)
     return d
 
 
-def main(regions):
-    tout = [une_region(r) for r in regions]
-    d = pd.concat([t for t in tout if t is not None], ignore_index=True)
+def enregistrer(d):
+    """Fusionne le territoire dans le parquet des le calcul fini : un arret en cours de
+    route ne perd que le territoire en cours, pas les precedents."""
     f = f"{SORTIE}/drainage-hierarchique-troncons.parquet"
     if os.path.exists(f):
         ancien = pd.read_parquet(f)
         d = pd.concat([ancien[~ancien.region.isin(d.region.unique())], d], ignore_index=True)
     d.to_parquet(f, index=False)
-    print(f"\n{f} : {len(d)} tronçons, {len(d.columns)} colonnes", flush=True)
+    return f, len(d), len(d.columns)
+
+
+def main(regions):
+    for r in regions:
+        d = une_region(r)
+        if d is not None:
+            f, n, k = enregistrer(d)
+            print(f"  enregistre : {f} ({n} tronçons, {k} colonnes)", flush=True)
+    print("croisement fait", flush=True)
     return 0
 
 

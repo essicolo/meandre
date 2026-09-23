@@ -3425,3 +3425,27 @@ Corrélation mensuelle entre profondeur simulée et niveau mesuré, période d'�
 Le terme transfère : les deux puits jamais vus gagnent 0,22 et 0,06 de corrélation contre le témoin, qui perd même le premier en apprenant le débit seul. C'est de l'information sur la nappe que le débit ne porte pas, et elle tient hors de l'échantillon d'ajustement. Le prix sur cette fenêtre est lourd, 0,25 de KGE, porté par le volume (1,374) et la variabilité (0,706) : l'année d'entraînement du mode rapide ne laisse pas au débit le temps de reprendre ce que les puits déplacent.
 
 CE QUI RESTE À MESURER, sur une fenêtre pleine 2010-2017 et non une année : si le coût en débit se résorbe. À poids plafonné, un terme qui déplace le volume de 16 % en une année dit que la nappe et le débit tirent le même stock dans deux directions ; c'est l'énoncé d'identifiabilité recherché, pas un défaut du terme. Aucun territoire complet ne sera lancé pour cela : le banc en mode complet sur ce sous-bassin coûte 600 s l'époque et répond en trois heures pour les deux bras.
+
+## R186 — Seule la classe de drainage établie au terrain prédit la part souterraine ; ni la classe photo-interprétée, ni les propriétés hydrauliques tabulées (2026-09-23) — ÉTABLI
+
+Suite de R184. La carte hiérarchique de la collègue est reconstruite par `.runs/quebec/croiser_drainage.py` : en chaque cellule de 100 m, la classe de drainage de l'IRDA si elle existe, sinon celle de l'inventaire écoforestier (dizaine du code `cl_drai` plus un, même échelle de 1 à 7), sinon les dépôts du SIGEOM rangés par la clé de perméabilité en cinq classes de la collègue, validée par un géologue du Quaternaire ; moyenne par unité hydrologique puis par tronçon, valeur manquante jamais comblée. Les 31 feuillets écoforestiers au 1:250 000 qui contiennent des nœuds des six territoires ont été téléchargés (7,6 Go), et le SIGEOM du Quaternaire (505 000 polygones). Le banc d'identifiabilité moyenne désormais l'amont en pondérant par la surface couverte, un tronçon sans valeur pesant zéro. Les Pédo-paysages du Canada v3.2 (SISCan, 1:1 000 000) sont croisés par `.runs/quebec/croiser_slc.py` : classe de drainage par sol nommé, et conductivité saturée, rétentions à 33 et 1500 kPa, densité apparente par couche.
+
+Banc : part souterraine observée par station, 2000-2024, prédite par territoire tenu de côté, gain contre le témoin qui prédit la moyenne des autres territoires ; stations dont l'amont est couvert à plus de 50 % par la source, huit stations minimum par territoire.
+
+| covariable | stations | territoires | gain |
+| --- | --- | --- | --- |
+| texture SIIGSOL, 18 attributs, 100 m | 115 | 5 | +42 % |
+| drainage IRDA, 1:20 000, terrain, un attribut | 45 | 3 | +36 % |
+| drainage des Pédo-paysages, 1:1 000 000, terrain, un attribut | 43 | 3 | +28 % |
+| conductivité, rétentions, densité des Pédo-paysages, pédotransfert | 43 | 3 | −4 % |
+| drainage écoforestier, photo-interprété par peuplement | 49 | 3 | +3 % |
+| carte hiérarchique fusionnée, un attribut | 111 | 5 | +1 % |
+| texture et carte fusionnée | 111 | 5 | +37 % |
+
+Ce n'est pas l'échelle qui porte l'information, c'est la méthode d'établissement : la classe de terrain prédit au 1:1 000 000 presque autant qu'au 1:20 000 ; la classe photo-interprétée ne prédit rien, et la carte fusionnée, portée aux deux tiers par elle, non plus. Les propriétés hydrauliques déduites par pédotransfert des mêmes sols ne prédisent rien. Sur le feuillet 22C en Gaspésie, 39 % de la surface écoforestière n'a pas de classe et deux modalités, bon et modéré, font 48 % du reste.
+
+COUVERTURE : l'IRDA et les Pédo-paysages ne couvrent que le sud agricole (Pédo-paysages : 100 % au Saint-Laurent sud-ouest, 74 % en Montérégie, 45 % en Gaspésie, zéro ailleurs). La base nationale des pédons compte 242 profils au Québec, 1943-2006, 108 dans l'emprise du Saint-Laurent nord-ouest et 109 du sud-ouest, à moitié des podzols forestiers, classe de drainage sur 98 et profondeur de nappe sur 102 : la seule vérité de terrain en forêt, ponctuelle.
+
+RÉSERVES. La clé de la collègue ne nomme pas les tills à suffixe (`Tm`, `Tc`), qui font 61 à 67 % de la surface du SIGEOM dans les six territoires ; ils sont rattachés à la famille de `T`, moyennement perméable, dans `SIGEOM_EXTENSION`, à faire valider ; 3 à 7 % restent hors clé, presque tout du roc. Le SIGEOM ne porte aucune station à plus de 50 % de son amont, l'écoforestier passant avant lui. Le dépôt de surface écoforestier au 1:20 000, rangé par la même clé, est en cours de croisement ; s'il prédit là où la classe ne prédit pas, il devient le deuxième étage.
+
+PISTE OUVERTE (question d'Essi) : reconstruire une carte de la classe de drainage de terrain par apprentissage sur l'IRDA, les Pédo-paysages et les pédons, avec pour covariables le dépôt écoforestier, le SIGEOM, la texture SIIGSOL, le relief LiDAR et le socle, jugée par territoire tenu de côté sur la classe elle-même et sur la part souterraine des stations forestières.
