@@ -539,7 +539,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # moitie tenue de cote et evaluee en fin d'entrainement.
     nappe_obs = nappe_idx = None
     puits_garde, nappe_garde = [], None
-    if float(w_nappe) > 0:
+    # Les puits sont extraits des que la moitie tenue de cote doit etre evaluee, y compris
+    # pour le temoin a poids nul : sans cela le temoin n'avait pas de ligne de puits a
+    # comparer (2026-09-23). Seul le terme de perte reste conditionne au poids.
+    if float(w_nappe) > 0 or float(nappe_valid) > 0:
         import pandas as _pdn
         from meandre.data.rsesq_loader import _chemin_defaut, read_rsesq
 
@@ -560,11 +563,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             puits_garde = sorted(_rang[::max(len(_pu) // max(_n_val, 1), 1)][:_n_val]) if _n_val else []
             _entraine = [i for i in range(len(_pu)) if i not in set(puits_garde)]
             _sb_idx = [_pos[int(_cn.node_idx[_dans[i]])] for i in range(len(_pu))]
-            nappe_obs = torch.tensor(_val[:, _entraine], device=dev)
-            nappe_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
+            if float(w_nappe) > 0:
+                nappe_obs = torch.tensor(_val[:, _entraine], device=dev)
+                nappe_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
             nappe_garde = (_val[:, puits_garde], [_sb_idx[i] for i in puits_garde],
                            [_pu[i] for i in puits_garde])
-            print(f"  puits : {len(_pu)} dans le sous-bassin, {len(_entraine)} dans la perte, "
+            print(f"  puits : {len(_pu)} dans le sous-bassin, {len(_entraine)} "
+                  f"{'dans la perte' if float(w_nappe) > 0 else 'hors perte (poids nul)'}, "
                   f"{len(puits_garde)} tenus de cote "
                   f"({', '.join(_pu[i] for i in puits_garde) or 'aucun'})", flush=True)
         else:

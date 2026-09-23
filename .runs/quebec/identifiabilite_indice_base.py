@@ -150,11 +150,39 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
     if not amont:
         return table.reindex([int(n) + 1 for n in noeuds]).fillna(0.0).reset_index(drop=True)
     n_noeuds = int(z["coords"].shape[0])
+    # Une variable qui porte sa couverture (`x` et `couv_x`) est moyennee sur la seule
+    # surface couverte : un troncon sans valeur pese zero, il n'est pas rempli par zero.
+    # Sans cette regle, le comblement injectait un signal par territoire (R184).
+    couples = {}
+    for c in cols:
+        src, nom = c.split("__", 1)
+        cc = f"{src}__couv_{nom}"
+        if not nom.startswith("couv_") and cc in cols:
+            couples[c] = cc
+    aire = None
+    for src in sources:
+        f_src = f"{DERIVES}/{src}-troncons.parquet"
+        if os.path.exists(f_src):
+            t = pd.read_parquet(f_src)
+            t = t[t.region.str.lower() == region.lower()].set_index("troncon")
+            for ca in ("aire_m2", "area_m2"):
+                if ca in t.columns and aire is None:
+                    aire = t[ca]
     lignes = []
     for n in noeuds:
         # Le tronçon est indexé à partir de 1, le nœud à partir de 0.
         bassin = bassin_amont(z["edge_index"], n_noeuds, int(n)) + 1
-        lignes.append(table.reindex(bassin).fillna(0.0).mean())
+        sous = table.reindex(bassin).fillna(0.0)
+        ligne = sous.mean()
+        if couples:
+            a = aire.reindex(bassin).fillna(0.0).to_numpy() if aire is not None else np.ones(len(bassin))
+            for c, cc in couples.items():
+                w = sous[cc].to_numpy() * a
+                v = geo[c].reindex(bassin).to_numpy(dtype=float)
+                ok = np.isfinite(v) & (w > 0)
+                ligne[c] = float((v[ok] * w[ok]).sum() / w[ok].sum()) if w[ok].sum() > 0 else np.nan
+                ligne[cc] = float(w.sum() / a.sum()) if a.sum() > 0 else 0.0
+        lignes.append(ligne)
     return pd.DataFrame(lignes).reset_index(drop=True)
 
 

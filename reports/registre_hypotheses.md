@@ -3407,3 +3407,21 @@ Un seul nombre ordinal par tronçon prédit donc la part souterraine aussi bien 
 DEUX DÉCISIONS. La classe de drainage entre comme covariable du champ spatial pour le plafond de percolation du substratum, dès que la carte fusionnée de la collègue existe, parce que c'est elle qui apporte la couverture des bassins forestiers. Et une valeur manquante se MASQUE, elle ne se comble jamais par une constante : la mesure ci-dessus montre ce que le comblement coûte.
 
 RÉSERVES. Quarante-quatre stations et trois territoires pour le résultat couvert, huit stations en Outaouais au seuil de 80 %. Le Saint-Laurent sud-ouest, le mieux couvert avec 41 jauges, manque au test faute d'un cache par tronçon portant le réseau sur la machine de calcul.
+
+## R185 — Le terme des puits transfère à des puits jamais vus, et le paie en débit sur une année d'entraînement (2026-09-23) — ÉTABLI, à confirmer sur une fenêtre pleine
+
+Question : le terme de perte sur les niveaux du réseau de suivi achète-t-il de l'information sur la nappe qui tienne hors des puits entraînés, ou seulement un ajustement aux puits qu'il voit. Banc de sous-bassin `.runs/quebec/banc_sousbassin.py` sur 030905 en Montérégie, 214 tronçons, cinq puits recevables depuis 2004 : trois dans la perte, deux tenus de côté par un ordre stable (03090001, 03090008) et jamais vus par l'optimiseur. Deux bras, même graine 1234, mode rapide, huit époques à 64 s chacune : un an d'entraînement, un an de validation, seize sous-pas. Le poids demandé de 2,0 est ramené par le plafond de part (15 % de la perte) à 0,09 à 0,20 selon l'époque.
+
+Un défaut du banc a été trouvé et corrigé en chemin : les puits n'étaient extraits que si le poids du terme était positif, si bien que le témoin n'avait jamais de ligne de puits tenus de côté. Le premier lancement, à vingt époques en mode complet à 600 s l'époque, a été coupé sur décision d'Essi au profit du mode rapide.
+
+Corrélation mensuelle entre profondeur simulée et niveau mesuré, période d'évaluation, puits jamais vus :
+
+| bras | 03090001 | 03090008 | KGE débit | r | volumes | variabilité |
+| --- | --- | --- | --- | --- | --- | --- |
+| zéro époque | 0,16 | 0,40 | 0,365 | 0,534 | 1,268 | 0,662 |
+| témoin, poids nul, 8 époques | 0,13 | 0,49 | 0,686 | 0,780 | 1,217 | 0,947 |
+| puits dans la perte, 8 époques | 0,35 | 0,55 | 0,432 | 0,690 | 1,374 | 0,706 |
+
+Le terme transfère : les deux puits jamais vus gagnent 0,22 et 0,06 de corrélation contre le témoin, qui perd même le premier en apprenant le débit seul. C'est de l'information sur la nappe que le débit ne porte pas, et elle tient hors de l'échantillon d'ajustement. Le prix sur cette fenêtre est lourd, 0,25 de KGE, porté par le volume (1,374) et la variabilité (0,706) : l'année d'entraînement du mode rapide ne laisse pas au débit le temps de reprendre ce que les puits déplacent.
+
+CE QUI RESTE À MESURER, sur une fenêtre pleine 2010-2017 et non une année : si le coût en débit se résorbe. À poids plafonné, un terme qui déplace le volume de 16 % en une année dit que la nappe et le débit tirent le même stock dans deux directions ; c'est l'énoncé d'identifiabilité recherché, pas un défaut du terme. Aucun territoire complet ne sera lancé pour cela : le banc en mode complet sur ce sous-bassin coûte 600 s l'époque et répond en trois heures pour les deux bras.
