@@ -379,7 +379,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
               substeps=None, chunk=45, w_et=0.4, w_kge=1.0, w_pbias=0.5, w_mse=0.1,
               w_dq=0.0, w_fdc=0.0, w_dq_log=0.0, quantile=False, charger=None,
-              w_log_mse=0.0, w_peak=0.0):
+              w_log_mse=0.0, w_peak=0.0,
+              w_nappe=0.0, nappe_valid=0.5):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -531,12 +532,54 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # vaut 0.82. J'avais attribue cet ecart au trainer (R75) ; il etait dans ce banc.
     tr_sl = _tranche(debut_train, fin_train)
     va_sl = _tranche(fin_train + 1, fin_val)
+    # PUITS DU SOUS-BASSIN (2026-09-23). La question posee au banc : le terme des puits
+    # achete-t-il de la nappe INDEPENDANTE une fois l'optimiseur converge, ce que huit
+    # epoques regionales ne peuvent pas dire. Les puits du domaine sont restreints aux
+    # nœuds du sous-bassin, puis partages par un ordre stable : la moitie dans la perte, la
+    # moitie tenue de cote et evaluee en fin d'entrainement.
+    nappe_obs = nappe_idx = None
+    puits_garde, nappe_garde = [], None
+    if float(w_nappe) > 0:
+        import pandas as _pdn
+        from meandre.data.rsesq_loader import _chemin_defaut, read_rsesq
+
+        _cn = read_rsesq(reg, temps)
+        _pos = {int(n): i for i, n in enumerate(s["idx"])}
+        _dans = [j for j, n in enumerate(_cn.node_idx) if int(n) in _pos]
+        if _dans:
+            _pu = [str(_cn.puits[j]) for j in _dans]
+            _niv = _pdn.read_parquet(f"{_chemin_defaut()}/rsesq-niveaux-journaliers.parquet",
+                                     columns=["puits", "date", "niveau_m"])
+            _niv = _niv[_niv.puits.isin(_pu)]
+            _tab = (_niv.pivot_table(index="date", columns="puits", values="niveau_m",
+                                     aggfunc="mean")
+                    .reindex(index=_pdn.DatetimeIndex(temps), columns=_pu))
+            _val = _tab.to_numpy(dtype="float32")
+            _rang = sorted(range(len(_pu)), key=lambda i: _pu[i])
+            _n_val = max(1, int(round(float(nappe_valid) * len(_pu)))) if len(_pu) >= 4 else 0
+            puits_garde = sorted(_rang[::max(len(_pu) // max(_n_val, 1), 1)][:_n_val]) if _n_val else []
+            _entraine = [i for i in range(len(_pu)) if i not in set(puits_garde)]
+            _sb_idx = [_pos[int(_cn.node_idx[_dans[i]])] for i in range(len(_pu))]
+            nappe_obs = torch.tensor(_val[:, _entraine], device=dev)
+            nappe_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
+            nappe_garde = (_val[:, puits_garde], [_sb_idx[i] for i in puits_garde],
+                           [_pu[i] for i in puits_garde])
+            print(f"  puits : {len(_pu)} dans le sous-bassin, {len(_entraine)} dans la perte, "
+                  f"{len(puits_garde)} tenus de cote "
+                  f"({', '.join(_pu[i] for i in puits_garde) or 'aucun'})", flush=True)
+        else:
+            print("  puits : aucun puits recevable dans ce sous-bassin, terme inactif", flush=True)
+            w_nappe = 0.0
     td = TrainingData(train_slice=tr_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[tr_sl.start:],
-                         "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None)})
+                         "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None),
+                         "nappe_obs": (nappe_obs[tr_sl.start:] if nappe_obs is not None else None),
+                         "nappe_idx": nappe_idx})
     vd = TrainingData(train_slice=va_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[va_sl.start:],
-                         "et_obs": (et_obs[va_sl.start:] if et_obs is not None else None)})
+                         "et_obs": (et_obs[va_sl.start:] if et_obs is not None else None),
+                         "nappe_obs": (nappe_obs[va_sl.start:] if nappe_obs is not None else None),
+                         "nappe_idx": nappe_idx})
 
     def _evaluer(m, etiquette):
         m.eval()
@@ -560,6 +603,24 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         k, r, b, gm = _kge(q[ev], o[ev])
         print(f"  {etiquette:28s} KGE vs observe {k:6.3f} | r {r:5.3f} | beta {b:5.3f} "
               f"| gamma {gm:5.3f}", flush=True)
+        # PUITS TENUS DE COTE : correlation entre profondeur simulee et niveau mesure, en
+        # moyennes mensuelles, sur toute la periode. Seule preuve que le terme achete de la
+        # nappe et pas seulement du debit perdu.
+        if nappe_garde is not None:
+            _z = getattr(_d, "profondeur_nappe", None)
+            _z = _z if _z is not None else getattr(_d, "s_gw", None)
+            if _z is not None:
+                import pandas as _pde
+                _zs = _z.detach().cpu().numpy()[:, nappe_garde[1]]
+                _ax = _pde.DatetimeIndex(temps)
+                _rs = []
+                for _j in range(_zs.shape[1]):
+                    _o = _pde.Series(nappe_garde[0][:, _j], index=_ax).resample("MS").mean()
+                    _s = _pde.Series(_zs[:, _j], index=_ax).resample("MS").mean()
+                    _ok = _o.notna() & _s.notna()
+                    _rs.append(float(np.corrcoef(-_s[_ok], -_o[_ok])[0, 1]) if int(_ok.sum()) >= 24 else float("nan"))
+                print(f"  {etiquette:28s} puits tenus de cote : " + ", ".join(
+                    f"{nappe_garde[2][j]} r {_rs[j]:5.2f}" for j in range(len(_rs))), flush=True)
         _ligne_forme(etiquette, forme(temps, q, o, ev))
         # Le meme KGE sur la fenetre d'ENTRAINEMENT : a comparer au terme KGE de la
         # perte (1 - KGE), qui semblait deja presque nul a la premiere epoque.
@@ -623,7 +684,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
                             peak_threshold=_pthr if float(w_peak) > 0 else None,
-                            w_et=float(w_et), per_station=True,
+                            w_et=float(w_et), w_nappe=float(w_nappe), per_station=True,
                             # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
                             # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
@@ -744,6 +805,10 @@ def main():
                     help="soutien d'etiage Q20/Q50 (contraint le chemin de l'eau)")
     ap.add_argument("--w-et", type=float, default=0.4,
                     help="poids du terme MOD16 (0 = meme perte sans le terme d ET)")
+    ap.add_argument("--w-nappe", type=float, default=0.0,
+                    help="poids du terme des niveaux de nappe ; part plafonnee par ETL_NAPPE_PART_MAX")
+    ap.add_argument("--nappe-valid", type=float, default=0.5,
+                    help="part des puits tenue de cote pour la validation independante")
     ap.add_argument("--chunk", type=int, default=45,
                     help="longueur des blocs en jours : plus court = plus de pas par epoque")
     ap.add_argument("--rapide", action="store_true",
@@ -774,7 +839,8 @@ def main():
                   fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et,
                   w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc,
                   w_dq_log=a.w_dq_log, quantile=a.quantile, charger=a.charger,
-                  w_log_mse=a.w_log_mse, w_peak=a.w_peak)
+                  w_log_mse=a.w_log_mse, w_peak=a.w_peak,
+                  w_nappe=a.w_nappe, nappe_valid=a.nappe_valid)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
@@ -785,7 +851,8 @@ def main():
                   chunk=a.chunk, w_et=a.w_et, w_kge=a.w_kge, w_pbias=a.w_pbias,
                   w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc, w_dq_log=a.w_dq_log,
                   quantile=a.quantile, charger=a.charger,
-                  w_log_mse=a.w_log_mse, w_peak=a.w_peak)
+                  w_log_mse=a.w_log_mse, w_peak=a.w_peak,
+                  w_nappe=a.w_nappe, nappe_valid=a.nappe_valid)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,
