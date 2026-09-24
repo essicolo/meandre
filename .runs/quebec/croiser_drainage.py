@@ -39,6 +39,10 @@ SORTIE = f"{_paths.DATA_ROOT}/derives/auxiliaires"
 ECOFOR = f"{SOURCES}/ecoforestier"
 SIGEOM = f"{SOURCES}/sigeom-quaternaire/sigeom.gpkg"
 RESOLUTION = float(os.environ.get("DRAINAGE_RESOLUTION_M", "100"))
+# Ordre de preseance des sources, du premier au dernier recours.
+ORDRE = os.environ.get("DRAINAGE_ORDRE", "irda,ecoforestier,sigeom").split(",")
+# Suffixe du parquet de sortie, pour tenir plusieurs ordres cote a cote.
+SUFFIXE = os.environ.get("DRAINAGE_SUFFIXE", "")
 
 # Cle de permeabilite des depots de la collegue d'Essi, validee par un geologue du
 # Quaternaire (2026-09-23), placee sur l'echelle de drainage de 1 a 7 par pas egaux.
@@ -139,7 +143,15 @@ def couche_irda(crs, emprise):
 
 
 def couche_ecoforestier(crs, emprise_4326, feuillets):
+    """Polygones ecoforestiers de l'emprise, avec drainage et depot ranges ; la lecture des
+    feuillets coute jusqu'a trente minutes par territoire, le resultat est mis en cache."""
     import geopandas as gpd
+    cache = Path(f"{ECOFOR}/cache")
+    cache.mkdir(exist_ok=True)
+    cle = "_".join(f"{v:.2f}" for v in emprise_4326)
+    f_cache = cache / f"ecoforestier-{cle}.parquet"
+    if f_cache.exists():
+        return gpd.read_parquet(f_cache).to_crs(crs)
     morceaux = []
     for f in feuillets:
         z = Path(f"{ECOFOR}/feuillets/{f}.zip")
@@ -159,10 +171,13 @@ def couche_ecoforestier(crs, emprise_4326, feuillets):
         pee = gpd.read_file(g, layer=lay, columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(emprise))
         pee["drainage"] = rang_ecoforestier(pee.cl_drai)
         pee["depot"] = rang_depot_ecoforestier(pee.dep_sur)
-        morceaux.append(pee[["drainage", "depot", "geometry"]])
+        morceaux.append(pee[["drainage", "depot", "dep_sur", "geometry"]])
     if not morceaux:
         return None
-    return pd.concat(morceaux, ignore_index=True).set_crs("EPSG:32198").to_crs(crs)
+    eco = gpd.GeoDataFrame(pd.concat(morceaux, ignore_index=True), crs="EPSG:32198")
+    eco["dep_sur"] = eco.dep_sur.astype(str)
+    eco.to_parquet(f_cache)
+    return eco.to_crs(crs)
 
 
 def couche_sigeom(crs, emprise_4326):
@@ -220,7 +235,7 @@ def une_region(reg):
     dans = ids > 0
     print("  couverture brute des unites : " + ", ".join(f"{k} {np.isfinite(v[dans]).mean():.2f}" for k, v in couches.items()), flush=True)
 
-    valeur, source = hierarchiser([couches["irda"], couches["ecoforestier"], couches["sigeom"]])
+    valeur, source = hierarchiser([couches[nom] for nom in ORDRE])
 
     dans = ids > 0
     n_uhrh = np.bincount(ids[dans])
@@ -229,7 +244,7 @@ def une_region(reg):
     fini = np.isfinite(valeur)
     num = np.bincount(ids[dans & fini], weights=valeur[dans & fini], minlength=len(n_uhrh))
     den = somme(fini)
-    par_uhrh = pd.DataFrame({"n": n_uhrh, "num": num, "den": den, "irda": somme(source == 1), "ecoforestier": somme(source == 2), "sigeom": somme(source == 3)})
+    par_uhrh = pd.DataFrame({"n": n_uhrh, "num": num, "den": den, **{nom: somme(source == k) for k, nom in enumerate(ORDRE, start=1)}})
     # Chaque source seule, hors hierarchie, et le depot ecoforestier : pour juger quel etage
     # porte l'information, pas seulement la carte fusionnee.
     seules = dict(couches)
@@ -267,7 +282,7 @@ def une_region(reg):
 def enregistrer(d):
     """Fusionne le territoire dans le parquet des le calcul fini : un arret en cours de
     route ne perd que le territoire en cours, pas les precedents."""
-    f = f"{SORTIE}/drainage-hierarchique-troncons.parquet"
+    f = f"{SORTIE}/drainage-hierarchique{SUFFIXE}-troncons.parquet"
     if os.path.exists(f):
         ancien = pd.read_parquet(f)
         d = pd.concat([ancien[~ancien.region.isin(d.region.unique())], d], ignore_index=True)
