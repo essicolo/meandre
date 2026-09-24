@@ -47,6 +47,7 @@ ws = cache.load_state("2002-12-31", device=device)
 
 from __future__ import annotations
 
+import os
 import pickle
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1614,6 +1615,22 @@ class BasinCache:
         df = con.execute(
             "SELECT * FROM territorial ORDER BY node_idx"
         ).df()
+        # Tables d'attributs supplementaires, opt-in par MEANDRE_TERRITORIAL_EXTRA
+        # (noms separes par des virgules, ex. "territorial_siigsol") : jointes sur
+        # node_idx, valeurs manquantes a zero apres normalisation, donc a la moyenne.
+        # Opt-in parce que le nombre d'attributs fixe la dimension d'entree du champ :
+        # un point de reprise ne se recharge qu'avec les memes tables.
+        for extra in [t for t in os.environ.get("MEANDRE_TERRITORIAL_EXTRA", "").split(",") if t]:
+            tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+            if extra not in tables:
+                raise KeyError(f"table territoriale supplementaire absente de la base : {extra}")
+            ex = con.execute(f"SELECT * FROM {extra} ORDER BY node_idx").df()
+            ex = ex.set_index("node_idx").reindex(df["node_idx"].to_numpy())
+            for c in ex.columns:
+                v = ex[c].to_numpy(dtype=float)
+                m, sd = np.nanmean(v), np.nanstd(v)
+                v = (v - m) / sd if np.isfinite(sd) and sd > 0 else v - m
+                df[f"{extra}__{c}"] = np.nan_to_num(v, nan=0.0)
 
         # Separate feature columns from physical columns
         all_cols = [c for c in df.columns if c != "node_idx"]
