@@ -50,7 +50,8 @@ SIIGSOL = f"{_paths.DATA_ROOT}/sources/siigsol"
 NPDB = f"{_paths.DATA_ROOT}/sources/npdb"
 RESOLUTION = float(os.environ.get("DRAINAGE_RESOLUTION_M", "100"))
 NPDB_DRAINAGE = {"very rapidly drained": 1.0, "rapidly drained": 2.0, "well drained": 3.0, "moderately well drained": 4.0, "imperfectly drained": 5.0, "poorly drained": 6.0, "very poorly drained": 7.0}
-COVARIABLES = ["eco_drainage", "eco_depot", "eco_famille", "eco_mince", "sigeom_rang", "sable", "limon", "argile", "corg"]
+COVARIABLES = ["eco_drainage", "eco_depot", "eco_famille", "eco_mince", "sigeom_rang", "sable", "limon", "argile", "corg", "twi"]
+TWI = f"{_paths.DATA_ROOT}/sources/humidite-lidar"
 
 
 def famille_ecoforestier(codes):
@@ -79,6 +80,71 @@ def raster_siigsol(nom, crs, transform, forme):
     with rasterio.open(f"{SIIGSOL}/{nom}_fr_siigsol.tif") as src:
         reproject(rasterio.band(src, 1), out, dst_transform=transform, dst_crs=crs, src_nodata=src.nodata, dst_nodata=np.nan, resampling=Resampling.bilinear)
     return out
+
+
+def raster_twi(crs, emprise_4326, transform, forme):
+    """Indice d'humidite topographique LiDAR (MFFP, 1 m, 2 321 feuillets), lu a distance a
+    100 m par feuillet puis reprojete sur la grille ; chaque feuillet lu est mis en cache."""
+    import geopandas as gpd
+    import rasterio
+    from concurrent.futures import ThreadPoolExecutor
+    from rasterio.transform import Affine
+    from rasterio.warp import Resampling, reproject
+    from shapely.geometry import box
+    index = gpd.read_file("zip://" + f"{TWI}/index-feuillets-shp.zip" + "!URL_twi.shp")
+    zone = gpd.GeoSeries([box(*emprise_4326)], crs=4326).to_crs(index.crs).iloc[0]
+    feuillets = index[index.intersects(zone)]
+    cache = SORTIE / "cache-twi"
+    cache.mkdir(parents=True, exist_ok=True)
+
+    def un_feuillet(ligne):
+        nom = ligne["feuillet"]
+        f_cache = cache / f"{nom}.npz"
+        if f_cache.exists():
+            z = np.load(f_cache, allow_pickle=True)
+            return z["data"], Affine(*z["transform"]), str(z["crs"])
+        url = "/vsicurl/" + ligne["twi_url"].rstrip("/") + f"/TWI_{nom}.tif"
+        for _ in range(3):
+            try:
+                with rasterio.open(url) as ds:
+                    fac = max(1, int(round(RESOLUTION / ds.res[0])))
+                    fo = (max(1, ds.height // fac), max(1, ds.width // fac))
+                    data = ds.read(1, out_shape=fo, resampling=Resampling.average, masked=True).astype(np.float32).filled(np.nan)
+                    t = ds.transform * Affine.scale(ds.width / fo[1], ds.height / fo[0])
+                    np.savez_compressed(f_cache, data=data, transform=np.array(t[:6]), crs=str(ds.crs))
+                    return data, t, str(ds.crs)
+            except rasterio.errors.RasterioIOError:
+                continue
+        print(f"    TWI {nom} : lecture impossible", flush=True)
+        return None, None, None
+
+    out = np.full(forme, np.nan, dtype=np.float32)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for data, t, c in pool.map(un_feuillet, [r for _, r in feuillets.iterrows()]):
+            if data is None:
+                continue
+            morceau = np.full(forme, np.nan, dtype=np.float32)
+            reproject(data, morceau, src_transform=t, src_crs=c, src_nodata=np.nan, dst_transform=transform, dst_crs=crs, dst_nodata=np.nan, resampling=Resampling.average)
+            prend = np.isfinite(morceau) & ~np.isfinite(out)
+            out[prend] = morceau[prend]
+    print(f"    TWI : {len(feuillets)} feuillets, {np.isfinite(out).mean():.2f} de la grille", flush=True)
+    return out
+
+
+def completer_twi(reg):
+    """Ajoute l'humidite topographique a une grille deja enregistree."""
+    from rasterio.transform import Affine
+    f = SORTIE / f"grille-{reg}.npz"
+    z = dict(np.load(f, allow_pickle=True))
+    t = Affine.from_gdal(*z["transform"])
+    forme = z["ids"].shape
+    import geopandas as gpd
+    from rasterio.transform import array_bounds
+    b = array_bounds(forme[0], forme[1], t)
+    emprise_4326 = tuple(gpd.GeoSeries.from_xy([b[0], b[2]], [b[1], b[3]], crs=str(z["crs"])).to_crs(4326).total_bounds)
+    z["twi"] = raster_twi(str(z["crs"]), emprise_4326, t, forme)
+    np.savez_compressed(f, **z)
+    print(f"{reg}: grille completee", flush=True)
 
 
 def raster_slc(crs, emprise_4326, transform, forme):
@@ -129,20 +195,14 @@ def grille(reg):
     couches = {"ids": ids}
     couches["irda"] = cd.rasteriser(cd.couche_irda(crs, emprise_4326), "drainage", transform, forme)
     couches["slc"] = raster_slc(crs, emprise_4326, transform, forme)
-    eco = cd.couche_ecoforestier(crs, emprise_4326, cd.feuillets_de(emprise_4326))
-    if eco is not None:
-        eco["famille"], eco["mince"] = famille_ecoforestier(eco.dep_sur)
-        couches["eco_drainage"] = cd.rasteriser(eco, "drainage", transform, forme)
-        couches["eco_depot"] = cd.rasteriser(eco, "depot", transform, forme)
-        couches["eco_famille"] = cd.rasteriser(eco, "famille", transform, forme)
-        couches["eco_mince"] = cd.rasteriser(eco, "mince", transform, forme)
-    else:
-        for k in ("eco_drainage", "eco_depot", "eco_famille", "eco_mince"):
-            couches[k] = np.full(forme, np.nan, dtype=np.float32)
+    eco = cd.rasters_ecoforestier(crs, emprise_4326, cd.feuillets_de(emprise_4326), transform, forme, colonnes=("drainage", "depot", "famille", "mince"))
+    for k in ("drainage", "depot", "famille", "mince"):
+        couches[f"eco_{k}"] = eco[k]
     sig = cd.couche_sigeom(crs, emprise_4326)
     couches["sigeom_rang"] = cd.rasteriser(sig, "drainage", transform, forme)
     for nom in ("sable", "limon", "argile", "corg"):
         couches[nom] = raster_siigsol(nom, crs, transform, forme)
+    couches["twi"] = raster_twi(crs, emprise_4326, transform, forme)
     # Pedons : indices de cellule et rang, pour l'epreuve forestiere.
     pe = pedons(crs)
     pe = pe[pe.geometry.within(gpd.GeoSeries([uh.union_all()], crs=crs).iloc[0])]
@@ -273,6 +333,9 @@ if __name__ == "__main__":
     if etape == "grille":
         for r in regs:
             grille(r)
+    elif etape == "twi":
+        for r in regs:
+            completer_twi(r)
     elif etape == "ajuster":
         ajuster(regs)
     elif etape == "troncons":

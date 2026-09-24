@@ -180,6 +180,54 @@ def couche_ecoforestier(crs, emprise_4326, feuillets):
     return eco.to_crs(crs)
 
 
+def rasters_ecoforestier(crs, emprise_4326, feuillets, transform, forme, colonnes=("drainage", "depot")):
+    """Rasters ecoforestiers de l'emprise, construits FEUILLET PAR FEUILLET : un feuillet est lu,
+    rasterise sur la grille du territoire, puis libere. Tenir tous les polygones d'un
+    territoire en memoire coutait 12,6 Go pour 2,6 millions de polygones au Saguenay et
+    montait a 51 Go avec les copies, ce qui a fait planter le poste (2026-09-24). Le
+    resultat est mis en cache par emprise et resolution. `colonnes` nomme des colonnes
+    calculables par polygone : drainage, depot, famille, mince.
+    """
+    import geopandas as gpd
+    cache = Path(f"{ECOFOR}/cache")
+    cache.mkdir(exist_ok=True)
+    cle = "_".join(f"{v:.2f}" for v in emprise_4326) + f"-{RESOLUTION:.0f}m"
+    f_cache = cache / f"rasters-{cle}.npz"
+    if f_cache.exists():
+        z = np.load(f_cache)
+        if all(c in z.files for c in colonnes):
+            return {c: z[c] for c in colonnes}
+    out = {c: np.full(forme, np.nan, dtype=np.float32) for c in colonnes}
+    journal = Path(f"{ECOFOR}/feuillets/telechargement.log")
+    for f in feuillets:
+        z = Path(f"{ECOFOR}/feuillets/{f}.zip")
+        d = Path(f"{ECOFOR}/feuillets/{f}")
+        complet = journal.exists() and f"{f} code 200" in journal.read_text()
+        if not (z.exists() and complet):
+            print(f"    feuillet {f} absent ou incomplet", flush=True)
+            continue
+        if not d.exists():
+            import zipfile
+            zipfile.ZipFile(z).extractall(d)
+        g = next(d.rglob("*.gpkg"))
+        emprise = gpd.GeoSeries.from_xy([emprise_4326[0], emprise_4326[2]], [emprise_4326[1], emprise_4326[3]], crs=4326).to_crs("EPSG:32198").total_bounds + np.array([-5e3, -5e3, 5e3, 5e3])
+        pee = gpd.read_file(g, layer=f"pee_maj_{f.lower()}", columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(emprise)).to_crs(crs)
+        if "drainage" in colonnes:
+            pee["drainage"] = rang_ecoforestier(pee.cl_drai)
+        if "depot" in colonnes:
+            pee["depot"] = rang_depot_ecoforestier(pee.dep_sur)
+        if "famille" in colonnes or "mince" in colonnes:
+            from reconstruire_drainage import famille_ecoforestier
+            pee["famille"], pee["mince"] = famille_ecoforestier(pee.dep_sur)
+        for c in colonnes:
+            r = rasteriser(pee, c, transform, forme)
+            prend = np.isfinite(r) & ~np.isfinite(out[c])
+            out[c][prend] = r[prend]
+        del pee
+    np.savez_compressed(f_cache, **out)
+    return out
+
+
 def couche_sigeom(crs, emprise_4326):
     import geopandas as gpd
     z = gpd.read_file(SIGEOM, layer="F10E15_ZONE_MORPH_SEDIM", columns=["CODE_DEPOT_MORP_SEDM"], engine="pyogrio", bbox=emprise_4326)
@@ -223,9 +271,9 @@ def une_region(reg):
 
     couches = {}
     couches["irda"] = rasteriser(couche_irda(crs, emprise_4326), "drainage", transform, forme)
-    eco = couche_ecoforestier(crs, emprise_4326, feuillets_de(emprise_4326))
-    couches["ecoforestier"] = rasteriser(eco, "drainage", transform, forme) if eco is not None else np.full(forme, np.nan, dtype=np.float32)
-    depot_eco = rasteriser(eco, "depot", transform, forme) if eco is not None else np.full(forme, np.nan, dtype=np.float32)
+    eco = rasters_ecoforestier(crs, emprise_4326, feuillets_de(emprise_4326), transform, forme)
+    couches["ecoforestier"] = eco["drainage"]
+    depot_eco = eco["depot"]
     sig = couche_sigeom(crs, emprise_4326)
     couches["sigeom"] = rasteriser(sig, "drainage", transform, forme)
     for g in SIGEOM_GROUPE:
