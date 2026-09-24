@@ -3464,3 +3464,17 @@ Tentative de carte prédictive (`.runs/quebec/reconstruire_drainage.py`) : cible
 Le modèle apprend le sud agricole et ne transfère rien à la forêt, avec ou sans relief. Chantier fermé. La covariable de drainage du champ spatial reste donc : la classe de terrain là où elle existe (IRDA, Pédo-paysages), les dépôts du SIGEOM avec la clé de la collègue ailleurs, et rien là où ni l'un ni l'autre n'existe.
 
 LEÇON DE MÉTHODE (Essi, 2026-09-24) : l'épreuve décisive, les 412 pédons, se faisait en cinq minutes par extraction ponctuelle des covariables, avant toute grille. Construire six grilles de millions de cellules (plusieurs heures, deux plantages du poste par mémoire) pour arriver à cette réponse est exactement le long test qu'il ne fallait pas faire.
+
+## R188 — Le champ spatial reçoit une texture qui ne prédit rien, et la texture qui prédit n'y entre pas (2026-09-24) — ÉTABLI
+
+Les attributs territoriaux du champ (table `territorial` des bases DuckDB, 21 colonnes) portent la texture de PHYSITEL, `f_sand`, `f_silt`, `f_clay`, tirée des classes de `type_sol.cla`, plus la profondeur au roc et la pente. La texture SIIGSOL à 100 m, ingérée par tronçon en coordonnées ilr sur trois profondeurs avec la matière organique (`siigsol-troncons.parquet`, 18 attributs), n'est utilisée que par le banc d'identifiabilité, jamais par le champ.
+
+Même banc, 115 stations, cinq territoires, gain contre le témoin sur la part souterraine observée :
+
+| covariables | gain |
+| --- | --- |
+| texture PHYSITEL, profondeur au roc, pente (ce que le champ reçoit) | −9 % |
+| texture SIIGSOL, 18 attributs (ce que le champ ne reçoit pas) | +42 % |
+| texture SIIGSOL et carte de drainage de terrain (IRDA, Pédo-paysages, SIGEOM), 69 stations couvertes | +33 %, contre +32 % pour SIIGSOL seule sur les mêmes stations |
+
+Deux conséquences. La carte de drainage de terrain n'ajoute qu'un point à la texture SIIGSOL : elle ne vaut pas une covariable de plus dans le champ. Et le prochain chantier est de remplacer la texture PHYSITEL par la texture SIIGSOL dans la table territoriale, ce qui se juge d'abord en passe avant à poids gelés puis par affinage court à 1e-5, jamais par une flotte.
