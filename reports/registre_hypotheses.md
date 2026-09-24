@@ -3449,3 +3449,18 @@ COUVERTURE : l'IRDA et les Pédo-paysages ne couvrent que le sud agricole (Pédo
 RÉSERVES. La clé de la collègue ne nomme pas les tills à suffixe (`Tm`, `Tc`), qui font 61 à 67 % de la surface du SIGEOM dans les six territoires ; ils sont rattachés à la famille de `T`, moyennement perméable, dans `SIGEOM_EXTENSION`, à faire valider ; 3 à 7 % restent hors clé, presque tout du roc. Le SIGEOM ne porte aucune station à plus de 50 % de son amont, l'écoforestier passant avant lui. Le dépôt de surface écoforestier au 1:20 000, rangé par la même clé, est en cours de croisement ; s'il prédit là où la classe ne prédit pas, il devient le deuxième étage.
 
 PISTE OUVERTE (question d'Essi) : reconstruire une carte de la classe de drainage de terrain par apprentissage sur l'IRDA, les Pédo-paysages et les pédons, avec pour covariables le dépôt écoforestier, le SIGEOM, la texture SIIGSOL, le relief LiDAR et le socle, jugée par territoire tenu de côté sur la classe elle-même et sur la part souterraine des stations forestières.
+
+## R187 — La classe de drainage de terrain ne se reconstruit pas à partir des couches disponibles (2026-09-24) — RÉFUTÉ
+
+Tentative de carte prédictive (`.runs/quebec/reconstruire_drainage.py`) : cible, le rang de drainage de l'IRDA sur 680 000 cellules de 100 m dans cinq territoires ; covariables, dépôt et classe de drainage écoforestiers, groupe de perméabilité du SIGEOM, textures et carbone SIIGSOL, humidité topographique LiDAR lue à distance ; modèle par gradient boosting. Trois épreuves indépendantes de l'ajustement.
+
+| épreuve | résultat |
+| --- | --- |
+| territoire retiré, cellules IRDA, quatre territoires du sud | +13 à +26 % contre le témoin, corrélation 0,36 à 0,45 |
+| territoire retiré, Saguenay | −31 % |
+| Pédo-paysages hors IRDA, 380 574 cellules | corrélation 0,26, aucun gain |
+| 412 pédons forestiers de la base nationale | corrélation de rang 0,06 |
+
+Le modèle apprend le sud agricole et ne transfère rien à la forêt, avec ou sans relief. Chantier fermé. La covariable de drainage du champ spatial reste donc : la classe de terrain là où elle existe (IRDA, Pédo-paysages), les dépôts du SIGEOM avec la clé de la collègue ailleurs, et rien là où ni l'un ni l'autre n'existe.
+
+LEÇON DE MÉTHODE (Essi, 2026-09-24) : l'épreuve décisive, les 412 pédons, se faisait en cinq minutes par extraction ponctuelle des covariables, avant toute grille. Construire six grilles de millions de cellules (plusieurs heures, deux plantages du poste par mémoire) pour arriver à cette réponse est exactement le long test qu'il ne fallait pas faire.

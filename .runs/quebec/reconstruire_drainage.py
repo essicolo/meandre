@@ -271,12 +271,14 @@ def ajuster(regions):
         f = SORTIE / f"grille-{reg}.npz"
         if not f.exists():
             continue
+        # Chaque acces a une cle d'un npz decompresse la grille entiere : on charge une fois.
         z = np.load(f, allow_pickle=True)
-        for i in range(len(z["pedon_rang"])):
-            li, co = int(z["pedon_lig"][i]), int(z["pedon_col"][i])
-            if not (0 <= li < z["ids"].shape[0] and 0 <= co < z["ids"].shape[1]):
+        g = {k: z[k] for k in ["ids", "irda", "pedon_rang", "pedon_lig", "pedon_col"] + COVARIABLES}
+        for i in range(len(g["pedon_rang"])):
+            li, co = int(g["pedon_lig"][i]), int(g["pedon_col"][i])
+            if not (0 <= li < g["ids"].shape[0] and 0 <= co < g["ids"].shape[1]):
                 continue
-            lignes.append({"region": reg, "rang": float(z["pedon_rang"][i]), "irda": float(z["irda"][li, co]), **{k: float(z[k][li, co]) for k in COVARIABLES}})
+            lignes.append({"region": reg, "rang": float(g["pedon_rang"][i]), "irda": float(g["irda"][li, co]), **{k: float(g[k][li, co]) for k in COVARIABLES}})
     pe = pd.DataFrame(lignes)
     if len(pe):
         pred = m.predict(pe[COVARIABLES].to_numpy(dtype=float))
