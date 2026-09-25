@@ -3478,3 +3478,16 @@ Même banc, 115 stations, cinq territoires, gain contre le témoin sur la part s
 | texture SIIGSOL et carte de drainage de terrain (IRDA, Pédo-paysages, SIGEOM), 69 stations couvertes | +33 %, contre +32 % pour SIIGSOL seule sur les mêmes stations |
 
 Deux conséquences. La carte de drainage de terrain n'ajoute qu'un point à la texture SIIGSOL : elle ne vaut pas une covariable de plus dans le champ. Et le prochain chantier est de remplacer la texture PHYSITEL par la texture SIIGSOL dans la table territoriale, ce qui se juge d'abord en passe avant à poids gelés puis par affinage court à 1e-5, jamais par une flotte.
+
+## R189 — Les dix-huit attributs SIIGSOL donnés au champ font diverger l'apprentissage une graine sur deux (2026-09-25) — ÉTABLI, épreuve à trois attributs en cours
+
+Suite de R188. Banc de sous-bassin 030905 en Montérégie, mode rapide, huit époques, socle, deux graines par bras. Témoin : les attributs territoriaux actuels (texture PHYSITEL, profondeur au roc, pente). Bras SIIGSOL : les mêmes plus la table `territorial_siigsol`, dix-huit attributs centrés-réduits, nœud sans donnée à la moyenne (38 % des nœuds en Montérégie, la moitié américaine du bassin), par `MEANDRE_TERRITORIAL_EXTRA`.
+
+| bras | graine 1234 | graine 4321 | écart entre graines |
+| --- | --- | --- | --- |
+| témoin, KGE période d'évaluation | 0,686 | 0,676 | 0,010 |
+| SIIGSOL dix-huit attributs | 0,587 | 0,187 | 0,400 |
+
+À la graine 4321 le bras SIIGSOL s'effondre : volumes 1,43, variabilité 0,56, évapotranspiration à −45 % de MOD16, 10 % de jours plats en été contre 4 % observés. Jugé sur la reproductibilité, critère d'Essi pour toute donnée auxiliaire, l'ajout tel quel est réfuté : il multiplie la dispersion par quarante. L'information est là (+42 % au banc de la part souterraine), mais dix-huit entrées colinéaires, dont trois profondeurs de la même texture, et un tiers de nœuds à la moyenne, donnent au champ de quoi diverger sur un an d'entraînement.
+
+Épreuve suivante lancée aussitôt : trois attributs seulement (deux coordonnées ilr et matière organique, moyennées sur les profondeurs), table `territorial_siigsol3`, mêmes graines.
