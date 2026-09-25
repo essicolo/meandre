@@ -3557,3 +3557,17 @@ Même banc que R184 à R191 : part souterraine observée par station, 2000-2024,
 | attributs du champ et SIIGSOL | 113 | 5 | +36 % |
 
 R188 disait vrai de la texture que reçoit le champ, pas de l'ensemble de ses attributs : les dix-huit portent +28 %, par l'altitude, l'occupation du sol, les milieux humides et la fraction lacustre plus que par le sol. Ajouter SIIGSOL à cet ensemble donne +36 %, soit huit points de mieux, moins que SIIGSOL seul (+44 %) parce que vingt-six attributs sur cent treize stations diluent l'ajustement. Le gain attendu de SIIGSOL dans le champ est donc de cet ordre, non de 42 points.
+
+## R194 — La position seule prédit la part souterraine d'un territoire tenu de côté mieux que tous les attributs du champ (2026-09-25) — ÉTABLI
+
+Question d'Essi : à quoi sert la position si elle ne fait que nuire à la généralisation. Même banc que R193, cinq territoires, territoire entier tenu de côté ; `position` est la longitude et la latitude du tronçon, moyennées sur le bassin amont.
+
+| covariables | gain contre le témoin |
+| --- | --- |
+| position seule, deux attributs | +39 % |
+| attributs du champ, dix-huit | +28 % |
+| attributs du champ et position | +30 % |
+| texture SIIGSOL | +44 % |
+| texture SIIGSOL et position | +48 % |
+
+Sur la part souterraine, la position ne nuit pas au transfert entre territoires : elle y porte plus que les dix-huit attributs du champ, et ajoute quatre points à SIIGSOL. Elle agit comme mandataire d'un gradient provincial que les attributs décrivent mal, le Bouclier au nord contre les basses terres du Saint-Laurent, climat et géologie mêlés. Deux réserves : cinq territoires seulement, donc l'extrapolation vers un territoire nouveau loin de tous les autres n'est pas éprouvée ; et c'est une statistique de débit, pas le champ spatial lui-même.

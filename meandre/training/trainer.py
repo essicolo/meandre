@@ -404,6 +404,14 @@ class Trainer:
             #     without a boost it stays stuck near zero → uniform params).
             padded = getattr(model, "_padded_layers", set())
             mult = self.config.lr_new_features_mult
+            # MEANDRE_LR_MULT_TETES : multiplicateur commun des tetes a taux accru (sortie du
+            # champ, 10 par defaut ; tete de lac, lake_lr_mult, 50 par defaut). Ces
+            # multiplicateurs ont ete regles pour UN pas d'Adam par epoque (registre,
+            # 2026-09-04) ; avec un pas par bloc, ils sont appliques huit a soixante-cinq
+            # fois par epoque. Opt-in, pour mesurer leur part dans l'instabilite du banc.
+            _mt = os.environ.get("MEANDRE_LR_MULT_TETES")
+            fc_out_mult = float(_mt) if _mt else 10.0
+            lake_mult = float(_mt) if _mt else self.config.lake_lr_mult
 
             fc_out_params: list[torch.nn.Parameter] = []
             new_params: list[torch.nn.Parameter] = []
@@ -431,11 +439,11 @@ class Trainer:
                 )
             if fc_out_params:
                 groups.append({"params": fc_out_params,
-                               "lr": self.config.lr * 10.0,
+                               "lr": self.config.lr * fc_out_mult,
                                "weight_decay": 0.0})
                 logger.info(
-                    "Discriminative LR: fc_out.weight=%.1e (10×), wd=0 — NeRF anti-collapse",
-                    self.config.lr * 10.0,
+                    "Discriminative LR: fc_out.weight=%.1e (%.0f×), wd=0 — NeRF anti-collapse",
+                    self.config.lr * fc_out_mult, fc_out_mult,
                 )
             # Noise head learns at 10× base LR — sigma needs to adapt fast
             # while spatial_encoder learns slowly from the combined KGE+NLL signal.
@@ -467,11 +475,10 @@ class Trainer:
                 _lk_ids = set(id(p) for p in lake_params)
                 base_params[:] = [p for p in base_params if id(p) not in _lk_ids]
                 groups.append({"params": lake_params,
-                               "lr": self.config.lr * self.config.lake_lr_mult,
+                               "lr": self.config.lr * lake_mult,
                                "weight_decay": 0.0})
                 logger.info("Discriminative LR: fc_lake=%.1e (%.0f×), wd=0",
-                            self.config.lr * self.config.lake_lr_mult,
-                            self.config.lake_lr_mult)
+                            self.config.lr * lake_mult, lake_mult)
             # Codes latents (effet aléatoire spatial) : LR élevé pour escaper la
             # domination du NeRF partagé au cold-start (auto-décodeur). wd=0 :
             # le shrinkage est déjà géré par w_latent_reg.
