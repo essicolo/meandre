@@ -3536,3 +3536,24 @@ Bilan net moyen 2001-2024, m³/s, positif pour de l'eau ajoutée au milieu :
 La Montérégie passe d'un apport net de 9 m³/s à un retrait net de 3 m³/s tous compartiments confondus. Tout modèle entraîné avant cette date l'a été sur l'ancienne table ; les points de reprise ne portent pas les prélèvements, mais leurs paramètres ont pu en absorber l'effet.
 
 Effet mesuré en passe avant à poids gelés (socle, Montérégie, 23 stations, 2022-2024, `MEANDRE_WITHDRAWALS_TABLE` pour lire l'ancienne table) : KGE médian 0,4430 avec l'ancienne table contre 0,4433 avec la nouvelle. Station par station, écart médian 0,2 % sur le débit moyen et 0,8 % sur l'étiage d'été (minimum annuel des moyennes glissantes de sept jours, juin à octobre) ; trois stations dépassent 5 % sur l'étiage, 030340 (−10,6 %), 030314 (−7,3 %), 030920 (−6,1 %). Le changement de +9 à −3 m³/s porte surtout sur l'axe principal (MONT00002, l'émissaire de la rive sud), qu'aucune jauge de tributaire ne voit. Les conclusions établies sur le KGE avant cette date tiennent ; celles sur l'étiage de ces trois stations sont à revoir. Le banc de sous-bassin, lui, tourne SANS prélèvements (`WithdrawalData` à zéro dans `banc_sousbassin.py`), quelle que soit la table.
+
+## R193 — Tri de toutes les covariables par gradient boosting : l'ensemble des attributs du champ porte +28 %, SIIGSOL y ajoute huit points (2026-09-25) — ÉTABLI, nuance R188
+
+Même banc que R184 à R191 : part souterraine observée par station, 2000-2024, prédite par territoire tenu de côté par gradient boosting, gain contre le témoin qui prédit la moyenne des autres territoires ; stations dont l'amont est couvert à plus de 50 % par la source, huit stations minimum par territoire. `champ-attributs` est la table territoriale complète que le champ reçoit (dix-huit attributs : superficie, ordre de Strahler, pente, altitude, exposition, occupation du sol en cinq classes, texture PHYSITEL, profondeur au roc, distance à l'exutoire, fraction lacustre).
+
+| covariables | stations | territoires | gain |
+| --- | --- | --- | --- |
+| texture SIIGSOL | 113 | 5 | +44 % |
+| drainage IRDA | 44 | 3 | +30 % |
+| attributs du champ, les dix-huit | 115 | 5 | +28 % |
+| drainage des Pédo-paysages | 43 | 3 | +28 % |
+| humidité topographique LiDAR | 114 | 5 | +26 % |
+| dépôts SIGEOM, clé de la collègue | 56 | 4 | +17 % |
+| dépôt écoforestier | 95 | 5 | +1 % |
+| propriétés hydrauliques des Pédo-paysages | 43 | 3 | −4 % |
+| texture PHYSITEL, roc et pente seuls | 115 | 5 | −9 % |
+| drainage écoforestier | 95 | 5 | −16 % |
+| texture SoilGrids | 83 | 4 | −17 % |
+| attributs du champ et SIIGSOL | 113 | 5 | +36 % |
+
+R188 disait vrai de la texture que reçoit le champ, pas de l'ensemble de ses attributs : les dix-huit portent +28 %, par l'altitude, l'occupation du sol, les milieux humides et la fraction lacustre plus que par le sol. Ajouter SIIGSOL à cet ensemble donne +36 %, soit huit points de mieux, moins que SIIGSOL seul (+44 %) parce que vingt-six attributs sur cent treize stations diluent l'ajustement. Le gain attendu de SIIGSOL dans le champ est donc de cet ordre, non de 42 points.

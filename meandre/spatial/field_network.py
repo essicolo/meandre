@@ -301,8 +301,12 @@ class SpatialFieldNetwork(nn.Module):
                 self.fc_lake_static = nn.Parameter(torch.zeros(2))
         else:
             # NeRF mode: MLP mapping coordinates to parameters
-            self.coord_enc = FourierPositionalEncoding(n_freqs=n_coord_freqs, include_input=True)
-            coord_dim = self.coord_enc.out_dim(2)  # encoded (lon, lat)
+            # n_coord_freqs < 0 : AUCUNE position, ni brute ni encodee. Le champ devient un
+            # perceptron sur les seuls attributs, comme chez Song et coauteurs (2024) ; sert
+            # a mesurer ce que la position apporte et ce qu'elle coute en reproductibilite.
+            self.use_position = n_coord_freqs >= 0
+            self.coord_enc = FourierPositionalEncoding(n_freqs=max(n_coord_freqs, 0), include_input=True)
+            coord_dim = self.coord_enc.out_dim(2) if self.use_position else 0
             # Les codes ne grossissent l'entrée du tronc qu'en mode "input".
             _latent_in = self.latent_dim if (self.use_latent_codes and self.latent_mode == "input") else 0
             in_dim = coord_dim + n_territorial + _latent_in
@@ -641,8 +645,9 @@ class SpatialFieldNetwork(nn.Module):
 
     def _trunk(self, coords: Tensor, territorial: Tensor) -> Tensor:
         """Tronc NeRF partagé (fc1 → skip → fc2) → features cachées h."""
-        enc = self.coord_enc(self._project_coords(coords))  # (n_nodes, coord_dim)
-        feats = [enc, territorial]
+        feats = [territorial]
+        if getattr(self, "use_position", True):
+            feats.insert(0, self.coord_enc(self._project_coords(coords)))  # (n_nodes, coord_dim)
         if self.use_latent_codes and self.latent_mode == "input":
             # z_n aligné sur l'ordre des nœuds (coords couvre tous les nœuds).
             feats.append(self.latent_codes)

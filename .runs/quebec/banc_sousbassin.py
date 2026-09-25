@@ -485,10 +485,17 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                physical={k: v.to(dev) for k, v in terr.physical.items()})
     coords = s["node_coords"].to(dev)
 
+    # Forme du champ spatial, pour l'epreuve NeRF contre perceptron (2026-09-25) :
+    # MEANDRE_CHAMP_FREQS, bandes de Fourier sur la position, -1 pour AUCUNE position ;
+    # MEANDRE_CHAMP_MODE, "nerf" ou "static" (un seul jeu de parametres pour tout le domaine).
+    _freqs = int(os.environ.get("MEANDRE_CHAMP_FREQS", "6"))
+    _mode = os.environ.get("MEANDRE_CHAMP_MODE", "nerf")
+    print(f"  champ spatial : mode {_mode}, {'aucune position' if _freqs < 0 else f'{_freqs} bandes de Fourier'}", flush=True)
+
     def _construire():
         m = HydroModel(n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
                        use_temporal=False, use_residual=False, use_travel_time_attn=False,
-                       use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
+                       use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode=_mode, n_coord_freqs=_freqs,
                        column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
                        use_latent_codes=False, spatial_melt=True,
                        routing_mode="operator-lagged", predict_lake_params=True,
