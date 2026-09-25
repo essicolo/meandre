@@ -3503,3 +3503,17 @@ Quatre graines par bras au lieu de deux, sous-bassin 030905, mode rapide, huit �
 | SIIGSOL, dix-huit attributs | 0,587 | 0,187 | | | 0,400 |
 
 Le témoin lui-même s'étale sur 0,28 de KGE entre graines : la stabilité lue sur deux graines dans R189 (0,010) était un hasard. Le banc rapide à 5e-4 depuis le socle est bistable exactement comme l'affinage régional à 5e-4 l'était (pilote, 2026-09-20), et R189 ne dit rien de plus que cela. La question de la texture SIIGSOL comme attribut du champ reste OUVERTE, et aucune réponse ne sortira de ce banc tant que sa dispersion entre graines n'est pas ramenée sous l'effet attendu : taux plus bas, plus d'époques, ou plusieurs graines par bras avec un test sur les distributions. C'est la règle du 2026-09-20 étendue au démarrage à froid.
+
+## R191 — La texture SoilGrids, produit mondial prédit au 250 m, ne prédit pas la part souterraine ; la texture SIIGSOL, produit québécois prédit au 100 m, la prédit (2026-09-25) — ÉTABLI
+
+Motif : Song et coauteurs (2024, δHBV2.0 sur le territoire américain) donnent à leur réseau les textures HWSD et SoilGrids, plus HiHydroSoil qui est SoilGrids passé par des fonctions de pédotransfert, sans tester aucune source séparément. `.runs/quebec/croiser_soilgrids.py` lit les VRT d'ISRIC à distance, les reprojette sur les grilles de 100 m, et rend par tronçon les deux coordonnées ilr de la composition sable-limon-argile sur trois profondeurs, la même échelle que SIIGSOL. Couverture 87 à 93 % des cellules, partie américaine comprise.
+
+Banc de la part souterraine observée, 83 stations, quatre territoires (Montérégie, Gaspésie, Outaouais, Saguenay), gain contre le témoin :
+
+| covariables | gain |
+| --- | --- |
+| texture SoilGrids, six attributs | −17 % |
+| texture SIIGSOL, dix-huit attributs | +48 % |
+| les deux ensemble | +47 % |
+
+SoilGrids est pire que la moyenne des autres territoires, et n'ajoute rien à SIIGSOL. Deux produits prédits par apprentissage sur des pédons, à la même échelle de composition, l'un porte l'information et l'autre non : la différence est la densité et la nature des pédons d'apprentissage (SIIGSOL sur les inventaires forestiers et agricoles du Québec, SoilGrids sur la base mondiale WoSIS où le Québec est clairsemé), et les covariables régionales. La leçon rejoint R186 (Pédo-paysages tabulées par pédotransfert −4 %) et l'expérience d'Essi sur les fonctions de pédotransfert : pour le Québec, les produits mondiaux de sol, HWSD, SoilGrids, HiHydroSoil, ne valent rien comme covariable, et un modèle qui les reçoit apprend la géographie du débit malgré eux, non grâce à eux.
