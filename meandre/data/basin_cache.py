@@ -726,6 +726,10 @@ class BasinCache:
 
         Returns ``WithdrawalData.zeros()`` if the table does not exist.
         """
+        # Table lue : `withdrawals` par defaut ; MEANDRE_WITHDRAWALS_TABLE en nomme une
+        # autre, par exemple la sauvegarde `withdrawals_avant_20260925`, pour comparer deux
+        # reconstructions des prelevements a poids geles.
+        _table = os.environ.get("MEANDRE_WITHDRAWALS_TABLE", "withdrawals")
         import duckdb
 
         con = duckdb.connect(str(self.path), read_only=True)
@@ -735,7 +739,7 @@ class BasinCache:
                 "SELECT value FROM metadata WHERE key = 'n_nodes'"
             ).fetchone()[0])
 
-            if "withdrawals" not in tables:
+            if _table not in tables:
                 con.close()
                 import pandas as pd
                 dates = pd.date_range(date_start, date_end, freq="D")
@@ -743,7 +747,7 @@ class BasinCache:
 
             # Detect schema version (legacy vs split)
             col_names = [r[1] for r in con.execute(
-                "PRAGMA table_info('withdrawals')"
+                f"PRAGMA table_info('{_table}')"
             ).fetchall()]
             has_split = "net_surface" in col_names and "net_gw" in col_names
 
@@ -755,7 +759,7 @@ class BasinCache:
             if has_split:
                 df = con.execute(
                     "SELECT date, node_idx, net_surface, net_gw "
-                    "FROM withdrawals "
+                    f"FROM {_table} "
                     "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
                     "ORDER BY date, node_idx",
                     [date_start, date_end],
@@ -765,7 +769,7 @@ class BasinCache:
                 df = con.execute(
                     "SELECT date, node_idx, net_withdrawal AS net_surface, "
                     "CAST(0.0 AS FLOAT) AS net_gw "
-                    "FROM withdrawals "
+                    f"FROM {_table} "
                     "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
                     "ORDER BY date, node_idx",
                     [date_start, date_end],
