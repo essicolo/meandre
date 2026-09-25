@@ -3517,3 +3517,20 @@ Banc de la part souterraine observée, 83 stations, quatre territoires (Montér�
 | les deux ensemble | +47 % |
 
 SoilGrids est pire que la moyenne des autres territoires, et n'ajoute rien à SIIGSOL. Deux produits prédits par apprentissage sur des pédons, à la même échelle de composition, l'un porte l'information et l'autre non : la différence est la densité et la nature des pédons d'apprentissage (SIIGSOL sur les inventaires forestiers et agricoles du Québec, SoilGrids sur la base mondiale WoSIS où le Québec est clairsemé), et les covariables régionales. La leçon rejoint R186 (Pédo-paysages tabulées par pédotransfert −4 %) et l'expérience d'Essi sur les fonctions de pédotransfert : pour le Québec, les produits mondiaux de sol, HWSD, SoilGrids, HiHydroSoil, ne valent rien comme covariable, et un modèle qui les reçoit apprend la géographie du débit malgré eux, non grâce à eux.
+
+## R192 — Prélèvements et rejets réingérés depuis la reconstruction corrigée d'io-eau : le bilan net de surface change de signe dans quatre territoires (2026-09-25) — ÉTABLI
+
+`io-eau-meandre.parquet` du 2026-09-25 (13 h 24), après les corrections d'Essi : 951 437 lignes, 3 721 sites, mensuel de 2001 à 2024 (une première version du même jour portait 2025 et 2026 sans aucun prélèvement ni restitution, retirée). Réingéré par `.runs/quebec/ingest_withdrawals.py toutes` sur les quinze bases du poste et les neuf bases présentes sur Ubuntu, appariement exact par tronçon, aucune ligne perdue ; l'ancienne table est conservée dans chaque base sous `withdrawals_avant_20260925`.
+
+Bilan net moyen 2001-2024, m³/s, positif pour de l'eau ajoutée au milieu :
+
+| territoire | surface avant | surface après | souterrain avant | souterrain après |
+| --- | --- | --- | --- | --- |
+| Montérégie | +9,18 | −1,09 | −0,21 | −2,04 |
+| Saint-Laurent sud-ouest | +1,91 | −0,02 | −1,32 | −1,93 |
+| Saint-Laurent nord-ouest | +1,80 | −0,34 | −1,53 | −1,85 |
+| Outaouais | −0,25 | −1,90 | −0,99 | −0,92 |
+| Gaspésie | +1,66 | +0,55 | −1,04 | −1,00 |
+| Saguenay | −0,24 | −0,27 | −0,58 | −0,59 |
+
+La Montérégie passe d'un apport net de 9 m³/s à un retrait net de 3 m³/s tous compartiments confondus. Tout modèle entraîné avant cette date l'a été sur l'ancienne table ; les points de reprise ne portent pas les prélèvements, mais leurs paramètres ont pu en absorber l'effet.
