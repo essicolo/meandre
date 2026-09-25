@@ -3571,3 +3571,20 @@ Question d'Essi : à quoi sert la position si elle ne fait que nuire à la gén�
 | texture SIIGSOL et position | +48 % |
 
 Sur la part souterraine, la position ne nuit pas au transfert entre territoires : elle y porte plus que les dix-huit attributs du champ, et ajoute quatre points à SIIGSOL. Elle agit comme mandataire d'un gradient provincial que les attributs décrivent mal, le Bouclier au nord contre les basses terres du Saint-Laurent, climat et géologie mêlés. Deux réserves : cinq territoires seulement, donc l'extrapolation vers un territoire nouveau loin de tous les autres n'est pas éprouvée ; et c'est une statistique de débit, pas le champ spatial lui-même.
+
+## R195 — L'instabilité du banc rapide vient des têtes à taux multiplié, pas de la position ni du taux commun (2026-09-25) — ÉTABLI SUR DEUX GRAINES, épreuve à seize époques en cours
+
+Suite de R190. Banc rapide, sous-bassin 030905, huit époques, taux 5e-4 ; « validation » désigne le KGE de l'année 2013, qui sert aussi d'évaluation en mode rapide (le meilleur point de reprise est donc choisi sur l'année où il est noté, ce qui avantage les graines chanceuses ; tous les chiffres du banc rapide de ce registre portent ce biais).
+
+Trois constats de la journée, dans l'ordre :
+
+1. Ni la position ni l'encodage n'expliquent la dispersion : le perceptron sans position s'étale sur 0,395 entre quatre graines, le NeRF sur 0,280 ; le champ uniforme, 43 valeurs pour tout le sous-bassin, n'apprend rien.
+2. La perte d'entraînement imprimée par époque n'est pas une mesure d'apprentissage : elle suit la même suite 1,51, 1,70, 1,72, 1,56 au taux 3e-5, où les paramètres ne bougent presque pas, qu'au taux 5e-4 ; elle est dominée par le découpage aléatoire des blocs, tiré avec la graine. L'amorçage de l'historique ne répare rien (0,283 et 0,234).
+3. Les têtes à taux multiplié, sortie du champ ×10 et tête de lac ×50, réglées pour un pas d'Adam par époque et appliquées à chaque bloc, portent la volatilité. Ramenées au taux commun (`MEANDRE_LR_MULT_TETES=1`), la validation monte à CHAQUE époque, sans à-coup, pour les deux graines les plus écartées :
+
+| graine | défaut, têtes ×10 et ×50 | têtes au taux commun | trajectoire de validation au taux commun |
+| --- | --- | --- | --- |
+| 1234 | 0,686 | 0,436 | 0,351 à 0,480, huit hausses |
+| 777 | 0,406 | 0,511 | 0,346 à 0,593, sept hausses |
+
+L'écart entre les deux graines passe de 0,280 à 0,075, et les deux apprennent encore à la huitième époque. Épreuve suivante : quatre graines, seize époques, pour voir si elles convergent vers la même valeur.
