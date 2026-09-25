@@ -3491,3 +3491,15 @@ Suite de R188. Banc de sous-bassin 030905 en Montérégie, mode rapide, huit ép
 À la graine 4321 le bras SIIGSOL s'effondre : volumes 1,43, variabilité 0,56, évapotranspiration à −45 % de MOD16, 10 % de jours plats en été contre 4 % observés. Jugé sur la reproductibilité, critère d'Essi pour toute donnée auxiliaire, l'ajout tel quel est réfuté : il multiplie la dispersion par quarante. L'information est là (+42 % au banc de la part souterraine), mais dix-huit entrées colinéaires, dont trois profondeurs de la même texture, et un tiers de nœuds à la moyenne, donnent au champ de quoi diverger sur un an d'entraînement.
 
 Épreuve suivante lancée aussitôt : trois attributs seulement (deux coordonnées ilr et matière organique, moyennées sur les profondeurs), table `territorial_siigsol3`, mêmes graines.
+
+## R190 — Le banc rapide est bistable par lui-même : il ne peut pas juger une covariable (2026-09-25) — ÉTABLI, corrige R189
+
+Quatre graines par bras au lieu de deux, sous-bassin 030905, mode rapide, huit époques, taux d'apprentissage par défaut du banc 5e-4, KGE sur la période d'évaluation :
+
+| bras | 1234 | 4321 | 777 | 2468 | étendue |
+| --- | --- | --- | --- | --- | --- |
+| témoin, attributs actuels | 0,686 | 0,676 | 0,406 | 0,505 | 0,280 |
+| SIIGSOL, trois attributs | 0,725 | 0,310 | 0,412 | 0,284 | 0,441 |
+| SIIGSOL, dix-huit attributs | 0,587 | 0,187 | | | 0,400 |
+
+Le témoin lui-même s'étale sur 0,28 de KGE entre graines : la stabilité lue sur deux graines dans R189 (0,010) était un hasard. Le banc rapide à 5e-4 depuis le socle est bistable exactement comme l'affinage régional à 5e-4 l'était (pilote, 2026-09-20), et R189 ne dit rien de plus que cela. La question de la texture SIIGSOL comme attribut du champ reste OUVERTE, et aucune réponse ne sortira de ce banc tant que sa dispersion entre graines n'est pas ramenée sous l'effet attendu : taux plus bas, plus d'époques, ou plusieurs graines par bras avec un test sur les distributions. C'est la règle du 2026-09-20 étendue au démarrage à froid.
