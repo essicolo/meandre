@@ -3605,3 +3605,21 @@ Les trajectoires sont régulières et se stabilisent, mais sur quatre plateaux d
 Ce qui sépare le minimum bas des autres, lu dans les cartes de paramètres (`.runs/quebec/comparer_graines.py`, sans simulation) : routage plus lent (constante de Muskingum moyenne 27,2 h contre 21,8 à 25,0 h), conductivité de surface plus forte (0,48 contre 0,38 à 0,55), et un hydrogramme aplati, rapport des variabilités 0,63 en validation contre 0,72 à 0,92. C'est le minimum PLAT déjà décrit (R150 : la perte paie l'aplatissement). Les seuils de fonte du champ varient le plus entre graines mais sont MORTS dans ce banc, la fonte y étant ancrée sur le calage ; leur variation ne fait que suivre la dérive commune du tronc du réseau. Quatre graines ne permettent pas de corrélation fiable au-delà de ce constat qualitatif.
 
 Deux faits de configuration relevés en chemin : la ronde du 30 septembre pose `MEANDRE_PAS_PAR_BLOC = 1` avec les têtes à ×10 et ×50, donc au taux de la ronde (1e-5) la tête de lac apprend à 5e-4 à chaque bloc ; et le banc rapide choisit son meilleur point de reprise sur l'année même où il le note.
+
+## R197 — Le gradient explose à travers l'humidité du sol : la colonne ne peut pas être entraînée telle quelle (2026-09-26) — ÉTABLI, cause précise à confirmer
+
+Sonde sans entraînement (`MEANDRE_SONDE_GRADIENT=1` dans `banc_sousbassin.py`), sous-bassin 030905, mode rapide à 16 sous-pas, graine 1234. On simule la mise en régime sans gradient, puis l'année 2012 en poursuivant l'état comme le trainer, et on dérive le KGE de 2012 par rapport à un multiplicateur unité posé sur chacun des 43 champs du réseau spatial. Une dérivée par rapport à une variation relative de 1 d'un champ devrait valoir de l'ordre de 0,01 à 1.
+
+| horizon de rétropropagation | dérivée pour la conductivité de surface K_sat_1 | pour le routage K_musk |
+| --- | --- | --- |
+| 30 jours | 4,5e6 | |
+| 90 jours | 2,1e20 | 0,27 |
+| 365 jours | 1,1e24 | 0,31 |
+
+La croissance est exponentielle, environ un facteur 1,7 par jour ; à 64 sous-pas elle est plus rapide et rend des valeurs non définies passé 180 jours. Seuls douze des 43 champs reçoivent un gradient dans cette configuration, les autres étant imposés par le calage ou inutilisés. Les champs touchés sont ceux qui agissent sur l'eau du sol : K_sat_1, K_sat_2, K_c (évapotranspiration), C_f (fonte).
+
+LOCALISATION. En détachant chaque jour une partie de l'état : détacher l'humidité des trois couches rend un gradient sain (K_musk 0,27, C_f 0,21, x_musk −0,09) sans changer la simulation ; détacher la neige, le gel ou le milieu humide ne change rien. Détacher le sous-pas de Courant ne change rien non plus, et détacher la cascade de saturation rend des valeurs non définies. Le jacobien d'un jour de l'humidité du sol, d theta(t+1) / d theta(t), a un rayon spectral médian de 1,00 mais dépasse 1 sur 4 à 108 nœuds sur 214 selon la date, jusqu'à 236, avec des termes diagonaux de −266 et +145 sur les couches 1 et 2 de nœuds proches de la saturation. Une petite perturbation de l'humidité est donc amplifiée d'un facteur cent en un jour : le schéma explicite est instable dans ces nœuds, et la simulation directe ne reste bornée que par les écrêtages de la cascade et de la négativité, qui ne corrigent pas la dérivée.
+
+CE QUE CELA EXPLIQUE. Avec un pas d'optimisation par bloc de 45 jours et un écrêtage de la norme du gradient à 1, la direction de chaque pas est entièrement dictée par ces composantes numériques, donc quasi aléatoire : les graines s'en vont vers des plateaux différents (R190, R195, R196), l'entraînement n'améliore pas son propre objectif (perte au KGE seul : 0,418 puis 0,416), et un affinage ne reste reproductible qu'à un taux assez petit pour ne presque rien déplacer (R142 à R144). Ce n'est pas un défaut du réseau spatial ni de la perte.
+
+PISTE DE CORRECTION : intégrer les flux entre couches par un Euler linéairement implicite, qui coïncide avec le schéma explicite du clone là où ce dernier est stable et reste stable ailleurs. Écart assumé à la fidélité, limité aux nœuds où le C++ lui-même ne converge pas (R153).

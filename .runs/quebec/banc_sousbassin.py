@@ -655,6 +655,78 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     m = _construire()
     q0, ev = _evaluer(m, "zero epoque")
 
+    if os.environ.get("MEANDRE_SONDE_GRADIENT") == "1":
+        # SONDE DU GRADIENT (2026-09-26). Le gradient du KGE de l'annee d'entrainement, pris
+        # a travers la simulation poursuivie depuis l'etat de mise en regime comme le fait le
+        # trainer, vaut 1e23 a 1e24 sur le champ spatial : il EXPLOSE. On mesure ici (1) sa
+        # croissance avec l'horizon de retropropagation, (2) les champs qui la portent, par
+        # un multiplicateur unite par champ, (3) sa dependance au nombre de sous-pas.
+        import dataclasses as _dc
+        _o_all = torch.tensor(o, dtype=torch.float32, device=dev)
+
+        def _kge_t(qs, ob):
+            ok = torch.isfinite(ob)
+            a, b = qs[ok], ob[ok]
+            r = ((a - a.mean()) * (b - b.mean())).mean() / (a.std(unbiased=False) * b.std(unbiased=False))
+            return 1 - torch.sqrt((r - 1) ** 2 + (a.mean() / b.mean() - 1) ** 2 + ((a.std() / a.mean()) / (b.std() / b.mean()) - 1) ** 2)
+
+        if os.environ.get("MEANDRE_SONDE_JACOBIEN") == "1":
+            # JACOBIEN D'UN JOUR de l'humidite du sol : d theta(t+1) / d theta(t), par noeud
+            # (3 x 3, les noeuds sont independants dans la colonne). Un rayon spectral
+            # superieur a un fait croitre le gradient d'un jour a l'autre.
+            import dataclasses as _dc2
+            os.environ["MEANDRE_NSUBSTEP"] = os.environ.get("MEANDRE_SONDE_NSUBSTEP", "16").split(",")[0]
+            torch.manual_seed(int(os.environ.get("ETL_SEED", "1234")))
+            mm = _construire()
+            mm.eval()
+            for jour in [int(x) for x in os.environ.get("MEANDRE_SONDE_JOURS", "30,60,90,120,150,200,250,300").split(",")]:
+                t0 = tr_sl.start + jour
+                with torch.no_grad():
+                    _, st = mm.simulate(forcing=F[:t0], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:t0]), day_of_year=doy[:t0])
+                th = [st.theta1.clone().requires_grad_(True), st.theta2.clone().requires_grad_(True), st.theta3.clone().requires_grad_(True)]
+                st_g = _dc2.replace(st, theta1=th[0], theta2=th[1], theta3=th[2])
+                _, st1 = mm.simulate(forcing=F[t0:t0 + 1], initial_state=st_g, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[t0:t0 + 1]), day_of_year=doy[t0:t0 + 1], poursuivre_etat=True)
+                out = [st1.theta1, st1.theta2, st1.theta3]
+                J = torch.zeros(n, 3, 3, device=dev)
+                for i in range(3):
+                    gi = torch.autograd.grad(out[i].sum(), th, retain_graph=True, allow_unused=True)
+                    for k2 in range(3):
+                        if gi[k2] is not None:
+                            J[:, i, k2] = gi[k2]
+                rho = torch.linalg.eigvals(J).abs().max(dim=1).values
+                sp0 = mm.spatial_encoder(coords, terr.data)
+                sat3 = (st.theta3 / sp0.porosity_3.detach()).cpu().numpy() if hasattr(sp0, "porosity_3") else None
+                r = rho.detach().cpu().numpy()
+                pire = int(np.nanargmax(r))
+                print(f"  sonde : jour {jour:3d} ({str(temps[t0].date())}) | rayon spectral median {np.nanmedian(r):.3f}, 90e centile {np.nanpercentile(r, 90):.3f}, max {np.nanmax(r):.3e} ; noeuds au-dessus de 1 : {int((r > 1.0001).sum())} sur {n} | pire noeud {pire} : theta {float(st.theta1[pire]):.3f} {float(st.theta2[pire]):.3f} {float(st.theta3[pire]):.3f}" + (f", saturation couche 3 {sat3[pire]:.3f}" if sat3 is not None else "") + f" | diag {J[pire].diagonal().detach().cpu().numpy().round(3)}", flush=True)
+            return
+        for nsub in [int(x) for x in os.environ.get("MEANDRE_SONDE_NSUBSTEP", "16,64").split(",")]:
+            os.environ["MEANDRE_NSUBSTEP"] = str(nsub)
+            torch.manual_seed(int(os.environ.get("ETL_SEED", "1234")))
+            mm = _construire()
+            mm.eval()
+            with torch.no_grad():
+                sp0 = mm.spatial_encoder(coords, terr.data)
+                noms = [f.name for f in _dc.fields(sp0) if torch.is_tensor(getattr(sp0, f.name)) and getattr(sp0, f.name).ndim >= 1 and getattr(sp0, f.name).shape[0] == n]
+                _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:tr_sl.start]), day_of_year=doy[:tr_sl.start])
+            for H, _var in [(int(h), v) for v in os.environ.get("MEANDRE_SONDE_DETACHE", "aucun").split(",") for h in os.environ.get("MEANDRE_SONDE_HORIZONS", "30,90,180,365").split(",")]:
+                os.environ["MEANDRE_CASCADE_DETACHE"] = "1" if _var == "cascade" else "0"
+                os.environ["MEANDRE_DETACHE_JOUR"] = "" if _var in ("aucun", "cascade") else _var.replace("+", ",")
+                sl = slice(tr_sl.start, tr_sl.start + H)
+                mult = {nm: torch.ones((), device=dev, requires_grad=True) for nm in noms}
+                mm.spatial_encoder.multiplicateurs = mult
+                # Chaque horizon repart du meme etat interne de mise en regime.
+                with torch.no_grad():
+                    _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:tr_sl.start]), day_of_year=doy[:tr_sl.start])
+                Q, _ = mm.simulate(forcing=F[sl], initial_state=st0, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[sl]), day_of_year=doy[sl], poursuivre_etat=True)
+                k = _kge_t(Q[:, s["exutoire"]], _o_all[sl])
+                (1 - k).backward()
+                gm = {nm: float(t.grad.double()) if t.grad is not None else 0.0 for nm, t in mult.items()}
+                mm.spatial_encoder.multiplicateurs = None
+                haut = sorted(gm.items(), key=lambda kv: -abs(kv[1]))[:5]
+                print(f"  sonde : {nsub} sous-pas, detache {_var}, horizon {H:3d} j, KGE {float(k):.3f} | plus forts : " + ", ".join(f"{a} {b:.2e}" for a, b in haut) + f" | nuls {sum(1 for v in gm.values() if v == 0)} sur {len(gm)}", flush=True)
+        return
+
     # NORMALISATION PAR STATION (2026-09-13). L'ecart quadratique se calcule en metres
     # cubes par seconde au carre : sur ce sous-bassin il vaut environ 147 quand tous les
     # autres termes valent moins de deux, si bien qu'il emportait 95 % de la perte quel

@@ -41,6 +41,17 @@ SOIL_TEXTURES = {
 }
 EPAISSEUR = (0.21941, 0.15725, 2.65)   # z11, z22, z33 (m), bv3c.csv SLSO
 KREC_DEFAULT = 1.2869e-7               # m/h
+import os as _os
+_DTC_DETACHE = _os.environ.get("MEANDRE_DTC_DETACHE", "0") == "1"
+# Diagnostic (2026-09-26) : MEANDRE_CASCADE_DETACHE=1 detache les quantites deplacees par la
+# cascade de saturation et la correction de negativite, pour mesurer leur part dans
+# l'explosion du gradient a travers l'humidite du sol. Lu a chaque appel.
+
+
+def _cd(x):
+    return x.detach() if _os.environ.get("MEANDRE_CASCADE_DETACHE", "0") == "1" else x
+
+
 CIN_DEFAULT = 0.03                     # VARIATION MAXIMALE (Courant)
 DT_H = 24.0                            # pas de temps (heures)
 
@@ -372,6 +383,13 @@ class BV3C2Clone(torch.nn.Module):
             dtc = torch.minimum(dtc, tr)                 # ne dépasse pas le temps restant
             active = (tr > 1e-7).to(dtc.dtype)
             dtc = dtc * active                           # nœuds finis : dtc=0
+            # Le sous-pas est un choix NUMERIQUE (condition de Courant), pas une grandeur
+            # physique : un solveur adaptatif ne derive pas son controleur de pas. Sans ce
+            # detachement, le gradient passe par dtc = cin * theta / flux et explose avec
+            # l'horizon (1e24 sur K_sat_1 en un an a 16 sous-pas, 2026-09-26). Opt-in par
+            # MEANDRE_DTC_DETACHE=1 ; la valeur simulee est identique.
+            if _DTC_DETACHE:
+                dtc = dtc.detach()
             # ET BRUTE (C++ l.2036 : v_etr1 sans clamp) ; la négativité éventuelle
             # est refoulée depuis la couche du dessous (l.2118), PAS masquée.
             t1 = t1 + dtc * (pinf - qq12 - e1) / z1
@@ -383,25 +401,25 @@ class BV3C2Clone(torch.nn.Module):
             # ruissellement. surplus=0 hors débordement → blocs applicables tels quels.
             zr = torch.zeros_like(t1)
             # bloc A : couche 3 sature → vers 2
-            s = torch.clamp(t3 - ths3, min=0.0); t2 = t2 + s * z3 / z2; t3 = t3 - s
+            s = torch.clamp(t3 - ths3, min=0.0); s = _cd(s); t2 = t2 + s * z3 / z2; t3 = t3 - s
             # bloc B : couche 2 sature ET 3 a de la place → vers 3 (re-refoule si 3 sature)
             doB = (t2 > ths2) & (t3 < ths3)
-            s = torch.where(doB, t2 - ths2, zr) * z2; t3 = t3 + s / z3; t2 = torch.where(doB, ths2, t2)
-            s = torch.clamp(t3 - ths3, min=0.0); t2 = t2 + s * z3 / z2; t3 = t3 - s
+            s = torch.where(doB, t2 - ths2, zr) * z2; s = _cd(s); t3 = t3 + s / z3; t2 = torch.where(doB, ths2, t2)
+            s = torch.clamp(t3 - ths3, min=0.0); s = _cd(s); t2 = t2 + s * z3 / z2; t3 = t3 - s
             # bloc C : couche 2 sature → vers 1
-            s = torch.clamp(t2 - ths2, min=0.0); t1 = t1 + s * z2 / z1; t2 = t2 - s
+            s = torch.clamp(t2 - ths2, min=0.0); s = _cd(s); t1 = t1 + s * z2 / z1; t2 = t2 - s
             # bloc D : couche 1 sature ET place en dessous → vers 2 (puis cascade)
             doD = (t1 > ths1) & ((t2 < ths2) | (t3 < ths3))
-            s = torch.where(doD, t1 - ths1, zr) * z1; t2 = t2 + s / z2; t1 = torch.where(doD, ths1, t1)
+            s = torch.where(doD, t1 - ths1, zr) * z1; s = _cd(s); t2 = t2 + s / z2; t1 = torch.where(doD, ths1, t1)
             doDi = (t2 > ths2) & (t3 < ths3)
-            s = torch.where(doDi, t2 - ths2, zr) * z2; t3 = t3 + s / z3; t2 = torch.where(doDi, ths2, t2)
-            s = torch.clamp(t3 - ths3, min=0.0); t2 = t2 + s * z3 / z2; t3 = t3 - s
-            s = torch.clamp(t2 - ths2, min=0.0); t1 = t1 + s * z2 / z1; t2 = t2 - s
+            s = torch.where(doDi, t2 - ths2, zr) * z2; s = _cd(s); t3 = t3 + s / z3; t2 = torch.where(doDi, ths2, t2)
+            s = torch.clamp(t3 - ths3, min=0.0); s = _cd(s); t2 = t2 + s * z3 / z2; t3 = t3 - s
+            s = torch.clamp(t2 - ths2, min=0.0); s = _cd(s); t1 = t1 + s * z2 / z1; t2 = t2 - s
             # bloc E : couche 1 encore sature → RUISSELLEMENT (l.2113)
-            ov1 = torch.clamp(t1 - ths1, min=0.0); t1 = t1 - ov1
+            ov1 = _cd(torch.clamp(t1 - ths1, min=0.0)); t1 = t1 - ov1
             # NÉGATIVITÉ (l.2118-2158) : refoule depuis la couche du dessous
-            neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
-            neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
+            neg1 = _cd(torch.clamp(-t1, min=0.0)); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
+            neg2 = _cd(torch.clamp(-t2, min=0.0)); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
             t3 = torch.clamp(t3, min=0.0)
             lruis = lruis + ruis_rate * dtc + ov1 * z1
             lhyp = lhyp + (q2 + q3_lat) * dtc

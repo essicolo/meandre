@@ -734,6 +734,20 @@ class HydrotelColumn(nn.Module):
         from meandre.utils.state import ColumnOutput
         a = self._aux
         a.theta1, a.theta2, a.theta3 = state.theta1, state.theta2, state.theta3
+        # DIAGNOSTIC (2026-09-26) : detache chaque jour les parties nommees de l'etat
+        # (theta, neige, gel, mh), pour localiser le compartiment dont la recurrence fait
+        # exploser le gradient. MEANDRE_DETACHE_JOUR vide : sans effet.
+        _dj = os.environ.get("MEANDRE_DETACHE_JOUR", "")
+        if _dj:
+            _dj = set(_dj.split(","))
+            if "theta" in _dj:
+                a.theta1, a.theta2, a.theta3 = a.theta1.detach(), a.theta2.detach(), a.theta3.detach()
+            if "neige" in _dj and isinstance(a.snow, dict):
+                a.snow = {k: (tuple(x.detach() if torch.is_tensor(x) else x for x in v) if isinstance(v, tuple) else (v.detach() if torch.is_tensor(v) else v)) for k, v in a.snow.items()}
+            if "gel" in _dj and torch.is_tensor(a.frost_profile):
+                a.frost_profile = a.frost_profile.detach()
+            if "mh" in _dj and torch.is_tensor(a.wet_vol):
+                a.wet_vol = a.wet_vol.detach()
         P, tmin, tmax = enriched[:, 0], enriched[:, 1], enriched[:, 2]
         Rn, u2, ea = enriched[:, 3], enriched[:, 4], enriched[:, 5]
         # Fonte ETI : courte longueur d'onde incidente brute = canal FB (index 6).
