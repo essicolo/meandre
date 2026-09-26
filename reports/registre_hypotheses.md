@@ -3588,3 +3588,20 @@ Trois constats de la journée, dans l'ordre :
 | 777 | 0,406 | 0,511 | 0,346 à 0,593, sept hausses |
 
 L'écart entre les deux graines passe de 0,280 à 0,075, et les deux apprennent encore à la huitième époque. Épreuve suivante : quatre graines, seize époques, pour voir si elles convergent vers la même valeur.
+
+## R196 — Au taux commun, les graines convergent vers des plateaux différents : le banc rapide a plusieurs minima, dont un minimum plat (2026-09-26) — ÉTABLI, corrige R195
+
+R195 concluait sur deux graines. Quatre graines, seize époques, têtes au taux commun (`MEANDRE_LR_MULT_TETES=1`), même banc rapide. Validation par époque (KGE de l'année 2013) :
+
+| graine | époque 1 | époque 8 | époque 16 | KGE d'entraînement final (2012) |
+| --- | --- | --- | --- | --- |
+| 1234 | 0,351 | 0,490 | 0,507 | 0,469 |
+| 777 | 0,346 | 0,472 | 0,548 | 0,487 |
+| 4321 | 0,358 | 0,666 | 0,601 | 0,590 |
+| 2468 | 0,320 | 0,263 | 0,268 | 0,399 |
+
+Les trajectoires sont régulières et se stabilisent, mais sur quatre plateaux distincts, étendue 0,33. Les têtes à taux multiplié rendaient les trajectoires erratiques ; elles n'étaient pas la cause de la dispersion. Et la graine 2468 finit aussi plus bas sur l'année d'ENTRAÎNEMENT : ce sont des minima locaux de la perte elle-même, pas des solutions équivalentes que seule l'année de validation départage.
+
+Ce qui sépare le minimum bas des autres, lu dans les cartes de paramètres (`.runs/quebec/comparer_graines.py`, sans simulation) : routage plus lent (constante de Muskingum moyenne 27,2 h contre 21,8 à 25,0 h), conductivité de surface plus forte (0,48 contre 0,38 à 0,55), et un hydrogramme aplati, rapport des variabilités 0,63 en validation contre 0,72 à 0,92. C'est le minimum PLAT déjà décrit (R150 : la perte paie l'aplatissement). Les seuils de fonte du champ varient le plus entre graines mais sont MORTS dans ce banc, la fonte y étant ancrée sur le calage ; leur variation ne fait que suivre la dérive commune du tronc du réseau. Quatre graines ne permettent pas de corrélation fiable au-delà de ce constat qualitatif.
+
+Deux faits de configuration relevés en chemin : la ronde du 30 septembre pose `MEANDRE_PAS_PAR_BLOC = 1` avec les têtes à ×10 et ×50, donc au taux de la ronde (1e-5) la tête de lac apprend à 5e-4 à chaque bloc ; et le banc rapide choisit son meilleur point de reprise sur l'année même où il le note.
