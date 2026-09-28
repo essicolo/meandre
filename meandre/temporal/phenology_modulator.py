@@ -91,6 +91,22 @@ class PhenologyModulator(nn.Module):
         if self.mode == "photo":
             self.photo_crit = nn.Parameter(torch.tensor(0.0))
             self.register_buffer("photo_pente_h", torch.tensor(0.5))
+        # PARAMÈTRES CALÉS SUR MODIS (2026-09-28). MEANDRE_PHENOLOGIE_PARAMS =
+        # « emerg,crit,s1,s2 » : seuil de débourrement (degrés-jours), seuil de longueur du
+        # jour de la sénescence (heures), et les deux largeurs de transition. Ces valeurs
+        # sont ajustées sur l'indice foliaire observé (`.runs/quebec/caler_phenologie_modis.py`)
+        # et GELÉES : la saison vient d'une observation indépendante du débit, et reste
+        # pilotée par la seule météo, donc utilisable en prédiction.
+        _cal = os.environ.get("MEANDRE_PHENOLOGIE_PARAMS")
+        if _cal and self.mode == "photo":
+            e, c, s1, s2 = [float(x) for x in _cal.split(",")]
+            with torch.no_grad():
+                self.gdd_emerg.fill_(e)
+                self.photo_crit.fill_(math.atanh(max(min((c - 12.0) / 3.0, 0.999), -0.999)))
+            self.gdd_emerg.requires_grad_(False)
+            self.photo_crit.requires_grad_(False)
+            self.gdd_mid.requires_grad_(False)
+            self._s1_cal, self._s2_cal = s1, s2
         # PHÉNOLOGIE OBSERVÉE (2026-09-28). Mode « modis » : la forme saisonnière est
         # l'indice foliaire MODIS (MOD15A2H) moyen par jour de l'année, rapporté à son
         # maximum, lu dans MEANDRE_LAI_MODIS_CSV (colonnes date, lai_median). Aucun
@@ -141,10 +157,12 @@ class PhenologyModulator(nn.Module):
         if self.mode == "modis" and doy is not None:
             shape = self.forme_modis[min(max(int(doy), 1), 366) - 1].expand_as(K_c_base)
         elif self.mode == "photo" and doy is not None and lat_deg is not None:
-            ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / self.sharpness_emerg)
+            s1 = getattr(self, "_s1_cal", None) or self.sharpness_emerg
+            s2 = getattr(self, "_s2_cal", None) or self.photo_pente_h
+            ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / s1)
             if doy > 172:
                 seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit)
-                senesc = torch.sigmoid((self.duree_du_jour(lat_deg, doy) - seuil) / self.photo_pente_h)
+                senesc = torch.sigmoid((self.duree_du_jour(lat_deg, doy) - seuil) / s2)
             else:
                 senesc = torch.ones_like(ramp)
             shape = ramp * senesc

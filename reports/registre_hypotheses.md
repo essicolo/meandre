@@ -3765,3 +3765,18 @@ Sous-bassin 040110 (Outaouais), schéma semi-implicite, huit époques, quatre gr
 Identifiabilité des autres champs, dispersion de la moyenne entre graines, libre puis gelé : K_c 1,2 % puis 1,2 % ; K_sat_1 2,2 % puis 2,6 % ; K_sat_2 7,7 % puis 5,1 % ; K_sat_3 1,8 % puis 0,8 % ; C_f 5,7 % puis 13,2 %.
 
 Avec une seule station à l'exutoire, deux sorties libres de routage par tronçon ne sont pas identifiables ; en huit époques elles dérivent selon la graine et entraînent le reste. Gelées à une valeur uniforme plausible, le résultat devient reproductible à 0,005 près et meilleur. Une compensation se déplace toutefois vers le taux de fonte, moins bien fixé (13 % contre 6 %). La piste qui en découle n'est PAS le K physique (réfuté) : c'est un routage à peu de degrés de liberté, par exemple un K et un x par territoire plutôt que par tronçon, ou appris seulement là où plusieurs stations emboîtées le contraignent.
+
+## R206 — La phénologie se cale sur l'indice foliaire MODIS sans simulation, et la photopériode l'emporte sur les degrés-jours pour l'automne (2026-09-28) — ÉTABLI SUR UN SOUS-BASSIN
+
+Contexte : le modèle réglé comme la ronde ferme le volume en montant K_c d'un bloc, ce qui fait trop évaporer en automne (octobre 1,53 mm/j contre 0,87 pour MOD16) et coupe de moitié les débits de septembre-octobre ; la perte ne peut pas le corriger, faute d'un paramètre saisonnier. Ce qui est au registre : R25 (août) jugeait la phénologie par degrés-jours insuffisante à expliquer le résidu saisonnier, alors dominé par la couche 3 saturée, désormais corrigée ; les profils foliaires du projet Hydrotel sont un calendrier fixe, qui garde les feuillus jusqu'au 26 octobre.
+
+Indice foliaire MODIS (MOD15A2H, 500 m, 8 jours) extrait par lecture fenêtrée sur l'emprise du sous-bassin 030905, 2011-2013 (`.runs/quebec/serie_lai_modis.py`) : médiane mensuelle 3,4 en juin, 4,4 en juillet et août, 2,5 en septembre, 0,7 en octobre. La végétation de ce bassin agricole décroche dès septembre.
+
+MODIS ne peut pas piloter le modèle en prédiction (Essi) ; il sert à FIXER les paramètres d'une phénologie pilotée par la météo. Ajustement de la forme du modulateur sur l'indice foliaire normalisé, 138 composites, température du bassin tirée de CaSR (`.runs/quebec/caler_phenologie_modis.py`), sans aucune simulation :
+
+| pilote | erreur quadratique | chaque année prédite avec les deux autres | biais septembre-octobre |
+| --- | --- | --- | --- |
+| degrés-jours seuls | 0,152 | 0,170, 0,153, 0,364 | −0,093 |
+| degrés-jours au printemps, photopériode à l'automne | 0,106 | 0,097, 0,104, 0,132 | +0,012 |
+
+La photopériode, suggérée par Essi, est meilleure et surtout transfère d'une année à l'autre ; les degrés-jours seuls échouent sur une année sur trois. Paramètres calés : débourrement à 208 degrés-jours au-dessus de 10 °C, sénescence quand le jour passe sous 11,9 h (vers le 24 septembre à 45 °N), transitions de 88 degrés-jours et 1,0 h. Ils sont posés et GELÉS dans le modèle par `MEANDRE_PHENOLOGIE_MODE=photo` et `MEANDRE_PHENOLOGIE_PARAMS=207.94,11.91,88.4,0.99` ; seuls le plancher et le plafond de K_c restent appris. Épreuve hydrologique en file sur le banc réglé comme la ronde.
