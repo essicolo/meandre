@@ -3666,3 +3666,24 @@ Première question tranchée par le banc reproductible (R198). Sous-bassin 03090
 | étendue | 0,014 | 0,005 |
 
 Le gain est de +0,010 en moyenne, positif pour chaque graine, et l'étendue entre graines se resserre. Sur un seul sous-bassin avec une seule station, le champ ne peut pas montrer ce que le banc de covariables promet (+44 % sur la part souterraine entre territoires) : l'effet attendu est celui de la régionalisation, pas de l'ajustement à une station. La décision de mettre SIIGSOL dans le champ se prendra sur une épreuve à plusieurs stations, ou avec des stations tenues de côté.
+
+## R200 — Avec le schéma de sol corrigé, des graines différentes retrouvent les mêmes cartes de paramètres ; avant, leurs cartes étaient sans rapport (2026-09-28) — ÉTABLI, remplace la lecture de R199
+
+Essi, le même jour : l'objectif est l'identifiabilité, pas le KGE ; R199 jugeait SIIGSOL sur un centième de KGE. Mesure d'identifiabilité (`.runs/quebec/identifiabilite_graines.py`, sans simulation) : pour chaque champ du réseau spatial, entre les quatre graines entraînées sur les mêmes données, la dispersion relative de la moyenne sur le bassin et la corrélation moyenne des cartes par paires de graines. Un champ identifiable ne dépend pas de la graine. On retient les huit champs qui reçoivent un gradient dans cette configuration (sonde de R197).
+
+| champ | corrélation des cartes entre graines, ancien schéma | schéma corrigé | corrigé avec SIIGSOL | dispersion de la moyenne, ancien | corrigé | corrigé avec SIIGSOL |
+| --- | --- | --- | --- | --- | --- | --- |
+| C_f, fonte | −0,11 | 0,96 | 0,97 | 3,5 % | 2,7 % | 3,6 % |
+| K_c, évapotranspiration | −0,03 | 0,95 | 0,95 | 1,6 % | 0,2 % | 0,3 % |
+| K_musk, routage | 0,20 | 0,98 | 0,98 | 7,8 % | 2,1 % | 0,6 % |
+| K_sat_1, surface | −0,24 | 0,78 | 0,79 | 15,8 % | 2,3 % | 3,2 % |
+| K_sat_2 | 0,19 | 0,80 | 0,83 | 3,3 % | 2,5 % | 2,9 % |
+| K_sat_3 | −0,14 | 0,94 | 0,84 | 3,5 % | 1,2 % | 0,7 % |
+| diff_gel | −0,06 | 0,43 | 0,54 | 2,9 % | 0,9 % | 1,1 % |
+| x_musk | 0,34 | 0,94 | 0,90 | 5,1 % | 2,6 % | 2,4 % |
+
+Ancien schéma : les quatre graines (têtes au taux commun, seize époques) produisaient des cartes sans rapport entre elles, corrélations de −0,24 à +0,34, et des moyennes de bassin dispersées jusqu'à 16 %. Schéma corrigé : les cartes se corrèlent à 0,78 à 0,98 et les moyennes à quelques pour cent. Les attributs d'entrée sont les mêmes des deux côtés ; c'est donc le gradient redevenu physique, et non la structure des attributs, qui fait converger les cartes. C'est la première mesure d'identifiabilité des paramètres du champ qui ne soit pas noyée par l'optimisation.
+
+SIIGSOL ne change pas l'identifiabilité sur ce sous-bassin : corrélations et dispersions du même ordre, un champ un peu mieux (K_musk), un autre un peu moins bien (K_sat_3). Avec une seule station, rien ne permet au champ d'exploiter une texture qui décrit les différences ENTRE bassins.
+
+Réserves : un sous-bassin, une station, une année d'entraînement. La convergence des cartes entre graines dit que les paramètres sont déterminés par les données ; elle ne dit pas qu'ils sont justes. Ce second point se juge sur des observations indépendantes, puits tenus de côté, neige, évapotranspiration.
