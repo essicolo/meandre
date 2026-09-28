@@ -3790,3 +3790,19 @@ Mesure sans simulation (`MEANDRE_BANC_ETP_FORMES=1`) : chaque formule de la colo
 Passe avant sur le modèle témoin réglé comme la ronde, Penman et K_c multiplié par 0,45 : évapotranspiration annuelle 1,44 mm/j contre 1,48 exigés par le bilan d'eau ; janvier 0,38 (MOD16 0,40), avril 1,67 (1,42), octobre 1,05 (0,87) ; débits d'avril 2,54 contre 2,62 observés, de janvier 1,05 contre 1,13. Reste un été faible (juillet 2,83 contre 4,31) et un automne un peu fort en débit.
 
 Entraînement en cours sur le banc réglé comme la ronde : Penman avec K_c × 0,5 fixe, avec et sans la phénologie calée sur MODIS, deux graines chacun (`MEANDRE_BANC_ETP_MODE`, `MEANDRE_BANC_MULT_FIXE`).
+
+## R208 — Penman avec la phénologie calée sur MODIS corrige l'automne et l'hiver sans rien perdre au printemps ni à l'été (2026-09-28) — ÉTABLI SUR UN SOUS-BASSIN
+
+Banc réglé comme la ronde (64 sous-pas, correctifs de la couche 3, nappe libre, schéma semi-implicite, MOD16 en valeur absolue), sous-bassin 030905, huit époques, deux graines par bras. Corrélation journalière des débits par saison, 2011-2013 :
+
+| saison | Linacre, K_c constant | Penman, K_c constant | Penman et phénologie calée (photopériode) |
+| --- | --- | --- | --- |
+| hiver | 0,43 | 0,47 | 0,47 à 0,48 |
+| printemps | 0,70 à 0,74 | 0,64 à 0,65 | 0,72 |
+| été | 0,77 à 0,79 | 0,74 | 0,78 |
+| automne | 0,30 à 0,31 | 0,51 à 0,52 | 0,46 à 0,48 |
+| débit annuel simulé, mm/j (observé 1,35) | 1,24 à 1,26 | 1,26 | 1,50 à 1,52 |
+
+Penman seul gagne l'automne et l'hiver mais perd le printemps, parce qu'il évapore trop en mars-avril et affaiblit la crue de fonte ; la phénologie calée retient cette évapotranspiration avant le débourrement et rend le printemps. Les deux graines concordent à 0,02 près dans chaque bras.
+
+LE VOLUME RESTE UN COMPROMIS. Avec la phénologie, l'évapotranspiration annuelle tombe à 1,33 mm/j contre 1,48 exigés par le bilan, d'où 11 % de débit en trop ; le plafond de K_c ne remonte pas en huit époques. Monter le facteur global de K_c en passe avant ferme le volume (1,40 à × 0,55, 1,31 à × 0,6) mais défait l'automne (corrélation 0,37 puis 0,29) : l'excès restant est donc d'automne et de début d'hiver, porté par l'écoulement hypodermique (octobre 0,96 mm/j) et par un ruissellement de surface de novembre-décembre (0,68 mm/j) sans équivalent le reste de l'année.

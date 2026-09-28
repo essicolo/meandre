@@ -767,6 +767,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  bilan mensuel, {os.path.basename(_ck)}, mm/j, moyennes 2011-{int(pd.DatetimeIndex(temps).year.max())} :", flush=True)
             print(t.round(2).to_string(), flush=True)
             print(f"  annee : P {df.P.mean():.2f}, ET {df.ET.mean():.2f}, MOD16 {np.nanmean(df.MOD16):.2f}, Qobs {np.nanmean(df.Qobs):.2f}, Qsim {df.Qsim.mean():.2f}, P-Qobs {df.P.mean() - np.nanmean(df.Qobs):.2f}", flush=True)
+            # Correlation journaliere des debits par saison, 2011 a la fin du chargement.
+            _sais = {"hiver (dec-fev)": (12, 1, 2), "printemps (mar-mai)": (3, 4, 5), "ete (jun-aou)": (6, 7, 8), "automne (sep-nov)": (9, 10, 11)}
+            _r = []
+            for _nom, _ms in _sais.items():
+                _k = df[df.mois.isin(_ms)][["Qobs", "Qsim"]].dropna()
+                _r.append(f"{_nom} {np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]:.2f}" if len(_k) > 30 else f"{_nom} -")
+            print("  correlation journaliere par saison : " + ", ".join(_r), flush=True)
         return
     if os.environ.get("MEANDRE_BANC_MULT"):
         # PASSE AVANT A CHAMP MULTIPLIE (2026-09-28) : « K_c:1.5,C_f:0.8 » multiplie ces
