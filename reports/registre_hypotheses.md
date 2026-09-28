@@ -3623,3 +3623,31 @@ LOCALISATION. En détachant chaque jour une partie de l'état : détacher l'humi
 CE QUE CELA EXPLIQUE. Avec un pas d'optimisation par bloc de 45 jours et un écrêtage de la norme du gradient à 1, la direction de chaque pas est entièrement dictée par ces composantes numériques, donc quasi aléatoire : les graines s'en vont vers des plateaux différents (R190, R195, R196), l'entraînement n'améliore pas son propre objectif (perte au KGE seul : 0,418 puis 0,416), et un affinage ne reste reproductible qu'à un taux assez petit pour ne presque rien déplacer (R142 à R144). Ce n'est pas un défaut du réseau spatial ni de la perte.
 
 PISTE DE CORRECTION : intégrer les flux entre couches par un Euler linéairement implicite, qui coïncide avec le schéma explicite du clone là où ce dernier est stable et reste stable ailleurs. Écart assumé à la fidélité, limité aux nœuds où le C++ lui-même ne converge pas (R153).
+
+## R198 — Le schéma semi-implicite du sol rend l'apprentissage reproductible : quatre graines à 0,014 près au lieu de 0,28 (2026-09-28) — ÉTABLI
+
+Correctif de R197 : dans `hydrotel_clone/bv3c2.py`, sous `MEANDRE_SOL_SEMI_IMPLICITE=1`, la mise à jour des trois teneurs en eau résout (I − dt A) d = dt f par nœud, où A est la jacobienne des échanges de Darcy entre couches, estimée par différences finies et détachée (méthode de Rosenbrock à jacobienne approchée). Là où le pas explicite est stable, d ≈ dt f et le clone est inchangé.
+
+Ce que le correctif ne change pas :
+
+| mesure | explicite | semi-implicite |
+| --- | --- | --- |
+| Outaouais, calage imposé, aucune époque, KGE médian 2022-2024 (forçage `-budyko`) | 0,5455 | 0,5438 |
+| sous-bassin 030905, aucune époque, KGE de validation | 0,365 | 0,364 |
+| colonne fictive, trente jours, écart moyen à une référence à 1024 sous-pas (16 sous-pas) : argile, loam, sable | 0,016, 0,022, 0,025 | 0,016, 0,022, 0,016 |
+
+Ce qu'il change :
+
+| mesure | explicite | semi-implicite |
+| --- | --- | --- |
+| nœuds dont le jacobien d'un jour amplifie une perturbation, selon la date | 4 à 108 sur 214 | 0 sur 214 |
+| dérivée du KGE sur un an par rapport à K_sat | 1e24 | 0,011 |
+| banc rapide, 5e-4, huit époques, KGE de validation des graines 1234, 4321, 777, 2468 | 0,686, 0,676, 0,406, 0,505 | 0,601, 0,599, 0,589, 0,587 |
+| étendue entre graines | 0,280 | 0,014 |
+| KGE sur l'année d'entraînement après huit époques | 0,40 à 0,59 | 0,603 à 0,612 |
+
+Les quatre trajectoires de validation se superposent époque par époque (0,631 à 0,650 à la huitième). L'entraînement améliore enfin son propre objectif : le KGE de l'année d'entraînement passe de 0,44 à 0,61. Le meilleur résultat de l'ancien schéma (0,686) venait d'une marche aléatoire chanceuse, choisie sur l'année même où elle était notée.
+
+CE QUI RESTE : le volume est trop fort de 35 % en validation (rapport des moyennes 1,35) malgré le terme de biais ; c'est le prochain défaut lisible sur un banc devenu fiable. Et le correctif est en option : le poser par défaut suppose de l'éprouver sur un territoire complet.
+
+Tests : `tests/test_sol_semi_implicite.py`, précision au moins égale à l'explicite sur trois textures et jacobien journalier contractant.
