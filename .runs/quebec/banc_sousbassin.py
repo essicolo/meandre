@@ -499,7 +499,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                        column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
                        use_latent_codes=False, spatial_melt=True,
                        routing_mode="operator-lagged", predict_lake_params=True,
-                       compile_soil=False, use_aquifer=aquifere)
+                       compile_soil=False, use_aquifer=aquifere,
+                       use_phenology_modulator=os.environ.get("MEANDRE_PHENOLOGIE", "0") == "1")
         maj = reg.upper()
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
         m = m.to(dev)

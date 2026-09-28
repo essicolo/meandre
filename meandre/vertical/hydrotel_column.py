@@ -1104,20 +1104,27 @@ class HydrotelColumn(nn.Module):
         # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
         # McGuinness et donne au NeRF un levier direct sur le volume (β).
         # K_c=1.0 par défaut si non fourni (chemins set_static hand-built).
+        # K_c SAISONNIER (2026-09-28) : quand le modele porte le modulateur phenologique, il
+        # pose chaque jour `_kc_dynamique`, K_c du champ module par les degres-jours cumules.
+        # Motif : sur la Chateauguay le modele manque d'evapotranspiration l'ete et en a trop
+        # a l'automne ; un coefficient constant dans l'annee ne peut corriger l'un sans
+        # aggraver l'autre (registre, R202).
+        _kc = getattr(self, "_kc_dynamique", None)
+        _kc = _kc if _kc is not None else pe.get("K_c", 1.0)
         if etp_ext is not None:
             # module ET appris : demande en mm/j × K_c NeRF (correction de biais par nœud —
             # MOD16 biaise +15-30 % à l'est vs bilan P-Q, et sans multiplicateur le modèle
             # n'a AUCUN levier de volume : beta cloué 0.807, run gasp-etl 2026-07-21).
-            etp = torch.clamp(etp_ext, min=0.0) * pe.get("K_c", 1.0)
+            etp = torch.clamp(etp_ext, min=0.0) * _kc
         elif self.et_mode == "linacre":
             # couvert nival agrégé (mm SWE) + albédo neige pondéré par classe
             _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
             _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                         * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
             etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t,
-                            couv=_couv, albn=_albn) * pe.get("K_c", 1.0)
+                            couv=_couv, albn=_albn) * _kc
         else:
-            etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * pe.get("K_c", 1.0)
+            etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * _kc
 
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
         # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro
