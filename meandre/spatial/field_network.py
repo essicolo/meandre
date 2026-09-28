@@ -1011,6 +1011,29 @@ class SpatialFieldNetwork(nn.Module):
         self.fc_out.weight.register_hook(_coupe)
         self.fc_out.bias.register_hook(_coupe)
 
+    def freeze_outputs(self, noms) -> None:
+        """Gèle des sorties NOMMÉES du champ à une valeur uniforme, celle de leur biais.
+
+        Généralise `freeze_krec` (2026-09-28) : les poids de ces lignes de fc_out sont mis à
+        zéro, leur gradient est coupé, et la sortie vaut donc partout sa valeur
+        d'initialisation. Sert à mesurer ce qu'un champ non identifiable coûte en
+        reproductibilité, par exemple le routage de Muskingum qu'une seule station
+        d'exutoire ne peut pas séparer entre retard et atténuation.
+        """
+        tous = [f.name for f in _dc_fields(SpatialParams)]
+        idx = [tous.index(n) for n in noms]
+        with torch.no_grad():
+            for i in idx:
+                self.fc_out.weight[i].zero_()
+
+        def _coupe(g):
+            g = g.clone()
+            g[idx] = 0.0
+            return g
+
+        self.fc_out.weight.register_hook(_coupe)
+        self.fc_out.bias.register_hook(_coupe)
+
     def boundary_regularization(
         self,
         coords: Tensor,

@@ -3687,3 +3687,13 @@ Ancien schéma : les quatre graines (têtes au taux commun, seize époques) prod
 SIIGSOL ne change pas l'identifiabilité sur ce sous-bassin : corrélations et dispersions du même ordre, un champ un peu mieux (K_musk), un autre un peu moins bien (K_sat_3). Avec une seule station, rien ne permet au champ d'exploiter une texture qui décrit les différences ENTRE bassins.
 
 Réserves : un sous-bassin, une station, une année d'entraînement. La convergence des cartes entre graines dit que les paramètres sont déterminés par les données ; elle ne dit pas qu'ils sont justes. Ce second point se juge sur des observations indépendantes, puits tenus de côté, neige, évapotranspiration.
+
+## R201 — En Outaouais, le correctif rend le sol identifiable mais le routage reste libre et porte la dispersion restante (2026-09-28) — ÉTABLI
+
+Même épreuve que R198 et R200 sur un second sous-bassin : 040110 en Outaouais, 91 tronçons, 1163 km², forestier, quatre graines, huit époques, sans puis avec le schéma semi-implicite.
+
+KGE de validation : sans correctif 0,546, 0,539, 0,473, 0,586 (étendue 0,113) ; avec correctif 0,535, 0,578, 0,488, 0,517 (étendue 0,090). Le KGE reste dispersé.
+
+Identifiabilité des champs actifs, dispersion relative de la moyenne sur le bassin entre graines, sans puis avec correctif : K_sat_1 60,3 % puis 2,2 % ; K_sat_2 38,7 % puis 7,7 % ; C_f 9,8 % puis 5,7 % ; K_c 2,2 % puis 1,2 % ; K_musk 10,0 % puis 8,3 % ; x_musk 28,3 % puis 24,6 %. Corrélation des cartes entre graines, C_f 0,53 puis 0,79, K_c 0,78 puis 0,93, K_sat_1 0,90 puis 0,97.
+
+Le sol devient identifiable, comme en Montérégie. Le routage de Muskingum ne l'est pas : avec correctif, x_musk va de 0,09 à 0,18 et K_musk de 33 à 42 heures selon la graine, et x_musk suit le KGE de validation avec une corrélation de 0,999 sur quatre graines. Une seule station d'exutoire ne sépare pas le retard de l'atténuation ; le champ dispose de deux sorties libres pour un seul effet observable. Épreuve lancée : les deux sorties gelées à leur initialisation uniforme (x 0,2, K 24 h). La correction de fond serait de déduire K et x de la géométrie du tronçon (longueur, pente, largeur, rugosité), comme le prévoit la méthode de Muskingum-Cunge, en ne laissant au champ que la rugosité.

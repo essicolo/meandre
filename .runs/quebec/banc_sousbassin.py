@@ -653,6 +653,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
+    if os.environ.get("MEANDRE_CHAMP_GELE"):
+        # Sorties du champ gelees a leur valeur d'initialisation, uniforme (2026-09-28).
+        _gel = [x for x in os.environ["MEANDRE_CHAMP_GELE"].split(",") if x]
+        m.spatial_encoder.freeze_outputs(_gel)
+        print(f"  champ spatial : sorties gelees {', '.join(_gel)}", flush=True)
     if os.environ.get("MEANDRE_BANC_MULT"):
         # PASSE AVANT A CHAMP MULTIPLIE (2026-09-28) : « K_c:1.5,C_f:0.8 » multiplie ces
         # champs sur tous les noeuds, evalue, et s'arrete. Repond sans entrainer a la
