@@ -3651,3 +3651,18 @@ Les quatre trajectoires de validation se superposent époque par époque (0,631 
 CE QUI RESTE : le volume est trop fort de 35 % en validation (rapport des moyennes 1,35) malgré le terme de biais ; c'est le prochain défaut lisible sur un banc devenu fiable. Et le correctif est en option : le poser par défaut suppose de l'éprouver sur un territoire complet.
 
 Tests : `tests/test_sol_semi_implicite.py`, précision au moins égale à l'explicite sur trois textures et jacobien journalier contractant.
+
+## R199 — Sur le banc corrigé, la texture SIIGSOL dans le champ gagne un centième de KGE, avec la même reproductibilité (2026-09-28) — ÉTABLI
+
+Première question tranchée par le banc reproductible (R198). Sous-bassin 030905, schéma semi-implicite, 5e-4, huit époques, quatre graines ; bras : trois attributs SIIGSOL (deux coordonnées ilr de texture et la matière organique, moyennées sur les profondeurs, table `territorial_siigsol3`) ajoutés aux attributs du champ.
+
+| graine | témoin | SIIGSOL |
+| --- | --- | --- |
+| 1234 | 0,601 | 0,606 |
+| 4321 | 0,599 | 0,607 |
+| 777 | 0,589 | 0,602 |
+| 2468 | 0,587 | 0,602 |
+| moyenne | 0,594 | 0,604 |
+| étendue | 0,014 | 0,005 |
+
+Le gain est de +0,010 en moyenne, positif pour chaque graine, et l'étendue entre graines se resserre. Sur un seul sous-bassin avec une seule station, le champ ne peut pas montrer ce que le banc de covariables promet (+44 % sur la part souterraine entre territoires) : l'effet attendu est celui de la régionalisation, pas de l'ajustement à une station. La décision de mettre SIIGSOL dans le champ se prendra sur une épreuve à plusieurs stations, ou avec des stations tenues de côté.

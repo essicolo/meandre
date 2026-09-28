@@ -653,6 +653,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
+    if os.environ.get("MEANDRE_BANC_MULT"):
+        # PASSE AVANT A CHAMP MULTIPLIE (2026-09-28) : « K_c:1.5,C_f:0.8 » multiplie ces
+        # champs sur tous les noeuds, evalue, et s'arrete. Repond sans entrainer a la
+        # question : tel parametre peut-il corriger tel defaut.
+        for _spec in os.environ["MEANDRE_BANC_MULT"].split(";"):
+            m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in _spec.split(",") if a} if _spec != "aucun" else None
+            _evaluer(m, f"x {_spec}")
+        return
     q0, ev = _evaluer(m, "zero epoque")
 
     if os.environ.get("MEANDRE_SONDE_GRADIENT") == "1":
@@ -773,10 +781,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
                             # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
                             # et un essai a conclu a tort que MOD16 vidait la riviere.
-                            et_mode="anomaly")
+                            # MEANDRE_BANC_ET_MODE (2026-09-28) : « level » ou « bassin » pour
+                            # rejuger, sur le schema de sol corrige, si MOD16 peut porter le
+                            # NIVEAU de l'ET et absorber le surplus de precipitation de CaSR.
+                            et_mode=os.environ.get("MEANDRE_BANC_ET_MODE", "anomaly"))
         print(f"  perte : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f} + MSE {float(w_mse):.2f}"
               f" + MSE log {float(w_log_mse):.2f} + pics {float(w_peak):.2f}"
-              f" + ET MOD16 {float(w_et):.2f} en tendance + dQ {float(w_dq):.2f}"
+              f" + ET MOD16 {float(w_et):.2f} en mode {os.environ.get("MEANDRE_BANC_ET_MODE", "anomaly")} + dQ {float(w_dq):.2f}"
               f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
     else:
         # Sans cible MOD16 : meme perte, terme d'ET en moins. Le 2026-09-05 cette branche
