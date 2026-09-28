@@ -3806,3 +3806,11 @@ Banc réglé comme la ronde (64 sous-pas, correctifs de la couche 3, nappe libre
 Penman seul gagne l'automne et l'hiver mais perd le printemps, parce qu'il évapore trop en mars-avril et affaiblit la crue de fonte ; la phénologie calée retient cette évapotranspiration avant le débourrement et rend le printemps. Les deux graines concordent à 0,02 près dans chaque bras.
 
 LE VOLUME RESTE UN COMPROMIS. Avec la phénologie, l'évapotranspiration annuelle tombe à 1,33 mm/j contre 1,48 exigés par le bilan, d'où 11 % de débit en trop ; le plafond de K_c ne remonte pas en huit époques. Monter le facteur global de K_c en passe avant ferme le volume (1,40 à × 0,55, 1,31 à × 0,6) mais défait l'automne (corrélation 0,37 puis 0,29) : l'excès restant est donc d'automne et de début d'hiver, porté par l'écoulement hypodermique (octobre 0,96 mm/j) et par un ruissellement de surface de novembre-décembre (0,68 mm/j) sans équivalent le reste de l'année.
+
+## R209 — La porte de gel tout ou rien fait ruisseler la pluie de novembre ; une porte continue la rend au sol (2026-09-28) — ÉTABLI EN PASSE AVANT, entraînement en cours
+
+Ce qui est au registre : R118 a innocenté la porte de gel du DRAINAGE PROFOND (recharge) ; l'option de porte continue sur l'INFILTRATION (`frozen_gate_continuous`) a été essayée en juin (EXP-2 du journal) sur la crue de printemps, sous l'ancien entraînement défaillant. L'automne n'a jamais été regardé.
+
+Constat sur le modèle Penman et phénologie calée (R208) : dès 4 cm de gel en novembre, le clone refuse TOUTE infiltration (pinf = 0 si gelé et moins de 10 mm de neige), et la pluie ruisselle, 0,68 mm/j de ruissellement de surface en novembre et décembre contre 0,01 le reste de l'année ; débit de novembre 1,44 mm/j contre 0,73 observé.
+
+Porte continue (infiltration × (1 − fraction gelée de la couche de surface), `MEANDRE_GEL_CONTINU=1` au banc), passe avant sur les mêmes poids : débit de novembre 0,89, ruissellement de surface de novembre 0,01, corrélation journalière d'automne 0,46 → 0,63, hiver 0,47 → 0,43, printemps et été inchangés (0,71 et 0,78). Décembre devient un peu fort (1,57 contre 1,20). Entraînement de deux graines en cours.

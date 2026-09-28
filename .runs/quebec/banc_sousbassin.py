@@ -528,6 +528,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # variables que le pilote regional : sans eux le banc tournait avec le clone
         # d'origine, couche 3 engorgee, 86 % de ruissellement de surface, alors que la
         # ronde les porte. ETL_L3_KSUB n'accepte ici qu'une constante en mm/jour.
+        if os.environ.get("MEANDRE_GEL_CONTINU") == "1":
+            # Infiltration reduite en proportion de la fraction gelee de la couche de surface,
+            # au lieu du tout ou rien du clone (2026-09-28).
+            col.soil.frozen_gate_continuous = True
         if "ETL_L3_TAU" in os.environ:
             col.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
         if "ETL_L3_KSUB" in os.environ:
@@ -758,6 +762,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     _comp[f"sat{_k}"] = _moy(_th.to(dev) / _por.to(dev).reshape(1, -1).clamp(min=1e-6))
             # Part de la journee que la boucle de sous-pas n'a pas traitee : sa pluie est
             # versee au ruissellement par la fermeture de masse du clone.
+            # Profondeur de gel (cm) et apport au sol (pluie et fonte, mm/j) : un sol gele
+            # refuse l'infiltration, et l'apport ruisselle.
+            _comp["gel_cm"] = _moy(getattr(_d, "prof_gel_cm", None))
+            _comp["apport"] = _moy(getattr(_d, "snowmelt", None))
             _tnt = getattr(_d, "temps_non_traite", None)
             if _tnt is not None:
                 _comp["non_traite"] = _moy(_tnt)
