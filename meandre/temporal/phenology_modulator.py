@@ -91,6 +91,24 @@ class PhenologyModulator(nn.Module):
         if self.mode == "photo":
             self.photo_crit = nn.Parameter(torch.tensor(0.0))
             self.register_buffer("photo_pente_h", torch.tensor(0.5))
+        # PHÉNOLOGIE OBSERVÉE (2026-09-28). Mode « modis » : la forme saisonnière est
+        # l'indice foliaire MODIS (MOD15A2H) moyen par jour de l'année, rapporté à son
+        # maximum, lu dans MEANDRE_LAI_MODIS_CSV (colonnes date, lai_median). Aucun
+        # paramètre de forme n'est appris : la saison vient de l'observation, levée et
+        # récolte comprises. Seuls K_c_min et K_c_max_factor restent libres.
+        if self.mode == "modis":
+            import numpy as _np
+            import pandas as _pd
+            t = _pd.read_csv(os.environ["MEANDRE_LAI_MODIS_CSV"], parse_dates=["date"])
+            t["doy"] = t.date.dt.dayofyear
+            clim = t.groupby("doy").lai_median.mean()
+            jours = _np.arange(1, 367)
+            # Interpolation circulaire sur l'année.
+            x = _np.concatenate([clim.index.values - 366, clim.index.values, clim.index.values + 366])
+            y = _np.concatenate([clim.values, clim.values, clim.values])
+            forme = _np.interp(jours, x, y)
+            forme = forme / forme.max()
+            self.register_buffer("forme_modis", torch.tensor(forme, dtype=torch.float32))
         # Hyperparamètres fixes (largeurs des transitions, non appris)
         self.register_buffer("sharpness_emerg", torch.tensor(float(sharpness_emerg)))
         self.register_buffer("sharpness_senesc", torch.tensor(float(sharpness_senesc)))
@@ -120,7 +138,9 @@ class PhenologyModulator(nn.Module):
         K_c_base : (N,) — K_c de référence par nœud (sortie NeRF)
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
-        if self.mode == "photo" and doy is not None and lat_deg is not None:
+        if self.mode == "modis" and doy is not None:
+            shape = self.forme_modis[min(max(int(doy), 1), 366) - 1].expand_as(K_c_base)
+        elif self.mode == "photo" and doy is not None and lat_deg is not None:
             ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / self.sharpness_emerg)
             if doy > 172:
                 seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit)
