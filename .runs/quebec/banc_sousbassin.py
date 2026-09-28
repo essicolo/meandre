@@ -658,6 +658,40 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         _gel = [x for x in os.environ["MEANDRE_CHAMP_GELE"].split(",") if x]
         m.spatial_encoder.freeze_outputs(_gel)
         print(f"  champ spatial : sorties gelees {', '.join(_gel)}", flush=True)
+    if os.environ.get("MEANDRE_BANC_MENSUEL"):
+        # BILAN MENSUEL (2026-09-28) : pour chaque point de reprise nomme, moyennes sur le
+        # bassin par mois de l'annee, en mm/j : precipitation, ET simulee, MOD16, debit
+        # observe et simule, et residu du bilan P - Q observe. Dit dans quelle saison se
+        # trouve le surplus de precipitation, et quelle ET l'absorbe.
+        _a = terr.get_physical("area_km2_local").to(dev).float()
+        _w = _a / _a.sum()
+        _aire_m2 = float(s["aire"]) * 1e6 if s.get("aire") else float(_a.sum()) * 1e6
+        _mois = pd.DatetimeIndex(temps).month
+        _ok_t = pd.DatetimeIndex(temps).year >= 2011
+        for _ck in os.environ["MEANDRE_BANC_MENSUEL"].split(";"):
+            if _ck != "initial":
+                m.load(_ck)
+            m.eval()
+            with torch.no_grad():
+                Q, _, _d = m.simulate(forcing=F, initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w, day_of_year=doy, return_diagnostics=True)
+            P = (F[:, :, 0] * _w).sum(dim=1).cpu().numpy()
+            ET = (_d.etr.to(dev) * _w).sum(dim=1).cpu().numpy()
+            if et_obs is not None:
+                _vo = torch.isfinite(et_obs)
+                MOD = (torch.nan_to_num(et_obs) * _w * _vo).sum(dim=1) / (_w * _vo).sum(dim=1).clamp(min=1e-9)
+                MOD = torch.where(_vo.any(dim=1), MOD, torch.full_like(MOD, float("nan"))).cpu().numpy()
+            else:
+                MOD = np.full(len(temps), np.nan)
+            conv = 86400.0 * 1000.0 / _aire_m2
+            QS = Q[:, s["exutoire"]].cpu().numpy() * conv
+            QO = o * conv
+            df = pd.DataFrame({"mois": _mois, "P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS})[_ok_t]
+            t = df.groupby("mois").mean()
+            t["P-Qobs"] = t.P - t.Qobs
+            print(f"  bilan mensuel, {os.path.basename(_ck)}, mm/j, moyennes 2011-{int(pd.DatetimeIndex(temps).year.max())} :", flush=True)
+            print(t.round(2).to_string(), flush=True)
+            print(f"  annee : P {df.P.mean():.2f}, ET {df.ET.mean():.2f}, MOD16 {np.nanmean(df.MOD16):.2f}, Qobs {np.nanmean(df.Qobs):.2f}, Qsim {df.Qsim.mean():.2f}, P-Qobs {df.P.mean() - np.nanmean(df.Qobs):.2f}", flush=True)
+        return
     if os.environ.get("MEANDRE_BANC_MULT"):
         # PASSE AVANT A CHAMP MULTIPLIE (2026-09-28) : « K_c:1.5,C_f:0.8 » multiplie ces
         # champs sur tous les noeuds, evalue, et s'arrete. Repond sans entrainer a la
