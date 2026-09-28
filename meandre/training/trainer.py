@@ -498,7 +498,7 @@ class Trainer:
             # les seuils, lr × 1 pour les amplitudes (K_c_min, K_c_max_factor).
             gdd_threshold_params: list[torch.nn.Parameter] = []
             for name, p in model.named_parameters():
-                if "phenology_modulator" in name and ("gdd_emerg" in name or "gdd_mid" in name):
+                if "phenology_modulator" in name and ("gdd_emerg" in name or "gdd_mid" in name or "photo_crit" in name):
                     gdd_threshold_params.append(p)
             if gdd_threshold_params:
                 base_params[:] = [p for p in base_params

@@ -596,7 +596,8 @@ class HydroModel(nn.Module):
 
             if getattr(self, "column_mode", "meandre") == "hydrotel":
                 if getattr(self, "use_phenology_modulator", False):
-                    self.vertical_column._kc_dynamique = self.phenology_modulator(state.gdd_cum, spatial_params.K_c)
+                    _doy_p = int(day_of_year[t].item()) if day_of_year is not None else None
+                    self.vertical_column._kc_dynamique = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
                 vc_out = self.vertical_column.column_step(
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,

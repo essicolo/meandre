@@ -33,6 +33,9 @@ Validable contre :
 Ref : Allen 1998 FAO-56, Glenn et al. 2011, Hatfield & Dold 2018.
 """
 from __future__ import annotations
+import math
+import os
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -79,6 +82,15 @@ class PhenologyModulator(nn.Module):
         self.gdd_mid = nn.Parameter(torch.tensor(float(gdd_mid_init)))
         self.k_c_min = nn.Parameter(torch.tensor(float(k_c_min_init)))
         self.k_c_max_factor = nn.Parameter(torch.tensor(float(k_c_max_factor_init)))
+        # SÉNESCENCE PAR LA PHOTOPÉRIODE (2026-09-28, suggestion d'Essi). Mode « photo » :
+        # la chute d'automne n'est plus déclenchée par un cumul de degrés-jours mais par
+        # la longueur du jour, qui décroît après le solstice ; c'est le déclencheur
+        # principal de la sénescence des feuillus tempérés (Delpierre et al. 2009). Seuil
+        # de longueur du jour photo_crit_h = 12 + 3·tanh(photo_crit), initialisé à 12 h.
+        self.mode = os.environ.get("MEANDRE_PHENOLOGIE_MODE", "gdd")
+        if self.mode == "photo":
+            self.photo_crit = nn.Parameter(torch.tensor(0.0))
+            self.register_buffer("photo_pente_h", torch.tensor(0.5))
         # Hyperparamètres fixes (largeurs des transitions, non appris)
         self.register_buffer("sharpness_emerg", torch.tensor(float(sharpness_emerg)))
         self.register_buffer("sharpness_senesc", torch.tensor(float(sharpness_senesc)))
@@ -94,14 +106,30 @@ class PhenologyModulator(nn.Module):
         senesc = torch.sigmoid(-(gdd_cum - self.gdd_mid - self.senesc_offset) / self.sharpness_senesc)
         return ramp * senesc
 
-    def forward(self, gdd_cum: Tensor, K_c_base: Tensor) -> Tensor:
+    @staticmethod
+    def duree_du_jour(lat_deg: Tensor, doy: int) -> Tensor:
+        """Longueur du jour en heures (déclinaison de Cooper, angle horaire au coucher)."""
+        decl = math.radians(23.44) * math.sin(2.0 * math.pi * (284 + doy) / 365.0)
+        x = -torch.tan(torch.deg2rad(lat_deg)) * math.tan(decl)
+        return 24.0 / math.pi * torch.arccos(x.clamp(-1.0, 1.0))
+
+    def forward(self, gdd_cum: Tensor, K_c_base: Tensor, doy: int | None = None, lat_deg: Tensor | None = None) -> Tensor:
         """Modulateur K_c effectif au temps t.
 
         gdd_cum  : (N,) ou (T, N) — GDD cumulé
         K_c_base : (N,) — K_c de référence par nœud (sortie NeRF)
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
-        shape = self.shape(gdd_cum)                                       # ∈ [0, 1]
+        if self.mode == "photo" and doy is not None and lat_deg is not None:
+            ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / self.sharpness_emerg)
+            if doy > 172:
+                seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit)
+                senesc = torch.sigmoid((self.duree_du_jour(lat_deg, doy) - seuil) / self.photo_pente_h)
+            else:
+                senesc = torch.ones_like(ramp)
+            shape = ramp * senesc
+        else:
+            shape = self.shape(gdd_cum)                                   # ∈ [0, 1]
         # Born K_c_min ≥ 0.05 (floor strict), K_c_max_factor ≥ 0.5 (pas de réduction excessive)
         kc_min_safe = self.k_c_min.clamp(min=0.05, max=1.0)
         kc_max_safe = self.k_c_max_factor.clamp(min=0.5, max=2.0)
