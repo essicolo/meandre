@@ -3814,3 +3814,24 @@ Ce qui est au registre : R118 a innocenté la porte de gel du DRAINAGE PROFOND (
 Constat sur le modèle Penman et phénologie calée (R208) : dès 4 cm de gel en novembre, le clone refuse TOUTE infiltration (pinf = 0 si gelé et moins de 10 mm de neige), et la pluie ruisselle, 0,68 mm/j de ruissellement de surface en novembre et décembre contre 0,01 le reste de l'année ; débit de novembre 1,44 mm/j contre 0,73 observé.
 
 Porte continue (infiltration × (1 − fraction gelée de la couche de surface), `MEANDRE_GEL_CONTINU=1` au banc), passe avant sur les mêmes poids : débit de novembre 0,89, ruissellement de surface de novembre 0,01, corrélation journalière d'automne 0,46 → 0,63, hiver 0,47 → 0,43, printemps et été inchangés (0,71 et 0,78). Décembre devient un peu fort (1,57 contre 1,20). Entraînement de deux graines en cours.
+
+## R210 — Physique de la ronde, schéma semi-implicite, Penman, phénologie calée sur MODIS et porte de gel continue : les quatre saisons s'améliorent, le volume se ferme, et les paramètres de gel deviennent identifiables (2026-09-28) — ÉTABLI SUR UN SOUS-BASSIN, deux graines
+
+Sous-bassin 030905 (Châteauguay), banc réglé comme la ronde (64 sous-pas, correctifs de la couche 3, nappe libre, MOD16 en valeur absolue), huit époques ; comparaison au témoin du même banc (Linacre calée, K_c constant, porte de gel tout ou rien).
+
+| mesure | témoin Linacre | Penman, phénologie calée, porte de gel continue |
+| --- | --- | --- |
+| corrélation journalière, hiver | 0,43 | 0,64 à 0,65 |
+| printemps | 0,70 à 0,74 | 0,80 à 0,82 |
+| été | 0,77 à 0,79 | 0,78 à 0,79 |
+| automne | 0,30 à 0,31 | 0,65 |
+| corrélation, année d'évaluation 2013 | 0,58 | 0,84 à 0,85 |
+| évapotranspiration annuelle 2011-2013 (bilan d'eau 1,48) | 1,60 | 1,45 |
+| débit annuel 2011-2013 (observé 1,35) | 1,24 | 1,38 |
+| rapport des volumes, 2013 | 1,00 à 1,01 | 1,15 |
+
+Identifiabilité entre les deux graines : moyennes de bassin à moins de 1 % pour K_c, C_f, K_sat_3 et x_musk ; la carte de diffusivité thermique du gel (diff_gel), sans rapport entre graines chez le témoin (corrélation −0,79), devient concordante (0,95) parce que la porte continue la rend enfin active sur l'infiltration ; K_sat_2 passe de 0,69 à 0,97. K_sat_1 est moins bien fixé en moyenne (7 % contre 1 %).
+
+Trois défauts de STRUCTURE, chacun lisible sans entraînement, portaient l'essentiel de l'écart : une ETP de température qui inverse la saison (R207), une végétation sans saison (R206), une infiltration refusée en bloc dès le premier centimètre de gel (R209). Aucun paramètre appris ne pouvait les compenser.
+
+RÉSERVES. Un sous-bassin agricole, deux graines, une année d'entraînement (mode rapide à 64 sous-pas) ; la phénologie est calée sur le même bassin ; la ronde n'a rien de tout ceci. À éprouver sur un sous-bassin forestier d'un autre territoire avant toute généralisation.
