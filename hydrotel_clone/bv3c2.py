@@ -48,6 +48,9 @@ _DTC_DETACHE = _os.environ.get("MEANDRE_DTC_DETACHE", "0") == "1"
 # l'explosion du gradient a travers l'humidite du sol. Lu a chaque appel.
 
 
+_SEMI_IMPLICITE = _os.environ.get("MEANDRE_SOL_SEMI_IMPLICITE", "0") == "1"
+
+
 def _cd(x):
     return x.detach() if _os.environ.get("MEANDRE_CASCADE_DETACHE", "0") == "1" else x
 
@@ -392,9 +395,58 @@ class BV3C2Clone(torch.nn.Module):
                 dtc = dtc.detach()
             # ET BRUTE (C++ l.2036 : v_etr1 sans clamp) ; la négativité éventuelle
             # est refoulée depuis la couche du dessous (l.2118), PAS masquée.
-            t1 = t1 + dtc * (pinf - qq12 - e1) / z1
-            t2 = t2 + dtc * (qq12 - qq23 - e2 - q2 - q_drain) / z2
-            t3 = t3 + dtc * (qq23 - q3 - q3_lat - e3) / z3
+            f1 = (pinf - qq12 - e1) / z1
+            f2 = (qq12 - qq23 - e2 - q2 - q_drain) / z2
+            f3 = (qq23 - q3 - q3_lat - e3) / z3
+            if _SEMI_IMPLICITE:
+                # EULER LINEAIREMENT IMPLICITE sur les echanges de Darcy entre couches
+                # (2026-09-28). Le critere de Courant borne la taille des flux, pas leur
+                # raideur : pres de l'equilibre et de la saturation, le flux est petit mais sa
+                # derivee grande, et le pas explicite amplifie une perturbation jusqu'a cent
+                # fois par jour (registre, R197). La simulation reste bornee par les
+                # ecretages, pas sa derivee. On resout (I - dt A) d = dt f, ou A est la
+                # jacobienne des echanges qq12 et qq23 par rapport aux teneurs, estimee par
+                # differences finies et DETACHEE (methode de Rosenbrock a jacobienne
+                # approchee, qui reste consistante). La ou dt A est petit, d = dt f : le
+                # schema explicite du clone est retrouve.
+                with torch.no_grad():
+                    h = 1e-5
+                    dk1 = (campbell_K(t1 + h, ths1, ks1, b1) - k1) / h
+                    dk2 = (campbell_K(t2 + h, ths2, ks2, b2) - k2) / h
+                    dk3 = (campbell_K(t3 + h, ths3, ks3, b3) - k3) / h
+                    dp1 = (campbell_psi(t1 + h, ths1, psis1, b1, p["omegpi1"], p["mm1"], p["nn1"]) - ps1) / h
+                    dp2 = (campbell_psi(t2 + h, ths2, psis2, b2, p["omegpi2"], p["mm2"], p["nn2"]) - ps2) / h
+                    dp3 = (campbell_psi(t3 + h, ths3, psis3, b3, p["omegpi3"], p["mm3"], p["nn3"]) - ps3) / h
+                    g12 = 2.0 * (ps2 - ps1) / (z1 + z2) + 1.0
+                    g23 = 2.0 * (ps3 - ps2) / (z2 + z3) + 1.0
+                    c12 = 2.0 / (z1 + z2)
+                    c23 = 2.0 / (z2 + z3)
+                    m1 = (k1 >= k2).to(t1.dtype)
+                    m2 = (k2 >= k3).to(t1.dtype)
+                    a12_1 = m1 * dk1 * g12 - k12 * c12 * dp1
+                    a12_2 = (1.0 - m1) * dk2 * g12 + k12 * c12 * dp2
+                    a23_2 = m2 * dk2 * g23 - k23 * c23 * dp2
+                    a23_3 = (1.0 - m2) * dk3 * g23 + k23 * c23 * dp3
+                    A = torch.zeros(t1.shape[0], 3, 3, dtype=t1.dtype, device=t1.device)
+                    A[:, 0, 0] = -a12_1 / z1
+                    A[:, 0, 1] = -a12_2 / z1
+                    A[:, 1, 0] = a12_1 / z2
+                    A[:, 1, 1] = (a12_2 - a23_2) / z2
+                    A[:, 1, 2] = -a23_3 / z2
+                    A[:, 2, 1] = a23_2 / z3
+                    A[:, 2, 2] = a23_3 / z3
+                    A = torch.nan_to_num(A, nan=0.0, posinf=0.0, neginf=0.0)
+                    M = torch.eye(3, dtype=t1.dtype, device=t1.device).expand_as(A) - dtc.detach()[:, None, None] * A
+                    Minv = torch.linalg.inv(M)
+                ff = torch.stack([f1, f2, f3], dim=1) * dtc[:, None]
+                d = torch.bmm(Minv, ff[:, :, None])[:, :, 0]
+                t1 = t1 + d[:, 0]
+                t2 = t2 + d[:, 1]
+                t3 = t3 + d[:, 2]
+            else:
+                t1 = t1 + dtc * f1
+                t2 = t2 + dtc * f2
+                t3 = t3 + dtc * f3
             # cascade SATURATION fidèle C++ (l.2046-2116) : on REMPLIT d'abord la
             # capacité disponible (refoulement bas→haut PUIS redistribution
             # haut→bas) ; seul l'excès quand le profil est plein déborde en

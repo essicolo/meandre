@@ -234,3 +234,26 @@ Règle posée par Essi le 2026-09-13, après une journée où la plupart des heu
 - Le bilan des composantes mélangeait des SOMMES et des MOYENNES. Les termes de la fonction de perte sont accumulés avec la part du bloc dans l'époque ; les treize termes ajoutés dans la boucle du pilote, dont GRACE, la neige, les nappes et l'ancrage sur la littérature, ne l'étaient pas, donc s'additionnaient sur les quelque deux cents blocs d'une époque. Le bilan portait un facteur deux cents entre deux familles, et m'a fait écrire que GRACE dominait l'entraînement alors qu'il en pèse un dixième à huit dixièmes. Corrigé 2026-09-21. Avant de conclure d'un bilan de perte, vérifier l'unité d'agrégation des deux côtés.
 - A loss term can display a VALUE and contribute NO gradient. `MEANDRE_DIAG_CPU=1` detached the diagnostics, and MODIS ET, CanSWE snow, well levels and GRACE TWS all derive from diagnostics: for two days they were printed in the loss breakdown while training on nothing. Fixed 2026-09-20 (`HydroModel.DIAGNOSTICS_DERIVES`), with tests. The symptom to watch for: two runs that differ only by a constraint give the SAME held-out value to four decimals at every epoch.
 - Activating the four auxiliary constraints costs 0.032 of held-out KGE on the OUTV témoin and DIVIDES the seed-to-seed dispersion by four, from 0.0141 to 0.0036. Judge auxiliary data on identifiability and reproducibility, never on KGE.
+
+## Autonomie : une consigne de durée se respecte jusqu'au bout
+
+Les prompts d'Essi méritent d'être pris au mot. Le 2026-09-26, la consigne était d'itérer des tests pendant deux jours ; le tour s'est terminé sur un compte rendu annonçant les prochaines vérifications au lieu de les lancer, et deux jours et trois nuits ont été perdus, machines à l'arrêt.
+
+- Quand Essi demande de travailler pendant une durée (« les deux prochains jours », « la fin de semaine », « en autonomie »), ne JAMAIS terminer le tour sur un plan ou une liste de vérifications à venir. Enchaîner : lancer le test suivant, attendre son résultat, le consigner, choisir le suivant, jusqu'à la fin de la durée ou jusqu'à ce qu'Essi reprenne la main.
+- Un message d'étape se donne en passant, dans le même tour, sans s'arrêter.
+- Si le travail doit attendre un calcul, garder le tour vivant par une attente sur la condition de fin, ou programmer un réveil ; ne jamais laisser la machine inactive faute de relance.
+- Si un outil bloque (autorisations, réseau), réessayer plus tard dans le même tour et faire en attendant ce qui ne dépend pas de lui.
+
+## Communication
+
+- Écris pour un hydrologue qui n'a pas suivi la session. Français simple, phrases complètes.
+- N'invente aucune étiquette, aucun code d'essai (R53, V2b...), aucun terme maison.
+  Si un essai doit être nommé, décris-le : « essai avec covariables SIGEOM, routage Muskingum ».
+- Utilise seulement les termes du domaine : KGE, NSE, biais, débit de pointe, nœud, station, bassin.
+  Tout autre terme doit être défini la première fois.
+- Chaque nombre vient avec ce qu'il mesure, son unité, et sa valeur de référence.
+  Pas « recule de 7.1 », mais « le KGE médian passe de 0,71 à 0,64 (baisse) ».
+- Comparaisons avant/après : un petit tableau (métrique, avant, après, stations concernées).
+- Termine par une phrase : ce que ça veut dire et ce que tu proposes ensuite.
+- Plans : 5 étapes maximum, chacune en une phrase, sans détails d'implémentation.
+- Si tu n'es pas sûr de ce qu'un résultat signifie, dis-le au lieu de l'habiller.
