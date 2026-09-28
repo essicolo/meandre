@@ -3728,3 +3728,20 @@ En tendance, le défaut d'évapotranspiration est absorbé par les conductivité
 RÉSERVES. MOD16 dépasse de 125 mm/an l'évapotranspiration que le bilan d'eau autorise sur ce bassin (R202) ; l'imposer en niveau pousse donc un peu trop fort. Et la perte de corrélation vient de ce qu'un K_c constant dans l'année ajoute aussi de l'évapotranspiration en automne (R202) ; le K_c saisonnier est en épreuve.
 
 PIÈGE DE NOMMAGE. Le mode `bassin` de la perte d'ET est CENTRÉ par le trainer (`_center_et` le traite comme `anomaly`) : il compare la forme de la moyenne du bassin, pas son niveau. Sa première graine garde un volume à 1,34. Un vrai niveau à l'échelle du bassin n'existe pas encore.
+
+## R204 — Le ruissellement d'été du banc rapide est un artefact de sa boucle de sous-pas tronquée ; à 64 sous-pas l'étiage d'été est à peu près juste (2026-09-28) — ÉTABLI, corrige l'annonce d'un étiage deux fois trop haut
+
+Bilan mensuel du sous-bassin 030905 au départ (aucune époque), avec les correctifs de la couche 3 et la nappe libre de la ronde (`ETL_L3_TAU=2`, `ETL_L3_KSUB=1` mm/j, `ETL_L3_TAULAT=3`, nappe libre aux réglages de la ronde, exposant 1,36 mesuré en Montérégie), désormais lus par le banc. Moyennes 2011-2013, mm/j :
+
+| | débit observé | 16 sous-pas (banc rapide) | 64 sous-pas (ronde) |
+| --- | --- | --- | --- |
+| juillet | 0,45 | 1,11 | 0,69 |
+| août | 0,41 | 0,96 | 0,32 |
+| septembre | 0,74 | 1,71 | 1,47 |
+| janvier | 1,13 | 1,10 | 1,56 |
+| part de la journée non traitée par la boucle du sol, selon le mois | | 9 à 33 % | 0 % |
+| ruissellement de surface, août | | 1,12 | 0,06 |
+
+Quand la boucle de sous-pas est plafonnée avant la fin de la journée, la fermeture de masse du clone (`_FERMETURE_MASSE`, `bv3c2.py`) verse au ruissellement toute la pluie du temps restant. À 16 sous-pas, le mode rapide du banc, une part de 9 à 33 % de chaque journée est ainsi traitée comme un sol imperméable, et l'été produit 1 mm/j de ruissellement fictif. À 64 sous-pas, la boucle finit toujours sa journée, le ruissellement de surface disparaît presque, l'eau passe par l'hypodermique et la nappe, et l'étiage de juillet-août est à peu près juste. Il reste un excès d'automne (septembre à décembre), porté par l'écoulement hypodermique.
+
+PORTÉE SUR LES ÉPREUVES DU JOUR. Toutes ont tourné à 16 sous-pas et sans les correctifs de la couche 3 : les conclusions sur le volume, l'évapotranspiration et l'étiage (R199, R202, R203) sont à refaire sur un banc réglé comme la ronde. La reproductibilité apportée par le schéma semi-implicite (R198, R200) tient : la sonde du gradient est saine aussi à 64 sous-pas. Et la configuration du banc ne portait pas les réglages physiques de la ronde, faute que la règle « vérifier la configuration en vigueur » ait été appliquée au banc.

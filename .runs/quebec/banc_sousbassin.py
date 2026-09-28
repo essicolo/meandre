@@ -520,6 +520,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 for k in ("ks1", "ks2", "ks3"):
                     calib.pop(k, None)
             col.set_calibrated_soil(calib)
+        # CORRECTIFS DE LA COUCHE 3 ET NAPPE LIBRE (2026-09-28), lus depuis les MEMES
+        # variables que le pilote regional : sans eux le banc tournait avec le clone
+        # d'origine, couche 3 engorgee, 86 % de ruissellement de surface, alors que la
+        # ronde les porte. ETL_L3_KSUB n'accepte ici qu'une constante en mm/jour.
+        if "ETL_L3_TAU" in os.environ:
+            col.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
+        if "ETL_L3_KSUB" in os.environ:
+            col.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
+        if "ETL_L3_TAULAT" in os.environ:
+            col.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
+        if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
+            col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
         return m
 
     def _tranche(a, b):
@@ -686,7 +698,26 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             conv = 86400.0 * 1000.0 / _aire_m2
             QS = Q[:, s["exutoire"]].cpu().numpy() * conv
             QO = o * conv
-            df = pd.DataFrame({"mois": _mois, "P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS})[_ok_t]
+            # Composantes de la production verticale moyennees sur le bassin, en mm/j :
+            # ruissellement de surface, ecoulement hypodermique, et sortie de la nappe.
+            def _moy(x):
+                return (x.to(dev) * _w).sum(dim=1).cpu().numpy() if x is not None else np.full(len(temps), np.nan)
+            _comp = {"surf": _moy(getattr(_d, "prod_surf", None)), "hypo": _moy(getattr(_d, "prod_hypo", None)), "nappe": _moy(getattr(_d, "q_baseflow", None))}
+            # Humidite des couches, en fraction de la porosite imposee par le calage.
+            _sp = m.spatial_encoder(coords, terr.data)
+            _ths = getattr(m.vertical_column, "_static", {}).get("soil", {})
+            for _k in (1, 2, 3):
+                _th = getattr(_d, f"theta{_k}", None)
+                _por = _ths.get(f"thetas{_k}") if isinstance(_ths, dict) else None
+                if _th is not None:
+                    _por = _por if torch.is_tensor(_por) else getattr(_sp, f"porosity_{_k}")
+                    _comp[f"sat{_k}"] = _moy(_th.to(dev) / _por.to(dev).reshape(1, -1).clamp(min=1e-6))
+            # Part de la journee que la boucle de sous-pas n'a pas traitee : sa pluie est
+            # versee au ruissellement par la fermeture de masse du clone.
+            _tnt = getattr(_d, "temps_non_traite", None)
+            if _tnt is not None:
+                _comp["non_traite"] = _moy(_tnt)
+            df = pd.DataFrame({"mois": _mois, "P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS, **_comp})[_ok_t]
             t = df.groupby("mois").mean()
             t["P-Qobs"] = t.P - t.Qobs
             print(f"  bilan mensuel, {os.path.basename(_ck)}, mm/j, moyennes 2011-{int(pd.DatetimeIndex(temps).year.max())} :", flush=True)
@@ -971,7 +1002,7 @@ def main():
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,
                   debut_train=2012, fin_train=2012, fin_val=2013, debut_eval=2013,
-                  fin_charge=2013, substeps=16, chunk=a.chunk, w_et=a.w_et,
+                  fin_charge=2013, substeps=int(os.environ.get("MEANDRE_BANC_NSUBSTEP", "16")), chunk=a.chunk, w_et=a.w_et,
                   w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc,
                   w_dq_log=a.w_dq_log, quantile=a.quantile, charger=a.charger,
                   w_log_mse=a.w_log_mse, w_peak=a.w_peak,
