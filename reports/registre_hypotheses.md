@@ -3709,3 +3709,22 @@ LECTURE. Sur ce bassin agricole du sud, le bilan d'eau fermé avec la précipita
 LA SAISON. Le déficit du modèle est en été : juin à août, 2,05 à 2,43 mm/j simulés contre 3,58 à 4,31 pour MOD16, et mai 1,76 contre 2,57. En octobre, le modèle est déjà AU-DESSUS de MOD16 (1,07 contre 0,87). Relever K_c uniformément (mode niveau) remonte l'été mais aussi l'automne (1,38 contre 0,87 en octobre), assèche les sols avant l'hiver, et fait perdre le débit d'hiver et la crue de mars (janvier 0,66 simulé contre 1,13 observé, mars 2,48 contre 3,30). C'est la perte de corrélation de 0,10 du mode niveau. Le cycle saisonnier de l'évapotranspiration simulée est trop plat et trop long ; un coefficient constant dans l'année ne peut pas le corriger. Il faut un coefficient saisonnier, piste déjà construite (le modulateur phénologique, K_c par degrés-jours) et jamais branchée sur la colonne d'Hydrotel.
 
 Réserves : un sous-bassin agricole, trois ans ; la précipitation de CaSR peut être biaisée ailleurs, notamment en neige et au nord.
+
+## R203 — MOD16 en niveau par tronçon ferme le volume et rend à chaque paramètre son rôle ; le mode « bassin » n'est pas un mode de niveau (2026-09-28) — ÉTABLI SUR UN SOUS-BASSIN
+
+Banc corrigé, 030905, quatre graines, huit époques.
+
+| mesure | MOD16 en tendance (défaut) | MOD16 en niveau par tronçon |
+| --- | --- | --- |
+| rapport des volumes | 1,34 à 1,36 | 0,98 à 1,00 |
+| corrélation | 0,81 à 0,83 | 0,73 à 0,75 |
+| évapotranspiration contre MOD16, période d'évaluation | −42 % | −25 % |
+| K_c, déplacement depuis l'initialisation, dispersion entre graines | 5 %, 0,2 % | 22 %, 0,8 % |
+| K_sat_1, déplacement | 40 % | 14 % |
+| K_sat_2, déplacement | 29 % | 13 % |
+
+En tendance, le défaut d'évapotranspiration est absorbé par les conductivités du sol, qui bougent de 29 à 40 % : compensation non identifiable. En niveau, K_c porte l'évapotranspiration, fixé à moins de 1 % entre graines, et les conductivités ne bougent plus que de 13 à 14 %. L'identifiabilité (concordance des cartes entre graines) est du même ordre dans les deux modes ; l'attribution est meilleure en niveau.
+
+RÉSERVES. MOD16 dépasse de 125 mm/an l'évapotranspiration que le bilan d'eau autorise sur ce bassin (R202) ; l'imposer en niveau pousse donc un peu trop fort. Et la perte de corrélation vient de ce qu'un K_c constant dans l'année ajoute aussi de l'évapotranspiration en automne (R202) ; le K_c saisonnier est en épreuve.
+
+PIÈGE DE NOMMAGE. Le mode `bassin` de la perte d'ET est CENTRÉ par le trainer (`_center_et` le traite comme `anomaly`) : il compare la forme de la moyenne du bassin, pas son niveau. Sa première graine garde un volume à 1,34. Un vrai niveau à l'échelle du bassin n'existe pas encore.
