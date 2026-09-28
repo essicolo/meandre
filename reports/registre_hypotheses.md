@@ -3731,6 +3731,8 @@ PIÈGE DE NOMMAGE. Le mode `bassin` de la perte d'ET est CENTRÉ par le trainer 
 
 ## R204 — Le ruissellement d'été du banc rapide est un artefact de sa boucle de sous-pas tronquée ; à 64 sous-pas l'étiage d'été est à peu près juste (2026-09-28) — ÉTABLI, corrige l'annonce d'un étiage deux fois trop haut
 
+DÉJÀ CONNU : le mécanisme (pluie du temps non traité versée au ruissellement par la fermeture de masse) est établi au registre depuis début septembre, mesuré sur des nœuds gaspésiens à l'été 2013, avec son lien à la couche 3 engorgée (R153). Cette entrée n'ajoute que sa conséquence sur le banc rapide, qui tournait à 16 sous-pas sans les correctifs de la couche 3 ; elle a été redécouverte faute d'avoir relu le registre et la configuration du banc avant les épreuves.
+
 Bilan mensuel du sous-bassin 030905 au départ (aucune époque), avec les correctifs de la couche 3 et la nappe libre de la ronde (`ETL_L3_TAU=2`, `ETL_L3_KSUB=1` mm/j, `ETL_L3_TAULAT=3`, nappe libre aux réglages de la ronde, exposant 1,36 mesuré en Montérégie), désormais lus par le banc. Moyennes 2011-2013, mm/j :
 
 | | débit observé | 16 sous-pas (banc rapide) | 64 sous-pas (ronde) |
