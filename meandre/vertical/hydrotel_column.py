@@ -1137,7 +1137,13 @@ class HydrotelColumn(nn.Module):
         for (pct, jbp_t, leaf_t, root_t) in pheno:
             etp_classes.append(etp * pct / 1000.0)
             roots.append(_interp1d(d, jbp_t, root_t).expand_as(P))
-            leaves.append(_interp1d(d, jbp_t, leaf_t).expand_as(P))
+            _lf = getattr(self, "_lai_forme", None)
+            if _lf is not None:
+                # Indice foliaire = plateau de la classe × forme saisonnière pilotée par la
+                # météo (modulateur phénologique), au lieu du calendrier à dates fixes.
+                leaves.append((leaf_t.max() * _lf).expand_as(P))
+            else:
+                leaves.append(_interp1d(d, jbp_t, leaf_t).expand_as(P))
         e1, e2, e3 = calcule_etr(state.theta1, state.theta2, state.theta3,
                                  etp_classes, roots, leaves, pe["thetacc"], pe["thetapf"],
                                  pe["alpha"], pe["z11"], pe["z22"], pe["z33"], pe["des"], pe["coef_assech"])

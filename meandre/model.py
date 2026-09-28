@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import os
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -597,7 +599,12 @@ class HydroModel(nn.Module):
             if getattr(self, "column_mode", "meandre") == "hydrotel":
                 if getattr(self, "use_phenology_modulator", False):
                     _doy_p = int(day_of_year[t].item()) if day_of_year is not None else None
-                    self.vertical_column._kc_dynamique = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
+                    if os.environ.get("MEANDRE_PHENOLOGIE_CIBLE", "kc") == "lai":
+                        # La phénologie module l'INDICE FOLIAIRE, donc la seule transpiration :
+                        # l'évaporation du sol nu reste entière hors saison (2026-09-28).
+                        self.vertical_column._lai_forme = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
+                    else:
+                        self.vertical_column._kc_dynamique = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
                 vc_out = self.vertical_column.column_step(
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,

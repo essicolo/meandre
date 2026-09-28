@@ -3780,3 +3780,13 @@ MODIS ne peut pas piloter le modèle en prédiction (Essi) ; il sert à FIXER le
 | degrés-jours au printemps, photopériode à l'automne | 0,106 | 0,097, 0,104, 0,132 | +0,012 |
 
 La photopériode, suggérée par Essi, est meilleure et surtout transfère d'une année à l'autre ; les degrés-jours seuls échouent sur une année sur trois. Paramètres calés : débourrement à 208 degrés-jours au-dessus de 10 °C, sénescence quand le jour passe sous 11,9 h (vers le 24 septembre à 45 °N), transitions de 88 degrés-jours et 1,0 h. Ils sont posés et GELÉS dans le modèle par `MEANDRE_PHENOLOGIE_MODE=photo` et `MEANDRE_PHENOLOGIE_PARAMS=207.94,11.91,88.4,0.99` ; seuls le plancher et le plafond de K_c restent appris. Épreuve hydrologique en file sur le banc réglé comme la ronde.
+
+## R207 — La formule de Linacre inverse la saison de l'évapotranspiration ; Penman en reproduit la forme (2026-09-28) — ÉTABLI SUR UN SOUS-BASSIN, entraînement en cours
+
+Ce qui est au registre : R72 et R73 (septembre) ont comparé les formules d'ETP sur le VOLUME annuel, et conclu qu'une constante de calage importe plus que l'équation. La forme saisonnière n'avait pas été mesurée.
+
+Mesure sans simulation (`MEANDRE_BANC_ETP_FORMES=1`) : chaque formule de la colonne calculée jour par jour sur le forçage CaSR du sous-bassin 030905, 2011-2013, moyenne du bassin par mois, contre MOD16. Rapport avril sur octobre : MOD16 1,63 ; Penman (rayonnement net de CaSR) 1,58 ; McGuinness et Oudin 1,30 ; Linacre calée, la formule du modèle, 0,81. Linacre, formule de température, donne plus de demande en octobre qu'en avril, là où le rayonnement et MOD16 disent l'inverse. Aucune constante ne répare une forme ; c'est la cause de l'excès d'évapotranspiration d'automne (R202, R204) et le modulateur phénologique n'en compensait qu'une partie (R206).
+
+Passe avant sur le modèle témoin réglé comme la ronde, Penman et K_c multiplié par 0,45 : évapotranspiration annuelle 1,44 mm/j contre 1,48 exigés par le bilan d'eau ; janvier 0,38 (MOD16 0,40), avril 1,67 (1,42), octobre 1,05 (0,87) ; débits d'avril 2,54 contre 2,62 observés, de janvier 1,05 contre 1,13. Reste un été faible (juillet 2,83 contre 4,31) et un automne un peu fort en débit.
+
+Entraînement en cours sur le banc réglé comme la ronde : Penman avec K_c × 0,5 fixe, avec et sans la phénologie calée sur MODIS, deux graines chacun (`MEANDRE_BANC_ETP_MODE`, `MEANDRE_BANC_MULT_FIXE`).

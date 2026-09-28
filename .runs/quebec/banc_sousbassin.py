@@ -197,7 +197,9 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         maj = reg.upper()
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
         col = m.vertical_column
-        col.et_mode = "linacre"
+        # MEANDRE_BANC_ETP_MODE (2026-09-28) : formule d'ETP autre que Linacre calée, par
+        # exemple penman, dont la forme saisonnière suit MOD16 (avril / octobre 1,58 contre 1,63).
+        col.et_mode = os.environ.get("MEANDRE_BANC_ETP_MODE", "linacre")
         col.etp_channel = None
         col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"],
                                                    device=torch.device("cpu")))
@@ -505,7 +507,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
         m = m.to(dev)
         col = m.vertical_column
-        col.et_mode = "linacre"
+        # MEANDRE_BANC_ETP_MODE (2026-09-28) : formule d'ETP autre que Linacre calée, par
+        # exemple penman, dont la forme saisonnière suit MOD16 (avril / octobre 1,58 contre 1,63).
+        col.et_mode = os.environ.get("MEANDRE_BANC_ETP_MODE", "linacre")
         col.etp_channel = None
         col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"], device=dev))
         col.set_melt_params(load_melt_nodes(plat, s["node_ids"], device=dev))
@@ -666,6 +670,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
+    if os.environ.get("MEANDRE_BANC_MULT_FIXE") and not os.environ.get("MEANDRE_BANC_MENSUEL"):
+        # Multiplicateur FIXE sur des champs, actif aussi pendant l'entrainement (2026-09-28) :
+        # par exemple K_c:0.5 pour ramener Penman au volume de Linacre calee, le champ
+        # apprenant autour.
+        m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
+        print(f"  champ spatial : multiplicateurs fixes {os.environ['MEANDRE_BANC_MULT_FIXE']}", flush=True)
     if os.environ.get("MEANDRE_CHAMP_GELE"):
         # Sorties du champ gelees a leur valeur d'initialisation, uniforme (2026-09-28).
         _gel = [x for x in os.environ["MEANDRE_CHAMP_GELE"].split(",") if x]
@@ -681,9 +691,43 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         _aire_m2 = float(s["aire"]) * 1e6 if s.get("aire") else float(_a.sum()) * 1e6
         _mois = pd.DatetimeIndex(temps).month
         _ok_t = pd.DatetimeIndex(temps).year >= 2011
+        if os.environ.get("MEANDRE_BANC_ETP_FORMES") == "1":
+            # FORME SAISONNIÈRE DE L'ETP (2026-09-28) : chaque formule de la colonne calculée
+            # jour par jour sur le forçage du sous-bassin, moyennée sur le bassin et par mois,
+            # contre MOD16. Aucune simulation : ne dépend que du forçage et des ancrages.
+            col = m.vertical_column
+            lat_n = coords[:, 1].to(dev)
+            res = {}
+            for _mode in ("linacre", "mcguinness", "oudin", "penman"):
+                col.et_mode = _mode
+                vals = []
+                with torch.no_grad():
+                    for t in range(len(temps)):
+                        f = F[t]
+                        z = torch.zeros(n, device=dev)
+                        try:
+                            e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n), couv=z, albn=z)
+                        except TypeError:
+                            e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n))
+                        vals.append(float((e * _w).sum()))
+                res[_mode] = np.array(vals)
+            col.et_mode = "linacre"
+            if et_obs is not None:
+                _vo = torch.isfinite(et_obs)
+                MODs = (torch.nan_to_num(et_obs) * _w * _vo).sum(dim=1) / (_w * _vo).sum(dim=1).clamp(min=1e-9)
+                MODs = torch.where(_vo.any(dim=1), MODs, torch.full_like(MODs, float("nan"))).cpu().numpy()
+            else:
+                MODs = np.full(len(temps), np.nan)
+            dfe = pd.DataFrame({"mois": _mois, "MOD16": MODs, **res})[_ok_t].groupby("mois").mean()
+            print("  ETP mensuelle par formule, mm/j, moyennes du bassin, contre MOD16 (evapotranspiration REELLE) :", flush=True)
+            print(dfe.round(2).to_string(), flush=True)
+            print("  rapport avril / octobre : " + ", ".join(f"{c} {dfe.loc[4, c] / dfe.loc[10, c]:.2f}" for c in dfe.columns), flush=True)
+            return
         for _ck in os.environ["MEANDRE_BANC_MENSUEL"].split(";"):
             if _ck != "initial":
                 m.load(_ck)
+            if os.environ.get("MEANDRE_BANC_MULT_FIXE"):
+                m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
             m.eval()
             with torch.no_grad():
                 Q, _, _d = m.simulate(forcing=F, initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w, day_of_year=doy, return_diagnostics=True)
