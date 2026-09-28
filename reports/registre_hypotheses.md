@@ -3747,3 +3747,21 @@ Bilan mensuel du sous-bassin 030905 au départ (aucune époque), avec les correc
 Quand la boucle de sous-pas est plafonnée avant la fin de la journée, la fermeture de masse du clone (`_FERMETURE_MASSE`, `bv3c2.py`) verse au ruissellement toute la pluie du temps restant. À 16 sous-pas, le mode rapide du banc, une part de 9 à 33 % de chaque journée est ainsi traitée comme un sol imperméable, et l'été produit 1 mm/j de ruissellement fictif. À 64 sous-pas, la boucle finit toujours sa journée, le ruissellement de surface disparaît presque, l'eau passe par l'hypodermique et la nappe, et l'étiage de juillet-août est à peu près juste. Il reste un excès d'automne (septembre à décembre), porté par l'écoulement hypodermique.
 
 PORTÉE SUR LES ÉPREUVES DU JOUR. Toutes ont tourné à 16 sous-pas et sans les correctifs de la couche 3 : les conclusions sur le volume, l'évapotranspiration et l'étiage (R199, R202, R203) sont à refaire sur un banc réglé comme la ronde. La reproductibilité apportée par le schéma semi-implicite (R198, R200) tient : la sonde du gradient est saine aussi à 64 sous-pas. Et la configuration du banc ne portait pas les réglages physiques de la ronde, faute que la règle « vérifier la configuration en vigueur » ait été appliquée au banc.
+
+## R205 — Geler le routage de Muskingum à une valeur uniforme rend le sous-bassin de l'Outaouais reproductible, et le KGE monte (2026-09-28) — ÉTABLI SUR UN SOUS-BASSIN
+
+Ce qui est déjà au registre sur le routage : un K physique fixe de 0,35 h dégrade tout (R2) ; le K déployé vaut 15 à 26 fois le temps de parcours physique, parce qu'il compense un stockage de versant absent (R62) ; il sature sa borne de 48 h sur 43 % des tronçons de l'Outaouais. Ce que cette épreuve ajoute, sur le schéma de sol corrigé : la part du routage LIBRE dans la dispersion entre graines.
+
+Sous-bassin 040110 (Outaouais), schéma semi-implicite, huit époques, quatre graines ; x_musk et K_musk gelés à leur initialisation uniforme (x 0,2, K 24 h) par `MEANDRE_CHAMP_GELE`.
+
+| graine | routage libre | routage gelé |
+| --- | --- | --- |
+| 1234 | 0,535 | 0,697 |
+| 4321 | 0,578 | 0,695 |
+| 777 | 0,488 | 0,692 |
+| 2468 | 0,517 | 0,692 |
+| étendue | 0,090 | 0,005 |
+
+Identifiabilité des autres champs, dispersion de la moyenne entre graines, libre puis gelé : K_c 1,2 % puis 1,2 % ; K_sat_1 2,2 % puis 2,6 % ; K_sat_2 7,7 % puis 5,1 % ; K_sat_3 1,8 % puis 0,8 % ; C_f 5,7 % puis 13,2 %.
+
+Avec une seule station à l'exutoire, deux sorties libres de routage par tronçon ne sont pas identifiables ; en huit époques elles dérivent selon la graine et entraînent le reste. Gelées à une valeur uniforme plausible, le résultat devient reproductible à 0,005 près et meilleur. Une compensation se déplace toutefois vers le taux de fonte, moins bien fixé (13 % contre 6 %). La piste qui en découle n'est PAS le K physique (réfuté) : c'est un routage à peu de degrés de liberté, par exemple un K et un x par territoire plutôt que par tronçon, ou appris seulement là où plusieurs stations emboîtées le contraignent.
