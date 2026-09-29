@@ -3940,3 +3940,24 @@ Les deux sous-bassins du banc sont typiques : 0,69 en Outaouais 040110 et 0,82 s
 LECTURE. L'évapotranspiration MOD16 de septembre-octobre vaut environ 1,1 mm/j, soit 30 % de la précipitation ; il reste 40 % de la pluie d'automne, environ 1,5 mm/j pendant deux mois, que tous les bassins mettent en réserve, et qui ressort à la crue de printemps, où la rétention devient négative. Ce n'est pas un effet des lacs ni des milieux humides. C'est un déficit de sol et de nappe creusé l'été et comblé l'automne. Or dans le modèle, la couche profonde ne bouge pas : sa saturation reste entre 0,37 et 0,40 de la porosité toute l'année en Outaouais, entre 0,56 et 0,63 sur la Châteauguay, c'est-à-dire à la capacité au champ, drainée en deux jours au-dessus par `ETL_L3_TAU` et remplie au plus de 1 mm/j par `ETL_L3_KSUB`. Elle ne se creuse pas l'été, donc elle n'a rien à combler l'automne, et le modèle rend en octobre 66 % de la pluie quand la station en rend 36 %. C'est le mécanisme candidat du surplus d'entrée d'hiver de l'Outaouais (R212), et il vaut pour la Châteauguay, où le modèle rend 1,39 mm/j en novembre contre 0,73 observé.
 
 CE QUE CELA DÉSIGNE. Non pas le plafond de percolation seul, mais l'extraction d'évapotranspiration en profondeur l'été : si les racines ne puisent pas sous la capacité au champ dans la couche profonde, aucun déficit ne se forme. Épreuve en passe avant : profondeur racinaire et part de l'extraction par couche, jugées sur la saturation de la couche profonde en août et sur la rétention d'octobre.
+
+## R217 — Août se règle par la nappe, pas par le sol : percolation ouverte et exposant de vidange local rendent l'étiage d'août de l'Outaouais, et la moitié du surplus d'octobre (2026-09-29) — ÉTABLI EN PASSE AVANT, entraînement en file
+
+Passes avant sur les meilleurs points de reprise de chaque bassin (Penman, phénologie, porte continue), sans réentraîner. Débits d'août et d'octobre en mm/j, débit annuel simulé, contre observé.
+
+| réglage | Outaouais août | Outaouais octobre | Outaouais année | Châteauguay août | Châteauguay octobre | Châteauguay année |
+| --- | --- | --- | --- | --- | --- | --- |
+| observé | 0,73 | 1,57 | 1,83 | 0,41 | 0,85 | 1,35 |
+| en vigueur : 1 mm/j, exposant du territoire, extraction 0,15 | 0,45 | 2,88 | 2,14 | 0,26 | 0,89 | 1,38 |
+| extraction depuis la nappe coupée | 0,60 | 3,06 | 2,24 | | | |
+| extraction 0,30 | 0,36 | 2,73 | 2,05 | 0,19 | 0,83 | 1,33 |
+| percolation 4 mm/j | 0,46 | 2,57 | 2,14 | 0,45 | 0,82 | 1,37 |
+| percolation 4 mm/j, exposant local (1,6 et 2,4) | 0,74 | 2,40 | 2,16 | 0,34 | 0,78 | 1,35 |
+| percolation 8 mm/j, exposant local | 0,78 | 2,34 | 2,17 | 0,36 | 0,79 | 1,35 |
+| percolation 4 mm/j, exposant 2,0 | 0,67 | 2,41 | 2,16 | | | |
+
+LECTURE. Ce n'est pas le sol : ouvrir la percolation seule déplace l'eau d'octobre de l'écoulement hypodermique vers la nappe (2,64 à 1,61 mm/j) sans la retenir, parce que l'exposant de vidange du territoire, 4,65, restitue aussitôt ce que la nappe reçoit. Avec l'exposant mesuré sur la station, 1,6 (R213), la nappe stocke l'automne et le rend en été : août passe de 0,45 à 0,74 mm/j pour 0,73 observé, octobre de 2,88 à 2,40, novembre porte alors 1,2 mm/j de nappe. Sur la Châteauguay, c'est la percolation qui manquait : 4 mm/j relève août de 0,26 à 0,45 pour 0,41 observé, et l'exposant local, 2,4, redescend à 0,34 en relevant l'hiver (corrélation 0,64 à 0,70). L'extraction d'évapotranspiration depuis la nappe, mise pour les puits, compte pour la moitié du déficit d'août en Outaouais et n'a pas de contrepartie mesurable ici, faute de puits.
+
+CE QUI RESTE. Le débit annuel de l'Outaouais reste trop fort de 18 % (2,16 contre 1,83) sous tous les réglages : c'est un défaut de volume, non d'automne, l'évapotranspiration simulée valant 1,39 mm/j quand le bilan en demande 1,70, le manque étant concentré de février à mai (65 des 70 mm annuels). Le rapport d'octobre, 0,55 de la pluie contre 0,36 observé, n'est réglé qu'à moitié.
+
+RECETTE UNIQUE. Un exposant par station ne se transfère pas aux tronçons non jaugés (R213 : aucune covariable ne le prédit). Boussinesq à 2,0 et 4 mm/j donnent en Outaouais 0,67 en août et 2,41 en octobre, presque autant que l'exposant local ; la même recette sur la Châteauguay est en passe avant, puis entraînée sur deux graines contre les témoins.
