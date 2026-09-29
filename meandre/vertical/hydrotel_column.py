@@ -615,7 +615,7 @@ class HydrotelColumn(nn.Module):
         kc = sp.K_c if hasattr(sp, "K_c") else torch.ones_like(like)
         p_etr = dict(thetacc=sp.theta_fc_1, thetapf=sp.theta_wp_1, alpha=alpha * torch.ones_like(like),
                      des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
-                     z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc)
+                     z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc, class_names=list(self._pheno_noms))
 
         # milieu humide isolé : actif SI le territorial porte la géométrie par nœud
         # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
@@ -1143,7 +1143,7 @@ class HydrotelColumn(nn.Module):
         etp_classes, roots, leaves = [], [], []
         _cl_pheno = os.environ.get("MEANDRE_PHENOLOGIE_CLASSES")
         _cl_pheno = set(_cl_pheno.split(",")) if _cl_pheno else None
-        _noms = getattr(self, "_pheno_noms", None) or [None] * len(pheno)
+        _noms = pe.get("class_names") or getattr(self, "_pheno_noms", None) or [None] * len(pheno)
         # Phenologie sur le coefficient de culture (cible « kc ») : `etp` porte deja la forme
         # saisonniere pour toutes les classes. Les classes qui ne perdent pas leurs feuilles
         # reprennent la demande au K_c de base, sans la forme. Quand le sol ne limite pas
@@ -1306,12 +1306,14 @@ def build_static_params(n_nodes, lat, slope, orientation, texture, z, occupation
 
     tx = SOIL_TEXTURES[texture]
     et_classes = []
+    noms = []
     for c in ("conifers", "feuillus", "mixtes", "agri", "ouverts", "sols_nus", "humides"):
         pct = occ.get(c if c != "feuillus" else "feuillus", 0.0)
         if c in _LEAF and pct > 0:
             et_classes.append((pct, _JBP, _LEAF[c], _ROOT[c]))
+            noms.append(c)
     p_etr = dict(thetacc=T(tx["thetacc"]), thetapf=T(tx["thetapf"]), alpha=T(_TEXTURE_ALPHA[texture]),
-                 des=T(0.6), coef_assech=T(1.0), z11=z[0], z22=z[1], z33=z[2], classes=et_classes)
+                 des=T(0.6), coef_assech=T(1.0), z11=z[0], z22=z[1], z33=z[2], classes=et_classes, class_names=noms, K_c=T(1.0))
     return p_snow, p_soil, p_etr
 
 
