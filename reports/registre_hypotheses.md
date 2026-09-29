@@ -4099,3 +4099,16 @@ COMPLÉMENT À R222, coefficient de culture de la Châteauguay en passe avant su
 Médiane des 88 stations : réponse gelée 0,119, non gelée 0,068, rapport 1,82, le gel répond plus sur 83 % des stations. Corrélation de Spearman du rapport avec les attributs amont : argile −0,32, sable +0,27, forêt −0,17, pente −0,13, agriculture +0,04, lacs +0,03.
 
 LECTURE. La Châteauguay répond au gel comme l'Outaouais, et même davantage : l'hypothèse du drainage agricole qui court-circuiterait le sol gelé (R221) est réfutée, et la porte de gel n'a pas à dépendre de l'occupation. Ce qui séparait les deux bassins dans le modèle n'est pas la physique observée, c'est l'amplitude de la règle : le sol gelé fait passer la réponse de 7 à 12 % de la pluie, pas à 100 %. La règle tout ou rien, qui verse toute la pluie en ruissellement dès que le gel existe, est fausse partout ; elle ne « gagne » l'Outaouais qu'en compensant un autre défaut. Et le modèle déclare le sol gelé dès le premier millimètre de gel, sur 40 % des jours d'octobre à décembre sur la Châteauguay, là où l'observation ne répond qu'à un gel cumulé de 20 °C·jour. La porte juste est continue et modérée, ce que la règle continue fait déjà par la fraction gelée de la couche de surface ; sa version active sous la neige (R221) est la candidate, à entraîner. Le seul attribut qui module la réponse est la texture, sable contre argile, avec le bon signe : un sol sableux infiltre dégelé et scelle gelé.
+
+SUITE DE R223, autour de l'échelle de 5 mm, passes avant à poids fixes, KGE de 2013 et gamma :
+
+| sortie latérale profonde | Outaouais KGE | gamma | août (obs 0,73) | Châteauguay KGE | gamma | août (obs 0,41) |
+| --- | --- | --- | --- | --- | --- | --- |
+| témoin, plafond 1, linéaire | 0,731 | 0,85 | 0,55 | 0,778 | 0,92 | 0,25 |
+| puissance 2, échelle 5 mm, plafond 2 | 0,765 | 0,85 | 0,64 | 0,772 | 1,15 | 0,32 |
+| puissance 2, échelle 3 mm, plafond 4 | 0,715 | 0,78 | 0,66 | 0,793 | 1,09 | 0,34 |
+| puissance 2, échelle 5 mm, plafond 4 | 0,703 | 0,76 | 0,67 | 0,824 | 1,02 | 0,36 |
+| puissance 3, échelle 5 mm, plafond 4 | 0,722 | 0,78 | 0,68 | 0,775 | 1,09 | 0,36 |
+| puissance 2, échelle 5 mm, plafond 8 | 0,663 | 0,72 | 0,68 | 0,808 | 0,91 | 0,38 |
+
+LECTURE. L'exposant 2 et l'échelle de 5 mm sont réglés, l'exposant 3 et l'échelle de 3 mm ne gagnent rien. Le plafond, lui, reste propre au bassin : 2 mm/j bat le témoin en Outaouais (0,765 contre 0,731, août de 0,55 à 0,64, gamma intact) mais rend la Châteauguay trop variable (gamma 1,15) ; 4 à 8 mm/j est le réglage de la Châteauguay (0,824 et 0,808) et coûte 0,03 à 0,07 en Outaouais. C'est attendu : le plafond est la conductivité du substratum, propriété du dépôt que la texture prédit à +27 % (registre du 2026-09-20), et la déclaration de sol sait le nommer par tronçon (`ceiling_mm_per_day = "k_sub"`). Pour un modèle provincial, le plafond doit être spatial et la loi latérale uniforme. Entraînements en file : plafond 4 puis plafond 2, recette retenue, deux graines.
