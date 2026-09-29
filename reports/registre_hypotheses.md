@@ -4112,3 +4112,20 @@ SUITE DE R223, autour de l'échelle de 5 mm, passes avant à poids fixes, KGE de
 | puissance 2, échelle 5 mm, plafond 8 | 0,663 | 0,72 | 0,68 | 0,808 | 0,91 | 0,38 |
 
 LECTURE. L'exposant 2 et l'échelle de 5 mm sont réglés, l'exposant 3 et l'échelle de 3 mm ne gagnent rien. Le plafond, lui, reste propre au bassin : 2 mm/j bat le témoin en Outaouais (0,765 contre 0,731, août de 0,55 à 0,64, gamma intact) mais rend la Châteauguay trop variable (gamma 1,15) ; 4 à 8 mm/j est le réglage de la Châteauguay (0,824 et 0,808) et coûte 0,03 à 0,07 en Outaouais. C'est attendu : le plafond est la conductivité du substratum, propriété du dépôt que la texture prédit à +27 % (registre du 2026-09-20), et la déclaration de sol sait le nommer par tronçon (`ceiling_mm_per_day = "k_sub"`). Pour un modèle provincial, le plafond doit être spatial et la loi latérale uniforme. Entraînements en file : plafond 4 puis plafond 2, recette retenue, deux graines.
+
+## R225 — Entraînée, la sortie latérale en puissance relève toutes les saisons de l'Outaouais sur les jours mesurés et donne à la Châteauguay un hiver à 0,90, mais elle double la pointe annuelle : l'amplification doit être bornée (2026-09-29, soir) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines
+
+Recette retenue (exposant 2,0, phénologie par classe) plus sortie latérale profonde en puissance 2 à l'échelle de 5 mm, plafond 4 mm/j, huit époques, deux graines au centième.
+
+| | Outaouais retenue, plafond 1 | Outaouais puissance, plafond 4 | Châteauguay retenue, plafond 1 | Châteauguay puissance, plafond 4 |
+| --- | --- | --- | --- | --- |
+| KGE 2013 | 0,754 et 0,764 | 0,720 et 0,725 | | |
+| r | 0,82 | 0,86 | | |
+| gamma | 0,84 et 0,86 | 0,76 et 0,77 | | |
+| corrélation hiver, printemps, été, automne (jours mesurés) | 0,24 ; 0,74 ; 0,71 ; 0,62 | 0,33 ; 0,81 ; 0,75 ; 0,76 | 0,75 ; 0,83 ; 0,79 ; 0,64 | 0,90 ; 0,88 ; 0,80 ; 0,70 |
+| août (mm/j), obs 0,73 et 0,41 | 0,57 | 0,70 | 0,25 | 0,36 |
+| octobre, obs 1,57 et 0,85 | 2,73 | 2,32 | 0,80 | 0,65 |
+| pointes annuelles sim/obs | 0,81 | 0,80 | 0,98 | 1,81 et 1,82 |
+| q99 sim/obs | 0,97 | 0,93 | 0,96 | 0,97 et 0,99 |
+
+LECTURE. Sur les jours mesurés, chaque saison monte sur les deux bassins, l'automne de l'Outaouais de 0,62 à 0,76 et l'hiver de la Châteauguay de 0,75 à 0,90, et août est rendu à 0,70 en Outaouais. Le KGE de l'Outaouais recule pourtant de 0,03 par gamma : le débit de base relevé lisse le coefficient de variation, comme au plafond linéaire (R220), même si les corrélations sont meilleures partout. Le défaut neuf est ailleurs : la pointe annuelle de la Châteauguay est doublée alors que le 99e centile est juste, donc une seule crue explose. La loi amplifie l'excès sans borne : une pluie de 60 mm sur une échelle de 5 mm multiplie la sortie par douze. `max_ratio` borne l'amplification ; en passe avant à 20, 10 et 5.

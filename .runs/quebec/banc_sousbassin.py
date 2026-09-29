@@ -826,6 +826,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _rr = np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]
                 _b = _k.Qsim.mean() / _k.Qobs.mean()
                 _g = (_k.Qsim.std() / _k.Qsim.mean()) / (_k.Qobs.std() / _k.Qobs.mean())
+                _po = _k.Qsim.max() / _k.Qobs.max()
+                _q99 = _k.Qsim.quantile(0.99) / _k.Qobs.quantile(0.99)
+                print(f"  pointe annuelle {_an} sim/obs {_po:.2f} | q99 {_q99:.2f}", flush=True)
                 print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
             if mesure is not None:
                 # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une

@@ -68,7 +68,10 @@ def base_thresh_power(ctx, prm):
             s_ref = torch.clamp(ctx["porosity"] - ctx["theta_fc"], min=1e-9) * ctx["thickness"]
             ratio = torch.clamp(s / s_ref, min=0.0, max=1.0)
         else:
-            ratio = torch.clamp(s / s_ref, min=0.0)
+            # `max_ratio` borne l'amplification : sans borne, une pluie de 60 mm sur une
+            # echelle de 5 mm multiplie la sortie par douze et double la pointe annuelle
+            # (mesure sur la Chateauguay, 2026-09-29).
+            ratio = torch.clamp(s / s_ref, min=0.0, max=float(prm.get("max_ratio", float("inf"))))
         q = q * ratio ** (n - 1.0)
     return q
 
