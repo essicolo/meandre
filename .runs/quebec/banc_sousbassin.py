@@ -543,6 +543,20 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if os.environ.get("MEANDRE_GEL_SURFACIQUE") == "1":
             # Part gelee de la couche de surface = part impermeable de l'aire (2026-09-28).
             col.soil.frozen_gate_areal = True
+        if os.environ.get("MEANDRE_BANC_SOIL_TOML"):
+            # Profil de sol declare par couche, comme le pilote regional (section [soil] d'un
+            # TOML) : remplace les branches ETL_L3_* par une declaration complete (2026-09-29).
+            import tomllib
+            from meandre.vertical import soil_processes as _soil_proc
+            with open(os.environ["MEANDRE_BANC_SOIL_TOML"], "rb") as _f:
+                _cfg = tomllib.load(_f)
+            _profile = _soil_proc.from_toml(_cfg.get("soil"))
+            if _profile is None:
+                raise SystemExit("MEANDRE_BANC_SOIL_TOML : aucun processus declare dans [soil]")
+            col.soil_profile = _profile
+            print(f"  profil de sol declare : {_profile.layers} couches, {len(_profile.processes)} processus", flush=True)
+            for _pr in _profile.processes:
+                print(f"    couche {_pr.layer} {_pr.kind} {_pr.form} {_pr.params}", flush=True)
         if "ETL_L3_TAU" in os.environ:
             col.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
         if "ETL_L3_KSUB" in os.environ:
