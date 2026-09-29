@@ -3849,3 +3849,23 @@ Passes avant sur le témoin entraîné, corrélation par saison (hiver, printemp
 LECTURE. La porte continue laisse toujours plus d'eau s'infiltrer que la règle tout ou rien. Sur la Châteauguay, la pluie de novembre s'infiltre en réalité, et la porte continue gagne l'automne ; en Outaouais, les crues d'hiver par redoux sur sol gelé sont réelles, et la règle d'origine, qui fait ruisseler, les reproduit mieux. Aucune des deux règles ne vaut partout. La physique manquante est connue : un sol gelé humide au moment du gel devient imperméable, un sol sec reste perméable ; une porte liée à la teneur en glace trancherait entre les deux bassins.
 
 CE QUI TIENT : la forme saisonnière de l'ETP (Penman plutôt que Linacre) sur les deux bassins, et la phénologie par photopériode, dont le seuil de sénescence calé sur MODIS vaut 11,9 h sur la Châteauguay et 11,8 h sur l'Outaouais. CE QUI NE TIENT PAS EN L'ÉTAT : la porte de gel continue, et un facteur de Penman commun.
+
+## R212 — Aucune des trois portes de gel ne convient aux deux bassins, et l'opposition tient sur les seuls jours mesurés (2026-09-28) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines ; cause ouverte
+
+Trois règles d'infiltration sur sol gelé sans manteau protecteur, chacune entraînée huit époques sur chaque bassin, schéma semi-implicite, routage gelé en Outaouais. Tout ou rien : le clone fidèle, aucune infiltration dès que le gel dépasse zéro. Continue : conductivité saturée réduite de la part gelée de la couche de surface. Surfacique, à la manière de Koren et al. (1999) : la part gelée de la couche de surface est la part imperméable de l'aire.
+
+Un premier contrôle a changé le juge. Aux deux stations, de 2011 à 2013, janvier et février sont reconstruits sous glace à plus de 95 % (R98) ; seuls décembre, novembre et mars portent des mesures. La corrélation est donc lue sur les jours mesurés, et surtout en novembre-décembre (133 jours mesurés en Outaouais, 134 sur la Châteauguay).
+
+Corrélation journalière des débits en novembre-décembre, jours mesurés seulement, graines 1234 et 777 :
+
+| porte | Outaouais 040110 | Châteauguay 030905 |
+| --- | --- | --- |
+| tout ou rien | 0,69 et 0,65 | 0,29 et 0,29 |
+| continue | 0,39 et 0,41 | 0,65 et 0,66 |
+| surfacique | 0,49 et 0,50 | 0,50 et 0,50 |
+
+L'automne entier, jours mesurés, suit le même ordre : Outaouais 0,72, 0,62 et 0,66 ; Châteauguay 0,47, 0,65 et 0,53. Printemps et été ne bougent pas de plus de 0,02 en Outaouais.
+
+MÉCANISME, lu sur les bilans mensuels. La règle tout ou rien fait ruisseler 0,6 à 0,8 mm/j en novembre-décembre sur les deux bassins, y compris en octobre sous 1,2 cm de gel moyen. La porte continue ne ferme le sol que lorsque le gel dépasse les 22 cm de la couche de surface : tant que la conductivité réduite excède l'intensité de la pluie, elle ne limite rien. L'eau passe alors en écoulement hypodermique, plus lent.
+
+CONFUSION À LEVER. Les bras de l'Outaouais emploient Linacre sans phénologie, ceux de la Châteauguay Penman et la phénologie. Linacre surestime l'évapotranspiration d'octobre en Outaouais (1,48 mm/j contre 0,68 pour MOD16) ; le ruissellement forcé de la règle tout ou rien pourrait compenser un sol trop sec en entrée d'hiver. Épreuve en cours : Outaouais avec Penman × 0,8 et phénologie, sous les deux portes. Si la règle tout ou rien y gagne encore, la porte doit dépendre du bassin ; sinon, la porte continue est la règle unique.
