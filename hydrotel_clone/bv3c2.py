@@ -104,6 +104,11 @@ class BV3C2Clone(torch.nn.Module):
         # physique (gel partiel → infiltration partielle), et relève potentiellement
         # les pics de freshet (gel → plus de ruissellement de fonte). Opt-in.
         self.frozen_gate_continuous = bool(frozen_gate_continuous)
+        # Porte SURFACIQUE (2026-09-28), à la manière de Koren et al. (1999) : la part gelée
+        # de la couche de surface est la part IMPERMÉABLE de l'aire, et la pluie qui y tombe
+        # ruisselle. La porte continue, qui réduit la conductivité, ne mord presque jamais
+        # parce que la conductivité saturée dépasse de loin l'intensité d'une pluie d'hiver.
+        self.frozen_gate_areal = False
         # static=True : pas de break data-dépendant (les itérations no-op après
         # convergence sont idempotentes, dtc=0). Permet torch.compile (pas de
         # synchro GPU `bool().all()` par itération, boucle statique fusionnable).
@@ -342,7 +347,10 @@ class BV3C2Clone(torch.nn.Module):
             # CalculeRuisselement (l.2191-2201) sur t1 COURANT : si t1 saturé,
             # pinf=0 → toute la pluie part en hortonien ; sinon pinf=min(prec,ks).
             omega1_sat = t1 >= (ths1 - 1e-4)
-            if self.frozen_gate_continuous:
+            if self.frozen_gate_areal:
+                imperm = froz_frac * frozen.to(froz_frac.dtype)
+                pinf = torch.where(omega1_sat, torch.zeros_like(prec), (1.0 - imperm) * torch.minimum(prec, ks1))
+            elif self.frozen_gate_continuous:
                 # EXP-2 : capacité d'infiltration réduite CONTINÛMENT par le gel
                 # (froz_frac de Rankinen, qui tient déjà compte de l'isolation neige).
                 # La reduction ne s'applique que hors manteau protecteur (moins de 10 mm de

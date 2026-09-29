@@ -532,6 +532,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             # Infiltration reduite en proportion de la fraction gelee de la couche de surface,
             # au lieu du tout ou rien du clone (2026-09-28).
             col.soil.frozen_gate_continuous = True
+        if os.environ.get("MEANDRE_GEL_SURFACIQUE") == "1":
+            # Part gelee de la couche de surface = part impermeable de l'aire (2026-09-28).
+            col.soil.frozen_gate_areal = True
         if "ETL_L3_TAU" in os.environ:
             col.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
         if "ETL_L3_KSUB" in os.environ:
