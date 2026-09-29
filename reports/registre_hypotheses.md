@@ -3869,3 +3869,17 @@ L'automne entier, jours mesurés, suit le même ordre : Outaouais 0,72, 0,62 et 
 MÉCANISME, lu sur les bilans mensuels. La règle tout ou rien fait ruisseler 0,6 à 0,8 mm/j en novembre-décembre sur les deux bassins, y compris en octobre sous 1,2 cm de gel moyen. La porte continue ne ferme le sol que lorsque le gel dépasse les 22 cm de la couche de surface : tant que la conductivité réduite excède l'intensité de la pluie, elle ne limite rien. L'eau passe alors en écoulement hypodermique, plus lent.
 
 CONFUSION À LEVER. Les bras de l'Outaouais emploient Linacre sans phénologie, ceux de la Châteauguay Penman et la phénologie. Linacre surestime l'évapotranspiration d'octobre en Outaouais (1,48 mm/j contre 0,68 pour MOD16) ; le ruissellement forcé de la règle tout ou rien pourrait compenser un sol trop sec en entrée d'hiver. Épreuve en cours : Outaouais avec Penman × 0,8 et phénologie, sous les deux portes. Si la règle tout ou rien y gagne encore, la porte doit dépendre du bassin ; sinon, la porte continue est la règle unique.
+
+SUITE DE R212 (nuit du 28 au 29 septembre). La confusion avec Linacre explique une part de la préférence de l'Outaouais, pas la totalité. Avec Penman × 0,8 et la phénologie, novembre-décembre sur jours mesurés : tout ou rien 0,58 et 0,58, continue 0,46 et 0,47 ; l'écart passe de 0,27 à 0,12.
+
+Octobre à décembre, jours mesurés, séparés selon le gel du jour (graines 1234 et 777) :
+
+| | tout ou rien | continue | débit observé |
+| --- | --- | --- | --- |
+| Châteauguay, jours gelés, corrélation | 0,27 et 0,26 | 0,64 et 0,65 | |
+| Châteauguay, jours gelés, débit simulé (mm/j) | 1,82 | 1,25 | 1,15 |
+| Outaouais (Penman × 0,8), jours gelés, corrélation | 0,47 et 0,46 | 0,39 et 0,39 | |
+| Outaouais, jours sans gel, corrélation | 0,70 et 0,71 | 0,64 et 0,69 | |
+| Outaouais, jours gelés, débit simulé (mm/j) | 2,57 | 2,35 | 1,64 |
+
+LECTURE. Sur la Châteauguay, la règle tout ou rien fait ruisseler environ 1 mm/j de trop les jours gelés : elle y est fausse, sans ambiguïté. En Outaouais, sa préférence est faible, et mesurée sur un modèle dont le débit d'octobre à décembre est trop fort de 40 à 60 %. La porte continue est la meilleure règle unique en l'état. Épreuve suivante : Outaouais avec Penman × 1,0, l'évapotranspiration à 0,8 valant 1,39 mm/j quand le bilan en demande 1,70.
