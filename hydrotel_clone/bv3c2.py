@@ -345,7 +345,10 @@ class BV3C2Clone(torch.nn.Module):
             if self.frozen_gate_continuous:
                 # EXP-2 : capacité d'infiltration réduite CONTINÛMENT par le gel
                 # (froz_frac de Rankinen, qui tient déjà compte de l'isolation neige).
-                infil_cap = torch.minimum(prec, ks1 * (1.0 - froz_frac))
+                # La reduction ne s'applique que hors manteau protecteur (moins de 10 mm de
+                # neige), comme la regle d'origine : sous la neige le sol reste permeable, et
+                # l'ignorer faisait perdre l'hiver en Outaouais (correlation 0,57 -> 0,33, 2026-09-28).
+                infil_cap = torch.minimum(prec, ks1 * (1.0 - froz_frac * frozen.to(froz_frac.dtype)))
                 pinf = torch.where(omega1_sat, torch.zeros_like(prec), infil_cap)
             else:
                 pinf = torch.where(frozen | omega1_sat, torch.zeros_like(prec), torch.minimum(prec, ks1))

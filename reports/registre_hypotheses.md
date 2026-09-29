@@ -3835,3 +3835,17 @@ Identifiabilité entre les deux graines : moyennes de bassin à moins de 1 % pou
 Trois défauts de STRUCTURE, chacun lisible sans entraînement, portaient l'essentiel de l'écart : une ETP de température qui inverse la saison (R207), une végétation sans saison (R206), une infiltration refusée en bloc dès le premier centimètre de gel (R209). Aucun paramètre appris ne pouvait les compenser.
 
 RÉSERVES. Un sous-bassin agricole, deux graines, une année d'entraînement (mode rapide à 64 sous-pas) ; la phénologie est calée sur le même bassin ; la ronde n'a rien de tout ceci. À éprouver sur un sous-bassin forestier d'un autre territoire avant toute généralisation.
+
+## R211 — En Outaouais, les trois corrections ne se transfèrent pas telles quelles : le niveau de Penman est propre au territoire, et la porte de gel continue fait perdre l'hiver (2026-09-28) — ÉTABLI SUR DEUX SOUS-BASSINS, limite R209 et R210
+
+Sous-bassin forestier 040110 (Outaouais), banc réglé comme la ronde, routage gelé, deux graines par bras.
+
+Témoin (Linacre, K_c constant, gel tout ou rien) : corrélation 0,88, évapotranspiration −2 % de MOD16, volume 1,04. Il porte le défaut d'automne (octobre 1,48 mm/j d'évapotranspiration contre 0,68 pour MOD16) et un ruissellement de novembre-décembre sur sol gelé (0,7 mm/j). Forme des ETP : avril / octobre MOD16 1,97, Penman 1,57, Linacre 0,69 ; l'inversion de Linacre se retrouve sur les deux bassins.
+
+Modèle complet de la Châteauguay (Penman × 0,5, phénologie calée sur MODIS de ce bassin, gel continu) : évapotranspiration −31 %, volume 1,25, corrélation 0,83. Le facteur 0,5 venait de la Châteauguay ; le bilan d'eau de l'Outaouais exige 1,70 mm/j d'évapotranspiration, soit un facteur proche de 0,8. Penman a besoin d'un niveau propre au territoire, comme Linacre a le sien par le calage d'Hydrotel.
+
+Passes avant sur le témoin entraîné, corrélation par saison (hiver, printemps, été, automne) : témoin 0,57, 0,80, 0,73, 0,71 ; avec gel continu 0,33, 0,81, 0,73, 0,60 ; modèle complet au facteur 0,8 : 0,31, 0,78, 0,69, 0,67 (volume 1,88 contre 1,83 observé). Restreindre la porte continue aux cas sans manteau protecteur ne change rien.
+
+LECTURE. La porte continue laisse toujours plus d'eau s'infiltrer que la règle tout ou rien. Sur la Châteauguay, la pluie de novembre s'infiltre en réalité, et la porte continue gagne l'automne ; en Outaouais, les crues d'hiver par redoux sur sol gelé sont réelles, et la règle d'origine, qui fait ruisseler, les reproduit mieux. Aucune des deux règles ne vaut partout. La physique manquante est connue : un sol gelé humide au moment du gel devient imperméable, un sol sec reste perméable ; une porte liée à la teneur en glace trancherait entre les deux bassins.
+
+CE QUI TIENT : la forme saisonnière de l'ETP (Penman plutôt que Linacre) sur les deux bassins, et la phénologie par photopériode, dont le seuil de sénescence calé sur MODIS vaut 11,9 h sur la Châteauguay et 11,8 h sur l'Outaouais. CE QUI NE TIENT PAS EN L'ÉTAT : la porte de gel continue, et un facteur de Penman commun.
