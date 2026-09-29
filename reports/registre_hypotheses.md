@@ -4062,3 +4062,20 @@ Huit époques, deux graines au centième près, contre les témoins de la flotte
 LECTURE. En Outaouais la recette retenue au plafond de 1 mm/j gagne partout sauf sur les pointes annuelles (0,85 à 0,81) : le volume se ferme aux deux tiers par la phénologie des conifères, août remonte d'un quart par l'exposant, le KGE monte de 0,02 sans perte de gamma. Le plafond à 2 mm/j échange 0,03 de KGE et 0,05 de gamma contre 0,06 mm/j d'août : le compromis de R220, inchangé par l'entraînement. Sur la Châteauguay le volume passe de +2 % à −4 % parce que le coefficient de culture y est un multiplicateur FIXE de 0,5, calé quand la phénologie éteignait aussi les conifères ; c'est un artefact du banc, le pilote régional apprend ce coefficient. Août n'y bouge pas au plafond de 1 : sur ce bassin, l'étiage est affaire de percolation, pas d'exposant (R217).
 
 DÉCISION PROPOSÉE POUR LA RECETTE UNIQUE. Exposant 2,0, phénologie restreinte aux feuillus et à l'agricole, plafond 1 mm/j, extraction 0,15, porte continue. Ce qui reste ouvert : le plafond, dont la valeur juste dépend du dépôt (R220), et l'hiver de l'Outaouais, qui demande une porte de gel dépendant du drainage agricole (R221).
+
+## R223 — Une sortie latérale profonde en puissance de l'excès, à l'échelle de quelques millimètres, rend les pointes que le plafond de percolation avait prises, en gardant l'étiage d'août (2026-09-29, soir) — ÉTABLI EN PASSE AVANT À POIDS FIXES ; entraînement à venir
+
+La forme `BASE_THRESH_POWER` du catalogue, Q = (S/tau)·(S/S_ref)^(n−1), rapportait l'excès S à la capacité gravitaire de toute la couche : 185 mm sur 2,65 m, de sorte qu'aux exposants 2 et 3 la sortie s'éteignait (hypodermique de 1,6 à 0,3 mm/j, KGE de 0,64 à 0,38 en Outaouais, 0,68 à 0,21 sur la Châteauguay). L'échelle `scale_mm` donne S_ref en millimètres. À l'exposant 1, la déclaration reproduit exactement le chemin par variables d'environnement (KGE 0,639 et 0,683), ce qui valide le branchement du profil déclaré sur le banc.
+
+Passes avant, plafond de percolation 4 mm/j, tau latéral 3 jours, exposant 2,0 de la nappe, KGE de 2013 à poids fixes :
+
+| sortie latérale profonde | Outaouais KGE | gamma | août (obs 0,73) | octobre (obs 1,57) | Châteauguay KGE | gamma | août (obs 0,41) | octobre (obs 0,85) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| témoin : plafond 1, linéaire | 0,731 | 0,85 | 0,55 | 2,90 | 0,778 | 0,92 | 0,25 | 0,88 |
+| plafond 4, linéaire | 0,639 | 0,71 | 0,67 | 2,41 | 0,683 | 0,73 | 0,37 | 0,80 |
+| plafond 4, puissance 2, échelle 20 mm | 0,671 | 0,74 | 0,69 | 2,18 | 0,726 | 0,78 | 0,42 | 0,64 |
+| plafond 4, puissance 2, échelle 10 mm | 0,689 | 0,75 | 0,69 | 2,30 | 0,813 | 0,91 | 0,39 | 0,67 |
+| plafond 4, puissance 1,5, échelle 10 mm | 0,674 | 0,74 | 0,68 | 2,34 | 0,772 | 0,84 | 0,38 | 0,72 |
+| plafond 4, puissance 2, échelle 5 mm | 0,703 | 0,76 | 0,67 | 2,45 | 0,824 | 1,02 | 0,36 | 0,71 |
+
+LECTURE. La loi fait ce qu'elle doit : aux fortes saturations, l'excès part au latéral et forme la pointe ; entre les crues, il percole et nourrit la nappe. Sur la Châteauguay elle bat le témoin de 0,05 de KGE à poids fixes en tenant août ; en Outaouais elle récupère la moitié de la variabilité perdue et garde août à 0,67. L'échelle courte gagne à chaque pas de 20 à 5 mm, ce qui dit que le seuil d'activation des chemins rapides est de l'ordre de quelques millimètres d'eau gravitaire dans la couche profonde. C'est le premier réglage qui donne à la fois le plancher d'été et les pointes. À explorer : échelle 3 mm, exposant 3, plafond 2 et 8 ; puis entraînement.
