@@ -49,6 +49,7 @@ _DTC_DETACHE = _os.environ.get("MEANDRE_DTC_DETACHE", "0") == "1"
 
 
 _SEMI_IMPLICITE = _os.environ.get("MEANDRE_SOL_SEMI_IMPLICITE", "0") == "1"
+_GEL_SANS_NEIGE = _os.environ.get("MEANDRE_GEL_SANS_NEIGE", "0") == "1"
 
 
 def _cd(x):
@@ -160,7 +161,14 @@ class BV3C2Clone(torch.nn.Module):
         # ── CalculeRuisselement (l.2175) : prec constant ; pinf/ruis RECALCULÉS
         # CHAQUE sous-pas dans la boucle (porte theta1==thetas sur le t1 COURANT). ──
         prec = (apport_mm / 1000.0) / DT_H              # mm/j -> m/h
-        frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
+        # Le clone ne ferme le sol gele que sous moins de 10 mm de neige, alors que le module
+        # de gel tient deja compte de l'isolation du manteau : la condition compte deux fois
+        # la neige, et laisse s'infiltrer les redoux d'hiver sur sol gele (2026-09-29).
+        # MEANDRE_GEL_SANS_NEIGE=1 ferme le sol des que le gel existe, manteau ou non.
+        if _GEL_SANS_NEIGE:
+            frozen = frozen_depth_cm > 0.0
+        else:
+            frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
 
         # ── Sous-pas internes adaptatifs (TriCoucheOct97), accumulation lames ──
         # FIDÈLE Hydrotel : PAS de clamp de flux. On laisse theta dépasser thetas
