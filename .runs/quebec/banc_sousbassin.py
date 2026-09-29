@@ -802,6 +802,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     _k = df[df.mois.isin(_ms) & df.mesure][["Qobs", "Qsim"]].dropna()
                     _r.append(f"{_nom} {np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]:.2f} ({len(_k)} j)" if len(_k) > 20 else f"{_nom} - ({len(_k)} j)")
                 print("  correlation sur jours mesures : " + ", ".join(_r), flush=True)
+                # Octobre a decembre, jours mesures, separes selon le gel du jour : dit si une
+                # porte gagne par la physique du gel ou par un ecoulement rapide qui manque.
+                _od = df[df.mois.isin((10, 11, 12)) & df.mesure].dropna(subset=["Qobs", "Qsim"])
+                _r = []
+                for _nom, _k in (("gel", _od[_od.gel_cm > 0]), ("sans gel", _od[_od.gel_cm <= 0])):
+                    _r.append(f"{_nom} {np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]:.2f} ({len(_k)} j, Qobs {_k.Qobs.mean():.2f}, Qsim {_k.Qsim.mean():.2f}, surf {_k.surf.mean():.2f})" if len(_k) > 20 else f"{_nom} - ({len(_k)} j)")
+                print("  octobre-decembre mesures : " + ", ".join(_r), flush=True)
         return
     if os.environ.get("MEANDRE_BANC_MULT"):
         # PASSE AVANT A CHAMP MULTIPLIE (2026-09-28) : « K_c:1.5,C_f:0.8 » multiplie ces
