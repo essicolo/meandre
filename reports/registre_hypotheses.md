@@ -4081,3 +4081,21 @@ Passes avant, plafond de percolation 4 mm/j, tau latéral 3 jours, exposant 2,0 
 LECTURE. La loi fait ce qu'elle doit : aux fortes saturations, l'excès part au latéral et forme la pointe ; entre les crues, il percole et nourrit la nappe. Sur la Châteauguay elle bat le témoin de 0,05 de KGE à poids fixes en tenant août ; en Outaouais elle récupère la moitié de la variabilité perdue et garde août à 0,67. L'échelle courte gagne à chaque pas de 20 à 5 mm, ce qui dit que le seuil d'activation des chemins rapides est de l'ordre de quelques millimètres d'eau gravitaire dans la couche profonde. C'est le premier réglage qui donne à la fois le plancher d'été et les pointes. À explorer : échelle 3 mm, exposant 3, plafond 2 et 8 ; puis entraînement.
 
 COMPLÉMENT À R222, coefficient de culture de la Châteauguay en passe avant sur la recette retenue : multiplicateur 0,5, volume triennal −4 %, KGE de 2013 à poids fixes 0,809 ; 0,55, volume −13 %, KGE 0,831 ; 0,6, volume −21 %, KGE 0,747. L'année d'évaluation et la période triennale ne désignent pas la même valeur : le multiplicateur fixe reste à 0,5 sur le banc, et c'est au champ spatial d'apprendre le coefficient dans le pilote.
+
+## R224 — La pluie sur sol gelé fait monter le débit 1,8 fois plus, sur 83 % des stations et sur les deux sous-bassins du banc ; la règle tout ou rien est fausse en amplitude, et l'agriculture n'y est pour rien (2026-09-29, nuit) — ÉTABLI, 88 stations, sans simulation
+
+`.runs/quebec/reponse_sol_gele_stations.py`, en local. Pour chaque pluie de novembre-décembre d'au moins 5 mm tombée par température positive, réponse = hausse du débit sur les trois jours suivants rapportée à la pluie, en écoulement. Sol gelé quand la somme des degrés-jours négatifs depuis le 15 octobre dépasse 20 °C·jour, non gelé sous 5. Une condition sur l'absence de manteau vidait l'échantillon (zéro événement en 24 ans sur l'Outaouais) et a été abandonnée.
+
+| territoire | pluies sur gel | pluies hors gel | réponse gelée | réponse non gelée | rapport |
+| --- | --- | --- | --- | --- | --- |
+| Gaspésie | 27 | 19 | 0,117 | 0,057 | 2,45 |
+| Montérégie | 35 | 59 | 0,221 | 0,108 | 1,89 |
+| Outaouais | 33 | 20 | 0,074 | 0,033 | 2,22 |
+| Saguenay | 18 | 8 | 0,062 | 0,063 | 1,00 |
+| Saint-Laurent nord-ouest | 30 | 19 | 0,122 | 0,050 | 1,65 |
+| Outaouais 040110 | 31 | 26 | 0,074 | 0,033 | 2,22 |
+| Châteauguay 030905 | 47 | 51 | 0,193 | 0,065 | 2,99 |
+
+Médiane des 88 stations : réponse gelée 0,119, non gelée 0,068, rapport 1,82, le gel répond plus sur 83 % des stations. Corrélation de Spearman du rapport avec les attributs amont : argile −0,32, sable +0,27, forêt −0,17, pente −0,13, agriculture +0,04, lacs +0,03.
+
+LECTURE. La Châteauguay répond au gel comme l'Outaouais, et même davantage : l'hypothèse du drainage agricole qui court-circuiterait le sol gelé (R221) est réfutée, et la porte de gel n'a pas à dépendre de l'occupation. Ce qui séparait les deux bassins dans le modèle n'est pas la physique observée, c'est l'amplitude de la règle : le sol gelé fait passer la réponse de 7 à 12 % de la pluie, pas à 100 %. La règle tout ou rien, qui verse toute la pluie en ruissellement dès que le gel existe, est fausse partout ; elle ne « gagne » l'Outaouais qu'en compensant un autre défaut. Et le modèle déclare le sol gelé dès le premier millimètre de gel, sur 40 % des jours d'octobre à décembre sur la Châteauguay, là où l'observation ne répond qu'à un gel cumulé de 20 °C·jour. La porte juste est continue et modérée, ce que la règle continue fait déjà par la fraction gelée de la couche de surface ; sa version active sous la neige (R221) est la candidate, à entraîner. Le seul attribut qui module la réponse est la texture, sable contre argile, avec le bon signe : un sol sableux infiltre dégelé et scelle gelé.
