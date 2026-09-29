@@ -3922,3 +3922,21 @@ Corrélation de Spearman du soutien avec les attributs amont : fraction de lacs 
 LECTURE. Les lacs sont le seul attribut qui porte un signal sur le soutien d'août, et il est faible une fois transféré d'un territoire à l'autre. Comme pour l'exposant de vidange (R213, registre du 2026-09-21), ce qui reste après le terrain est à ancrer sur les débits observés eux-mêmes, non à apprendre par le champ spatial. Les deux sous-bassins du banc sont dans la moitié haute du soutien (rangs 0,64 et 0,47) et tous deux à plancher d'été ; l'Outaouais 040110 est au rang 0,76 pour les lacs.
 
 CE QUE CELA CHANGE. Un second réservoir lent paramétré par le terrain n'est pas identifiable ; sa raison d'être ne vaut que pour 13 % des stations. Le levier immédiat est ailleurs : l'extraction de la demande d'évapotranspiration depuis la nappe (`ETL_NAPPE_EFRAC`), mise pour les puits, abaisse le débit d'août du modèle ; en passe avant sur l'Outaouais, la couper fait passer août de 0,45 à 0,60 mm/j pour 0,73 observé, la moitié du déficit, au prix de 0,09 mm/j d'évapotranspiration annuelle.
+
+## R216 — Le bassin réel retient 70 % de la pluie de septembre-octobre partout, et cette rétention ne suit aucun attribut de terrain (2026-09-29) — ÉTABLI, 100 stations, sans simulation
+
+`.runs/quebec/retention_automne_stations.py`, en local. Rétention (P − Q) / P par fenêtre, P de CaSR pondérée sur le bassin amont, Q observé, médiane des années à au moins 50 jours.
+
+| territoire | rétention sep-oct | rétention nov-déc | avr-mai | P sep-oct (mm/j) | Q sep-oct (mm/j) |
+| --- | --- | --- | --- | --- | --- |
+| Gaspésie | 0,73 | 0,51 | −1,26 | 3,21 | 0,85 |
+| Montérégie | 0,76 | 0,48 | 0,16 | 3,41 | 0,77 |
+| Outaouais | 0,70 | 0,47 | −0,18 | 3,90 | 1,12 |
+| Saguenay | 0,60 | 0,52 | −0,44 | 3,77 | 1,52 |
+| Saint-Laurent nord-ouest | 0,68 | 0,53 | −0,34 | 3,98 | 1,28 |
+
+Les deux sous-bassins du banc sont typiques : 0,69 en Outaouais 040110 et 0,82 sur la Châteauguay 030905. Corrélation de Spearman de la rétention de septembre-octobre avec les attributs amont : pente −0,44, forêt −0,29, eau +0,26, agriculture +0,23, lacs −0,14, milieux humides +0,05.
+
+LECTURE. L'évapotranspiration MOD16 de septembre-octobre vaut environ 1,1 mm/j, soit 30 % de la précipitation ; il reste 40 % de la pluie d'automne, environ 1,5 mm/j pendant deux mois, que tous les bassins mettent en réserve, et qui ressort à la crue de printemps, où la rétention devient négative. Ce n'est pas un effet des lacs ni des milieux humides. C'est un déficit de sol et de nappe creusé l'été et comblé l'automne. Or dans le modèle, la couche profonde ne bouge pas : sa saturation reste entre 0,37 et 0,40 de la porosité toute l'année en Outaouais, entre 0,56 et 0,63 sur la Châteauguay, c'est-à-dire à la capacité au champ, drainée en deux jours au-dessus par `ETL_L3_TAU` et remplie au plus de 1 mm/j par `ETL_L3_KSUB`. Elle ne se creuse pas l'été, donc elle n'a rien à combler l'automne, et le modèle rend en octobre 66 % de la pluie quand la station en rend 36 %. C'est le mécanisme candidat du surplus d'entrée d'hiver de l'Outaouais (R212), et il vaut pour la Châteauguay, où le modèle rend 1,39 mm/j en novembre contre 0,73 observé.
+
+CE QUE CELA DÉSIGNE. Non pas le plafond de percolation seul, mais l'extraction d'évapotranspiration en profondeur l'été : si les racines ne puisent pas sous la capacité au champ dans la couche profonde, aucun déficit ne se forme. Épreuve en passe avant : profondeur racinaire et part de l'extraction par couche, jugées sur la saturation de la couche profonde en août et sur la rétention d'octobre.
