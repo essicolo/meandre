@@ -3963,3 +3963,18 @@ CE QUI RESTE. Le débit annuel de l'Outaouais reste trop fort de 18 % (2,16 cont
 RECETTE UNIQUE. Un exposant par station ne se transfère pas aux tronçons non jaugés (R213 : aucune covariable ne le prédit). Boussinesq à 2,0 et 4 mm/j donnent en Outaouais 0,67 en août et 2,41 en octobre, presque autant que l'exposant local ; la même recette sur la Châteauguay est en passe avant, puis entraînée sur deux graines contre les témoins.
 
 SUITE DE R217, recette uniforme en passe avant, percolation 4 mm/j, exposant 2,0, extraction 0,15 : Châteauguay août 0,38 pour 0,41 observé, octobre 0,80 pour 0,85, année 1,36 pour 1,35, corrélation d'hiver 0,70 contre 0,64 en vigueur ; Outaouais août 0,67 pour 0,73, octobre 2,41 pour 1,57, année 2,16 pour 1,83. Sans extraction, la Châteauguay repasse au-dessus en août (0,49) et en volume (1,44) : l'extraction de 0,15 est cohérente avec le débit sur ce bassin, et pas seulement avec les puits. Une seule recette de nappe convient donc aux deux bassins, sans exposant par territoire ; ce qu'elle laisse en Outaouais est le défaut de volume, 18 %, indépendant de la nappe. Entraînement sur deux graines en file.
+
+## R218 — Le terme de soutien d'étiage ne remonte pas août : l'optimiseur n'a pas le levier, c'est la physique de la nappe qui l'a (2026-09-29) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines
+
+Question posée d'avance (R217) : le déficit d'août, un tiers du débit observé sur les deux bassins, vient-il d'une recette qui ne le demande pas, ou d'une physique qui ne sait pas le produire ? Épreuve : terme de soutien d'étiage `w_fdc_bas` à 1,0, poids de la recette équilibrée, contre 0, huit époques, deux graines, recette de nappe en vigueur (percolation 1 mm/j, exposant du territoire).
+
+Débit d'août en mm/j, observé 0,41 sur la Châteauguay et 0,73 en Outaouais :
+
+| bassin | poids 0, graines 1234 et 777 | poids 1,0, graines 1234 et 777 | pointes annuelles sim/obs à 1,0 |
+| --- | --- | --- | --- |
+| Châteauguay | 0,26 et 0,26 | 0,42 et 0,29 | 0,94 et 0,89 contre 0,99 |
+| Outaouais | 0,45 et 0,46 | 0,42 et 0,49 | 0,85 et 0,86, inchangé |
+
+LECTURE. Le terme fait ce qu'un terme de perte peut faire : il déplace des paramètres sans pièce nouvelle. Sur la Châteauguay il paie la crête (q99 de 1,01 à 0,93) pour un gain d'août inconstant d'une graine à l'autre, signe d'un compromis et non d'un mécanisme ; en Outaouais il ne trouve rien. Le même déficit se corrige en passe avant, sans rien apprendre, par la percolation à 4 mm/j et l'exposant de vidange de Boussinesq (R217) : août à 0,38 et 0,67. Le levier des étiages est structurel, et il est identifié.
+
+CONSÉQUENCE POUR LA RECETTE. Le poids de soutien d'étiage reste à zéro tant que la physique de la nappe n'est pas posée ; il sera rejugé sur la recette uniforme, où il pourrait alors avoir prise.
