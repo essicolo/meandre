@@ -1144,8 +1144,18 @@ class HydrotelColumn(nn.Module):
         _cl_pheno = os.environ.get("MEANDRE_PHENOLOGIE_CLASSES")
         _cl_pheno = set(_cl_pheno.split(",")) if _cl_pheno else None
         _noms = getattr(self, "_pheno_noms", None) or [None] * len(pheno)
+        # Phenologie sur le coefficient de culture (cible « kc ») : `etp` porte deja la forme
+        # saisonniere pour toutes les classes. Les classes qui ne perdent pas leurs feuilles
+        # reprennent la demande au K_c de base, sans la forme. Quand le sol ne limite pas
+        # l'evapotranspiration, seule cette branche change le total : l'indice foliaire ne
+        # fait que repartir entre evaporation du sol et transpiration (2026-09-29).
+        _kc_base = pe.get("K_c", None)
+        _sans_forme = None
+        if _cl_pheno is not None and getattr(self, "_kc_dynamique", None) is not None and _kc_base is not None:
+            _sans_forme = etp * (_kc_base / torch.clamp(self._kc_dynamique, min=1e-6))
         for (pct, jbp_t, leaf_t, root_t), _nom in zip(pheno, _noms):
-            etp_classes.append(etp * pct / 1000.0)
+            _etp_cl = _sans_forme if (_sans_forme is not None and _nom not in _cl_pheno) else etp
+            etp_classes.append(_etp_cl * pct / 1000.0)
             roots.append(_interp1d(d, jbp_t, root_t).expand_as(P))
             _lf = getattr(self, "_lai_forme", None)
             if _lf is not None and _cl_pheno is not None and _nom not in _cl_pheno:

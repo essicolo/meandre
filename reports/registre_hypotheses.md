@@ -3978,3 +3978,19 @@ Débit d'août en mm/j, observé 0,41 sur la Châteauguay et 0,73 en Outaouais :
 LECTURE. Le terme fait ce qu'un terme de perte peut faire : il déplace des paramètres sans pièce nouvelle. Sur la Châteauguay il paie la crête (q99 de 1,01 à 0,93) pour un gain d'août inconstant d'une graine à l'autre, signe d'un compromis et non d'un mécanisme ; en Outaouais il ne trouve rien. Le même déficit se corrige en passe avant, sans rien apprendre, par la percolation à 4 mm/j et l'exposant de vidange de Boussinesq (R217) : août à 0,38 et 0,67. Le levier des étiages est structurel, et il est identifié.
 
 CONSÉQUENCE POUR LA RECETTE. Le poids de soutien d'étiage reste à zéro tant que la physique de la nappe n'est pas posée ; il sera rejugé sur la recette uniforme, où il pourrait alors avoir prise.
+
+## R219 — La phénologie ne doit s'appliquer qu'aux classes qui perdent leurs feuilles : les conifères qui gardent leur demande relèvent l'évapotranspiration d'automne à MOD16 et ferment la plus grande part du défaut de volume de l'Outaouais (2026-09-29) — ÉTABLI EN PASSE AVANT, deux graines ; entraînement en file
+
+Deux constats préalables, mesurés le même jour. D'abord, avec la cible « indice foliaire », restreindre la forme aux feuillus et à l'agricole ne change RIEN, à deux décimales près : quand le sol ne limite pas l'évapotranspiration, ce qui est le cas toute l'année sur les deux bassins (eau disponible de 1,1 à 3,1 fois l'intervalle utile, R216), l'indice foliaire ne fait que répartir la demande entre évaporation du sol et transpiration, sans changer le total. Ensuite, la recette en vigueur applique la phénologie au COEFFICIENT DE CULTURE, donc à la demande de toutes les classes, conifères compris. `MEANDRE_PHENOLOGIE_CLASSES=feuillus,agri` restreint désormais cette branche : les autres classes reprennent la demande au K_c de base.
+
+Passes avant sur les témoins de la flotte d'étiage, poids appris avec la forme sur toutes les classes, sans réentraîner :
+
+| | Outaouais toutes classes | Outaouais feuillus et agricole | Châteauguay toutes classes | Châteauguay feuillus et agricole |
+| --- | --- | --- | --- | --- |
+| évapotranspiration annuelle (mm/j), MOD16 1,58 et 1,82 | 1,39 | 1,58 | 1,45 | 1,53 |
+| évapotranspiration d'octobre, MOD16 0,68 et 0,87 | 0,62 | 0,87 | 0,80 | 0,90 |
+| évapotranspiration de novembre, MOD16 0,48 et 0,58 | 0,28 | 0,47 | 0,45 | 0,52 |
+| débit annuel simulé, observé 1,83 et 1,35 | 2,14 | 1,95 | 1,38 | 1,30 |
+| débit d'octobre, observé 1,57 et 0,85 | 2,88 | 2,60 | 0,89 | 0,77 |
+
+LECTURE. En Outaouais, 31 % du bassin est en conifères ; leur demande maintenue à l'automne relève l'évapotranspiration annuelle exactement à MOD16 et ramène le surplus de volume de 18 % à 7 %, avec le surplus d'octobre de 2,88 à 2,60. Les corrélations saisonnières ne bougent pas. Sur la Châteauguay, 7 % de conifères, l'effet est petit et le volume passe légèrement sous l'observé, parce que le K_c de 0,5 avait été calé avec la forme sur toutes les classes ; l'entraînement le recalera. C'est la physique attendue depuis la mesure MODIS (R214) : un seuil constant, une amplitude par la composition du tronçon, et rien à apprendre. Entraînement de la combinaison nappe uniforme et phénologie par classe en file, deux bassins, deux graines.
