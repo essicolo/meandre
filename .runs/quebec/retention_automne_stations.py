@@ -25,6 +25,8 @@ from meandre.utils import paths as _p
 from soutien_etiage_stations import ATTRIBUTS, amont
 
 FENETRES = {"sep-oct": (9, 10), "nov-dec": (11, 12), "avr-mai": (4, 5)}
+# Jours observes exiges par annee et par fenetre ; 25 suffit pour une fenetre d un mois.
+MIN_JOURS = 50
 
 
 def territoire(reg):
@@ -54,7 +56,7 @@ def territoire(reg):
             m = temps.month.isin(mois)
             df = pd.DataFrame({"p": p[m], "q": q[m]}).dropna()
             par_an = df.groupby(df.index.year).agg(p=("p", "mean"), q=("q", "mean"), n=("q", "size"))
-            par_an = par_an[par_an.n >= 50]
+            par_an = par_an[par_an.n >= MIN_JOURS]
             if len(par_an) < 5:
                 ligne[f"ret_{nom}"] = np.nan
                 continue
