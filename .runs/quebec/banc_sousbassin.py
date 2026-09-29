@@ -454,6 +454,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     con = duckdb.connect(s["base"], read_only=True)
     obs = con.execute("select date, discharge from observations where station_id = ? "
                       "order by date", [station]).fetchdf()
+    # Drapeau de reconstruction du Centre d'expertise hydrique : sous la glace, presque tout
+    # janvier et fevrier est reconstruit. Un jour sans drapeau n'est pas compte comme mesure.
+    try:
+        _fl = con.execute("select date, reconstructed from observations where station_id = ? "
+                          "and reconstructed is not null", [station]).fetchdf()
+        mesure = (pd.Series(_fl["reconstructed"].values, index=pd.DatetimeIndex(_fl["date"])).reindex(temps) == False).to_numpy()  # noqa: E712
+    except Exception:
+        mesure = None
     con.close()
     o = pd.Series(obs["discharge"].values,
                   index=pd.DatetimeIndex(obs["date"])).reindex(temps).to_numpy(dtype=float)
@@ -785,6 +793,15 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _k = df[df.mois.isin(_ms)][["Qobs", "Qsim"]].dropna()
                 _r.append(f"{_nom} {np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]:.2f}" if len(_k) > 30 else f"{_nom} -")
             print("  correlation journaliere par saison : " + ", ".join(_r), flush=True)
+            if mesure is not None:
+                # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une
+                # reconstruction, et ne peut pas juger la physique hivernale (registre, R98).
+                df["mesure"] = mesure[_ok_t]
+                _r = []
+                for _nom, _ms in {**_sais, "nov-dec": (11, 12)}.items():
+                    _k = df[df.mois.isin(_ms) & df.mesure][["Qobs", "Qsim"]].dropna()
+                    _r.append(f"{_nom} {np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]:.2f} ({len(_k)} j)" if len(_k) > 20 else f"{_nom} - ({len(_k)} j)")
+                print("  correlation sur jours mesures : " + ", ".join(_r), flush=True)
         return
     if os.environ.get("MEANDRE_BANC_MULT"):
         # PASSE AVANT A CHAMP MULTIPLIE (2026-09-28) : « K_c:1.5,C_f:0.8 » multiplie ces
