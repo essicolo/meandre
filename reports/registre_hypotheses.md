@@ -3994,3 +3994,18 @@ Passes avant sur les témoins de la flotte d'étiage, poids appris avec la forme
 | débit d'octobre, observé 1,57 et 0,85 | 2,88 | 2,60 | 0,89 | 0,77 |
 
 LECTURE. En Outaouais, 31 % du bassin est en conifères ; leur demande maintenue à l'automne relève l'évapotranspiration annuelle exactement à MOD16 et ramène le surplus de volume de 18 % à 7 %, avec le surplus d'octobre de 2,88 à 2,60. Les corrélations saisonnières ne bougent pas. Sur la Châteauguay, 7 % de conifères, l'effet est petit et le volume passe légèrement sous l'observé, parce que le K_c de 0,5 avait été calé avec la forme sur toutes les classes ; l'entraînement le recalera. C'est la physique attendue depuis la mesure MODIS (R214) : un seuil constant, une amplitude par la composition du tronçon, et rien à apprendre. Entraînement de la combinaison nappe uniforme et phénologie par classe en file, deux bassins, deux graines.
+
+SUITE DE R217, RECETTE UNIFORME ENTRAÎNÉE (percolation 4 mm/j, exposant 2,0, extraction 0,15), huit époques, deux graines qui donnent le même résultat au centième :
+
+| | Châteauguay témoin | Châteauguay nappe uniforme | Outaouais témoin | Outaouais nappe uniforme |
+| --- | --- | --- | --- | --- |
+| août (mm/j), observé 0,41 et 0,73 | 0,26 | 0,37 | 0,45 | 0,58 |
+| octobre, observé 0,85 et 1,57 | 0,89 | 0,78 | 2,88 | 2,27 |
+| année, observé 1,35 et 1,83 | 1,38 | 1,35 | 2,14 | 2,10 |
+| corrélation hiver, jours mesurés | 0,78 | 0,85 et 0,83 | 0,26 | 0,15 et 0,19 |
+| corrélation printemps | 0,83 | 0,86 | 0,72 | 0,70 |
+| pointes annuelles sim/obs | 0,99 | 0,88 | 0,85 | 0,74 |
+| KGE | | | 0,739 | 0,664 |
+| jours plats en été, observé 4,1 % et 2,5 % | 8,2 % | 2,5 % | 9,8 % | 19,7 % |
+
+LECTURE. Sur la Châteauguay la recette gagne l'hiver, le printemps, l'étiage et le volume, et perd un dixième des pointes. En Outaouais elle gagne août et octobre et perd le reste : l'optimiseur trouve une solution plus plate (gamma de 0,86 à 0,73, un jour d'été sur cinq sans variation), reproductible d'une graine à l'autre, donc un optimum de cette configuration et non du bruit. Une nappe qui stocke davantage retire de l'eau aux chemins rapides, et le KGE préfère alors lisser. Reste à séparer ce que la recette coûte par elle-même de ce que l'entraînement en fait : passe avant du témoin de l'Outaouais sous les deux recettes, à poids fixes.
