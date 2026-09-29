@@ -58,8 +58,18 @@ def base_thresh_power(ctx, prm):
     q = s / prm["tau"]
     n = prm.get("exponent", 1.0)
     if n != 1.0:
-        s_max = torch.clamp(ctx["porosity"] - ctx["theta_fc"], min=1e-9) * ctx["thickness"]
-        q = q * torch.clamp(s / s_max, min=0.0, max=1.0) ** (n - 1.0)
+        # ECHELLE (2026-09-29). Rapportee a la capacite gravitaire de toute la couche, une
+        # couche profonde de 2,65 m donne 185 mm d'echelle : quelques millimetres d'exces font
+        # une fraction infime, et la sortie s'eteint (mesure : l'hypodermique tombe de 1,6 a
+        # 0,3 mm/j, KGE de 0,64 a 0,38). `scale_mm` donne l'echelle de l'exces, en millimetres,
+        # au-dela de laquelle la loi amplifie ; sans elle, l'ancien comportement.
+        s_ref = prm.get("scale")
+        if s_ref is None:
+            s_ref = torch.clamp(ctx["porosity"] - ctx["theta_fc"], min=1e-9) * ctx["thickness"]
+            ratio = torch.clamp(s / s_ref, min=0.0, max=1.0)
+        else:
+            ratio = torch.clamp(s / s_ref, min=0.0)
+        q = q * ratio ** (n - 1.0)
     return q
 
 
@@ -258,6 +268,9 @@ def from_toml(section: dict | None) -> SoilProfile | None:
         params = {k: v for k, v in entry.items() if k not in RESERVED_KEYS}
         if "tau_days" in entry:
             params["tau"] = float(entry["tau_days"]) * HOURS_PER_DAY
+        if "scale_mm" in entry:
+            params["scale"] = float(entry["scale_mm"]) * M_PER_MM
+            params.pop("scale_mm", None)
         ceiling = entry.get("ceiling_mm_per_day")
         if isinstance(ceiling, str):
             # Nom d'une sortie du champ spatial, resolu plus tard contre les parametres du
