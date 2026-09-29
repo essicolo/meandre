@@ -3887,3 +3887,26 @@ LECTURE. Sur la Châteauguay, la règle tout ou rien fait ruisseler environ 1 mm
 FIN DE R212. Penman × 1,0 en Outaouais ne corrige pas le volume : l'évapotranspiration ne passe que de 1,39 à 1,44 mm/j pour un coefficient accru de 25 %, et le débit d'octobre à décembre reste à 2,5 mm/j contre 1,6 observé sous les deux portes. Le coefficient de culture n'est donc pas le levier du volume d'entrée d'hiver en Outaouais ; l'évapotranspiration y est limitée par autre chose que la demande. La préférence de l'Outaouais pour la règle tout ou rien ne bouge pas : novembre-décembre sur jours mesurés 0,57 et 0,58 contre 0,47 et 0,47 ; jours gelés 0,51 contre 0,40 et 0,38.
 
 VERDICT. La porte continue est la meilleure règle unique : elle corrige une erreur franche sur la Châteauguay, environ 1 mm/j de ruissellement de trop les jours gelés, au prix d'une perte d'environ 0,1 de corrélation les jours gelés en Outaouais. Cette perte se mesure sur un modèle dont le débit d'entrée d'hiver est trop fort de 50 %, cause non identifiée et indépendante de la porte. Rien n'a été porté au pilote régional ni à la configuration de la ronde.
+
+## R213 — L'exposant de vidange d'un sous-bassin n'est pas celui de son territoire, et il change avec la saison (2026-09-29) — ÉTABLI SUR DEUX STATIONS, mesure sans simulation
+
+`.runs/quebec/recession_locale.py`, exposant b de Brutsaert et Nieber sur les seuls jours mesurés de la station, 2000 à 2026, converti en exposant de stock n = 1/(2 − b).
+
+| station | jours mesurés | b annuel | n annuel | b juillet-septembre | b août | ancre du territoire (n) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Outaouais 040110 | 6704 | 1,38 | 1,62 | 1,70 | 2,10 | 4,65 |
+| Châteauguay 030905 | 7414 | 1,58 | 2,39 | 2,14 | 2,19 | 1,36 |
+
+LECTURE. Les deux sous-bassins vidangent comme Boussinesq à l'échelle de l'année, n de 1,6 à 2,4, et les ancres de territoire qu'ils portent sont à côté : 4,65 en Outaouais vient des grandes stations et fait vidanger le sous-bassin trop brutalement à stock plein ; 1,36 en Montérégie décrit un réseau drainé que ce sous-bassin forestier ne suit pas. Surtout, en été, b dépasse 2 aux deux stations : la décrue s'arrête sur un plancher au lieu de suivre une loi de puissance. Aucun réservoir Q = c·S^n ne produit b > 2 ; c'est la signature d'un soutien qui ne recède pas à l'échelle de deux mois, nappe régionale, lacs ou milieux humides, ou d'une évapotranspiration riveraine qui prélève sur le débit. C'est exactement ce que le modèle manque en août, moins un tiers du débit observé sur les deux bassins, avec une nappe unique qui se vide en loi de puissance.
+
+CONSÉQUENCE. L'exposant mesuré par territoire n'est pas transférable à un sous-bassin et un exposant unique ne peut pas tenir l'hiver et l'été. La piste physique est un second soutien lent, ou un plancher, pas un réglage de n.
+
+## R214 — La part de feuillus d'un tronçon prédit l'amplitude de la chute foliaire MODIS en Outaouais ; en Montérégie tout tombe et rien ne contraste (2026-09-29) — ÉTABLI, mesure sans simulation
+
+`.runs/quebec/chute_foliaire_par_troncon.py` : rapport de l'indice foliaire MODIS d'octobre à celui d'août, 2011 à 2013, par tronçon (pixels de 500 m rattachés au centroïde le plus proche), contre les fractions brutes d'occupation d'Hydrotel injectées le même jour dans les bases (`injecter_occupation_territorial.py` ; les bases construites avant le 2026-08-10 n'avaient que les fractions normalisées, et la colonne y mettait toute la forêt en feuillus et l'agriculture en classe ouverte).
+
+Outaouais, 91 tronçons, feuillus de 12 à 70 % : corrélation du rapport avec la part de feuillus −0,74, avec les conifères +0,33 ; régression rapport = 0,26 − 0,18 × feuillus − 0,04 × conifères + 0,01 × agricole, R² 0,58. Châteauguay, 214 tronçons, feuillus plus agricole à 80 % en moyenne : R² 0,12, rien ne contraste.
+
+LIMITE DU JUGE. Le rapport moyen vaut 0,17 à 0,19, et un tronçon à 63 % de conifères tombe encore à 0,21 : l'indice foliaire MODIS s'effondre aussi en octobre sous les conifères, ce qui est un défaut connu du produit à faible angle solaire, pas une chute d'aiguilles. MODIS valide donc que les feuillus tombent PLUS, pas que les conifères ne tombent pas ; cette seconde moitié tient à la physique et à la littérature.
+
+CONCLUSION. Le seuil de sénescence est une constante (l'équinoxe, R208), l'amplitude est la fraction de feuillus et de cultures du tronçon, disponible dans la grille d'occupation d'Hydrotel. `MEANDRE_PHENOLOGIE_CLASSES=feuillus,agri` restreint la forme à ces classes ; épreuve en file.

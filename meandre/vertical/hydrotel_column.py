@@ -550,12 +550,18 @@ class HydrotelColumn(nn.Module):
                 return _ph[cl]
             return _JBP, _LEAF[cl], _ROOT[cl]
         et_classes = []
+        # Noms des classes, dans le meme ordre : la phenologie pilotee par la meteo ne
+        # s'applique qu'aux classes qui perdent leurs feuilles (MEANDRE_PHENOLOGIE_CLASSES).
+        self._pheno_noms = []
+        def _ajouter(pct, nom):
+            et_classes.append((pct, *_prof(nom)))
+            self._pheno_noms.append(nom)
         if pct_feu.sum() > 0:
-            et_classes.append((pct_feu, *_prof("feuillus")))
+            _ajouter(pct_feu, "feuillus")
         if pct_conif.sum() > 0:
-            et_classes.append((pct_conif, *_prof("conifers")))
+            _ajouter(pct_conif, "conifers")
         if f_wet.sum() > 0:
-            et_classes.append((f_wet, *_prof("humides")))
+            _ajouter(f_wet, "humides")
         # DÉFICIT D'ETR D'ÉTÉ (corrigé le 2026-08-10) : seules forêt et milieu humide
         # recevaient une classe de végétation, soit 79.6 % du territoire sur OUTV.
         # L'agriculture (12 %) et le sol nu ne transpiraient PAS DU TOUT, alors que les
@@ -565,12 +571,12 @@ class HydrotelColumn(nn.Module):
         # perméable en classe ouverte, pour que l'ETR couvre bien tout fsa.
         pct_agri = z("f_agriculture_raw", 0.0)
         if pct_agri.sum() > 0:
-            et_classes.append((pct_agri, *_prof("agri")))
+            _ajouter(pct_agri, "agri")
         if et_classes:
             _couvert = pct_feu + pct_conif + f_wet + pct_agri
             _reste = torch.clamp(fsa - _couvert, min=0.0)
             if _reste.sum() > 0:
-                et_classes.append((_reste, *_prof("ouverts")))
+                _ajouter(_reste, "ouverts")
         # DÉGRADATION GRACIEUSE : sans descriptif d'occupation (ex réseau PHYSITEL,
         # qui ne porte pas les fractions par classe), l'ET ne doit PAS tomber à 0.
         # Classe végétation par défaut sur la fraction perméable (LAI/racines
@@ -579,6 +585,7 @@ class HydrotelColumn(nn.Module):
         # = optionnelle, pas un prérequis (objectif découplage).
         if not et_classes:
             et_classes.append((fsa, _JBP, _LEAF["default"], _ROOT["default"]))
+            self._pheno_noms.append("default")
         # z des couches : calibrés Hydrotel si ancré (cohérence ETR/gel/sol), sinon NeRF.
         #
         # GRADIENT (2026-09-03). `float(sp.Z2.mean())` faisait DEUX choses à la fois :
@@ -1134,10 +1141,17 @@ class HydrotelColumn(nn.Module):
             pheno = self._pheno_tensors(pe["classes"], P)
         d = doy_t.reshape(-1)[0]                  # jour julien scalaire (tenseur, sans synchro)
         etp_classes, roots, leaves = [], [], []
-        for (pct, jbp_t, leaf_t, root_t) in pheno:
+        _cl_pheno = os.environ.get("MEANDRE_PHENOLOGIE_CLASSES")
+        _cl_pheno = set(_cl_pheno.split(",")) if _cl_pheno else None
+        _noms = getattr(self, "_pheno_noms", None) or [None] * len(pheno)
+        for (pct, jbp_t, leaf_t, root_t), _nom in zip(pheno, _noms):
             etp_classes.append(etp * pct / 1000.0)
             roots.append(_interp1d(d, jbp_t, root_t).expand_as(P))
             _lf = getattr(self, "_lai_forme", None)
+            if _lf is not None and _cl_pheno is not None and _nom not in _cl_pheno:
+                # Classe qui ne perd pas ses feuilles (coniferes, milieux humides, ouverts) :
+                # calendrier du projet, la forme pilotee par la meteo ne s'y applique pas.
+                _lf = None
             if _lf is not None:
                 # Indice foliaire = plateau de la classe × forme saisonnière pilotée par la
                 # météo (modulateur phénologique), au lieu du calendrier à dates fixes.
