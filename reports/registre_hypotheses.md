@@ -4043,3 +4043,22 @@ Le clone ne ferme le sol gelé que sous moins de 10 mm de neige, alors que le mo
 LECTURE. En Outaouais, fermer le sol sous la neige rend les volumes d'hiver (décembre et janvier trop forts de 50 % reviennent à 30 et 15 %) ; la règle tout ou rien y gagne aussi la corrélation, la règle continue la perd. Sur la Châteauguay la règle tout ou rien sous la neige est une catastrophe, le ruissellement sur sol gelé passant à 1,0 mm/j les jours gelés pour 0,01 en vigueur. Les deux bassins veulent des règles opposées, et ce n'est pas la teneur en glace qui les sépare : le sol de la Châteauguay est plus humide en hiver (saturation 0,62 contre 0,50). Ce qui les sépare est l'occupation : 34 % d'agriculture drainée par tuyaux sur un plat argileux contre 3 % sur des pentes de till forestier. Un drain souterrain court-circuite le sol gelé et rend la pluie de novembre au tronçon par le chemin hypodermique ; un versant forestier gelé la fait ruisseler. La porte de gel doit donc dépendre de l'occupation drainée, ce que le modèle sait déjà représenter (option de drainage agricole, `pct_agricole`), mais deux bassins ne suffisent pas à l'établir : à mesurer sur les stations (réponse des jours gelés de novembre-décembre contre la part agricole et la pente).
 
 PARTAGE VERTICAL-LATÉRAL. Avec le plafond à 4 mm/j, allonger le temps de percolation verticale de 2 à 5 puis 8 jours ne rend pas la variabilité : gamma 0,72 et 0,74 en Outaouais contre 0,85 au plafond de 1 ; 0,79 et 0,82 sur la Châteauguay contre 0,92. L'aplatissement ne vient pas du partage des pulsations d'orage mais du niveau de base : une nappe mieux alimentée relève le débit moyen entre les crues, et le coefficient de variation simulé tombe sous l'observé. Le bassin réel a les deux, un plancher d'août et des pointes nettes ; le modèle n'obtient l'un qu'en sacrifiant l'autre avec une percolation linéaire. La forme candidate est un écoulement latéral en puissance de l'excès, qui active les chemins rapides aux fortes saturations et laisse la recharge lente à la nappe.
+
+## R222 — Recette retenue entraînée : exposant de Boussinesq, phénologie par classe et plafond à 1 mm/j relèvent l'Outaouais sur tous les critères et laissent la Châteauguay au témoin (2026-09-29, soir) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines
+
+Huit époques, deux graines au centième près, contre les témoins de la flotte d'étiage (exposant du territoire, phénologie sur toutes les classes, plafond 1 mm/j).
+
+| | Outaouais témoin | plafond 1 | plafond 2 | Châteauguay témoin | plafond 1 | plafond 2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| KGE 2013 | 0,739 et 0,742 | 0,754 et 0,764 | 0,723 et 0,728 | | | |
+| beta | 1,13 | 1,06 | 1,05 | 1,02 | 0,96 | 0,96 |
+| gamma | 0,86 | 0,84 et 0,86 | 0,80 | | | |
+| pointes annuelles sim/obs | 0,85 | 0,80 et 0,82 | 0,77 | 0,99 | 0,98 | 0,94 |
+| août (mm/j), obs 0,73 et 0,41 | 0,45 | 0,57 | 0,63 | 0,26 | 0,25 | 0,32 |
+| octobre, obs 1,57 et 0,85 | 2,88 | 2,72 | 2,45 | 0,89 | 0,80 | 0,72 |
+| évapotranspiration annuelle, MOD16 1,58 et 1,82 | 1,39 | 1,52 | 1,54 | 1,45 | 1,52 | 1,54 |
+| corrélation d'hiver, jours mesurés | 0,26 | 0,23 et 0,25 | 0,14 | 0,78 | 0,77 et 0,73 | 0,77 et 0,80 |
+
+LECTURE. En Outaouais la recette retenue au plafond de 1 mm/j gagne partout sauf sur les pointes annuelles (0,85 à 0,81) : le volume se ferme aux deux tiers par la phénologie des conifères, août remonte d'un quart par l'exposant, le KGE monte de 0,02 sans perte de gamma. Le plafond à 2 mm/j échange 0,03 de KGE et 0,05 de gamma contre 0,06 mm/j d'août : le compromis de R220, inchangé par l'entraînement. Sur la Châteauguay le volume passe de +2 % à −4 % parce que le coefficient de culture y est un multiplicateur FIXE de 0,5, calé quand la phénologie éteignait aussi les conifères ; c'est un artefact du banc, le pilote régional apprend ce coefficient. Août n'y bouge pas au plafond de 1 : sur ce bassin, l'étiage est affaire de percolation, pas d'exposant (R217).
+
+DÉCISION PROPOSÉE POUR LA RECETTE UNIQUE. Exposant 2,0, phénologie restreinte aux feuillus et à l'agricole, plafond 1 mm/j, extraction 0,15, porte continue. Ce qui reste ouvert : le plafond, dont la valeur juste dépend du dépôt (R220), et l'hiver de l'Outaouais, qui demande une porte de gel dépendant du drainage agricole (R221).
