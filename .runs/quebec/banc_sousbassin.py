@@ -804,6 +804,15 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _k = df[df.mois.isin(_ms)][["Qobs", "Qsim"]].dropna()
                 _r.append(f"{_nom} {np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]:.2f}" if len(_k) > 30 else f"{_nom} -")
             print("  correlation journaliere par saison : " + ", ".join(_r), flush=True)
+            # KGE de la derniere annee chargee, a poids fixes : separe ce qu'une recette coute
+            # par elle-meme de ce que l'entrainement en fait.
+            _an = int(pd.DatetimeIndex(temps).year.max())
+            _k = df[pd.DatetimeIndex(temps)[_ok_t].year == _an][["Qobs", "Qsim"]].dropna()
+            if len(_k) > 60:
+                _rr = np.corrcoef(_k.Qobs, _k.Qsim)[0, 1]
+                _b = _k.Qsim.mean() / _k.Qobs.mean()
+                _g = (_k.Qsim.std() / _k.Qsim.mean()) / (_k.Qobs.std() / _k.Qobs.mean())
+                print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
             if mesure is not None:
                 # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une
                 # reconstruction, et ne peut pas juger la physique hivernale (registre, R98).
