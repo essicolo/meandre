@@ -775,6 +775,17 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             # versee au ruissellement par la fermeture de masse du clone.
             # Profondeur de gel (cm) et apport au sol (pluie et fonte, mm/j) : un sol gele
             # refuse l'infiltration, et l'apport ruisselle.
+            # Eau disponible par couche, 1 a la capacite au champ et 0 au point de fletrissement,
+            # avec les seuils que l'ETR emploie (ceux de la couche 1, comme le clone) : dit si le
+            # profil se creuse l'ete, donc s'il a un deficit a combler a l'automne (R216).
+            _pe = getattr(m.vertical_column, "_static", {}).get("etr", {})
+            if isinstance(_pe, dict) and "thetacc" in _pe and "thetapf" in _pe:
+                _cc = _pe["thetacc"].to(dev).reshape(1, -1)
+                _pf = _pe["thetapf"].to(dev).reshape(1, -1)
+                for _k in (1, 2, 3):
+                    _th = getattr(_d, f"theta{_k}", None)
+                    if _th is not None:
+                        _comp[f"dispo{_k}"] = _moy((_th.to(dev) - _pf) / (_cc - _pf).clamp(min=1e-6))
             _comp["gel_cm"] = _moy(getattr(_d, "prof_gel_cm", None))
             _comp["apport"] = _moy(getattr(_d, "snowmelt", None))
             _tnt = getattr(_d, "temps_non_traite", None)
