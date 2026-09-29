@@ -4009,3 +4009,19 @@ SUITE DE R217, RECETTE UNIFORME ENTRAÎNÉE (percolation 4 mm/j, exposant 2,0, e
 | jours plats en été, observé 4,1 % et 2,5 % | 8,2 % | 2,5 % | 9,8 % | 19,7 % |
 
 LECTURE. Sur la Châteauguay la recette gagne l'hiver, le printemps, l'étiage et le volume, et perd un dixième des pointes. En Outaouais elle gagne août et octobre et perd le reste : l'optimiseur trouve une solution plus plate (gamma de 0,86 à 0,73, un jour d'été sur cinq sans variation), reproductible d'une graine à l'autre, donc un optimum de cette configuration et non du bruit. Une nappe qui stocke davantage retire de l'eau aux chemins rapides, et le KGE préfère alors lisser. Reste à séparer ce que la recette coûte par elle-même de ce que l'entraînement en fait : passe avant du témoin de l'Outaouais sous les deux recettes, à poids fixes.
+
+## R220 — L'exposant de Boussinesq uniforme est gratuit ; c'est le plafond de percolation qui achète le stockage saisonnier en aplatissant la réponse journalière (2026-09-29) — ÉTABLI EN PASSE AVANT À POIDS FIXES, deux sous-bassins
+
+Passes avant sur les témoins entraînés, KGE de 2013 à poids fixes, avec ses trois facteurs. Débits d'août et d'octobre en mm/j.
+
+| plafond (mm/j), exposant | Outaouais KGE | r | gamma | août (obs 0,73) | octobre (obs 1,57) | Châteauguay KGE | r | gamma | août (obs 0,41) | octobre (obs 0,85) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1, territoire (4,65 et 1,36), en vigueur | 0,739 | 0,821 | 0,861 | 0,45 | 2,88 | 0,764 | 0,841 | 0,914 | 0,26 | 0,89 |
+| 1, Boussinesq 2,0 | 0,731 | 0,821 | 0,847 | 0,55 | 2,90 | 0,774 | 0,841 | 0,923 | 0,25 | 0,88 |
+| 2, Boussinesq 2,0 | 0,702 | 0,826 | 0,792 | 0,63 | 2,62 | 0,753 | 0,862 | 0,845 | 0,32 | 0,82 |
+| 4, territoire | 0,694 | 0,819 | 0,790 | 0,46 | 2,57 | 0,669 | 0,882 | 0,722 | 0,45 | 0,82 |
+| 4, Boussinesq 2,0 | 0,639 | 0,826 | 0,708 | 0,58 | 2,27 | 0,682 | 0,880 | 0,736 | 0,37 | 0,80 |
+
+LECTURE. L'exposant de Boussinesq, 2,0 partout, remplace sans coût les exposants de territoire : gamma inchangé, KGE à ±0,01, août relevé de 0,45 à 0,55 en Outaouais. Il entre dans la recette unique. Le plafond de percolation, lui, est un compromis : chaque millimètre par jour de plus nourrit la nappe (août, octobre) en retirant l'eau aux chemins rapides, et gamma tombe de 0,15 à 0,19 entre 1 et 4 mm/j sur les deux bassins, alors que r monte. L'entraînement ne lève pas ce compromis (R217, suite) : il le fige. Le plafond est constant dans l'année ; or la recharge réelle se fait à l'automne et au printemps quand la demande est faible, et l'eau d'orage d'été doit rester aux chemins rapides. La pièce manquante est donc une percolation qui dépend de l'état du sol ou de la saison, pas une constante plus haute. À 2 mm/j, valeur haute de la plage du till silteux (registre du 2026-09-19), on gagne la moitié du chemin sur août pour un dixième de gamma.
+
+DÉCISION PROPOSÉE. Exposant 2,0 adopté pour la recette unique ; plafond laissé à 1 mm/j tant que la percolation n'est pas rendue dépendante de l'état, et 2 mm/j comme valeur d'essai si l'on accepte le compromis.
