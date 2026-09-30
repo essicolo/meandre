@@ -578,8 +578,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         return slice(i0, i1 if i1 > 0 else len(temps))
 
     w = WithdrawalData(net=torch.zeros(F.shape[0], n, device=dev))
-    if os.environ.get("MEANDRE_BANC_PRELEVEMENTS") == "1":
-        # PRELEVEMENTS REELS (2026-09-30). Le banc tournait sans prelevements alors que
+    if os.environ.get("MEANDRE_BANC_PRELEVEMENTS", "1") == "1":
+        # PRELEVEMENTS REELS, PAR DEFAUT depuis le 2026-09-30 (decision d'Essi : les debits
+        # observes les contiennent, le banc doit les retirer). MEANDRE_BANC_PRELEVEMENTS=0
+        # restitue le banc sans prelevements, celui de tous les resultats anterieurs. Le banc
+        # tournait sans prelevements alors que
         # les debits observes les contiennent : sur les deux sous-bassins ils valent 2 a
         # 6 % du debit d'ete, l'ordre de grandeur que la sensibilite doit resoudre.
         from meandre.data.basin_cache import BasinCache as _BC
