@@ -4445,3 +4445,20 @@ Premier bras de la nuit (R243), référence A, Outaouais, graine 1234, taux des 
 Deux causes se cumulent. Le taux × 100, adapté aux soixante pas du mode rapide (R243), est trop fort pour les deux cent soixante de la longue fenêtre. Et à deux sous-pas de 12 h, le gradient du temps de transfert est nul sous 7,5 h (R241) : un tronçon qui y entre, poussé par l'élan d'Adam, n'en ressort pas. C'est un état absorbant du schéma numérique, qui existe aussi dans le pilote régional, où le routage est construit à deux sous-pas.
 
 Relance à 17 h 33 : les trois configurations à vingt-quatre sous-pas d'une heure (bornes 1 à 48 h), taux des têtes × 10, la valeur éprouvée sur la longue fenêtre (R231, R232).
+
+## R245 — Sur les années jamais vues 2020-2024, la perte d'étiage corrige l'étiage de l'Outaouais ; le routage libre à sous-pas fins s'effondre sur une heure et abîme la corrélation (2026-09-30, soir) — ÉTABLI, Outaouais, graine 1234 ; Châteauguay et seconde graine en cours
+
+Longue fenêtre (entraînement 2010-2017, validation 2018-2019, évaluation 2020-2024), quatre époques, taux des têtes × 10, vingt-quatre sous-pas, bornes 1 à 48 h, prélèvements réels, MOD16 centré. A, sans terme d'étiage ; B, terme d'étiage direct 1,0, soutien 1,0, logarithmes 0,3 ; C, B initialisé à 6 h au lieu de 24.
+
+| Outaouais 040110, 2020-2024, jours mesurés | A | B | C | observé |
+| --- | --- | --- | --- | --- |
+| Q7min sim/obs, médiane de cinq ans | 1,19 | 1,02 | 1,11 | 1,00 |
+| jours sous le Q90 observé | 119 | 155 | 141 | 128 |
+| volume août-septembre sim/obs | 1,11 | 0,96 | 1,04 | 1,00 |
+| KGE ; r ; gamma | 0,673 ; 0,69 ; 1,07 | 0,687 ; 0,74 ; 1,11 | 0,664 ; 0,68 ; 0,98 | |
+| corrélation été ; automne | 0,51 ; 0,89 | 0,54 ; 0,88 | 0,58 ; 0,87 | |
+| temps de transfert appris, médiane ; part à la borne d'une heure | 1,3 h ; 67 % | 1,2 h ; 86 % | 1,4 h ; 78 % | |
+
+LECTURE. La perte d'étiage fait ce qu'on attend d'elle sur cinq années hors entraînement : le biais du minimum de sept jours passe de 19 à 2 %, celui du volume d'été de +11 à −4 %, avec un léger dépassement sur le nombre de jours sous le seuil. Le KGE ne recule pas. En revanche, dès que le routage peut descendre sous 7,5 h, sur la longue fenêtre et même au taux ordinaire, l'optimiseur colle le temps de transfert à sa borne basse d'une heure ; la corrélation d'été tombe à 0,51-0,58 et la corrélation globale à 0,68-0,74, contre 0,80 pour la même configuration avec le routage du pilote la nuit précédente (R232 suite). Un temps de transfert d'une heure par tronçon n'est pas faux physiquement, mais la génération n'a pas été réglée pour lui. Le routage à sous-pas fins n'est pas adopté en l'état.
+
+SUITE. La perte d'étiage est rejugée avec le routage tel qu'il est dans le pilote (deux sous-pas, bornes 4 à 48 h), deux graines, Outaouais et Châteauguay, puis le bassin à lacs : c'est la version déployable par un simple changement de perte.
