@@ -110,6 +110,12 @@ class BV3C2Clone(torch.nn.Module):
         # ruisselle. La porte continue, qui réduit la conductivité, ne mord presque jamais
         # parce que la conductivité saturée dépasse de loin l'intensité d'une pluie d'hiver.
         self.frozen_gate_areal = False
+        # DRAPEAUX RELUS A LA CONSTRUCTION (2026-09-30). Les constantes de module ci-dessus
+        # sont evaluees a l'import, AVANT que le pilote ne pose la recette du fichier TOML :
+        # `MEANDRE_SOL_SEMI_IMPLICITE = 1` dans une section [recette] restait sans effet.
+        # Le clone est construit apres la recette, donc l'environnement y est complet.
+        self.semi_implicite = _os.environ.get("MEANDRE_SOL_SEMI_IMPLICITE", "0") == "1"
+        self.gel_sans_neige = _os.environ.get("MEANDRE_GEL_SANS_NEIGE", "0") == "1"
         # static=True : pas de break data-dépendant (les itérations no-op après
         # convergence sont idempotentes, dtc=0). Permet torch.compile (pas de
         # synchro GPU `bool().all()` par itération, boucle statique fusionnable).
@@ -165,7 +171,7 @@ class BV3C2Clone(torch.nn.Module):
         # de gel tient deja compte de l'isolation du manteau : la condition compte deux fois
         # la neige, et laisse s'infiltrer les redoux d'hiver sur sol gele (2026-09-29).
         # MEANDRE_GEL_SANS_NEIGE=1 ferme le sol des que le gel existe, manteau ou non.
-        if _GEL_SANS_NEIGE:
+        if _GEL_SANS_NEIGE or getattr(self, "gel_sans_neige", False):
             frozen = frozen_depth_cm > 0.0
         else:
             frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
@@ -417,7 +423,7 @@ class BV3C2Clone(torch.nn.Module):
             f1 = (pinf - qq12 - e1) / z1
             f2 = (qq12 - qq23 - e2 - q2 - q_drain) / z2
             f3 = (qq23 - q3 - q3_lat - e3) / z3
-            if _SEMI_IMPLICITE:
+            if _SEMI_IMPLICITE or getattr(self, "semi_implicite", False):
                 # EULER LINEAIREMENT IMPLICITE sur les echanges de Darcy entre couches
                 # (2026-09-28). Le critere de Courant borne la taille des flux, pas leur
                 # raideur : pres de l'equilibre et de la saturation, le flux est petit mais sa
