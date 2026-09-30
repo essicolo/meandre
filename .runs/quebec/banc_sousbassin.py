@@ -490,6 +490,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     mask[s["exutoire"]] = True
     st_idx = torch.tensor([s["exutoire"]], device=dev)
     g = g.to(dev)
+    if os.environ.get("MEANDRE_BANC_SANS_LACS") == "1":
+        # Diagnostic : les lacs deviennent des troncons ordinaires. Dit si l'etalement d'un
+        # bassin a lacs vient de leur routage (pseudo-lacs importes en reservoirs actifs).
+        print(f"  lacs neutralises : {int(g.is_lake.sum())} noeuds routes comme des rivieres", flush=True)
+        g.is_lake = torch.zeros_like(g.is_lake)
     from meandre.spatial.territorial import TerritorialFeatures as _TF
     terr = _TF(data=terr.data.to(dev), columns=list(terr.columns),
                physical={k: v.to(dev) for k, v in terr.physical.items()})
