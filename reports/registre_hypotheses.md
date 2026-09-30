@@ -4346,3 +4346,21 @@ Passes avant, points de reprise de la configuration, jours mesurés de 2013 :
 LECTURE. L'ancre est cohérente avec la physique et laisse le KGE intact, mais elle relève le plancher partout : une conductance plus faible retient plus d'eau dans la nappe et la rend plus lentement. Elle ferme la voie de la nappe pour l'étiage, et elle montre le vrai défaut. En Outaouais avec l'ancre, la moyenne d'août est exacte, 0,73 pour 0,73, et pourtant le minimum de sept jours est trop haut de 31 % et aucun jour ne passe sous le seuil : la simulation ne descend jamais aussi bas que l'observé ni ne remonte aussi haut après les pluies d'août, 4,35 mm/j ce mois-là. Le défaut d'étiage est une variabilité d'été manquante, réponse aux pluies trop faible et récession trop molle, c'est-à-dire le même défaut de génération rapide que le déficit de pointes annuelles sur la longue fenêtre (chantier 15). Les deux chantiers n'en font qu'un.
 
 CE QUI EST FERMÉ. La loi de la nappe : Boussinesq uniforme et conductance de 1,5e-3 font aussi bien que la mesure, et ni le débit, ni les puits, ni l'apprentissage ne demandent autre chose. Les constantes restent des ancres uniformes, jusqu'à ce qu'un bassin les mette en défaut.
+
+## R240 — Après un orage d'été, le modèle produit l'eau mais le débit simulé à l'exutoire ne monte presque pas : le défaut de variabilité d'été est d'abord un amortissement en route, pas un défaut de génération (2026-09-30) — ÉTABLI EN PASSE AVANT, trois sous-bassins ; attribution aux lacs en cours
+
+Réponse aux pluies d'été, jours de juin à septembre d'au moins 10 mm, 2011 à 2013 : hausse du débit sur trois jours rapportée à la pluie, médiane des événements. Observé 0,019, 0,020 et 0,009 ; simulé 0,000, 0,001 et 0,001 en Outaouais, sur la Châteauguay et sur le bassin à lacs du Saint-Laurent nord-ouest.
+
+Composite des mêmes événements, du jour précédent au troisième jour, en mm/j, orage moyen de 22 à 24 mm :
+
+| jour | Outaouais hypodermique | Qsim | Qobs | Châteauguay hypodermique | Qsim | Qobs | Saint-Laurent nord-ouest hypodermique | Qsim | Qobs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| −1 | 0,32 | 1,16 | 0,94 | 0,34 | 0,75 | 0,77 | 0,35 | 1,34 | 0,84 |
+| 0 | 0,36 | 1,14 | 1,12 | 0,79 | 1,30 | 1,22 | 0,56 | 1,32 | 0,93 |
+| +1 | 0,92 | 1,17 | 1,46 | 1,57 | 1,70 | 2,22 | 1,37 | 1,40 | 1,13 |
+| +2 | 1,23 | 1,23 | 1,56 | 1,55 | 1,79 | 2,00 | 1,98 | 1,54 | 1,15 |
+| +3 | 1,07 | 1,27 | 1,45 | 1,05 | 1,49 | 1,36 | 1,91 | 1,67 | 1,15 |
+
+Le ruissellement de surface est nul sur les trois bassins, le sol absorbe l'orage ; mais l'écoulement hypodermique rend 2 à 5 mm des 23 mm en trois jours. En Outaouais cette production monte de 0,9 mm/j, et le débit à l'exutoire de 0,1 seulement, contre 0,6 observé. Sur la Châteauguay, sans lacs notables, le débit simulé suit la production et monte de 1,0 mm/j contre 1,5 observé, avec un jour de retard. Sur le bassin à lacs, la production monte de 1,6 mm/j et le débit de 0,3, l'observé de 0,3 aussi, mais sur un débit de base trop fort de 60 %.
+
+LECTURE. Ni la nappe (R239), ni la génération seule : entre la production et l'exutoire, quelque chose absorbe la réponse d'orage, plus fortement là où il y a des lacs. Épreuve en cours : le même composite, lacs routés comme des rivières.

@@ -918,6 +918,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             if int(_ok_e.sum()) >= 8:
                 _ro = (_dqo / _p_s)[_ok_e]; _rs = (_dqs / _p_s)[_ok_e]
                 print(f"  reponse aux pluies d'ete (>= 10 mm, {int(_ok_e.sum())} evenements) : hausse sur 3 jours / pluie, obs {_ro.median():.3f}, sim {_rs.median():.3f} | rapport sim/obs {(_rs.median() / max(_ro.median(), 1e-6)):.2f}", flush=True)
+            # COMPOSITE D'ORAGE D'ETE (2026-09-30) : moyenne sur les memes evenements, du jour
+            # precedent au troisieme jour suivant, de la pluie, de l'apport au sol, des trois
+            # productions et des debits. Dit ou va la pluie d'un orage dans le modele.
+            if int(_ok_e.sum()) >= 8:
+                _pos_e = np.flatnonzero(_ok_e.to_numpy())
+                _cols_e = [c for c in ("P", "apport", "surf", "hypo", "nappe", "Qsim", "Qobs", "sat1", "ET") if c in df.columns]
+                _lig = []
+                for _dj in (-1, 0, 1, 2, 3):
+                    _ix = [i + _dj for i in _pos_e if 0 <= i + _dj < len(df)]
+                    _lig.append({"jour": _dj, **{c: float(np.nanmean(df[c].to_numpy()[_ix])) for c in _cols_e}})
+                print("  composite d'orage d'ete, mm/j (moyenne des evenements) :", flush=True)
+                print(pd.DataFrame(_lig).set_index("jour").round(3).to_string(), flush=True)
             if mesure is not None:
                 # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une
                 # reconstruction, et ne peut pas juger la physique hivernale (registre, R98).
