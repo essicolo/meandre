@@ -835,7 +835,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _da["date"] = pd.DatetimeIndex(temps)[_ok_t][pd.DatetimeIndex(temps)[_ok_t].year == _an]
                 _cols = [c for c in ("date", "P", "apport", "Qobs", "Qsim", "surf", "hypo", "nappe", "sat1", "gel_cm") if c in _da.columns]
                 print("  trois plus gros jours simules :", flush=True)
-                print(_da.nlargest(3, "Qsim")[_cols].round(2).to_string(index=False), flush=True)
+                _top = _da.nlargest(3, "Qsim")[_cols]
+                _top["date"] = _top.date.dt.strftime("%Y-%m-%d")
+                print(_top.round(2).to_string(index=False), flush=True)
                 print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
             if mesure is not None:
                 # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une
