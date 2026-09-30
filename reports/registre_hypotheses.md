@@ -4129,3 +4129,14 @@ Recette retenue (exposant 2,0, phénologie par classe) plus sortie latérale pro
 | q99 sim/obs | 0,97 | 0,93 | 0,96 | 0,97 et 0,99 |
 
 LECTURE. Sur les jours mesurés, chaque saison monte sur les deux bassins, l'automne de l'Outaouais de 0,62 à 0,76 et l'hiver de la Châteauguay de 0,75 à 0,90, et août est rendu à 0,70 en Outaouais. Le KGE de l'Outaouais recule pourtant de 0,03 par gamma : le débit de base relevé lisse le coefficient de variation, comme au plafond linéaire (R220), même si les corrélations sont meilleures partout. Le défaut neuf est ailleurs : la pointe annuelle de la Châteauguay est doublée alors que le 99e centile est juste, donc une seule crue explose. La loi amplifie l'excès sans borne : une pluie de 60 mm sur une échelle de 5 mm multiplie la sortie par douze. `max_ratio` borne l'amplification ; en passe avant à 20, 10 et 5.
+
+SUITE DE R225, la pointe et sa borne. La pointe doublée de la Châteauguay est un seul jour, le 12 juin 2013 : 14 mm de pluie, débit observé 12,6 mm/j, simulé 22,9, dont 24,2 d'écoulement hypodermique. L'excès de la couche profonde, 19 mm ce jour-là, reste sous cinq fois l'échelle, donc une borne à 5 ne mord pas ; la loi linéaire donnait 12,4. Passes avant sur les points de reprise entraînés avec la loi, plafond 4 :
+
+| borne de l'amplification, temps latéral | Outaouais KGE | pointe | Châteauguay KGE | pointe | q99 | gamma |
+| --- | --- | --- | --- | --- | --- | --- |
+| sans, 3 jours | 0,720 | 0,79 | 0,851 | 1,81 | 0,97 | 1,05 |
+| 3, 3 jours | 0,718 | 0,79 | 0,870 | 1,63 | 0,98 | 1,03 |
+| 2, 3 jours | 0,711 | 0,78 | 0,878 | 1,30 | 1,08 | 0,95 |
+| 3, 5 jours | 0,700 | 0,77 | 0,850 | 1,25 | 1,05 | 0,90 |
+
+La borne à 2 est retenue : elle ramène la pointe de 1,81 à 1,30, relève la Châteauguay à 0,878 et ne coûte que 0,01 en Outaouais. La loi devient : vidange de l'excès à 3 jours, doublée au plus quand l'excès dépasse 10 mm. Ce qui reste en Outaouais est le lissage par le débit de base, gamma 0,76, que le plafond à 2 mm/j en entraînement doit dire.
