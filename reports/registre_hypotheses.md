@@ -4180,3 +4180,21 @@ Sous-bassin forestier de 769 km², 43 tronçons, riche en lacs (rang 0,9 des sta
 LECTURE. Le bassin observé est lui-même lisse, un jour d'hiver sur quatre sans variation, mais le modèle l'est deux fois trop : le 99e centile vaut la moitié de l'observé sous toutes les recettes, et août est trop fort de 60 à 100 %. Ce n'est pas la nappe ni la phénologie : la recette au plafond de 2 fait ce qu'elle a fait ailleurs, la corrélation monte de 0,85 à 0,91 et le printemps de 0,83 à 0,90, mais gamma ne bouge pas. Un bassin à lacs qui étale deux fois trop désigne le routage des lacs, dont les paramètres sont appris par le champ, et le défaut déjà consigné des pseudo-lacs d'Hydrotel importés comme réservoirs actifs. La recette de la nuit n'est donc ni confirmée ni infirmée par ce bassin ; c'est un autre chantier, celui des lacs, que ce banc désigne comme le levier suivant pour les territoires du nord.
 
 SUITE DE R228, lacs neutralisés en passe avant (les 6 nœuds de lac routés comme des rivières, `MEANDRE_BANC_SANS_LACS=1`), sur le point de reprise de la recette au plafond de 2 : KGE de 2013 à poids fixes 0,418 à 0,500, gamma 0,45 à 0,54, pointe annuelle 0,54 à 0,77, 99e centile 0,53 à 0,70, hiver 0,22 à 0,29 ; août inchangé à 1,35 puis 1,49 mm/j pour 0,65 observé. Les lacs, dont les paramètres sont appris par le champ, portent la moitié de l'étalement de ce bassin ; l'autre moitié et le surplus d'été, un écoulement hypodermique de 1,1 mm/j en août sous 4,8 mm/j de pluie, tiennent à la colonne et restent à comprendre. Entraînement sans lacs en file pour mesurer le plafond propre du bassin.
+
+## R229 — Recette de la nuit du 29 au 30 septembre, entraînée avec la loi bornée : Outaouais 0,78 et 0,79 de KGE, toutes saisons relevées, pointes préservées ; Châteauguay hiver 0,85, volume à −4 %, pointe isolée ramenée à 1,36 (2026-09-30) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines au centième
+
+LA RECETTE. Schéma semi-implicite du sol ; nappe libre à l'exposant de Boussinesq 2,0 partout, extraction 0,15 ; couche profonde : sortie latérale en puissance 2 de l'excès au-dessus de la capacité au champ, échelle 5 mm, amplification bornée à 2, temps de 3 jours, et percolation de l'excès en 2 jours plafonnée à 2 mm/j ; Penman ; phénologie par photopériode calée sur MODIS, restreinte aux feuillus et à l'agricole ; porte de gel continue sous 10 mm de neige. Rien n'est propre à un territoire, sauf le plafond, propriété du dépôt que le champ spatial doit porter (R223).
+
+| | Outaouais témoin du matin | Outaouais recette de la nuit | Châteauguay témoin | Châteauguay recette de la nuit |
+| --- | --- | --- | --- | --- |
+| KGE 2013 | 0,739 et 0,742 | 0,782 et 0,787 | 0,764 (poids fixes) | 0,878 (poids fixes, R225) |
+| r ; beta ; gamma | 0,82 ; 1,13 ; 0,86 | 0,85 ; 1,05 ; 0,85 | | |
+| hiver ; printemps ; été ; automne (jours mesurés) | 0,26 ; 0,72 ; 0,70 ; 0,65 | 0,30 ; 0,79 ; 0,74 ; 0,74 | 0,78 ; 0,83 ; 0,79 ; 0,65 | 0,85 ; 0,89 ; 0,83 ; 0,71 |
+| août (mm/j), obs 0,73 et 0,41 | 0,45 | 0,66 | 0,26 | 0,31 |
+| débit annuel, obs 1,83 et 1,35 | 2,14 | 2,00 | 1,38 | 1,30 |
+| évapotranspiration, MOD16 1,58 et 1,82 | 1,39 | 1,54 | 1,45 | 1,53 |
+| pointes annuelles ; q99 | 0,85 ; 1,03 | 0,86 ; 1,02 | 0,99 ; 1,01 | 1,36 ; 1,22 |
+
+CE QUI EST GAGNÉ EN UNE JOURNÉE, du témoin du matin à la recette du soir. En Outaouais, tout : le volume (biais de 13 % à 5 %), l'évapotranspiration à MOD16, août aux trois quarts du chemin, les quatre saisons, le KGE de 0,04, sans rien perdre aux pointes. Sur la Châteauguay, l'hiver, le printemps, l'été, l'automne et l'évapotranspiration ; il reste un volume à −4 %, artefact du coefficient de culture fixe du banc, un août qui voudrait le plafond de 4, et une pointe isolée à 1,36 en juin 2013 que la borne n'efface pas entièrement. Et chaque résultat se reproduit d'une graine à l'autre au centième, ce qui n'était vrai de rien avant le schéma semi-implicite.
+
+CE QUI RESTE OUVERT, par ordre de levier : le plafond de percolation spatial ; les lacs, qui aplatissent deux fois trop un bassin du Saint-Laurent nord-ouest (R228) ; l'hiver de l'Outaouais à 0,30, dont R224 donne la forme de la réponse à reproduire ; le coefficient de culture, à laisser au champ. Rien n'a été porté au pilote régional.
