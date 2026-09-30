@@ -4146,3 +4146,19 @@ La borne à 2 est retenue : elle ramène la pointe de 1,81 à 1,30, relève la C
 Même recette que R225 (retenue, sortie latérale en puissance, plafond 4) plus `MEANDRE_GEL_SANS_NEIGE=1`. Outaouais : KGE 0,643 et 0,651 contre 0,720 et 0,725 sans, gamma 0,68 et 0,70, un jour d'hiver sur quatre sans variation contre 17,5 % observé, pointes annuelles 0,60 ; décembre encore à 1,94 et 2,02 mm/j pour 1,47 observé. Les corrélations d'automne et de printemps tiennent (0,77 et 0,78 à 0,82) mais l'hydrogramme est lissé. Châteauguay : identique à R225 au centième, hiver 0,89 et 0,90, pointes 1,72 et 1,77.
 
 LECTURE. Ce que la passe avant à poids fixes gagnait (R221, KGE 0,758) l'entraînement le perd : avec le sol fermé sous la neige, l'optimiseur trouve une solution plus plate, comme avec le plafond de percolation, et reproductible d'une graine à l'autre. La règle en vigueur reste la porte continue sous 10 mm de neige. L'hiver de l'Outaouais, corrélation de 0,25 à 0,35 sur les jours mesurés, reste le point ouvert de cette recette, et R224 dit ce qu'il faudrait : une réponse au gel modérée, de l'ordre d'un doublement, déclenchée par un gel cumulé et non par le premier millimètre.
+
+## R227 — Sortie latérale en puissance et plafond à 2 mm/j, entraînés : KGE 0,79 en Outaouais, toutes saisons relevées, pointes préservées ; volume exact et automne à 0,77 sur la Châteauguay (2026-09-29, nuit) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines ; borne en cours
+
+Recette retenue (exposant 2,0, phénologie par classe, extraction 0,15, porte continue) plus sortie latérale profonde en puissance 2 à l'échelle de 5 mm, non bornée, plafond de percolation 2 mm/j. Huit époques, deux graines.
+
+| | Outaouais témoin | retenue, plafond 1 | puissance, plafond 4 | puissance, plafond 2 | Châteauguay témoin | retenue, plafond 1 | puissance, plafond 4 | puissance, plafond 2 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| KGE 2013 | 0,74 | 0,76 | 0,72 | 0,786 et 0,789 | | | | |
+| r ; beta ; gamma | 0,82 ; 1,13 ; 0,86 | 0,82 ; 1,06 ; 0,85 | 0,86 ; 1,05 ; 0,77 | 0,86 ; 1,06 ; 0,85 | | | | |
+| hiver ; printemps ; été ; automne (jours mesurés) | 0,26 ; 0,72 ; 0,70 ; 0,65 | 0,24 ; 0,74 ; 0,71 ; 0,62 | 0,33 ; 0,81 ; 0,75 ; 0,76 | 0,38 ; 0,83 ; 0,74 ; 0,74 | 0,78 ; 0,83 ; 0,79 ; 0,65 | 0,75 ; 0,83 ; 0,79 ; 0,64 | 0,90 ; 0,88 ; 0,80 ; 0,70 | 0,85 ; 0,86 ; 0,84 ; 0,77 |
+| août (mm/j), obs 0,73 et 0,41 | 0,45 | 0,57 | 0,70 | 0,68 | 0,26 | 0,25 | 0,36 | 0,31 |
+| débit annuel, obs 1,83 et 1,35 | 2,14 | 2,02 | 2,02 | 2,03 | 1,38 | 1,30 | 1,29 | 1,35 |
+| pointes annuelles ; q99 | 0,85 ; 1,03 | 0,81 ; 0,97 | 0,80 ; 0,93 | 0,88 ; 1,02 | 0,99 ; 1,01 | 0,98 ; 0,96 | 1,82 ; 0,98 | 1,85 ; 1,06 |
+| jours plats en été, obs 2,5 % et 4,1 % | 9,8 % | 8-11 % | 13-16 % | 11-13 % | 8,2 % | 8-9 % | 6,6 % | 5,7 % |
+
+LECTURE. C'est la première configuration qui gagne sur tous les critères de l'Outaouais à la fois, et sans compromis sur les pointes : le plafond de 2 mm/j nourrit assez la nappe pour août (0,68) et l'automne (corrélation de 0,65 à 0,74), la loi en puissance rend l'eau d'orage aux chemins rapides (gamma 0,85, pointes 0,88), et l'hiver monte de 0,26 à 0,38. Sur la Châteauguay le volume triennal est exact, l'été et l'automne sont les meilleurs de la série, l'hiver à 0,85 et 0,81 reste au-dessus du témoin ; août à 0,31 dit que ce bassin voudrait le plafond de 4 (R223), et la pointe de juin 2013 reste doublée faute de borne. La loi bornée à 2 (R225, suite) est en entraînement aux deux plafonds ; c'est elle qui fixera la recette. Généralisation sur un troisième bassin en cours (Saint-Laurent nord-ouest 052805).
