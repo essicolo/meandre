@@ -1,0 +1,56 @@
+# ─── Recette de la nuit du 29 au 30 septembre 2026, CANDIDATE pour le pilote régional ─────
+# Établie sur deux sous-bassins (Outaouais 040110, Châteauguay 030905), deux graines au
+# centième près, registre R213 à R229. NON PORTÉE AU PILOTE : ce fichier dit ce que le pilote
+# accepte déjà, et ce qu'il faudrait lui brancher. Il ne se lance pas tel quel.
+#
+# CE QUE LE PILOTE ACCEPTE DÉJÀ (section [recette] et section [soil] ci-dessous) :
+#   - schéma semi-implicite du sol (variable lue par le clone lui-même) ;
+#   - nappe libre, exposant de Boussinesq 2,0 partout, extraction 0,15 ;
+#   - couche profonde déclarée : sortie latérale en puissance 2 de l'excès, échelle 5 mm,
+#     amplification bornée à 2, temps 3 jours ; percolation de l'excès en 2 jours, plafond
+#     2 mm/j (4 sur la Châteauguay ; le plafond est une propriété du dépôt, R223).
+#
+# CE QUE LE PILOTE N'A PAS, et sans quoi la recette n'est pas celle du banc :
+#   - la formule de Penman comme ETP (ETL_ETP ne connaît que mcguinness, linacre, appris) ;
+#     Linacre inverse la saison de l'évapotranspiration sur les deux bassins (R208) ;
+#   - le modulateur phénologique (use_phenology_modulator), en mode photopériode calé sur
+#     MODIS (seuil 11,9 h, une constante), restreint aux feuillus et à l'agricole (R219) ;
+#   - la porte de gel continue (soil_frozen_gate), qui n'est pas exposée par le pilote.
+#   Le coefficient de culture est APPRIS par le champ dans le pilote : le multiplicateur fixe
+#   du banc (0,8 forêt, 0,5 agricole) n'a pas d'équivalent à poser, et c'est voulu.
+
+[recette]
+MEANDRE_SOL_SEMI_IMPLICITE = 1    # schéma linéairement implicite : gradient borné, graines reproductibles (R197)
+ETL_NAPPE_LIBRE = 1
+ETL_NAPPE_EXP = 2.0               # Boussinesq partout ; l'exposant de territoire ne transfère pas au sous-bassin (R213, R220)
+ETL_NAPPE_SY = 0.05
+ETL_NAPPE_KB = 1.5e-3
+ETL_NAPPE_ZRIV = 5
+ETL_NAPPE_HREF = 2
+ETL_NAPPE_ZEXT = 6
+ETL_NAPPE_EFRAC = 0.15            # extraction depuis la zone saturée, cohérente avec le débit d'août (R217)
+MEANDRE_PHENOLOGIE_CLASSES = "feuillus,agri"   # lu par la colonne ; sans modulateur dans le pilote, sans effet
+
+[soil]
+layers = 3
+
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+exponent = 2.0
+scale_mm = 5.0
+max_ratio = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = 2.0
