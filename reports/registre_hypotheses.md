@@ -4327,3 +4327,22 @@ CE QUI SUIT. L'étiage ne s'apprend pas par le débit journalier ; il s'ancre. L
 Audit demandé par Essi avant tout lancement sur Narval. Deux défauts trouvés et corrigés. Le drapeau du schéma semi-implicite était lu à l'import du module, avant que la recette du fichier ne soit posée : une clé en fichier restait sans effet, seule une variable posée au lancement comptait ; le clone relit ses drapeaux à sa construction. GRACE tournait en mode absolu dans le socle, faute de clé de forme ; la configuration complète la pose. Trois normalisations coexistent sous le mot forme : MOD16 centré sans réduction, GRACE centré puis divisé par un écart-type unique de la fenêtre, puits centrés et réduits par puits ; le choix d'aligner MOD16 revient à Essi.
 
 Passe du pilote sur `cndb`, `ETL_EPOCHS=0`, `ETL_CONFIG=socle-2026-09-30.toml`, rien d'autre dans l'environnement que les chemins et le forçage : code de sortie 0 ; 26 réglages posés depuis le fichier ; ligne lue sur l'objet construit : phénologie active en mode photopériode, classes feuillus et agricole ; porte de gel continue vraie ; schéma semi-implicite vrai ; GRACE en forme vrai ; ETP Penman ; nappe libre aux constantes de la recette ; profil de sol à trois processus, plafond 8,33e-5 m/h soit 2 mm/j ; 1 145 nœuds, deux jauges ; KGE médian 0,685 sur 2022-2024 sans entraînement, 0,692 sur les jours mesurés. Réserves : le poids MOD16 effectif est 0,4 par la recette et non 1,0 par la section de perte ; la clé de mode d'ET héritée du cas SLSO est inerte ; les paramètres de phénologie sont le jeu forestier de l'Outaouais.
+
+## R239 — L'ancre de récession mesurée par station, pente et ordonnée, ne corrige pas l'étiage : elle le relève encore. Le défaut d'étiage n'est pas dans la loi de la nappe mais dans la variabilité d'été, minimum trop haut et moyenne trop basse (2026-09-30) — ÉTABLI EN PASSE AVANT, trois sous-bassins
+
+Mesure. Pour la nappe libre Q = k_b (h/h_ref)^n vidangeant un stock Sy·h, la récession observée suit −dQ/dt = a·Q^b avec b = 2 − 1/n et a = n·k_b^(1/n)/(Sy·h_ref) ; l'ordonnée a donne donc la conductance, k_b = (a·Sy·h_ref/n)^n, avec Sy 0,05 et h_ref 2 m de la configuration. Mesuré sur l'enveloppe inférieure des décrues, jours mesurés, 2000 à 2026 (`recession_locale.py`) : Outaouais 040110 n 1,62 et k_b 8,6e-4 m/j ; Châteauguay 030905 n 2,39 et k_b 9,4e-4 ; Saint-Laurent nord-ouest 052805 n 1,39 et k_b 7,7e-4. La configuration uniforme pose 1,5e-3 et 2,0. L'été, la récession de l'Outaouais et de la Châteauguay n'est pas une loi de puissance (b > 2) mais un plancher.
+
+Passes avant, points de reprise de la configuration, jours mesurés de 2013 :
+
+| bassin | réglage | KGE | Q7min sim/obs | jours sous Q90 | volume août-sept | août sim/obs (mm/j) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Outaouais | configuration | 0,793 | 1,10 | 14 / 24 | 1,10 | 0,62 / 0,73 |
+| Outaouais | ancre mesurée | 0,792 | 1,31 | 0 / 24 | 1,23 | 0,73 / 0,73 |
+| Châteauguay | configuration | 0,862 | 1,08 | 20 / 28 | 1,20 | 0,31 / 0,41 |
+| Châteauguay | ancre mesurée | 0,859 | 1,14 | 18 / 28 | 1,21 | 0,32 / 0,41 |
+| Saint-Laurent nord-ouest | configuration | 0,418 | 2,55 | 0 / 28 | 2,75 | 1,35 / 0,65 |
+| Saint-Laurent nord-ouest | ancre mesurée | 0,415 | 2,76 | 0 / 28 | 2,91 | 1,42 / 0,65 |
+
+LECTURE. L'ancre est cohérente avec la physique et laisse le KGE intact, mais elle relève le plancher partout : une conductance plus faible retient plus d'eau dans la nappe et la rend plus lentement. Elle ferme la voie de la nappe pour l'étiage, et elle montre le vrai défaut. En Outaouais avec l'ancre, la moyenne d'août est exacte, 0,73 pour 0,73, et pourtant le minimum de sept jours est trop haut de 31 % et aucun jour ne passe sous le seuil : la simulation ne descend jamais aussi bas que l'observé ni ne remonte aussi haut après les pluies d'août, 4,35 mm/j ce mois-là. Le défaut d'étiage est une variabilité d'été manquante, réponse aux pluies trop faible et récession trop molle, c'est-à-dire le même défaut de génération rapide que le déficit de pointes annuelles sur la longue fenêtre (chantier 15). Les deux chantiers n'en font qu'un.
+
+CE QUI EST FERMÉ. La loi de la nappe : Boussinesq uniforme et conductance de 1,5e-3 font aussi bien que la mesure, et ni le débit, ni les puits, ni l'apprentissage ne demandent autre chose. Les constantes restent des ancres uniformes, jusqu'à ce qu'un bassin les mette en défaut.
