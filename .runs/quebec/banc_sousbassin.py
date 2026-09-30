@@ -906,6 +906,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _as = _ke[_ke.mois.isin((8, 9))]
                 _vol = _as.Qsim.sum() / max(_as.Qobs.sum(), 1e-9)
                 print(f"  etiage {_an}, jours mesures : Q7min sim/obs {_q7s / max(_q7o, 1e-9):.2f} ({_q7s:.2f} / {_q7o:.2f} mm/j) | jours sous le Q90 observe sim {_js} contre obs {_jo} | volume aout-sept sim/obs {_vol:.2f}", flush=True)
+            # REPONSE AUX PLUIES D'ETE (2026-09-30) : pour chaque jour de juin a septembre
+            # d'au moins 10 mm, hausse du debit sur les trois jours suivants rapportee a la
+            # pluie, observee et simulee, mediane des evenements. Dit si le modele repond aux
+            # orages d'ete, ce que l'etiage trop plat suggere qu'il ne fait pas (R239).
+            _qo_s = df.Qobs; _qs_s = df.Qsim; _p_s = df.P
+            _ev = (_p_s >= 10.0) & df.mois.isin((6, 7, 8, 9))
+            _dqo = (_qo_s.shift(-1).rolling(3).max().shift(-2) - _qo_s.shift(1)).clip(lower=0.0)
+            _dqs = (_qs_s.shift(-1).rolling(3).max().shift(-2) - _qs_s.shift(1)).clip(lower=0.0)
+            _ok_e = _ev & _dqo.notna() & _dqs.notna()
+            if int(_ok_e.sum()) >= 8:
+                _ro = (_dqo / _p_s)[_ok_e]; _rs = (_dqs / _p_s)[_ok_e]
+                print(f"  reponse aux pluies d'ete (>= 10 mm, {int(_ok_e.sum())} evenements) : hausse sur 3 jours / pluie, obs {_ro.median():.3f}, sim {_rs.median():.3f} | rapport sim/obs {(_rs.median() / max(_ro.median(), 1e-6)):.2f}", flush=True)
             if mesure is not None:
                 # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une
                 # reconstruction, et ne peut pas juger la physique hivernale (registre, R98).
