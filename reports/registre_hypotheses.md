@@ -4418,3 +4418,22 @@ Routage court (gelé à 6 h), écart quadratique sur les logarithmes du débit �
 Budget de pas. Le mode rapide entraîne sur l'année 2012, en blocs de 45 jours, soit environ huit pas d'optimiseur par époque et une soixantaine en huit époques, sous un taux qui décroît de 4,8e-4 à 5e-6. Adam déplace chaque paramètre d'au plus le taux par pas, quelle que soit la force du gradient ; le biais d'une sortie du champ est au taux de base, la dernière couche au taux × 10. Le déplacement cumulé permis correspond, pour le temps de transfert borné entre 4 et 48 h par une sigmoïde, à environ une à deux heures depuis 24 h : c'est exactement ce que le routage libre a fait (22,9 et 22,1 h, R241 suite). Atteindre 6 h demanderait un déplacement vingt fois plus grand.
 
 CONSÉQUENCE DE PROTOCOLE. Le mode rapide compare des PHYSIQUES en passe avant et à entraînement court ; il ne juge ni un terme de perte ni l'identifiabilité d'une sortie du champ, puisque rien n'a le temps de bouger. Ces questions se posent sur la longue fenêtre (2010-2017 : environ 65 pas par époque) ou avec un taux des têtes relevé. Épreuve en cours : routage libre, étiage dans la perte, taux des têtes × 100, deux initialisations.
+
+## R243 — Avec le taux des têtes du champ relevé et l'étiage dans la perte, l'étiage de l'Outaouais est rendu en mode rapide ; et le banc ignorait l'initialisation du temps de transfert (2026-09-30) — ÉTABLI SUR UNE GRAINE, deux entraînements identiques
+
+Routage libre entre 1 et 48 h, vingt-quatre sous-pas d'une heure, perte avec soutien d'étiage 1,0 et écart sur les logarithmes 0,3, taux des têtes du champ × 100 (`MEANDRE_LR_MULT_TETES=100`), Outaouais, graine 1234, huit époques en mode rapide. Jours mesurés de 2013 :
+
+| | routage court, logarithmes 0,3, taux ordinaire (R242) | taux × 100, étiage dans la perte | observé |
+| --- | --- | --- | --- |
+| Q7min sim/obs | 1,34 et 1,27 | 1,01 | 1,00 |
+| jours sous le Q90 | 0 et 0 | 21 | 24 |
+| volume août-septembre sim/obs | 1,39 et 1,34 | 1,11 | 1,00 |
+| corrélation hiver ; novembre-décembre ; automne | 0,15 ; 0,55 ; 0,86 | 0,55 ; 0,81 ; 0,92 | |
+| KGE | 0,869 et 0,883 | 0,897 | |
+| temps de transfert appris, médiane (quartiles) | 6 h imposé | 21,4 h (9,3 à 28,6 h), 9 % à la borne basse | |
+
+Le budget de pas était le verrou (R242) : quand les sorties du champ peuvent bouger, les termes d'étiage agissent, et l'étiage de 2013 rejoint l'observé. Le temps de transfert se disperse enfin entre tronçons, de 9 à 29 h en interquartile. Réserve : en mode rapide, l'année de validation est l'année d'évaluation, et le meilleur point de reprise est choisi sur elle ; le KGE de validation oscille entre 0,81 et 0,90 d'une époque à l'autre. Le verdict se prend sur la longue fenêtre.
+
+DÉFAUT DE PROTOCOLE TROUVÉ. Deux entraînements initialisés à 6 et 24 h sont sortis identiques au bit près, époque par époque. Le banc n'appelle pas l'initialisation par la littérature : chaque sortie du champ part du milieu de ses bornes, et la valeur d'initialisation de `MEANDRE_KMUSK` était ignorée. Le gel « à 24 h » du 28 septembre (R205) était donc à 26 h, et le routage « libre initialisé à 24 h » partait de 24,5 h. Corrigé le même jour : le banc pose le biais de cette sortie à la valeur demandée (vérifié : 6,2 et 24,4 h de médiane au départ).
+
+ÉPREUVE DE LA NUIT, lancée à 16 h 57. Longue fenêtre, entraînement 2010-2017, évaluation 2020-2024, Outaouais et Châteauguay, deux graines, quatre époques, taux des têtes × 100, MOD16 centré, prélèvements réels, trois configurations : A, référence du pilote (routage libre initialisé à 24 h, sans terme d'étiage) ; B, A plus perte d'étiage (terme direct 1,0, soutien 1,0, logarithmes 0,3) ; C, B plus routage court (libre, initialisé à 6 h, bornes 1 à 48 h, vingt-quatre sous-pas). Jugée d'abord sur l'étiage.
