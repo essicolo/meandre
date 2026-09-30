@@ -4230,3 +4230,19 @@ Entraînement 2010-2017, validation 2018-2019, évaluation 2020-2024, quatre ép
 | août, obs 1,08 et 0,48 | 1,34 | 1,43 | 0,37 | 0,39 |
 
 LECTURE. Ce que la recette a appris sur 2013 tient sur douze autres années : la forme de l'hydrogramme monte dans toutes les saisons, y compris l'hiver de l'Outaouais (0,78 à 0,82 sur 179 jours mesurés) et l'automne des deux bassins (+0,04 et +0,08). Ce qu'elle ne règle pas est le KGE, pour deux raisons différentes. En Outaouais, les pointes annuelles restent à 0,65 et le 99e centile à 0,71 sur la longue fenêtre, contre 0,86 et 1,02 sur la seule année 2013 : le déficit de pointes, défaut ancien de la génération (registre des mois de juin et juillet), domine dès que la fenêtre s'allonge, et la recette de la nappe n'y touche pas. Sur la Châteauguay, le volume : le bilan d'eau 2010-2024 demande 1,37 mm/j d'évapotranspiration, MOD16 en donne 1,79, soit 30 % de trop, et le terme MOD16 EN NIVEAU tire le modèle vers MOD16 ; les conifères qui gardent leur demande y ajoutent 0,1 mm/j, et le volume tombe de −5 % à −11 %. La consigne du dépôt dit depuis le 2026-09-22 que MOD16 se compare en forme, jamais en niveau ; le banc a tourné toute la journée en niveau. Épreuve en cours : la même paire sur la Châteauguay avec le terme en forme.
+
+## R232 — Avec MOD16 en forme, la recette de la nuit passe de 0,59 à 0,80 de KGE sur les années jamais vues de la Châteauguay, l'hiver de 0,40 à 0,79 (2026-09-30, 4 h 40) — ÉTABLI, longue fenêtre 2020-2024, une graine
+
+Même épreuve que R231, terme MOD16 en FORME (`MEANDRE_BANC_ET_MODE=anomaly`, la consigne du dépôt) au lieu du niveau.
+
+| Châteauguay 030905, évaluation 2020-2024 | témoin, niveau | recette, niveau | témoin, forme | recette, forme |
+| --- | --- | --- | --- | --- |
+| KGE | 0,593 | 0,531 | 0,587 | 0,796 |
+| r ; beta ; gamma | 0,63 ; 0,91 ; 1,15 | 0,68 ; 0,85 ; 1,31 | 0,60 ; 0,96 ; 1,11 | 0,84 ; 0,89 ; 1,05 |
+| hiver ; printemps ; été ; automne (343 à 1288 jours mesurés) | 0,45 ; 0,83 ; 0,78 ; 0,74 | 0,53 ; 0,89 ; 0,82 ; 0,82 | 0,40 ; 0,82 ; 0,77 ; 0,73 | 0,79 ; 0,89 ; 0,84 ; 0,83 |
+| pointes annuelles ; q99 | 1,08 ; 0,90 | 1,08 ; 1,09 | 1,09 ; 0,92 | 0,94 ; 0,91 |
+| évapotranspiration, bilan 1,37, MOD16 1,76 | 1,43 | 1,53 | 1,36 | 1,48 |
+| débit annuel 2010-2024, obs 1,32 | 1,26 | 1,17 | 1,32 | 1,22 |
+| KGE d'entraînement 2010-2017 | 0,764 | 0,737 | 0,748 | 0,873 |
+
+LECTURE. En niveau, le terme MOD16 obligeait le modèle à évaporer 30 % de plus que le bilan d'eau du bassin, et la recette, qui rend au sol une physique plus juste, ne pouvait s'y déployer : elle payait en volume ce que le niveau lui imposait. En forme, le témoin ne bouge pas (0,587) et la recette gagne 0,21 de KGE, avec r de 0,60 à 0,84, l'hiver de 0,40 à 0,79 sur 343 jours mesurés, et le KGE d'entraînement de 0,75 à 0,87. Deux conclusions. D'abord, c'est la PHYSIQUE de la nuit, nappe de Boussinesq, sortie latérale en puissance bornée, phénologie par classe, qui porte le gain, et il tient sur douze années hors entraînement. Ensuite, le terme MOD16 en niveau est nuisible là où MOD16 contredit le bilan d'eau, ce qui était écrit depuis le 2026-09-22 pour GRACE et vaut pour MOD16 ; le banc a tourné toute la journée du 29 en niveau, et tous les chiffres de la Châteauguay de R217 à R231 sont à relire avec cette réserve. Le volume reste à −11 %, coefficient de culture fixe du banc. Même paire en forme sur l'Outaouais en cours.
