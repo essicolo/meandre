@@ -4293,3 +4293,17 @@ Corrélation des moyennes mensuelles entre la profondeur simulée au tronçon du
 LECTURE. L'écart entre réglages, 0,11 sur la moyenne, est plus petit que l'écart entre puits d'un même réglage, 0,3 à 0,6, et les puits ne s'accordent pas : le 03090007 préfère la hauteur de référence basse, les 03090010 et 11 la conductance faible. Le réglage que les puits préfèrent en moyenne, conductance divisée par deux, donne le pire étiage (5 jours sous le seuil pour 28). C'est ce que le registre disait déjà le 2026-09-19 : les puits identifient la présence des mécanismes et la phase, pas la valeur des paramètres. La forme mensuelle d'une nappe ne dit pas combien elle débite.
 
 CE QUI SUIT. L'observation qui sépare ces réglages est le débit d'étiage lui-même, minimum de sept jours et jours sous le seuil, que le KGE ne voit pas et que le terme de soutien d'étiage porte. Mais exposant, conductance, extraction et hauteur de référence sont des constantes posées par variable d'environnement : aucun terme de perte ne peut les déplacer, et le terme d'étiage de R218 échouait aussi pour cela. Il faut les rendre apprenables, un scalaire par bassin, et juger si le terme d'étiage les identifie de façon reproductible d'une graine à l'autre. C'est l'épreuve d'identifiabilité suivante.
+
+## R236 — En mode rapide, le terme MOD16 centré laisse le volume libre : beta monte à 1,2 sur les deux bassins et le KGE tombe ; la paire « avec prélèvements » du matin est confondue par ce changement de mode (2026-09-30) — ÉTABLI, une graine ; à séparer
+
+Paire témoin et recette entraînée avec les prélèvements réels (nouveau défaut du banc) ET, par erreur de protocole, le terme MOD16 centré au lieu du mode absolu des points de reprise de référence. Deux changements à la fois, donc rien n'est attribuable ; mais l'effet du mode se lit seul.
+
+| 2013, jours mesurés | Châteauguay témoin | Châteauguay recette | Outaouais témoin | Outaouais recette |
+| --- | --- | --- | --- | --- |
+| KGE à poids fixes | 0,652 | 0,754 | 0,651 | 0,695 |
+| beta | 1,26 | 1,21 | 1,20 | 1,13 |
+| volume août-septembre sim/obs | 1,85 | 1,91 | 1,42 | 1,55 |
+| évapotranspiration d'août (mm/j), MOD16 3,68 et 3,04 | 2,63 | 2,60 | 2,48 | 2,48 |
+| référence en mode absolu, sans prélèvements (R229) | | 0,862 | 0,739 | 0,782 |
+
+LECTURE. Le terme centré ne tient plus le niveau de l'évapotranspiration, et sur une seule année d'entraînement le biais de volume à poids 0,5 ne suffit pas à le rattraper : l'évapotranspiration d'août tombe d'un tiers sous MOD16, le volume d'été double, beta atteint 1,2. Sur la longue fenêtre (R232), huit ans d'entraînement laissent au débit le temps de fixer le volume et le mode centré est le bon ; en mode rapide il ne l'est pas, et toute comparaison de variantes en mode rapide doit rester dans le mode de ses références. Les prélèvements, 2 à 6 % du débit d'été, ne peuvent pas expliquer des écarts de 40 à 90 % sur le volume d'été. La paire qui les isole, recette en mode absolu avec prélèvements réels, est en file devant la flotte de la nappe apprise, elle-même remise en mode absolu.
