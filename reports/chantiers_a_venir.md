@@ -2,23 +2,24 @@
 
 Ouvert le 2026-09-08, remis en ordre le 2026-09-16. Ce document liste les chantiers identifiés mais non entrepris, avec leur raison d'être, leur coût et le test qui dira s'ils tiennent. Le registre des hypothèses dit ce qui est vrai aujourd'hui ; le journal des expériences raconte ce qui a été fait. Un chantier n'entre ici qu'avec un critère de réussite mesurable.
 
-## Ordre de priorité au 2026-09-16
+## Ordre de priorité au 2026-09-30
 
-Prochain livrable le 2026-09-30, deux semaines après la présentation. Aucune simulation globale avant : les deux premiers chantiers préparent des données, et la prochaine ronde de modélisation les intègre en une seule fois.
+L'ordre du 16 septembre est remplacé. La semaine du 25 au 30 septembre a été passée sur le banc d'essai de sous-bassin, sans simulation provinciale. Les deux bassins d'essai font 1 163 km² en Outaouais et 2 492 km² en Montérégie. Elle a déplacé le levier principal vers l'eau souterraine et l'étiage, et ouvert quatre chantiers. Le détail mesuré est au registre des hypothèses, entrées du 25 au 30 septembre.
 
 | rang | chantier | raison du rang |
 |---|---|---|
-| 1 | Couches pédologiques de l'IRDA et gestion agricole de l'eau | Sol trop peu décrit pour les petits bassins ; prépare la ronde |
-| 2 | Neige mesurée au sol | Seule cible hivernale fiable ; prépare la ronde |
-| 3 | Enveloppe probabiliste après 2022 | Couverture de 0,58 au Saguenay et 0,66 en Abitibi |
-| 4 | Coût de la simulation provinciale | Rend la ronde et les scénarios moins chers |
-| 5 bis | Drainage de la couche profonde et nappe libre | Verrou levé le 2026-09-19 ; reste à recaler le débit |
-| 5 | Prochaine ronde de modélisation | Un pas par bloc, couches pédologiques, neige, temps de séjour de l'aquifère, poids du terme des variations |
-| 6 | Forçage climatique MRCC6 et scénarios | Livrable du plan de travail, dépend de la ronde |
-| 7 | Voie positionnelle du champ spatial | Priorité basse, décidée par Essi |
-| 8 | Enveloppe du scénario naturalisé | Jugée non nécessaire pour l'instant |
-| 9 | Plafond de sous-pas de la colonne | Ouvert le 2026-09-18 ; conditionne la nappe, les pics et le coût |
-| 10 | Module de recharge et de nappe | Ouvert le 2026-09-18 ; porte l'identifiabilité et l'étiage sous prélèvement |
+| 1 | Plancher d'étiage et nappe identifiable (11) | L'étiage est entièrement dans la nappe, ses constantes ne sont pas identifiées par le débit, et la sensibilité aux prélèvements en dépend |
+| 2 | Configuration unique et portage au pilote régional (14) | Une même configuration vaut pour les deux territoires sur des années jamais vues ; trois crochets manquent au pilote |
+| 3 | Plafond de percolation spatial (5 ter, rouvert) | Propriété du dépôt ; 2 mm/j en Outaouais, 4 en Montérégie, à porter par le champ |
+| 4 | Lacs (12) | Un bassin riche en lacs est lissé deux fois trop, et l'évaporation des plans d'eau manque les jours secs |
+| 5 | Couches pédologiques de l'IRDA (1) | Inchangé ; prépare la ronde |
+| 6 | Neige mesurée au sol (2) et NEISIM (2 bis) | Inchangé ; prépare la ronde |
+| 7 | Pointes annuelles sur la longue fenêtre (15) | Défaut ancien de la génération, visible dès que la fenêtre dépasse un an |
+| 8 | Prochaine ronde de modélisation (5) | Après les chantiers 1 à 4, avec le terme MOD16 centré et les prélèvements dans le banc |
+| 9 | Enveloppe probabiliste après 2022 (3), coût de la simulation (4), MRCC6 (6) | Inchangés |
+| 10 | Données candidates pour l'identifiabilité (10) | Les puits en corrélation mensuelle ne séparent pas les réglages de nappe ; SWOT et la conductivité restent à mesurer |
+
+Deux acquis de la semaine changent le protocole de tous les chantiers. Le schéma linéairement implicite du sol rend l'apprentissage reproductible : deux graines donnent le même résultat au centième, là où elles s'écartaient de 0,28 de KGE. Et le banc d'essai charge désormais les prélèvements réels par défaut, puisque les débits observés les contiennent.
 
 ## 1. Couches pédologiques de l'IRDA et gestion agricole de l'eau
 
@@ -259,3 +260,39 @@ Ajouter un produit satellitaire sur grille de plus. Les trois en place apportent
 ### La mesure qui trancherait vraiment, et que seul ce modèle peut faire
 
 Tout ce qui précède mesure la redondance des SÉRIES. La grandeur qui répond à la question est le rang de la matrice de sensibilité des observations aux PARAMÈTRES : une source prédictible à partir du débit peut contraindre une combinaison que le débit ne contraint pas, puisqu'elle regarde une autre sortie du modèle. C'est ce qui s'est produit en mai, quand l'évapotranspiration et la gravimétrie ont décollapsé la partition verticale d'un facteur six à huit alors qu'elles n'ajoutent ici aucune direction. Le modèle étant différentiable, cette matrice se calcule. C'est le seul endroit où la revendication centrale du projet se vérifie en acte, et c'est le banc à écrire avant de télécharger quoi que ce soit.
+
+## 11. Plancher d'étiage et nappe identifiable, ouvert le 2026-09-30
+
+Pourquoi. Sur les deux sous-bassins d'essai, le minimum simulé de sept jours est trop haut de 9 à 15 %, alors que le débit moyen d'août est trop bas d'un tiers. Les jours sous le dixième centile observé sont sous-comptés d'un tiers à deux tiers. Le modèle dessine des étiages plus plats que le réel. Ce biais est de l'ordre de la signature d'un prélèvement de 3 à 5 % du débit moyen. C'est la grandeur que la gestion du manque d'eau doit résoudre.
+
+Ce qui est établi. Le plancher se règle entièrement par la nappe libre, et chaque bassin veut un réglage différent. L'Outaouais veut une conductance doublée, la Montérégie l'exposant de vidange mesuré sur sa propre récession. Ces réglages donnent le même KGE avec des étiages qui diffèrent d'un tiers : le débit journalier ne les sépare pas. Les cinq puits recevables de la Montérégie, en corrélation mensuelle, ne les séparent pas non plus. Conductance, extraction et exposant sont désormais des scalaires apprenables du modèle.
+
+Test qui dira s'il tient. Entraînement avec un terme de soutien d'étiage, sur deux graines. Les trois scalaires convergent vers la même valeur. Le minimum de sept jours, les jours sous le seuil et le volume d'août à septembre rejoignent l'observé, sans perte sur la crue. Si les graines divergent, l'étiage n'est pas identifiable par le débit. Il faut alors un paramètre mesuré par station, l'exposant de récession, ou une observation d'une autre nature.
+
+## 12. Lacs, ouvert le 2026-09-29
+
+Pourquoi. Sur un sous-bassin de 769 km² du Saint-Laurent nord-ouest, riche en lacs, toutes les configurations échouent. Le 99e centile vaut la moitié de l'observé et le KGE va de 0,35 à 0,43. Les six nœuds de lac routés comme des rivières rendent 0,08 de KGE et un tiers de la pointe. Les paramètres de lac sont appris par le champ spatial et ne sont contraints que par le débit à l'exutoire.
+
+Une pièce manque. La fraction en eau d'un tronçon n'évapore que les jours de pluie, à hauteur de la pluie. Les nœuds de lac ne perdent rien de leur stock par évaporation. Sur un territoire où l'eau libre couvre une part notable de l'aire, l'évaporation estivale des plans d'eau manque presque entièrement.
+
+Test qui dira s'il tient. Un nœud de lac perd chaque jour l'évaporation potentielle sur son aire. Le débit d'août du bassin d'essai, deux fois l'observé, rejoint l'observé sans que le printemps ne recule. Puis les paramètres de lac reçoivent une contrainte mesurée, courbe de tarage ou bathymétrie quand elle existe, au lieu d'être appris librement.
+
+## 13. Prélèvements dans le banc d'essai et sensibilité, ouvert le 2026-09-30
+
+Ce qui est établi. Les prélèvements nets de la base io-eau valent 1,7 % du débit d'août en Montérégie et 5 à 6 % en Outaouais. Ils n'expliquent pas le déficit d'étiage du modèle. La réponse du modèle à un prélèvement de test de 5 % du débit moyen se reproduit au centième d'une graine à l'autre. Elle vaut vingt à trente fois la dispersion. Un prélèvement en surface abaisse le minimum de sept jours de 16 à 32 % ; un prélèvement souterrain deux fois moins, avec retard.
+
+Ce qui reste. L'effet d'un prélèvement se mesure par la différence entre deux passes, et le modèle y répond juste. La naturalisation en valeur absolue est limitée par le biais d'étiage du chantier 11. Les ouvrages régulés, présents dans les bases, doivent entrer explicitement dans toute naturalisation.
+
+## 14. Configuration unique et portage au pilote régional, ouvert le 2026-09-30
+
+Ce qui est établi. Une seule configuration, sans réglage par territoire, réussit sur les années 2020 à 2024 jamais vues à l'entraînement. Elle comprend une nappe libre à l'exposant de Boussinesq et une sortie latérale de la couche profonde en puissance de l'excès, bornée. S'y ajoutent une percolation plafonnée, la formule de Penman, une phénologie par photopériode restreinte aux feuillus et aux cultures, et une porte de gel continue. En Montérégie le KGE passe de 0,59 à 0,80 et la corrélation d'hiver de 0,40 à 0,79 ; en Outaouais le volume se ferme et les quatre saisons montent. Le fichier `.runs/quebec/config/configuration-nuit-2026-09-30.toml` la décrit.
+
+Ce qui manque au pilote régional. La formule de Penman, le modulateur phénologique et la porte de gel continue n'y sont pas branchés. Le coefficient de culture y est appris par le champ, ce qui est voulu. Le terme MOD16 doit y être centré et non absolu ; cette différence a coûté 0,21 de KGE en Montérégie sur la longue fenêtre.
+
+Test qui dira s'il tient. Le pilote régional reproduit sur un territoire entier le gain mesuré sur son sous-bassin d'essai, contre l'ensemble des six calages d'Hydrotel sur 2022 à 2024.
+
+## 15. Pointes annuelles sur la longue fenêtre, ouvert le 2026-09-30
+
+Pourquoi. Sur l'Outaouais, la pointe annuelle simulée vaut 0,86 de l'observée sur la seule année 2013, mais 0,70 sur les quinze années 2010 à 2024. Le 99e centile vaut 0,71. Dès que la fenêtre s'allonge, le déficit de pointes plafonne le KGE à 0,69, quelles que soient les corrections de nappe. C'est le défaut ancien de la génération d'écoulement rapide, attribué à la conductivité de la couche de surface et à l'absence d'intensité sous-journalière.
+
+Test qui dira s'il tient. Le rapport des pointes annuelles sur 2010 à 2024 dépasse 0,85 sur les deux sous-bassins d'essai, sans que le volume ni l'étiage ne reculent. Ce test précède toute ronde provinciale.
