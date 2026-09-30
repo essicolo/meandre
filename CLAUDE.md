@@ -110,7 +110,7 @@ ETL_CONFIG=.runs/quebec/config/socle.toml ETL_REGION=GASP python .runs/quebec/et
 TOML configs in `.runs/slso/config/` and `.runs/quebec/config/`. Key sections:
 - `[paths]`: basin_db, forcing_cache, checkpoint, fields_nc, reach_parquet
 - `[model]`: use_latent_codes, spatial_melt, melt_factor_scale (legacy scalar; ignored on warm-start and when spatial_melt), n_forcing, routing/lakes
-- `[et]`: mode + linacre_project_dir ; `[snow]`: melt_project_dir ; `[soil]`: hydrotel_calib_dir (do not use — see law of anchors)
+- `[et]`: mode + linacre_project_dir ; `formula = "penman"` choisit la formule d'ETP dans le pilote (sinon `ETL_ETP`, sinon la demande apprise) ; `[snow]`: melt_project_dir ; `[soil]`: hydrotel_calib_dir (do not use — see law of anchors), `frozen_gate_continuous = true` pour la porte de gel continue ; `[phenology]`: `enabled`, `mode = "photo"`, `params`, `target`, `classes = ["feuillus", "agri"]` (2026-09-30 ; sans ces clés, les variables MEANDRE_PHENOLOGIE_* gardent leur rôle)
 - `[training]`: lr, epochs, chunk_steps, tbptt_steps, best_metric (kge_median; "nll" in quantile mode), warm_start(_from), freeze_*
 - `[loss]`: MSE/log-MSE/PBIAS/peak weights, w_et/w_tws, nll_distribution/quantile_taus
 - `[literature_prior]`: optional overrides for init_from_literature() targets

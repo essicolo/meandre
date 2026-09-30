@@ -287,7 +287,7 @@ Ce qui reste. L'effet d'un prélèvement se mesure par la différence entre deux
 
 Ce qui est établi. Une seule configuration, sans réglage par territoire, réussit sur les années 2020 à 2024 jamais vues à l'entraînement. Elle comprend une nappe libre à l'exposant de Boussinesq et une sortie latérale de la couche profonde en puissance de l'excès, bornée. S'y ajoutent une percolation plafonnée, la formule de Penman, une phénologie par photopériode restreinte aux feuillus et aux cultures, et une porte de gel continue. En Montérégie le KGE passe de 0,59 à 0,80 et la corrélation d'hiver de 0,40 à 0,79 ; en Outaouais le volume se ferme et les quatre saisons montent. Le fichier `.runs/quebec/config/configuration-nuit-2026-09-30.toml` la décrit.
 
-Ce qui manque au pilote régional. La formule de Penman, le modulateur phénologique et la porte de gel continue n'y sont pas branchés. Le coefficient de culture y est appris par le champ, ce qui est voulu. Le terme MOD16 doit y être centré et non absolu ; cette différence a coûté 0,21 de KGE en Montérégie sur la longue fenêtre.
+Ce qui est branché le 2026-09-30, sans exécution encore. La formule de Penman, le modulateur phénologique et la porte de gel continue entrent dans le pilote par des clés de configuration, formule de la section et, section phénologie, porte continue de la section sol. Le coefficient de culture y est appris par le champ, ce qui est voulu. Le terme MOD16 doit y être centré et non absolu ; cette différence a coûté 0,21 de KGE en Montérégie sur la longue fenêtre.
 
 Test qui dira s'il tient. Le pilote régional reproduit sur un territoire entier le gain mesuré sur son sous-bassin d'essai, contre l'ensemble des six calages d'Hydrotel sur 2022 à 2024.
 
