@@ -871,6 +871,23 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _top["date"] = _top.date.dt.strftime("%Y-%m-%d")
                 print(_top.round(2).to_string(index=False), flush=True)
                 print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
+            # PUITS, TOUS, A POIDS FIXES (2026-09-30) : correlation des moyennes mensuelles
+            # entre la profondeur simulee au troncon du puits et le niveau mesure. Seule
+            # observation qui separe des reglages de nappe que le debit ne distingue pas.
+            try:
+                _zp = getattr(_d, "profondeur_nappe", None)
+                if _zp is not None and len(_pu):
+                    _zs = _zp.detach().cpu().numpy()[:, _sb_idx]
+                    _ax = pd.DatetimeIndex(temps)
+                    _rp = []
+                    for _j in range(len(_pu)):
+                        _o = pd.Series(_val[:, _j], index=_ax).resample("MS").mean()
+                        _s = pd.Series(_zs[:, _j], index=_ax).resample("MS").mean()
+                        _okp = _o.notna() & _s.notna()
+                        _rp.append(float(np.corrcoef(-_s[_okp], -_o[_okp])[0, 1]) if int(_okp.sum()) >= 24 else float("nan"))
+                    print(f"  puits a poids fixes, r mensuel : moyenne {np.nanmean(_rp):.2f} | " + ", ".join(f"{_pu[j]} {_rp[j]:.2f}" for j in range(len(_pu))), flush=True)
+            except NameError:
+                pass
             # GRANDEURS D'ETIAGE (2026-09-30), sur les jours mesures de la derniere annee
             # chargee : minimum glissant de 7 jours, jours sous le 90e centile observe, volume
             # d'aout-septembre, exposant de recession d'ete. Le KGE ne voit pas l'etiage.
