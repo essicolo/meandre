@@ -615,6 +615,16 @@ elif os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
 # demande apprise. "penman" est la formule etablie sur le banc : Linacre inverse la saison
 # de l'evapotranspiration (avril sur octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit.
 _etp_choix = os.environ.get("ETL_ETP") or cfg.get("et", {}).get("formula", "appris")
+# CE QUE LE MODELE PORTE REELLEMENT (2026-09-30, audit avant Narval) : une ligne par piece
+# declaree, lue sur l'objet construit et non sur la configuration, pour que le journal
+# dise ce qui est pose et non ce qui etait demande.
+_vc = model.vertical_column
+_ph_mod = getattr(model, "phenology_modulator", None)
+print("[etl] pieces declarees : "
+      f"phenologie={'active, mode ' + str(getattr(_ph_mod, 'mode', '?')) + ', classes ' + str(getattr(model, 'phenology_classes', None)) if _ph_mod is not None else 'inactive'} | "
+      f"porte de gel continue={bool(getattr(getattr(_vc, 'soil', None), 'frozen_gate_continuous', False))} | "
+      f"schema semi-implicite={bool(getattr(getattr(_vc, 'soil', None), 'semi_implicite', False))} | "
+      f"GRACE en forme={os.environ.get('ETL_TWS_FORME', str(int(tcfg.get('tws_shape_only', 0)))) == '1'}")
 if _etp_choix == "mcguinness":
     from meandre.data.hydrotel_calib import load_mcguinness_nodes as _lmg
     model.vertical_column.et_mode = "mcguinness"

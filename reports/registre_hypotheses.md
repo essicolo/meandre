@@ -4307,3 +4307,17 @@ Paire témoin et recette entraînée avec les prélèvements réels (nouveau dé
 | référence en mode absolu, sans prélèvements (R229) | | 0,862 | 0,739 | 0,782 |
 
 LECTURE. Le terme centré ne tient plus le niveau de l'évapotranspiration, et sur une seule année d'entraînement le biais de volume à poids 0,5 ne suffit pas à le rattraper : l'évapotranspiration d'août tombe d'un tiers sous MOD16, le volume d'été double, beta atteint 1,2. Sur la longue fenêtre (R232), huit ans d'entraînement laissent au débit le temps de fixer le volume et le mode centré est le bon ; en mode rapide il ne l'est pas, et toute comparaison de variantes en mode rapide doit rester dans le mode de ses références. Les prélèvements, 2 à 6 % du débit d'été, ne peuvent pas expliquer des écarts de 40 à 90 % sur le volume d'été. La paire qui les isole, recette en mode absolu avec prélèvements réels, est en file devant la flotte de la nappe apprise, elle-même remise en mode absolu.
+
+## R237 — Rendus apprenables, la conductance, l'extraction et l'exposant de la nappe ne bougent pas sous les termes de débit, terme d'étiage compris : le plancher d'étiage n'est pas identifiable par le débit journalier en huit époques (2026-09-30) — ÉTABLI, Outaouais, deux graines
+
+Trois scalaires apprenables (`ETL_NAPPE_APPRIS=1`, taux d'apprentissage × 20 en espace logarithmique), recette de la nuit, prélèvements réels, mode MOD16 absolu comme les références. À l'initialisation, la nappe apprise rend exactement les références, KGE 0,862 et 0,793.
+
+| Outaouais 040110, huit époques | KGE | conductance (m/j) | extraction | exposant | Q7min sim/obs (obs 0,51 mm/j) | jours sous Q90 (obs 24) |
+| --- | --- | --- | --- | --- | --- | --- |
+| nappe posée, prélèvements réels | 0,791 | 1,50e-3 | 0,150 | 2,00 | 1,12 | 12 |
+| apprise, sans terme d'étiage, graines 1234 et 777 | 0,791 et 0,796 | 1,50e-3 et 1,51e-3 | 0,157 et 0,157 | 1,99 et 1,99 | 1,11 | 13 et 11 |
+| apprise, terme d'étiage à 1,0, graines 1234 et 777 | 0,781 et 0,786 | 1,52e-3 et 1,54e-3 | 0,155 et 0,153 | 1,96 et 1,91 | 1,16 et 1,17 | 6 et 4 |
+
+LECTURE. Les scalaires se déplacent de 1 à 4 % en huit époques, dans la même direction pour les deux graines, donc sans bruit ; mais ils ne s'approchent pas des valeurs qu'une passe avant désigne (R234 : conductance doublée). Le terme d'étiage les pousse même du mauvais côté : le minimum monte et les jours sous le seuil tombent à 4 et 6, parce qu'il vise le rapport des quantiles bas au médian, pas le plancher. Le gradient des termes de débit vers ces constantes existe mais il est faible, et l'optimiseur préfère les ajuster par le champ spatial. Les prélèvements réels, seuls, changent le KGE de 0,01 (0,782 à 0,791), ce qui confirme que la perte de R236 venait du mode MOD16.
+
+CE QUI SUIT. L'étiage ne s'apprend pas par le débit journalier ; il s'ancre. L'exposant de récession se mesure par station sur les débits observés (R213) et donne le bon plancher là où il a été essayé (R234, Châteauguay) ; la conductance est la propriété qui reste sans ancre. La voie est celle des ancrages mesurés, pas de l'apprentissage, et elle rejoint la règle du dépôt : quand la donnée ne peut pas identifier, ce qui reste est un ajustement.
