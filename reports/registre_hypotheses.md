@@ -4200,3 +4200,15 @@ CE QUI EST GAGNÉ EN UNE JOURNÉE, du témoin du matin à la recette du soir. En
 CE QUI RESTE OUVERT, par ordre de levier : le plafond de percolation spatial ; les lacs, qui aplatissent deux fois trop un bassin du Saint-Laurent nord-ouest (R228) ; l'hiver de l'Outaouais à 0,30, dont R224 donne la forme de la réponse à reproduire ; le coefficient de culture, à laisser au champ. Rien n'a été porté au pilote régional.
 
 SUITE DE R228, entraînement sans lacs (recette de la nuit, plafond 2), deux graines : KGE 0,519 et 0,541 contre 0,418 et 0,429 avec lacs ; r 0,90, gamma 0,55 et 0,57, pointes 0,73 et 0,74, 99e centile 0,68 et 0,70 ; printemps 0,92 et 0,93, automne 0,76, hiver 0,30 et 0,33, été 0,61. Août reste à 1,46 mm/j pour 0,65 observé et le volume annuel à +12 % (1,64 pour 1,46). Les lacs valent donc un dixième de KGE sur ce bassin, et ce qui reste est un surplus d'été que ni la nappe ni la loi latérale ne traitent : le bilan y demande 1,64 mm/j d'évapotranspiration quand MOD16 en donne 1,46 et le modèle 1,41, et la pluie d'août de CaSR y vaut 4,8 mm/j. C'est un défaut de volume estival, forçage ou évapotranspiration, à séparer avant tout réglage.
+
+## R230 — La pluie d'été de CaSR n'explique pas le surplus d'été : elle est sous les stations autour de la Châteauguay et juste autour du bassin à lacs (2026-09-30, nuit) — ÉTABLI, stations GHCN, sans simulation
+
+`.runs/quebec/pluie_casr_vs_stations.py`, en local. Rapport de la précipitation mensuelle du nœud CaSR (forçage `-budyko`) le plus proche à celle de la station GHCN, 2005 à 2013, médiane des couples station-mois d'au moins 25 jours mesurés.
+
+| bassin | stations | couples | juin-septembre | décembre-mars | année |
+| --- | --- | --- | --- | --- | --- |
+| Châteauguay 030905 | 12 | 733 | 0,92 | 1,15 | 1,02 |
+| Saint-Laurent nord-ouest 052805 | 3 | 313 | 1,05 | 1,00 | 1,02 |
+| Outaouais 040110 | 0 | | | | |
+
+LECTURE. Le calage de volume de Budyko-Fu tient à l'année, 1,02 aux deux endroits. Le forçage est en excès l'hiver autour de la Châteauguay (1,15 de décembre à mars, ce qui est aussi la saison où les stations sous-captent la neige) et en défaut l'été (0,83 en août). Autour du bassin à lacs il n'y a pas de surplus d'été. Le débit d'août simulé deux fois trop fort sur ce bassin (R228) ne vient donc pas de la pluie ; il vient d'une évapotranspiration manquante ou d'un stockage, et sur un bassin où l'eau libre couvre une part notable du territoire, l'évaporation des plans d'eau en été est le premier suspect. Aucune station GHCN utilisable n'entoure le sous-bassin de l'Outaouais.
