@@ -4162,3 +4162,19 @@ Recette retenue (exposant 2,0, phénologie par classe, extraction 0,15, porte co
 | jours plats en été, obs 2,5 % et 4,1 % | 9,8 % | 8-11 % | 13-16 % | 11-13 % | 8,2 % | 8-9 % | 6,6 % | 5,7 % |
 
 LECTURE. C'est la première configuration qui gagne sur tous les critères de l'Outaouais à la fois, et sans compromis sur les pointes : le plafond de 2 mm/j nourrit assez la nappe pour août (0,68) et l'automne (corrélation de 0,65 à 0,74), la loi en puissance rend l'eau d'orage aux chemins rapides (gamma 0,85, pointes 0,88), et l'hiver monte de 0,26 à 0,38. Sur la Châteauguay le volume triennal est exact, l'été et l'automne sont les meilleurs de la série, l'hiver à 0,85 et 0,81 reste au-dessus du témoin ; août à 0,31 dit que ce bassin voudrait le plafond de 4 (R223), et la pointe de juin 2013 reste doublée faute de borne. La loi bornée à 2 (R225, suite) est en entraînement aux deux plafonds ; c'est elle qui fixera la recette. Généralisation sur un troisième bassin en cours (Saint-Laurent nord-ouest 052805).
+
+## R228 — Sur un troisième sous-bassin riche en lacs, toutes les recettes sont plates : la recette de la nuit y gagne la corrélation mais pas le KGE, et le défaut est ailleurs (2026-09-29, nuit) — ÉTABLI, Saint-Laurent nord-ouest 052805, deux graines
+
+Sous-bassin forestier de 769 km², 43 tronçons, riche en lacs (rang 0,9 des stations pour la fraction de lacs), jamais utilisé pour régler la recette. Réglages de forêt repris de l'Outaouais. Huit époques, deux graines au centième près.
+
+| | témoin (exposant du territoire 2,30, plafond 1, linéaire) | nuit, plafond 4 | nuit, plafond 2 |
+| --- | --- | --- | --- |
+| KGE 2013 | 0,392 et 0,393 | 0,351 et 0,354 | 0,418 et 0,429 |
+| r ; beta ; gamma | 0,85 ; 1,19 ; 0,44 | 0,85 ; 1,14 ; 0,38 | 0,91 ; 1,16 ; 0,45 |
+| pointes annuelles ; q99 | 0,48 ; 0,47 | 0,45 ; 0,45 | 0,54 ; 0,53 |
+| hiver ; printemps ; été ; automne (jours mesurés) | 0,20 ; 0,83 ; 0,86 ; 0,75 | 0,17 ; 0,87 ; 0,80 ; 0,77 | 0,22 ; 0,90 ; 0,69 ; 0,77 |
+| août (mm/j), obs 0,65 | 1,02 et 1,08 | 1,22 | 1,35 |
+| débit annuel, obs 1,46 | 1,71 | 1,65 | 1,67 |
+| jours plats en hiver, obs 25 % | 18 % | 13 % | 13 à 16 % |
+
+LECTURE. Le bassin observé est lui-même lisse, un jour d'hiver sur quatre sans variation, mais le modèle l'est deux fois trop : le 99e centile vaut la moitié de l'observé sous toutes les recettes, et août est trop fort de 60 à 100 %. Ce n'est pas la nappe ni la phénologie : la recette au plafond de 2 fait ce qu'elle a fait ailleurs, la corrélation monte de 0,85 à 0,91 et le printemps de 0,83 à 0,90, mais gamma ne bouge pas. Un bassin à lacs qui étale deux fois trop désigne le routage des lacs, dont les paramètres sont appris par le champ, et le défaut déjà consigné des pseudo-lacs d'Hydrotel importés comme réservoirs actifs. La recette de la nuit n'est donc ni confirmée ni infirmée par ce bassin ; c'est un autre chantier, celui des lacs, que ce banc désigne comme le levier suivant pour les territoires du nord.
