@@ -578,6 +578,30 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         return slice(i0, i1 if i1 > 0 else len(temps))
 
     w = WithdrawalData(net=torch.zeros(F.shape[0], n, device=dev))
+    if os.environ.get("MEANDRE_BANC_PRELEVEMENTS") == "1":
+        # PRELEVEMENTS REELS (2026-09-30). Le banc tournait sans prelevements alors que
+        # les debits observes les contiennent : sur les deux sous-bassins ils valent 2 a
+        # 6 % du debit d'ete, l'ordre de grandeur que la sensibilite doit resoudre.
+        from meandre.data.basin_cache import BasinCache as _BC
+        _wt = _BC(s["base"]).load_withdrawals(str(temps[0].date()), str(temps[-1].date()), device=dev)
+        _ix = torch.tensor(idx, device=dev)
+        w = WithdrawalData(net=_wt.net[:, _ix].clone(), net_gw=_wt.net_gw[:, _ix].clone())
+        print(f"  prelevements reels : surface {float(w.net.sum(dim=1).mean()):+.3f} m3/s, souterrain {float(w.net_gw.sum(dim=1).mean()):+.3f} m3/s en moyenne (positif = ajoute)", flush=True)
+    if os.environ.get("MEANDRE_BANC_PRELEVEMENT_TEST"):
+        # SENSIBILITE (2026-09-30) : « surface:0.05 » ou « gw:0.05 » retire chaque jour une
+        # fraction du debit moyen observe a l'exutoire, repartie sur les troncons par aire
+        # locale. Dit si un prelevement de cette taille laisse sur l'etiage simule une
+        # signature plus grande que la dispersion entre graines.
+        _kind, _frac = os.environ["MEANDRE_BANC_PRELEVEMENT_TEST"].split(":")
+        _qm = float(np.nanmean(o))
+        _al = terr.get_physical("area_km2_local").to(dev).float()
+        _part = (_al / _al.sum()).reshape(1, -1)
+        _retrait = -float(_frac) * _qm * _part.expand(F.shape[0], -1)
+        if _kind == "gw":
+            w = WithdrawalData(net=w.net, net_gw=w.net_gw + _retrait)
+        else:
+            w = WithdrawalData(net=w.net + _retrait, net_gw=w.net_gw)
+        print(f"  prelevement de test : {_kind} {float(_frac) * 100:.0f} % du debit moyen observe ({float(_frac) * _qm:.3f} m3/s), reparti par aire", flush=True)
     commun = dict(forcing=F, q_obs=q_obs, station_mask=mask, station_idx=st_idx, graph=g,
                   node_coords=coords, territorial=terr, withdrawals=w,
                   day_of_year=doy)
@@ -844,6 +868,21 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _top["date"] = _top.date.dt.strftime("%Y-%m-%d")
                 print(_top.round(2).to_string(index=False), flush=True)
                 print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
+            # GRANDEURS D'ETIAGE (2026-09-30), sur les jours mesures de la derniere annee
+            # chargee : minimum glissant de 7 jours, jours sous le 90e centile observe, volume
+            # d'aout-septembre, exposant de recession d'ete. Le KGE ne voit pas l'etiage.
+            _ke = df[pd.DatetimeIndex(temps)[_ok_t].year == _an].copy()
+            if mesure is not None:
+                _ke = _ke[mesure[_ok_t][pd.DatetimeIndex(temps)[_ok_t].year == _an]]
+            _ke = _ke.dropna(subset=["Qobs", "Qsim"])
+            if len(_ke) > 60:
+                _q7o = _ke.Qobs.rolling(7, min_periods=7).mean().min()
+                _q7s = _ke.Qsim.rolling(7, min_periods=7).mean().min()
+                _seuil = _ke.Qobs.quantile(0.10)
+                _jo = int((_ke.Qobs < _seuil).sum()); _js = int((_ke.Qsim < _seuil).sum())
+                _as = _ke[_ke.mois.isin((8, 9))]
+                _vol = _as.Qsim.sum() / max(_as.Qobs.sum(), 1e-9)
+                print(f"  etiage {_an}, jours mesures : Q7min sim/obs {_q7s / max(_q7o, 1e-9):.2f} ({_q7s:.2f} / {_q7o:.2f} mm/j) | jours sous le Q90 observe sim {_js} contre obs {_jo} | volume aout-sept sim/obs {_vol:.2f}", flush=True)
             if mesure is not None:
                 # Meme correlation sur les seuls jours MESURES : l'hiver observe est surtout une
                 # reconstruction, et ne peut pas juger la physique hivernale (registre, R98).
