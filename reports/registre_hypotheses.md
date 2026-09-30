@@ -4276,3 +4276,20 @@ Grandeurs d'étiage de 2013 sur les jours mesurés, à poids fixes, en variant u
 | hauteur de référence 1 m | 0,83 | 34 | 0,93 | 0,796 | 0,51 | 44 | 1,01 | 0,845 |
 
 LECTURE. Le plancher d'étiage est entièrement dans la nappe, et il est sensible : doubler la conductance ou l'extraction déplace le minimum de sept jours de 15 à 35 % et les jours sous le seuil du simple au double. Sur la Châteauguay, l'exposant mesuré sur sa propre récession, 2,39, donne exactement le bon plancher, 0,99, et le bon nombre de jours sous le seuil, 27 pour 28 ; en Outaouais l'exposant local aggrave, et c'est la conductance doublée qui règle le minimum (0,96), les jours (21 pour 24) et le volume (1,01). Deux bassins, deux paramètres différents, tous fixés par variable d'environnement et non identifiés : c'est le cas d'école de ce que le débit seul ne sépare pas, puisque plusieurs réglages donnent le même KGE (0,79 à 0,82) avec des étiages très différents. Les puits sont la seule observation qui distingue ces réglages, par la profondeur de la nappe qu'ils imposent ; l'épreuve sur la Châteauguay, quatre puits recevables, est en cours. Tant qu'elle n'a pas parlé, ces paramètres restent des ajustements, et un modèle provincial doit les porter comme des ancres mesurées, pas comme des constantes.
+
+## R235 — Les puits, en corrélation mensuelle, ne séparent pas les réglages de nappe que le débit ne sépare pas non plus ; et ces réglages sont des constantes, que rien ne peut apprendre (2026-09-30) — ÉTABLI EN PASSE AVANT, Châteauguay, cinq puits recevables
+
+Corrélation des moyennes mensuelles entre la profondeur simulée au tronçon du puits et le niveau mesuré, cinq puits, à poids fixes, sur les six réglages de R234.
+
+| réglage | r moyen | par puits (03090001, 07, 08, 10, 11) | Q7min sim/obs | jours sous Q90 (obs 28) |
+| --- | --- | --- | --- | --- |
+| recette | 0,59 | 0,86 ; 0,42 ; 0,66 ; 0,51 ; 0,50 | 1,08 | 20 |
+| exposant mesuré 2,39 | 0,58 | 0,86 ; 0,42 ; 0,64 ; 0,49 ; 0,48 | 0,99 | 27 |
+| extraction 0,30 | 0,59 | 0,84 ; 0,47 ; 0,69 ; 0,47 ; 0,47 | 0,71 | 49 |
+| conductance × 2 | 0,55 | 0,80 ; 0,54 ; 0,65 ; 0,39 ; 0,38 | 0,79 | 35 |
+| conductance / 2 | 0,62 | 0,89 ; 0,30 ; 0,63 ; 0,64 ; 0,64 | 1,34 | 5 |
+| hauteur de référence 1 m | 0,51 | 0,72 ; 0,63 ; 0,63 ; 0,29 ; 0,29 | 0,51 | 44 |
+
+LECTURE. L'écart entre réglages, 0,11 sur la moyenne, est plus petit que l'écart entre puits d'un même réglage, 0,3 à 0,6, et les puits ne s'accordent pas : le 03090007 préfère la hauteur de référence basse, les 03090010 et 11 la conductance faible. Le réglage que les puits préfèrent en moyenne, conductance divisée par deux, donne le pire étiage (5 jours sous le seuil pour 28). C'est ce que le registre disait déjà le 2026-09-19 : les puits identifient la présence des mécanismes et la phase, pas la valeur des paramètres. La forme mensuelle d'une nappe ne dit pas combien elle débite.
+
+CE QUI SUIT. L'observation qui sépare ces réglages est le débit d'étiage lui-même, minimum de sept jours et jours sous le seuil, que le KGE ne voit pas et que le terme de soutien d'étiage porte. Mais exposant, conductance, extraction et hauteur de référence sont des constantes posées par variable d'environnement : aucun terme de perte ne peut les déplacer, et le terme d'étiage de R218 échouait aussi pour cela. Il faut les rendre apprenables, un scalaire par bassin, et juger si le terme d'étiage les identifie de façon reproductible d'une graine à l'autre. C'est l'épreuve d'identifiabilité suivante.
