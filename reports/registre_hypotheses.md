@@ -4140,3 +4140,9 @@ SUITE DE R225, la pointe et sa borne. La pointe doublée de la Châteauguay est 
 | 3, 5 jours | 0,700 | 0,77 | 0,850 | 1,25 | 1,05 | 0,90 |
 
 La borne à 2 est retenue : elle ramène la pointe de 1,81 à 1,30, relève la Châteauguay à 0,878 et ne coûte que 0,01 en Outaouais. La loi devient : vidange de l'excès à 3 jours, doublée au plus quand l'excès dépasse 10 mm. Ce qui reste en Outaouais est le lissage par le débit de base, gamma 0,76, que le plafond à 2 mm/j en entraînement doit dire.
+
+## R226 — Entraînée, la porte de gel continue active sous la neige aplatit l'Outaouais et ne change rien à la Châteauguay : rejetée (2026-09-29, nuit) — ÉTABLI SUR DEUX SOUS-BASSINS, deux graines
+
+Même recette que R225 (retenue, sortie latérale en puissance, plafond 4) plus `MEANDRE_GEL_SANS_NEIGE=1`. Outaouais : KGE 0,643 et 0,651 contre 0,720 et 0,725 sans, gamma 0,68 et 0,70, un jour d'hiver sur quatre sans variation contre 17,5 % observé, pointes annuelles 0,60 ; décembre encore à 1,94 et 2,02 mm/j pour 1,47 observé. Les corrélations d'automne et de printemps tiennent (0,77 et 0,78 à 0,82) mais l'hydrogramme est lissé. Châteauguay : identique à R225 au centième, hiver 0,89 et 0,90, pointes 1,72 et 1,77.
+
+LECTURE. Ce que la passe avant à poids fixes gagnait (R221, KGE 0,758) l'entraînement le perd : avec le sol fermé sous la neige, l'optimiseur trouve une solution plus plate, comme avec le plafond de percolation, et reproductible d'une graine à l'autre. La règle en vigueur reste la porte continue sous 10 mm de neige. L'hiver de l'Outaouais, corrélation de 0,25 à 0,35 sur les jours mesurés, reste le point ouvert de cette recette, et R224 dit ce qu'il faudrait : une réponse au gel modérée, de l'ordre d'un doublement, déclenchée par un gel cumulé et non par le premier millimètre.
