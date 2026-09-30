@@ -4214,3 +4214,19 @@ SUITE DE R228, entraînement sans lacs (recette de la nuit, plafond 2), deux gra
 LECTURE. Le calage de volume de Budyko-Fu tient à l'année, 1,02 aux deux endroits. Le forçage est en excès l'hiver autour de la Châteauguay (1,15 de décembre à mars, ce qui est aussi la saison où les stations sous-captent la neige) et en défaut l'été (0,83 en août). Autour du bassin à lacs il n'y a pas de surplus d'été. Le débit d'août simulé deux fois trop fort sur ce bassin (R228) ne vient donc pas de la pluie ; il vient d'une évapotranspiration manquante ou d'un stockage, et sur un bassin où l'eau libre couvre une part notable du territoire, l'évaporation des plans d'eau en été est le premier suspect. Aucune station GHCN utilisable n'entoure le sous-bassin de l'Outaouais.
 
 COMPLÉMENT À R230, où l'eau libre évapore dans le clone. La fraction en eau d'un tronçon ne produit que `(apport − ETP)` borné à zéro : un jour de pluie, l'évaporation est retranchée jusqu'à concurrence de la pluie, mais un jour sec elle est nulle, et les nœuds de lac du routage ne perdent rien de leur stock par évaporation. Sur un bassin où l'eau libre couvre une part notable du territoire, l'évaporation estivale des plans d'eau, de l'ordre de 4 mm/j sur leur surface, manque donc presque entièrement les jours sans pluie. C'est un candidat direct au surplus d'été du bassin à lacs (R228), et une pièce du chantier des lacs : un nœud de lac devrait perdre chaque jour l'évaporation potentielle sur son aire. Non testé.
+
+## R231 — Sur les années jamais vues 2020-2024, la recette de la nuit relève toutes les corrélations saisonnières des deux bassins ; le KGE ne suit pas, égal en Outaouais faute de pointes, en recul sur la Châteauguay par un volume que le terme MOD16 en niveau tire trop haut (2026-09-30, 3 h) — ÉTABLI, longue fenêtre du banc, une graine
+
+Entraînement 2010-2017, validation 2018-2019, évaluation 2020-2024, quatre époques, graine 1234, terme MOD16 en niveau à 0,4 comme toute la journée.
+
+| | Outaouais témoin | Outaouais recette | Châteauguay témoin | Châteauguay recette |
+| --- | --- | --- | --- | --- |
+| KGE 2020-2024 | 0,680 | 0,681 | 0,593 | 0,531 |
+| r ; beta ; gamma | 0,79 ; 1,02 ; 0,76 | 0,79 ; 0,97 ; 0,76 | 0,63 ; 0,91 ; 1,15 | 0,68 ; 0,85 ; 1,31 |
+| hiver ; printemps ; été ; automne (jours mesurés, 179 à 1288 j) | 0,78 ; 0,84 ; 0,80 ; 0,84 | 0,82 ; 0,86 ; 0,80 ; 0,88 | 0,45 ; 0,83 ; 0,78 ; 0,74 | 0,53 ; 0,89 ; 0,82 ; 0,82 |
+| pointes annuelles ; q99 | 0,62 ; 0,75 | 0,65 ; 0,71 | 1,08 ; 0,90 | 1,08 ; 1,09 |
+| évapotranspiration (mm/j), MOD16 1,52 et 1,76, bilan P − Q 1,65 et 1,37 | 1,47 | 1,59 | 1,43 | 1,53 |
+| débit annuel 2010-2024, obs 1,99 et 1,32 | 2,15 | 2,06 | 1,26 | 1,17 |
+| août, obs 1,08 et 0,48 | 1,34 | 1,43 | 0,37 | 0,39 |
+
+LECTURE. Ce que la recette a appris sur 2013 tient sur douze autres années : la forme de l'hydrogramme monte dans toutes les saisons, y compris l'hiver de l'Outaouais (0,78 à 0,82 sur 179 jours mesurés) et l'automne des deux bassins (+0,04 et +0,08). Ce qu'elle ne règle pas est le KGE, pour deux raisons différentes. En Outaouais, les pointes annuelles restent à 0,65 et le 99e centile à 0,71 sur la longue fenêtre, contre 0,86 et 1,02 sur la seule année 2013 : le déficit de pointes, défaut ancien de la génération (registre des mois de juin et juillet), domine dès que la fenêtre s'allonge, et la recette de la nappe n'y touche pas. Sur la Châteauguay, le volume : le bilan d'eau 2010-2024 demande 1,37 mm/j d'évapotranspiration, MOD16 en donne 1,79, soit 30 % de trop, et le terme MOD16 EN NIVEAU tire le modèle vers MOD16 ; les conifères qui gardent leur demande y ajoutent 0,1 mm/j, et le volume tombe de −5 % à −11 %. La consigne du dépôt dit depuis le 2026-09-22 que MOD16 se compare en forme, jamais en niveau ; le banc a tourné toute la journée en niveau. Épreuve en cours : la même paire sur la Châteauguay avec le terme en forme.
