@@ -500,6 +500,13 @@ class Trainer:
             for name, p in model.named_parameters():
                 if "phenology_modulator" in name and ("gdd_emerg" in name or "gdd_mid" in name or "photo_crit" in name):
                     gdd_threshold_params.append(p)
+            # Scalaires de la nappe apprise (2026-09-30) : en espace logarithmique, un pas au
+            # taux de base ne les bouge pas ; taux x 20, sans decroissance de poids.
+            nappe_params = [p for name, p in model.named_parameters() if "nappe_log_kb" in name or "nappe_logit_efrac" in name or "nappe_log_exp1" in name]
+            if nappe_params:
+                base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in nappe_params)]
+                groups.append({"params": nappe_params, "lr": self.config.lr * 20.0, "weight_decay": 0.0})
+                logger.info("Discriminative LR: nappe scalaires=%.1e (20x), wd=0", self.config.lr * 20.0)
             if gdd_threshold_params:
                 base_params[:] = [p for p in base_params
                                   if id(p) not in set(id(g) for g in gdd_threshold_params)]

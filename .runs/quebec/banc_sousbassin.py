@@ -569,7 +569,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if "ETL_L3_TAULAT" in os.environ:
             col.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
-            col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
+            col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), apprise=os.environ.get("ETL_NAPPE_APPRIS") == "1")
         return m
 
     def _tranche(a, b):
@@ -871,6 +871,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _top["date"] = _top.date.dt.strftime("%Y-%m-%d")
                 print(_top.round(2).to_string(index=False), flush=True)
                 print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
+            if getattr(m.vertical_column, "_nappe_apprise", False):
+                _nv = m.vertical_column.nappe_valeurs()
+                print(f"  nappe apprise : conductance {_nv['k_b']:.2e} m/j, extraction {_nv['e_frac']:.3f}, exposant {_nv['exposant']:.2f}", flush=True)
             # PUITS, TOUS, A POIDS FIXES (2026-09-30) : correlation des moyennes mensuelles
             # entre la profondeur simulee au troncon du puits et le niveau mesure. Seule
             # observation qui separe des reglages de nappe que le debit ne distingue pas.

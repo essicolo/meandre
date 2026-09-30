@@ -822,10 +822,17 @@ class HydrotelColumn(nn.Module):
                 z = torch.full_like(pb, p["z_riv"]) - state.S_gw / (1000.0 * sy)
                 # La demande atmosphérique vient de la colonne elle-même, pas d'une saison
                 # imposée : c'est la même ETP qui sèche le sol au-dessus.
-                e_max = torch.clamp(diag["etp"], min=0.0) * p["e_frac"] / 1000.0
+                if getattr(self, "_nappe_apprise", False):
+                    _kb_t = torch.exp(self.nappe_log_kb).to(pb.dtype)
+                    _ef_t = torch.sigmoid(self.nappe_logit_efrac).to(pb.dtype)
+                    self.nappe_libre.exposant = 1.0 + torch.exp(self.nappe_log_exp1).to(pb.dtype)
+                else:
+                    _kb_t = torch.tensor(p["k_b"], dtype=pb.dtype, device=pb.device)
+                    _ef_t = torch.tensor(p["e_frac"], dtype=pb.dtype, device=pb.device)
+                e_max = torch.clamp(diag["etp"], min=0.0) * _ef_t / 1000.0
                 prel = None if gw_withdrawal_mm is None else -gw_withdrawal_mm / 1000.0
                 z_new, q_m, e_m = self.nappe_libre(
-                    z, pb / 1000.0, sy, torch.full_like(pb, p["k_b"]),
+                    z, pb / 1000.0, sy, torch.ones_like(pb) * _kb_t,
                     torch.full_like(pb, p["z_riv"]), torch.full_like(pb, p["h_ref"]),
                     e_max, torch.full_like(pb, p["z_ext"]), prelevement=prel)
                 Q_bf = q_m * 1000.0
@@ -860,7 +867,7 @@ class HydrotelColumn(nn.Module):
             diag=(diag if return_diagnostics else None))
 
     def activer_nappe_libre(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
-                            z_ext=9.0, exposant=2.0, n_substep=4, couplage=0.0):
+                            z_ext=9.0, exposant=2.0, n_substep=4, couplage=0.0, apprise=False):
         """Remplace le réservoir restituant par une nappe libre, paramètres uniformes.
 
         Valeurs par défaut issues du banc du 2026-09-18 : temps de réponse de 100 jours,
@@ -874,6 +881,27 @@ class HydrotelColumn(nn.Module):
         self._nappe = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
                            h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext),
                            couplage=float(couplage))
+        # NAPPE APPRISE (2026-09-30). Conductance, extraction et exposant etaient des
+        # constantes posees par variable d'environnement : aucun terme de perte ne pouvait
+        # les deplacer, et le plancher d'etiage en depend entierement (R234). Trois scalaires
+        # par bassin, bornes par leur forme : k_b > 0, e_frac dans ]0, 1[, exposant > 1.
+        self._nappe_apprise = bool(apprise)
+        if apprise:
+            import math as _mn
+            self.nappe_log_kb = nn.Parameter(torch.tensor(_mn.log(float(k_b))))
+            self.nappe_logit_efrac = nn.Parameter(torch.tensor(_mn.log(float(e_frac) / (1.0 - float(e_frac)))))
+            self.nappe_log_exp1 = nn.Parameter(torch.tensor(_mn.log(max(float(exposant) - 1.0, 1e-3))))
+
+    def nappe_valeurs(self) -> dict:
+        """Constantes de la nappe en vigueur, apprises ou posées."""
+        p = dict(self._nappe or {})
+        if getattr(self, "_nappe_apprise", False):
+            p["k_b"] = float(torch.exp(self.nappe_log_kb))
+            p["e_frac"] = float(torch.sigmoid(self.nappe_logit_efrac))
+            p["exposant"] = 1.0 + float(torch.exp(self.nappe_log_exp1))
+        else:
+            p["exposant"] = float(getattr(self.nappe_libre, "exposant", 2.0)) if getattr(self, "nappe_libre", None) is not None else None
+        return p
 
     # ── Split de phase pluie/neige FIDÈLE (THIESSEN::PassagePluieNeige, thiessen1.cpp:259-279) ──
     def _split_precip(self, P, tmin, tmax, ea=None):
