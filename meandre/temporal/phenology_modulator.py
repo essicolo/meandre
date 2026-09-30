@@ -75,7 +75,12 @@ class PhenologyModulator(nn.Module):
         sharpness_emerg: float = 50.0,
         sharpness_senesc: float = 100.0,
         senesc_offset: float = 600.0,
+        mode: str | None = None,
+        params=None,
     ) -> None:
+        """`mode` et `params` viennent de la configuration déclarée ([phenology] du TOML) ;
+        absents, les variables d'environnement MEANDRE_PHENOLOGIE_MODE et
+        MEANDRE_PHENOLOGIE_PARAMS gardent leur rôle (2026-09-30)."""
         super().__init__()
         # Paramètres appris (4)
         self.gdd_emerg = nn.Parameter(torch.tensor(float(gdd_emerg_init)))
@@ -87,7 +92,7 @@ class PhenologyModulator(nn.Module):
         # la longueur du jour, qui décroît après le solstice ; c'est le déclencheur
         # principal de la sénescence des feuillus tempérés (Delpierre et al. 2009). Seuil
         # de longueur du jour photo_crit_h = 12 + 3·tanh(photo_crit), initialisé à 12 h.
-        self.mode = os.environ.get("MEANDRE_PHENOLOGIE_MODE", "gdd")
+        self.mode = mode or os.environ.get("MEANDRE_PHENOLOGIE_MODE", "gdd")
         if self.mode == "photo":
             self.photo_crit = nn.Parameter(torch.tensor(0.0))
             self.register_buffer("photo_pente_h", torch.tensor(0.5))
@@ -97,9 +102,10 @@ class PhenologyModulator(nn.Module):
         # sont ajustées sur l'indice foliaire observé (`.runs/quebec/caler_phenologie_modis.py`)
         # et GELÉES : la saison vient d'une observation indépendante du débit, et reste
         # pilotée par la seule météo, donc utilisable en prédiction.
-        _cal = os.environ.get("MEANDRE_PHENOLOGIE_PARAMS")
+        _cal = params if params is not None else os.environ.get("MEANDRE_PHENOLOGIE_PARAMS")
         if _cal and self.mode == "photo":
-            e, c, s1, s2 = [float(x) for x in _cal.split(",")]
+            _vals = _cal.split(",") if isinstance(_cal, str) else list(_cal)
+            e, c, s1, s2 = [float(x) for x in _vals]
             with torch.no_grad():
                 self.gdd_emerg.fill_(e)
                 self.photo_crit.fill_(math.atanh(max(min((c - 12.0) / 3.0, 0.999), -0.999)))

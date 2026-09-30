@@ -1169,8 +1169,10 @@ class HydrotelColumn(nn.Module):
             pheno = self._pheno_tensors(pe["classes"], P)
         d = doy_t.reshape(-1)[0]                  # jour julien scalaire (tenseur, sans synchro)
         etp_classes, roots, leaves = [], [], []
-        _cl_pheno = os.environ.get("MEANDRE_PHENOLOGIE_CLASSES")
-        _cl_pheno = set(_cl_pheno.split(",")) if _cl_pheno else None
+        _cl_pheno = getattr(self, "phenology_classes", None) or os.environ.get("MEANDRE_PHENOLOGIE_CLASSES")
+        if isinstance(_cl_pheno, str):
+            _cl_pheno = _cl_pheno.split(",")
+        _cl_pheno = set(_cl_pheno) if _cl_pheno else None
         _noms = pe.get("class_names") or getattr(self, "_pheno_noms", None) or [None] * len(pheno)
         # Phenologie sur le coefficient de culture (cible « kc ») : `etp` porte deja la forme
         # saisonniere pour toutes les classes. Les classes qui ne perdent pas leurs feuilles

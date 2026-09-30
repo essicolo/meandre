@@ -1,23 +1,18 @@
-# ─── Recette de la nuit du 29 au 30 septembre 2026, CANDIDATE pour le pilote régional ─────
+# ─── Configuration de la nuit du 29 au 30 septembre 2026, CANDIDATE pour le pilote régional ─
 # Établie sur deux sous-bassins (Outaouais 040110, Châteauguay 030905), deux graines au
-# centième près, registre R213 à R229. NON PORTÉE AU PILOTE : ce fichier dit ce que le pilote
-# accepte déjà, et ce qu'il faudrait lui brancher. Il ne se lance pas tel quel.
+# centième près, registre R213 à R232. Sur les années 2020 à 2024 jamais vues : Châteauguay
+# 0,59 à 0,80 de KGE, Outaouais volume fermé et quatre saisons relevées. Ce fichier n'est pas
+# une configuration complète de territoire : il se fusionne avec celle du socle. Il n'a pas
+# encore été exécuté par le pilote.
 #
-# CE QUE LE PILOTE ACCEPTE DÉJÀ (section [recette] et section [soil] ci-dessous) :
-#   - schéma semi-implicite du sol (variable lue par le clone lui-même) ;
-#   - nappe libre, exposant de Boussinesq 2,0 partout, extraction 0,15 ;
-#   - couche profonde déclarée : sortie latérale en puissance 2 de l'excès, échelle 5 mm,
-#     amplification bornée à 2, temps 3 jours ; percolation de l'excès en 2 jours, plafond
-#     2 mm/j (4 sur la Châteauguay ; le plafond est une propriété du dépôt, R223).
+# Depuis le 2026-09-30, le pilote lit les trois pièces qui lui manquaient par ces sections :
+# la formule de Penman ([et].formula), le modulateur phénologique ([phenology]) et la porte de
+# gel continue ([soil].frozen_gate_continuous). Le coefficient de culture reste APPRIS par le
+# champ ; le multiplicateur fixe du banc n'a pas d'équivalent, et c'est voulu.
 #
-# CE QUE LE PILOTE N'A PAS, et sans quoi la recette n'est pas celle du banc :
-#   - la formule de Penman comme ETP (ETL_ETP ne connaît que mcguinness, linacre, appris) ;
-#     Linacre inverse la saison de l'évapotranspiration sur les deux bassins (R208) ;
-#   - le modulateur phénologique (use_phenology_modulator), en mode photopériode calé sur
-#     MODIS (seuil 11,9 h, une constante), restreint aux feuillus et à l'agricole (R219) ;
-#   - la porte de gel continue (soil_frozen_gate), qui n'est pas exposée par le pilote.
-#   Le coefficient de culture est APPRIS par le champ dans le pilote : le multiplicateur fixe
-#   du banc (0,8 forêt, 0,5 agricole) n'a pas d'équivalent à poser, et c'est voulu.
+# Le terme MOD16 doit être CENTRÉ ([loss].et_mode = "anomaly") : en mode absolu, sur la
+# Châteauguay où MOD16 dépasse le bilan d'eau de 30 %, cette configuration perd 0,06 de KGE
+# au lieu d'en gagner 0,21 (R232).
 
 [recette]
 MEANDRE_SOL_SEMI_IMPLICITE = 1    # schéma linéairement implicite : gradient borné, graines reproductibles (R197)
@@ -29,10 +24,23 @@ ETL_NAPPE_ZRIV = 5
 ETL_NAPPE_HREF = 2
 ETL_NAPPE_ZEXT = 6
 ETL_NAPPE_EFRAC = 0.15            # extraction depuis la zone saturée, cohérente avec le débit d'août (R217)
-MEANDRE_PHENOLOGIE_CLASSES = "feuillus,agri"   # lu par la colonne ; sans modulateur dans le pilote, sans effet
+
+[et]
+formula = "penman"
+
+[phenology]
+enabled = true
+mode = "photo"                    # sénescence par la longueur du jour, seuil calé sur MODIS (11,8 à 11,9 h sur les deux bassins)
+params = [56.81, 11.82, 21.1, 0.9]  # émergence (degrés-jours), seuil (h), largeurs ; jeu forestier de l'Outaouais, à caler par territoire sur MODIS
+target = "kc"
+classes = ["feuillus", "agri"]    # les conifères gardent leur demande (R219)
+
+[loss]
+et_mode = "anomaly"
 
 [soil]
 layers = 3
+frozen_gate_continuous = true
 
 [[soil.process]]
 layer = 2

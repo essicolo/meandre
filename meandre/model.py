@@ -187,6 +187,8 @@ class HydroModel(nn.Module):
         cqh_hidden: int = 64,
         # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD
         use_phenology_modulator: bool = False,
+        # Section [phenology] declaree : mode, params, target ("kc" ou "lai"), classes.
+        phenology: dict | None = None,
         # Routage : "level" (balayage par niveau, historique), "operator"
         # (solve triangulaire par étages de lacs, sémantique identique) ou
         # "operator-lagged" (lacs sur stockage de la veille, un seul solve).
@@ -349,9 +351,12 @@ class HydroModel(nn.Module):
             )
         # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD cumulé
         self.use_phenology_modulator = use_phenology_modulator
+        _ph = dict(phenology or {})
+        self.phenology_target = _ph.get("target")
+        self.phenology_classes = _ph.get("classes")
         if use_phenology_modulator:
             from meandre.temporal.phenology_modulator import PhenologyModulator
-            self.phenology_modulator = PhenologyModulator()
+            self.phenology_modulator = PhenologyModulator(mode=_ph.get("mode"), params=_ph.get("params"))
 
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
@@ -599,7 +604,9 @@ class HydroModel(nn.Module):
             if getattr(self, "column_mode", "meandre") == "hydrotel":
                 if getattr(self, "use_phenology_modulator", False):
                     _doy_p = int(day_of_year[t].item()) if day_of_year is not None else None
-                    if os.environ.get("MEANDRE_PHENOLOGIE_CIBLE", "kc") == "lai":
+                    if self.phenology_classes is not None:
+                        self.vertical_column.phenology_classes = self.phenology_classes
+                    if (self.phenology_target or os.environ.get("MEANDRE_PHENOLOGIE_CIBLE", "kc")) == "lai":
                         # La phénologie module l'INDICE FOLIAIRE, donc la seule transpiration :
                         # l'évaporation du sol nu reste entière hors saison (2026-09-28).
                         self.vertical_column._lai_forme = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)

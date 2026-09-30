@@ -326,6 +326,12 @@ model = HydroModel(
     use_residual=False,
     use_travel_time_attn=False,
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
+    # CONFIGURATION DECLAREE (2026-09-30) : la porte de gel continue et le modulateur
+    # phenologique entrent par le TOML, comme sur le banc de sous-bassin ou ils ont ete
+    # etablis (registre R208 a R229). Sans ces sections, rien ne change.
+    soil_frozen_gate=bool(cfg.get("soil", {}).get("frozen_gate_continuous", False)),
+    use_phenology_modulator=bool(cfg.get("phenology", {}).get("enabled", False)),
+    phenology=cfg.get("phenology"),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
     # ETL_STATIC : parametres GLOBAUX (37 scalaires) au lieu d'un champ spatial, comme
     # Hydrotel. Argument d'Essi (2026-08-08) : Hydrotel est cale sur les MEMES jauges et
@@ -605,7 +611,11 @@ elif os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
         model.vertical_column.t_neige_seuil = _sn
         print(f"[etl] seuil pluie/neige du projet : {_sn:+.4f} °C (méandre codait 0.0)")
 
-if os.environ.get("ETL_ETP", "appris") == "mcguinness":
+# FORMULE D'ETP (2026-09-30) : ETL_ETP si pose, sinon [et].formula du TOML, sinon la
+# demande apprise. "penman" est la formule etablie sur le banc : Linacre inverse la saison
+# de l'evapotranspiration (avril sur octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit.
+_etp_choix = os.environ.get("ETL_ETP") or cfg.get("et", {}).get("formula", "appris")
+if _etp_choix == "mcguinness":
     from meandre.data.hydrotel_calib import load_mcguinness_nodes as _lmg
     model.vertical_column.et_mode = "mcguinness"
     _cmg = _lmg(_PROJ_M, r["node_ids"], device=DEVICE)
@@ -614,7 +624,11 @@ if os.environ.get("ETL_ETP", "appris") == "mcguinness":
     print(f"[etl] ETP : McGuinness CALÉE de {_MEMBRE} "
           f"(coefficient méd {float(_cmg.median()):.3f})" if _cmg is not None
           else "[etl] ETP : McGuinness SANS coefficient (fichier absent)")
-elif os.environ.get("ETL_ETP", "appris") == "linacre":
+elif _etp_choix == "penman":
+    model.vertical_column.et_mode = "penman"
+    model.vertical_column.etp_channel = None
+    print("[etl] ETP : Penman-Monteith (formule declaree, [et].formula)")
+elif _etp_choix == "linacre":
     from meandre.data.hydrotel_calib import load_linacre_nodes as _lln
     _pll = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     model.vertical_column.et_mode = "linacre"
