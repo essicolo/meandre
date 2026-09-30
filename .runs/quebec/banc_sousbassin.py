@@ -741,6 +741,20 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # apprenant autour.
         m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
         print(f"  champ spatial : multiplicateurs fixes {os.environ['MEANDRE_BANC_MULT_FIXE']}", flush=True)
+    if os.environ.get("MEANDRE_KMUSK"):
+        # INITIALISATION DU TEMPS DE TRANSFERT (2026-09-30). Le banc n'appelle pas
+        # l'initialisation par la litterature : chaque sortie du champ part du MILIEU de ses
+        # bornes, et la valeur d'initialisation de MEANDRE_KMUSK etait ignoree (deux
+        # entrainements initialises a 6 et 24 h sont sortis identiques au bit pres). On pose
+        # ici le biais de cette seule sortie pour qu'elle parte de la valeur demandee.
+        import math as _mk
+        from dataclasses import fields as _dcf
+        from meandre.spatial.field_network import SpatialParams as _SPk, _KMUSK_MIN as _k0, _KMUSK_MAX as _k1, _KMUSK_INIT as _ki
+        _row = [f.name for f in _dcf(_SPk)].index("K_musk_hours")
+        _fr = min(max((_ki - _k0) / (_k1 - _k0), 1e-4), 1 - 1e-4)
+        with torch.no_grad():
+            m.spatial_encoder.fc_out.bias[_row] = _mk.log(_fr / (1 - _fr))
+        print(f"  temps de transfert initialise a {_ki:.1f} h (bornes {_k0:.0f} a {_k1:.0f} h)", flush=True)
     if os.environ.get("MEANDRE_CHAMP_GELE"):
         # Sorties du champ gelees a leur valeur d'initialisation, uniforme (2026-09-28).
         _gel = [x for x in os.environ["MEANDRE_CHAMP_GELE"].split(",") if x]
