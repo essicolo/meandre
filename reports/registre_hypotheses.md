@@ -4381,3 +4381,30 @@ Passes avant, temps de transfert multiplié, jours mesurés de 2013 :
 | hiver | 0,30 | 0,15 | 0,22 | 0,08 |
 
 Un facteur 0,1 donne exactement le même résultat que 0,25 : le temps effectif est borné en dessous. En Outaouais, le temps court rend l'essentiel de ce qui manquait à l'étiage (réponse aux orages, jours sous le seuil) et à l'automne, et pousse la pointe annuelle au-delà de l'observée : la sortie latérale en puissance avait été réglée derrière un routage lent. Sur le bassin à lacs, la réponse est rendue mais l'étiage reste deux fois trop fort, défaut de volume d'été distinct (R230). Entraînement de l'Outaouais au routage à 6 h, deux graines, en cours.
+
+## R241 — Routage court entraîné : l'Outaouais passe à 0,87 et 0,88 de KGE, mais l'optimiseur paie le gain en étiage ; et sous 7,5 h le routage à deux sous-pas n'a ni délai ni gradient (2026-09-30) — ÉTABLI, Outaouais, deux graines et huit passes avant
+
+Sous-pas du routage. Le modèle route en deux sous-pas de 12 h. Le coefficient de stockage de Muskingum, c2 = (2K(1−x) − Δt)/(2K(1−x) + Δt), borné à zéro, s'annule pour K < 7,5 h à x = 0,2 : le tronçon transmet alors son entrée sans délai, et le gradient du débit par rapport à K est nul. La borne basse de 4 h du pilote était sans effet, et l'optimiseur ne pouvait jamais descendre sous 7,5 h, seulement monter : cela contribue au temps de transfert appris de 15 à 26 fois le parcours physique (R62). Passes avant sur l'Outaouais, point de reprise au routage gelé à 24 h, avec 2 sous-pas puis 24 sous-pas d'une heure (les multiplicateurs sous 4 h sont ramenés à la borne) :
+
+| temps de transfert | 2 sous-pas : KGE ; pointe ; réponse d'été | 24 sous-pas : KGE ; pointe ; réponse d'été |
+| --- | --- | --- |
+| 24 h | 0,793 ; 0,85 ; 0,00 | 0,784 ; 0,83 ; 0,00 |
+| 6 h | 0,823 ; 1,53 ; 0,58 | 0,830 ; 1,50 ; 0,57 |
+| 4 h (borne) | 0,823 ; 1,53 ; 0,58 | 0,823 ; 1,53 ; 0,58 |
+
+Sur ce bassin de 1 163 km², au pas journalier, un temps de 0 à 6 h par tronçon revient au même ; seul l'écart avec 24 h compte. Des sous-pas fins rendent le gradient sous 7,5 h, sans changer le résultat.
+
+Entraînement au routage court (gelé à 6 h, donc sans délai), huit époques, deux graines :
+
+| Outaouais, 2013 | routage 24 h (R229) | routage court, graines 1234 et 777 |
+| --- | --- | --- |
+| KGE | 0,782 et 0,787 | 0,872 et 0,883 |
+| r ; gamma | 0,85 ; 0,85 | 0,91 ; 0,97 |
+| pointe annuelle sim/obs | 0,86 | 1,19 et 1,10 |
+| printemps ; été ; automne (jours mesurés) | 0,79 ; 0,74 ; 0,74 | 0,95 et 0,96 ; 0,79 ; 0,85 et 0,87 |
+| réponse aux orages d'été sim/obs | 0,00 | 0,67 et 0,47 |
+| Q7min sim/obs | 1,10 | 1,36 et 1,26 |
+| jours sous Q90 (obs 24) | 14 | 0 et 0 |
+| volume août-septembre sim/obs | 1,10 | 1,43 et 1,34 |
+
+LECTURE. Le routage court est le plus grand gain de KGE de la semaine sur ce bassin, reproductible d'une graine à l'autre à 0,01 près, et il rend la réponse aux orages. Mais l'optimiseur, guidé par le KGE qui ne voit pas les minima, relève le débit de base : plus aucun jour sous le seuil d'étiage, volume d'été trop fort d'un tiers. La perte du banc n'a aucun terme sur les bas débits. Épreuve suivante : routage court avec l'écart quadratique sur les logarithmes du débit, 0,3 comme dans le socle régional.
