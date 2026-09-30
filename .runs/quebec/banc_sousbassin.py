@@ -904,21 +904,30 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     print(f"  puits a poids fixes, r mensuel : moyenne {np.nanmean(_rp):.2f} | " + ", ".join(f"{_pu[j]} {_rp[j]:.2f}" for j in range(len(_pu))), flush=True)
             except NameError:
                 pass
-            # GRANDEURS D'ETIAGE (2026-09-30), sur les jours mesures de la derniere annee
-            # chargee : minimum glissant de 7 jours, jours sous le 90e centile observe, volume
-            # d'aout-septembre, exposant de recession d'ete. Le KGE ne voit pas l'etiage.
-            _ke = df[pd.DatetimeIndex(temps)[_ok_t].year == _an].copy()
+            # GRANDEURS D'ETIAGE (2026-09-30), sur les jours mesures de TOUTE la periode
+            # d'evaluation (debut_eval a la fin du chargement) : une annee seule en mode rapide,
+            # 2020 a 2024 sur la longue fenetre. Minimum glissant de 7 jours par annee (rapport
+            # median des annees), jours sous le dixieme centile observe de la periode (compte
+            # total), volume d'aout-septembre. Le KGE ne voit pas l'etiage.
+            _ann_t = pd.DatetimeIndex(temps)[_ok_t].year
+            _sel = _ann_t >= int(debut_eval)
             if mesure is not None:
-                _ke = _ke[mesure[_ok_t][pd.DatetimeIndex(temps)[_ok_t].year == _an]]
-            _ke = _ke.dropna(subset=["Qobs", "Qsim"])
+                _sel = _sel & mesure[_ok_t]
+            _ke = df.assign(annee=_ann_t)[_sel].dropna(subset=["Qobs", "Qsim"])
             if len(_ke) > 60:
-                _q7o = _ke.Qobs.rolling(7, min_periods=7).mean().min()
-                _q7s = _ke.Qsim.rolling(7, min_periods=7).mean().min()
+                _r7 = []
+                for _a, _ka in _ke.groupby("annee"):
+                    if len(_ka) > 60:
+                        _q7o = _ka.Qobs.rolling(7, min_periods=7).mean().min()
+                        _q7s = _ka.Qsim.rolling(7, min_periods=7).mean().min()
+                        if _q7o > 0:
+                            _r7.append(_q7s / _q7o)
                 _seuil = _ke.Qobs.quantile(0.10)
                 _jo = int((_ke.Qobs < _seuil).sum()); _js = int((_ke.Qsim < _seuil).sum())
                 _as = _ke[_ke.mois.isin((8, 9))]
                 _vol = _as.Qsim.sum() / max(_as.Qobs.sum(), 1e-9)
-                print(f"  etiage {_an}, jours mesures : Q7min sim/obs {_q7s / max(_q7o, 1e-9):.2f} ({_q7s:.2f} / {_q7o:.2f} mm/j) | jours sous le Q90 observe sim {_js} contre obs {_jo} | volume aout-sept sim/obs {_vol:.2f}", flush=True)
+                _pl = int(_ke.annee.min()), int(_ke.annee.max())
+                print(f"  etiage {_pl[0]}-{_pl[1]}, jours mesures : Q7min sim/obs {np.median(_r7) if _r7 else float('nan'):.2f} (mediane de {len(_r7)} an(s)) | jours sous le Q90 observe sim {_js} contre obs {_jo} | volume aout-sept sim/obs {_vol:.2f}", flush=True)
             # REPONSE AUX PLUIES D'ETE (2026-09-30) : pour chaque jour de juin a septembre
             # d'au moins 10 mm, hausse du debit sur les trois jours suivants rapportee a la
             # pluie, observee et simulee, mediane des evenements. Dit si le modele repond aux
@@ -1078,7 +1087,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
-                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc),
+                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")),
                             w_dq_log=float(w_dq_log), station_var=_svar,
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
@@ -1095,21 +1104,21 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         print(f"  perte : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f} + MSE {float(w_mse):.2f}"
               f" + MSE log {float(w_log_mse):.2f} + pics {float(w_peak):.2f}"
               f" + ET MOD16 {float(w_et):.2f} en mode {os.environ.get("MEANDRE_BANC_ET_MODE", "anomaly")} + dQ {float(w_dq):.2f}"
-              f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
+              f" + soutien d'etiage {float(w_fdc):.2f} + etiage direct {float(os.environ.get('MEANDRE_BANC_W_ETIAGE', '0')):.2f}", flush=True)
     else:
         # Sans cible MOD16 : meme perte, terme d'ET en moins. Le 2026-09-05 cette branche
         # ignorait w_pbias, w_mse et w_dq_log, si bien qu'un balayage de dosage a rendu
         # trois resultats identiques sans que rien ne le signale.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
                             w_nse=0.0, w_nrmse=0.0, station_var=_svar,
-                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_dq_log=float(w_dq_log),
+                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_dq_log=float(w_dq_log),
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
                             peak_threshold=_pthr if float(w_peak) > 0 else None,
                             per_station=True)
         print(f"  perte SANS cible MOD16 : KGE {float(w_kge):.2f} + biais {float(w_pbias):.2f}"
               f" + MSE {float(w_mse):.2f} + dQ {float(w_dq):.2f} + dQ log {float(w_dq_log):.2f}"
-              f" + soutien d'etiage {float(w_fdc):.2f}", flush=True)
+              f" + soutien d'etiage {float(w_fdc):.2f} + etiage direct {float(os.environ.get('MEANDRE_BANC_W_ETIAGE', '0')):.2f}", flush=True)
     # warmup_epochs=0 : le defaut de cinq epoques de rechauffement rendait un essai
     # court entierement nul (cinq pas d'Adam a taux presque nul).
     tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=int(chunk), tbptt_steps=365,

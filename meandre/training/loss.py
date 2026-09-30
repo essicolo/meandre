@@ -277,6 +277,28 @@ def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
     return torch.abs(r_s - r_o)
 
 
+def differentiable_etiage_loss(q_obs: Tensor, q_sim: Tensor, quantile: float = 0.3,
+                               eps: float = 1e-3) -> Tensor:
+    """Écart absolu des logarithmes du débit sur les jours d'étiage observés.
+
+    Les jours d'étiage sont ceux où le débit observé est sous son quantile `quantile` de la
+    séquence vue. Le terme vise le NIVEAU des bas débits, ce que ni le KGE, aveugle aux
+    minima, ni le soutien d'étiage, rapport de deux quantiles, ne contraignent. Écart
+    absolu et non carré, pour répondre au premier ordre (règle du dépôt, 2026-09-21) ; le
+    logarithme rend l'erreur relative, si bien qu'un étiage deux fois trop fort coûte
+    autant en été sec qu'en été humide (2026-09-30).
+    """
+    ok = torch.isfinite(q_obs) & torch.isfinite(q_sim)
+    if int(ok.sum()) < 10:
+        return torch.zeros((), device=q_sim.device)
+    qo, qs = q_obs[ok], q_sim[ok]
+    seuil = torch.quantile(qo, quantile)
+    bas = qo <= seuil
+    if int(bas.sum()) < 3:
+        return torch.zeros((), device=q_sim.device)
+    return torch.abs(torch.log(qs[bas].clamp(min=0.0) + eps) - torch.log(qo[bas] + eps)).mean()
+
+
 def box_cox(x: Tensor, lam: float, eps: float = 1e-3) -> Tensor:
     """Box-Cox transform sur Q. lam=1 → identité, lam=0.3 → standard hydro
     (Bates & Campbell 2001), lam=0 → log. Clamp à eps pour éviter Q≤0.
@@ -887,6 +909,7 @@ class HydroLoss(nn.Module):
         w_dq: float = 0.0,
         w_dq_log: float = 0.0,
         w_fdc_bas: float = 0.0,
+        w_etiage: float = 0.0,
         w_r: float = 0.0,
         w_beta: float = 0.0,
         w_gamma: float = 0.0,
@@ -957,6 +980,7 @@ class HydroLoss(nn.Module):
         self.w_dq = w_dq
         self.w_dq_log = w_dq_log
         self.w_fdc_bas = w_fdc_bas
+        self.w_etiage = w_etiage
         # KGE DECOMPOSE (2026-09-20, proposition d'Essi). Porte entier, le KGE melange une
         # erreur de calendrier, une erreur de volume et une erreur d'amplitude en un seul
         # nombre, et l'optimiseur ne peut plus choisir laquelle reduire. Mesure du banc de
@@ -1063,6 +1087,7 @@ class HydroLoss(nn.Module):
                 # Les termes de forme aussi, sans quoi un bloc sans aucune station gardee
                 # leve une erreur au lieu de rendre une perte nulle (2026-09-09).
                 L_dq = L_dql = L_fdc = zero
+                L_etiage = zero
             else:
                 # MASQUE SANS NaN (2026-09-08). L'ancienne version posait des NaN DANS
                 # le tenseur simule, puis s'appuyait sur nanmean et nansum. Ces reductions
@@ -1137,7 +1162,8 @@ class HydroLoss(nn.Module):
                 # or correlation — only compute if weight > 0
                 L_nse = L_kge = L_nrmse = L_log_nse = zero
                 L_dq = L_fdc = L_dql = zero
-                need_loop = (self.w_nse > 0 or self.w_kge > 0
+                L_etiage = zero
+                need_loop = (self.w_nse > 0 or self.w_kge > 0 or self.w_etiage > 0
                              or self.w_nrmse > 0 or self.w_log_nse > 0
                              or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0
                              or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0
@@ -1145,6 +1171,7 @@ class HydroLoss(nn.Module):
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     dq_v, fdc_v, dql_v = [], [], []
+                    etiage_v = []
                     r_v, beta_v, gamma_v = [], [], []
                     pr_v, rec_v = [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
@@ -1209,6 +1236,8 @@ class HydroLoss(nn.Module):
                             dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
                         if self.w_dq_log > 0:
                             dql_v.append(_remis(differentiable_dq_log_loss(q_o_v, q_s_v)))
+                        if self.w_etiage > 0:
+                            etiage_v.append(_remis(differentiable_etiage_loss(q_o_v, q_s_v)))
                         if self.w_fdc_bas > 0:
                             fdc_v.append(_remis(differentiable_fdc_bas_loss(q_o_v, q_s_v)))
                             if os.environ.get("MEANDRE_DEBUG_KGE", "0") == "1":
@@ -1252,6 +1281,8 @@ class HydroLoss(nn.Module):
                         L_dql = (torch.stack(dql_v) * w).sum()
                     if self.w_fdc_bas > 0 and fdc_v:
                         L_fdc = (torch.stack(fdc_v) * w).sum()
+                    if self.w_etiage > 0 and etiage_v:
+                        L_etiage = (torch.stack(etiage_v) * w).sum()
         else:
             # Pooled metrics: flatten time x station (dominated by largest station)
             q_o = q_obs.reshape(-1)
@@ -1274,6 +1305,7 @@ class HydroLoss(nn.Module):
             L_dq = differentiable_dq_loss(q_o, q_s) if self.w_dq > 0 else _zero
             L_dql = differentiable_dq_log_loss(q_o, q_s) if self.w_dq_log > 0 else _zero
             L_fdc = differentiable_fdc_bas_loss(q_o, q_s) if self.w_fdc_bas > 0 else _zero
+            L_etiage = differentiable_etiage_loss(q_o, q_s) if self.w_etiage > 0 else _zero
 
         # Heteroscedastic Gaussian NLL (probabilistic loss replacing the
         # ensemble UQ stack). Aligns log_sigma to q_sim at station nodes.
@@ -1338,10 +1370,11 @@ class HydroLoss(nn.Module):
                 + self.w_dq * L_dq
                 + self.w_dq_log * L_dql
                 + self.w_fdc_bas * L_fdc
+                + self.w_etiage * L_etiage
                 + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma
                 + self.w_peak_ratio * L_peak_ratio + self.w_recession * L_recession)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
-                      "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc,
+                      "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc, "etiage_loss": L_etiage,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "r_loss": L_r, "beta_loss": L_beta, "gamma_loss": L_gamma,
                       "peak_ratio_loss": L_peak_ratio, "recession_loss": L_recession,
