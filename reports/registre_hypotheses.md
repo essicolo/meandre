@@ -4364,3 +4364,20 @@ Composite des mêmes événements, du jour précédent au troisième jour, en mm
 Le ruissellement de surface est nul sur les trois bassins, le sol absorbe l'orage ; mais l'écoulement hypodermique rend 2 à 5 mm des 23 mm en trois jours. En Outaouais cette production monte de 0,9 mm/j, et le débit à l'exutoire de 0,1 seulement, contre 0,6 observé. Sur la Châteauguay, sans lacs notables, le débit simulé suit la production et monte de 1,0 mm/j contre 1,5 observé, avec un jour de retard. Sur le bassin à lacs, la production monte de 1,6 mm/j et le débit de 0,3, l'observé de 0,3 aussi, mais sur un débit de base trop fort de 60 %.
 
 LECTURE. Ni la nappe (R239), ni la génération seule : entre la production et l'exutoire, quelque chose absorbe la réponse d'orage, plus fortement là où il y a des lacs. Épreuve en cours : le même composite, lacs routés comme des rivières.
+
+SUITE DE R240, ATTRIBUTION. Lacs routés comme des rivières : aucun effet en Outaouais (débit simulé du composite identique au centième), effet faible sur le bassin à lacs (réponse de 0,001 à 0,003). L'amortissement n'est pas dans les lacs. Il est dans le temps de transfert de Muskingum, gelé à 24 h par tronçon sur l'Outaouais et le Saint-Laurent nord-ouest (R205), valeur qui compensait un stockage de versant absent (R62) et que la nappe et la sortie latérale fournissent désormais. La Châteauguay, seul bassin au routage libre, est aussi le seul à répondre.
+
+Passes avant, temps de transfert multiplié, jours mesurés de 2013 :
+
+| | Outaouais 24 h | Outaouais 6 h | bassin à lacs 24 h | bassin à lacs 6 h |
+| --- | --- | --- | --- | --- |
+| réponse aux orages d'été sim/obs | 0,00 | 0,58 | 0,09 | 1,03 |
+| KGE | 0,793 | 0,823 | 0,418 | 0,452 |
+| gamma | 0,86 | 1,11 | 0,45 | 0,48 |
+| pointe annuelle sim/obs | 0,85 | 1,53 | 0,54 | 0,64 |
+| Q7min sim/obs | 1,10 | 1,03 | 2,55 | 2,46 |
+| jours sous Q90 (obs 24 et 28) | 14 | 19 | 0 | 0 |
+| printemps ; été ; automne | 0,79 ; 0,74 ; 0,73 | 0,90 ; 0,79 ; 0,89 | 0,90 ; 0,69 ; 0,77 | 0,94 ; 0,64 ; 0,81 |
+| hiver | 0,30 | 0,15 | 0,22 | 0,08 |
+
+Un facteur 0,1 donne exactement le même résultat que 0,25 : le temps effectif est borné en dessous. En Outaouais, le temps court rend l'essentiel de ce qui manquait à l'étiage (réponse aux orages, jours sous le seuil) et à l'automne, et pousse la pointe annuelle au-delà de l'observée : la sortie latérale en puissance avait été réglée derrière un routage lent. Sur le bassin à lacs, la réponse est rendue mais l'étiage reste deux fois trop fort, défaut de volume d'été distinct (R230). Entraînement de l'Outaouais au routage à 6 h, deux graines, en cours.
