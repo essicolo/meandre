@@ -874,6 +874,15 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             if getattr(m.vertical_column, "_nappe_apprise", False):
                 _nv = m.vertical_column.nappe_valeurs()
                 print(f"  nappe apprise : conductance {_nv['k_b']:.2e} m/j, extraction {_nv['e_frac']:.3f}, exposant {_nv['exposant']:.2f}", flush=True)
+            # TEMPS DE TRANSFERT DE MUSKINGUM APPRIS (2026-09-30) : mediane, quartiles et part
+            # des troncons colles aux bornes. Dit si le routage libre compense encore un
+            # stockage absent (borne haute) ou suit le parcours physique (borne basse).
+            try:
+                _km = _sp.K_musk_hours.detach().float().cpu().numpy().ravel()
+                from meandre.spatial.field_network import _KMUSK_MIN as _kmn, _KMUSK_MAX as _kmx
+                print(f"  temps de transfert Muskingum : mediane {np.median(_km):.1f} h, quartiles {np.quantile(_km, 0.25):.1f} a {np.quantile(_km, 0.75):.1f} h | a la borne basse {100 * np.mean(_km < _kmn + 0.5):.0f} %, a la borne haute {100 * np.mean(_km > _kmx - 0.5):.0f} % ({_kmn:.0f} a {_kmx:.0f} h)", flush=True)
+            except Exception as _ek:
+                print(f"  temps de transfert Muskingum : lecture impossible ({type(_ek).__name__})", flush=True)
             # PUITS, TOUS, A POIDS FIXES (2026-09-30) : correlation des moyennes mensuelles
             # entre la profondeur simulee au troncon du puits et le niveau mesure. Seule
             # observation qui separe des reglages de nappe que le debit ne distingue pas.
