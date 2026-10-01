@@ -318,7 +318,14 @@ if os.environ.get("ETL_DESCRIPTEURS"):
         print(f"[etl] descripteurs {_src} : {len(_noms_d)} colonnes | couverture médiane {float(np.median(_xd[:, -1])):.2f}")
     os.environ.setdefault("MEANDRE_REMBOURRAGE_NUL", "1")
 
+# Bornes des sorties du champ (2026-10-01) : `[field.bounds]` et cles z2/z3/rain_hours de
+# `[soil]`, que le pilote ne transmettait pas au modele.
+from meandre.spatial.field_network import field_bounds_from_toml as _bornes_toml
+_field_bounds = _bornes_toml(cfg)
+if _field_bounds:
+    print(f"[etl] bornes du champ prises du TOML : {_field_bounds}")
 model = HydroModel(
+    field_bounds=_field_bounds,
     n_nodes=n_nodes,
     n_territorial=r["territorial"].n_features,
     n_forcing=6,
@@ -536,7 +543,7 @@ from meandre.vertical import soil_processes as _soil_proc
 # 2026-09-20). Le garde-fou contre un profil vide en avait cree un autre.
 _profile = _soil_proc.from_toml(cfg.get("soil"))
 if _profile is not None:
-    model.vertical_column.soil_profile = _profile
+    model.vertical_column.declare_soil_profile(_profile)
     print(f"[etl] profil de sol declare : {_profile.layers} couches, "
           f"{len(_profile.processes)} processus")
     for _pr in _profile.processes:

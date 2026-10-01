@@ -48,6 +48,53 @@ KREC_REF = 2e-5
 # geologie du socle ne donne que +3 %.
 KSUB_REF = 1.0e-3 / 24.0
 
+# BORNES DES SORTIES DU CHAMP (2026-10-01). Une seule table, declaree ici, que la section
+# `[field.bounds]` du TOML remplace sortie par sortie (`field_bounds_from_toml`). Toutes les
+# sorties sont bornees DOUCEMENT : sigmoide lineaire pour les grandeurs additives, sigmoide
+# dans l'espace logarithmique pour les grandeurs log-normales (marquees "log"). Les huit
+# sorties en exp(clamp()) collaient au plancher sans gradient (K_sat_2 a exp(-8) sur deux
+# bassins, R252) : la borne capturait la sortie et masquait le defaut. Unites : celles du
+# champ (K_sat en m/j, krec et k_sub en m/h, k_gw en 1/j, epaisseurs en m).
+FIELD_BOUNDS = {
+    "K_sat_1": (3.355e-4, 54.6, "log"), "K_sat_2": (3.355e-4, 54.6, "log"), "K_sat_3": (3.355e-4, 54.6, "log"),
+    "porosity": (0.20, 0.60), "theta_fc_frac": (0.30, 0.85), "theta_wp_frac": (0.05, 0.60),
+    "C_f": (0.5, 8.0), "T_melt": (-2.0, 3.0), "T_snow": (0.0, 2.0), "interception_capacity": (0.5, 2.5),
+    "manning_n": (0.01, 0.20), "frost_alpha": (0.0, 1.0), "f_wetland": (0.0, 0.10),
+    "f_vert_1": (0.0, 1.0), "f_vert_3": (0.0, 1.0), "k_gw": (3.355e-4, 0.1353, "log"),
+    "T_gw": (3.0, 13.0), "K_atm": (0.05, 0.55), "alpha_T": (0.01, 0.05), "vg_n": (1.3, 2.7),
+    "f_vert_2": (0.0, 1.0), "x_musk": (0.01, 0.49), "K_c": (0.3, 1.5),
+    "rain_hours": (3.0, 24.0), "Z2": (0.30, 1.50), "Z3": (0.50, 4.00), "vsa_b": (0.5, 5.0),
+    "krec": (1e-7, 1e-4, "log"), "diff_gel": (4e-8, 2.2e-7), "fs_neige": (0.5, 6.0),
+    "dT_canopee_feu": (0.0, 3.0), "dT_canopee_conif": (0.0, 3.0), "k_sub": (2e-6, 2e-3, "log"),
+}
+# Centre (valeur pour une sortie brute nulle) et pente au centre des sorties log-normales,
+# repris des anciennes lois exp(0,3 x + log centre) pour que les points de reprise existants
+# rendent la meme valeur au voisinage du centre.
+_LOG_CENTERS = {"K_sat_1": 0.5, "K_sat_2": 0.1, "K_sat_3": 0.02, "k_gw": 0.02, "krec": KREC_REF, "k_sub": KSUB_REF}
+_LOG_SLOPE = 0.3
+
+
+def field_bounds_from_toml(cfg):
+    """Bornes declarees dans un TOML : `[field.bounds]`, plus les cles historiques de `[soil]`.
+
+    Les cles `z2_min`, `z2_max`, `z3_min`, `z3_max`, `rain_hours_min`, `rain_hours_max` de
+    `[soil]` n'etaient pas transmises par le pilote ; elles passent par la meme table. Une
+    sortie inconnue est refusee bruyamment.
+    """
+    out = {}
+    if not cfg:
+        return out
+    soil = cfg.get("soil") or {}
+    for nom, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
+        if a in soil or b in soil:
+            lo0, hi0 = FIELD_BOUNDS[nom][:2]
+            out[nom] = (float(soil.get(a, lo0)), float(soil.get(b, hi0)))
+    for nom, v in ((cfg.get("field") or {}).get("bounds") or {}).items():
+        if nom not in FIELD_BOUNDS:
+            raise KeyError(f"[field.bounds] : sortie inconnue {nom}, attendu {sorted(FIELD_BOUNDS)}")
+        out[nom] = (float(v[0]), float(v[1]))
+    return out
+
 
 @dataclass
 class SpatialParams:
@@ -246,6 +293,7 @@ class SpatialFieldNetwork(nn.Module):
         dropout: float = 0.0,
         param_mode: str = "nerf",
         soil_bounds: dict | None = None,
+        field_bounds: dict | None = None,
         predict_lake_params: bool = False,
         n_nodes: int | None = None,
         use_latent_codes: bool = False,
@@ -294,6 +342,14 @@ class SpatialFieldNetwork(nn.Module):
         if soil_bounds:
             defaults.update(soil_bounds)
         self.soil_bounds = defaults
+        # Table des bornes en vigueur : defauts, puis soil_bounds historiques, puis field_bounds.
+        self.bounds = {k: tuple(v) for k, v in FIELD_BOUNDS.items()}
+        for nom, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
+            self.bounds[nom] = (float(defaults[a]), float(defaults[b])) + tuple(FIELD_BOUNDS[nom][2:])
+        for nom, v in (field_bounds or {}).items():
+            if nom not in FIELD_BOUNDS:
+                raise KeyError(f"borne pour une sortie inconnue : {nom}")
+            self.bounds[nom] = (float(v[0]), float(v[1])) + tuple(FIELD_BOUNDS[nom][2:])
 
         if param_mode == "static":
             self.static_params = nn.Parameter(torch.randn(SpatialParams.N_PARAMS) * 0.1)
@@ -475,90 +531,42 @@ class SpatialFieldNetwork(nn.Module):
             frac = max(1e-4, min(1.0 - 1e-4, frac))
             return math.log(frac / (1.0 - frac))
 
+        B = self.bounds
+
+        def inv_borne(nom, val):
+            """Inverse de `borne` dans _apply_constraints : sortie brute qui rend `val`."""
+            lo, hi = B[nom][0], B[nom][1]
+            if len(B[nom]) > 2 and B[nom][2] == "log":
+                llo, lhi = math.log(lo), math.log(hi)
+                c = min(max(math.log(_LOG_CENTERS[nom]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
+                u = (c - llo) / (lhi - llo)
+                b0 = math.log(u / (1.0 - u))
+                a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
+                f = (math.log(val) - llo) / (lhi - llo)
+                f = max(1e-4, min(1.0 - 1e-4, f))
+                return (math.log(f / (1.0 - f)) - b0) / a
+            return inv_bounded(val, lo, hi)
+
         raw = torch.zeros(SpatialParams.N_PARAMS)
         i = 0
-
-        # K_sat: exp(clamp(raw*0.3 + log_center)) → raw = (log(target) - log_center) / 0.3
-        log_centers = [math.log(0.5), math.log(0.1), math.log(0.02)]
-        for layer, key in enumerate(["K_sat_1", "K_sat_2", "K_sat_3"]):
-            raw[i] = (math.log(d[key]) - log_centers[layer]) / 0.3
-            i += 1
-        # porosity: bounded [0.20, 0.60]
-        for key in ["porosity_1", "porosity_2", "porosity_3"]:
-            raw[i] = inv_bounded(d[key], 0.20, 0.60)
-            i += 1
-        # theta_fc as fraction of porosity: bounded [0.30, 0.85]
-        for layer, key in enumerate(["theta_fc_1", "theta_fc_2", "theta_fc_3"]):
-            por_key = f"porosity_{layer+1}"
-            fc_frac = d[key] / d[por_key]
-            raw[i] = inv_bounded(fc_frac, 0.30, 0.85)
-            i += 1
-        # theta_wp as fraction of theta_fc: bounded [0.05, 0.60]
-        for layer, key in enumerate(["theta_wp_1", "theta_wp_2", "theta_wp_3"]):
-            fc_key = f"theta_fc_{layer+1}"
-            wp_frac = d[key] / d[fc_key]
-            raw[i] = inv_bounded(wp_frac, 0.05, 0.60)
-            i += 1
-        # f_root: softmax with bias [1.0, 0.5, -0.5], scaled *0.3
-        # We want softmax(raw*0.3 + bias) ≈ [0.50, 0.30, 0.20]
-        # Since bias already gives ~[50,30,20], raw ≈ 0 is fine
+        for layer in range(3):
+            raw[i] = inv_borne(f"K_sat_{layer + 1}", d[f"K_sat_{layer + 1}"]); i += 1
+        for layer in range(3):
+            raw[i] = inv_borne("porosity", d[f"porosity_{layer + 1}"]); i += 1
+        for layer in range(3):
+            raw[i] = inv_borne("theta_fc_frac", d[f"theta_fc_{layer + 1}"] / d[f"porosity_{layer + 1}"]); i += 1
+        for layer in range(3):
+            raw[i] = inv_borne("theta_wp_frac", d[f"theta_wp_{layer + 1}"] / d[f"theta_fc_{layer + 1}"]); i += 1
+        # f_root : le biais [1.0, 0.5, -0.5] donne deja ~[50, 30, 20] ; brut nul.
         for _ in range(3):
-            raw[i] = 0.0
-            i += 1
-        # C_f: bounded [0.5, 8.0]
-        raw[i] = inv_bounded(d["C_f"], 0.5, 8.0); i += 1
-        # T_melt: bounded [-2, 3] (aligné sur la transform ; seuil de fonte NeRF)
-        raw[i] = inv_bounded(d["T_melt"], -2.0, 3.0); i += 1
-        # T_snow: bounded [0, 2]
-        raw[i] = inv_bounded(d["T_snow"], 0.0, 2.0); i += 1
-        # interception_capacity: bounded [0.5, 2.5]
-        raw[i] = inv_bounded(d["interception_capacity"], 0.5, 2.5); i += 1
-        # manning_n: bounded [0.01, 0.20]
-        raw[i] = inv_bounded(d["manning_n"], 0.01, 0.20); i += 1
-        # frost_alpha: bounded [0.0, 1.0]
-        raw[i] = inv_bounded(d["frost_alpha"], 0.0, 1.0); i += 1
-        # f_wetland: bounded [0.0, 0.10]
-        raw[i] = inv_bounded(d["f_wetland"], 0.0, 0.10); i += 1
-        # f_vert_1: bounded [0, 1]
-        raw[i] = inv_bounded(d["f_vert_1"], 0.0, 1.0); i += 1
-        # f_vert_3: bounded [0, 1]
-        raw[i] = inv_bounded(d["f_vert_3"], 0.0, 1.0); i += 1
-        # k_gw: exp(clamp(raw*0.3 + log(0.02)))
-        raw[i] = (math.log(d["k_gw"]) - math.log(0.02)) / 0.3; i += 1
-        # T_gw: bounded [3, 13]
-        raw[i] = inv_bounded(d["T_gw"], 3.0, 13.0); i += 1
-        # K_atm: bounded [0.05, 0.55]
-        raw[i] = inv_bounded(d["K_atm"], 0.05, 0.55); i += 1
-        # alpha_T: bounded [0.01, 0.05]
-        raw[i] = inv_bounded(d["alpha_T"], 0.01, 0.05); i += 1
-        # vg_n: bounded [1.3, 2.7]
-        raw[i] = inv_bounded(d["vg_n"], 1.3, 2.7); i += 1
-        # f_vert_2: bounded [0, 1]
-        raw[i] = inv_bounded(d["f_vert_2"], 0.0, 1.0); i += 1
-        # K_musk_hours: bounded [4, 48]
+            raw[i] = 0.0; i += 1
+        for nom in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
+                    "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
+            raw[i] = inv_borne(nom, d[nom]); i += 1
         raw[i] = inv_bounded(d["K_musk_hours"], _KMUSK_MIN, _KMUSK_MAX); i += 1
-        # x_musk: bounded [0.01, 0.49]
-        raw[i] = inv_bounded(d["x_musk"], 0.01, 0.49); i += 1
-        # K_c: bounded [0.3, 1.5]
-        raw[i] = inv_bounded(d["K_c"], 0.3, 1.5); i += 1
-        # rain_hours: bounded [rh_min, rh_max] from soil_bounds
-        rh_min = self.soil_bounds["rain_hours_min"]
-        rh_max = self.soil_bounds["rain_hours_max"]
-        raw[i] = inv_bounded(d["rain_hours"], rh_min, rh_max); i += 1
-        # Z2, Z3: bounded from soil_bounds
-        raw[i] = inv_bounded(d["Z2"], self.soil_bounds["z2_min"], self.soil_bounds["z2_max"]); i += 1
-        raw[i] = inv_bounded(d["Z3"], self.soil_bounds["z3_min"], self.soil_bounds["z3_max"]); i += 1
-        raw[i] = inv_bounded(d["vsa_b"], 0.5, 5.0); i += 1
-        # krec: exp(clamp(raw*0.3 + log(KREC_REF)))
-        raw[i] = (math.log(d["krec"]) - math.log(KREC_REF)) / 0.3; i += 1
-        # proprietes thermiques du gel : bornes de la litterature des sols, valeur de
-        # depart = celle du C++ (voir le dictionnaire de cibles).
-        raw[i] = inv_bounded(d["diff_gel"], 4e-8, 2.2e-7); i += 1
-        raw[i] = inv_bounded(d["fs_neige"], 0.5, 6.0); i += 1
-        raw[i] = inv_bounded(d["dT_canopee_feu"], 0.0, 3.0); i += 1
-        raw[i] = inv_bounded(d["dT_canopee_conif"], 0.0, 3.0); i += 1
-        # k_sub : exp(clamp(raw*0.3 + log(KSUB_REF))), donc raw nul rend la reference.
-        raw[i] = (math.log(d["k_sub"]) - math.log(KSUB_REF)) / 0.3; i += 1
+        for nom in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
+                    "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
+            raw[i] = inv_borne(nom, d[nom]); i += 1
 
         return raw
 
@@ -754,7 +762,11 @@ class SpatialFieldNetwork(nn.Module):
         # imposée en inférence rapporte +0.026. On ancre donc, et la tête module autour.
         _anc = getattr(self, "_lake_k_anchor", None)
         log_anc = math.log(1e-4) if _anc is None else torch.log(_anc.to(raw.device))
-        log_k = torch.clamp(raw[:, 0] * 0.5 + log_anc, min=math.log(1e-6), max=math.log(1e-2))
+        # Borne DOUCE en log entre 1e-6 et 1e-2 (2026-10-01) : sigmoide centree sur l'ancre, pente
+        # 0,5 au centre comme l'ancienne loi exp(clamp(0,5 x + log ancre)), sans plancher sans gradient.
+        _llo, _lhi = math.log(1e-6), math.log(1e-2)
+        _u = torch.clamp((torch.as_tensor(log_anc, device=raw.device, dtype=raw.dtype) - _llo) / (_lhi - _llo), 1e-4, 1.0 - 1e-4)
+        log_k = _llo + (_lhi - _llo) * torch.sigmoid(0.5 * raw[:, 0] / ((_lhi - _llo) * _u * (1.0 - _u)) + torch.log(_u / (1.0 - _u)))
         k_lake = torch.exp(log_k)
         # beta : [1.0, 2.5], centré à 1.5 pour raw=0. 1.0 + 1.5*s = 1.5 → s=1/3,
         # donc décalage logit(1/3) = -log(2).
@@ -777,175 +789,70 @@ class SpatialFieldNetwork(nn.Module):
             """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4."""
             return lo + (hi - lo) * torch.sigmoid(x)
 
+        B = self.bounds
+
+        def borne(nom, x):
+            """Sortie bornee doucement selon la table : lineaire, ou logarithmique si marquee."""
+            lo, hi = B[nom][0], B[nom][1]
+            if len(B[nom]) > 2 and B[nom][2] == "log":
+                # Sigmoide en log : centre et pente au centre de l'ancienne loi exp(0,3 x + log c).
+                llo, lhi = math.log(lo), math.log(hi)
+                c = min(max(math.log(_LOG_CENTERS[nom]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
+                u = (c - llo) / (lhi - llo)
+                b0 = math.log(u / (1.0 - u))
+                a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
+                return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x + b0))
+            return bounded(x, lo, hi)
+
         cols = [raw[:, i] for i in range(SpatialParams.N_PARAMS)]
         i = 0
 
         constrained = []
-        # K_sat (m/day): log-normal with per-layer centers decreasing with depth.
-        log_centers = [math.log(0.5), math.log(0.1), math.log(0.02)]
+        # K_sat (m/j) : log-normal, centres 0,5 / 0,1 / 0,02 m/j decroissant avec la profondeur.
         for layer in range(3):
-            exponent = torch.clamp(cols[i] * 0.3 + log_centers[layer], min=-8.0, max=4.0)
-            constrained.append(torch.exp(exponent))
+            constrained.append(borne(f"K_sat_{layer + 1}", cols[i]))
             i += 1
-        # porosity: [0.20, 0.60]
         porosities = []
         for _ in range(3):
-            p = bounded(cols[i], 0.20, 0.60)
+            p = borne("porosity", cols[i])
             porosities.append(p)
             constrained.append(p)
             i += 1
-        # theta_fc as fraction of porosity: [0.30, 0.85]
-        # Guarantees theta_fc < porosity always
+        # Capacite au champ en fraction de la porosite : garantit theta_fc < porosite.
         theta_fcs = []
         for layer in range(3):
-            fc_frac = bounded(cols[i], 0.30, 0.85)
-            theta_fc = porosities[layer] * fc_frac
+            theta_fc = porosities[layer] * borne("theta_fc_frac", cols[i])
             theta_fcs.append(theta_fc)
             constrained.append(theta_fc)
             i += 1
-        # theta_wp as fraction of theta_fc: [0.05, 0.60]
-        # Guarantees theta_wp < theta_fc always
+        # Point de fletrissement en fraction de la capacite au champ : garantit theta_wp < theta_fc.
         for layer in range(3):
-            wp_frac = bounded(cols[i], 0.05, 0.60)
-            theta_wp = theta_fcs[layer] * wp_frac
-            constrained.append(theta_wp)
+            constrained.append(theta_fcs[layer] * borne("theta_wp_frac", cols[i]))
             i += 1
-        # f_root (0, 1), then softmax so sum = 1
-        # Bias toward upper layers (50/30/20 split)
-        f_roots_raw = torch.stack(cols[i:i+3], dim=-1)  # (n, 3)
+        # f_root : softmax, biais vers les couches superieures (50/30/20).
+        f_roots_raw = torch.stack(cols[i:i+3], dim=-1)
         f_roots_raw = f_roots_raw * 0.3 + torch.tensor([1.0, 0.5, -0.5], device=raw.device)
         f_roots = torch.softmax(f_roots_raw, dim=-1)
         constrained.extend([f_roots[:, j] for j in range(3)])
         i += 3
-        # C_f: [0.5, 8.0] mm/C/day
-        constrained.append(bounded(cols[i], 0.5, 8.0)); i += 1
-        # T_melt: [-2, 3] C — élargi 2026-07-25 : borné [-1,1] il ne pouvait PAS
-        # atteindre les seuils de fonte calés (+1.6..+2.3°C, valeur mesurée +0.15 KGE
-        # sur GASP) maintenant qu'il pilote le seuil du module neige.
-        constrained.append(bounded(cols[i], -2.0, 3.0)); i += 1
-        # T_snow: [0, 2] C
-        constrained.append(bounded(cols[i], 0.0, 2.0)); i += 1
-        # interception_capacity: [0.5, 2.5] mm
-        constrained.append(bounded(cols[i], 0.5, 2.5)); i += 1
-        # manning_n: [0.01, 0.20]
-        constrained.append(bounded(cols[i], 0.01, 0.20)); i += 1
-        # frost_alpha: [0.0, 1.0]
-        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
-        # f_wetland: [0.0, 0.10]
-        constrained.append(bounded(cols[i], 0.0, 0.10)); i += 1
-        # f_vert_1: partition layer 1 vertical/lateral, (0, 1)
-        # Binary softmax = sigmoid. Init centred at 0.5 (no prior on direction).
-        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
-        # f_vert_3: partition layer 3 recharge/lateral, (0, 1)
-        # Init biased toward recharge (~0.7) for deep layer.
-        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
-        # k_gw: aquifer recession (1/day), log-normal.
-        # Recentré sur 0.02 (vs 0.005) — recession ~50 jours réaliste pour
-        # aquifères peu profonds Beauce/Lévis (auparavant ~140 jours, trop lent).
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(0.02), min=-8.0, max=-2.0)
-        constrained.append(torch.exp(exponent)); i += 1
-        # T_gw: groundwater temperature (C): [3, 13]
-        constrained.append(bounded(cols[i], 3.0, 13.0)); i += 1
-        # K_atm: atmospheric heat exchange (1/day): [0.05, 0.55]
-        constrained.append(bounded(cols[i], 0.05, 0.55)); i += 1
-        # alpha_T: soil thermal damping (1/day): [0.01, 0.05]
-        constrained.append(bounded(cols[i], 0.01, 0.05)); i += 1
-        # --- New params ---
-        # vg_n: van Genuchten n shape parameter [1.1, 2.7]
-        # Clay ~1.1, loam ~1.5, sand ~2.7
-        constrained.append(bounded(cols[i], 1.3, 2.7)); i += 1
-        # f_vert_2: partition layer 2 vertical/lateral, (0, 1)
-        constrained.append(bounded(cols[i], 0.0, 1.0)); i += 1
-        # K_musk_hours: temps de transfert Muskingum, bornes CONFIGURABLES.
-        # MESURE 2026-08-09 (banc de modules, Manning sur la géométrie réelle du trl) :
-        # le temps de parcours PHYSIQUE des tronçons vaut ~0.2-0.35 h (longueur médiane
-        # 3.6-4.3 km, vitesse ~2 m/s) et 100 % des tronçons sont sous l'ancienne borne
-        # basse de 4 h. Le K appris (23.7 h sur le champion gasp) valait donc 60-100×
-        # le temps de parcours réel : chaque tronçon se comportait en réservoir d'un
-        # jour, atténuant un événement court de 27 % et l'étalant sur 4 jours, effet
-        # composé le long de la chaîne topologique. L'optimiseur ne pouvait pas le
-        # corriger (borne + perte quasi plate en K, mesurée à 4 % de la perte totale).
-        # À K physique le même code reproduit la translation d'Hydrotel (pic 10.00
-        # contre 10.61 pour le clone de l'onde cinématique).
-        # Stabilité : en mode opérateur un petit K donne c2=0, soit translation pure,
-        # numériquement sain. En mode message-passing (n_substeps=2) garder K >= 4.
-        # Avec set_routing_anchor(), K devient l'ancre geometrique MODULEE par le reseau,
-        # sur le patron de l'ancre de lac : raw=0 donne exactement l'ancre, et la sortie
-        # reste bornee physiquement. Sans ancre, comportement borne inchange.
+        for nom in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
+                    "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
+            constrained.append(borne(nom, cols[i])); i += 1
+        # K_musk_hours : bornes de MEANDRE_KMUSK, ou ancre geometrique modulee (set_routing_anchor).
         _kanc = getattr(self, "_k_musk_anchor", None)
         if _kanc is None:
             constrained.append(bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX)); i += 1
         else:
             _a = _kanc.to(cols[i].device)
-            _mod = torch.exp(torch.clamp(cols[i], -1.5, 1.5))
+            # Modulation de l'ancre bornee doucement entre x exp(-1,5) et x exp(1,5), comme l'ancienne borne dure.
+            _mod = torch.exp(1.5 * torch.tanh(cols[i] / 1.5))
             _anc = torch.clamp(torch.nan_to_num(_a, nan=1.0) * _mod, min=0.05, max=_KMUSK_MAX)
             # Un noeud a ancre NaN, un lac notamment, garde le parametre borne libre.
             constrained.append(torch.where(torch.isfinite(_a), _anc,
                                            bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX))); i += 1
-        # x_musk: Muskingum weighting factor [0.01, 0.49]
-        constrained.append(bounded(cols[i], 0.01, 0.49)); i += 1
-        # K_c: ETP scaling [0.3, 1.5]. Default ~1.0 (FAO-56 reference).
-        constrained.append(bounded(cols[i], 0.3, 1.5)); i += 1
-        # rain_hours: storm duration for Eagleson sub-daily intensity.
-        # Configurable bounds (default [3, 24] h) — moins = pluies plus intenses.
-        rh_min = self.soil_bounds["rain_hours_min"]
-        rh_max = self.soil_bounds["rain_hours_max"]
-        constrained.append(bounded(cols[i], rh_min, rh_max)); i += 1
-        # Z2: layer 2 thickness (m). Default [0.30, 1.50] — root zone profonde.
-        z2_min = self.soil_bounds["z2_min"]
-        z2_max = self.soil_bounds["z2_max"]
-        constrained.append(bounded(cols[i], z2_min, z2_max)); i += 1
-        # Z3: layer 3 thickness (m). Default [0.50, 4.00] — sol profond.
-        z3_min = self.soil_bounds["z3_min"]
-        z3_max = self.soil_bounds["z3_max"]
-        constrained.append(bounded(cols[i], z3_min, z3_max)); i += 1
-        # vsa_b: exposant de l'aire-source-variable (ruissellement de crue).
-        constrained.append(bounded(cols[i], 0.5, 5.0)); i += 1
-        # krec: drainage profond L3 -> aquifere (m/h), log-normal CENTRE sur la
-        # reference. raw = 0 rend exactement KREC_REF : c'est ce qui rend inoffensif
-        # le remplissage par zeros des anciens points de reprise (le padding de fc_out
-        # met poids ET biais a zero). Meme construction que k_gw.
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(KREC_REF),
-                               min=math.log(1e-7), max=math.log(1e-4))
-        constrained.append(torch.exp(exponent)); i += 1
-        # PROPRIETES THERMIQUES. Bornes tirees de la litterature des sols : la
-        # conductivite d'un sol mineral va de ~0.25 (sec, poreux) a ~2.2 W/m/K (sature,
-        # sableux) ; la capacite volumique de ~0.8e6 (sec) a ~3e6 J/m3/K (sature, l'eau
-        # portant l'essentiel). L'amortissement nival de Rankinen vaut 2.35 dans le
-        # C++ ; on ouvre autour, la densite et la structure du couvert le faisant
-        # varier. Centrees sur le defaut, raw=0 rend EXACTEMENT l'ancien comportement,
-        # ce qui garde inoffensif le remplissage par zeros d'un ancien point de reprise.
-        # DIFFUSIVITE APPARENTE. Valeur du C++ : kt / (cs + cice) = 0.8 / 5e6 =
-        # 1.6e-7 m2/s. APPARENTE et non vraie : la capacite au denominateur inclut le
-        # terme de glace (4e6), qui porte la chaleur latente de changement de phase --
-        # methode classique de la capacite apparente. Elle est donc systematiquement plus
-        # basse que les diffusivites de manuel (1e-7 a 1e-6) et ne se compare pas
-        # directement a elles.
-        #
-        # BORNE SUPERIEURE FIXEE PAR LA NUMERIQUE, PAS PAR LA PHYSIQUE. Le schema de
-        # Rankinen est EXPLICITE : son taux de relaxation vaut dt*alpha/(2z)^2, soit
-        # 8.64e6*alpha au noeud le plus superficiel (5 cm, dt journalier). La stabilite
-        # exige ce taux sous 2, donc alpha sous 2.31e-7 ; le clone tourne a 1.38, juste
-        # sous la limite. Mon premier essai bornait a 8e-7 en empruntant la plage de la
-        # litterature : le profil de temperature divergeait et le gel sortait en NaN
-        # (2026-08-27). Ce schema ne peut donc PAS representer les diffusivites reelles
-        # les plus elevees -- une limite de la numerique, a lever par un schema implicite
-        # si le besoin s'en fait sentir.
-        constrained.append(bounded(cols[i], 4e-8, 2.2e-7)); i += 1    # diff_gel
-        constrained.append(bounded(cols[i], 0.5, 6.0)); i += 1        # fs_neige
-        # Retards de fonte par la canopee (R56). Bornes [0, 3] : non negatives parce
-        # qu'un couvert ne peut qu'ombrager et couper l'echange turbulent, jamais
-        # accelerer la fonte par rapport au terrain decouvert ; plafonnees a 3 parce
-        # que c'est deja l'offset du calage le plus extreme d'Hydrotel (+2.95 sur la
-        # famille sagu) et qu'au-dela le manteau ne fondrait plus du tout en avril.
-        constrained.append(bounded(cols[i], 0.0, 3.0)); i += 1        # dT_canopee_feu
-        constrained.append(bounded(cols[i], 0.0, 3.0)); i += 1        # dT_canopee_conif
-        # k_sub : plafond de percolation du substratum (m/h), log-normal CENTRE sur la
-        # reference, meme construction que krec et k_gw. Bornes [2e-6, 2e-3] m/h, soit
-        # 0,05 a 50 mm/j, ce qui couvre du socle fracture peu permeable au depot sableux.
-        exponent = torch.clamp(cols[i] * 0.3 + math.log(KSUB_REF),
-                               min=math.log(2e-6), max=math.log(2e-3))
-        constrained.append(torch.exp(exponent)); i += 1
+        for nom in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
+                    "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
+            constrained.append(borne(nom, cols[i])); i += 1
 
         sp = SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
         return self._applique_multiplicateurs(sp)

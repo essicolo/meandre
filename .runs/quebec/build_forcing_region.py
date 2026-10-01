@@ -162,7 +162,10 @@ e_a = 0.6108 * np.exp(17.27 * TD / (TD + 237.3))
 R_n = (((1 - ALBEDO) * FB - (EMIS * SIGMA * (Tmean + 273.15)**4 - FI)) * 0.0864).clip(lower=0.0)
 u2 = UVC * 0.748
 Pv = P.reindex(idx).values
-Pv = Pv * (VOL / (np.nanmean(Pv) * 365.25))                          # VOLUME : calage bilan
+# QC_CASR_BRUT=1 (2026-10-01, decision d'Essi sur conseil d'Ouranos) : precipitation CaSR
+# telle quelle, sans calage de volume ; avec DRIZZLE_H=0, aucun dé-crachinage non plus.
+if os.environ.get("QC_CASR_BRUT", "0") != "1":
+    Pv = Pv * (VOL / (np.nanmean(Pv) * 365.25))                      # VOLUME : calage bilan
 # Canal de duree d'orage, opt-in : sans lui le ruissellement hortonien sous-journalier du
 # clone reste inerte, faute d'entree. QC_INTENS=1 l'ajoute en septieme canal, sous le meme
 # nom que sur le banc SLSO.

@@ -175,6 +175,7 @@ class HydroModel(nn.Module):
         spatial_melt: bool = False,       # facteur de fonte spatialisé (NeRF C_f/4.5 module les classes)
         canopy_melt_lag: bool = False,    # seuil de fonte par classe appris (R56) au lieu du verrou calé
         soil_bounds: dict | None = None,
+        field_bounds: dict | None = None,
         use_quantile_head: bool = False,
         quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
         use_mixture_head: bool = False,
@@ -227,6 +228,7 @@ class HydroModel(nn.Module):
             dropout=dropout,
             param_mode=param_mode,
             soil_bounds=soil_bounds,
+            field_bounds=field_bounds,
             predict_lake_params=predict_lake_params,
             n_nodes=n_nodes,
             use_latent_codes=use_latent_codes,

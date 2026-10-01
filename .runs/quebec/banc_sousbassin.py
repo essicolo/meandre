@@ -507,8 +507,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     _mode = os.environ.get("MEANDRE_CHAMP_MODE", "nerf")
     print(f"  champ spatial : mode {_mode}, {'aucune position' if _freqs < 0 else f'{_freqs} bandes de Fourier'}", flush=True)
 
+    # Bornes du champ : celles du TOML du pilote quand ETL_CONFIG est pose (2026-10-01).
+    _field_bounds = {}
+    if os.environ.get("ETL_CONFIG"):
+        import tomllib
+        from meandre.spatial.field_network import field_bounds_from_toml
+        with open(os.environ["ETL_CONFIG"], "rb") as _fcfg:
+            _field_bounds = field_bounds_from_toml(tomllib.load(_fcfg))
+        if _field_bounds:
+            print(f"  bornes du champ prises du TOML : {_field_bounds}", flush=True)
+
     def _construire():
-        m = HydroModel(n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
+        m = HydroModel(field_bounds=_field_bounds, n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
                        use_temporal=False, use_residual=False, use_travel_time_attn=False,
                        use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode=_mode, n_coord_freqs=_freqs,
                        column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,

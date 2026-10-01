@@ -21,7 +21,10 @@ def re_ext(doy, lat_deg):
     ws = np.arccos(np.clip(-np.tan(lat)*np.tan(dec), -1, 1))
     return 37.586*dr*(ws*np.sin(lat)*np.sin(dec) + np.cos(lat)*np.cos(dec)*np.sin(ws))
 for reg in [a.lower() for a in sys.argv[1:]]:
-    nc_p = f"{_DATA_ROOT}/quebec/forcing-{reg}.nc"; db = f"{_DATA_ROOT}/quebec/{reg}.duckdb"
+    # QC_SUFFIXE : variante du forcage regional a recaler, meme cle que le constructeur
+    # (2026-10-01) ; la sortie porte le suffixe puis -budyko. Vide = comportement d'origine.
+    _sfx = os.environ.get("QC_SUFFIXE", "")
+    nc_p = f"{_DATA_ROOT}/quebec/forcing-{reg}{_sfx}.nc"; db = f"{_DATA_ROOT}/quebec/{reg}.duckdb"
     d = xr.open_dataset(nc_p); F = d["forcing"].values.copy(); V = list(d["var"].values.astype(str))
     t = pd.to_datetime(d["time"].values); d.close()
     lat = BasinCache(db).load(device="cpu")["node_coords"][:, 1].numpy().mean()
@@ -39,7 +42,7 @@ for reg in [a.lower() for a in sys.argv[1:]]:
         P = P2
     cur = F[:, :, 0].mean()*365.25
     F[:, :, 0] = (F[:, :, 0]*(P/cur)).astype(np.float32)
-    out = f"{_DATA_ROOT}/quebec/forcing-{reg}-budyko.nc"
+    out = f"{_DATA_ROOT}/quebec/forcing-{reg}{_sfx}-budyko.nc"
     if os.path.exists(out): os.remove(out)
     xr.Dataset({"forcing": (("time", "node", "var"), F)},
                coords={"time": t, "node": np.arange(F.shape[1]), "var": V}).to_netcdf(out)
