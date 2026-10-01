@@ -4581,3 +4581,20 @@ LECTURE. L'optimiseur remonte la sortie du champ jusqu'à compenser le facteur 3
 Correctif : `SpatialFieldNetwork.figer_au_prochain_appel` capture la carte en vigueur au premier appel et la substitue ensuite, avant les multiplicateurs ; le banc le pose après tout chargement quand `MEANDRE_CHAMP_GELE` est donné (`tests/test_carte_figee.py`). Les deux bras du départ à chaud sont relancés. Le gel du routage dans les épreuves à froid (R245 à R249) n'est pas concerné : poids nuls dès l'initialisation.
 
 SUITE DE R249, BRAS AVEC PERTE D'ÉTIAGE, multiplicateur K_sat_1 × 0,3 à froid, graine 1234 : le champ annule aussi la division (réponse aux orages 0,000). Étiage : Q7min 1,03, 150 jours sous Q90 pour 128, volume d'été 0,97 ; KGE 0,617, hiver 0,61. L'étiage se corrige par l'évaporation (1,75 mm/j contre 1,62) et le volume annuel baisse de 5 %, au prix de l'hiver.
+
+## R251 — Surface imposée moins perméable, départ à chaud : le reste du champ éteint encore les deux tiers de la réponse aux orages, et l'étiage est pire que la référence ; rendre au débit d'été sa réponse aux orages n'abaisse pas l'étiage (2026-10-01, 8 h) — ÉTABLI, Outaouais, une graine, gel par valeur (R250)
+
+Départ à chaud du modèle de R247 A (graine 1234), carte K_sat_1 figée puis divisée par 3, routage gelé, quatre époques, perte sans terme d'étiage. L'état de départ est celui de la passe avant de R248.
+
+| Outaouais, 2020-2024 | référence R247 A | départ (passe avant R248) | après 4 époques | observé |
+| --- | --- | --- | --- | --- |
+| réponse aux orages d'été sim/obs | 0,02 | 1,02 | 0,25 | 1 |
+| Q7min sim/obs | 1,12 | 1,20 | 1,15 | 1,00 |
+| jours sous Q90 | 122 | 81 | 84 | 128 |
+| volume août-septembre | 1,13 | 1,48 | 1,27 | 1,00 |
+| ET annuelle (mm/j) ; Qsim/Qobs | 1,62 ; 1,02 | 1,61 ; 1,03 | 1,53 ; 1,07 | MOD16 1,55 |
+| KGE ; corrélation hiver ; été | 0,749 ; 0,85 ; 0,81 | | 0,742 ; 0,87 ; 0,84 | |
+
+LECTURE. Privé de la perméabilité de surface, l'optimiseur réduit la réponse aux orages par d'autres sorties, de 1,02 à 0,25 fois l'observée : la perte demande un débit d'été lisse, quel que soit le levier. Le modèle obtenu a les meilleures corrélations saisonnières de la nuit, mais un étiage moins bon que la référence, volume d'été +27 % et 84 jours bas pour 128. L'eau des orages d'été, quand elle ruisselle, s'ajoute au débit d'été au lieu d'être évaporée ; elle ne creuse pas les récessions. L'hypothèse de R239, un étiage trop haut faute de variabilité d'été, n'est donc pas un levier pratique sur ce sous-bassin : redonner la réponse aux orages relève le débit d'été. Ce qui fait descendre l'étiage dans toutes les épreuves de la nuit, c'est l'évaporation d'été (R247 graine 777, R250 suite), au prix de l'hiver.
+
+BASSIN À LACS 052805, routage gelé, sans terme d'étiage, graine 1234 : Q7min 2,41, 58 jours sous Q90 pour 127, volume d'été 1,49, KGE 0,559 ; au routage du pilote (R246) 2,69, 26 jours, 1,67, KGE 0,569. Le routage gelé améliore un peu l'étiage sans changer le KGE ; l'étiage reste 2,4 fois trop haut. La réponse aux orages observée y est faible, 0,007, et nulle en simulation.
