@@ -1027,6 +1027,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _pa["jun-oct sim/obs"] = _pa.jun_oct_sim / _pa.jun_oct_obs
                 print("  par annee, jours mesures, mm/j :", flush=True)
                 print(_pa.round(2).to_string(), flush=True)
+            # VOLUME PAR ANNEE (2026-10-01) : debit simule et observe, precipitation et ET, sur les
+            # jours ou l'observe existe. Dit si le biais de volume derive d'une periode a l'autre.
+            _va = df.assign(annee=pd.DatetimeIndex(temps)[_ok_t].year).dropna(subset=["Qobs"])
+            _vy = _va.groupby("annee").agg(jours=("Qobs", "size"), P=("P", "mean"), ET=("ET", "mean"), Qobs=("Qobs", "mean"), Qsim=("Qsim", "mean"))
+            _vy["Qsim/Qobs"] = _vy.Qsim / _vy.Qobs
+            _vy["(P-Qobs)"] = _vy.P - _vy.Qobs
+            print("  volume par annee, jours ou le debit observe existe, mm/j :", flush=True)
+            print(_vy.round(2).to_string(), flush=True)
             # Correlation journaliere des debits par saison, 2011 a la fin du chargement.
             _sais = {"hiver (dec-fev)": (12, 1, 2), "printemps (mar-mai)": (3, 4, 5), "ete (jun-aou)": (6, 7, 8), "automne (sep-nov)": (9, 10, 11)}
             _r = []

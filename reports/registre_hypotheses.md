@@ -4666,3 +4666,21 @@ SUITE DE R254, RÉENTRAÎNÉ AVEC LA NEIGE DU PILOTE (thermomètre mouillé −0
 | KGE de validation ; KGE 2024 | 0,749 ; 0,703 | 0,807 ; 0,727 | |
 
 LECTURE. La neige était la cause du déficit de crue : avec le partage du pilote, l'apprentissage garde avril à 0,96 et le manteau rejoint NEISIM. Mais l'étiage se dégrade nettement, minimum à +47 % et volume d'août-septembre à +35 %, et le facteur de fonte passe de la borne de l'isolation à la borne haute de la fonte : un patch masqué par une borne remplace l'autre. Non adoptable en l'état pour l'étiage. Le défaut d'été-automne, déjà présent à +16 à +27 %, est désormais le défaut principal et le seul qui touche l'étiage ; sa cause n'est pas établie.
+
+## R255 — Le surplus de volume du modèle réentraîné est porté par certaines années ; la pluie d'été de CaSR est 15 % au-dessus des stations au sol en moyenne, mais elle n'explique d'une année à l'autre que 2014 (2026-10-01, 13 h 45) — ÉTABLI, lecture sans entraînement et 14 stations GHCN
+
+Modèle de la neige du pilote avec étiage dans la perte (départ à chaud, deux époques). Volume par année sur les jours où le débit observé existe :
+
+| année | Qsim/Qobs | P − Qobs (mm/j) | ET simulée (mm/j) | juin-oct sim/obs (référence R247 A) | CaSR/station, juin-oct |
+| --- | --- | --- | --- | --- | --- |
+| 2011 | 1,12 | 1,70 | 1,55 | 1,28 | 1,04 |
+| 2014 | 1,26 | 1,87 | 1,46 | 1,60 | 1,67 |
+| 2015 | 1,16 | 1,96 | 1,54 | 1,22 | 1,19 |
+| 2016 | 1,18 | 1,89 | 1,52 | 1,52 | 1,14 |
+| 2018 | 0,91 | 1,54 | 1,54 | 0,90 | 1,25 |
+| 2019 | 1,13 | 1,57 | 1,40 | 1,37 | 1,17 |
+| 2023 | 0,94 | 1,12 | 1,46 | 0,89 | 0,97 |
+
+Le volume est trop fort surtout sur les années d'entraînement 2011-2017 (1,05 à 1,26), juste en validation (2018 0,91, 2019 1,13, moyenne 1,01) et sur l'évaluation 2020-2024 (0,94 à 1,06). P − Qobs varie de 1,12 à 1,97 mm/j d'une année à l'autre, l'ET simulée de 1,40 à 1,62. Pluie : `.runs/quebec/pluie_casr_vs_stations.py` (désormais par année, `MEANDRE_PLUIE_ANNEES`, `MEANDRE_PLUIE_MARGE`), 14 stations GHCN à moins de 0,8 degré, 1 351 couples station-mois 2010-2024 : CaSR corrigé (forçage -budyko) vaut 1,15 fois les stations de juin à septembre, 1,41 de décembre à mars (sous-captation de la neige aux stations comprise), 1,26 sur l'année. Corrélation de Spearman entre l'excès de pluie d'été de CaSR et l'excès de débit d'été simulé, par année : 0,22 (p 0,45), 0,02 sans 2014.
+
+LECTURE. En moyenne, une pluie d'été de CaSR 15 % au-dessus des stations est du même ordre que l'excès de débit d'été simulé (16 à 27 %). Mais d'une année à l'autre, la pluie n'explique que 2014 ; 2016, 2011 et 2019 débordent sans surplus de pluie marqué, et 2018 a un surplus de pluie sans débordement. Ce n'est donc pas la seule cause. NON ÉTABLI : ce qui fait déborder ces années-là.

@@ -22,7 +22,8 @@ import xarray as xr
 
 from meandre.utils import paths as _p
 
-A0, A1 = 2005, 2013
+# Fenetre de comparaison ; MEANDRE_PLUIE_ANNEES="2010,2024" la change (2026-10-01).
+A0, A1 = (int(x) for x in os.environ.get("MEANDRE_PLUIE_ANNEES", "2005,2013").split(","))
 
 
 def stations_ghcn():
@@ -39,8 +40,9 @@ def main(paires):
         s = extraire(reg, station)
         c = s["node_coords"].cpu().numpy()
         idx = np.asarray(s["idx"])
-        lon0, lon1 = c[:, 0].min() - 0.3, c[:, 0].max() + 0.3
-        lat0, lat1 = c[:, 1].min() - 0.3, c[:, 1].max() + 0.3
+        _mg = float(os.environ.get("MEANDRE_PLUIE_MARGE", "0.3"))   # marge autour de l'emprise, degres
+        lon0, lon1 = c[:, 0].min() - _mg, c[:, 0].max() + _mg
+        lat0, lat1 = c[:, 1].min() - _mg, c[:, 1].max() + _mg
         proches = st[(st.lon >= lon0) & (st.lon <= lon1) & (st.lat >= lat0) & (st.lat <= lat1)]
         ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
         temps = pd.DatetimeIndex(ds.time.values)
@@ -48,7 +50,9 @@ def main(paires):
         couples = []
         n_st = 0
         for _, r in proches.iterrows():
-            g = pd.read_csv(f"{_p.DATA_ROOT}/ghcn/access/{r.id}.csv", usecols=["DATE", "PRCP"], parse_dates=["DATE"])
+            g = pd.read_csv(f"{_p.DATA_ROOT}/ghcn/access/{r.id}.csv", usecols=lambda c: c in ("DATE", "PRCP"), parse_dates=["DATE"])
+            if "PRCP" not in g.columns:
+                continue   # station sans precipitation (temperature seule)
             g = g[(g.DATE.dt.year >= A0) & (g.DATE.dt.year <= A1)].dropna(subset=["PRCP"])
             if len(g) < 365:
                 continue
@@ -60,7 +64,7 @@ def main(paires):
             m = df.groupby([df.index.year, df.index.month]).agg(st=("st", "sum"), cs=("cs", "sum"), n=("st", "size"))
             m = m[m.n >= 25]
             for (an, mois), row in m.iterrows():
-                couples.append({"station": r.id, "mois": mois, "st": row.st, "cs": row.cs})
+                couples.append({"station": r.id, "annee": an, "mois": mois, "st": row.st, "cs": row.cs})
             n_st += 1
         ds.close()
         t = pd.DataFrame(couples)
@@ -75,6 +79,15 @@ def main(paires):
         print("  " + " ".join(f"{int(m):2d}:{r.rapport:.2f}({r.st:.0f}/{r.cs:.0f})" for m, r in par_mois.iterrows()))
         ete = t[t.mois.isin((6, 7, 8, 9))]; hiv = t[t.mois.isin((12, 1, 2, 3))]
         print(f"  juin-septembre {ete.rapport.median():.2f} | decembre-mars {hiv.rapport.median():.2f} | annee {t.rapport.median():.2f}")
+        # Par annee : sommes CaSR et station sur les memes couples station-mois, annee entiere et
+        # juin-octobre. Dit si le surplus de pluie de CaSR suit les annees ou le debit simule deborde.
+        an_t = t.groupby("annee").agg(st=("st", "sum"), cs=("cs", "sum"))
+        ete_t = t[t.mois.isin((6, 7, 8, 9, 10))].groupby("annee").agg(st_ete=("st", "sum"), cs_ete=("cs", "sum"))
+        par_an = an_t.join(ete_t)
+        par_an["CaSR/station annee"] = par_an.cs / par_an.st
+        par_an["CaSR/station juin-oct"] = par_an.cs_ete / par_an.st_ete
+        print("  par annee, memes couples station-mois :")
+        print(par_an[["CaSR/station annee", "CaSR/station juin-oct"]].round(2).to_string())
 
 
 if __name__ == "__main__":
