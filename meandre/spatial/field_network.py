@@ -958,10 +958,25 @@ class SpatialFieldNetwork(nn.Module):
         variation relative uniforme du champ. Neutre quand l'attribut n'existe pas, ce qui est
         le cas de tout entraînement.
         """
+        from dataclasses import replace as _remplace
+
+        # Gel par VALEUR (2026-10-01) : `freeze_outputs` annule les poids d'une ligne de
+        # fc_out, ce qui ne gele la sortie qu'en depart a froid ; apres un chargement, la ligne
+        # garde ses poids appris et la sortie suit les couches cachees. Ici la carte en vigueur
+        # au premier appel est capturee, puis substituee a chaque appel suivant.
+        attente = getattr(self, "figer_au_prochain_appel", None)
+        if attente:
+            self.valeurs_figees = {n: getattr(sp, n).detach().clone() for n in attente}
+            self.figer_au_prochain_appel = None
+        figees = getattr(self, "valeurs_figees", None)
+        if figees:
+            for nom, val in figees.items():
+                if getattr(sp, nom).shape != val.shape:
+                    raise ValueError(f"carte figee de '{nom}' de forme {tuple(val.shape)}, appel de forme {tuple(getattr(sp, nom).shape)}")
+            sp = _remplace(sp, **figees)
         m = getattr(self, "multiplicateurs", None)
         if not m:
             return sp
-        from dataclasses import replace as _remplace
 
         modifs = {}
         for nom, facteur in m.items():
