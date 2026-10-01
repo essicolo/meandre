@@ -4537,3 +4537,14 @@ Passes avant sur le point de reprise à routage gelé de R247 (bras A), multipli
 LECTURE. La réponse aux orages d'été est commandée par la seule perméabilité de la couche de surface, et un facteur 3 la rend exacte, 0,025 pour 0,025 : c'est le même ordre que le « K_sat_1 six fois trop perméable » diagnostiqué en juillet sur les pointes. Mais à poids figés, l'eau qui ruisselle pendant l'orage n'est plus évaporée plus tard : le volume d'août-septembre monte de 48 %, les jours sous le seuil tombent de 122 à 81, l'automne se dégrade. Le bassin réel fait les deux à la fois, il répond aux orages ET descend plus bas entre eux. Le reste du champ a été réglé pour un sol qui absorbe tout ; la question est s'il se règle autrement quand la surface est moins perméable. La perméabilité de la deuxième couche est sans effet sur les orages et améliore un peu l'étiage, Q7min 1,08 et 127 jours pour 128, sans coût.
 
 CE QUI SUIT. Entraînement avec K_sat_1 × 0,3 fixe, routage gelé, sans puis avec perte d'étiage : le champ ramène-t-il le volume d'été, et la perte d'étiage trouve-t-elle une prise maintenant que le débit d'été a une dynamique.
+
+SUITE DE R248, PERMÉABILITÉ DE SURFACE × 0,3 ET DEMANDE D'ÉVAPORATION RELEVÉE (multiplicateur de K_c, 0,8 au point de reprise), même point de reprise, mêmes jours :
+
+| K_c ; K_sat_1 | ET annuelle (mm/j ; MOD16 1,55 ; bilan P−Qobs 1,65) | Qsim/Qobs annuel | Q7min sim/obs | jours sous Q90 (obs 128) | volume août-sept | réponse aux orages sim/obs | KGE 2024 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0,8 ; 1 | 1,62 | 1,02 | 1,12 | 122 | 1,13 | 0,02 | 0,703 |
+| 0,8 ; 0,3 | 1,61 | 1,03 | 1,20 | 81 | 1,48 | 1,02 | 0,658 |
+| 1,0 ; 0,3 | 1,96 | 0,85 | 0,94 | 203 | 1,37 | 0,94 | 0,553 |
+| 1,2 ; 0,3 | 2,29 | 0,70 | 0,80 | 331 | 1,30 | 0,92 | 0,363 |
+
+LECTURE. L'évaporation ne règle pas le surplus d'été. Pour ramener le volume d'août-septembre de 1,48 à 1,30, il faut évaporer 40 % de plus que le bilan ne le permet ; le minimum passe alors sous l'observé et les jours bas sont 2,6 fois trop nombreux, alors que le volume d'été reste trop fort. Le surplus n'est donc pas dans le débit de base, il est dans les crues d'été : une perméabilité réduite uniformément donne la bonne réponse médiane aux orages, mais trop de réponse aux gros orages (q99 de 1,13 à 1,25). Le bassin réel répond aux orages moyens sans répondre proportionnellement aux gros, ce qu'un seuil unique de perméabilité ne sait pas faire. Hypothèse à juger par l'entraînement en cours : le champ, libre de répartir la perméabilité dans l'espace, en fait une aire contributive (surface peu perméable sur une fraction du bassin, près du réseau), ce qu'une division uniforme ne fait pas.
