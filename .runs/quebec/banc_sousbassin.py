@@ -571,7 +571,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if "ETL_L3_KSUB" in os.environ:
             col.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
         if "ETL_L3_TAULAT" in os.environ:
+            # SANS EFFET quand un profil de sol est declare par MEANDRE_BANC_SOIL_TOML : la
+            # sortie laterale vient alors du profil (mesure 2026-10-01, passe identique a 3 et 8 j).
             col.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
+        if "MEANDRE_RACINES_ECHELLE" in os.environ:
+            col.root_depth_scale = float(os.environ["MEANDRE_RACINES_ECHELLE"])
+            print(f"  racines : profondeur x {col.root_depth_scale:g}", flush=True)
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
             col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), apprise=os.environ.get("ETL_NAPPE_APPRIS") == "1")
         return m
@@ -829,6 +834,26 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             # Humidite des couches, en fraction de la porosite imposee par le calage.
             _sp = m.spatial_encoder(coords, terr.data)
             _ths = getattr(m.vertical_column, "_static", {}).get("soil", {})
+            if os.environ.get("MEANDRE_BANC_PARAMS_SOL") and isinstance(_ths, dict):
+                # Proprietes du sol en vigueur, medianes et quartiles sur les noeuds (2026-10-01).
+                for _nom in sorted(_ths):
+                    _v = _ths[_nom]
+                    if torch.is_tensor(_v) and _v.numel() > 1:
+                        _q = torch.quantile(_v.float().flatten().cpu(), torch.tensor([0.25, 0.5, 0.75]))
+                        print(f"  sol {_nom} : mediane {_q[1]:.4g}, quartiles {_q[0]:.4g} a {_q[2]:.4g}", flush=True)
+                    elif torch.is_tensor(_v) or isinstance(_v, (int, float)):
+                        print(f"  sol {_nom} : {float(_v):.4g}", flush=True)
+                # Audit des 43 sorties du champ (2026-10-01) : une sortie UNIFORME (centiles 1 et
+                # 99 a moins de 1 % l'un de l'autre) est soit gelee, soit collee a une borne.
+                from dataclasses import fields as _dcf2
+                for _f in _dcf2(type(_sp)):
+                    _v = getattr(_sp, _f.name)
+                    if not torch.is_tensor(_v) or _v.numel() < 2:
+                        continue
+                    _v = _v.float().flatten().cpu()
+                    _q = torch.quantile(_v, torch.tensor([0.01, 0.5, 0.99]))
+                    _unif = float(_q[2] - _q[0]) <= 0.01 * max(abs(float(_q[1])), 1e-12)
+                    print(f"  champ {_f.name} : mediane {_q[1]:.4g}, centiles 1 et 99 {_q[0]:.4g} a {_q[2]:.4g}{'  UNIFORME' if _unif else ''}", flush=True)
             for _k in (1, 2, 3):
                 _th = getattr(_d, f"theta{_k}", None)
                 _por = _ths.get(f"thetas{_k}") if isinstance(_ths, dict) else None
@@ -852,6 +877,77 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                         _comp[f"dispo{_k}"] = _moy((_th.to(dev) - _pf) / (_cc - _pf).clamp(min=1e-6))
             _comp["gel_cm"] = _moy(getattr(_d, "prof_gel_cm", None))
             _comp["apport"] = _moy(getattr(_d, "snowmelt", None))
+            # Equivalent en eau de la neige moyen du mois (mm) et pluie liquide (mm/j) : P - apport
+            # se lit alors comme accumulation du manteau, et le biais d'hiver se localise (2026-10-01).
+            _comp["swe"] = _moy(getattr(_d, "swe", None))
+            _fn = f"{_p.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
+            if os.path.exists(_fn):
+                # NEISIM (modele du gouvernement, valide sur CanSWE) aux memes noeuds, moyenne ponderee.
+                _z = np.load(_fn)
+                _ti = pd.DatetimeIndex(_z["times"])
+                _col = np.searchsorted(_z["node_idx"], np.asarray(s["idx"]))
+                _vz = _z["valeurs"][:, _col]
+                _wn = _w.detach().cpu().numpy().ravel()
+                _ok = np.isfinite(_vz)
+                _sw = np.where(_ok, _vz, 0.0) @ _wn / np.maximum(_ok.astype(float) @ _wn, 1e-9)
+                _sw[~_ok.any(axis=1)] = np.nan
+                _comp["swe_neisim"] = pd.Series(_sw, index=_ti).reindex(pd.DatetimeIndex(temps)).to_numpy()
+            # CanSWE aux noeuds du sous-bassin qui portent un site (2026-10-01) : couples
+            # journaliers mesure / simule / NEISIM, moyennes par mois, mesure OBSERVEE et non modele.
+            try:
+                from meandre.data.basin_cache import BasinCache as _BCs
+                _mes, _sit = _BCs(s["base"]).load_canswe(str(temps[0].date()), str(temps[-1].date()))
+            except Exception as _e:
+                _mes = None
+                print(f"  CanSWE : lecture impossible ({_e})", flush=True)
+            if _mes is not None and not _mes.empty:
+                _rang = {int(v): k for k, v in enumerate(s["idx"])}
+                _dans = _mes["node_idx"].isin(_rang)
+                if not _dans.any() and _sit is not None and {"lat", "lon"} <= set(_sit.columns):
+                    # Aucun site sur un noeud du sous-bassin : on prend les sites a moins de
+                    # 15 km d'un noeud du sous-bassin (meme rayon que R113), rattaches au
+                    # noeud le plus proche, pour comparer le manteau sur le meme climat.
+                    _nc = s["node_coords"].detach().cpu().numpy()
+                    _la, _lo = np.radians(_nc[:, 1]), np.radians(_nc[:, 0])
+                    _prox = {}
+                    for _, _r in _sit.iterrows():
+                        if not (np.isfinite(_r["lat"]) and np.isfinite(_r["lon"])):
+                            continue
+                        _dl = np.radians(_r["lat"]) - _la
+                        _dn = np.radians(_r["lon"]) - _lo
+                        _h = np.sin(_dl / 2) ** 2 + np.cos(_la) * np.cos(np.radians(_r["lat"])) * np.sin(_dn / 2) ** 2
+                        _dk = 2 * 6371.0 * np.arcsin(np.sqrt(_h))
+                        if _dk.min() <= 15.0:
+                            _prox[_r["swe_station_id"]] = int(_dk.argmin())
+                    _mes = _mes[_mes["swe_station_id"].isin(_prox)].copy()
+                    _mes["local"] = _mes["swe_station_id"].map(_prox).astype(int)
+                    print(f"  CanSWE : aucun site sur un noeud du sous-bassin ; {len(_prox)} sites a moins de 15 km rattaches au noeud le plus proche", flush=True)
+                else:
+                    _mes = _mes[_dans].copy()
+                    _mes["local"] = _mes["node_idx"].map(_rang).astype(int)
+                if _mes.empty:
+                    print("  CanSWE : aucun site dans ou pres du sous-bassin", flush=True)
+                else:
+                    _pos = {d: k for k, d in enumerate(pd.DatetimeIndex(temps).normalize())}
+                    _mes["t"] = _mes["date"].map(lambda x: _pos.get(pd.Timestamp(x).normalize()))
+                    _mes = _mes[_mes["t"].notna()].copy()
+                    _mes["t"] = _mes["t"].astype(int)
+                    _swe_sim = _d.swe.detach().cpu().numpy()
+                    _mes["sim"] = _swe_sim[_mes["t"].values, _mes["local"].values]
+                    if "swe_neisim" in _comp and os.path.exists(_fn):
+                        _ri = {d: k for k, d in enumerate(_ti)}
+                        _mes["tn"] = _mes["date"].map(lambda x: _ri.get(pd.Timestamp(x).normalize()))
+                        _ok_n = _mes["tn"].notna()
+                        _mes["neisim"] = np.nan
+                        # _vz est deja restreint aux noeuds du sous-bassin, dans l'ordre local.
+                        _mes.loc[_ok_n, "neisim"] = _vz[_mes.loc[_ok_n, "tn"].astype(int).values, _mes.loc[_ok_n, "local"].values]
+                    _mes["mois"] = pd.DatetimeIndex(_mes["date"]).month
+                    _g = _mes.groupby("mois").agg(n=("swe_mm", "size"), obs=("swe_mm", "mean"), sim=("sim", "mean"), neisim=("neisim", "mean") if "neisim" in _mes else ("sim", "size"))
+                    _g["sim/obs"] = _g["sim"] / _g["obs"]
+                    if "neisim" in _mes:
+                        _g["neisim/obs"] = _g["neisim"] / _g["obs"]
+                    print(f"  CanSWE, {_mes.swe_station_id.nunique()} sites dans le sous-bassin, {len(_mes)} couples, mm d'equivalent en eau :", flush=True)
+                    print(_g.round(2).to_string(), flush=True)
             _tnt = getattr(_d, "temps_non_traite", None)
             if _tnt is not None:
                 _comp["non_traite"] = _moy(_tnt)

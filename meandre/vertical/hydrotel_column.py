@@ -1186,7 +1186,9 @@ class HydrotelColumn(nn.Module):
         for (pct, jbp_t, leaf_t, root_t), _nom in zip(pheno, _noms):
             _etp_cl = _sans_forme if (_sans_forme is not None and _nom not in _cl_pheno) else etp
             etp_classes.append(_etp_cl * pct / 1000.0)
-            roots.append(_interp1d(d, jbp_t, root_t).expand_as(P))
+            # `root_depth_scale` (defaut 1,0, pose par le pilote) multiplie la profondeur
+            # racinaire de toutes les classes : epreuve de l'extraction profonde (R216).
+            roots.append((_interp1d(d, jbp_t, root_t) * float(getattr(self, "root_depth_scale", 1.0))).expand_as(P))
             _lf = getattr(self, "_lai_forme", None)
             if _lf is not None and _cl_pheno is not None and _nom not in _cl_pheno:
                 # Classe qui ne perd pas ses feuilles (coniferes, milieux humides, ouverts) :
