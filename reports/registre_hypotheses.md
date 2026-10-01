@@ -4505,7 +4505,7 @@ SUITE DE R246, SECONDE GRAINE ET BASSIN À LACS, routage du pilote :
 
 LECTURE, deux graines sur deux bassins et une sur le troisième. La perte d'étiage au poids actuel donne un effet reproductible : elle améliore toujours le volume d'été et le minimum, peu là où l'étiage était presque juste (Outaouais, Châteauguay : 2 à 8 %), beaucoup là où il était très faux (bassin à lacs : volume d'été de +67 à +17 %, minimum de 2,69 à 2,00). Elle coûte toujours du KGE, 0,02 à 0,07, surtout par l'hiver, et sur le bassin à lacs elle fait tomber le volume annuel de 24 %. Le soutien d'étiage, rapport de deux quantiles, et le terme direct poussent ensemble ; leur somme de 2,3 est trop lourde face au KGE à 1,0. Un seul terme d'étiage, plus léger, est la variante à essayer. Le temps de transfert de l'Outaouais s'effondre sur la borne avec ou sans terme d'étiage (85 à 92 %).
 
-## R247 — À routage gelé à 24 h, la perte d'étiage ne change rien à l'étiage de l'Outaouais et coûte 0,06 de KGE : ses gains antérieurs passaient par le routage (2026-10-01, nuit) — ÉTABLI, Outaouais, graine 1234 ; seconde graine en cours
+## R247 — À routage gelé à 24 h, l'effet de la perte d'étiage sur l'Outaouais dépend de la graine : nul sur l'une, fort et peu coûteux sur l'autre (2026-10-01, nuit) — CORRIGÉ À 6 H APRÈS LA SECONDE GRAINE, Outaouais, deux graines ; le titre initial, « ne change rien, ses gains passaient par le routage », tiré d'une seule graine, est RÉFUTÉ
 
 Longue fenêtre (entraînement 2010-2017, évaluation 2020-2024 sur les jours mesurés), quatre époques, deux sous-pas, temps de transfert et pondération de Muskingum gelés à 24 h, taux des têtes × 10, prélèvements réels, MOD16 centré. A sans terme d'étiage ; B terme direct 1,0, soutien 1,0, logarithmes 0,3.
 
@@ -4548,3 +4548,28 @@ SUITE DE R248, PERMÉABILITÉ DE SURFACE × 0,3 ET DEMANDE D'ÉVAPORATION RELEV�
 | 1,2 ; 0,3 | 2,29 | 0,70 | 0,80 | 331 | 1,30 | 0,92 | 0,363 |
 
 LECTURE. L'évaporation ne règle pas le surplus d'été. Pour ramener le volume d'août-septembre de 1,48 à 1,30, il faut évaporer 40 % de plus que le bilan ne le permet ; le minimum passe alors sous l'observé et les jours bas sont 2,6 fois trop nombreux, alors que le volume d'été reste trop fort. Le surplus n'est donc pas dans le débit de base, il est dans les crues d'été : une perméabilité réduite uniformément donne la bonne réponse médiane aux orages, mais trop de réponse aux gros orages (q99 de 1,13 à 1,25). Le bassin réel répond aux orages moyens sans répondre proportionnellement aux gros, ce qu'un seuil unique de perméabilité ne sait pas faire. Hypothèse à juger par l'entraînement en cours : le champ, libre de répartir la perméabilité dans l'espace, en fait une aire contributive (surface peu perméable sur une fraction du bassin, près du réseau), ce qu'une division uniforme ne fait pas.
+
+SUITE DE R247, GRAINE 777 :
+
+| Outaouais, 2020-2024, routage gelé | A graine 1234 | B graine 1234 | A graine 777 | B graine 777 | observé |
+| --- | --- | --- | --- | --- | --- |
+| Q7min sim/obs | 1,12 | 1,12 | 1,10 | 0,97 | 1,00 |
+| jours sous le Q90 observé | 122 | 120 | 128 | 160 | 128 |
+| volume août-septembre sim/obs | 1,13 | 1,12 | 1,12 | 1,03 | 1,00 |
+| ET annuelle (mm/j) ; Qsim/Qobs | 1,62 ; 1,02 | 1,64 ; 1,01 | 1,62 ; 1,02 | 1,70 ; 0,97 | |
+| KGE | 0,749 | 0,689 | 0,724 | 0,711 | |
+| corrélation hiver ; été | 0,85 ; 0,81 | 0,76 ; 0,78 | 0,85 ; 0,81 | 0,80 ; 0,79 | |
+
+LECTURE CORRIGÉE. Sur la graine 777, la perte d'étiage corrige le minimum (1,10 à 0,97) et le volume d'été (1,12 à 1,03), en dépassant un peu le nombre de jours bas, pour 0,013 de KGE ; elle le fait par la colonne, en évaporant 5 % de plus. Sur la graine 1234, elle ne bouge pas l'étiage et coûte 0,06. Le bras sans perte d'étiage est reproductible (0,749 et 0,724, étiage identique à 2 % près) ; le bras avec ne l'est pas. La perte d'étiage a donc une prise sans passer par le routage, mais l'optimiseur ne la trouve qu'une fois sur deux en quatre époques. Ce qui reste établi : le routage libre lui offre un raccourci (R245, R246), et le modèle gelé sans perte d'étiage est le plus solide sur ce sous-bassin.
+
+## R249 — Entraîné avec la perméabilité de surface divisée par 3, le champ spatial annule la division : la réponse aux orages d'été retombe à zéro et le modèle redevient celui de référence (2026-10-01, 6 h 30) — ÉTABLI, Outaouais, une graine, routage gelé
+
+Multiplicateur fixe K_sat_1 × 0,3 appliqué après la sortie du champ, pendant tout l'entraînement, perte sans terme d'étiage, longue fenêtre.
+
+| Outaouais, 2020-2024 | référence (R247 A, graine 1234) | K_sat_1 × 0,3 en passe avant (R248) | K_sat_1 × 0,3 entraîné |
+| --- | --- | --- | --- |
+| réponse aux orages d'été sim/obs | 0,001 / 0,025 | 0,025 / 0,025 | 0,000 / 0,025 |
+| Q7min ; jours sous Q90 (obs 128) ; volume août-sept | 1,12 ; 122 ; 1,13 | 1,20 ; 81 ; 1,48 | 1,12 ; 128 ; 1,13 |
+| KGE ; corrélation été | 0,749 ; 0,81 | (2024 seul 0,658) ; 0,81 | 0,720 ; 0,80 |
+
+LECTURE. L'optimiseur remonte la sortie du champ jusqu'à compenser le facteur 3 : il préfère activement un sol qui absorbe tous les orages d'été. La fonction objectif, KGE, biais et écart quadratique sur un routage de 24 h, paie moins cher un débit d'été plat qu'une réponse aux orages imparfaitement placée dans le temps ; c'est la préférence pour le lissage déjà mesurée sur les termes de pics (2026-09-20), qui touche ici l'étiage. Un multiplicateur ne peut pas imposer la perméabilité ; il faudrait geler la sortie, ou une perte qui récompense la réponse aux orages.
