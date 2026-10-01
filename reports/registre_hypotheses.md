@@ -4491,3 +4491,16 @@ Routage du pilote : deux sous-pas de 12 h, bornes 4 à 48 h, initialisé à 24 h
 | temps de transfert : médiane ; part à la borne de 4 h | 4,2 h ; 81 % | 4,2 h ; 87 % | 4,9 h ; 29 % | 5,3 h ; 29 % |
 
 LECTURE. L'effondrement du temps de transfert sur sa borne basse n'est pas propre aux sous-pas fins : au schéma du pilote, il atteint 81 à 87 % des tronçons de l'Outaouais, sous la borne de 7,5 h où le gradient s'annule. La corrélation d'été de l'Outaouais vaut alors 0,45 à 0,53, contre 0,80 pour la même configuration la nuit précédente (R232 suite), dont le routage de l'Outaouais était GELÉ à sa valeur initiale par le script de cette nuit-là, ce qui n'avait pas été relevé. Libre, le routage de l'Outaouais s'effondre quel que soit le schéma, et c'est la cause dominante de la dégradation d'été sur ce bassin. Sur la Châteauguay, il descend moins (29 % à la borne) et l'été tient à 0,80. Au poids actuel, la perte d'étiage améliore le minimum de 3 à 9 % mais coûte 0,08 de KGE en Outaouais et 0,19 sur la Châteauguay, dont l'hiver passe de 0,83 à 0,53 ; elle est trop lourde. L'épreuve qui isole la perte d'étiage du routage, Outaouais routage gelé, A et B, deux graines, est en file.
+
+SUITE DE R246, SECONDE GRAINE ET BASSIN À LACS, routage du pilote :
+
+| 2020-2024, jours mesurés | Outaouais Apil → Bpil (graine 777) | Châteauguay Apil → Bpil (graine 777) | Saint-Laurent nord-ouest Apil → Bpil (graine 1234) |
+| --- | --- | --- | --- |
+| Q7min sim/obs | 1,14 → 1,12 | 1,27 → 1,22 | 2,69 → 2,00 |
+| jours sous le Q90 (obs 128 ; 148 ; 127) | 123 → 131 | 218 → 230 | 26 → 85 |
+| volume août-septembre sim/obs | 1,10 → 1,03 | 1,07 → 1,02 | 1,67 → 1,17 |
+| KGE ; beta | 0,651 ; 0,93 → 0,618 ; 0,91 | 0,802 ; 0,88 → 0,736 ; 0,84 | 0,569 ; 0,96 → 0,547 ; 0,76 |
+| corrélation hiver ; été | 0,72 ; 0,52 → 0,55 ; 0,44 | 0,84 ; 0,81 → 0,71 ; 0,69 | 0,69 ; 0,50 → 0,63 ; 0,39 |
+| temps de transfert, médiane ; à la borne | 4,1 h ; 92 % → 4,2 h ; 85 % | 5,4 h ; 19 % → 7,5 h ; 1 % | 5,3 h ; 19 % → 13,2 h ; 0 % |
+
+LECTURE, deux graines sur deux bassins et une sur le troisième. La perte d'étiage au poids actuel donne un effet reproductible : elle améliore toujours le volume d'été et le minimum, peu là où l'étiage était presque juste (Outaouais, Châteauguay : 2 à 8 %), beaucoup là où il était très faux (bassin à lacs : volume d'été de +67 à +17 %, minimum de 2,69 à 2,00). Elle coûte toujours du KGE, 0,02 à 0,07, surtout par l'hiver, et sur le bassin à lacs elle fait tomber le volume annuel de 24 %. Le soutien d'étiage, rapport de deux quantiles, et le terme direct poussent ensemble ; leur somme de 2,3 est trop lourde face au KGE à 1,0. Un seul terme d'étiage, plus léger, est la variante à essayer. Le temps de transfert de l'Outaouais s'effondre sur la borne avec ou sans terme d'étiage (85 à 92 %).
