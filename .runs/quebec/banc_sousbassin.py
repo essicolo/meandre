@@ -1321,8 +1321,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # court entierement nul (cinq pas d'Adam a taux presque nul).
     tconf = TrainingConfig(n_epochs=epoques, lr=lr, chunk_steps=int(chunk), tbptt_steps=365,
                            grad_clip=1.0, w_prior=0.005, w_latent_reg=0.0,
-                           best_metric=("nll" if quantile else "kge_median"),
+                           # Choix du point de reprise (2026-10-01) : par la PERTE de debit sur
+                           # la validation des que l'etiage est dans la perte, sinon le KGE seul
+                           # choisissait et l'etiage ne comptait pas dans le modele retenu.
+                           # MEANDRE_BANC_CHOIX=kge_median ou val_loss force le choix.
+                           best_metric=("nll" if quantile else os.environ.get("MEANDRE_BANC_CHOIX", "val_loss" if (float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")) > 0 or float(w_fdc) > 0) else "kge_median")),
                            autopilot=False, warmup_epochs=0)
+    print(f"  choix du point de reprise : {tconf.best_metric}", flush=True)
     ck = f"{_p.DATA_ROOT}/quebec/sousbassin/best-{reg}-{station}{tag}.pt"
     os.makedirs(os.path.dirname(ck), exist_ok=True)
     if charger:

@@ -507,6 +507,15 @@ class Trainer:
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in nappe_params)]
                 groups.append({"params": nappe_params, "lr": self.config.lr * 20.0, "weight_decay": 0.0})
                 logger.info("Discriminative LR: nappe scalaires=%.1e (20x), wd=0", self.config.lr * 20.0)
+            # Parametres appris du profil de sol declare (2026-10-01) : scalaires en espace
+            # logarithmique, taux x 50 pour qu'un facteur 3 a 10 soit atteignable en une
+            # centaine de pas ; taux nominal pris de MEANDRE_LR_MULT_SOL si pose.
+            soil_params = [p for name, p in model.named_parameters() if "soil_learn_" in name]
+            if soil_params:
+                _ms = float(os.environ.get("MEANDRE_LR_MULT_SOL", "50"))
+                base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in soil_params)]
+                groups.append({"params": soil_params, "lr": self.config.lr * _ms, "weight_decay": 0.0})
+                logger.info("Discriminative LR: profil de sol appris=%.1e (%gx), wd=0", self.config.lr * _ms, _ms)
             if gdd_threshold_params:
                 base_params[:] = [p for p in base_params
                                   if id(p) not in set(id(g) for g in gdd_threshold_params)]
@@ -2247,6 +2256,44 @@ class Trainer:
         return loss.detach(), {k: v.detach() for k, v in components.items()}
 
     def _val_epoch(self) -> dict[str, float]:
+        """Validation, plus la PERTE DE DEBIT sur la periode de validation (cle « loss »).
+
+        Le choix du meilleur point de reprise par `best_metric = "val_loss"` lisait une cle
+        « loss » que la validation ne remplissait jamais (2026-10-01) : seul le KGE de
+        validation pouvait choisir, et le terme d'etiage, present dans la perte
+        d'entrainement, ne jouait aucun role dans le modele retenu. On calcule ici les
+        termes de debit de la perte, avec ses poids, sur la serie de validation entiere.
+        """
+        out = self._val_epoch_metriques()
+        q = getattr(self, "_val_series", None)
+        if q is not None and self.loss_fn is not None:
+            out["loss"] = self._perte_debit_validation(*q)
+        return out
+
+    def _perte_debit_validation(self, q_obs_val: Tensor, q_sim_val: Tensor) -> float:
+        """Termes de debit de la perte, memes poids, par station puis moyennes ponderees."""
+        from meandre.training.loss import (differentiable_kge_loss, differentiable_pbias_loss,
+                                           differentiable_log_mse_loss, differentiable_etiage_loss,
+                                           differentiable_fdc_bas_loss)
+        lf = self.loss_fn
+        termes = []
+        for s in range(q_sim_val.shape[1]):
+            v = ~torch.isnan(q_obs_val[:, s]) & ~torch.isnan(q_sim_val[:, s])
+            if int(v.sum()) < 30:
+                continue
+            qo, qs = q_obs_val[v, s].float(), q_sim_val[v, s].float()
+            t = getattr(lf, "w_kge", 0.0) * differentiable_kge_loss(qo, qs)
+            t = t + getattr(lf, "w_pbias", 0.0) * differentiable_pbias_loss(qo, qs)
+            if getattr(lf, "w_log_mse", 0.0) > 0:
+                t = t + lf.w_log_mse * differentiable_log_mse_loss(qo, qs)
+            if getattr(lf, "w_etiage", 0.0) > 0:
+                t = t + lf.w_etiage * differentiable_etiage_loss(qo, qs)
+            if getattr(lf, "w_fdc_bas", 0.0) > 0:
+                t = t + lf.w_fdc_bas * differentiable_fdc_bas_loss(qo, qs)
+            termes.append(float(t))
+        return float(sum(termes) / len(termes)) if termes else float("inf")
+
+    def _val_epoch_metriques(self) -> dict[str, float]:
         _etat_continu_val = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
         """Validation: simulate val period, compute evaluation metrics.
 
@@ -2335,6 +2382,8 @@ class Trainer:
         q_obs_val = data.q_obs[:n_val]  # (T_val, n_stations)
 
         q_sim_at_stations = Q_sim[:, data.station_mask]
+        # Series gardees pour la perte de debit de validation (_val_epoch).
+        self._val_series = (q_obs_val.detach(), q_sim_at_stations.detach())
 
         # ── Per-station KGE (consistent with per_station loss) ────────
         from meandre.utils.metrics import kge as _kge_fn
