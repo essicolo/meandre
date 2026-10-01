@@ -533,6 +533,17 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         sn = load_passage_pluie_neige(plat)
         if sn:
             col.t_neige_seuil = sn
+        # PARTAGE PLUIE-NEIGE ET FONTE SAISONNIERE DU PILOTE (2026-10-01). Le banc gardait le
+        # seuil AIR du projet et une fonte constante, alors que la recette du pilote (socle)
+        # pose le bulbe humide a -0,8 degre et l'amplitude de fonte 0,5, systeme nival repare
+        # par R37. Memes cles que le pilote ; absentes = ancien banc.
+        if "ETL_SEUIL_TWB" in os.environ:
+            col.split_mode = "wet_bulb"
+            col.t_neige_seuil = float(os.environ["ETL_SEUIL_TWB"])
+            print(f"  partage pluie-neige au bulbe humide, seuil {col.t_neige_seuil:+.2f} degres", flush=True)
+        if "ETL_MELT_SAISON" in os.environ:
+            col.melt_seasonal_amp = float(os.environ["ETL_MELT_SAISON"])
+            print(f"  fonte saisonniere, amplitude {col.melt_seasonal_amp:g}", flush=True)
         col.set_land_cover(load_occupation_sol(plat, s["node_ids"], device=dev))
         if sol:
             z1 = float(getattr(col, "z1", 0.15))
@@ -562,8 +573,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _profile = _soil_proc.from_toml(_cfg.get("soil"))
             if _profile is None:
                 raise SystemExit("MEANDRE_BANC_SOIL_TOML : aucun processus declare dans [soil]")
-            col.soil_profile = _profile
-            print(f"  profil de sol declare : {_profile.layers} couches, {len(_profile.processes)} processus", flush=True)
+            _appris = col.declare_soil_profile(_profile)
+            print(f"  profil de sol declare : {_profile.layers} couches, {len(_profile.processes)} processus, appris : {', '.join(_appris) or 'aucun'}", flush=True)
             for _pr in _profile.processes:
                 print(f"    couche {_pr.layer} {_pr.kind} {_pr.form} {_pr.params}", flush=True)
         if "ETL_L3_TAU" in os.environ:
@@ -833,6 +844,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _comp = {"surf": _moy(getattr(_d, "prod_surf", None)), "hypo": _moy(getattr(_d, "prod_hypo", None)), "nappe": _moy(getattr(_d, "q_baseflow", None))}
             # Humidite des couches, en fraction de la porosite imposee par le calage.
             _sp = m.spatial_encoder(coords, terr.data)
+            for _nom, (_val, _u) in m.vertical_column.soil_learned_values().items():
+                print(f"  profil appris {_nom} : {_val:.4g} {_u}", flush=True)
             _ths = getattr(m.vertical_column, "_static", {}).get("soil", {})
             if os.environ.get("MEANDRE_BANC_PARAMS_SOL") and isinstance(_ths, dict):
                 # Proprietes du sol en vigueur, medianes et quartiles sur les noeuds (2026-10-01).
@@ -876,6 +889,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     if _th is not None:
                         _comp[f"dispo{_k}"] = _moy((_th.to(dev) - _pf) / (_cc - _pf).clamp(min=1e-6))
             _comp["gel_cm"] = _moy(getattr(_d, "prof_gel_cm", None))
+            _comp["recharge"] = _moy(getattr(_d, "recharge", None))
             _comp["apport"] = _moy(getattr(_d, "snowmelt", None))
             # Equivalent en eau de la neige moyen du mois (mm) et pluie liquide (mm/j) : P - apport
             # se lit alors comme accumulation du manteau, et le biais d'hiver se localise (2026-10-01).
@@ -957,6 +971,62 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  bilan mensuel, {os.path.basename(_ck)}, mm/j, moyennes 2011-{int(pd.DatetimeIndex(temps).year.max())} :", flush=True)
             print(t.round(2).to_string(), flush=True)
             print(f"  annee : P {df.P.mean():.2f}, ET {df.ET.mean():.2f}, MOD16 {np.nanmean(df.MOD16):.2f}, Qobs {np.nanmean(df.Qobs):.2f}, Qsim {df.Qsim.mean():.2f}, P-Qobs {df.P.mean() - np.nanmean(df.Qobs):.2f}", flush=True)
+            # STOCK PAR RESERVOIR (2026-10-01), mm, moyenne du mois moins moyenne annuelle, a cote
+            # du stock OBSERVE du bassin : cumul de P - MOD16 - Qobs, debiaise de son residu annuel
+            # moyen (MOD16 n'est pas ferme sur le bilan), puis centre. Dit quel reservoir porte
+            # la mise en reserve d'automne et la restitution d'avril, et lequel manque.
+            _stk = {}
+            _zs = {k: _ths.get(f"z{k}") for k in (1, 2, 3)} if isinstance(_ths, dict) else {}
+            for _k in (1, 2, 3):
+                _th = getattr(_d, f"theta{_k}", None)
+                _z = _zs.get(_k)
+                if _th is not None and _z is not None:
+                    _stk[f"sol{_k}"] = _moy(_th.to(dev) * (_z.to(dev) if torch.is_tensor(_z) else float(_z)) * 1000.0)
+            for _nom, _att in (("neige", "swe"), ("nappe", "s_gw"), ("mh", "wet_vol"), ("canopee", "canopy")):
+                _v = getattr(_d, _att, None)
+                if _v is not None:
+                    _stk[_nom] = _moy(_v)
+            if _stk:
+                _ds = pd.DataFrame({"mois": _mois, **_stk})[_ok_t]
+                _ann = pd.DatetimeIndex(temps)[_ok_t].year
+                _clim = _ds.groupby("mois").mean()
+                _clim = _clim - _clim.mean()
+                _clim["total"] = _clim.sum(axis=1)
+                _r = (df.P - df.MOD16 - df.Qobs)
+                _rs = (df.P - df.ET - df.Qsim)
+                _jours = pd.Series(pd.DatetimeIndex(temps)[_ok_t].days_in_month, index=df.index)
+                _mo = (_r.groupby(df.mois).mean() - _r.mean()) * _jours.groupby(df.mois).mean()
+                _ms = (_rs.groupby(df.mois).mean() - _rs.mean()) * _jours.groupby(df.mois).mean()
+                # Stock de fin de mois par cumul ; on le ramene au milieu du mois et on le centre.
+                _co = _mo.cumsum() - _mo / 2.0
+                _cs = _ms.cumsum() - _ms / 2.0
+                _clim["obs P-MOD16-Q"] = _co - _co.mean()
+                _clim["sim P-ET-Q"] = _cs - _cs.mean()
+                print(f"  stock par reservoir, mm, ecart a la moyenne annuelle (obs = cumul de P - MOD16 - Qobs debiaise) :", flush=True)
+                print(_clim.round(0).to_string(), flush=True)
+            if mesure is not None:
+                # Debit mensuel sur les SEULS jours mesures (2026-10-01) : l'hiver observe est aux
+                # trois quarts reconstruit sous glace (R98) ; ce tableau separe le defaut du
+                # modele de celui de la reference.
+                _dm = df.assign(mes=mesure[_ok_t])
+                _tm = _dm[_dm.mes].groupby("mois").agg(jours=("Qobs", "size"), Qobs=("Qobs", "mean"), Qsim=("Qsim", "mean"))
+                _tt = _dm.groupby("mois").agg(Qobs_tous=("Qobs", "mean"), Qsim_tous=("Qsim", "mean"))
+                _tm = _tm.join(_tt)
+                _tm["sim/obs mesures"] = _tm.Qsim / _tm.Qobs
+                _tm["sim/obs tous"] = _tm.Qsim_tous / _tm.Qobs_tous
+                print("  debit par mois, jours mesures contre tous les jours, mm/j :", flush=True)
+                print(_tm.round(2).to_string(), flush=True)
+                # Par annee, sur jours mesures : avril, et juin a octobre (2026-10-01). Dit si les
+                # deux ecarts sont systematiques ou portes par quelques evenements.
+                _dm["annee"] = pd.DatetimeIndex(temps)[_ok_t].year
+                _m = _dm[_dm.mes]
+                _av = _m[_m.mois == 4].groupby("annee").agg(avril_obs=("Qobs", "mean"), avril_sim=("Qsim", "mean"))
+                _et = _m[_m.mois.isin((6, 7, 8, 9, 10))].groupby("annee").agg(jun_oct_obs=("Qobs", "mean"), jun_oct_sim=("Qsim", "mean"))
+                _pa = _av.join(_et, how="outer")
+                _pa["avril sim/obs"] = _pa.avril_sim / _pa.avril_obs
+                _pa["jun-oct sim/obs"] = _pa.jun_oct_sim / _pa.jun_oct_obs
+                print("  par annee, jours mesures, mm/j :", flush=True)
+                print(_pa.round(2).to_string(), flush=True)
             # Correlation journaliere des debits par saison, 2011 a la fin du chargement.
             _sais = {"hiver (dec-fev)": (12, 1, 2), "printemps (mar-mai)": (3, 4, 5), "ete (jun-aou)": (6, 7, 8), "automne (sep-nov)": (9, 10, 11)}
             _r = []
