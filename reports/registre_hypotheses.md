@@ -4462,3 +4462,17 @@ Longue fenêtre (entraînement 2010-2017, validation 2018-2019, évaluation 2020
 LECTURE. La perte d'étiage fait ce qu'on attend d'elle sur cinq années hors entraînement : le biais du minimum de sept jours passe de 19 à 2 %, celui du volume d'été de +11 à −4 %, avec un léger dépassement sur le nombre de jours sous le seuil. Le KGE ne recule pas. En revanche, dès que le routage peut descendre sous 7,5 h, sur la longue fenêtre et même au taux ordinaire, l'optimiseur colle le temps de transfert à sa borne basse d'une heure ; la corrélation d'été tombe à 0,51-0,58 et la corrélation globale à 0,68-0,74, contre 0,80 pour la même configuration avec le routage du pilote la nuit précédente (R232 suite). Un temps de transfert d'une heure par tronçon n'est pas faux physiquement, mais la génération n'a pas été réglée pour lui. Le routage à sous-pas fins n'est pas adopté en l'état.
 
 SUITE. La perte d'étiage est rejugée avec le routage tel qu'il est dans le pilote (deux sous-pas, bornes 4 à 48 h), deux graines, Outaouais et Châteauguay, puis le bassin à lacs : c'est la version déployable par un simple changement de perte.
+
+SUITE DE R245, CHÂTEAUGUAY 030905, mêmes trois configurations, graine 1234 :
+
+| Châteauguay, 2020-2024, jours mesurés | A | B | C | observé |
+| --- | --- | --- | --- | --- |
+| Q7min sim/obs | 1,27 | 1,19 | 1,23 | 1,00 |
+| jours sous le Q90 observé | 218 | 220 | 216 | 148 |
+| volume août-septembre sim/obs | 1,07 | 1,07 | 1,10 | 1,00 |
+| KGE ; r ; gamma | 0,796 ; 0,85 ; 0,95 | 0,705 ; 0,76 ; 1,12 | 0,774 ; 0,82 ; 0,95 | |
+| corrélation hiver ; été | 0,84 ; 0,79 | 0,61 ; 0,83 | 0,80 ; 0,72 | |
+| réponse aux orages d'été sim/obs | 0,01 | 0,02 | 0,02 | |
+| temps de transfert, médiane | (non lu) | 2,2 h | 3,3 h | |
+
+Sur ce bassin, la perte d'étiage n'améliore que le minimum (1,27 à 1,19) et coûte 0,09 de KGE, l'hiver passant de 0,84 à 0,61. Le défaut d'étiage y est d'une autre nature qu'en Outaouais : la simulation passe déjà trop de jours sous le seuil observé, 218 pour 148, tout en gardant un minimum annuel trop haut. L'étiage simulé est trop long et pas assez profond, et un écart sur les logarithmes des jours bas ne sait pas corriger cette forme. Le routage ne s'y effondre pas sur la borne basse (2 à 3 h de médiane, 0 à 26 % à la borne). La réponse aux orages d'été reste nulle sous toutes les configurations sur ce bassin agricole.
