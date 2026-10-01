@@ -4652,3 +4652,17 @@ Le manteau passe au-dessus de NEISIM parce que le modèle a appris un facteur de
 AUDIT CLÉ PAR CLÉ DE LA CONFIGURATION SOCLE CONTRE LE BANC, 26 clés de recette et 10 sections. Équivalents : sol imposé sauf conductivités, sans codes latents, nappe libre et ses huit constantes, schéma semi-implicite, 64 sous-pas, état et KGE continus, poids MOD16 0,4 centré, Penman, porte de gel continue, phénologie (mêmes paramètres en forêt), profil de sol déclaré identique, routage par opérateur à deux sous-pas et bornes 4 à 48 h. Différences qui restent, assumées ou à trancher : (1) PERTE : le pilote porte GRACE en forme à 0,2, les logarithmes à 0,3, les pics à 0,5 et un terme physique à 0,01 ; le banc n'en porte aucun. Le terme de pics paie l'aplatissement (2026-09-20) : c'est au pilote de le retirer, pas au banc de l'ajouter. (2) NIVEAU D'ÉVAPOTRANSPIRATION : le pilote ancre K_c par un prior de littérature à 0,6, le banc par un multiplicateur fixe à 0,8 (forêt) ou 0,5 (agriculture) ; deux mécanismes différents pour la même grandeur. (3) ENTRAÎNEMENT : décroissance des poids 2e-4 contre 1e-4, autopilote et cinq époques de montée au pilote, aucun au banc. (4) Incohérences internes au socle : `[model] use_latent_codes = true` contredit `ETL_NO_LATENT = 1` (la variable gagne) ; `[loss] w_et = 1.0` contredit `ETL_WET = 0.4` (R238). Clés mortes des deux côtés : `rain_hours_min/max` (ruissellement hortonien éteint), `ETL_KGW_FIELD`, `MEANDRE_KGW_MODULE` (aquifère restituant remplacé par la nappe), `melt_factor_scale` (ignoré sous fonte spatiale).
 
 CORRECTIF DE STRUCTURE À FAIRE. Le banc relit les réglages un par un, sous des noms qui lui sont propres ; c'est ce qui a laissé passer la neige. Il doit appliquer la même recette que le pilote, par `appliquer_recette` sur le fichier socle, et n'ajouter que ce qui lui est propre (fenêtres, station).
+
+SUITE DE R254, RÉENTRAÎNÉ AVEC LA NEIGE DU PILOTE (thermomètre mouillé −0,8 °C, fonte saisonnière 0,5), même entraînement que R247 A, graine 1234, jours mesurés 2011-2024 :
+
+| | référence R247 A | neige du pilote, entraîné | observé |
+| --- | --- | --- | --- |
+| avril sim/obs | 0,81 | 0,96 | 1 |
+| août ; septembre ; octobre sim/obs | 1,27 ; 1,21 ; 1,26 | 1,48 ; 1,56 ; 1,50 | 1 |
+| Q7min 2020-2024 ; jours sous Q90 (obs 128) ; volume août-sept | 1,12 ; 122 ; 1,13 | 1,47 ; 58 ; 1,35 | 1 ; 128 ; 1 |
+| manteau de mars / NEISIM | 0,84 | 1,08 | |
+| facteur de fonte appris, borne 8 | 6,19 | 7,99, COLLÉ À LA BORNE | |
+| isolation du gel par la neige, borne 6 | 5,99, collée | 0,84 | |
+| KGE de validation ; KGE 2024 | 0,749 ; 0,703 | 0,807 ; 0,727 | |
+
+LECTURE. La neige était la cause du déficit de crue : avec le partage du pilote, l'apprentissage garde avril à 0,96 et le manteau rejoint NEISIM. Mais l'étiage se dégrade nettement, minimum à +47 % et volume d'août-septembre à +35 %, et le facteur de fonte passe de la borne de l'isolation à la borne haute de la fonte : un patch masqué par une borne remplace l'autre. Non adoptable en l'état pour l'étiage. Le défaut d'été-automne, déjà présent à +16 à +27 %, est désormais le défaut principal et le seul qui touche l'étiage ; sa cause n'est pas établie.
