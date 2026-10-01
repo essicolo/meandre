@@ -4521,3 +4521,19 @@ Longue fenêtre (entraînement 2010-2017, évaluation 2020-2024 sur les jours me
 LECTURE. Le bras A est le meilleur résultat de l'Outaouais sur la longue fenêtre, toutes configurations confondues : KGE 0,749 et corrélation d'été 0,81, contre 0,62 à 0,69 et 0,44 à 0,58 quand le routage est libre (R245, R246). Son étiage est déjà proche de l'observé sur le nombre de jours bas, 122 pour 128, et trop haut de 12 % sur le minimum et de 13 % sur le volume d'été. Sur ce modèle la perte d'étiage n'a aucune prise : les trois grandeurs d'étiage bougent de moins de 2 %, et tout le reste se dégrade. Les gains d'étiage de R245 et R246 venaient donc du routage, que l'optimiseur raccourcissait pour creuser les récessions, pas d'un réglage de la production. Cela rejoint R237 (les constantes de nappe ne bougent pas) et R239 (le défaut est une variabilité d'été manquante) : aucune sortie apprenable de la colonne ne règle l'étiage. L'orage d'été typique ne fait pas monter le débit simulé, médiane 0,001 contre 0,025 observé ; seuls les plus gros orages répondent, ce que montre le composite moyen.
 
 CE QUI SUIT. Ne plus régler le poids de la perte d'étiage tant qu'aucun mécanisme de la colonne ne produit d'écoulement rapide d'été. Passes avant sur ce point de reprise : perméabilité de surface et de la deuxième couche divisées par 3 et 10.
+
+## R248 — Divisée par 3, la perméabilité de surface rend exactement la réponse observée aux orages d'été, sans entraînement ; mais elle gonfle le volume d'été de moitié : il manque au modèle un étiage plus bas entre les orages, pas seulement des orages (2026-10-01, 5 h) — ÉTABLI EN PASSE AVANT, Outaouais, point de reprise de R247 A
+
+Passes avant sur le point de reprise à routage gelé de R247 (bras A), multiplicateurs fixes sur les champs de conductivité à saturation, 2020-2024, jours mesurés. La première ligne rend exactement R247 A, contrôle du protocole.
+
+| multiplicateur | réponse aux orages d'été sim/obs | Q7min sim/obs | jours sous Q90 (obs 128) | volume août-sept | corrélation été ; automne | pointe annuelle 2024 ; q99 | KGE 2024 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| aucun | 0,02 | 1,12 | 122 | 1,13 | 0,81 ; 0,90 | 0,82 ; 1,13 | 0,703 |
+| K_sat_1 × 0,3 | 1,02 | 1,20 | 81 | 1,48 | 0,81 ; 0,78 | 0,86 ; 1,25 | 0,658 |
+| K_sat_1 × 0,1 | 3,06 | 1,30 | 17 | 2,34 | 0,77 ; 0,65 | 0,97 ; 1,42 | 0,540 |
+| K_sat_2 × 0,3 | 0,04 | 1,08 | 127 | 1,13 | 0,82 ; 0,90 | 0,83 ; 1,14 | 0,706 |
+| K_sat_1 et K_sat_2 × 0,3 | 1,05 | 1,17 | 88 | 1,47 | 0,81 ; 0,78 | 0,86 ; 1,25 | 0,661 |
+
+LECTURE. La réponse aux orages d'été est commandée par la seule perméabilité de la couche de surface, et un facteur 3 la rend exacte, 0,025 pour 0,025 : c'est le même ordre que le « K_sat_1 six fois trop perméable » diagnostiqué en juillet sur les pointes. Mais à poids figés, l'eau qui ruisselle pendant l'orage n'est plus évaporée plus tard : le volume d'août-septembre monte de 48 %, les jours sous le seuil tombent de 122 à 81, l'automne se dégrade. Le bassin réel fait les deux à la fois, il répond aux orages ET descend plus bas entre eux. Le reste du champ a été réglé pour un sol qui absorbe tout ; la question est s'il se règle autrement quand la surface est moins perméable. La perméabilité de la deuxième couche est sans effet sur les orages et améliore un peu l'étiage, Q7min 1,08 et 127 jours pour 128, sans coût.
+
+CE QUI SUIT. Entraînement avec K_sat_1 × 0,3 fixe, routage gelé, sans puis avec perte d'étiage : le champ ramène-t-il le volume d'été, et la perte d'étiage trouve-t-elle une prise maintenant que le débit d'été a une dynamique.
