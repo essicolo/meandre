@@ -4476,3 +4476,18 @@ SUITE DE R245, CHÂTEAUGUAY 030905, mêmes trois configurations, graine 1234 :
 | temps de transfert, médiane | (non lu) | 2,2 h | 3,3 h | |
 
 Sur ce bassin, la perte d'étiage n'améliore que le minimum (1,27 à 1,19) et coûte 0,09 de KGE, l'hiver passant de 0,84 à 0,61. Le défaut d'étiage y est d'une autre nature qu'en Outaouais : la simulation passe déjà trop de jours sous le seuil observé, 218 pour 148, tout en gardant un minimum annuel trop haut. L'étiage simulé est trop long et pas assez profond, et un écart sur les logarithmes des jours bas ne sait pas corriger cette forme. Le routage ne s'y effondre pas sur la borne basse (2 à 3 h de médiane, 0 à 26 % à la borne). La réponse aux orages d'été reste nulle sous toutes les configurations sur ce bassin agricole.
+
+## R246 — Au routage du pilote aussi, le temps de transfert de l'Outaouais s'effondre sur sa borne basse et l'été se dégrade ; au poids actuel, la perte d'étiage coûte cher en KGE pour un gain d'étiage modeste (2026-10-01, nuit) — ÉTABLI, graine 1234 ; seconde graine en cours
+
+Routage du pilote : deux sous-pas de 12 h, bornes 4 à 48 h, initialisé à 24 h, taux des têtes × 10, longue fenêtre. Apil sans terme d'étiage ; Bpil avec le terme direct 1,0, le soutien 1,0 et les logarithmes 0,3.
+
+| 2020-2024, jours mesurés | Outaouais Apil | Outaouais Bpil | Châteauguay Apil | Châteauguay Bpil |
+| --- | --- | --- | --- | --- |
+| Q7min sim/obs | 1,17 | 1,14 | 1,27 | 1,18 |
+| jours sous le Q90 (obs 128 et 148) | 115 | 131 | 218 | 224 |
+| volume août-septembre sim/obs | 1,12 | 1,07 | 1,07 | 1,11 |
+| KGE ; r | 0,679 ; 0,71 | 0,600 ; 0,62 | 0,797 ; 0,85 | 0,611 ; 0,68 |
+| corrélation été ; hiver | 0,53 ; 0,74 | 0,45 ; 0,75 | 0,80 ; 0,83 | 0,83 ; 0,53 |
+| temps de transfert : médiane ; part à la borne de 4 h | 4,2 h ; 81 % | 4,2 h ; 87 % | 4,9 h ; 29 % | 5,3 h ; 29 % |
+
+LECTURE. L'effondrement du temps de transfert sur sa borne basse n'est pas propre aux sous-pas fins : au schéma du pilote, il atteint 81 à 87 % des tronçons de l'Outaouais, sous la borne de 7,5 h où le gradient s'annule. La corrélation d'été de l'Outaouais vaut alors 0,45 à 0,53, contre 0,80 pour la même configuration la nuit précédente (R232 suite), dont le routage de l'Outaouais était GELÉ à sa valeur initiale par le script de cette nuit-là, ce qui n'avait pas été relevé. Libre, le routage de l'Outaouais s'effondre quel que soit le schéma, et c'est la cause dominante de la dégradation d'été sur ce bassin. Sur la Châteauguay, il descend moins (29 % à la borne) et l'été tient à 0,80. Au poids actuel, la perte d'étiage améliore le minimum de 3 à 9 % mais coûte 0,08 de KGE en Outaouais et 0,19 sur la Châteauguay, dont l'hiver passe de 0,83 à 0,53 ; elle est trop lourde. L'épreuve qui isole la perte d'étiage du routage, Outaouais routage gelé, A et B, deux graines, est en file.
