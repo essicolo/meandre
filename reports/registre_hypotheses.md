@@ -4504,3 +4504,20 @@ SUITE DE R246, SECONDE GRAINE ET BASSIN À LACS, routage du pilote :
 | temps de transfert, médiane ; à la borne | 4,1 h ; 92 % → 4,2 h ; 85 % | 5,4 h ; 19 % → 7,5 h ; 1 % | 5,3 h ; 19 % → 13,2 h ; 0 % |
 
 LECTURE, deux graines sur deux bassins et une sur le troisième. La perte d'étiage au poids actuel donne un effet reproductible : elle améliore toujours le volume d'été et le minimum, peu là où l'étiage était presque juste (Outaouais, Châteauguay : 2 à 8 %), beaucoup là où il était très faux (bassin à lacs : volume d'été de +67 à +17 %, minimum de 2,69 à 2,00). Elle coûte toujours du KGE, 0,02 à 0,07, surtout par l'hiver, et sur le bassin à lacs elle fait tomber le volume annuel de 24 %. Le soutien d'étiage, rapport de deux quantiles, et le terme direct poussent ensemble ; leur somme de 2,3 est trop lourde face au KGE à 1,0. Un seul terme d'étiage, plus léger, est la variante à essayer. Le temps de transfert de l'Outaouais s'effondre sur la borne avec ou sans terme d'étiage (85 à 92 %).
+
+## R247 — À routage gelé à 24 h, la perte d'étiage ne change rien à l'étiage de l'Outaouais et coûte 0,06 de KGE : ses gains antérieurs passaient par le routage (2026-10-01, nuit) — ÉTABLI, Outaouais, graine 1234 ; seconde graine en cours
+
+Longue fenêtre (entraînement 2010-2017, évaluation 2020-2024 sur les jours mesurés), quatre époques, deux sous-pas, temps de transfert et pondération de Muskingum gelés à 24 h, taux des têtes × 10, prélèvements réels, MOD16 centré. A sans terme d'étiage ; B terme direct 1,0, soutien 1,0, logarithmes 0,3.
+
+| Outaouais 040110, 2020-2024 | A | B | observé |
+| --- | --- | --- | --- |
+| Q7min sim/obs | 1,12 | 1,12 | 1,00 |
+| jours sous le Q90 observé | 122 | 120 | 128 |
+| volume août-septembre sim/obs | 1,13 | 1,12 | 1,00 |
+| KGE ; r ; beta ; gamma | 0,749 ; 0,82 ; 0,96 ; 0,83 | 0,689 ; 0,77 ; 0,94 ; 0,80 | |
+| corrélation hiver ; printemps ; été ; automne | 0,85 ; 0,88 ; 0,81 ; 0,90 | 0,76 ; 0,85 ; 0,78 ; 0,87 | |
+| réponse aux orages d'été sim/obs (médiane des hausses sur 3 jours rapportées à la pluie) | 0,001 / 0,025 | 0,000 / 0,025 | |
+
+LECTURE. Le bras A est le meilleur résultat de l'Outaouais sur la longue fenêtre, toutes configurations confondues : KGE 0,749 et corrélation d'été 0,81, contre 0,62 à 0,69 et 0,44 à 0,58 quand le routage est libre (R245, R246). Son étiage est déjà proche de l'observé sur le nombre de jours bas, 122 pour 128, et trop haut de 12 % sur le minimum et de 13 % sur le volume d'été. Sur ce modèle la perte d'étiage n'a aucune prise : les trois grandeurs d'étiage bougent de moins de 2 %, et tout le reste se dégrade. Les gains d'étiage de R245 et R246 venaient donc du routage, que l'optimiseur raccourcissait pour creuser les récessions, pas d'un réglage de la production. Cela rejoint R237 (les constantes de nappe ne bougent pas) et R239 (le défaut est une variabilité d'été manquante) : aucune sortie apprenable de la colonne ne règle l'étiage. L'orage d'été typique ne fait pas monter le débit simulé, médiane 0,001 contre 0,025 observé ; seuls les plus gros orages répondent, ce que montre le composite moyen.
+
+CE QUI SUIT. Ne plus régler le poids de la perte d'étiage tant qu'aucun mécanisme de la colonne ne produit d'écoulement rapide d'été. Passes avant sur ce point de reprise : perméabilité de surface et de la deuxième couche divisées par 3 et 10.
