@@ -1363,6 +1363,16 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
 
 
 def main():
+    # RECETTE DU PILOTE (2026-10-01). Le banc relisait les reglages un par un, sous ses propres
+    # noms, et a tourne une semaine sans la neige du socle (R254). ETL_CONFIG pose la MEME
+    # recette que le pilote, par la meme fonction, sans ecraser une variable deja posee.
+    if os.environ.get("ETL_CONFIG"):
+        import tomllib
+        from meandre.utils.recette import appliquer_recette
+        with open(os.environ["ETL_CONFIG"], "rb") as _f:
+            _rec = tomllib.load(_f).get("recette")
+        _pos = appliquer_recette(_rec)
+        print(f"  recette du pilote {os.path.basename(os.environ['ETL_CONFIG'])} : {len(_pos)} reglage(s) poses depuis le fichier", flush=True)
     ap = argparse.ArgumentParser()
     ap.add_argument("region")
     ap.add_argument("station", nargs="?")
