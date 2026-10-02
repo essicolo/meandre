@@ -1047,6 +1047,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             if _tnt is not None:
                 _comp["non_traite"] = _moy(_tnt)
             df = pd.DataFrame({"mois": _mois, "P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS, **_comp})[_ok_t]
+            if os.environ.get("MEANDRE_BANC_SERIES"):
+                # Series journalieres moyennees sur le bassin, en mm/j, pour l'analyse hors banc.
+                pd.DataFrame({"P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS, **_comp}, index=pd.DatetimeIndex(temps)).to_parquet(os.environ["MEANDRE_BANC_SERIES"])
+                print(f"  series journalieres ecrites dans {os.environ['MEANDRE_BANC_SERIES']}", flush=True)
             t = df.groupby("mois").mean()
             t["P-Qobs"] = t.P - t.Qobs
             print(f"  bilan mensuel, {os.path.basename(_ck)}, mm/j, moyennes 2011-{int(pd.DatetimeIndex(temps).year.max())} :", flush=True)
