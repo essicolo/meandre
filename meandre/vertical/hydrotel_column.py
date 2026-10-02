@@ -1265,6 +1265,29 @@ class HydrotelColumn(nn.Module):
             melt_mm = torch.clamp(apport - pluie, min=0.0)
             w_rain = pluie / torch.clamp(pluie + melt_mm, min=1e-6)
             storm_hours = w_rain * storm_hours + (1.0 - w_rain) * 24.0
+        # TRANSPIRATION FREINEE PAR LE SOL FROID (2026-10-02, opt-in MEANDRE_TRANSP_TSOL_REF en
+        # degres). Les racines prelevent mal dans un sol gele ou froid : la colonne laissait
+        # pourtant l'ETR de chaque couche ne dependre que de son humidite, d'ou une ET de
+        # printemps au-dessus de MOD16 (+0,5 a 0,7 mm/j en mai-juillet sur le bassin a lacs).
+        # Facteur continu par couche, f = 1 - exp(-softplus(T) / T_ref), T moyenne du profil
+        # de Rankinen sur la couche : nul sous zero, proche de 1 quand le sol est chaud.
+        _tref = os.environ.get("MEANDRE_TRANSP_TSOL_REF")
+        if _tref is not None and self.use_frost and frost_profile is not None and frost_profile.dim() == 2:
+            _nd = frost_profile.shape[1]
+            _dz = float(getattr(self.frost, "dz", 0.05))
+            _prof = torch.arange(_nd, device=frost_profile.device, dtype=frost_profile.dtype) * _dz
+            _z1 = torch.as_tensor(pe["z11"], device=frost_profile.device, dtype=frost_profile.dtype)
+            _z2 = _z1 + torch.as_tensor(pe["z22"], device=frost_profile.device, dtype=frost_profile.dtype)
+            _z3 = _z2 + torch.as_tensor(pe["z33"], device=frost_profile.device, dtype=frost_profile.dtype)
+            _bornes = [(torch.zeros_like(_z1), _z1), (_z1, _z2), (_z2, _z3)]
+            _fact = []
+            for _haut, _bas in _bornes:
+                _m = ((_prof[None, :] >= _haut.reshape(-1, 1)) & (_prof[None, :] < _bas.reshape(-1, 1))).to(frost_profile.dtype)
+                _m = _m.expand_as(frost_profile)
+                _tk = (frost_profile * _m).sum(dim=1) / _m.sum(dim=1).clamp(min=1.0)
+                _tk = torch.where(_m.sum(dim=1) > 0, _tk, frost_profile[:, -1])
+                _fact.append(1.0 - torch.exp(-torch.nn.functional.softplus(_tk) / float(_tref)))
+            e1, e2, e3 = e1 * _fact[0], e2 * _fact[1], e3 * _fact[2]
         # ETR RAPPORTEE A LA SURFACE DE SOL (2026-10-02). Les classes d'ETR sont ponderees par
         # leur part du TRONCON, dont la somme vaut fsa : e1..e3 sont donc des lames du tronçon.
         # Le sol les retirait comme des lames par unite de surface de SOL, puis sa production
