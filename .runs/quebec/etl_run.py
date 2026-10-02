@@ -114,6 +114,9 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
                    # rapport ne prefere JAMAIS le lissage, sur 77 stations, trois seuils
                    # et trois durees.
                    ("ETL_WPEAKRATIO", "w_peak_ratio"),
+                   # ETIAGE DIRECT (2026-10-01) : ecart absolu des logarithmes sur les jours
+                   # sous le 30e centile observe, meme terme qu'au banc de sous-bassin.
+                   ("ETL_WETIAGE", "w_etiage"),
                    # VITESSE DE VIDANGE (2026-09-21). Seul terme dont la reponse a la
                    # partition entre ecoulement hypodermique et nappe n'est pas confondue
                    # avec le volume : 0,0001 contre 0,20 pour le terme de variations.
@@ -1281,9 +1284,15 @@ tconf = TrainingConfig(
     tws_shape_only=os.environ.get("ETL_TWS_FORME", str(int(tcfg.get("tws_shape_only", 0)))) == "1",
     w_prior=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_prior", 0.005)),
     w_latent_reg=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_latent_reg", 1e-3)),
-    best_metric="kge_median",
+    # Choix du point de reprise (2026-10-01) : par la perte de debit sur la validation des que
+    # l'etiage est dans la perte ; avec le KGE seul, l'etiage ne comptait pas dans le modele
+    # retenu. ETL_CHOIX force kge_median ou val_loss.
+    best_metric=os.environ.get("ETL_CHOIX", "val_loss" if (lcfg.get("w_etiage", 0.0) > 0 or lcfg.get("w_fdc_bas", 0.0) > 0) else "kge_median"),
     # autopilot du TOML : LR plateau + garde-fou régression (sans lui, GASP/MONT-etl
     # divergeaient après le pic epoch ~7-12, val -0.15 non rattrapée — bug 2026-07-22)
+    # Montee du taux : cinq epoques par defaut, ce qui vide un entrainement de huit epoques ;
+    # ETL_WARMUP la regle (2026-10-01).
+    warmup_epochs=int(os.environ.get("ETL_WARMUP", "5")),
     autopilot=bool(tcfg.get("autopilot", True)),
     autopilot_grace_epochs=int(tcfg.get("autopilot_grace_epochs", 8)),
     autopilot_lr_patience=int(tcfg.get("autopilot_lr_patience", 6)),

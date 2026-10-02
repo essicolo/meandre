@@ -258,6 +258,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         # pointes (0.82 du pic observe apres six epoques contre 0.76 sans lui) et
         # gagne 0.008 de KGE et 0.015 de gamma.
         w_dq=lcfg.get("w_dq", 0.0), w_fdc_bas=lcfg.get("w_fdc_bas", 0.0),
+        w_etiage=lcfg.get("w_etiage", 0.0),
         w_dq_log=lcfg.get("w_dq_log", 0.0),
         # KGE DECOMPOSE, RAPPORT DES POINTES ET VITESSE DE VIDANGE (2026-09-21). Ces cinq
         # poids etaient poses dans la configuration, imprimes par le pilote, et jamais

@@ -4684,3 +4684,26 @@ Modèle de la neige du pilote avec étiage dans la perte (départ à chaud, deux
 Le volume est trop fort surtout sur les années d'entraînement 2011-2017 (1,05 à 1,26), juste en validation (2018 0,91, 2019 1,13, moyenne 1,01) et sur l'évaluation 2020-2024 (0,94 à 1,06). P − Qobs varie de 1,12 à 1,97 mm/j d'une année à l'autre, l'ET simulée de 1,40 à 1,62. Pluie : `.runs/quebec/pluie_casr_vs_stations.py` (désormais par année, `MEANDRE_PLUIE_ANNEES`, `MEANDRE_PLUIE_MARGE`), 14 stations GHCN à moins de 0,8 degré, 1 351 couples station-mois 2010-2024 : CaSR corrigé (forçage -budyko) vaut 1,15 fois les stations de juin à septembre, 1,41 de décembre à mars (sous-captation de la neige aux stations comprise), 1,26 sur l'année. Corrélation de Spearman entre l'excès de pluie d'été de CaSR et l'excès de débit d'été simulé, par année : 0,22 (p 0,45), 0,02 sans 2014.
 
 LECTURE. En moyenne, une pluie d'été de CaSR 15 % au-dessus des stations est du même ordre que l'excès de débit d'été simulé (16 à 27 %). Mais d'une année à l'autre, la pluie n'explique que 2014 ; 2016, 2011 et 2019 débordent sans surplus de pluie marqué, et 2018 a un surplus de pluie sans débordement. Ce n'est donc pas la seule cause. NON ÉTABLI : ce qui fait déborder ces années-là.
+
+## R256 — Le forçage utilisé depuis juillet, décrachiné puis recalé sur Budyko, gonfle de 24 % les grosses pluies d'été ; le CaSR brut colle aux stations et règle les deux tiers de l'excès d'été sans réentraîner (2026-10-01, soir) — ÉTABLI, 12 stations GHCN et passes avant, Outaouais
+
+La décision de reprendre CaSR brut (Essi, sur conseil d'Ouranos, inscrite au registre le 2026-08-31) n'a jamais été appliquée : le forçage `-budyko` du 16 juillet, décrachiné à 0,3 mm/h puis recalé sur le bilan de Budyko, a servi au banc et au pilote. Le seuil, jamais balayé, retire 24 % du volume (R96) ; le recalage le remet sur moins d'heures. Forçage brut construit par `build_forcing_region.py` avec `DRIZZLE_H=0 QC_CASR_BRUT=1 QC_SUFFIXE=-casr-brut` (jour local, sans décrachinage ni recalage) : Outaouais 1 088 mm/an, Montérégie 1 172, Saint-Laurent nord-ouest 1 091.
+
+| 12 stations GHCN autour du sous-bassin 040110, juin-octobre 2010-2024 | CaSR corrigé | CaSR brut | stations |
+| --- | --- | --- | --- |
+| part des jours de pluie (≥ 0,2 mm) | 0,36 | 0,47 | 0,43 |
+| part des jours de 0,2 à 2 mm | 0,09 | 0,19 | 0,15 |
+| pluie totale (mm/j) | 4,05 | 3,67 | 3,50 |
+| pluie des jours de 10 mm et plus (mm/j) | 3,20 | 2,63 | 2,59 |
+
+Passe avant, même modèle (neige du pilote, étiage dans la perte), forçage remplacé : débit simulé sur observé, août 1,45 → 1,12, septembre 1,41 → 1,08, octobre 1,40 → 1,13 ; Q7min 2020-2024 1,36 → 1,18, jours sous Q90 76 → 120 pour 128, volume août-septembre 1,28 → 1,01 ; avril 0,96 → 0,94 ; KGE 2024 0,743 → 0,770. Sur ce sous-bassin la pluie brute n'est que 5 % plus faible à l'année ; le défaut était la distribution vers les grosses pluies. Porte de dégel sous la neige sur ce forçage : étiage un peu meilleur (1,13 ; 127 jours) mais décembre trop fort et février trop faible, non retenue. Couche 2 rendue 30 fois plus perméable à poids figés : tout se dégrade (KGE 0,597).
+
+LECTURE. L'excès de débit d'été, cause directe de l'étiage trop haut, venait de la correction du forçage. La recette du forçage n'était dans aucune configuration ni aucun point de reprise ; seul le suffixe de fichier la nommait.
+
+## R257 — Huit sorties du champ en borne dure passées en borne douce, bornes dans une table unique remplaçable par le TOML ; la validation calcule enfin la perte et le choix du point de reprise peut porter sur l'étiage ; mais réentraîné sur le CaSR brut, le modèle dégrade encore l'étiage de 2020-2024 (2026-10-01, soir) — CODE ÉTABLI, TESTS ; CAUSE DE LA DÉGRADATION OUVERTE
+
+Code. `field_network.py` : table `FIELD_BOUNDS`, `[field.bounds]` du TOML par `field_bounds_from_toml` (avec les clés z2/z3/rain_hours de `[soil]`, que le pilote ne transmettait pas), sigmoïde en log pour K_sat_1-3, k_gw, krec, k_sub et lacs, centre et pente des anciennes lois conservés (`tests/test_bornes_douces.py`). `trainer.py` : `_val_epoch` remplit la clé « loss » (termes de débit, mêmes poids, terme d'étiage compris), que `best_metric = "val_loss"` lisait sans qu'elle existe (`tests/test_perte_validation.py`). Banc et pilote choisissent sur elle dès qu'un terme d'étiage est actif (`MEANDRE_BANC_CHOIX`, `ETL_CHOIX`). Pilote : `ETL_WETIAGE`, `ETL_WARMUP` (cinq époques de montée vidaient un essai de huit).
+
+Épreuve, Outaouais, départ à chaud du modèle neige du pilote, CaSR brut, deux époques, étiage dans la perte : même époque retenue par le KGE et par la perte de validation, donc même modèle. Perte de validation 2018-2019 0,667 → 0,554 ; KGE de validation 0,926 ; mais sur 2020-2024 Q7min 1,18 → 1,30, jours sous Q90 120 → 81, volume août-septembre 1,01 → 1,13, ET annuelle 1,51 → 1,42 mm/j. La conductivité de la couche 2 reste à 0,37 mm/j malgré la borne douce, et le facteur de fonte à 7,9 pour une borne de 8 : préférences de la perte, plus des pièges numériques.
+
+LECTURE. L'entraînement améliore la perte, étiage compris, sur les années qu'il voit et dégrade l'étiage sur des années jamais vues ; pour la troisième fois de la journée, il fait baisser l'ET et le surplus sort l'été. Cause non établie.
