@@ -614,17 +614,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         col.set_land_cover(_lc)
         if os.environ.get("MEANDRE_BANC_LACS_DIFFUS"):
             # LACS HORS RESEAU (2026-10-02), epreuve "c,k,beta" : surface = eau libre de
-            # l'occupation moins les lacs routes, part drainee rd = c x fraction, loi de vidange
+            # l'occupation moins les lacs routes, part drainee rd = 1 - exp(-c x fraction), loi de vidange
             # q = f k h^beta. Voir HydroModel.set_distributed_lakes.
             _c, _kd, _bd = (float(x) for x in os.environ["MEANDRE_BANC_LACS_DIFFUS"].split(","))
             _Al = terr.get_physical("area_km2_local").to(dev)
             _route = torch.as_tensor(_alac, dtype=torch.float32, device=dev) if "_alac" in locals() else torch.zeros_like(_Al)
             _route = torch.where(g.is_lake.bool().to(dev), _route, torch.zeros_like(_route))
             _fd = torch.clamp(_lc["f_water_raw"].to(dev) - _route / _Al.clamp(min=1e-6), 0.0, 1.0)
-            _rdd = torch.clamp(_c * _fd, 0.0, 1.0)
-            m.set_distributed_lakes(_fd, _rdd, _kd, _bd)
+            _appris = tuple(x for x in os.environ.get("MEANDRE_BANC_LACS_DIFFUS_LEARN", "").split(",") if x)
+            m.set_distributed_lakes(_fd, _c, _kd, _bd, learn=_appris)
+            _rdd = 1.0 - torch.exp(-_c * _fd)
             _wa = (_Al / _Al.sum())
-            print(f"  lacs hors reseau : eau libre {float((_fd * _wa).sum()):.3f} du bassin, part drainee {float((_rdd * _wa).sum()):.2f}, k {_kd:g}, beta {_bd:g}", flush=True)
+            print(f"  lacs hors reseau : eau libre {float((_fd * _wa).sum()):.3f} du bassin, part drainee {float((_rdd * _wa).sum()):.2f}, c {_c:g}, k {_kd:g}, beta {_bd:g}, appris : {', '.join(_appris) or 'aucun'}", flush=True)
         if os.environ.get("MEANDRE_BANC_PHENO_PROJET", "1") == "1":
             from meandre.data.hydrotel_calib import load_phenologie
             _ph = load_phenologie(plat)
@@ -938,6 +939,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _sp = m.spatial_encoder(coords, terr.data)
             for _nom, (_val, _u) in m.vertical_column.soil_learned_values().items():
                 print(f"  profil appris {_nom} : {_val:.4g} {_u}", flush=True)
+            if getattr(m, "_distributed_lakes", None) is not None:
+                _vl = m.distributed_lakes_values()
+                print(f"  lacs hors reseau : k {float(_vl['k']):.4g}, c {float(_vl['c']):.4g}", flush=True)
             _ths = getattr(m.vertical_column, "_static", {}).get("soil", {})
             if os.environ.get("MEANDRE_BANC_PARAMS_SOL") and isinstance(_ths, dict):
                 # Proprietes du sol en vigueur, medianes et quartiles sur les noeuds (2026-10-01).

@@ -4887,3 +4887,21 @@ Mécanisme (`HydroModel.set_distributed_lakes`, banc `MEANDRE_BANC_LACS_DIFFUS=c
 | rd 0,91, k 0,4 | 4,59 | 7,47 | 6,93 | 3,90 | 1,90 | 1,34 | −4 ; −8 | 0,650 | 0,79 | 1,01 |
 
 LECTURE. Le calendrier de la crue se replace dans le sens attendu et d'autant plus que le stockage est lent ; fin mai et début juin tombent justes à k 0,1. Deux coûts à poids figés : le volume annuel passe de 1,50 à 1,43 mm/j (évaporation des lacs, 0,07 mm/j, pour une ET totale de 1,46 contre 1,44 pour MOD16), et le KGE 2024 baisse par gamma (0,97 à 0,59-0,81), les pointes d'orage d'été et d'automne étant laminées par des lacs traversés par 91 % de la production. Ce que seul un entraînement dira : si k et rd appris, avec le reste du champ, gardent le calendrier de la crue en rendant le volume d'été et les pointes.
+
+## R269 — Entraînés deux époques, les lacs hors réseau gardent le calendrier de la crue du bassin 052805 mais laminent trop les orages d'été sur les deux bassins ; k et c n'ont presque pas bougé ; la chute de l'ET à 1,05 mm/j sur 052805 vient de la configuration entraînée, pas des lacs (2026-10-02, 18 h 40) — ÉTABLI, deux bassins, une graine, deux époques, témoin sans lacs
+
+Même banc que R263 plus couvert nival dans Penman et frein du sol froid à 1 °C ; lacs hors réseau initialisés à c 20, k 0,2, beta 1,5, k et c appris (taux × 50, espace logarithmique).
+
+| | 052805 témoin | 052805 lacs | 040110 témoin | 040110 lacs |
+| --- | --- | --- | --- | --- |
+| ET annuelle (MOD16) | 1,05 (1,44) | 1,06 (1,44) | 1,35 (1,55) | 1,49 (1,55) |
+| débit annuel (obs) | 1,83 (1,50) | 1,77 (1,50) | 2,08 (1,99) | 1,85 (1,99) |
+| avance de la crue, 50 % ; 75 % (j) | 6 ; 6 | 1 ; 2 | 2 ; 4 | −1 ; 7 |
+| mi-mai, mm/j (obs) | 2,85 (3,89) | 4,27 (3,89) | 3,20 (2,98) | 4,38 (2,98) |
+| réponse aux pluies d'été, sim/obs | 1,76 | 0,35 | 0,52 | 0,24 |
+| volume août-sept, sim/obs | 1,67 | 1,47 | 1,04 | 0,68 |
+| Q7min, sim/obs | 2,04 | 2,20 | 1,22 | 0,86 |
+| KGE 2024 | 0,802 | 0,514 | 0,734 | 0,400 |
+| k ; c appris | | 0,223 ; 17,9 | | 0,244 ; 21,9 |
+
+LECTURE. Sur 052805, le stockage replace la crue après entraînement comme en passe avant. Mais une part traversante de 62 à 72 % de la production lamine les orages d'été (0,24 à 0,35 de la réponse observée) et, sur l'Outaouais où la crue n'était qu'en avance de 2 à 4 jours, retarde trop mai. Les scalaires appris ont bougé de 10 %, trop peu pour corriger un départ mal posé. Le niveau d'ET de 052805 est faux dans les deux bras : le couvert nival et le frein du sol froid, entraînés depuis zéro, laissent l'ET 27 % sous MOD16, que le mode centré ne contraint pas. À SUIVRE : partir d'une part traversante faible et laisser l'apprentissage la monter, avec un taux suffisant pour les deux scalaires ; traiter à part le niveau d'ET de 052805.

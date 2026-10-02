@@ -507,10 +507,11 @@ class Trainer:
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in nappe_params)]
                 groups.append({"params": nappe_params, "lr": self.config.lr * 20.0, "weight_decay": 0.0})
                 logger.info("Discriminative LR: nappe scalaires=%.1e (20x), wd=0", self.config.lr * 20.0)
-            # Parametres appris du profil de sol declare (2026-10-01) : scalaires en espace
+            # Parametres appris du profil de sol declare (2026-10-01) et des lacs hors reseau
+            # (2026-10-02) : scalaires en espace
             # logarithmique, taux x 50 pour qu'un facteur 3 a 10 soit atteignable en une
             # centaine de pas ; taux nominal pris de MEANDRE_LR_MULT_SOL si pose.
-            soil_params = [p for name, p in model.named_parameters() if "soil_learn_" in name]
+            soil_params = [p for name, p in model.named_parameters() if "soil_learn_" in name or "lakes_learn_" in name]
             if soil_params:
                 _ms = float(os.environ.get("MEANDRE_LR_MULT_SOL", "50"))
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in soil_params)]

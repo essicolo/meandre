@@ -690,25 +690,31 @@ class HydroModel(nn.Module):
             # 4ter. LACS HORS RESEAU (2026-10-02, opt-in, set_distributed_lakes). Le routage ne
             # stocke l'eau qu'aux noeuds-lacs ; sur le bassin 052805, 4,9 km2 de lacs routes pour
             # 70 km2 d'eau libre. Ici, une part rd de la production locale traverse un reservoir
-            # de surface f (fraction d'eau libre hors lacs routes) ; vidange en loi de seuil
+            # de surface f (fraction d'eau libre hors lacs routes), rd = 1 - exp(-c f) ; vidange
             # q = f k h^beta, h la hauteur au-dessus du seuil (m), comme les lacs routes.
             # Le deficit d'evaporation (ETP - apport)+ est retire sur la surface du lac.
             _ld = getattr(self, "_distributed_lakes", None)
             if _ld is not None:
                 _f = _ld["f"].to(lateral_inflow.device)
-                _rd = _ld["rd"].to(lateral_inflow.device)
+                _kc = self.distributed_lakes_values()
+                _rd = 1.0 - torch.exp(-_kc["c"] * _f)
                 if lac_diffus_S is None:
-                    lac_diffus_S = torch.zeros_like(lateral_inflow)
+                    # repris du dernier appel comme le stock des lacs routes (poursuivre_etat)
+                    _lp = getattr(self, "_lac_diffus_last", None)
+                    if poursuivre_etat and _lp is not None and _lp.shape == lateral_inflow.shape:
+                        lac_diffus_S = _lp.to(lateral_inflow.device)
+                    else:
+                        lac_diffus_S = torch.zeros_like(lateral_inflow)
                 _in = _rd * lateral_inflow
                 _h = torch.clamp(lac_diffus_S, min=0.0) / torch.clamp(_f, min=1e-6) * 1e-3
-                _q = _f * _ld["k"] * torch.pow(_h + 1e-9, _ld["beta"]) * 1e3
+                _q = _f * _kc["k"] * torch.pow(_h + 1e-9, _ld["beta"]) * 1e3
                 _q = torch.minimum(_q, lac_diffus_S + _in)
                 _vd0 = getattr(vc_out, "diag", None) or {}
                 _E = (torch.clamp(_vd0["etp"] - _vd0["apport"], min=0.0) * _f) if ("etp" in _vd0 and "apport" in _vd0) else torch.zeros_like(_q)
                 _E = torch.minimum(_E, lac_diffus_S + _in - _q)
                 lac_diffus_S = torch.clamp(lac_diffus_S + _in - _q - _E, min=0.0)
                 lateral_inflow = (1.0 - _rd) * lateral_inflow + _q
-                self._lac_diffus_last = lac_diffus_S
+                self._lac_diffus_last = lac_diffus_S.detach()
 
             # 4. Temperature lateral heat load
             H_lateral = None
@@ -1036,11 +1042,33 @@ class HydroModel(nn.Module):
         k = k / k.sum(dim=1, keepdim=True).clamp(min=1e-12)
         self._hgm_kernel = k
 
-    def set_distributed_lakes(self, f, rd, k, beta) -> None:
-        """Pose les lacs hors reseau : f fraction d'eau libre du noeud hors lacs routes, rd part
-        de la production locale qui les traverse (tenseurs n_nodes), k (m^(1-beta)/j) et beta
-        de la loi de vidange. f=None retire le reservoir."""
-        self._distributed_lakes = None if f is None else dict(f=f, rd=rd, k=float(k), beta=float(beta))
+    def set_distributed_lakes(self, f, c, k, beta, learn=()) -> None:
+        """Pose les lacs hors reseau. f : fraction d'eau libre du noeud hors lacs routes
+        (tenseur n_nodes) ; part de la production locale qui les traverse rd = 1 - exp(-c f),
+        continue et bornee par 1 ; vidange q = f k h^beta, k en m^(1-beta)/j. learn nomme les
+        scalaires appris parmi "k", "c", appris en espace logarithmique (parametres
+        lakes_learn_log_k et lakes_learn_log_c). f=None retire le reservoir."""
+        if f is None:
+            self._distributed_lakes = None
+            return
+        import math
+        for nom, v in (("k", k), ("c", c)):
+            t = torch.tensor(math.log(float(v)), device=f.device)
+            if nom in learn:
+                setattr(self, f"lakes_learn_log_{nom}", nn.Parameter(t))
+            else:
+                self.register_buffer(f"lakes_fixed_log_{nom}", t, persistent=False)
+        self._distributed_lakes = dict(f=f, beta=float(beta), learn=tuple(learn))
+
+    def distributed_lakes_values(self) -> dict:
+        """Valeurs courantes de k et c des lacs hors reseau (apprises ou fixes)."""
+        out = {}
+        for nom in ("k", "c"):
+            t = getattr(self, f"lakes_learn_log_{nom}", None)
+            if t is None:
+                t = getattr(self, f"lakes_fixed_log_{nom}")
+            out[nom] = torch.exp(t)
+        return out
 
     def set_lake_area(self, lake_area_km2) -> None:
         """Pose la surface d'EAU LIBRE des noeuds-lacs (km2, tenseur de taille n_nodes).
