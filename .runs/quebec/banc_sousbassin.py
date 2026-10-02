@@ -1248,11 +1248,25 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:tr_sl.start]), day_of_year=doy[:tr_sl.start])
                 Q, _ = mm.simulate(forcing=F[sl], initial_state=st0, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[sl]), day_of_year=doy[sl], poursuivre_etat=True)
                 k = _kge_t(Q[:, s["exutoire"]], _o_all[sl])
-                (1 - k).backward()
+                # CIBLE DE LA SONDE (2026-10-02) : « kge » (1 - KGE, defaut historique) ou
+                # « etiage » (ecart absolu des logarithmes sous le 30e centile observe, le terme
+                # de la perte). Le signe dit ou l'optimiseur poussera : negatif, augmenter le
+                # champ fait baisser la cible.
+                _cible = os.environ.get("MEANDRE_SONDE_CIBLE", "kge")
+                if _cible == "etiage":
+                    from meandre.training.loss import differentiable_etiage_loss
+                    _ob = _o_all[sl]
+                    _okk = torch.isfinite(_ob)
+                    _L = differentiable_etiage_loss(_ob[_okk], Q[:, s["exutoire"]][_okk])
+                else:
+                    _L = 1 - k
+                _L.backward()
                 gm = {nm: float(t.grad.double()) if t.grad is not None else 0.0 for nm, t in mult.items()}
                 mm.spatial_encoder.multiplicateurs = None
-                haut = sorted(gm.items(), key=lambda kv: -abs(kv[1]))[:5]
-                print(f"  sonde : {nsub} sous-pas, detache {_var}, horizon {H:3d} j, KGE {float(k):.3f} | plus forts : " + ", ".join(f"{a} {b:.2e}" for a, b in haut) + f" | nuls {sum(1 for v in gm.values() if v == 0)} sur {len(gm)}", flush=True)
+                haut = sorted(gm.items(), key=lambda kv: -abs(kv[1]))[:8]
+                print(f"  sonde : cible {_cible} {float(_L):.3f}, {nsub} sous-pas, horizon {H:3d} j, KGE {float(k):.3f} | plus forts : " + ", ".join(f"{a} {b:+.2e}" for a, b in haut) + f" | nuls {sum(1 for v in gm.values() if v == 0)} sur {len(gm)}", flush=True)
+                _vus = [x for x in os.environ.get("MEANDRE_SONDE_CHAMPS", "K_sat_1,K_sat_2,K_sat_3,porosity_2,porosity_3,Z2,Z3,K_c,C_f").split(",") if x in gm]
+                print("    champs suivis : " + ", ".join(f"{a} {gm[a]:+.2e}" for a in _vus), flush=True)
         return
 
     # NORMALISATION PAR STATION (2026-09-13). L'ecart quadratique se calcule en metres

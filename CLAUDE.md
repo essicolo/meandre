@@ -1,5 +1,14 @@
 # CLAUDE.md — meandre
 
+## PRINCIPE PREMIER : des tests rapides et utiles, jamais de longs tests inutiles
+
+Règle d'Essi, répétée des dizaines de fois et ignorée autant (2026-10-02). Presque tous les longs tests de septembre et d'octobre ont échoué pour une raison qu'une vérification de quelques minutes aurait révélée avant : forçage ou calage incohérents, réglage non lu, défaut de bilan, borne collée, mauvais point de reprise.
+
+- Avant tout entraînement, répondre par le moyen le plus court qui existe : passe avant (zéro époque, trois minutes), audit de bilan (`ETL_BILAN=1`), sonde de gradient (`MEANDRE_SONDE_GRADIENT=1`, une minute, donne le sens où l'optimiseur poussera chaque champ), lecture des paramètres et du bilan mensuel, comparaison à un chiffre documenté.
+- Un entraînement ne sert qu'à la DERNIÈRE question : l'optimiseur atteint-il ce que la perte préfère. Jamais à découvrir ce qu'une passe avant ou une sonde dit en minutes.
+- Avant de lancer quoi que ce soit de plus de dix minutes, écrire en une phrase ce qu'aucun test rapide ne peut dire et que celui-là dira. Si la phrase n'existe pas, ne pas lancer.
+- Une machine inactive vaut mieux qu'un long test inutile.
+
 ## What is meandre?
 
 Differentiable end-to-end neural-physics hybrid hydrological model in PyTorch.
