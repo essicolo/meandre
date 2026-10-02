@@ -474,6 +474,10 @@ class HydrotelColumn(nn.Module):
             p_soil["soil_profile"] = _profile.resolved(_champ)
             p_soil["thetacc2"] = sp.theta_fc_2
             p_soil["thetacc3"] = sp.theta_fc_3
+            # Points de fletrissement des couches 2 et 3, lus par la vidange lente au-dessus
+            # du point de fletrissement (2026-10-02) ; sorties du champ jusque-la mortes.
+            p_soil["thetapf2"] = sp.theta_wp_2
+            p_soil["thetapf3"] = sp.theta_wp_3
         _l3n = getattr(self, "l3_drain_exp", None)
         if _l3n is not None:
             p_soil["l3_drain_exp"] = float(_l3n)

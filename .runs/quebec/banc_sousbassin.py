@@ -1106,8 +1106,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                         _okp = _o.notna() & _s.notna()
                         _rp.append(float(np.corrcoef(-_s[_okp], -_o[_okp])[0, 1]) if int(_okp.sum()) >= 24 else float("nan"))
                     print(f"  puits a poids fixes, r mensuel : moyenne {np.nanmean(_rp):.2f} | " + ", ".join(f"{_pu[j]} {_rp[j]:.2f}" for j in range(len(_pu))), flush=True)
-            except NameError:
-                pass
+            except (NameError, TypeError, IndexError) as _ep:
+                # Sans puits lus (variable ecrasee par un flottant), la section se tait au lieu
+                # de faire tomber le bilan avant les grandeurs d'etiage (2026-10-02).
+                print(f"  puits a poids fixes : lecture impossible ({type(_ep).__name__})", flush=True)
             # GRANDEURS D'ETIAGE (2026-09-30), sur les jours mesures de TOUTE la periode
             # d'evaluation (debut_eval a la fin du chargement) : une annee seule en mode rapide,
             # 2020 a 2024 sur la longue fenetre. Minimum glissant de 7 jours par annee (rapport

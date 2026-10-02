@@ -38,6 +38,23 @@ def _above_field_capacity(ctx):
     return torch.clamp(ctx["theta"] - ctx["theta_fc"], min=0.0) * ctx["thickness"]
 
 
+def _stock_above(ctx, prm):
+    """Stock au-dessus d'un niveau de la couche, en mètres, coupé net ou lissé (2026-10-02).
+
+    `threshold` choisit le niveau : « field_capacity » (défaut, eau gravitaire) ou
+    « wilting_point » (eau disponible, que le sol rend lentement par capillarité). `smooth`
+    (mètres, donné en `smooth_mm`) remplace la coupure par une transition douce,
+    smooth · softplus(stock / smooth) : le flux reste continu et dérivable au passage du
+    niveau, sans porte ni bascule de conductivité. Sans `smooth`, la coupure d'origine.
+    """
+    niveau = ctx["theta_wp"] if prm.get("threshold", "field_capacity") == "wilting_point" else ctx["theta_fc"]
+    s = (ctx["theta"] - niveau) * ctx["thickness"]
+    w = prm.get("smooth")
+    if w is None:
+        return torch.clamp(s, min=0.0)
+    return w * torch.nn.functional.softplus(s / w)
+
+
 def base_linear(ctx, prm):
     """Darcy le long du versant, forme d'Hydrotel pour la couche 2 : K(theta) · sin(pente) · z."""
     return ctx["conductivity"] * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
@@ -54,7 +71,7 @@ def base_thresh_power(ctx, prm):
     2026-09-19 sur une couche de 2,70 m : à tau = 5 jours la loi est convergée dès 64 sous-pas,
     266,7 mm contre 267,9 à 512 ; à tau = 20 jours elle ne l'est pas, 168,2 contre 204,4.
     """
-    s = _above_field_capacity(ctx)
+    s = _stock_above(ctx, prm)
     q = s / prm["tau"]
     n = prm.get("exponent", 1.0)
     if n != 1.0:
@@ -123,6 +140,9 @@ class SoilProcess:
     # Plafond du flux, en unites internes, ou le NOM d'une sortie du champ spatial a
     # resoudre par troncon. None pour aucun plafond.
     ceiling: float | str | None = None
+    # Parametres APPRIS (2026-10-01) : noms parmi ceux de `params` et « ceiling ». La valeur
+    # declaree sert de depart ; la colonne cree un scalaire en espace logarithmique.
+    learn: tuple = ()
 
     def __post_init__(self):
         if self.kind not in KINDS:
@@ -137,6 +157,11 @@ class SoilProcess:
                 raise ValueError(f"forme « {self.form} » : parametre « {key} » manquant")
         if self.layer < 1:
             raise ValueError("les couches sont numerotees a partir de 1")
+        for key in self.learn:
+            if key != "ceiling" and key not in self.params:
+                raise ValueError(f"parametre appris « {key} » absent du processus : {sorted(self.params)} ou ceiling")
+            if key == "ceiling" and self.ceiling is None:
+                raise ValueError("plafond appris sans plafond declare")
 
     def decrire(self) -> str:
         """Une ligne lisible dans un journal, quel que soit le type du plafond.
@@ -236,7 +261,7 @@ class SoilProfile:
 # millimetres par jour.
 HOURS_PER_DAY = 24.0
 M_PER_MM = 1.0e-3
-RESERVED_KEYS = {"layer", "kind", "form", "ceiling_mm_per_day", "tau_days"}
+RESERVED_KEYS = {"layer", "kind", "form", "ceiling_mm_per_day", "tau_days", "learn"}
 
 
 def from_toml(section: dict | None) -> SoilProfile | None:
@@ -274,6 +299,9 @@ def from_toml(section: dict | None) -> SoilProfile | None:
         if "scale_mm" in entry:
             params["scale"] = float(entry["scale_mm"]) * M_PER_MM
             params.pop("scale_mm", None)
+        if "smooth_mm" in entry:
+            params["smooth"] = float(entry["smooth_mm"]) * M_PER_MM
+            params.pop("smooth_mm", None)
         ceiling = entry.get("ceiling_mm_per_day")
         if isinstance(ceiling, str):
             # Nom d'une sortie du champ spatial, resolu plus tard contre les parametres du
@@ -281,8 +309,11 @@ def from_toml(section: dict | None) -> SoilProfile | None:
             pass
         elif ceiling is not None:
             ceiling = float(ceiling) * M_PER_MM / HOURS_PER_DAY
+        learn = tuple("tau" if k == "tau_days" else "ceiling" if k == "ceiling_mm_per_day" else k
+                      for k in entry.get("learn", ()))
         declared.append(SoilProcess(layer=int(entry["layer"]), kind=str(entry["kind"]),
-                                    form=str(entry["form"]), params=params, ceiling=ceiling))
+                                    form=str(entry["form"]), params=params, ceiling=ceiling,
+                                    learn=learn))
     return SoilProfile(layers=int(section.get("layers", 3)), processes=tuple(declared))
 
 
