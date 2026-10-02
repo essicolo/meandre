@@ -585,7 +585,39 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if "ETL_MELT_SAISON" in os.environ:
             col.melt_seasonal_amp = float(os.environ["ETL_MELT_SAISON"])
             print(f"  fonte saisonniere, amplitude {col.melt_seasonal_amp:g}", flush=True)
-        col.set_land_cover(load_occupation_sol(plat, s["node_ids"], device=dev))
+        # MILIEUX HUMIDES ET PHENOLOGIE DU PROJET (2026-10-02), comme le pilote : le banc ne
+        # posait que l'occupation, si bien que le reservoir de milieu humide n'existait pas.
+        # Memes cles que le pilote : ETL_SANS_MH=1 l'eteint, ETL_MH_FIDELE=1 restitue le
+        # couplage d'Hydrotel ; MEANDRE_BANC_PHENO_PROJET=0 garde la phenologie par defaut.
+        _lc = load_occupation_sol(plat, s["node_ids"], device=dev)
+        if os.environ.get("ETL_SANS_MH", "0") != "1":
+            from meandre.data.hydrotel_calib import load_milieux_humides
+            _mh = load_milieux_humides(plat, s["node_ids"], device=dev)
+            if os.environ.get("ETL_MH_FIDELE", "0") == "1":
+                col.mh_conservatif = False
+            # EPREUVE DE SENSIBILITE (2026-10-02) : un projet sans fichier de milieux humides
+            # (Saint-Laurent nord-ouest) n'a aucun reservoir. MEANDRE_BANC_MH_OCCUPATION=r
+            # le construit depuis l'occupation : surface = fraction humide x aire locale,
+            # fraction drainee = r x fraction humide (rapport median observe sur l'Outaouais
+            # : 0,30 drainee pour 0,055 humide, soit r de 5 a 6). Autres parametres : les
+            # defauts SWAT de la colonne, ceux de tous les fichiers d'Hydrotel.
+            if not _mh and os.environ.get("MEANDRE_BANC_MH_OCCUPATION"):
+                _r = float(os.environ["MEANDRE_BANC_MH_OCCUPATION"])
+                _fw = _lc["f_wetland_raw"]
+                _al = terr.get_physical("area_km2_local").to(_fw.device)
+                _mh = {"wet_a_raw": _fw * _al, "wet_dra_fr_raw": torch.clamp(_r * _fw, 0.0, 1.0)}
+                print(f"  milieux humides construits depuis l'occupation, fraction drainee = {_r:g} x fraction humide", flush=True)
+            _lc.update(_mh)
+            if _mh:
+                _wa = _mh["wet_a_raw"]
+                print(f"  milieux humides isoles : {int((_wa > 0).sum())} noeuds sur {_wa.numel()}, fraction humide moyenne {float(_lc['f_wetland_raw'].mean()):.3f}", flush=True)
+        col.set_land_cover(_lc)
+        if os.environ.get("MEANDRE_BANC_PHENO_PROJET", "1") == "1":
+            from meandre.data.hydrotel_calib import load_phenologie
+            _ph = load_phenologie(plat)
+            if _ph:
+                col.set_phenology(_ph)
+                print(f"  phenologie du projet : {len(_ph)} classes", flush=True)
         if sol:
             z1 = float(getattr(col, "z1", 0.15))
             calib = load_calibrated_soil(plat, s["node_ids"], z1, device=dev)
