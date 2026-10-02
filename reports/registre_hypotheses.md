@@ -4729,3 +4729,22 @@ SYNTHÈSE PROVISOIRE DE LA FLOTTE CaSR BRUT (le témoin sur le forçage corrigé
 TÉMOIN, FORÇAGE CORRIGÉ (-budyko), mêmes réglages, OUTAOUAIS : KGE médian held-out 0,608 (CaSR brut 0,582), volume +6,8 % (brut +1,2 %). Simulé sur observé, août 1,51, septembre 1,41, octobre 1,38 (brut 1,14 ; 1,12 ; 1,13) ; avril 0,99 (brut 1,01) ; juillet 0,89 (0,75). À entraînement égal, le CaSR brut divise par trois l'excès d'août à octobre et ramène le volume de +7 % à +1 %, pour 0,026 de KGE médian en moins. Deux pics de perte, dont un à 102 579, taux ramené à 9e-5.
 
 TÉMOIN, FORÇAGE CORRIGÉ, MONTÉRÉGIE : KGE médian held-out 0,342, volume −13,8 %, mois identiques au centième près à la passe sans entraînement (0,342 ; −13,7 %). La perte de validation n'a jamais battu la première époque (2,006), deux pics de perte (3 618 et 388) et deux retours en arrière ; le point retenu est donc à peine entraîné. La comparaison avec le CaSR brut (0,447, volume +3,5 %) n'est pas à entraînement égal sur cette région : à noter comme un échec d'entraînement du témoin, pas comme une victoire du forçage.
+
+TÉMOIN, FORÇAGE CORRIGÉ, SAINT-LAURENT NORD-OUEST : KGE médian held-out 0,618 (CaSR brut 0,598), volume +16,8 % (brut +4,8 %). Simulé sur observé : juillet 1,31, août 1,62, septembre 1,55, octobre 1,63 (brut 0,99 ; 1,24 ; 1,18 ; 1,32) ; avril 1,28 (brut 1,29). Trois pics de perte, trois retours en arrière, taux ramené à 5e-5.
+
+## R258 — Après entraînement, à réglages égaux, le CaSR brut divise par deux à trois l'excès d'été et d'automne et ramène le volume à 1 à 5 %, pour 0,02 à 0,03 de KGE médian ; l'excès d'août à octobre reste de 12 à 32 % (2026-10-02, nuit) — ÉTABLI SUR DEUX RÉGIONS, la troisième non comparable
+
+Pilote régional, configuration socle du 30 septembre, huit époques, une de montée du taux, étiage direct 1,0, soutien 1,0, pics 0, choix sur la perte de validation, held-out 2022-2024.
+
+| région | forçage | KGE médian | volume | août ; septembre ; octobre sim/obs | avril |
+| --- | --- | --- | --- | --- | --- |
+| Outaouais, 16 stations | corrigé | 0,608 | +6,8 % | 1,51 ; 1,41 ; 1,38 | 0,99 |
+| Outaouais | CaSR brut | 0,582 | +1,2 % | 1,14 ; 1,12 ; 1,13 | 1,01 |
+| Saint-Laurent nord-ouest, 27 stations | corrigé | 0,618 | +16,8 % | 1,62 ; 1,55 ; 1,63 | 1,28 |
+| Saint-Laurent nord-ouest | CaSR brut | 0,598 | +4,8 % | 1,24 ; 1,18 ; 1,32 | 1,29 |
+| Montérégie, 23 stations | corrigé (non entraîné, voir plus haut) | 0,342 | −13,8 % | 0,67 ; 1,14 ; 1,07 | 0,80 |
+| Montérégie | CaSR brut | 0,447 | +3,5 % | 0,77 ; 1,30 ; 1,15 | 1,01 |
+
+LECTURE. Le défaut d'été mesuré sur le sous-bassin (R256) se retrouve à l'échelle régionale et a la même cause : à entraînement égal, le forçage corrigé laisse août-octobre de 38 à 63 % au-dessus de l'observé et le volume de 7 à 17 % ; le CaSR brut les ramène à 12-32 % et 1-5 %. Le KGE médian préfère légèrement le forçage corrigé (0,02 à 0,03), parce que les grosses pluies gonflées servent les crues ; pour l'étiage, le CaSR brut est nettement meilleur. Il reste un excès d'été et d'automne de 12 à 32 % : l'entraînement le crée encore (sans entraînement, l'Outaouais était à 0,87-0,81 en août-septembre sur CaSR brut). Les six entraînements ont eu des pics de perte et des retours en arrière au taux de 5e-4 ; celui de la Montérégie sur forçage corrigé n'a rien appris.
+
+CE QUI SUIT. Adopter le CaSR brut comme forçage du banc et du pilote, et inscrire sa recette dans le TOML (source, seuil de décrachinage, recalage) avec vérification par le pilote. Trouver pourquoi l'entraînement relève l'été et l'automne : c'est le défaut d'étiage restant, désormais isolé du forçage.
