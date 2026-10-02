@@ -4707,3 +4707,13 @@ Code. `field_network.py` : table `FIELD_BOUNDS`, `[field.bounds]` du TOML par `f
 Épreuve, Outaouais, départ à chaud du modèle neige du pilote, CaSR brut, deux époques, étiage dans la perte : même époque retenue par le KGE et par la perte de validation, donc même modèle. Perte de validation 2018-2019 0,667 → 0,554 ; KGE de validation 0,926 ; mais sur 2020-2024 Q7min 1,18 → 1,30, jours sous Q90 120 → 81, volume août-septembre 1,01 → 1,13, ET annuelle 1,51 → 1,42 mm/j. La conductivité de la couche 2 reste à 0,37 mm/j malgré la borne douce, et le facteur de fonte à 7,9 pour une borne de 8 : préférences de la perte, plus des pièges numériques.
 
 LECTURE. L'entraînement améliore la perte, étiage compris, sur les années qu'il voit et dégrade l'étiage sur des années jamais vues ; pour la troisième fois de la journée, il fait baisser l'ET et le surplus sort l'été. Cause non établie.
+
+SUITE DE R256, PILOTE RÉGIONAL SANS ENTRAÎNEMENT, configuration socle du 30 septembre, étiage et soutien à 1,0, pics à 0, held-out 2022-2024 :
+
+| région | KGE médian, forçage corrigé | KGE médian, CaSR brut | volume, corrigé | volume, brut |
+| --- | --- | --- | --- | --- |
+| Outaouais, 16 stations | 0,59 | 0,50 | −3,6 % | −8,4 % |
+| Montérégie, 23 stations | 0,34 | 0,38 | −13,7 % | +0,9 % |
+| Saint-Laurent nord-ouest, 27 stations | 0,47 | 0,36 | −1,8 % | −13,6 % |
+
+Non concluant, et attendu : sans entraînement le niveau d'ET vient de l'initialisation, alors que le CaSR brut apporte 5 à 14 % de pluie de moins que le forçage recalé ; le niveau d'ET est le degré de liberté qui compense le biais de pluie (Essi, 2026-10-01). La comparaison exige l'entraînement. Le pilote pose chaque réglage déclaré (ligne « pièces déclarées »). Flotte lancée à 20 h 56 : CaSR brut, huit époques, une de montée du taux, étiage direct 1,0, soutien 1,0, pics 0, choix sur la perte de validation, Outaouais puis Montérégie puis Saint-Laurent nord-ouest (`ETL_TAG=-brut-etiage`).
