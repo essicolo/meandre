@@ -612,6 +612,19 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _wa = _mh["wet_a_raw"]
                 print(f"  milieux humides isoles : {int((_wa > 0).sum())} noeuds sur {_wa.numel()}, fraction humide moyenne {float(_lc['f_wetland_raw'].mean()):.3f}", flush=True)
         col.set_land_cover(_lc)
+        if os.environ.get("MEANDRE_BANC_LACS_DIFFUS"):
+            # LACS HORS RESEAU (2026-10-02), epreuve "c,k,beta" : surface = eau libre de
+            # l'occupation moins les lacs routes, part drainee rd = c x fraction, loi de vidange
+            # q = f k h^beta. Voir HydroModel.set_distributed_lakes.
+            _c, _kd, _bd = (float(x) for x in os.environ["MEANDRE_BANC_LACS_DIFFUS"].split(","))
+            _Al = terr.get_physical("area_km2_local").to(dev)
+            _route = torch.as_tensor(_alac, dtype=torch.float32, device=dev) if "_alac" in locals() else torch.zeros_like(_Al)
+            _route = torch.where(g.is_lake.bool().to(dev), _route, torch.zeros_like(_route))
+            _fd = torch.clamp(_lc["f_water_raw"].to(dev) - _route / _Al.clamp(min=1e-6), 0.0, 1.0)
+            _rdd = torch.clamp(_c * _fd, 0.0, 1.0)
+            m.set_distributed_lakes(_fd, _rdd, _kd, _bd)
+            _wa = (_Al / _Al.sum())
+            print(f"  lacs hors reseau : eau libre {float((_fd * _wa).sum()):.3f} du bassin, part drainee {float((_rdd * _wa).sum()):.2f}, k {_kd:g}, beta {_bd:g}", flush=True)
         if os.environ.get("MEANDRE_BANC_PHENO_PROJET", "1") == "1":
             from meandre.data.hydrotel_calib import load_phenologie
             _ph = load_phenologie(plat)
