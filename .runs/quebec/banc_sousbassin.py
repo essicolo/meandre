@@ -595,6 +595,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             # SANS EFFET quand un profil de sol est declare par MEANDRE_BANC_SOIL_TOML : la
             # sortie laterale vient alors du profil (mesure 2026-10-01, passe identique a 3 et 8 j).
             col.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
+        if os.environ.get("PROV_DRAIN", "0") == "1":
+            # Drainage souterrain agricole (Hooghoudt), memes cles que le pilote provincial.
+            col.drainage_agricole = dict(espacement_m=float(os.environ.get("PROV_DRAIN_L", "15")),
+                                         profondeur_m=float(os.environ.get("PROV_DRAIN_Z", "1.0")),
+                                         part_cultive=float(os.environ.get("PROV_DRAIN_F", "0.6")))
+            print(f"  drainage agricole : {col.drainage_agricole}", flush=True)
         if "MEANDRE_RACINES_ECHELLE" in os.environ:
             col.root_depth_scale = float(os.environ["MEANDRE_RACINES_ECHELLE"])
             print(f"  racines : profondeur x {col.root_depth_scale:g}", flush=True)
@@ -1411,7 +1417,7 @@ def main():
                     help="degre-jour integrant le cycle diurne au lieu de la moyenne")
     ap.add_argument("--seuil", type=float, default=None)
     ap.add_argument("--debut", type=int, default=None)
-    ap.add_argument("--sol", choices=["complet", "sauf_ks"], default=None)
+    ap.add_argument("--sol", choices=["complet", "sauf_ks", "libre"], default=None)
     ap.add_argument("--sans-aquifere", action="store_true")
     ap.add_argument("--entrainer", type=int, default=0, metavar="EPOQUES")
     ap.add_argument("--device", default=None, help="cuda ou cpu (defaut : cuda si dispo)")
@@ -1460,7 +1466,7 @@ def main():
         raise SystemExit("usage : banc_sousbassin.py <region> <station>")
     if a.entrainer and a.rapide:
         entrainer(a.region, a.station, epoques=a.entrainer,
-                  sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
+                  sol=(None if a.sol == "libre" else (a.sol or "sauf_ks")), aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,
@@ -1473,7 +1479,7 @@ def main():
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
-                  sol=a.sol or "sauf_ks", aquifere=not a.sans_aquifere,
+                  sol=(None if a.sol == "libre" else (a.sol or "sauf_ks")), aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,

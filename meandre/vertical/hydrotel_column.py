@@ -444,7 +444,10 @@ class HydrotelColumn(nn.Module):
             # l'occupation du sol, ou le chargeur provincial la pose en brut. Absente,
             # on draine tout le sol, ce qui n'a de sens que pour un test unitaire.
             _lcd = getattr(self, "_land_cover", None) or {}
-            _fag = _lcd.get("pct_agricole")
+            # La part agricole est posee par set_land_cover sous « f_agriculture_raw » ; la cle
+            # « pct_agricole » n'existe nulle part, et le drain retombait sur tout le sol
+            # (corrige 2026-10-02).
+            _fag = _lcd.get("f_agriculture_raw", _lcd.get("pct_agricole"))
             if _fag is None:
                 _fag = torch.ones_like(like)
             p_soil["drain_spacing"] = torch.full_like(like, float(_drn["espacement_m"]))
