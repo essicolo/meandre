@@ -533,6 +533,37 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         maj = reg.upper()
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
         m = m.to(dev)
+        # SURFACE ET ANCRE DES LACS (2026-10-02), comme le pilote : sans surface posee, le
+        # routage rapporte le stock du lac a l'aire DRAINEE du noeud et la loi de vidange
+        # retient la fonte au printemps pour la rendre l'ete (passe sans lacs : avril 5,42 ->
+        # 6,40 mm/j pour 6,20 observe). Surface : HydroLAKES, sinon fraction de lac x aire
+        # locale ; ancre d'exutoire k0 (A_ref / A)^alpha. MEANDRE_BANC_LACS_SURFACE=0 restitue
+        # l'ancien banc.
+        if os.environ.get("MEANDRE_BANC_LACS_SURFACE", "1") == "1":
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import pandas as _pdl
+            from recipe import RAW_QC as _RAWQC, HYDROLAKES as _HL
+            _idx = np.asarray(s["idx"])
+            _rang = {int(v): k for k, v in enumerate(_idx)}
+            _A = terr.get_physical("area_km2_local").cpu().numpy()
+            _rw = _pdl.read_parquet(_RAWQC)
+            _rw = _rw[_rw.region == reg].reset_index(drop=True)
+            _alac = _A * _rw["lake_fraction"].values[_idx].clip(0, 1)
+            _src = "fraction de lac x aire locale"
+            try:
+                _hl = _pdl.read_parquet(_HL)
+                _hl = _hl[(_hl.region == reg) & _hl.node_idx.isin(_rang)]
+                _alac[[_rang[int(v)] for v in _hl.node_idx.values]] = _hl["lake_area_km2"].values
+                _src = f"HydroLAKES ({len(_hl)} noeuds) + repli"
+            except Exception as _el:
+                _src += f" (HydroLAKES illisible : {type(_el).__name__})"
+            m.set_lake_area(torch.tensor(_alac, dtype=torch.float32))
+            m.spatial_encoder.set_lake_anchor(torch.tensor(_alac, dtype=torch.float32),
+                                              a_ref_km2=float(os.environ.get("ETL_LAKE_AREF", "20")),
+                                              alpha=float(os.environ.get("ETL_LAKE_ALPHA", "1.0")))
+            _isl = g.is_lake.bool().cpu().numpy()
+            if _isl.any():
+                print(f"  lacs : surface {_src}, mediane {np.median(_alac[_isl]):.2f} km2 sur {int(_isl.sum())} lacs (aire drainee mediane {np.median(_A[_isl]):.1f} km2)", flush=True)
         col = m.vertical_column
         # MEANDRE_BANC_ETP_MODE (2026-09-28) : formule d'ETP autre que Linacre calée, par
         # exemple penman, dont la forme saisonnière suit MOD16 (avril / octobre 1,58 contre 1,63).
@@ -906,6 +937,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                         _comp[f"dispo{_k}"] = _moy((_th.to(dev) - _pf) / (_cc - _pf).clamp(min=1e-6))
             _comp["gel_cm"] = _moy(getattr(_d, "prof_gel_cm", None))
             _comp["recharge"] = _moy(getattr(_d, "recharge", None))
+            for _k in (1, 2, 3):
+                _comp[f"et{_k}"] = _moy(getattr(_d, f"etr{_k}", None))
             _comp["apport"] = _moy(getattr(_d, "snowmelt", None))
             # Equivalent en eau de la neige moyen du mois (mm) et pluie liquide (mm/j) : P - apport
             # se lit alors comme accumulation du manteau, et le biais d'hiver se localise (2026-10-01).

@@ -4774,3 +4774,18 @@ Cause : les classes d'ETR sont pondérées par leur part du tronçon, dont la so
 Correctif : `hydrotel_column.py` retire du sol e / fsa (le tronçon perd exactement e), `MEANDRE_ETR_FIDELE=1` restitue la formulation d'origine ; `bv3c2.py` publie `evap_eau_mm`, ajoutée à l'ET du tronçon. Audit après correctif : sol libre +0,04 % (médiane par nœud +0,01 %), verdict « fermé » ; sol du calage inchangé (−0,15 %). Tests de la colonne : 111 réussis. Sol libre sans entraînement : KGE médian 0,605, volume −15,8 % (l'ET entière est maintenant évaporée ; c'est à l'entraînement d'en régler le niveau).
 
 PORTÉE. Tous les essais faits hors du calage d'Hydrotel (sol libre, ou fractions d'occupation avec fsa < 1) ont tourné sur une colonne qui sous-évaporait de 1 − fsa et rendait ce surplus en débit d'été.
+
+## R261 — Le banc de sous-bassin rapportait le stock des lacs à l'aire drainée du nœud, 37 fois la surface du plan d'eau : les lacs retenaient la fonte au printemps et la rendaient l'été ; avec la surface de HydroLAKES, avril et mai-juillet tombent justes (2026-10-02, 11 h 30) — ÉTABLI EN PASSE AVANT, Outaouais 040110, 8 lacs
+
+Le pilote pose la surface d'eau libre (`set_lake_area_from_hydrolakes`, défaut depuis le 2026-08-09) et l'ancre d'exutoire (`set_lake_anchor`) ; le banc ne posait ni l'une ni l'autre, et le routage retombait sur l'aire drainée, comportement que `model.py` documente comme faussant la loi de vidange. Les paramètres de lac appris par le champ ne peuvent pas corriger une surface fausse. Bilan du modèle à deux régimes (R260 suite, sol libre, CaSR brut) : la colonne produit 6,93 mm/j en avril et l'exutoire en rend 5,42 ; en mai-juillet l'exutoire rend 0,34 à 0,88 mm/j de plus que la colonne.
+
+| Sous-bassin 040110, même modèle, 2020-2024 | lacs, aire drainée | lacs routés comme des rivières | lacs, surface HydroLAKES (médiane 0,38 km² contre 14 km² d'aire drainée) | observé |
+| --- | --- | --- | --- | --- |
+| avril ; mai ; juin ; juillet (mm/j) | 5,42 ; 4,00 ; 2,18 ; 1,48 | 6,40 ; 3,83 ; 1,84 ; 1,24 | 6,29 ; 3,92 ; 1,85 ; 1,26 | 6,20 ; 3,84 ; 1,84 ; 1,16 |
+| août ; septembre | 1,45 ; 1,08 | 1,36 ; 0,97 | 1,37 ; 0,97 | 1,08 ; 0,79 |
+| Q7min ; jours sous Q90 (obs 128) ; volume août-sept | 1,54 ; 32 ; 1,17 | 1,13 ; 81 ; 1,10 | 1,18 ; 74 ; 1,10 | 1 ; 128 ; 1 |
+| KGE 2024 | 0,659 | 0,735 | 0,723 | |
+
+Correctif : le banc pose la surface et l'ancre comme le pilote (`MEANDRE_BANC_LACS_SURFACE=0` restitue l'ancien banc).
+
+PORTÉE. Tous les résultats du banc depuis son écriture portent ce défaut, d'autant plus fort que le sous-bassin a de lacs : le bassin à lacs du Saint-Laurent nord-ouest 052805, dont l'étiage restait 2,4 fois trop haut sous toutes les configurations (R231, R246, R251), est le premier à rejuger. Le pilote régional n'est pas touché. Reste en août-septembre un excès de 23 à 26 % porté par le ruissellement de surface des orages d'été.
