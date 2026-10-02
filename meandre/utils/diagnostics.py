@@ -93,6 +93,11 @@ class SimDiagnostics:
     prod_surf: Tensor | None = None
     prod_hypo: Tensor | None = None
     prod_base: Tensor | None = None
+    # ETR par couche, en mm/j sur le troncon (mm/j) ; leur somme plus l'evaporation de l'eau libre
+    # vaut etr.
+    etr1: Tensor | None = None
+    etr2: Tensor | None = None
+    etr3: Tensor | None = None
     # Part de la journee que la boucle de sous-pas du sol n'a pas traitee (sans dimension,
     # 0 a 1). La pluie de ce temps ruisselle et son evapotranspiration est prelevee, mais
     # son drainage profond n'est jamais accumule : la recharge y est convertie en

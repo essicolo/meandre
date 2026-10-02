@@ -1210,6 +1210,17 @@ class HydrotelColumn(nn.Module):
                             couv=_couv, albn=_albn) * _kc
         else:
             etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * _kc
+            # COUVERT NIVAL DANS PENMAN (2026-10-02, opt-in MEANDRE_PENMAN_NEIGE=1). Le
+            # rayonnement net du forcage suppose un albedo de 0,23 ; la Linacre d'Hydrotel
+            # prenait l'albedo de la neige sous le manteau, Penman non. On rapporte la demande
+            # au rayonnement absorbe, avec une fraction enneigee continue
+            # f = 1 - exp(-SWE / 5 mm) : facteur 1 - f + f (1 - albedo_neige) / (1 - 0,23).
+            if self.et_mode == "penman" and os.environ.get("MEANDRE_PENMAN_NEIGE", "0") == "1":
+                _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
+                _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
+                            * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
+                _fn = 1.0 - torch.exp(-torch.clamp(_couv, min=0.0) / 5.0)
+                etp = etp * (1.0 - _fn + _fn * torch.clamp(1.0 - _albn, min=0.0) / 0.77)
 
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
         # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro

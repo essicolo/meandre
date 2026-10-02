@@ -4841,3 +4841,19 @@ Constat : l'ETR de chaque couche ne dépend que de son humidité ; ni Hydrotel n
 | KGE 2024 | 0,634 | 0,746 | 0,744 | 0,615 | |
 
 LECTURE. À 1 °C, ET annuelle égale à MOD16, volume à −4 %, volume d'été exact, KGE +0,11, et mai-juillet remontent de 0,7 à 0,8. Le frein agit surtout en hiver et au début du printemps : avril tombe à 0,82 mm/j contre 1,39 pour MOD16, alors que mai reste au-dessus (2,16 contre 1,94) ; la répartition dans la saison n'est pas encore juste, et Penman ne voit toujours pas le couvert nival. À SUIVRE : T_ref appris et déclaré, couvert nival dans Penman, entraînement.
+
+## R265 — Faire voir le couvert nival à Penman réduit l'ET d'hiver et de printemps et porte le KGE 2024 du bassin à lacs de 0,63 à 0,69 ; combiné au frein du sol froid, aucun réglage ne corrige à la fois mai-juillet et août-septembre (2026-10-02, 15 h 25) — ÉTABLI EN PASSE AVANT, sous-bassin 052805, modèle de R263
+
+Mécanisme (`MEANDRE_PENMAN_NEIGE=1`, opt-in) : la demande de Penman est multipliée par 1 − f + f (1 − albédo de la neige) / 0,77, où f = 1 − exp(−couvert / 5 mm) est la fraction enneigée et 0,77 le complément de l'albédo de référence de la FAO. Continu, neutre sans neige.
+
+| bassin à lacs, 2020-2024 | sans rien | neige | neige + T_ref 1 °C | neige + T_ref 2 °C | référence |
+| --- | --- | --- | --- | --- | --- |
+| ET annuelle (mm/j) | 1,63 | 1,52 | 1,38 | 1,25 | MOD16 1,44 |
+| ET mars ; avril ; mai | 0,39 (neige seule) ; 1,36 ; 2,63 | 0,39 ; 0,99 ; 2,62 | 0,21 ; 0,62 ; 2,15 | 0,13 ; 0,43 ; 1,75 | MOD16 0,96 ; 1,39 ; 1,94 |
+| volume annuel (obs 1,50) | 1,26 | 1,37 | 1,50 | 1,64 | |
+| mai ; juin ; juillet sim/obs | 0,72 ; 0,69 ; 0,68 | 0,75 ; 0,72 ; 0,72 | 0,82 ; 0,82 ; 0,82 | 0,87 ; 0,94 ; 0,96 | 1 |
+| août ; septembre | 1,03 ; 1,11 | 1,08 ; 1,17 | 1,18 ; 1,26 | 1,39 ; 1,45 | 1 |
+| Q7min ; jours sous Q90 (obs 127) ; volume août-sept | 0,97 ; 152 ; 0,91 | 1,00 ; 146 ; 0,92 | 1,12 ; 109 ; 1,00 | 1,56 ; 77 ; 1,18 | |
+| KGE 2024 | 0,634 | 0,688 | 0,760 | 0,771 | |
+
+LECTURE. Chaque réduction d'ET, qu'elle vienne de la neige ou du sol froid, relève tous les mois ensemble : le rapport mai-juillet monte, mais août-septembre dépasse 1 dès que mai-juillet passe 0,82. Le déficit de mai-juillet n'est donc pas un niveau d'ET (R264 le disait déjà pour la phénologie) : c'est un défaut de calendrier, de l'eau qui sort trop tôt ou est stockée trop longtemps. Le couvert nival creuse en outre l'ET de mars-avril sous MOD16, qui n'est pas fiable sous la neige ; ce n'est pas un argument contre le mécanisme. Le KGE 2024 monte jusqu'à 0,77 en sacrifiant l'étiage (Q7min 1,56) : il ne départage pas. Le réglage retenu pour la suite est neige + 1 °C, seul point où ET annuelle, volume, volume d'août-septembre et Q7min tombent ensemble à moins de 12 % de l'observé. À SUIVRE : localiser le défaut de calendrier de mai-juillet sur la répartition par réservoir, avant tout apprentissage de T_ref.
