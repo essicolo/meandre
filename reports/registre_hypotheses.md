@@ -4806,3 +4806,18 @@ Modèle de R251 (routage gelé, forçage recalé), jours mesurés 2020-2024 :
 | KGE 2024 ; gamma | 0,266 ; 0,55 | 0,486 ; 0,97 | 0,485 ; 0,98 | |
 
 LECTURE. Le défaut d'étiage du bassin à lacs, 2,4 à 2,7 fois l'observé sous toutes les configurations depuis septembre (R231, R246, R251), était pour l'essentiel la surface des lacs absente du banc. L'évaporation des lacs est juste en physique mais petite ici, 6 lacs de 0,34 km² en médiane sur 769 km². Restent mai trop faible (0,69) et août-septembre trop forts (1,33 à 1,39), et des jours bas maintenant trop nombreux (177 pour 127) : à rejuger après un entraînement qui voit les vraies surfaces.
+
+## R263 — Avec les trois corrections du jour, le banc entraîné rend l'été et l'étiage de l'Outaouais : avril à octobre entre 0,93 et 1,15 fois l'observé sur jours mesurés, volume d'août-septembre à 1,02 (2026-10-02, 13 h 35) — ÉTABLI, sous-bassin 040110, une graine, deux époques
+
+Sol libre (départ de la littérature), CaSR brut, ET rapportée à la surface de sol (R260), vidange de la couche 3 à deux régimes avec la constante lente apprise (186 jours en fin d'entraînement, départ 100), surface et ancre des lacs (R261), évaporation des lacs (R262), neige du pilote, routage gelé à 24 h, étiage dans la perte, choix sur la perte de validation (0,618), deux époques.
+
+| 2020-2024, jours mesures | avant ce matin (R257, calage imposé, CaSR brut) | corrigé | observé |
+| --- | --- | --- | --- |
+| avril ; mai ; juin ; juillet | 0,95 ; 1,01 ; 1,16 ; 1,08 | 1,00 ; 0,99 ; 0,93 ; 0,98 | 1 |
+| août ; septembre ; octobre | 1,29 ; 1,26 ; 1,22 | 1,08 ; 1,15 ; 0,97 | 1 |
+| Q7min ; jours sous Q90 (obs 128) ; volume août-sept | 1,30 ; 81 ; 1,13 | 1,10 ; 86 ; 1,02 | 1 ; 128 ; 1 |
+| volume annuel (mm/j, obs 1,99) | 2,04 | 1,92 | |
+| réponse aux orages d'été sim/obs | | 0,65 | 1 |
+| KGE 2024 ; gamma | 0,786 ; 0,93 | 0,659 ; 0,80 | |
+
+LECTURE. Le défaut d'été-automne, poursuivi deux semaines, se ferme avec trois corrections de structure du banc et de la colonne, sans réglage de la perte : août-septembre passe de +26 à +29 % à +8 à +15 %, le volume d'été de +13 à +2 %. Le KGE de 2024 baisse (0,786 à 0,659), par la variabilité (gamma 0,80) : l'hydrogramme est plus lisse, à surveiller. Sur deux époques et une graine.
