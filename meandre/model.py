@@ -496,6 +496,7 @@ class HydroModel(nn.Module):
                              "theta1", "theta2", "theta3",
                              "s_gw", "canopy", "wetland",
                              "prod_surf", "prod_hypo", "prod_base",
+                             "etr1", "etr2", "etr3",
                              "etr_mh_mm", "wet_vol_mm", "subl_mm",
                              # PROFONDEUR DE GEL : calculee par Rankinen sur tout le
                              # profil (~3.2 m) mais jamais exposee, donc invisible aux
@@ -702,6 +703,17 @@ class HydroModel(nn.Module):
                     _area,
                 )
 
+            # EVAPORATION DES LACS (2026-10-02). Le module de lac sait evaporer, mais le routage
+            # lui passait E = 0 ; l'eau libre n'evaporait que dans la colonne, plafonnee par la
+            # pluie du jour (seul l'excedent ruisselle), donc rien les jours secs. Le DEFICIT
+            # (ETP - apport)+ est retire du stock du lac, sur sa surface ; la part couverte par
+            # la pluie reste dans la colonne, sans double compte. MEANDRE_EVAP_LACS=0 restitue
+            # l'ancien routage.
+            _vd = getattr(vc_out, "diag", None) or {}
+            if os.environ.get("MEANDRE_EVAP_LACS", "1") != "0" and "etp" in _vd and "apport" in _vd:
+                self.routing._lake_evap_mm = torch.clamp(_vd["etp"] - _vd["apport"], min=0.0).detach()
+            else:
+                self.routing._lake_evap_mm = None
             # 5. Routing
             Q_out, lake_storage, T_water_t = self.routing(
                 lateral_inflow, graph, Q_out_prev,
@@ -732,7 +744,7 @@ class HydroModel(nn.Module):
                            "profondeur_nappe_m", "etr_nappe"):
                     if _k in vc_out.diag:
                         diag_lists[_k].append(vc_out.diag[_k])
-                for _k in ("prod_surf", "prod_hypo", "prod_base"):
+                for _k in ("prod_surf", "prod_hypo", "prod_base", "etr1", "etr2", "etr3"):
                     if _k in vc_out.diag:
                         diag_lists[_k].append(vc_out.diag[_k])
                 diag_lists["lateral_mm"].append(vc_out.diag["lateral_mm"])
@@ -807,6 +819,10 @@ class HydroModel(nn.Module):
                        if diag_lists["prod_hypo"] else None),
             prod_base=(torch.stack(diag_lists["prod_base"], dim=0)
                        if diag_lists["prod_base"] else None),
+            # ETR par couche (2026-10-02) : d'ou l'evapotranspiration prend son eau.
+            etr1=(torch.stack(diag_lists["etr1"], dim=0) if diag_lists.get("etr1") else None),
+            etr2=(torch.stack(diag_lists["etr2"], dim=0) if diag_lists.get("etr2") else None),
+            etr3=(torch.stack(diag_lists["etr3"], dim=0) if diag_lists.get("etr3") else None),
             temps_non_traite=(torch.stack(diag_lists["temps_non_traite"], dim=0)
                               if diag_lists.get("temps_non_traite") else None),
             profondeur_nappe=(torch.stack(diag_lists["profondeur_nappe_m"], dim=0)

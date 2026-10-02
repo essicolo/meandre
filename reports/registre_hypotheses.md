@@ -4789,3 +4789,20 @@ Le pilote pose la surface d'eau libre (`set_lake_area_from_hydrolakes`, défaut 
 Correctif : le banc pose la surface et l'ancre comme le pilote (`MEANDRE_BANC_LACS_SURFACE=0` restitue l'ancien banc).
 
 PORTÉE. Tous les résultats du banc depuis son écriture portent ce défaut, d'autant plus fort que le sous-bassin a de lacs : le bassin à lacs du Saint-Laurent nord-ouest 052805, dont l'étiage restait 2,4 fois trop haut sous toutes les configurations (R231, R246, R251), est le premier à rejuger. Le pilote régional n'est pas touché. Reste en août-septembre un excès de 23 à 26 % porté par le ruissellement de surface des orages d'été.
+
+## R262 — Sur le bassin à lacs du Saint-Laurent nord-ouest, la seule surface des lacs fait passer le minimum de sept jours de 2,51 à 1,15 fois l'observé et le KGE 2024 de 0,27 à 0,49 ; l'évaporation des lacs, désormais branchée, n'ajoute presque rien sur ce bassin (2026-10-02, midi) — ÉTABLI EN PASSE AVANT, sous-bassin 052805, 6 lacs
+
+Le routage passait `E_lake = 0` au module de lac dans ses trois modes ; l'eau libre n'évaporait que dans la colonne, plafonnée par la pluie du jour. `model.py` passe maintenant au routage le déficit (ETP − apport)⁺ de chaque nœud, retiré du stock du lac sur sa surface en mode par opérateur, décalé ou étagé (`MEANDRE_EVAP_LACS=0` restitue l'ancien routage) ; 47 tests du routage et des lacs réussis.
+
+Modèle de R251 (routage gelé, forçage recalé), jours mesurés 2020-2024 :
+
+| bassin à lacs 052805 | lacs sur l'aire drainée (22,7 km² en médiane) | surface HydroLAKES (0,34 km²) | surface et évaporation des lacs | observé |
+| --- | --- | --- | --- | --- |
+| Q7min sim/obs | 2,51 | 1,15 | 1,12 | 1 |
+| jours sous Q90 (obs 127) | 55 | 172 | 177 | 127 |
+| volume août-septembre | 1,47 | 1,33 | 1,32 | 1 |
+| avril ; mai sim/obs | 0,64 ; 0,55 | 0,91 ; 0,69 | 0,91 ; 0,69 | 1 |
+| juillet ; août ; septembre | 1,32 ; 1,76 ; 1,92 | 0,74 ; 1,35 ; 1,41 | 0,72 ; 1,33 ; 1,39 | 1 |
+| KGE 2024 ; gamma | 0,266 ; 0,55 | 0,486 ; 0,97 | 0,485 ; 0,98 | |
+
+LECTURE. Le défaut d'étiage du bassin à lacs, 2,4 à 2,7 fois l'observé sous toutes les configurations depuis septembre (R231, R246, R251), était pour l'essentiel la surface des lacs absente du banc. L'évaporation des lacs est juste en physique mais petite ici, 6 lacs de 0,34 km² en médiane sur 769 km². Restent mai trop faible (0,69) et août-septembre trop forts (1,33 à 1,39), et des jours bas maintenant trop nombreux (177 pour 127) : à rejuger après un entraînement qui voit les vraies surfaces.

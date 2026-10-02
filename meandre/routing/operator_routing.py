@@ -386,9 +386,10 @@ def route_operator(
             _la = getattr(layer, "_lake_area_km2", None)
             area_l = (_la[li] if _la is not None else
                       (area_km2[li] if area_km2 is not None else torch.ones_like(zeros_l)))
+            _ev = getattr(layer, "_lake_evap_mm", None)
             Q_lake, S_lake = layer.lake(
                 Q_in_total, lake_storage_new[li], area_l,
-                E_lake=zeros_l, P_lake=zeros_l, S_dead=zeros_l,
+                E_lake=(_ev[li] if _ev is not None else zeros_l), P_lake=zeros_l, S_dead=zeros_l,
                 k_lake=lake_k_all[li] if lake_k_all is not None else None,
                 beta=lake_b_all[li] if lake_b_all is not None else None,
             )
@@ -413,8 +414,14 @@ def route_operator(
                 0, topo.lake_in_dst_pos, Q_out[topo.lake_in_src_glob],
             )
         Q_in_total = lake_in + q_lat_m3s[li] + net_W[li]
+        # Evaporation de la surface du lac (deficit ETP - apport, mm/j), retiree du stock.
+        _ev = getattr(layer, "_lake_evap_mm", None)
+        _la2 = getattr(layer, "_lake_area_km2", None)
+        _evap_m3 = 0.0
+        if _ev is not None and _la2 is not None:
+            _evap_m3 = _ev[li] * 1e-3 * _la2[li] * 1e6
         S_new = torch.clamp(
-            lake_storage_new[li] + (Q_in_total - Q_out[li]) * dt, min=0.0,
+            lake_storage_new[li] + (Q_in_total - Q_out[li]) * dt - _evap_m3, min=0.0,
         )
         lake_storage_new[li] = S_new.detach()
 
