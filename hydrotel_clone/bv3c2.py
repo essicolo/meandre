@@ -560,7 +560,11 @@ class BV3C2Clone(torch.nn.Module):
         diag = dict(pinf=pinf, ruis_hortonien=ruis_rate * DT_H * 1000.0,
                     sat_t1=(t1 / (ths1 + eps)),
                     temps_non_traite=tr / DT_H,
-                    drain_mm=ldrain * fsa * 1000.0)
+                    drain_mm=ldrain * fsa * 1000.0,
+                    # Evaporation de la fraction EAU (2026-10-02) : l'eau libre perd
+                    # min(apport, ETP), puisque seul l'excedent ruisselle. Perte reelle,
+                    # jamais publiee : sans elle l'audit de bilan lit +1,5 % en Outaouais.
+                    evap_eau_mm=(lprec - leau) * fse * 1000.0)
         return (torch.clamp(prod_surf, min=0.0) * 1000.0,      # mm
                 torch.clamp(prod_hypo, min=0.0) * 1000.0,
                 torch.clamp(prod_base, min=0.0) * 1000.0,

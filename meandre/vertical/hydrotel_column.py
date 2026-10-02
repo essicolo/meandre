@@ -466,6 +466,8 @@ class HydrotelColumn(nn.Module):
             _champ = {"k_sub": getattr(sp, "k_sub", None), "krec": sp.krec,
                       "k_gw": getattr(sp, "k_gw", None)}
             _champ = {k: v for k, v in _champ.items() if v is not None}
+            for _nom in getattr(self, "_soil_learn_names", ()):
+                _champ[_nom] = torch.exp(getattr(self, _nom))
             p_soil["soil_profile"] = _profile.resolved(_champ)
             p_soil["thetacc2"] = sp.theta_fc_2
             p_soil["thetacc3"] = sp.theta_fc_3
@@ -957,6 +959,47 @@ class HydrotelColumn(nn.Module):
             self.register_buffer("mcg_coeff", torch.as_tensor(coeff, dtype=torch.get_default_dtype()),
                                  persistent=False)
 
+    def declare_soil_profile(self, profile):
+        """Pose un profil de sol declare et cree un scalaire appris par parametre `learn`.
+
+        Chaque parametre appris devient `soil_learn_<i>_<cle>`, logarithme de la valeur en
+        unites internes (heures, metres par heure), parti de la valeur declaree ; le profil
+        le nomme a la place du nombre et `resolved` le substitue a chaque pas (2026-10-01).
+        """
+        import math as _m
+        from dataclasses import replace as _remplace
+        noms = []
+        procs = []
+        for i, proc in enumerate(profile.processes):
+            params = dict(proc.params)
+            plafond = proc.ceiling
+            for key in proc.learn:
+                nom = f"soil_learn_{i}_{key}"
+                depart = float(plafond) if key == "ceiling" else float(params[key])
+                self.register_parameter(nom, nn.Parameter(torch.tensor(_m.log(depart))))
+                noms.append(nom)
+                if key == "ceiling":
+                    plafond = nom
+                else:
+                    params[key] = nom
+            procs.append(_remplace(proc, params=params, ceiling=plafond))
+        self._soil_learn_names = tuple(noms)
+        self.soil_profile = type(profile)(layers=profile.layers, processes=tuple(procs))
+        return noms
+
+    def soil_learned_values(self) -> dict:
+        """Valeurs en vigueur des parametres appris du profil, en unites lisibles."""
+        out = {}
+        for nom in getattr(self, "_soil_learn_names", ()):
+            v = float(torch.exp(getattr(self, nom)).detach())
+            if nom.endswith("_tau"):
+                out[nom] = (v / 24.0, "jours")
+            elif nom.endswith("_ceiling"):
+                out[nom] = (v * 24.0 * 1000.0, "mm/j")
+            else:
+                out[nom] = (v, "")
+        return out
+
     def set_phenology(self, ph: dict | None):
         """Profils phénologiques par classe, {classe: (jours, indice_foliaire,
         profondeur_racinaire)}, en général chargés du projet Hydrotel par
@@ -1215,9 +1258,22 @@ class HydrotelColumn(nn.Module):
             melt_mm = torch.clamp(apport - pluie, min=0.0)
             w_rain = pluie / torch.clamp(pluie + melt_mm, min=1e-6)
             storm_hours = w_rain * storm_hours + (1.0 - w_rain) * 24.0
+        # ETR RAPPORTEE A LA SURFACE DE SOL (2026-10-02). Les classes d'ETR sont ponderees par
+        # leur part du TRONCON, dont la somme vaut fsa : e1..e3 sont donc des lames du tronçon.
+        # Le sol les retirait comme des lames par unite de surface de SOL, puis sa production
+        # etait multipliee par fsa : le tronçon n'evaporait que fsa fois l'ETR calculee, et le
+        # reste ressortait en debit (audit : -3,6 % de la precipitation en Outaouais sol libre,
+        # croissant avec l'eau libre et l'impermeable). Masque sous le calage d'Hydrotel, qui
+        # pose fsa = 1. On retire du sol e / fsa, pour que le tronçon perde exactement e.
+        # MEANDRE_ETR_FIDELE=1 restitue la formulation d'origine (comparaisons au binaire).
+        if os.environ.get("MEANDRE_ETR_FIDELE", "0") != "1":
+            _fsa = torch.clamp(pso["fsa"], min=1e-3)
+            e1_sol, e2_sol, e3_sol = e1 / _fsa, e2 / _fsa, e3 / _fsa
+        else:
+            e1_sol, e2_sol, e3_sol = e1, e2, e3
         ps_surf, ph, pb, rech, (t1, t2, t3), sdiag = self.soil(
             state.theta1, state.theta2, state.theta3, apport, etp, prof_gel_cm, couvert_mm, pso,
-            etr1_mm=e1 * 1000.0, etr2_mm=e2 * 1000.0, etr3_mm=e3 * 1000.0, storm_hours=storm_hours)
+            etr1_mm=e1_sol * 1000.0, etr2_mm=e2_sol * 1000.0, etr3_mm=e3_sol * 1000.0, storm_hours=storm_hours)
         prod = ps_surf + ph + pb   # mm
 
         # 5b. Hydrogramme de VERSANT (cascade de Nash, fidèle Hydrotel, porté de
@@ -1272,7 +1328,9 @@ class HydrotelColumn(nn.Module):
 
         new_state = HydrotelColumnState(t1, t2, t3, snow_new, frost_profile, wet_vol,
                                         uh1n, uh2n, uh3n, uh4n)
-        etr_tot = (e1 + e2 + e3) * 1000.0
+        # ET du TRONÇON : sol (e1..e3, deja rapportees au tronçon) plus evaporation de l'eau
+        # libre, perte atmospherique que le bilan doit voir (2026-10-02).
+        etr_tot = (e1 + e2 + e3) * 1000.0 + sdiag.get("evap_eau_mm", 0.0)
         diag = dict(apport=apport, etp=etp, etr1=e1 * 1000.0, etr2=e2 * 1000.0, etr3=e3 * 1000.0,
                     prof_gel_cm=prof_gel_cm, couvert_nival_mm=couvert_mm,
                     prod_surf=ps_surf, prod_hypo=ph, prod_base=pb,
