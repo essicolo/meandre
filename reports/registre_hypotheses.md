@@ -4849,7 +4849,7 @@ Mécanisme (`MEANDRE_PENMAN_NEIGE=1`, opt-in) : la demande de Penman est multipl
 | bassin à lacs, 2020-2024 | sans rien | neige | neige + T_ref 1 °C | neige + T_ref 2 °C | référence |
 | --- | --- | --- | --- | --- | --- |
 | ET annuelle (mm/j) | 1,63 | 1,52 | 1,38 | 1,25 | MOD16 1,44 |
-| ET mars ; avril ; mai | 0,39 (neige seule) ; 1,36 ; 2,63 | 0,39 ; 0,99 ; 2,62 | 0,21 ; 0,62 ; 2,15 | 0,13 ; 0,43 ; 1,75 | MOD16 0,96 ; 1,39 ; 1,94 |
+| ET mars ; avril ; mai | non relevée ; 1,36 ; 2,63 | 0,39 ; 0,99 ; 2,62 | 0,21 ; 0,62 ; 2,15 | 0,13 ; 0,43 ; 1,75 | MOD16 0,96 ; 1,39 ; 1,94 |
 | volume annuel (obs 1,50) | 1,26 | 1,37 | 1,50 | 1,64 | |
 | mai ; juin ; juillet sim/obs | 0,72 ; 0,69 ; 0,68 | 0,75 ; 0,72 ; 0,72 | 0,82 ; 0,82 ; 0,82 | 0,87 ; 0,94 ; 0,96 | 1 |
 | août ; septembre | 1,03 ; 1,11 | 1,08 ; 1,17 | 1,18 ; 1,26 | 1,39 ; 1,45 | 1 |
