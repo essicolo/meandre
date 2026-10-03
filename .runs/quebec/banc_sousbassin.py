@@ -1323,6 +1323,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             os.environ["MEANDRE_NSUBSTEP"] = str(nsub)
             torch.manual_seed(int(os.environ.get("ETL_SEED", "1234")))
             mm = _construire()
+            if os.environ.get("MEANDRE_SONDE_CHARGER"):
+                # Sonde sur un modele entraine (2026-10-02) : le signe dit ou l'optimiseur
+                # pousserait chaque champ depuis ce point, et non depuis l'initialisation.
+                mm.load(os.environ["MEANDRE_SONDE_CHARGER"])
+                print(f"  sonde : point de reprise {os.path.basename(os.environ['MEANDRE_SONDE_CHARGER'])}", flush=True)
             mm.eval()
             with torch.no_grad():
                 sp0 = mm.spatial_encoder(coords, terr.data)
@@ -1349,6 +1354,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     _ob = _o_all[sl]
                     _okk = torch.isfinite(_ob)
                     _L = differentiable_etiage_loss(_ob[_okk], Q[:, s["exutoire"]][_okk])
+                elif _cible == "biais":
+                    _ob = _o_all[sl]
+                    _okk = torch.isfinite(_ob)
+                    _L = torch.abs(Q[:, s["exutoire"]][_okk].mean() / _ob[_okk].mean() - 1.0)
                 else:
                     _L = 1 - k
                 _L.backward()
