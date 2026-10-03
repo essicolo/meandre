@@ -4927,3 +4927,18 @@ LECTURE. La paramétrisation bornée a supprimé la dérive de R270. Le stockage
 ## R272 — Sur 052805, l'ET trop basse du modèle entraîné vient d'un K_c resté à 0,63 alors que le KGE, l'étiage et le biais de volume poussent tous à le monter : à K_c × 1,33, ET 1,35, débit 1,53 pour 1,50, Q7min 1,21, août-septembre 0,99, KGE 2024 0,851 ; le point de flétrissement de surface monté à 0,30 n'y est pour rien (2026-10-02, 22 h 20) — ÉTABLI EN PASSE AVANT ET PAR SONDE DE GRADIENT, témoin de R269
 
 Audit des sorties du champ, modèle du banc corrigé (ET 1,63) contre témoin (ET 1,05) : point de flétrissement de la couche 1 0,081 contre 0,298, K_sat_2 0,0072 contre 0,0011, K_c 0,84 contre 0,63. Passes avant sur le témoin : point de flétrissement ramené à 0,08, aucun effet (ET 1,05, Q7min 2,03) ; plus K_c × 1,33, tableau du titre. Sonde de gradient sur le point de reprise du témoin (nouvelle option `MEANDRE_SONDE_CHARGER`, nouvelle cible « biais »), première année d'entraînement, 64 sous-pas : d(cible)/d(multiplicateur de K_c) = −0,119 pour 1 − KGE, −0,442 pour l'étiage, −0,299 pour le biais ; K_c est le premier champ pour l'étiage et le biais. Volume par année sur jours mesurés : 1,04 à 1,55 fois l'observé sur 2010-2017, 1,10 à 1,31 sur 2018-2024, donc le défaut est sur toute la période, pas un écart d'entraînement à évaluation. LECTURE : deux époques ne suffisent pas à remonter K_c depuis l'initialisation quand le couvert nival et le frein du sol froid abaissent l'ET de départ. Les huit époques en cours le diront.
+
+## R273 — DÉFAUT DU TERME MOD16 CENTRÉ, dans le trainer commun au banc et au pilote : la référence simulée partait de la moyenne du premier bloc d'entraînement (45 jours d'hiver) et ne s'en éloignait qu'avec un poids de 0,02 par bloc ; le terme poussait toute l'ET vers le bas. Corrigé, l'ET de 052805 remonte de 1,05 à 1,28 mm/j et le Q7min passe de 2,04 à 1,47 fois l'observé en deux époques (2026-10-02, 23 h) — DÉFAUT CORRIGÉ, sous-bassin 052805, une graine
+
+Mécanisme. `Trainer._center_et` retire à l'observation sa moyenne de longue durée par nœud, mais à la simulation une moyenne mobile exponentielle initialisée sur le premier bloc de 45 jours, de mémoire environ 50 blocs, soit six ans. Le premier bloc commence en janvier, ET simulée de l'ordre de 0,05 mm/j : les anomalies simulées d'été étaient surestimées d'environ la moyenne annuelle, et l'écart quadratique au MOD16 centré se réduisait en baissant l'ET partout. Le mode centré devait ne contraindre que la forme ; il contraignait le niveau, dans le mauvais sens. Correctif : la référence simulée est la moyenne exacte de l'époque précédente sur toute la période d'entraînement, et à la première époque la moyenne des années complètes de la mise en régime (730 jours au banc). `MEANDRE_ET_CENTRAGE_EMA=1` restitue l'ancienne. Test `tests/test_centrage_et.py`.
+
+| 052805, deux époques, sans lacs, 2020-2024 | ancien centrage | centrage corrigé |
+| --- | --- | --- |
+| ET annuelle (MOD16 1,44) | 1,05 | 1,28 |
+| débit annuel (obs 1,50) | 1,83 | 1,60 |
+| Q7min ; jours sous Q90 (obs 127) | 2,04 ; 23 | 1,47 ; 70 |
+| volume août-sept | 1,67 | 1,12 |
+| KGE 2024 (r ; beta ; gamma) | 0,802 (0,853 ; 1,106 ; 0,920) | 0,706 (0,889 ; 0,978 ; 0,729) |
+| meilleure perte de validation | 1,78 | 1,22 |
+
+PORTÉE. Tout entraînement avec `et_mode = "anomaly"` et des blocs, au banc comme au pilote régional, a porté ce biais, d'autant plus fort que l'entraînement était court. Les huit époques lancées avec l'ancien code stagnent à une perte de validation de 1,62 à 2,09 après la deuxième époque. Les verdicts obtenus par entraînement court avec le terme MOD16 centré portent cette réserve.

@@ -640,6 +640,7 @@ class Trainer:
             self._cur_epoch = epoch   # utilisé par l'offset aléatoire des chunks
 
             train_loss, train_comps = self._train_epoch()
+            self._et_reference_fin_epoque()
 
             # ── Divergence guard ──────────────────────────────────────
             # Track EMA of train loss; if current loss exceeds 3× EMA,
@@ -951,8 +952,12 @@ class Trainer:
                 )
         else:
             # Full spinup from cold start
+            _ref_et = (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin")
+                       and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
+                       and getattr(self, "_et_sim_base", None) is None
+                       and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1")
             with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-                _, spun_state = self.model.simulate(
+                _res = self.model.simulate(
                     forcing=data.forcing[:spinup_end],
                     initial_state=HydroState.zeros(self.model.n_nodes, device=device),
                     graph=data.graph,
@@ -960,7 +965,16 @@ class Trainer:
                     territorial=data.territorial,
                     withdrawals=data.withdrawals,
                     day_of_year=data.day_of_year[:spinup_end],
+                    return_diagnostics=_ref_et,
                 )
+            spun_state = _res[1]
+            if _ref_et and len(_res) == 3:
+                # Reference initiale de l'ET centree : annees completes de la mise en regime.
+                _n_ans = spinup_end // 365
+                if _n_ans >= 1:
+                    _e = _res[2].etr[spinup_end - 365 * _n_ans:spinup_end]
+                    self._et_sim_base = _e.to(device).mean(dim=0).detach()
+                    logger.info("ET centree : reference initiale sur %d an(s) de mise en regime, moyenne %.3f mm/j", _n_ans, float(self._et_sim_base.mean()))
 
         # Cache for next epoch
         self._cached_spinup_state = spun_state.detach()
@@ -1036,10 +1050,34 @@ class Trainer:
             cnt = (~torch.isnan(eo)).sum(dim=0).clamp(min=1)
             base_obs = torch.nan_to_num(eo, nan=0.0).sum(dim=0) / cnt  # (n_nodes,)
             self._et_obs_base = base_obs
-        cur = et_sim.mean(dim=0).detach()  # (n_nodes,)
-        prev = getattr(self, "_et_sim_base", None)
-        self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
+        # REFERENCE SIMULEE (corrigee le 2026-10-02). L'ancienne partait de la moyenne du
+        # PREMIER bloc (45 jours d'hiver, ET ~0,05 mm/j) et la suivait par une moyenne mobile de
+        # poids 0,02 par bloc, soit environ six ans de memoire : les anomalies simulees etaient
+        # surestimees de l'ecart entre la moyenne annuelle et celle de janvier, et le terme
+        # poussait toute l'ET vers le bas (052805, deux epoques : K_c 0,63, ET 1,05 contre 1,44).
+        # Desormais : moyenne exacte de l'epoque precedente sur toute la periode d'entrainement,
+        # et, a la premiere, moyenne sur les annees completes de la mise en regime.
+        # MEANDRE_ET_CENTRAGE_EMA=1 restitue l'ancienne reference.
+        _acc = getattr(self, "_et_sim_acc", None)
+        _d = et_sim.detach()
+        if _acc is None:
+            self._et_sim_acc = [_d.sum(dim=0), _d.shape[0]]
+        else:
+            _acc[0] = _acc[0] + _d.sum(dim=0)
+            _acc[1] += _d.shape[0]
+        if os.environ.get("MEANDRE_ET_CENTRAGE_EMA") == "1" or getattr(self, "_et_sim_base", None) is None:
+            cur = _d.mean(dim=0)
+            prev = getattr(self, "_et_sim_base", None)
+            self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
         return et_sim - self._et_sim_base, et_obs - base_obs
+
+    def _et_reference_fin_epoque(self) -> None:
+        """Pose la reference simulee de l'ET centree sur la moyenne exacte de l'epoque qui
+        s'acheve (somme des blocs sur toute la periode d'entrainement), puis remet a zero."""
+        _acc = getattr(self, "_et_sim_acc", None)
+        if _acc is not None and _acc[1] > 0 and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1":
+            self._et_sim_base = _acc[0] / _acc[1]
+        self._et_sim_acc = None
 
     def _train_epoch(self) -> tuple[Tensor, dict[str, Tensor]]:
         """One training epoch: simulate -> loss -> backward -> step.
