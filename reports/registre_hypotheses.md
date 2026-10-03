@@ -4909,3 +4909,17 @@ LECTURE. Sur 052805, le stockage replace la crue après entraînement comme en p
 ## R270 — Partie d'une part traversante faible avec un taux fort, l'apprentissage monte la part à 69 % sur 052805, mais la vidange des lacs s'effondre à 0,0003 sur l'Outaouais : des scalaires sans borne physique dérivent vers un lac qui ne se vide plus (2026-10-02, 20 h 50) — ÉTABLI, deux bassins, une graine, deux époques
 
 Départ c 2,6 (part traversante 19 % sur 052805, 14 % sur 040110), k 0,2, taux des lacs × 300. 052805 : c appris 13,8 (part 69 %), k 0,18 ; perte de validation 1,47 contre 1,78 pour le témoin ; mi-mai 6,21 mm/j pour 3,89, début mai 8,77 pour 7,47 ; Q7min 1,60, août-septembre 1,19, KGE 2024 0,719 ; réponse aux pluies d'été 0,54. 040110 : c 15,6, k 0,0003 ; perte de validation 2,13 contre 0,63 pour le témoin ; Q7min 3,69, aucun jour sous le Q90 observé, KGE 2024 0,377. LECTURE. Sur 052805 la perte réclame plus de lacs, et dépasse en mai ; sur 040110 le pas trop fort a envoyé k hors de toute valeur physique. Remède appliqué : vidange paramétrée par un temps de séjour en jours à une hauteur de référence, borné en douceur entre 2 et 120 jours, c borné entre 0,5 et 50, taux × 100.
+
+## R271 — Avec un temps de séjour borné, les lacs hors réseau apprennent des valeurs stables et différentes par bassin : part traversante 51 % et séjour 30 jours sur 052805, 23 % et 15 jours sur l'Outaouais ; le calendrier se replace sur les deux bassins, mais 052805 passe en retard et l'Outaouais perd un peu de KGE (2026-10-02, 22 h) — ÉTABLI, deux bassins, une graine, deux époques
+
+| | 052805 témoin | 052805 lacs | 040110 témoin | 040110 lacs |
+| --- | --- | --- | --- | --- |
+| avance de la crue, 50 % ; 75 % (j) | 6 ; 6 | −3 ; −4 | 2 ; 4 | 0 ; 2 |
+| mi-mai, mm/j (obs 3,89 ; 2,98) | 2,85 | 4,96 | 3,20 | 3,81 |
+| perte de validation | 1,78 | 1,77 | 0,63 | 0,69 |
+| Q7min ; août-sept, sim/obs | 2,04 ; 1,67 | 2,04 ; 1,41 | 1,22 ; 1,04 | 1,33 ; 1,07 |
+| réponse aux pluies d'été, sim/obs | 1,76 | 0,61 | 0,52 | 0,43 |
+| KGE 2024 | 0,802 | 0,583 | 0,734 | 0,685 |
+| ET annuelle (MOD16) | 1,05 (1,44) | 1,11 (1,44) | 1,35 (1,55) | 1,24 (1,55) |
+
+LECTURE. La paramétrisation bornée a supprimé la dérive de R270. Le stockage replace le calendrier sur les deux bassins ; sur 052805, il dépasse (retard de 3 à 4 jours), ce qui laisse penser que l'optimiseur, en deux époques et avec un bilan de volume faux (ET 27 % sous MOD16 dans les deux bras), se sert du lac pour compenser. À SUIVRE : huit époques sur 052805, témoin et lacs, pour juger à convergence.
