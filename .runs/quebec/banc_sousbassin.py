@@ -846,6 +846,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
+    if os.environ.get("MEANDRE_BANC_INIT_LITTERATURE") == "1":
+        # INITIALISATION PAR LA LITTERATURE (2026-10-03), comme le pilote (etl_run.py) : sans
+        # elle chaque sortie du champ part du milieu de ses bornes avec un motif tire au
+        # hasard, et deux graines donnent apres deux epoques une ET de 1,28 ou 1,02 mm/j.
+        # Meme cible de K_c que le pilote (ETL_KC, defaut 1).
+        m.spatial_encoder.init_from_literature({"K_c": float(os.environ.get("ETL_KC", "1.0"))})
+        print("  champ spatial initialise par la litterature, comme le pilote", flush=True)
     if os.environ.get("MEANDRE_BANC_MULT_FIXE") and not os.environ.get("MEANDRE_BANC_MENSUEL"):
         # Multiplicateur FIXE sur des champs, actif aussi pendant l'entrainement (2026-09-28) :
         # par exemple K_c:0.5 pour ramener Penman au volume de Linacre calee, le champ

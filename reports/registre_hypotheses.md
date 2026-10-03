@@ -4972,3 +4972,20 @@ LECTURE. Sur 052805, le lac rend la réponse aux pluies d'été exacte et le cal
 | KGE 2024 (beta ; gamma) | 0,706 (0,98 ; 0,73) | 0,686 (1,15 ; 0,78) |
 
 LECTURE. Le banc n'initialise pas le champ par la littérature : chaque sortie part du milieu de ses bornes avec des poids tirés au hasard, et deux époques ne suffisent pas à rapprocher deux tirages. Les écarts entre variantes jugés à deux époques et une graine depuis R263 (lacs hors réseau, couvert nival, frein du sol froid) sont du même ordre que cette dispersion pour l'ET, le volume et l'étiage ; seuls les effets de calendrier mesurés en passe avant à poids figés (R265, R268) en sont indemnes. Le correctif de R273 reste fondé sur son mécanisme, mais son ampleur à deux époques n'est pas mesurée. RÈGLE pour la suite : au banc, juger à convergence (huit époques en cours) et sur deux graines au moins.
+
+## R276 — Têtes au taux commun, initialisation par la littérature, huit époques, centrage corrigé : sur 052805 deux graines donnent ET 1,27 et 1,36, Q7min 1,21 et 1,15, KGE 2024 0,862 et 0,838, contre une dispersion de 1,28 à 1,02 d'ET et de 1,47 à 2,23 de Q7min auparavant (2026-10-03, 3 h 15) — ÉTABLI SUR DEUX GRAINES, troisième en cours
+
+Les scripts de banc de la semaine posaient `MEANDRE_LR_MULT_TETES=10`, alors que R195 avait établi le 25 septembre que les têtes à taux multiplié portent la volatilité du banc ; et le banc n'appelait pas l'initialisation par la littérature que pose le pilote (`MEANDRE_BANC_INIT_LITTERATURE=1`, ajoutée). Même banc par ailleurs que R269 (couvert nival, frein du sol froid à 1 °C, sans lacs hors réseau), étiage dans la perte, choix sur la perte de validation.
+
+| 052805, 2020-2024 | graine 1234 (GPU) | graine 777 (processeur) |
+| --- | --- | --- |
+| perte de validation par époque | 1,22 ; 1,10 ; 1,09 ; 1,28 ; 1,13 ; 1,27 ; 1,05 ; 1,06 | 1,39 ; 1,00 ; 1,44 ; 0,93 ; 1,33 ; 1,23 ; 1,10 ; … |
+| époque retenue | 7 | 4 |
+| ET annuelle (MOD16 1,44) | 1,27 | 1,36 |
+| débit annuel (obs 1,50) | 1,61 | 1,52 |
+| Q7min ; jours sous Q90 (obs 127) | 1,21 ; 84 | 1,15 ; 105 |
+| août-sept | 1,13 | 0,92 |
+| KGE 2024 (r ; beta ; gamma) | 0,862 (0,908 ; 0,926 ; 1,072) | 0,838 (0,906 ; 0,870 ; 1,024) |
+| réponse aux pluies d'été, sim/obs | 1,37 | 1,29 |
+
+LECTURE. La validation reste bruitée d'une époque à l'autre (deux années de validation), mais les modèles retenus s'accordent : l'écart entre graines sur l'ET passe de 0,26 à 0,09 mm/j et sur le Q7min de 0,76 à 0,06. C'est la première configuration du banc où une comparaison de variantes a un sens. Les épreuves de lacs hors réseau (R268 à R274) sont à refaire dans cette configuration.
