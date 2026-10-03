@@ -5018,3 +5018,16 @@ Sonde sur le point de reprise de la huitième époque, horizon de quatre ans, 64
 | étiage | −0,441 | 1,0 | −0,441 |
 
 Trajectoire de la même graine : ET de 1,15 à 1,36 mm/j d'une époque à l'autre, toujours sous le bilan observé P − Q de 1,41, KGE 2024 montant de 0,71 à 0,89. Mécanisme : sous la neige, le couvert nival dans Penman et le frein du sol froid coupent l'ET de printemps que MOD16 maintient ; monter K_c élève surtout l'été, donc la moyenne simulée retirée, et creuse l'anomalie de printemps. Le terme centré pénalise ainsi tout K_c qui ferme le bilan. MOD16 étant peu fiable sous la neige, le remède retenu est un poids continu tiré de NEISIM, w = exp(−SWE/τ), appliqué aux écarts et aux deux moyennes retirées (`TrainingData.et_weight`, banc `MEANDRE_ET_NEIGE_MM`, test `tests/test_centrage_et.py`). Épreuve d'entraînement en cours.
+
+## R279 — Dans la configuration reproductible de R276, les lacs hors réseau dégradent le modèle entraîné sur deux graines : KGE 2024 0,589 et 0,613 contre 0,862 et 0,838 sans lacs, variabilité (gamma) 0,64 et 0,70, réponse aux pluies d'été 0,76 et 0,57 (2026-10-03, 4 h 50) — RÉFUTÉ SOUS CETTE FORME, sous-bassin 052805, deux graines, huit époques
+
+| 052805 | sans lacs 1234 | lacs 1234 | sans lacs 777 | lacs 777 |
+| --- | --- | --- | --- | --- |
+| meilleure perte de validation (époque) | 1,05 (7) | 1,39 (1) | 0,93 (5) | 1,01 (2) |
+| part traversante ; séjour appris | | 0,41 ; 11,7 j | | 0,38 ; 14,7 j |
+| ET (MOD16 1,44) | 1,27 | 1,24 | 1,36 | 1,35 |
+| Q7min ; août-sept | 1,21 ; 1,13 | 1,50 ; 1,01 | 1,15 ; 0,92 | 1,11 ; 0,79 |
+| KGE 2024 (gamma) | 0,862 (1,07) | 0,589 (0,64) | 0,838 (1,02) | 0,613 (0,70) |
+| réponse aux pluies d'été | 1,37 | 0,76 | 1,29 | 0,57 |
+
+LECTURE. Le réservoir qui replaçait le calendrier de la crue en passe avant (R268) fait passer par les lacs 40 % de toute la production, orages d'été compris, et la variabilité s'effondre ; avec lacs, la validation se dégrade dès la deuxième époque (1,86 à 2,03 pour la graine 1234). Le défaut de calendrier du printemps reste réel (R267) mais ce réservoir n'en est pas le remède. Piste non éprouvée : un stockage qui n'agit que sur l'eau de fonte, ou des lacs routés plus nombreux au lieu d'un réservoir diffus. Le mécanisme reste opt-in et neutre sans option.
