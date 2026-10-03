@@ -211,6 +211,22 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
             print(f"[neisim] {reg}: cible chargee mais w_swe_mass vaut 0, elle n'agit pas")
         print(f"[neisim] {reg}: source {_src}, {swe_mass_obs.shape[1]} series, "
               f"{int(torch.isfinite(swe_mass_obs).sum())} valeurs")
+    # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03, registre R278 a R281). ETL_ET_NEIGE_MM = tau
+    # en mm d'equivalent en eau : w = exp(-SWE_NEISIM / tau) par noeud et par jour, sur l'axe
+    # du forcage ; noeuds sans serie NEISIM a poids 1. En mode centre, l'ecart de printemps
+    # sous la neige tirait K_c vers le bas et laissait le bilan ouvert.
+    et_weight = None
+    if et_obs is not None and os.environ.get("ETL_ET_NEIGE_MM"):
+        _tau_n = float(os.environ["ETL_ET_NEIGE_MM"])
+        _fz = f"{_mpaths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
+        if not os.path.exists(_fz):
+            raise FileNotFoundError(f"poids hors neige : NEISIM absent, {_fz} (build_neisim_targets.py)")
+        _zz = np.load(_fz)
+        _vv = torch.tensor(np.nan_to_num(_zz["valeurs"], nan=0.0), dtype=torch.float32, device=device)
+        assert _vv.shape[0] == len(times), f"{reg}: axe de temps NEISIM {_vv.shape[0]} vs {len(times)}"
+        et_weight = torch.ones(len(times), n_nodes, dtype=torch.float32, device=device)
+        et_weight[:, torch.tensor(_zz["node_idx"], dtype=torch.long, device=device)] = torch.exp(-_vv / _tau_n)
+        print(f"[et] {reg}: terme MOD16 pondere hors neige, w = exp(-SWE NEISIM / {_tau_n:g} mm), poids moyen {float(et_weight.mean()):.2f}")
     tws_obs = None
     con = duckdb.connect(db_path, read_only=True)
     if "grace_tws" in [t[0] for t in con.execute("show tables").fetchall()]:
@@ -293,6 +309,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
             withdrawals=withdrawals, day_of_year=doy,
             train_slice=sl_, val_slice=sl_,
             et_obs=et_obs[sl_.start:] if et_obs is not None else None,
+            et_weight=et_weight,
             tws_obs=tws_obs[sl_.start:] if tws_obs is not None else None,
             swe_obs=swe_obs[sl_.start:] if swe_obs is not None else None,
             swe_mass_obs=(swe_mass_obs[sl_.start:]
