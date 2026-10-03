@@ -775,6 +775,17 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         else:
             print("  puits : aucun puits recevable dans ce sous-bassin, terme inactif", flush=True)
             w_nappe = 0.0
+    # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03), MEANDRE_ET_NEIGE_MM = tau en mm d'equivalent
+    # en eau : w = exp(-SWE_NEISIM / tau) par noeud et par jour, sur l'axe du forcage. Une
+    # donnee et non le manteau simule, donc un poids fixe. Voir TrainingData.et_weight.
+    if et_obs is not None and os.environ.get("MEANDRE_ET_NEIGE_MM"):
+        _tau_n = float(os.environ["MEANDRE_ET_NEIGE_MM"])
+        _zn = np.load(f"{_p.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz")
+        _coln = np.searchsorted(_zn["node_idx"], np.asarray(s["idx"]))
+        _swn = pd.DataFrame(_zn["valeurs"][:, _coln], index=pd.DatetimeIndex(_zn["times"])).reindex(pd.DatetimeIndex(temps)).to_numpy()
+        _swn = np.nan_to_num(_swn, nan=0.0)
+        commun["et_weight"] = torch.tensor(np.exp(-_swn / _tau_n), dtype=torch.float32, device=dev)
+        print(f"  terme MOD16 pondere hors neige : w = exp(-SWE NEISIM / {_tau_n:g} mm), poids moyen {float(commun['et_weight'].mean()):.2f}", flush=True)
     td = TrainingData(train_slice=tr_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[tr_sl.start:],
                          "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None),
@@ -1349,18 +1360,42 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 # Chaque horizon repart du meme etat interne de mise en regime.
                 with torch.no_grad():
                     _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:tr_sl.start]), day_of_year=doy[:tr_sl.start])
-                Q, _ = mm.simulate(forcing=F[sl], initial_state=st0, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[sl]), day_of_year=doy[sl], poursuivre_etat=True)
-                k = _kge_t(Q[:, s["exutoire"]], _o_all[sl])
-                # CIBLE DE LA SONDE (2026-10-02) : « kge » (1 - KGE, defaut historique) ou
-                # « etiage » (ecart absolu des logarithmes sous le 30e centile observe, le terme
-                # de la perte). Le signe dit ou l'optimiseur poussera : negatif, augmenter le
-                # champ fait baisser la cible.
                 _cible = os.environ.get("MEANDRE_SONDE_CIBLE", "kge")
+                _res = mm.simulate(forcing=F[sl], initial_state=st0, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[sl]), day_of_year=doy[sl], poursuivre_etat=True, return_diagnostics=(_cible in ("et", "et_neige")))
+                Q = _res[0]
+                k = _kge_t(Q[:, s["exutoire"]], _o_all[sl])
+                # CIBLE DE LA SONDE (2026-10-02) : « kge » (1 - KGE, defaut historique),
+                # « etiage » (ecart absolu des logarithmes sous le 30e centile observe, le terme
+                # de la perte), « biais », « et » (MOD16 centre). Le signe dit ou l'optimiseur
+                # poussera : negatif, augmenter le champ fait baisser la cible.
                 if _cible == "etiage":
                     from meandre.training.loss import differentiable_etiage_loss
                     _ob = _o_all[sl]
                     _okk = torch.isfinite(_ob)
                     _L = differentiable_etiage_loss(_ob[_okk], Q[:, s["exutoire"]][_okk])
+                elif _cible == "et":
+                    # Terme MOD16 centre, calcule comme le trainer corrige (2026-10-03) :
+                    # moyenne glissante de 8 jours, chaque cote prive de sa moyenne.
+                    from meandre.training.loss import rolling_mean
+                    _es = rolling_mean(_res[2].etr.to(dev), 8)
+                    _eo = et_obs[sl].to(dev)
+                    _base_o = torch.nan_to_num(et_obs, nan=0.0).sum(0) / torch.isfinite(et_obs).sum(0).clamp(min=1)
+                    _ok = torch.isfinite(_eo)
+                    _L = (((_eo - _base_o.to(dev)) - (_es - _es.mean(0).detach()))[_ok] ** 2).mean()
+                elif _cible == "et_neige":
+                    # Variante ponderee hors neige : poids continu w = exp(-SWE / tau), tau en mm
+                    # (MEANDRE_ET_NEIGE_MM), moyennes retirees ponderees de la meme facon.
+                    from meandre.training.loss import rolling_mean
+                    _tau = float(os.environ.get("MEANDRE_ET_NEIGE_MM", "10"))
+                    _es = rolling_mean(_res[2].etr.to(dev), 8)
+                    _eo = et_obs[sl].to(dev)
+                    _wn = torch.exp(-_res[2].swe.to(dev).detach() / _tau)
+                    _ok = torch.isfinite(_eo)
+                    _wo = _wn * _ok
+                    _eo0 = torch.nan_to_num(_eo)
+                    _bo = (_wo * _eo0).sum(0) / _wo.sum(0).clamp(min=1e-6)
+                    _bs = ((_wo * _es).sum(0) / _wo.sum(0).clamp(min=1e-6)).detach()
+                    _L = (_wo * ((_eo0 - _bo) - (_es - _bs)) ** 2).sum() / _wo.sum().clamp(min=1e-6)
                 elif _cible == "biais":
                     _ob = _o_all[sl]
                     _okk = torch.isfinite(_ob)

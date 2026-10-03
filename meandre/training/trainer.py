@@ -316,6 +316,12 @@ class TrainingData:
     et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
     swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
     tws_obs: Tensor | None = None   # GRACE TWS anomalie (mm), valeur mensuelle au 15, NaN ailleurs
+    # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03), aligne sur l'axe du FORCAGE (index 0 =
+    # forcing[0], mise en regime comprise), forme (T, n_nodes), sans dimension, de 0 a 1.
+    # MOD16 est peu fiable sous la neige ; en mode centre, l'ecart de printemps (MOD16 0,96
+    # et 1,39 mm/j en mars et avril, modele 0,16 et 0,51 sur 052805) tirait K_c vers le bas.
+    # Typiquement w = exp(-SWE_NEISIM / tau). None = poids uniforme.
+    et_weight: Tensor | None = None
     # GRACE est un observable de BASSIN, pas de tronçon : sa moyenne de stockage doit se
     # prendre sur le masque du bassin qu'elle mesure. Tant qu'un entraînement portait sur
     # un seul bassin, la moyenne sur tous les nœuds était ce masque et la question ne se
@@ -978,8 +984,14 @@ class Trainer:
                 # Reference initiale de l'ET centree : annees completes de la mise en regime.
                 _n_ans = spinup_end // 365
                 if _n_ans >= 1:
-                    _e = _res[2].etr[spinup_end - 365 * _n_ans:spinup_end]
-                    self._et_sim_base = _e.to(device).mean(dim=0).detach()
+                    _a0 = spinup_end - 365 * _n_ans
+                    _e = _res[2].etr[_a0:spinup_end].to(device)
+                    _Wsp = getattr(data, "et_weight", None)
+                    if _Wsp is not None:
+                        _ww = _Wsp[_a0:spinup_end].to(device, _e.dtype)
+                        self._et_sim_base = ((_ww * _e).sum(dim=0) / _ww.sum(dim=0).clamp(min=1e-6)).detach()
+                    else:
+                        self._et_sim_base = _e.mean(dim=0).detach()
                     logger.info("ET centree : reference initiale sur %d an(s) de mise en regime, moyenne %.3f mm/j", _n_ans, float(self._et_sim_base.mean()))
 
         # Cache for next epoch
@@ -1038,7 +1050,7 @@ class Trainer:
                 + "\nMettre le poids a zero, ou fournir l'observation dans TrainingData."
             )
 
-    def _center_et(self, et_sim: Tensor, et_obs: Tensor, data: TrainingData) -> tuple[Tensor, Tensor]:
+    def _center_et(self, et_sim: Tensor, et_obs: Tensor, data: TrainingData, t0: int | None = None) -> tuple[Tensor, Tensor]:
         """Centrage ET pour ``loss_fn.et_mode == "anomaly"`` (TENDANCE, pas niveau).
 
         Même discipline que la TWS (corrigée le 2026-08-10) : lignes de base LONGUE
@@ -1050,11 +1062,21 @@ class Trainer:
         """
         if getattr(self.loss_fn, "et_mode", "level") not in ("anomaly", "bassin"):
             return et_sim, et_obs
+        # Poids hors neige du bloc (t0 = indice du premier jour du bloc sur l'axe du forcage).
+        _W = getattr(data, "et_weight", None)
+        w = None
+        if _W is not None and t0 is not None:
+            w = _W[t0:t0 + et_sim.shape[0]].to(et_sim.device, et_sim.dtype)
         base_obs = getattr(self, "_et_obs_base", None)
         if base_obs is None:
             eo = data.et_obs
-            cnt = (~torch.isnan(eo)).sum(dim=0).clamp(min=1)
-            base_obs = torch.nan_to_num(eo, nan=0.0).sum(dim=0) / cnt  # (n_nodes,)
+            if _W is not None:
+                _s0 = data.train_slice.start
+                _wo = _W[_s0:_s0 + eo.shape[0]].to(eo.device, eo.dtype) * (~torch.isnan(eo))
+                base_obs = (_wo * torch.nan_to_num(eo, nan=0.0)).sum(dim=0) / _wo.sum(dim=0).clamp(min=1e-6)
+            else:
+                cnt = (~torch.isnan(eo)).sum(dim=0).clamp(min=1)
+                base_obs = torch.nan_to_num(eo, nan=0.0).sum(dim=0) / cnt  # (n_nodes,)
             self._et_obs_base = base_obs
         # REFERENCE SIMULEE (corrigee le 2026-10-02). L'ancienne partait de la moyenne du
         # PREMIER bloc (45 jours d'hiver, ET ~0,05 mm/j) et la suivait par une moyenne mobile de
@@ -1066,23 +1088,31 @@ class Trainer:
         # MEANDRE_ET_CENTRAGE_EMA=1 restitue l'ancienne reference.
         _acc = getattr(self, "_et_sim_acc", None)
         _d = et_sim.detach()
+        _wd = w if w is not None else torch.ones_like(_d)
         if _acc is None:
-            self._et_sim_acc = [_d.sum(dim=0), _d.shape[0]]
+            self._et_sim_acc = [(_wd * _d).sum(dim=0), _wd.sum(dim=0)]
         else:
-            _acc[0] = _acc[0] + _d.sum(dim=0)
-            _acc[1] += _d.shape[0]
+            _acc[0] = _acc[0] + (_wd * _d).sum(dim=0)
+            _acc[1] = _acc[1] + _wd.sum(dim=0)
         if os.environ.get("MEANDRE_ET_CENTRAGE_EMA") == "1" or getattr(self, "_et_sim_base", None) is None:
             cur = _d.mean(dim=0)
             prev = getattr(self, "_et_sim_base", None)
             self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
-        return et_sim - self._et_sim_base, et_obs - base_obs
+        if w is None:
+            return et_sim - self._et_sim_base, et_obs - base_obs
+        # Ecart pondere : chaque cote multiplie par la racine du poids, si bien que l'ecart
+        # quadratique de la perte vaut w x ecart^2.
+        _r = torch.sqrt(w.clamp(min=0.0))
+        return (et_sim - self._et_sim_base) * _r, (et_obs - base_obs) * _r
 
     def _et_reference_fin_epoque(self) -> None:
         """Pose la reference simulee de l'ET centree sur la moyenne exacte de l'epoque qui
         s'acheve (somme des blocs sur toute la periode d'entrainement), puis remet a zero."""
         _acc = getattr(self, "_et_sim_acc", None)
-        if _acc is not None and _acc[1] > 0 and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1":
-            self._et_sim_base = _acc[0] / _acc[1]
+        if _acc is not None and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1":
+            _n = torch.as_tensor(_acc[1])
+            if bool((_n > 0).all()):
+                self._et_sim_base = _acc[0] / _n
         self._et_sim_acc = None
 
     def _train_epoch(self) -> tuple[Tensor, dict[str, Tensor]]:
@@ -1315,7 +1345,7 @@ class Trainer:
                     et_obs_chunk = data.et_obs[obs_offset + burnin:obs_offset + chunk_len]
                     if self.loss_fn.w_nll_et > 0 and hasattr(self.model, "noise_head_et"):
                         log_sigma_et_chunk = self.model.noise_head_et(et_sim_chunk.detach())
-                    et_sim_chunk, et_obs_chunk = self._center_et(et_sim_chunk, et_obs_chunk, data)
+                    et_sim_chunk, et_obs_chunk = self._center_et(et_sim_chunk, et_obs_chunk, data, t0=data.train_slice.start + obs_offset + burnin)
 
                 # Neige : fraction de couverture simulée vs MODIS snow_frac.
                 scf_sim_chunk = snow_obs_chunk = None
@@ -2199,7 +2229,7 @@ class Trainer:
 
             _et_obs_train = data.et_obs[:n_train] if data.et_obs is not None else None
             if et_sim is not None and _et_obs_train is not None:
-                et_sim, _et_obs_train = self._center_et(et_sim, _et_obs_train, data)
+                et_sim, _et_obs_train = self._center_et(et_sim, _et_obs_train, data, t0=data.train_slice.start)
 
             loss, components = self.loss_fn(
                 q_obs=q_obs_train,

@@ -35,3 +35,17 @@ def test_premier_bloc_d_hiver_ne_fixe_plus_la_reference():
     tr._center_et(ete, ete, data)
     tr._et_reference_fin_epoque()
     assert abs(float(tr._et_sim_base) - 1.525) < 1e-4
+
+
+def test_poids_hors_neige_exclut_l_hiver_des_moyennes():
+    tr = _trainer_factice()
+    hiver = torch.full((45, 1), 0.05)
+    ete = torch.full((45, 1), 3.0)
+    obs = torch.cat([torch.full((45, 1), 0.8), torch.full((45, 1), 3.2)])
+    poids = torch.cat([torch.zeros(45, 1), torch.ones(45, 1)])
+    data = types.SimpleNamespace(et_obs=obs, et_weight=poids, train_slice=slice(0, 90))
+    tr._center_et(hiver, obs[:45], data, t0=0)
+    s_ete, o_ete = tr._center_et(ete, obs[45:], data, t0=45)
+    tr._et_reference_fin_epoque()
+    assert abs(float(tr._et_obs_base) - 3.2) < 1e-5
+    assert abs(float(tr._et_sim_base) - 3.0) < 1e-5

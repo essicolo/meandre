@@ -5004,3 +5004,17 @@ LECTURE. La validation reste bruitée d'une époque à l'autre (deux années de 
 | part traversante ; séjour appris | | | | 0,38 ; 14,7 j |
 
 LECTURE. La graine 4321 retient la première époque, la 1234 la septième : le critère de choix, une perte sur deux années d'une station, saute de 0,9 à 1,4 d'une époque à l'autre et ajoute son bruit à celui du tirage. Les lacs hors réseau gardent leur défaut de R269 : la réponse aux pluies d'été tombe à 0,57 de l'observée et la variabilité (gamma 0,70) chute. Épreuve suivante : un point de reprise par époque (`MEANDRE_SAUVER_EPOQUES=1`, ajouté au trainer), pour évaluer toute la trajectoire de chaque graine et juger si la dernière époque est plus stable que le choix par la validation.
+
+## R278 — Le terme MOD16 centré tire K_c vers le bas à cause des mois enneigés : MOD16 donne 0,96 et 1,39 mm/j en mars et avril sur 052805, le modèle 0,16 et 0,51 ; pondéré hors neige, son gradient sur K_c tombe de +0,29 à +0,04 (2026-10-03, 4 h 45) — ÉTABLI PAR SONDE DE GRADIENT, dernière époque de la graine 777 de R276
+
+Sonde sur le point de reprise de la huitième époque, horizon de quatre ans, 64 sous-pas, gradient de chaque cible par rapport au multiplicateur de K_c (négatif : la cible veut K_c plus fort) :
+
+| cible | gradient | poids dans la perte | contribution |
+| --- | --- | --- | --- |
+| MOD16 centré | +0,294 | 0,4 | +0,118 |
+| MOD16 centré pondéré hors neige, w = exp(−SWE/10 mm) | +0,042 | | |
+| 1 − KGE | +0,069 | 1,0 | +0,069 |
+| biais de volume | −0,315 | 0,5 | −0,158 |
+| étiage | −0,441 | 1,0 | −0,441 |
+
+Trajectoire de la même graine : ET de 1,15 à 1,36 mm/j d'une époque à l'autre, toujours sous le bilan observé P − Q de 1,41, KGE 2024 montant de 0,71 à 0,89. Mécanisme : sous la neige, le couvert nival dans Penman et le frein du sol froid coupent l'ET de printemps que MOD16 maintient ; monter K_c élève surtout l'été, donc la moyenne simulée retirée, et creuse l'anomalie de printemps. Le terme centré pénalise ainsi tout K_c qui ferme le bilan. MOD16 étant peu fiable sous la neige, le remède retenu est un poids continu tiré de NEISIM, w = exp(−SWE/τ), appliqué aux écarts et aux deux moyennes retirées (`TrainingData.et_weight`, banc `MEANDRE_ET_NEIGE_MM`, test `tests/test_centrage_et.py`). Épreuve d'entraînement en cours.
