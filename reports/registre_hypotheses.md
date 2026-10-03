@@ -4989,3 +4989,18 @@ Les scripts de banc de la semaine posaient `MEANDRE_LR_MULT_TETES=10`, alors que
 | réponse aux pluies d'été, sim/obs | 1,37 | 1,29 |
 
 LECTURE. La validation reste bruitée d'une époque à l'autre (deux années de validation), mais les modèles retenus s'accordent : l'écart entre graines sur l'ET passe de 0,26 à 0,09 mm/j et sur le Q7min de 0,76 à 0,06. C'est la première configuration du banc où une comparaison de variantes a un sens. Les épreuves de lacs hors réseau (R268 à R274) sont à refaire dans cette configuration.
+
+## R277 — Troisième graine de la configuration de R276 : époque retenue 1, ET 1,48, Q7min 0,84, KGE 2024 0,724 ; la dispersion entre graines baisse mais reste de 0,21 mm/j d'ET et 0,37 de Q7min, portée en partie par le choix de l'époque sur deux ans de validation ; les lacs hors réseau, graine 777, perdent 0,22 de KGE contre le témoin de même graine (2026-10-03, 3 h 30) — ÉTABLI, trois graines sans lacs, une avec
+
+| 052805, 2020-2024 | graine 1234 | graine 777 | graine 4321 | lacs, graine 777 |
+| --- | --- | --- | --- | --- |
+| époque retenue | 7 | 4 | 1 | 2 |
+| ET (MOD16 1,44) | 1,27 | 1,36 | 1,48 | 1,35 |
+| débit (obs 1,50) | 1,61 | 1,52 | 1,41 | 1,46 |
+| Q7min ; jours sous Q90 (obs 127) | 1,21 ; 84 | 1,15 ; 105 | 0,84 ; 190 | 1,11 ; 122 |
+| août-sept | 1,13 | 0,92 | 0,86 | 0,79 |
+| KGE 2024 (gamma) | 0,862 (1,07) | 0,838 (1,02) | 0,724 (1,10) | 0,613 (0,70) |
+| réponse aux pluies d'été | 1,37 | 1,29 | 1,63 | 0,57 |
+| part traversante ; séjour appris | | | | 0,38 ; 14,7 j |
+
+LECTURE. La graine 4321 retient la première époque, la 1234 la septième : le critère de choix, une perte sur deux années d'une station, saute de 0,9 à 1,4 d'une époque à l'autre et ajoute son bruit à celui du tirage. Les lacs hors réseau gardent leur défaut de R269 : la réponse aux pluies d'été tombe à 0,57 de l'observée et la variabilité (gamma 0,70) chute. Épreuve suivante : un point de reprise par époque (`MEANDRE_SAUVER_EPOQUES=1`, ajouté au trainer), pour évaluer toute la trajectoire de chaque graine et juger si la dernière époque est plus stable que le choix par la validation.

@@ -864,6 +864,12 @@ class Trainer:
                     print(f"  [no save] {_bm}={_cur:.4f}, "
                           f"best={self._best_val_metric:.4f}, "
                           f"no_improve={epochs_without_improvement}/{self.config.patience}")
+                # Point de reprise de CHAQUE epoque (2026-10-03, MEANDRE_SAUVER_EPOQUES=1) : la
+                # validation d'une station sur deux ans saute d'une epoque a l'autre, et le choix
+                # du meilleur point y ajoute un bruit que seule l'evaluation de toute la
+                # trajectoire permet de mesurer.
+                if self.checkpoint_path and os.environ.get("MEANDRE_SAUVER_EPOQUES") == "1":
+                    self.model.save(self.checkpoint_path.replace(".pt", f"-e{epoch + 1}.pt"))
 
             # ── Kendall-Gal phase 1→2 transition (one-shot) ────────────
             # Checked BEFORE regular autopilot so we don't trigger LR plateau
