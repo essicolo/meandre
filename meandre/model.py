@@ -1042,32 +1042,40 @@ class HydroModel(nn.Module):
         k = k / k.sum(dim=1, keepdim=True).clamp(min=1e-12)
         self._hgm_kernel = k
 
-    def set_distributed_lakes(self, f, c, k, beta, learn=()) -> None:
+    def set_distributed_lakes(self, f, c, T, beta, h_ref, bounds, learn=()) -> None:
         """Pose les lacs hors reseau. f : fraction d'eau libre du noeud hors lacs routes
-        (tenseur n_nodes) ; part de la production locale qui les traverse rd = 1 - exp(-c f),
-        continue et bornee par 1 ; vidange q = f k h^beta, k en m^(1-beta)/j. learn nomme les
-        scalaires appris parmi "k", "c", appris en espace logarithmique (parametres
-        lakes_learn_log_k et lakes_learn_log_c). f=None retire le reservoir."""
+        (tenseur n_nodes). Part de la production locale qui les traverse rd = 1 - exp(-c f),
+        continue et bornee par 1. Vidange q = f k h^beta, h hauteur au-dessus du seuil (m),
+        parametree par le temps de sejour T (jours) a la hauteur h_ref : k = 1 / (T h_ref^(beta-1)).
+        c et T sont bornes en douceur, sigmoide en espace logarithmique entre bounds[nom] =
+        (min, max), comme les champs du reseau spatial ; learn nomme les appris parmi "c", "T"
+        (parametres lakes_learn_c et lakes_learn_T). f=None retire le reservoir."""
         if f is None:
             self._distributed_lakes = None
             return
         import math
-        for nom, v in (("k", k), ("c", c)):
-            t = torch.tensor(math.log(float(v)), device=f.device)
+        for nom, v in (("c", c), ("T", T)):
+            lo, hi = (math.log(float(x)) for x in bounds[nom])
+            fr = min(max((math.log(float(v)) - lo) / (hi - lo), 1e-4), 1 - 1e-4)
+            t = torch.tensor(math.log(fr / (1 - fr)), device=f.device)
             if nom in learn:
-                setattr(self, f"lakes_learn_log_{nom}", nn.Parameter(t))
+                setattr(self, f"lakes_learn_{nom}", nn.Parameter(t))
             else:
-                self.register_buffer(f"lakes_fixed_log_{nom}", t, persistent=False)
-        self._distributed_lakes = dict(f=f, beta=float(beta), learn=tuple(learn))
+                self.register_buffer(f"lakes_fixed_{nom}", t, persistent=False)
+        self._distributed_lakes = dict(f=f, beta=float(beta), h_ref=float(h_ref), bounds={k2: tuple(float(x) for x in v2) for k2, v2 in bounds.items()}, learn=tuple(learn))
 
     def distributed_lakes_values(self) -> dict:
-        """Valeurs courantes de k et c des lacs hors reseau (apprises ou fixes)."""
+        """Valeurs courantes des lacs hors reseau : c, T (jours) et k qui s'en deduit."""
+        import math
+        ld = self._distributed_lakes
         out = {}
-        for nom in ("k", "c"):
-            t = getattr(self, f"lakes_learn_log_{nom}", None)
+        for nom in ("c", "T"):
+            t = getattr(self, f"lakes_learn_{nom}", None)
             if t is None:
-                t = getattr(self, f"lakes_fixed_log_{nom}")
-            out[nom] = torch.exp(t)
+                t = getattr(self, f"lakes_fixed_{nom}")
+            lo, hi = (math.log(x) for x in ld["bounds"][nom])
+            out[nom] = torch.exp(lo + (hi - lo) * torch.sigmoid(t))
+        out["k"] = 1.0 / (out["T"] * ld["h_ref"] ** (ld["beta"] - 1.0))
         return out
 
     def set_lake_area(self, lake_area_km2) -> None:
