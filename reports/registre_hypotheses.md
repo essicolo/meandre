@@ -4944,3 +4944,18 @@ Mécanisme. `Trainer._center_et` retire à l'observation sa moyenne de longue du
 PORTÉE. Tout entraînement avec `et_mode = "anomaly"` et des blocs, au banc comme au pilote régional, a porté ce biais, d'autant plus fort que l'entraînement était court. Les huit époques lancées avec l'ancien code stagnent à une perte de validation de 1,62 à 2,09 après la deuxième époque. Les verdicts obtenus par entraînement court avec le terme MOD16 centré portent cette réserve.
 
 Outaouais 040110, même épreuve : ET 1,35 → 1,41 (MOD16 1,55), débit 2,08 → 2,03 (obs 1,99), Q7min 1,22 → 0,94, jours sous Q90 66 → 95 (obs 128), août-septembre 1,04 → 1,06, KGE 2024 0,734 → 0,766 (gamma 1,02), réponse aux pluies d'été 0,52 → 0,66, meilleure perte de validation 0,63 → 0,64.
+
+## R274 — Avec le centrage corrigé, les lacs hors réseau apprennent une part traversante modeste (30 % sur 052805, 21 % sur l'Outaouais) et un séjour de 10 à 12 jours ; sur 052805 ils replacent avril et fin mai sans coût d'étiage, sur l'Outaouais la validation s'améliore mais l'évaluation 2020-2024 se dégrade (2026-10-03, 0 h 20) — ÉTABLI, deux bassins, une graine, deux époques ; À CONFIRMER à huit époques
+
+| centrage corrigé, deux époques | 052805 sans lacs | 052805 lacs | 040110 sans lacs | 040110 lacs |
+| --- | --- | --- | --- | --- |
+| part traversante ; séjour appris | | 0,30 ; 9,6 j | | 0,21 ; 11,8 j |
+| meilleure perte de validation | 1,22 | 1,29 | 0,64 | 0,53 |
+| mi-avril ; fin mai, mm/j (obs 4,05 ; 2,56 à 052805) | 5,32 ; 1,94 | 4,11 ; 2,49 | | |
+| avance de la crue 50 % ; 75 % (j) | 4 ; 5 | 1 ; 5 | | |
+| Q7min ; août-sept, sim/obs | 1,47 ; 1,12 | 1,47 ; 1,04 | 0,94 ; 1,06 | 0,84 ; 0,70 |
+| réponse aux pluies d'été, sim/obs | 1,45 | 1,00 | 0,66 | 0,41 |
+| ET (MOD16) | 1,28 (1,44) | 1,25 (1,44) | 1,41 (1,55) | 1,50 (1,55) |
+| KGE 2024 (beta ; gamma) | 0,706 (0,98 ; 0,73) | 0,673 (0,95 ; 0,73) | 0,766 (1,00 ; 1,02) | 0,576 (0,83 ; 0,69) |
+
+LECTURE. Sur 052805, le lac rend la réponse aux pluies d'été exacte et le calendrier de la fonte juste à la décade, l'étiage est inchangé. Sur l'Outaouais, la validation 2018-2019 préfère les lacs, l'évaluation 2020-2024 non : volume d'été 30 % trop bas, ET plus forte. Deux époques et une graine ne tranchent pas ; huit époques, témoin et lacs, sur les deux bassins, sont en cours.
