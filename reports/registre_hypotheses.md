@@ -4959,3 +4959,16 @@ Outaouais 040110, même épreuve : ET 1,35 → 1,41 (MOD16 1,55), débit 2,08 �
 | KGE 2024 (beta ; gamma) | 0,706 (0,98 ; 0,73) | 0,673 (0,95 ; 0,73) | 0,766 (1,00 ; 1,02) | 0,576 (0,83 ; 0,69) |
 
 LECTURE. Sur 052805, le lac rend la réponse aux pluies d'été exacte et le calendrier de la fonte juste à la décade, l'étiage est inchangé. Sur l'Outaouais, la validation 2018-2019 préfère les lacs, l'évaluation 2020-2024 non : volume d'été 30 % trop bas, ET plus forte. Deux époques et une graine ne tranchent pas ; huit époques, témoin et lacs, sur les deux bassins, sont en cours.
+
+## R275 — À deux époques depuis zéro, le niveau d'ET et l'étiage du banc dépendent de la graine plus que de tout mécanisme essayé cette semaine : sur 052805, centrage corrigé, la graine 1234 donne ET 1,28 et Q7min 1,47, la graine 4321 ET 1,02 et Q7min 2,23 (2026-10-03, 1 h 05) — ÉTABLI, sous-bassin 052805, deux graines
+
+| 052805, centrage corrigé, deux époques, sans lacs | graine 1234 (GPU) | graine 4321 (processeur) |
+| --- | --- | --- |
+| perte de validation, époque 1 ; 2 | 1,22 ; 1,64 | 2,29 ; 1,86 |
+| ET annuelle (MOD16 1,44) | 1,28 | 1,02 |
+| débit annuel (obs 1,50) | 1,60 | 1,86 |
+| Q7min ; jours sous Q90 (obs 127) | 1,47 ; 70 | 2,23 ; 20 |
+| août-sept | 1,12 | 1,77 |
+| KGE 2024 (beta ; gamma) | 0,706 (0,98 ; 0,73) | 0,686 (1,15 ; 0,78) |
+
+LECTURE. Le banc n'initialise pas le champ par la littérature : chaque sortie part du milieu de ses bornes avec des poids tirés au hasard, et deux époques ne suffisent pas à rapprocher deux tirages. Les écarts entre variantes jugés à deux époques et une graine depuis R263 (lacs hors réseau, couvert nival, frein du sol froid) sont du même ordre que cette dispersion pour l'ET, le volume et l'étiage ; seuls les effets de calendrier mesurés en passe avant à poids figés (R265, R268) en sont indemnes. Le correctif de R273 reste fondé sur son mécanisme, mais son ampleur à deux époques n'est pas mesurée. RÈGLE pour la suite : au banc, juger à convergence (huit époques en cours) et sur deux graines au moins.
