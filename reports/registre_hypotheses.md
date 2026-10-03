@@ -4942,3 +4942,5 @@ Mécanisme. `Trainer._center_et` retire à l'observation sa moyenne de longue du
 | meilleure perte de validation | 1,78 | 1,22 |
 
 PORTÉE. Tout entraînement avec `et_mode = "anomaly"` et des blocs, au banc comme au pilote régional, a porté ce biais, d'autant plus fort que l'entraînement était court. Les huit époques lancées avec l'ancien code stagnent à une perte de validation de 1,62 à 2,09 après la deuxième époque. Les verdicts obtenus par entraînement court avec le terme MOD16 centré portent cette réserve.
+
+Outaouais 040110, même épreuve : ET 1,35 → 1,41 (MOD16 1,55), débit 2,08 → 2,03 (obs 1,99), Q7min 1,22 → 0,94, jours sous Q90 66 → 95 (obs 128), août-septembre 1,04 → 1,06, KGE 2024 0,734 → 0,766 (gamma 1,02), réponse aux pluies d'été 0,52 → 0,66, meilleure perte de validation 0,63 → 0,64.
