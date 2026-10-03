@@ -1186,6 +1186,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _top["date"] = _top.date.dt.strftime("%Y-%m-%d")
                 print(_top.round(2).to_string(index=False), flush=True)
                 print(f"  KGE {_an} a poids fixes : {1 - np.sqrt((_rr - 1) ** 2 + (_b - 1) ** 2 + (_g - 1) ** 2):.3f} | r {_rr:.3f} | beta {_b:.3f} | gamma {_g:.3f}", flush=True)
+            # KGE de toute la periode d'evaluation (2026-10-03) : celui de la derniere annee seule
+            # a renverse un verdict (R280, 0,691 contre 0,838 en 2024, 0,765 contre 0,744 sur cinq ans).
+            _kp = df[pd.DatetimeIndex(temps)[_ok_t].year >= debut_eval][["Qobs", "Qsim"]].dropna()
+            if len(_kp) > 30:
+                _rp5 = np.corrcoef(_kp.Qobs, _kp.Qsim)[0, 1]
+                _bp5 = _kp.Qsim.mean() / _kp.Qobs.mean()
+                _gp5 = (_kp.Qsim.std() / _kp.Qsim.mean()) / (_kp.Qobs.std() / _kp.Qobs.mean())
+                print(f"  KGE {debut_eval}-{pd.DatetimeIndex(temps)[-1].year} a poids fixes : {1 - np.sqrt((_rp5 - 1) ** 2 + (_bp5 - 1) ** 2 + (_gp5 - 1) ** 2):.3f} | r {_rp5:.3f} | beta {_bp5:.3f} | gamma {_gp5:.3f}", flush=True)
             if getattr(m.vertical_column, "_nappe_apprise", False):
                 _nv = m.vertical_column.nappe_valeurs()
                 print(f"  nappe apprise : conductance {_nv['k_b']:.2e} m/j, extraction {_nv['e_frac']:.3f}, exposant {_nv['exposant']:.2f}", flush=True)
