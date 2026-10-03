@@ -5031,3 +5031,20 @@ Trajectoire de la même graine : ET de 1,15 à 1,36 mm/j d'une époque à l'autr
 | réponse aux pluies d'été | 1,37 | 0,76 | 1,29 | 0,57 |
 
 LECTURE. Le réservoir qui replaçait le calendrier de la crue en passe avant (R268) fait passer par les lacs 40 % de toute la production, orages d'été compris, et la variabilité s'effondre ; avec lacs, la validation se dégrade dès la deuxième époque (1,86 à 2,03 pour la graine 1234). Le défaut de calendrier du printemps reste réel (R267) mais ce réservoir n'en est pas le remède. Piste non éprouvée : un stockage qui n'agit que sur l'eau de fonte, ou des lacs routés plus nombreux au lieu d'un réservoir diffus. Le mécanisme reste opt-in et neutre sans option.
+
+## R280 — Entraîné avec le terme MOD16 pondéré hors neige, le modèle de 052805 ferme le bilan (ET 1,42 contre 1,41 pour P − Q observé) et gagne partout : KGE 2020-2024 0,765 contre 0,744, Q7min 0,91 contre 1,15 ; à la dernière époque l'étiage tombe juste (Q7min 1,05, août-septembre 1,01, 127 jours sous le Q90 pour 127 observés) (2026-10-03, 5 h 45) — ÉTABLI SUR UNE GRAINE (777), deux autres en cours
+
+Configuration de R276 plus `MEANDRE_ET_NEIGE_MM=10` (R278), poids moyen 0,60.
+
+| 052805, graine 777 | centré, meilleur (époque 5) | pondéré, meilleur (époque 5) | centré, époque 8 | pondéré, époque 8 |
+| --- | --- | --- | --- | --- |
+| perte de validation | 0,93 | 0,81 | | |
+| ET (P − Q obs 1,41 ; MOD16 1,44) | 1,36 | 1,42 | 1,26 | 1,33 |
+| débit (obs 1,50) | 1,52 | 1,47 | 1,62 | 1,55 |
+| Q7min ; jours sous Q90 (obs 127) | 1,15 ; 105 | 0,91 ; 175 | 1,28 ; 79 | 1,05 ; 127 |
+| août-sept | 0,92 | 0,90 | 1,17 | 1,01 |
+| KGE 2020-2024 (r ; beta ; gamma) | 0,744 (0,874 ; 0,954 ; 1,218) | 0,765 (0,855 ; 0,926 ; 1,169) | | |
+| KGE 2018-2019 ; 2011-2017 | 0,797 ; 0,799 | 0,832 ; 0,844 | | |
+| KGE 2024 seul | 0,838 | 0,691 | 0,885 | 0,723 |
+
+Sur les huit époques, le Q7min reste entre 0,91 et 1,24 avec le terme pondéré, contre 1,15 à 1,77 avec le terme centré ; le volume d'août-septembre entre 0,90 et 1,30 contre 0,92 à 1,44. Le KGE de la seule année 2024, que le bilan du banc imprime, est trompeur : sur les cinq années d'évaluation le terme pondéré l'emporte.
