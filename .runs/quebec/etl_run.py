@@ -1206,6 +1206,19 @@ if os.environ.get("ETL_LAKE_TRL", "1") == "1":
     model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
     print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lacb.sum())} | "
           f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
+if os.environ.get("ETL_EVAP_EAU_LIBRE", "0") == "1":
+    # EVAPORATION DE L'EAU LIBRE PAR TEMPS SEC (2026-10-04, registre R285) : la colonne
+    # n'evapore l'eau libre qu'a hauteur de la pluie du jour. Fraction d'eau libre de
+    # l'occupation, moins la surface des lacs routes rapportee a l'aire locale.
+    _lcw = getattr(model.vertical_column, "_land_cover", None) or {}
+    if "f_water_raw" not in _lcw:
+        raise RuntimeError("ETL_EVAP_EAU_LIBRE : occupation du sol absente (f_water_raw)")
+    _Alw = td.territorial.get_physical("area_km2_local").float().cpu()
+    _lak = getattr(model, "_lake_area_km2", None)
+    _rw = torch.zeros_like(_Alw) if _lak is None else torch.where(td.graph.is_lake.bool().cpu(), _lak.float().cpu(), torch.zeros_like(_Alw))
+    _fw = torch.clamp(_lcw["f_water_raw"].float().cpu() - _rw / _Alw.clamp(min=1e-6), 0.0, 1.0)
+    model.set_open_water_evaporation(_fw.to(DEVICE))
+    print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
