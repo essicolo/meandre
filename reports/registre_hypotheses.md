@@ -5048,3 +5048,21 @@ Configuration de R276 plus `MEANDRE_ET_NEIGE_MM=10` (R278), poids moyen 0,60.
 | KGE 2024 seul | 0,838 | 0,691 | 0,885 | 0,723 |
 
 Sur les huit époques, le Q7min reste entre 0,91 et 1,24 avec le terme pondéré, contre 1,15 à 1,77 avec le terme centré ; le volume d'août-septembre entre 0,90 et 1,30 contre 0,92 à 1,44. Le KGE de la seule année 2024, que le bilan du banc imprime, est trompeur : sur les cinq années d'évaluation le terme pondéré l'emporte.
+
+## R281 — Sur trois graines (052805) et deux graines (Outaouais), le terme MOD16 pondéré hors neige fixe le niveau d'ET au bilan observé et divise par sept sa dispersion entre graines sur 052805 ; le KGE 2020-2024 est égal ou meilleur, l'étiage meilleur en moyenne sans être réglé (2026-10-04) — ÉTABLI, configuration de R276, huit époques, meilleur point de reprise par la validation
+
+| 052805 (P − Q obs 1,41) | centré 1234 | centré 777 | centré 4321 | pondéré 1234 | pondéré 777 | pondéré 4321 |
+| --- | --- | --- | --- | --- | --- | --- |
+| ET | 1,27 | 1,36 | 1,48 | 1,42 | 1,42 | 1,39 |
+| Q7min | 1,21 | 1,15 | 0,84 | 0,95 | 0,91 | 1,24 |
+| août-sept | 1,13 | 0,92 | 0,86 | 0,92 | 0,90 | 0,92 |
+| KGE 2020-2024 | 0,753 | 0,744 | 0,679 | 0,738 | 0,765 | 0,747 |
+
+| Outaouais (P − Q obs 1,46) | centré 777 | centré 1234 | pondéré 777 | pondéré 1234 |
+| --- | --- | --- | --- | --- |
+| ET | 1,25 | 1,33 | 1,36 | 1,37 |
+| Q7min ; jours sous Q90 (obs 128) | 1,42 ; 38 | 1,24 ; 68 | 1,16 ; 78 | 1,23 ; 63 |
+| août-sept | 1,14 | 1,03 | 1,01 | 1,00 |
+| KGE 2020-2024 | 0,801 | 0,806 | 0,806 | 0,790 |
+
+LECTURE. Sur 052805 l'ET passe d'un étalement de 1,27 à 1,48 selon la graine à 1,39-1,42, et le KGE moyen de 0,725 (écart entre graines 0,074) à 0,750 (0,027). Sur l'Outaouais l'ET remonte de 1,25-1,33 à 1,36-1,37, le volume d'août-septembre tombe juste, le KGE est inchangé. Le Q7min moyen baisse peu (052805 1,07 → 1,03 ; Outaouais 1,33 → 1,20) et reste dispersé : le niveau d'ET était un défaut, l'étiage en a un autre. Le pilote régional lit désormais `ETL_ET_NEIGE_MM` (joint_data.py).
