@@ -222,10 +222,12 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         if not os.path.exists(_fz):
             raise FileNotFoundError(f"poids hors neige : NEISIM absent, {_fz} (build_neisim_targets.py)")
         _zz = np.load(_fz)
-        _vv = torch.tensor(np.nan_to_num(_zz["valeurs"], nan=0.0), dtype=torch.float32, device=device)
+        # Sur le processeur : 125 Mo sur l'Outaouais, assez pour faire deborder la carte en
+        # entrainement regional (2026-10-04) ; le trainer n'en extrait que la tranche du bloc.
+        _vv = torch.tensor(np.nan_to_num(_zz["valeurs"], nan=0.0), dtype=torch.float32)
         assert _vv.shape[0] == len(times), f"{reg}: axe de temps NEISIM {_vv.shape[0]} vs {len(times)}"
-        et_weight = torch.ones(len(times), n_nodes, dtype=torch.float32, device=device)
-        et_weight[:, torch.tensor(_zz["node_idx"], dtype=torch.long, device=device)] = torch.exp(-_vv / _tau_n)
+        et_weight = torch.ones(len(times), n_nodes, dtype=torch.float32)
+        et_weight[:, torch.tensor(_zz["node_idx"], dtype=torch.long)] = torch.exp(-_vv / _tau_n)
         print(f"[et] {reg}: terme MOD16 pondere hors neige, w = exp(-SWE NEISIM / {_tau_n:g} mm), poids moyen {float(et_weight.mean()):.2f}")
     tws_obs = None
     con = duckdb.connect(db_path, read_only=True)
