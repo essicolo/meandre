@@ -472,6 +472,7 @@ class HydroModel(nn.Module):
         hgm_queue = None
         # Stock des lacs hors reseau (mm sur l'aire locale du noeud), None si inactif.
         lac_diffus_S = None
+        ow_S = None
         # Surface d'eau libre des lacs (km2, par noeud) si elle a ete posee par
         # set_lake_area(). Sinon le routage retombe sur l'aire de drainage, qui est le
         # comportement historique et qui FAUSSE la loi de vidange (cf. commentaire dans
@@ -572,6 +573,8 @@ class HydroModel(nn.Module):
                 Q_out_prev = Q_out_prev.detach()
                 if lac_diffus_S is not None:
                     lac_diffus_S = lac_diffus_S.detach()
+                if ow_S is not None:
+                    ow_S = ow_S.detach()
                 if getattr(self, "column_mode", "meandre") == "hydrotel":
                     self.vertical_column.detach_aux()
 
@@ -694,7 +697,32 @@ class HydroModel(nn.Module):
             # d'eau libre. Ce deficit, sur la fraction f d'eau libre hors lacs routes, est retire
             # du debit lateral du noeud, dans la limite de ce qu'il porte.
             _fow = getattr(self, "_open_water_f", None)
-            if _fow is not None:
+            _owr = getattr(self, "_open_water_reservoir", None)
+            if _fow is not None and _owr is not None:
+                # RESERVOIR D'EAU LIBRE (2026-10-04, opt-in) : la pluie nette sur l'eau libre hors
+                # lacs routes entre dans un stock S (mm sur l'aire locale) au lieu de ruisseler
+                # le jour meme ; le deficit d'evaporation y est preleve ; vidange en loi de seuil
+                # q = f k h^beta, h = S / f, k deduit du temps de sejour T a la hauteur h_ref.
+                _vdw = getattr(vc_out, "diag", None) or {}
+                _f = _fow.to(lateral_inflow.device)
+                if ow_S is None:
+                    _lp = getattr(self, "_ow_S_last", None)
+                    ow_S = _lp.to(lateral_inflow.device) if (poursuivre_etat and _lp is not None and _lp.shape == lateral_inflow.shape) else torch.zeros_like(lateral_inflow)
+                _in = _vdw.get("ruiss_eau_mm", torch.zeros_like(lateral_inflow)) * _owr["part"].to(lateral_inflow.device)
+                _in = torch.minimum(_in, torch.clamp(lateral_inflow, min=0.0))
+                lateral_inflow = lateral_inflow - _in
+                ow_S = ow_S + _in
+                _Ew = torch.clamp(_vdw["etp"] - _vdw["apport"], min=0.0) * _f if ("etp" in _vdw and "apport" in _vdw) else torch.zeros_like(ow_S)
+                _Ew = torch.minimum(_Ew, ow_S)
+                ow_S = ow_S - _Ew
+                _k = 1.0 / (_owr["T"] * _owr["h_ref"] ** (_owr["beta"] - 1.0))
+                _h = ow_S / torch.clamp(_f, min=1e-6) * 1e-3
+                _q = torch.minimum(_f * _k * torch.pow(_h + 1e-9, _owr["beta"]) * 1e3, ow_S)
+                ow_S = ow_S - _q
+                lateral_inflow = lateral_inflow + _q
+                self._ow_S_last = ow_S.detach()
+                self._open_water_evap_last = _Ew.detach()
+            elif _fow is not None:
                 _vdw = getattr(vc_out, "diag", None) or {}
                 if "etp" in _vdw and "apport" in _vdw:
                     _Ew = torch.clamp(_vdw["etp"] - _vdw["apport"], min=0.0) * _fow.to(lateral_inflow.device)
@@ -1061,6 +1089,13 @@ class HydroModel(nn.Module):
         """Pose la fraction d'eau libre par noeud (hors lacs routes) dont le deficit
         d'evaporation (ETP - apport)+ est retire du debit lateral. f=None l'eteint."""
         self._open_water_f = f
+
+    def set_open_water_reservoir(self, part, T, beta, h_ref) -> None:
+        """Fait passer la pluie nette sur l'eau libre par un reservoir (voir la boucle). part :
+        part de la pluie nette sur l'eau libre de la colonne qui revient a l'eau libre hors lacs
+        routes (tenseur n_nodes) ; T temps de sejour (jours) a la hauteur h_ref (m) ; beta
+        exposant de la loi de vidange. Exige set_open_water_evaporation. part=None l'eteint."""
+        self._open_water_reservoir = None if part is None else dict(part=part, T=float(T), beta=float(beta), h_ref=float(h_ref))
 
     def set_distributed_lakes(self, f, c, T, beta, h_ref, bounds, learn=()) -> None:
         """Pose les lacs hors reseau. f : fraction d'eau libre du noeud hors lacs routes

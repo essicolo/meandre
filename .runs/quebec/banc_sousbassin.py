@@ -620,6 +620,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _routew = torch.where(g.is_lake.bool().to(dev), _routew, torch.zeros_like(_routew))
             _fw = torch.clamp(_lc["f_water_raw"].to(dev) - _routew / _Alw.clamp(min=1e-6), 0.0, 1.0)
             m.set_open_water_evaporation(_fw)
+            if os.environ.get("MEANDRE_BANC_EAU_RESERVOIR"):
+                # Reservoir d'eau libre "T,beta,h_ref" (2026-10-04) : voir HydroModel.set_open_water_reservoir.
+                _Tr, _br, _hr2 = (float(x) for x in os.environ["MEANDRE_BANC_EAU_RESERVOIR"].split(","))
+                _part = torch.where(_lc["f_water_raw"].to(dev) > 1e-6, _fw / _lc["f_water_raw"].to(dev).clamp(min=1e-6), torch.zeros_like(_fw)).clamp(0.0, 1.0)
+                m.set_open_water_reservoir(_part, _Tr, _br, _hr2)
+                print(f"  reservoir d'eau libre : sejour {_Tr:g} j a {_hr2:g} m, beta {_br:g}", flush=True)
             print(f"  evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du bassin", flush=True)
         if os.environ.get("MEANDRE_BANC_LACS_DIFFUS"):
             # LACS HORS RESEAU (2026-10-02), epreuve "c,T,beta,h_ref" : surface = eau libre de

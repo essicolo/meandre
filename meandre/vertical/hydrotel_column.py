@@ -1381,6 +1381,9 @@ class HydrotelColumn(nn.Module):
         # milieu humide : evaporation et STOCK, exposes le 2026-08-20 (ils existaient
         # dans la physique mais n'etaient rendus par aucune sortie, ce qui rendait le
         # bilan d'eau infermable)
+        # pluie nette sur l'eau libre, partie du ruissellement de surface (2026-10-04)
+        if "ruiss_eau_mm" in sdiag:
+            diag["ruiss_eau_mm"] = sdiag["ruiss_eau_mm"]
         if _etr_mh is not None:
             diag["etr_mh_mm"] = _etr_mh
             diag["wet_vol_mm"] = _wvol_mm
