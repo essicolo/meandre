@@ -5077,3 +5077,14 @@ LECTURE. Sur 052805 l'ET passe d'un étalement de 1,27 à 1,48 selon la graine �
 | moyenne des poids des époques 5 à 8 : KGE ; ET ; Q7min ; août-sept | 0,831 ; 1,31 ; 1,14 ; 1,05 | 0,816 ; 1,34 ; 1,07 ; 1,00 | 0,706 ; 1,30 ; 1,25 ; 1,10 |
 
 LECTURE. L'apprentissage oscille encore d'une époque à l'autre (ET de 1,18 à 1,43 sur une même trajectoire), et la perte de validation, deux années d'une station, désigne les époques où l'ET est la plus haute. Le gain du poids hors neige sur le niveau d'ET est réel mais modeste à époque égale (graine 777, époque 8 : 1,33 contre 1,26 avec le terme centré) ; le bilan n'est pas fermé. Moyenner les poids des dernières époques équivaut à prendre la dernière. La graine 4321 converge vers un minimum moins bon (R196). Pour juger une variante au banc : dernière époque, au moins trois graines, KGE sur 2020-2024.
+
+## R283 — Taux de départ réduit de 5e-4 à 2e-4 au banc : trajectoires lissées (corrélation stable de 0,876 à 0,888 sur les huit époques, époques 7 et 8 presque identiques) et écart de KGE entre graines ramené de 0,15 à 0,05 ; l'étiage reste dispersé (2026-10-04, 15 h 30) — ÉTABLI SUR DEUX GRAINES, 052805, terme pondéré hors neige, troisième graine et Outaouais en cours
+
+| 052805, époque 8 | 5e-4, 1234 | 5e-4, 4321 | 2e-4, 1234 | 2e-4, 4321 |
+| --- | --- | --- | --- | --- |
+| KGE 2020-2024 | 0,834 | 0,683 | 0,807 | 0,861 |
+| ET (bilan 1,41) | 1,33 | 1,34 | 1,35 | 1,30 |
+| Q7min ; jours sous Q90 (obs 127) | 1,10 ; 106 | 1,17 ; 117 | 1,18 ; 90 | 1,49 ; 80 |
+| août-sept | 1,02 | 1,01 | 0,96 | 1,11 |
+
+Le long des trajectoires, un compromis revient : les époques à ET basse (graine 4321 à 2e-4, époque 6 : ET 1,23) ont le KGE le plus haut (0,870) et l'étiage le plus faux (Q7min 1,68, août-septembre 1,27) ; celles à ET haute l'inverse. Le KGE sur 2020-2024 préfère donc un débit d'été un peu fort, l'étiage le refuse. Le pilote régional, lui, ne fait qu'un pas d'optimisation par époque : une époque régionale avec et sans poids hors neige donne la même perte de validation à la quatrième décimale (1,2920), et il faut des blocs de 30 jours pour qu'elle tienne dans la carte avec le poids (débordement à 45 jours, cause non identifiée).
