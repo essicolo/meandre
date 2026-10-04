@@ -5100,3 +5100,19 @@ Le long des trajectoires, un compromis revient : les époques à ET basse (grain
 | août-sept | 0,96 | 1,03 | 1,11 | 0,99 | 1,05 |
 
 Les époques 7 et 8 sont presque identiques sur toutes les trajectoires : l'apprentissage converge. C'est la première configuration du banc où une variante peut se juger à la dernière époque sur trois graines. Le défaut d'étiage n'est plus un effet de tirage : le modèle convergé garde trop d'eau en étiage, alors que le volume d'août-septembre est juste, donc la récession de fin d'été est trop lente ou l'ET de fin d'été trop faible.
+
+## R285 — L'excès d'étiage du modèle convergé vient de l'eau libre : la colonne ne l'évapore qu'à hauteur de la pluie du jour, si bien que par temps sec les lacs hors réseau n'évaporent rien et que la pluie sur leur surface repart aussitôt ; en retirant au débit latéral le déficit (ETP − apport)+ sur la fraction d'eau libre, le Q7min passe de 1,38 à 0,98 (052805) et de 1,33 à 1,09 (Outaouais) en passe avant (2026-10-04, 17 h 20) — ÉTABLI EN PASSE AVANT, modèles convergés de R284, graine 777
+
+Diagnostic sur les séries de l'époque 8 : les jours où le débit observé est sous son Q90, le modèle donne 0,43 mm/j sur 052805 pour 0,23 observé, dont 0,17 de ruissellement de surface ; 0,63 pour 0,42 sur l'Outaouais, dont 0,31 de surface. Par temps sec de juin à août, la décrue simulée est plus lente que l'observée (0,944 à 0,956 par jour contre 0,909 à 0,936). Eau libre hors lacs routés : 8,5 % du bassin 052805, 6,3 % de l'Outaouais ; déficit d'évaporation d'été de l'ordre de 3 mm/j sur cette surface, soit 0,25 mm/j sur le bassin.
+
+Mécanisme (`HydroModel.set_open_water_evaporation`, banc `MEANDRE_BANC_EVAP_EAU_LIBRE=1`, opt-in) : le déficit (ETP − apport)+ sur la fraction d'eau libre est retiré du débit latéral du nœud, dans la limite de ce qu'il porte.
+
+| graine 777, époque 8, poids figés | 052805 sans | 052805 avec | 040110 sans | 040110 avec |
+| --- | --- | --- | --- | --- |
+| Q7min | 1,38 | 0,98 | 1,33 | 1,09 |
+| jours sous Q90 (obs 127 ; 128) | 81 | 128 | 55 | 106 |
+| août-sept | 1,03 | 0,87 | 1,05 | 0,96 |
+| débit annuel (obs 1,50 ; 1,99) | 1,56 | 1,50 | 2,10 | 2,04 |
+| KGE 2020-2024 (beta ; gamma) | 0,831 (0,977 ; 1,124) | 0,778 (0,936 ; 1,180) | 0,804 (0,986 ; 0,959) | 0,805 (0,955 ; 0,995) |
+
+LECTURE. Le mécanisme est un terme du bilan qui manquait, pas un réglage : Hydrotel et le clone plafonnent l'évaporation de l'eau libre par la pluie. Il porte l'étiage à l'observé sur 052805 et le rapproche sur l'Outaouais, à volume annuel juste. Le KGE de 052805 baisse à poids figés ; entraînement de vérification lancé. Limite : l'évaporation est retirée du débit latéral sans stock de lac propre ; un réservoir d'eau libre avec son niveau serait la forme complète.

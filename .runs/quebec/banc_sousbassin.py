@@ -612,6 +612,15 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _wa = _mh["wet_a_raw"]
                 print(f"  milieux humides isoles : {int((_wa > 0).sum())} noeuds sur {_wa.numel()}, fraction humide moyenne {float(_lc['f_wetland_raw'].mean()):.3f}", flush=True)
         col.set_land_cover(_lc)
+        if os.environ.get("MEANDRE_BANC_EVAP_EAU_LIBRE") == "1":
+            # EVAPORATION DE L'EAU LIBRE PAR TEMPS SEC (2026-10-04) : fraction d'eau libre de
+            # l'occupation moins les lacs routes. Voir HydroModel.set_open_water_evaporation.
+            _Alw = terr.get_physical("area_km2_local").to(dev)
+            _routew = torch.as_tensor(_alac, dtype=torch.float32, device=dev) if "_alac" in locals() else torch.zeros_like(_Alw)
+            _routew = torch.where(g.is_lake.bool().to(dev), _routew, torch.zeros_like(_routew))
+            _fw = torch.clamp(_lc["f_water_raw"].to(dev) - _routew / _Alw.clamp(min=1e-6), 0.0, 1.0)
+            m.set_open_water_evaporation(_fw)
+            print(f"  evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du bassin", flush=True)
         if os.environ.get("MEANDRE_BANC_LACS_DIFFUS"):
             # LACS HORS RESEAU (2026-10-02), epreuve "c,T,beta,h_ref" : surface = eau libre de
             # l'occupation moins les lacs routes, part drainee rd = 1 - exp(-c x fraction), temps

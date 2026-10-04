@@ -687,6 +687,21 @@ class HydroModel(nn.Module):
                 hgm_queue = torch.cat([hgm_queue[:, 1:],
                                        torch.zeros_like(hgm_queue[:, :1])], dim=1)
 
+            # 4quater. EVAPORATION DE L'EAU LIBRE PAR TEMPS SEC (2026-10-04, opt-in,
+            # set_open_water_evaporation). La colonne n'evapore l'eau libre qu'a hauteur de la
+            # pluie du jour : par temps sec, les lacs hors reseau n'evaporent rien, alors que
+            # leur deficit (ETP - apport)+ represente ~0,25 mm/j sur le bassin en ete pour 8,5 %
+            # d'eau libre. Ce deficit, sur la fraction f d'eau libre hors lacs routes, est retire
+            # du debit lateral du noeud, dans la limite de ce qu'il porte.
+            _fow = getattr(self, "_open_water_f", None)
+            if _fow is not None:
+                _vdw = getattr(vc_out, "diag", None) or {}
+                if "etp" in _vdw and "apport" in _vdw:
+                    _Ew = torch.clamp(_vdw["etp"] - _vdw["apport"], min=0.0) * _fow.to(lateral_inflow.device)
+                    _Ew = torch.minimum(_Ew, torch.clamp(lateral_inflow, min=0.0))
+                    lateral_inflow = lateral_inflow - _Ew
+                    self._open_water_evap_last = _Ew.detach()
+
             # 4ter. LACS HORS RESEAU (2026-10-02, opt-in, set_distributed_lakes). Le routage ne
             # stocke l'eau qu'aux noeuds-lacs ; sur le bassin 052805, 4,9 km2 de lacs routes pour
             # 70 km2 d'eau libre. Ici, une part rd de la production locale traverse un reservoir
@@ -1041,6 +1056,11 @@ class HydroModel(nn.Module):
         k = _t.as_tensor(kernel, dtype=_t.float32)
         k = k / k.sum(dim=1, keepdim=True).clamp(min=1e-12)
         self._hgm_kernel = k
+
+    def set_open_water_evaporation(self, f) -> None:
+        """Pose la fraction d'eau libre par noeud (hors lacs routes) dont le deficit
+        d'evaporation (ETP - apport)+ est retire du debit lateral. f=None l'eteint."""
+        self._open_water_f = f
 
     def set_distributed_lakes(self, f, c, T, beta, h_ref, bounds, learn=()) -> None:
         """Pose les lacs hors reseau. f : fraction d'eau libre du noeud hors lacs routes
