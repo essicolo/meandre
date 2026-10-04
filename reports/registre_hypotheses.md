@@ -5088,3 +5088,15 @@ LECTURE. L'apprentissage oscille encore d'une époque à l'autre (ET de 1,18 à 
 | août-sept | 1,02 | 1,01 | 0,96 | 1,11 |
 
 Le long des trajectoires, un compromis revient : les époques à ET basse (graine 4321 à 2e-4, époque 6 : ET 1,23) ont le KGE le plus haut (0,870) et l'étiage le plus faux (Q7min 1,68, août-septembre 1,27) ; celles à ET haute l'inverse. Le KGE sur 2020-2024 préfère donc un débit d'été un peu fort, l'étiage le refuse. Le pilote régional, lui, ne fait qu'un pas d'optimisation par époque : une époque régionale avec et sans poids hors neige donne la même perte de validation à la quatrième décimale (1,2920), et il faut des blocs de 30 jours pour qu'elle tienne dans la carte avec le poids (débordement à 45 jours, cause non identifiée).
+
+## R284 — Référence convergée du banc : taux 2e-4, têtes au taux commun, initialisation par la littérature, terme MOD16 pondéré hors neige, huit époques, dernière époque. KGE 2020-2024 de 0,807 à 0,861 sur 052805 (trois graines) et 0,799 à 0,804 sur l'Outaouais (deux graines) ; volume d'août-septembre juste ; mais les plus bas débits restent 18 à 49 % trop forts sur toutes les graines, un défaut structurel (2026-10-04, 16 h 50) — ÉTABLI
+
+| époque 8 | 052805 1234 | 052805 777 | 052805 4321 | 040110 1234 | 040110 777 |
+| --- | --- | --- | --- | --- | --- |
+| KGE 2020-2024 (r ; gamma) | 0,807 (0,888 ; 1,15) | 0,831 (0,888 ; 1,12) | 0,861 (0,879 ; 1,07) | 0,799 (0,807 ; 0,96) | 0,804 (0,809 ; 0,96) |
+| ET (P − Q obs 1,41 ; 1,46) | 1,35 | 1,32 | 1,30 | 1,39 | 1,34 |
+| Q7min | 1,18 | 1,38 | 1,49 | 1,27 | 1,33 |
+| jours sous Q90 (obs 127 ; 128) | 90 | 81 | 80 | 60 | 55 |
+| août-sept | 0,96 | 1,03 | 1,11 | 0,99 | 1,05 |
+
+Les époques 7 et 8 sont presque identiques sur toutes les trajectoires : l'apprentissage converge. C'est la première configuration du banc où une variante peut se juger à la dernière époque sur trois graines. Le défaut d'étiage n'est plus un effet de tirage : le modèle convergé garde trop d'eau en étiage, alors que le volume d'août-septembre est juste, donc la récession de fin d'été est trop lente ou l'ET de fin d'été trop faible.
