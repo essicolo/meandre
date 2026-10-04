@@ -5066,3 +5066,14 @@ Sur les huit époques, le Q7min reste entre 0,91 et 1,24 avec le terme pondéré
 | KGE 2020-2024 | 0,801 | 0,806 | 0,806 | 0,790 |
 
 LECTURE. Sur 052805 l'ET passe d'un étalement de 1,27 à 1,48 selon la graine à 1,39-1,42, et le KGE moyen de 0,725 (écart entre graines 0,074) à 0,750 (0,027). Sur l'Outaouais l'ET remonte de 1,25-1,33 à 1,36-1,37, le volume d'août-septembre tombe juste, le KGE est inchangé. Le Q7min moyen baisse peu (052805 1,07 → 1,03 ; Outaouais 1,33 → 1,20) et reste dispersé : le niveau d'ET était un défaut, l'étiage en a un autre. Le pilote régional lit désormais `ETL_ET_NEIGE_MM` (joint_data.py).
+
+## R282 — CORRIGE R281 : le bilan fermé (ET 1,39 à 1,42) était un effet du choix de l'époque par la validation ; les modèles tardifs pondérés hors neige donnent ET 1,30 à 1,34 pour 1,41 observé. La validation retient des époques à ET haute et étiage bas, au prix du KGE : pour deux graines sur trois, l'époque 8 bat l'époque retenue de 0,06 à 0,10 de KGE 2020-2024 (2026-10-04, 14 h 40) — ÉTABLI, 052805, trois graines, évaluation de chaque époque
+
+| 052805, terme pondéré hors neige | 1234 | 777 | 4321 |
+| --- | --- | --- | --- |
+| époque retenue ; son KGE 2020-2024 ; son ET | 4 ; 0,738 ; 1,42 | 5 ; 0,765 ; 1,42 | 2 ; 0,747 ; 1,39 |
+| ET par époque, 1 à 8 | 1,43 1,24 1,28 1,42 1,33 1,28 1,31 1,33 | 1,35 1,38 1,28 1,26 1,42 1,29 1,33 1,33 | 1,32 1,39 1,19 1,22 1,18 1,29 1,39 1,34 |
+| KGE 2020-2024 par époque | 0,85 0,81 0,83 0,74 0,80 0,84 0,84 0,83 | e1 0,82, e8 0,82 | 0,80 0,75 0,76 0,75 0,74 0,71 0,64 0,68 |
+| moyenne des poids des époques 5 à 8 : KGE ; ET ; Q7min ; août-sept | 0,831 ; 1,31 ; 1,14 ; 1,05 | 0,816 ; 1,34 ; 1,07 ; 1,00 | 0,706 ; 1,30 ; 1,25 ; 1,10 |
+
+LECTURE. L'apprentissage oscille encore d'une époque à l'autre (ET de 1,18 à 1,43 sur une même trajectoire), et la perte de validation, deux années d'une station, désigne les époques où l'ET est la plus haute. Le gain du poids hors neige sur le niveau d'ET est réel mais modeste à époque égale (graine 777, époque 8 : 1,33 contre 1,26 avec le terme centré) ; le bilan n'est pas fermé. Moyenner les poids des dernières époques équivaut à prendre la dernière. La graine 4321 converge vers un minimum moins bon (R196). Pour juger une variante au banc : dernière époque, au moins trois graines, KGE sur 2020-2024.
