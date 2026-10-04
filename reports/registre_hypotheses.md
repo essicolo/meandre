@@ -5116,3 +5116,15 @@ Mécanisme (`HydroModel.set_open_water_evaporation`, banc `MEANDRE_BANC_EVAP_EAU
 | KGE 2020-2024 (beta ; gamma) | 0,831 (0,977 ; 1,124) | 0,778 (0,936 ; 1,180) | 0,804 (0,986 ; 0,959) | 0,805 (0,955 ; 0,995) |
 
 LECTURE. Le mécanisme est un terme du bilan qui manquait, pas un réglage : Hydrotel et le clone plafonnent l'évaporation de l'eau libre par la pluie. Il porte l'étiage à l'observé sur 052805 et le rapproche sur l'Outaouais, à volume annuel juste. Le KGE de 052805 baisse à poids figés ; entraînement de vérification lancé. Limite : l'évaporation est retirée du débit latéral sans stock de lac propre ; un réservoir d'eau libre avec son niveau serait la forme complète.
+
+## R286 — Réentraînée avec l'évaporation de l'eau libre par temps sec, la référence convergée garde son KGE et corrige l'étiage sur les deux bassins : Q7min moyen de 1,35 à 1,03 sur 052805 (trois graines) et de 1,30 à 1,08 sur l'Outaouais (deux graines), KGE 2020-2024 inchangé (2026-10-04, 19 h) — ÉTABLI, configuration de R284, dernière époque
+
+| époque 8 | KGE 2020-2024 réf. → eau libre | Q7min réf. → eau libre | jours sous Q90 réf. → eau libre (obs) | août-sept réf. → eau libre |
+| --- | --- | --- | --- | --- |
+| 052805, 1234 | 0,807 → 0,841 | 1,18 → 1,07 | 90 → 91 (127) | 0,96 → 1,08 |
+| 052805, 777 | 0,831 → 0,848 | 1,38 → 1,07 | 81 → 92 | 1,03 → 1,12 |
+| 052805, 4321 | 0,861 → 0,817 | 1,49 → 0,96 | 80 → 110 | 1,11 → 0,98 |
+| 040110, 1234 | 0,799 → 0,809 | 1,27 → 1,03 | 60 → 96 (128) | 0,99 → 0,99 |
+| 040110, 777 | 0,804 → 0,803 | 1,33 → 1,12 | 55 → 81 | 1,05 → 0,99 |
+
+Moyennes : 052805, KGE 0,833 → 0,835, Q7min 1,35 → 1,03 (écart entre graines 0,31 → 0,11) ; Outaouais, KGE 0,802 → 0,806, Q7min 1,30 → 1,08. L'ET de la colonne baisse (052805 1,30-1,35 → 1,22-1,26) : l'apprentissage compense l'évaporation de l'eau libre, comptée hors colonne (environ 0,1 mm/j sur le bassin). Le nombre de jours sous le Q90 observé reste sous l'observé (81 à 110 pour 127-128) : l'étiage simulé est encore un peu haut, mais l'écart principal est fermé. Le pilote régional lit `ETL_EVAP_EAU_LIBRE`. Graine 4321 de l'Outaouais, avec et sans, en cours.
