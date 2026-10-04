@@ -873,7 +873,11 @@ class HydrotelColumn(nn.Module):
         return ColumnOutput(
             lateral_inflow=prod, state=new_state, snowmelt=diag["apport"],
             recharge=recharge_mm, Q_baseflow=diag["prod_base"],
-            diag=(diag if return_diagnostics else None))
+            # Sans diagnostics complets, on rend quand meme les grandeurs dont depend la PHYSIQUE
+            # du modele : evaporation des lacs routes, de l'eau libre, reservoir d'eau libre
+            # (2026-10-04). Avant, ces termes s'eteignaient silencieusement dans toute
+            # simulation sans diagnostics, dont l'evaluation du pilote regional.
+            diag=(diag if return_diagnostics else {k: diag[k] for k in ("etp", "apport", "ruiss_eau_mm") if k in diag}))
 
     def activer_nappe_libre(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
                             z_ext=9.0, exposant=2.0, n_substep=4, couplage=0.0, apprise=False):
