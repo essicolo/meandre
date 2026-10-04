@@ -131,6 +131,8 @@ Le bilan d'eau de la colonne FERME à la précision numérique (audit `ETL_BILAN
 
 **Le couplage conservatif est désormais le DÉFAUT** (décision d'Essi, 2026-08-20) : le réservoir reçoit exactement ce que le tronçon lui retire, et `wetpcp` disparaît. `ETL_MH_FIDELE=1` restitue la formulation d'Hydrotel, à utiliser pour les comparaisons module par module avec le binaire C++. C'est le premier écart ASSUMÉ à la fidélité, et il porte sur une non-conservation, pas sur un choix de paramétrisation.
 
+**L'eau libre n'évaporait que la pluie du jour** (mesuré 2026-10-04, registre R285 à R287). La colonne, fidèle à `bv3c2.cpp`, évapore sur la fraction d'eau libre au plus l'apport du jour et envoie le reste à la rivière le jour même. Par temps sec, les lacs hors du réseau de routage n'évaporent donc rien. Sur 052805 et l'Outaouais, c'était la cause principale d'un étiage simulé 30 % trop haut. `set_open_water_evaporation` (`MEANDRE_BANC_EVAP_EAU_LIBRE`, `ETL_EVAP_EAU_LIBRE`) retire du débit latéral le déficit (ETP − apport)+ sur la fraction d'eau libre hors lacs routés. Réentraîné, le Q7min moyen passe de 1,35 à 1,03 sur 052805 et de 1,30 à 1,08 sur l'Outaouais, à KGE inchangé. Prendre cette évaporation dans un réservoir alimenté par la seule pluie sur les lacs défait le gain : par temps sec ce stock est vide.
+
 Deux termes de la physique du milieu humide n'étaient exposés nulle part et rendaient le bilan infermable : `etr_mh` (évaporation) et `wet_vol` (stock). Ils sont maintenant dans `SimDiagnostics`. Attention, `SimDiagnostics.snowmelt` est MAL NOMMÉ : il contient l'apport total au sol, pas la fonte.
 
 ## Eau souterraine : nappe libre et drainage de la couche profonde (2026-09-19)
