@@ -1907,6 +1907,12 @@ if os.environ.get("ETL_DUMP_REACH"):
                             prelev_net_abs=np.zeros(n_nodes, dtype=np.float32),
                             prelev_net_moyen=np.zeros(n_nodes, dtype=np.float32),
                             prelev_gw_moyen=np.zeros(n_nodes, dtype=np.float32))
+        # Debit naturalise journalier : les hydrogrammes de la carte superposent les deux
+        # series, et l'influence en etiage se calcule sur des debits journaliers.
+        _fjn = _sortie_nat[:-4] + "-journalier.npz"
+        np.savez_compressed(_fjn, dates=np.array([str(_t)[:10] for _t in times]),
+                            q=_Qn.astype(np.float32))
+        print(f"[etl] debit naturalise journalier sauve : {_fjn}")
         _eff = 100.0 * (_Qr.mean(axis=0) - _Qn.mean(axis=0)) / np.clip(_Qn.mean(axis=0), 1e-6, None)
         _gros = _Qn.mean(axis=0) > 1.0
         print(f"[etl] cache naturalise sauve : {_sortie_nat}")
