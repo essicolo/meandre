@@ -57,6 +57,17 @@ class WithdrawalData:
         """Groundwater net withdrawal at timestep *t* (m³/s)."""
         return self.net_gw[t]
 
+    def slice(self, start: int | None, stop: int | None) -> "WithdrawalData":
+        """Tranche temporelle alignée sur une tranche du forçage.
+
+        La simulation lit les prélèvements à l'indice de pas de la boucle, compté depuis le
+        début de l'appel. Toute simulation qui commence ailleurs qu'au premier jour de la
+        série doit donc recevoir la même tranche que son forçage, sinon elle lit les
+        prélèvements des premiers jours de la série.
+        """
+        sl = slice(start, stop)
+        return WithdrawalData(net=self.net[sl], net_gw=None if self.net_gw is None else self.net_gw[sl])
+
     @classmethod
     def zeros_like(cls, template: "WithdrawalData") -> "WithdrawalData":
         """Naturalized scenario: all withdrawals set to zero."""

@@ -966,7 +966,7 @@ class Trainer:
                     graph=data.graph,
                     node_coords=data.node_coords,
                     territorial=data.territorial,
-                    withdrawals=data.withdrawals,
+                    withdrawals=data.withdrawals.slice(warm_start, spinup_end),
                     day_of_year=data.day_of_year[warm_start:spinup_end],
                 )
         else:
@@ -982,12 +982,42 @@ class Trainer:
                     graph=data.graph,
                     node_coords=data.node_coords,
                     territorial=data.territorial,
-                    withdrawals=data.withdrawals,
+                    withdrawals=data.withdrawals.slice(0, spinup_end),
                     day_of_year=data.day_of_year[:spinup_end],
                     return_diagnostics=_ref_et,
                 )
             spun_state = _res[1]
-            if _ref_et and len(_res) == 3:
+            if _ref_et and os.environ.get("MEANDRE_ET_REF_MISE_EN_REGIME") != "1":
+                # Reference initiale de l'ET centree (2026-10-05) : moyenne EXACTE de la
+                # simulation sur la periode d'entrainement, poids de depart, passe sans
+                # gradient par blocs d'un an depuis l'etat de mise en regime. L'ancienne
+                # reference, la mise en regime elle-meme, part d'un etat vide et ne dure
+                # qu'un an : sols secs, ET trop basse, anomalies simulees surestimees, et
+                # le terme poussait toute l'ET vers le bas a la premiere epoque de chaque
+                # lancement (K_c du champ regional de l'Outaouais 0,72 -> 0,40 en une
+                # epoque, reprise a chaud comprise). MEANDRE_ET_REF_MISE_EN_REGIME=1
+                # restitue l'ancienne reference.
+                _Wsp = getattr(data, "et_weight", None)
+                _s, _num, _den = spun_state, None, None
+                _t, _fin = data.train_slice.start, data.train_slice.stop
+                with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
+                    while _t < _fin:
+                        _u = min(_t + 365, _fin)
+                        _r = self.model.simulate(
+                            forcing=data.forcing[_t:_u], initial_state=_s, graph=data.graph,
+                            node_coords=data.node_coords, territorial=data.territorial,
+                            withdrawals=data.withdrawals.slice(_t, _u),
+                            day_of_year=data.day_of_year[_t:_u], return_diagnostics=True,
+                        )
+                        _s = _r[1]
+                        _e = _r[2].etr.to(device).float()
+                        _ww = (_Wsp[_t:_u].to(device, _e.dtype) if _Wsp is not None else torch.ones_like(_e))
+                        _num = (_ww * _e).sum(dim=0) if _num is None else _num + (_ww * _e).sum(dim=0)
+                        _den = _ww.sum(dim=0) if _den is None else _den + _ww.sum(dim=0)
+                        _t = _u
+                self._et_sim_base = (_num / _den.clamp(min=1e-6)).detach()
+                logger.info("ET centree : reference initiale exacte sur la periode d'entrainement, moyenne %.3f mm/j", float(self._et_sim_base.mean()))
+            elif _ref_et and len(_res) == 3:
                 # Reference initiale de l'ET centree : annees completes de la mise en regime.
                 _n_ans = spinup_end // 365
                 if _n_ans >= 1:
@@ -1020,7 +1050,7 @@ class Trainer:
             graph=data.graph,
             node_coords=data.node_coords,
             territorial=data.territorial,
-            withdrawals=data.withdrawals,
+            withdrawals=data.withdrawals.slice(time_slice.start, time_slice.stop),
             day_of_year=data.day_of_year[time_slice],
             h_context=h_ctx,
             tbptt_steps=tbptt_steps,
@@ -1203,7 +1233,7 @@ class Trainer:
                     forcing=data.forcing[data.train_slice],
                     initial_state=initial_state,
                     graph=data.graph, node_coords=data.node_coords,
-                    territorial=data.territorial, withdrawals=data.withdrawals,
+                    territorial=data.territorial, withdrawals=data.withdrawals.slice(data.train_slice.start, data.train_slice.stop),
                     day_of_year=data.day_of_year[data.train_slice],
                     poursuivre_etat=(_etat_continu and _spinup_a_tourne),
                 )
@@ -1259,7 +1289,7 @@ class Trainer:
                     graph=data.graph,
                     node_coords=data.node_coords,
                     territorial=data.territorial,
-                    withdrawals=data.withdrawals,
+                    withdrawals=data.withdrawals.slice(sl.start, sl.stop),
                     day_of_year=data.day_of_year[sl],
                     h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
@@ -2150,7 +2180,7 @@ class Trainer:
                     graph=data.graph,
                     node_coords=data.node_coords,
                     territorial=data.territorial,
-                    withdrawals=data.withdrawals,
+                    withdrawals=data.withdrawals.slice(sl.start, sl.stop),
                     day_of_year=data.day_of_year[sl],
                     h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
@@ -2223,7 +2253,7 @@ class Trainer:
                             graph=data.graph,
                             node_coords=data.node_coords,
                             territorial=data.territorial,
-                            withdrawals=data.withdrawals,
+                            withdrawals=data.withdrawals.slice(data.train_slice.start, data.train_slice.stop),
                             day_of_year=data.day_of_year[data.train_slice],
                             return_diagnostics=True,
                             tbptt_steps=self.config.tbptt_steps,
@@ -2434,7 +2464,7 @@ class Trainer:
                         graph=data.graph,
                         node_coords=data.node_coords,
                         territorial=data.territorial,
-                        withdrawals=data.withdrawals,
+                        withdrawals=data.withdrawals.slice(data.val_slice.start, data.val_slice.stop),
                         day_of_year=data.day_of_year[data.val_slice],
                         h_context=cached_h_ctx,
                         tbptt_steps=self.config.tbptt_steps,
@@ -2455,7 +2485,7 @@ class Trainer:
                         graph=data.graph,
                         node_coords=data.node_coords,
                         territorial=data.territorial,
-                        withdrawals=data.withdrawals,
+                        withdrawals=data.withdrawals.slice(full_slice.start, full_slice.stop),
                         day_of_year=data.day_of_year[full_slice],
                         h_context=h_ctx,
                         tbptt_steps=self.config.tbptt_steps,
@@ -2665,7 +2695,7 @@ class Trainer:
                 graph=data.graph,
                 node_coords=data.node_coords,
                 territorial=data.territorial,
-                withdrawals=data.withdrawals,
+                withdrawals=data.withdrawals.slice(diag_sl.start, diag_sl.stop),
                 day_of_year=data.day_of_year[diag_sl],
                 h_context=h_ctx,
                 return_diagnostics=True,
