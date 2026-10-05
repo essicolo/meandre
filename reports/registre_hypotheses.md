@@ -5156,3 +5156,17 @@ Pilote régional (`socle-2026-10-04.toml`, huit époques, un pas par bloc, Outao
 | volume annuel | +19,1 % | +20,3 % |
 
 Audit du bilan (recette, époque 8) : bilan fermé à +0,03 % de la pluie, ET 10 493 contre production 16 460, soit 39 % des sorties, contre 57 % au banc sur le même bassin le 2 octobre. Multiplier K_c en passe avant : × 1,15, KGE 0,702, volume +10,4 %, août-septembre 0,99, mais Q7min 0,80 et 1,59 fois les jours sous le seuil ; × 1,3, volume +1,9 % mais KGE 0,627 et Q7min 0,58. L'ET ne peut combler un excès d'hiver. Rapports mensuels du modèle régional : janvier 1,24, février 1,39, mars 1,42, avril 1,23, juillet 0,86. Pistes, à éprouver au banc sur l'hiver : part de pluie l'hiver (seuil au bulbe humide −0,8 °C), fonte hivernale, débit d'hiver observé sous glace. Le pilote accepte désormais `ETL_MULT_FIXE`, comme le banc.
+
+## R291 — Le temps de transfert juste dépend du bassin : gelé à 6 h au lieu de 24 h et réentraîné, la Montérégie passe de 0,522 à 0,744 de KGE 2020-2024 (corrélation 0,561 → 0,750) quand l'Outaouais recule de 0,809 à 0,783 ; l'étiage se dégrade dans les deux cas (2026-10-04, 22 h 30) — ÉTABLI, une graine par bassin, configuration de R286 (eau libre)
+
+Diagnostic préalable, corrélation journalière selon le décalage, modèles convergés de R284 à R289 : le maximum est atteint en avançant la simulation de 6 jours en Montérégie (0,601 → 0,73, 214 tronçons), 2 jours sur l'Outaouais (0,857 → 0,893), 1 jour sur 052805 (0,917 → 0,925). Avec le routage gelé à 24 h par tronçon (R205), le retard s'accumule le long du réseau.
+
+| graine 1234, époque 8 | Montérégie 24 h | Montérégie 6 h | Outaouais 24 h | Outaouais 6 h |
+| --- | --- | --- | --- | --- |
+| KGE 2020-2024 (r ; gamma) | 0,522 (0,561 ; 0,81) | 0,744 (0,750 ; 0,99) | 0,809 (0,810 ; 1,00) | 0,783 (0,829 ; 1,12) |
+| Q7min | 1,04 | 1,52 | 1,03 | 1,18 |
+| jours sous Q90 (obs 148 ; 128) | 174 | 163 | 96 | 75 |
+| août-sept | 0,88 | 0,87 | 0,99 | 1,23 |
+| ET | 1,65 | 1,53 | 1,29 | 1,16 |
+
+Le gain de R241 sur l'Outaouais (routage court, +0,09) ne se reproduit pas : la physique de cette semaine (eau libre, centrage corrigé) a déplacé l'optimum. Un temps uniforme figé ne convient pas aux deux bassins. Le routage appris par tronçon s'effondrait sur sa borne basse en septembre (R244, R246), parce qu'à deux sous-pas de 12 h son gradient s'annule sous 7,5 h (R241) ; épreuve suivante : temps de transfert appris, 24 sous-pas d'une heure.
