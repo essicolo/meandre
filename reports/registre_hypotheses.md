@@ -5266,3 +5266,17 @@ LECTURE. La tête du temps de transfert est le plus grand gain reproductible de 
 Une époque depuis l'époque 8 de la prolongation, routage à 24 sous-pas, bornes du temps de transfert 1 à 48 h, taux de la tête × 100 (2e-2 par bloc). Rapports mensuels après l'époque : juin 1,56, juillet 1,64, août 1,98, septembre 2,02. Le routage conserve la masse : l'excès vient d'une dérive du reste du champ (évapotranspiration), entraînée par le choc d'un temps de transfert qui bouge fortement dès les premiers blocs sur 3412 tronçons. Sur un sous-bassin unique ce taux convenait (R297). Épreuve au taux × 10 en cours.
 
 CORRECTION de R300, même jour, 6 h : le choc n'est dû ni à la tête ni aux sous-pas. Une époque d'affinage depuis le même point de reprise déraille aussi sans tête à 24 sous-pas (KGE 0,49, volume +47 %) et au routage habituel de deux sous-pas (0,52, +47 %). C'est l'affinage court au taux de départ 2e-4, optimiseur neuf, qui déstabilise ce modèle convergé ; la prolongation de huit époques (R293), partie de l'époque 8 de la première série, ne l'avait pas fait. Conforme au piège de CLAUDE.md : les affinages courts se comparent à 1e-5. Comparaison tête contre témoin à 1e-5 en cours.
+
+## R301 — Le modèle régional convergé est extrêmement sensible : une seule époque d'affinage, même à 1e-5, fait passer son volume de +21 % à +33 % et son KGE médian de 0,754 à 0,654, pour des déplacements de paramètres d'au plus 1,8e-3 ; une variante ne se juge donc pas au pilote par affinage court depuis ce point de reprise (2026-10-05, 6 h 25) — ÉTABLI, Outaouais, point de reprise de R294
+
+| une époque depuis l'époque 8 de la prolongation | KGE médian | volume |
+| --- | --- | --- |
+| aucune (passe avant) | 0,754 | +21,2 % |
+| taux 2e-4, deux sous-pas, sans tête | 0,515 | +47,4 % |
+| taux 2e-4, 24 sous-pas, sans tête | 0,492 | +47,1 % |
+| taux 2e-4, tête × 100 | 0,501 | +49,4 % |
+| taux 2e-4, tête × 10 | 0,450 | +45,9 % |
+| taux 1e-5, sans tête | 0,654 | +32,9 % |
+| taux 1e-5, tête × 100 | 0,660 | +32,4 % |
+
+Le point de reprise du témoin à 1e-5, réévalué dans un processus neuf, rend le même chiffre : ce n'est pas un état laissé en mémoire. Écart maximal entre les deux jeux de poids : 1,8e-3 en valeur absolue, 1,5 % en relatif sur les biais du tronc du champ ; les paramètres du sol et de la phénologie bougent de 2e-4 à 1e-3. La perte de validation passe de 1,095 à 1,33 en une époque. Toutes les variantes déraillent pareillement, la tête du temps de transfert n'y est pour rien. Pour éprouver la tête au pilote : deux entraînements complets (seize époques), avec et sans, depuis le même départ.
