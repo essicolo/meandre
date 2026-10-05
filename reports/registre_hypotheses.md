@@ -5227,3 +5227,16 @@ Le drainage historique de bv3c2 (`PROV_DRAIN`) ne s'exécute pas quand un profil
 KGE moyen 0,658 → 0,697, écart entre graines 0,17 → 0,002. Les paramètres du drain bougent à peine (départ 15 m, 0,6) : ce n'est pas leur valeur qui joue mais l'existence d'une voie de drainage de la couche 2 vers la rivière, que les deux graines trouvent pareillement. Le Q7min reste haut (1,41 à 1,47).
 
 Correction de la piste de R295 : l'écoulement latéral de la couche 3 est déjà freiné par le gel (facteur 1 − fraction gelée, `bv3c2.py`), mais seulement hors manteau protecteur (moins de 10 mm de neige), le sol restant perméable sous la neige, ce qui est physique. L'excès d'hiver sous le manteau n'est donc pas un oubli de la porte de gel ; avec l'excès d'automne (novembre 1,07 à 1,23), il désigne des réservoirs lents trop pleins à l'entrée de l'hiver. Ajout redondant retiré.
+
+## R297 — Une tête linéaire du temps de transfert sur les seize attributs du tronçon, à taux propre (× 100) et routage à 24 sous-pas d'une heure, apprend vraiment : sur l'Outaouais le KGE 2020-2024 monte à chaque époque, de 0,742 à 0,837, contre 0,809 au routage gelé à 24 h ; mais l'étiage se dégrade (Q7min 1,03 → 1,25) (2026-10-05, 2 h 30) — ÉTABLI SUR UNE GRAINE, Montérégie en cours
+
+Mécanisme (`SpatialFieldNetwork.enable_routing_head`, banc `MEANDRE_BANC_ROUTAGE_TETE=1`, taux `MEANDRE_LR_MULT_ROUTAGE`, opt-in) : combinaison linéaire des attributs normalisés du tronçon, nulle au départ, ajoutée à la sortie brute du temps de transfert ; bornes 1 à 48 h, départ 24 h ; pondération de Muskingum gelée.
+
+| Outaouais, graine 1234, époque 8 | 24 h gelé | 6 h gelé | tête apprise |
+| --- | --- | --- | --- |
+| KGE 2020-2024 (r ; gamma) | 0,809 (0,810 ; 1,00) | 0,783 (0,829 ; 1,12) | 0,837 (0,848 ; 1,05) |
+| Q7min ; jours sous Q90 (obs 128) | 1,03 ; 96 | 1,18 ; 75 | 1,25 ; 61 |
+| août-sept | 0,99 | 1,23 | 1,15 |
+| ET | 1,29 | 1,16 | 1,20 |
+
+Le temps de transfert appris par le terrain porte le meilleur KGE de la fin de semaine sur ce bassin, et l'apprentissage converge (époques 7 et 8 : 0,833 et 0,837). Le compromis déjà vu revient : à mesure que la réponse s'accélère, l'ET apprise baisse et l'eau d'été monte. Valeurs apprises du temps de transfert à lire.
