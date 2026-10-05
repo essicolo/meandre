@@ -62,14 +62,19 @@ case "$REG" in outm) AUX=(ETL_WTWS=0 ETL_WTWSCLIM=0) ;; esac
 COMMUN=(ETL_CONFIG=.runs/quebec/config/socle-2026-10-04.toml ETL_REGION=$REG
         JOINT_FX_SUFFIX=-casr-brut ETL_COMPILE=${ETL_COMPILE:-1} "${AUX[@]}")
 
-echo "=== $REG entrainement $(date +%T) ==="
-env "${COMMUN[@]}" ETL_EPOCHS=$EPOQUES ETL_TAG=$TAG MEANDRE_SAUVER_EPOQUES=1 \
-    ETL_DUMP_Q="$CARTE/q-$REG$TAG-entrainement.npz" \
-    python -u .runs/quebec/etl_run.py
-
-# Le modele retenu est celui de la DERNIERE epoque, pas le meilleur en validation : la
-# selection sur trois ans de validation est un tirage (registre, regle du banc).
-DERNIER=.runs/quebec/checkpoints/best-${REG}-etl${TAG}-e${EPOQUES}.pt
+# CONTROLE DE REPRODUCTION : ETL_EPOCHS=0 et ETL_WARM_FROM=<point de reprise> sautent
+# l'entrainement et ne font que la passe avant, a comparer au chiffre du poste.
+if [ "$EPOQUES" -gt 0 ]; then
+  echo "=== $REG entrainement $(date +%T) ==="
+  env -u ETL_WARM_FROM "${COMMUN[@]}" ETL_EPOCHS=$EPOQUES ETL_TAG=$TAG MEANDRE_SAUVER_EPOQUES=1 \
+      ETL_DUMP_Q="$CARTE/q-$REG$TAG-entrainement.npz" \
+      python -u .runs/quebec/etl_run.py
+  # Le modele retenu est celui de la DERNIERE epoque, pas le meilleur en validation : la
+  # selection sur trois ans de validation est un tirage (registre, regle du banc).
+  DERNIER=.runs/quebec/checkpoints/best-${REG}-etl${TAG}-e${EPOQUES}.pt
+else
+  DERNIER=${ETL_WARM_FROM:?ETL_EPOCHS=0 demande ETL_WARM_FROM}
+fi
 echo "=== $REG passe avant sur $DERNIER $(date +%T) ==="
 env "${COMMUN[@]}" ETL_EPOCHS=0 ETL_TAG=$TAG-carte ETL_WARM_FROM="$DERNIER" \
     ETL_DUMP_Q="$CARTE/q-$REG$TAG.npz" \

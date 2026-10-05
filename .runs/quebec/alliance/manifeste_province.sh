@@ -19,6 +19,7 @@ ajoute donnees/quebec "$D"/quebec/forcing-*-casr-brut.nc
 ajoute donnees/quebec "$D"/quebec/*.duckdb
 ajoute donnees/quebec "$D"/quebec/*.parquet
 ajoute donnees/quebec/checkpoints-etbench "$D"/quebec/checkpoints-etbench/*
+ajoute checkpoints-reference "$D"/quebec/checkpoints-reference/*
 ajoute donnees/derives/auxiliaires "$D"/derives/auxiliaires/neisim-*.npz "$D"/derives/auxiliaires/rsesq-puits.parquet
 # Projets PHYSITEL : seulement les fichiers texte, lus pour l'occupation du sol, les milieux
 # humides et les lacs. Les rasters et fichiers de forme ne sont jamais lus.
