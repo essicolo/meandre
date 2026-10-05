@@ -5260,3 +5260,7 @@ Trajectoire, KGE 2020-2024 par époque : 0,566 ; 0,644 ; 0,678 ; 0,693 ; 0,711 ;
 | août-sept, tête | 1,15 | 1,02 | 0,78 | 0,80 |
 
 LECTURE. La tête du temps de transfert est le plus grand gain reproductible de la fin de semaine : +0,04 de KGE sur l'Outaouais, +0,21 sur la Montérégie avec le drainage, à écart entre graines nul en Montérégie (0,733 et 0,733). Avec la graine 777 de l'Outaouais l'étiage tient ; ailleurs il se dégrade, et le compromis entre réponse rapide et étiage reste le défaut à traiter. Réglages : `MEANDRE_BANC_ROUTAGE_TETE=1`, `MEANDRE_LR_MULT_ROUTAGE=100`, `MEANDRE_ROUTAGE_SOUSPAS=24`, `MEANDRE_KMUSK=1,48,24`, `MEANDRE_CHAMP_GELE=x_musk`. Le pilote régional ne l'expose pas encore.
+
+## R300 — Au pilote régional, la tête du temps de transfert au taux du banc (× 100) déstabilise le modèle en une époque : KGE médian 0,754 → 0,501, volume +21 % → +49 %, été doublé ; à zéro époque elle ne change rien (0,754, +21,2 %) (2026-10-05, 5 h 30) — ÉTABLI, Outaouais, modèle de seize époques (R294)
+
+Une époque depuis l'époque 8 de la prolongation, routage à 24 sous-pas, bornes du temps de transfert 1 à 48 h, taux de la tête × 100 (2e-2 par bloc). Rapports mensuels après l'époque : juin 1,56, juillet 1,64, août 1,98, septembre 2,02. Le routage conserve la masse : l'excès vient d'une dérive du reste du champ (évapotranspiration), entraînée par le choc d'un temps de transfert qui bouge fortement dès les premiers blocs sur 3412 tronçons. Sur un sous-bassin unique ce taux convenait (R297). Épreuve au taux × 10 en cours.
