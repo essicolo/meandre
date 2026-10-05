@@ -5144,3 +5144,15 @@ Symptôme : deux passes avant du pilote sur l'Outaouais, avec et sans `ETL_EVAP_
 Montérégie, configuration de R284, graine 1234, époque 8 : référence KGE 2020-2024 0,524 (r 0,567, gamma 0,80), Q7min 1,09, jours sous Q90 159 pour 148 observés, août-septembre 0,89 ; avec eau libre 0,522, 1,04, 174, 0,88. Le KGE plafonne par la corrélation dès la troisième époque : ce bassin agricole demande un mécanisme de réponse rapide (drainage souterrain agricole, ruissellement), pas un terme de bilan.
 
 Pilote régional (`socle-2026-10-04.toml`, huit époques, un pas par bloc, Outaouais, CaSR brut) : KGE médian 2022-2024 0,689 (moyen 0,688) aux 16 stations, contre 0,633 après un seul pas ; Q7min médian 1,11 (quartiles 0,83 à 1,25), jours sous Q90 0,77 de l'observé, août-septembre 1,22, volume annuel +18,9 %. Le modèle régional retient trop d'eau, ce que les sous-bassins ne montraient plus. Le témoin sans poids hors neige ni évaporation de l'eau libre dira si ces termes y jouent.
+
+## R290 — Au pilote régional, le poids hors neige et l'évaporation de l'eau libre améliorent un peu l'étiage (Q7min médian 1,22 → 1,12 aux 16 stations) mais les deux bras rendent 20 % d'eau de trop ; l'excès est surtout hivernal (janvier à avril 1,24 à 1,44 fois l'observé), le manteau simulé suivant pourtant le réseau au sol (1,01 à 1,10 de décembre à mars) (2026-10-04, 22 h 15) — ÉTABLI, Outaouais, une graine, huit époques
+
+| Outaouais, pilote, époque 8, 2022-2024 | recette du 4 octobre | témoin sans poids hors neige ni eau libre |
+| --- | --- | --- |
+| KGE médian | 0,685 | 0,676 |
+| Q7min médian (quartiles) | 1,12 (0,79 à 1,26) | 1,22 (0,95 à 1,47) |
+| jours sous Q90, sim/obs | 0,73 | 0,59 |
+| août-sept | 1,24 | 1,20 |
+| volume annuel | +19,1 % | +20,3 % |
+
+Audit du bilan (recette, époque 8) : bilan fermé à +0,03 % de la pluie, ET 10 493 contre production 16 460, soit 39 % des sorties, contre 57 % au banc sur le même bassin le 2 octobre. Multiplier K_c en passe avant : × 1,15, KGE 0,702, volume +10,4 %, août-septembre 0,99, mais Q7min 0,80 et 1,59 fois les jours sous le seuil ; × 1,3, volume +1,9 % mais KGE 0,627 et Q7min 0,58. L'ET ne peut combler un excès d'hiver. Rapports mensuels du modèle régional : janvier 1,24, février 1,39, mars 1,42, avril 1,23, juillet 0,86. Pistes, à éprouver au banc sur l'hiver : part de pluie l'hiver (seuil au bulbe humide −0,8 °C), fonte hivernale, débit d'hiver observé sous glace. Le pilote accepte désormais `ETL_MULT_FIXE`, comme le banc.

@@ -1222,6 +1222,11 @@ if os.environ.get("ETL_EVAP_EAU_LIBRE", "0") == "1":
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
+if os.environ.get("ETL_MULT_FIXE"):
+    # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
+    # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
+    model.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=DEVICE) for a in os.environ["ETL_MULT_FIXE"].split(",")}
+    print(f"[etl] champ spatial : multiplicateurs fixes {os.environ['ETL_MULT_FIXE']}")
 if os.environ.get("ETL_CAPACITE", "0") == "1":
     # TEST DE CAPACITÉ (question d'Essi, 3 août) : « si les paramètres ne s'ajustent pas
     # à la météo, il y a un problème ». On mesure le PLAFOND du modèle, pas sa
