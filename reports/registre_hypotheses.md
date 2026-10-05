@@ -5284,3 +5284,16 @@ Le point de reprise du témoin à 1e-5, réévalué dans un processus neuf, rend
 ## R302 — L'excès régional des bassins du nord est un défaut de régionalisation, pas de physique : entraîné seul au banc, le bassin 040238 rend 1,05 fois le volume observé avec un hiver juste, contre 1,22 et un hiver à 1,17-1,33 dans le modèle régional (2026-10-05, 9 h 30) — ÉTABLI, une graine, configuration de R286
 
 Banc, station 040238 (1 160 km², 94 tronçons, 15 lacs), eau libre, graine 1234, époque retenue : KGE 2020-2024 0,785, volume 2,08 pour 1,99 observé, ET 1,34 (MOD16 1,45), Q7min 1,24, août-septembre 0,93. Rapports mensuels sur jours mesurés, banc contre modèle régional de R294 au même bassin : janvier 1,05 / 1,17 ; février 1,05 / 1,33 ; mars 0,87 / 1,26 ; avril 1,02 / 1,19 ; mai 1,40 / 1,07 ; août 0,85 / 1,43 ; septembre 0,94 / 1,35 ; novembre 0,99 / 1,31. Le sous-bassin 040110 du banc n'avait pas non plus d'excès d'hiver (janvier 1,03, février 0,91, mars 0,87). La même physique ajuste ce bassin seul ; c'est le champ spatial partagé entre seize stations qui le sert mal. Pistes : plus d'époques au pilote (R293 : l'été bougeait encore à seize), pondération des stations dans la perte, capacité du champ ou attributs qui distinguent le nord.
+
+## R303 — Le champ régional n'est pas trop géographique dans l'ensemble (les attributs portent 60 à 98 % de la variation entre tronçons), mais il a appris pour K_c un gradient nord-sud que le bilan d'eau dément, K_c passant de 0,91 au sud à 0,60 au nord, et il laisse presque uniformes les autres paramètres (2026-10-05, 10 h 30) — ÉTABLI SANS SIMULER, modèle régional de R294 (Outaouais, seize époques)
+
+Question d'Essi : le champ est-il trop sensible à la proximité géographique et trop peu à la proximité physique ? Décomposition : chaque sortie recalculée avec les attributs fixés à leur moyenne (part de la position) puis la position fixée au centre (part des attributs), variance du logarithme entre tronçons.
+
+| sortie | variance du log | part position | part attributs |
+| --- | --- | --- | --- |
+| K_c | 0,029 | 0,35 | 0,48 |
+| K_sat_1 ; K_sat_2 ; K_sat_3 | 0,026 ; 0,591 ; 0,217 | 0,08 ; 0,10 ; 0,13 | 0,98 ; 0,85 ; 0,87 |
+| porosité ; capacité au champ, couche 3 | 0,003 ; 0,010 | 0,00 ; 0,00 | 0,82 ; 0,81 |
+| C_f ; temps de transfert | 0,150 ; 0,030 | 0,07 ; 0,09 | 0,93 ; 0,90 |
+
+Moyennes sur le bassin amont : K_c 0,91 (040110, 46,0°), 0,85 (040122), 0,76 (040238), 0,77 (040204), 0,72 (040241), 0,60 (040841, 46,7°) ; volume régional 1,06, 1,07, 1,22, 1,21, 1,19, 1,32. Le bilan P − Q exige pourtant la même évapotranspiration (535 à 587 mm/an, R292), et le bassin 040238 entraîné seul rend son volume (R302). Porosité de couche 3 0,596 à 0,599, capacité au champ 0,504 à 0,509, Z3 0,513 à 0,526 sur ces bassins : le champ ne différencie presque pas les sols. LECTURE : pour K_c, une tendance géographique tient lieu de ressemblance physique, et c'est elle qui fait l'excès des bassins du nord ; les attributs du sol, eux, ne font presque rien varier. Pistes : retirer la position de l'entrée qui produit K_c, ou contraindre le niveau d'ET par le bilan P − Q de chaque bassin jaugé, une observation.
