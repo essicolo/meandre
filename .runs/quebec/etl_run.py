@@ -550,7 +550,14 @@ from meandre.vertical import soil_processes as _soil_proc
 # couches et le repertoire de calage. Tester la presence de la SECTION au lieu de celle du
 # PROFIL faisait planter chaque execution au demarrage (huit passes perdues la nuit du
 # 2026-09-20). Le garde-fou contre un profil vide en avait cree un autre.
-_profile = _soil_proc.from_toml(cfg.get("soil"))
+# ETL_SOIL_TOML=<fichier> : profil de sol pris dans un fichier a part, comme le banc
+# (MEANDRE_BANC_SOIL_TOML), pour eprouver un profil sans dupliquer toute la recette.
+_soil_cfg = cfg.get("soil")
+if os.environ.get("ETL_SOIL_TOML"):
+    with open(os.environ["ETL_SOIL_TOML"], "rb") as _fs:
+        _soil_cfg = tomllib.load(_fs).get("soil")
+    print(f"[etl] profil de sol lu dans {os.environ['ETL_SOIL_TOML']}")
+_profile = _soil_proc.from_toml(_soil_cfg)
 if _profile is not None:
     model.vertical_column.declare_soil_profile(_profile)
     print(f"[etl] profil de sol declare : {_profile.layers} couches, "
@@ -1225,16 +1232,18 @@ if os.environ.get("ETL_EVAP_EAU_LIBRE", "0") == "1":
     _fw = torch.clamp(_lcw["f_water_raw"].float().cpu() - _rw / _Alw.clamp(min=1e-6), 0.0, 1.0)
     model.set_open_water_evaporation(_fw.to(DEVICE))
     print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
-if "ETL_WARM_FROM" in os.environ:
-    model.load(os.environ["ETL_WARM_FROM"])
-    print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
 if os.environ.get("ETL_ROUTAGE_TETE") == "1":
     # Tete lineaire du temps de transfert sur les attributs du troncon (R297, R299), nulle au
-    # depart, taux propre MEANDRE_LR_MULT_ROUTAGE. Posee apres le depart a chaud : un point de
-    # reprise anterieur ne la porte pas.
+    # depart, taux propre MEANDRE_LR_MULT_ROUTAGE. Creee AVANT le depart a chaud : le
+    # chargement ignore sans le dire les poids absents du modele, si bien qu'une tete creee
+    # apres serait remise a zero sur un point de reprise qui la porte. Un point de reprise
+    # anterieur, qui ne la porte pas, la laisse nulle.
     model.spatial_encoder.enable_routing_head(r["territorial"].n_features)
     model.spatial_encoder.routing_head.to(DEVICE)
     print(f"[etl] temps de transfert : tete lineaire sur {r['territorial'].n_features} attributs, routage a {os.environ.get('ETL_ROUTAGE_SOUSPAS', '2')} sous-pas")
+if "ETL_WARM_FROM" in os.environ:
+    model.load(os.environ["ETL_WARM_FROM"])
+    print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
 if os.environ.get("ETL_SANS_POSITION"):
     # Sorties du champ recalculees sans position (R303), diagnostic en passe avant.
     model.spatial_encoder.sans_position_pour = [x for x in os.environ["ETL_SANS_POSITION"].split(",") if x]
