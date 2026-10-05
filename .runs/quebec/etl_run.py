@@ -331,6 +331,9 @@ model = HydroModel(
     field_bounds=_field_bounds,
     n_nodes=n_nodes,
     n_territorial=r["territorial"].n_features,
+    # Sous-pas du routage (2026-10-05) : 2 par defaut ; 24 rend le gradient du temps de
+    # transfert sous 7,5 h (R241), exige par la tete du temps de transfert (R299).
+    routing_substeps=int(os.environ.get("ETL_ROUTAGE_SOUSPAS", "2")),
     n_forcing=6,
     use_temporal=False,
     use_residual=False,
@@ -1222,6 +1225,13 @@ if os.environ.get("ETL_EVAP_EAU_LIBRE", "0") == "1":
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
+if os.environ.get("ETL_ROUTAGE_TETE") == "1":
+    # Tete lineaire du temps de transfert sur les attributs du troncon (R297, R299), nulle au
+    # depart, taux propre MEANDRE_LR_MULT_ROUTAGE. Posee apres le depart a chaud : un point de
+    # reprise anterieur ne la porte pas.
+    model.spatial_encoder.enable_routing_head(r["territorial"].n_features)
+    model.spatial_encoder.routing_head.to(DEVICE)
+    print(f"[etl] temps de transfert : tete lineaire sur {r['territorial'].n_features} attributs, routage a {os.environ.get('ETL_ROUTAGE_SOUSPAS', '2')} sous-pas")
 if os.environ.get("ETL_MULT_FIXE"):
     # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
