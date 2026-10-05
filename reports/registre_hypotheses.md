@@ -5188,3 +5188,15 @@ Complément de R291, graine 777 de l'Outaouais, époque 8 : routage 24 h, KGE 20
 Reprise depuis l'époque 8 de R290, même configuration (`socle-2026-10-04.toml`), huit époques, taux repartant de 2e-4. Perte de validation 1,155 → 1,095. Rapports mensuels : janvier 1,11, février 1,25, mars 1,30, avril 1,18, mai 1,13, juin 1,07, juillet 0,76, août 1,02, septembre 0,97, octobre 0,91, novembre 1,07, décembre 1,08 ; volume annuel +17,0 %. Jours sous Q90 1,27 fois l'observé, quartiles du Q7min 0,60 à 1,15. Huit époques ne suffisent pas au pilote régional : l'été et l'étiage bougent encore entre la huitième et la seizième. Le défaut restant est saisonnier, fin d'hiver et printemps, et désigne la fonte (manteau à 0,73 du réseau en avril, R292).
 
 Drainage agricole déclaré, Montérégie, routage 6 h, époque retenue par la validation : KGE 2020-2024 0,687 et 0,674 (graines 1234 et 777) ; paramètres appris presque immobiles (part drainée 0,65 et 0,60, espacement 13,8 et 15,0 m) : le flux de Hooghoudt pèse peu avec la conductivité de couche 2 apprise. Évaluation de l'époque 8 en cours.
+
+## R294 — Au pilote régional aussi, le choix par la validation coûte cher : l'époque 8 de la prolongation donne 0,755 de KGE médian aux 16 stations de l'Outaouais contre 0,705 pour l'époque retenue, avec un étiage presque juste (Q7min médian 1,06, jours sous Q90 0,91 de l'observé) ; l'amplitude saisonnière de fonte ne règle pas l'excès d'hiver et de printemps, elle le déplace (2026-10-05, 1 h 40) — ÉTABLI, passes avant, une graine
+
+Modèle de l'époque 8 de la prolongation (R293), passes avant avec comparaison au réseau de neige :
+
+| amplitude de fonte | KGE médian | volume annuel | janvier ; février ; mars ; avril | neige sim/mesure janvier ; mars ; avril |
+| --- | --- | --- | --- | --- |
+| 0,5 (entraînement) | 0,755 | +21,2 % | 1,19 ; 1,37 ; 1,40 ; 1,16 | 1,07 ; 0,98 ; 0,72 |
+| 0,25 | 0,755 | +21,0 % | 1,28 ; 1,40 ; 1,40 ; 1,09 | 0,95 ; 0,90 ; 0,70 |
+| 0 | 0,737 | +20,9 % | 1,36 ; 1,43 ; 1,39 ; 1,02 | 0,86 ; 0,84 ; 0,68 |
+
+Époque 8, par station : Q7min médian 1,06 (quartiles 0,76 à 1,36), jours sous Q90 0,91 de l'observé, août-septembre 1,17. La règle du banc (R282) vaut pour le pilote : juger et retenir la dernière époque. Réduire la modulation saisonnière fait fondre davantage l'hiver ; l'excès de janvier à mars ne vient donc pas d'une fonte de printemps trop précoce mais d'un apport d'hiver trop fort (pluie d'hiver ou fonte de redoux), à chercher dans le partage pluie-neige.
