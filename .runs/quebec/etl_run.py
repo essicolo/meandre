@@ -334,6 +334,9 @@ model = HydroModel(
     # Sous-pas du routage (2026-10-05) : 2 par defaut ; 24 rend le gradient du temps de
     # transfert sous 7,5 h (R241), exige par la tete du temps de transfert (R299).
     routing_substeps=int(os.environ.get("ETL_ROUTAGE_SOUSPAS", "2")),
+    # Bandes de Fourier sur la position (2026-10-05) : -1 retire toute position, le champ ne
+    # varie plus qu'avec les attributs du troncon (question d'Essi, R303).
+    n_coord_freqs=int(os.environ.get("ETL_CHAMP_FREQS", "6")),
     n_forcing=6,
     use_temporal=False,
     use_residual=False,
