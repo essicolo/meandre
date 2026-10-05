@@ -872,6 +872,11 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     print(f"  mise en regime : {td.train_slice.start} jours avant {debut_train} "
           f"(le trainer en spinne au plus 730)", flush=True)
     m = _construire()
+    if os.environ.get("MEANDRE_BANC_ROUTAGE_TETE") == "1":
+        # Tete lineaire du temps de transfert sur les attributs du troncon (2026-10-04).
+        m.spatial_encoder.enable_routing_head(terr.data.shape[1])
+        m.spatial_encoder.routing_head.to(dev)
+        print(f"  temps de transfert : tete lineaire sur {terr.data.shape[1]} attributs, taux x {os.environ.get('MEANDRE_LR_MULT_ROUTAGE', '100')}", flush=True)
     if os.environ.get("MEANDRE_BANC_INIT_LITTERATURE") == "1":
         # INITIALISATION PAR LA LITTERATURE (2026-10-03), comme le pilote (etl_run.py) : sans
         # elle chaque sortie du champ part du milieu de ses bornes avec un motif tire au

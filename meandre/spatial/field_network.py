@@ -600,7 +600,26 @@ class SpatialFieldNetwork(nn.Module):
                 off = int(getattr(self, "latent_offset", 0))
                 raw = raw + self.latent_codes[off:off + raw.shape[0]]
 
+        _rh = getattr(self, "routing_head", None)
+        if _rh is not None:
+            # TETE DU TEMPS DE TRANSFERT (2026-10-04, opt-in) : une combinaison lineaire des
+            # attributs du troncon, nulle au depart, ajoutee a la sortie brute de K_musk. Le
+            # temps juste depend du terrain (R291 : court en Montérégie, long en Outaouais),
+            # et la derniere couche du champ ne le deplace guere en huit epoques (R242) ;
+            # cette tete a son propre taux d'apprentissage.
+            _col = torch.zeros_like(raw)
+            _col[:, self._k_musk_row] = _rh(territorial.to(raw.dtype)).squeeze(-1)
+            raw = raw + _col
+
         return self._apply_constraints(raw)
+
+    def enable_routing_head(self, n_territorial: int) -> None:
+        """Ajoute la tete lineaire du temps de transfert (parametres routing_head.*), nulle au depart."""
+        from dataclasses import fields as _f
+        self._k_musk_row = [f.name for f in _f(SpatialParams)].index("K_musk_hours")
+        self.routing_head = nn.Linear(n_territorial, 1)
+        nn.init.zeros_(self.routing_head.weight)
+        nn.init.zeros_(self.routing_head.bias)
 
     def latent_reg(self) -> Tensor:
         """Pénalité de shrinkage L2 des codes latents (partial pooling).

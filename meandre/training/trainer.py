@@ -524,7 +524,14 @@ class Trainer:
                 logger.info("Discriminative LR: profil de sol appris=%.1e (%gx), wd=0", self.config.lr * _ms, _ms)
             # Scalaires des lacs hors reseau (2026-10-02), bornes en douceur : a x50 ils ne
             # bougent que de 10 % en deux epoques ; taux propre, MEANDRE_LR_MULT_LACS.
+            # Tete du temps de transfert (2026-10-04) : taux propre, MEANDRE_LR_MULT_ROUTAGE.
+            routing_params = [p for name, p in model.named_parameters() if "routing_head" in name]
+            if routing_params:
+                _mr = float(os.environ.get("MEANDRE_LR_MULT_ROUTAGE", "100"))
+                base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in routing_params)]
+                groups.append({"params": routing_params, "lr": self.config.lr * _mr, "weight_decay": 0.0})
             lakes_params = [p for name, p in model.named_parameters() if "lakes_learn_" in name]
+
             if lakes_params:
                 _ml = float(os.environ.get("MEANDRE_LR_MULT_LACS", "50"))
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in lakes_params)]
