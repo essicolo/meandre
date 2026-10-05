@@ -14,14 +14,16 @@ Entrées : les caches du pilote produits par ETL_DUMP_REACH et ETL_DUMP_NATUREL=
 <reg>-journalier.npz et <reg>-sans-journalier.npz dans MEANDRE_CARTE_DUMPS. Les territoires
 sans cache sont omis : la carte s'étend à mesure que les simulations arrivent.
 
-Sortie : MEANDRE_CARTE_SORTIE (défaut DATA_ROOT/quebec/carte-reconstruction), un dossier
-autonome qui porte une copie de l'application feuillage : le servir et ouvrir index.html.
+Sortie, selon la convention du dépôt feuillage (MEANDRE_FEUILLAGE, défaut ../feuillage) :
+les couches dans data/meandre/, la configuration config-meandre-reconstruction.json à la racine,
+le magasin des débits journaliers data/meandre/debits.zarr, que git ignore. MEANDRE_CARTE_ZARR_URL
+désigne un magasin hébergé ailleurs. L'application elle-même n'est jamais copiée : servir le
+dépôt feuillage et ouvrir index.html?config=config-meandre-reconstruction.json.
 
     MEANDRE_CARTE_DUMPS=D:/meandre-data/carte-essai uv run python .runs/quebec/carte_reconstruction.py
 """
 import json
 import os
-import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -38,12 +40,11 @@ import zarr
 from meandre.utils import paths as _paths
 
 DUMPS = os.environ.get("MEANDRE_CARTE_DUMPS", f"{_paths.DATA_ROOT}/carte-essai")
-SORTIE = os.environ.get("MEANDRE_CARTE_SORTIE", f"{_paths.DATA_ROOT}/quebec/carte-reconstruction")
 _DEPOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 IO_EAU = os.environ.get("MEANDRE_IO_EAU", os.path.join(os.path.dirname(_DEPOT), "io-eau", "data", "derived"))
-# Application copiée dans le dossier de sortie : le dossier se sert seul, sans dépendre
-# d'un clone de feuillage à côté.
-FEUILLAGE = os.environ.get("MEANDRE_FEUILLAGE", os.path.join(os.path.dirname(_DEPOT), "feuillage", "index.html"))
+FEUILLAGE = os.environ.get("MEANDRE_FEUILLAGE", os.path.join(os.path.dirname(_DEPOT), "feuillage"))
+SORTIE = os.path.join(FEUILLAGE, "data", "meandre")
+ZARR_URL = os.environ.get("MEANDRE_CARTE_ZARR_URL", "./data/meandre/debits.zarr")
 # Période des hydrogrammes et des indicateurs, en années civiles complètes.
 DEBUT = os.environ.get("MEANDRE_CARTE_DEBUT", "2015-01-01")
 FIN = os.environ.get("MEANDRE_CARTE_FIN", "2024-12-31")
@@ -141,11 +142,9 @@ def charge_territoire(reg):
 def main():
     os.makedirs(SORTIE, exist_ok=True)
     d_io = io_eau_dir()
-    if os.path.exists(FEUILLAGE):
-        shutil.copyfile(FEUILLAGE, os.path.join(SORTIE, "index.html"))
 
     feats_sites = sites_ponctuels(d_io)
-    with open(os.path.join(SORTIE, "prelevements_rejets.geojson"), "w", encoding="utf-8") as f:
+    with open(os.path.join(SORTIE, "prelevements-rejets.geojson"), "w", encoding="utf-8") as f:
         json.dump({"type": "FeatureCollection", "features": feats_sites}, f, ensure_ascii=False, separators=(",", ":"))
     print(f"prelevements_rejets.geojson : {len(feats_sites)} sites")
 
@@ -191,10 +190,10 @@ def main():
         print(f"  {t['reg']} : {len(t['ids']) - n_sans_geom} tronçons"
               + (f", {n_sans_geom} sans géométrie" if n_sans_geom else ""))
 
-    with open(os.path.join(SORTIE, "troncons.geojson"), "w", encoding="utf-8") as f:
+    with open(os.path.join(SORTIE, "reconstruction-troncons.geojson"), "w", encoding="utf-8") as f:
         json.dump({"type": "FeatureCollection", "features": feats_tr}, f, ensure_ascii=False, separators=(",", ":"))
     print(f"troncons.geojson : {len(feats_tr)} tronçons, "
-          f"{os.path.getsize(os.path.join(SORTIE, 'troncons.geojson')) / 1e6:.1f} Mo")
+          f"{os.path.getsize(os.path.join(SORTIE, 'reconstruction-troncons.geojson')) / 1e6:.1f} Mo")
 
     # Un chunk par tronçon et les deux séries ensemble : un clic lit un seul fichier.
     n, T = len(series), len(dates)
@@ -225,7 +224,7 @@ def ecrit_config(feats_sites, feats_tr):
     nom_inf = "Influence des prélèvements et rejets sur l'étiage (%)"
     graphique = {
         "type": "chart", "chart_type": "line",
-        "data_source": {"type": "zarr", "store_url": "debits.zarr", "value_array": "debit",
+        "data_source": {"type": "zarr", "store_url": ZARR_URL, "value_array": "debit",
                         "feature_dim": "zidx", "feature_id_property": "zidx", "time_array": "time",
                         "series": [{"name": "modélisé", "role": "main", "layer": nom_mod,
                                     "indexers": {"serie": 0}},
@@ -251,15 +250,15 @@ def ecrit_config(feats_sites, feats_tr):
                  "description": "Débits modélisés et naturalisés, prélèvements et rejets ponctuels",
                  "center": [47.0, -72.5], "zoom": 5.5, "basemap": "osm"},
         "layers": [
-            {"name": nom_inf, "url": "troncons.geojson", "visible": True, "popup_template": "troncon",
+            {"name": nom_inf, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": True, "popup_template": "troncon",
              "color_by": {"property": "influence_etiage_pct", "colors": DIVERGENTE,
                           "domain": [-borne, borne], "label": "écart du débit d'étiage, %"},
              "width_by": largeur, "size_by": taille_lac},
-            {"name": nom_mod, "url": "troncons.geojson", "visible": False, "popup_template": "troncon",
+            {"name": nom_mod, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": False, "popup_template": "troncon",
              "color": "#2563eb", "width_by": largeur, "size_by": taille_lac},
-            {"name": nom_nat, "url": "troncons.geojson", "visible": False, "popup_template": "troncon",
+            {"name": nom_nat, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": False, "popup_template": "troncon",
              "color": "#d97706", "width_by": largeur, "size_by": taille_lac},
-            {"name": "Prélèvements et rejets ponctuels", "url": "prelevements_rejets.geojson",
+            {"name": "Prélèvements et rejets ponctuels", "url": "./data/meandre/prelevements-rejets.geojson",
              "visible": True, "popup_template": "site",
              "color_by": {"property": "debit_net_l_s", "colors": DIVERGENTE,
                           "domain": [-5, 5], "label": "débit net, L/s (rouge : prélèvement)"},
@@ -288,10 +287,10 @@ def ecrit_config(feats_sites, feats_tr):
                        "description": "Débit net moyen par site, 2015-2024, table io-eau"},
               "layers": [sites], "popup_templates": {"site": config["popup_templates"]["site"]}}
     config["layers"][-1] = {**sites, "visible": False}
-    for nom, c in (("config.json", config), ("config-prelevements.json", prelev)):
-        with open(os.path.join(SORTIE, nom), "w", encoding="utf-8") as f:
+    for nom, c in (("config-meandre-reconstruction.json", config), ("config-meandre-prelevements.json", prelev)):
+        with open(os.path.join(FEUILLAGE, nom), "w", encoding="utf-8") as f:
             json.dump(c, f, ensure_ascii=False, indent=2)
-    print(f"config.json et config-prelevements.json écrits dans {SORTIE} "
+    print(f"config-meandre-reconstruction.json et config-meandre-prelevements.json écrits dans {FEUILLAGE} "
           f"(influence en étiage bornée à ±{borne:.0f} %)")
 
 
