@@ -5248,3 +5248,15 @@ Complément de R297, Montérégie, graine 1234, époque 8 : tête apprise, KGE 2
 ## R298 — Tête du temps de transfert et drainage agricole ensemble, Montérégie, graine 1234 : KGE 2020-2024 0,733 (r 0,750), Q7min 1,45, soit la tête seule (0,734, Q7min 1,66) avec un étiage un peu meilleur (2026-10-05, 5 h 10) — ÉTABLI SUR UNE GRAINE, seconde en cours
 
 Trajectoire, KGE 2020-2024 par époque : 0,566 ; 0,644 ; 0,678 ; 0,693 ; 0,711 ; 0,732 ; 0,731 ; 0,733, convergée. Époque 8 : ET 1,58, jours sous Q90 174 pour 148, août-septembre 0,78. Récapitulatif de la Montérégie, graine 1234, époque 8 : routage 24 h 0,522 ; 6 h 0,744 ; drainage et 6 h 0,698 ; tête 0,734 ; tête et drainage 0,733.
+
+## R299 — Sur deux graines par bassin, le temps de transfert appris par le terrain l'emporte : Outaouais, KGE 2020-2024 0,837 et 0,851 contre 0,809 et 0,803 au routage gelé à 24 h ; Montérégie, avec le drainage agricole, 0,733 et 0,733 contre 0,522 et 0,514 ; l'étiage se dégrade en Montérégie et sur une graine de l'Outaouais (2026-10-05, 5 h 25) — ÉTABLI, deux bassins, deux graines, époque 8
+
+| époque 8 | Outaouais 1234 | Outaouais 777 | Montérégie 1234 | Montérégie 777 |
+| --- | --- | --- | --- | --- |
+| KGE 2020-2024, routage 24 h gelé | 0,809 | 0,803 | 0,522 | 0,514 |
+| KGE 2020-2024, tête (+ drainage en Montérégie) | 0,837 (r 0,848) | 0,851 (r 0,852) | 0,733 (r 0,750) | 0,733 (r 0,746) |
+| Q7min, 24 h → tête | 1,03 → 1,25 | 1,12 → 1,16 | 1,04 → 1,45 | 1,22 → 1,50 |
+| jours sous Q90 (obs 128 ; 148), tête | 61 | 97 | 174 | 159 |
+| août-sept, tête | 1,15 | 1,02 | 0,78 | 0,80 |
+
+LECTURE. La tête du temps de transfert est le plus grand gain reproductible de la fin de semaine : +0,04 de KGE sur l'Outaouais, +0,21 sur la Montérégie avec le drainage, à écart entre graines nul en Montérégie (0,733 et 0,733). Avec la graine 777 de l'Outaouais l'étiage tient ; ailleurs il se dégrade, et le compromis entre réponse rapide et étiage reste le défaut à traiter. Réglages : `MEANDRE_BANC_ROUTAGE_TETE=1`, `MEANDRE_LR_MULT_ROUTAGE=100`, `MEANDRE_ROUTAGE_SOUSPAS=24`, `MEANDRE_KMUSK=1,48,24`, `MEANDRE_CHAMP_GELE=x_musk`. Le pilote régional ne l'expose pas encore.
