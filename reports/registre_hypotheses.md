@@ -5240,3 +5240,5 @@ Mécanisme (`SpatialFieldNetwork.enable_routing_head`, banc `MEANDRE_BANC_ROUTAG
 | ET | 1,29 | 1,16 | 1,20 |
 
 Le temps de transfert appris par le terrain porte le meilleur KGE de la fin de semaine sur ce bassin, et l'apprentissage converge (époques 7 et 8 : 0,833 et 0,837). Le compromis déjà vu revient : à mesure que la réponse s'accélère, l'ET apprise baisse et l'eau d'été monte. Valeurs apprises du temps de transfert à lire.
+
+Complément de R297, temps de transfert appris sur l'Outaouais (époque 8) : médiane 24,3 h, inchangée, mais centiles 1 et 99 de 1,1 à 42,6 h. La tête ne raccourcit pas le temps moyen : elle le différencie selon les attributs du tronçon, et c'est cette variation qui porte le gain de KGE.
