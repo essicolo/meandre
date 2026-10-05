@@ -5225,3 +5225,5 @@ Le drainage historique de bv3c2 (`PROV_DRAIN`) ne s'exécute pas quand un profil
 | espacement ; part appris | | | 13,8 m ; 0,65 | 15,0 m ; 0,60 |
 
 KGE moyen 0,658 → 0,697, écart entre graines 0,17 → 0,002. Les paramètres du drain bougent à peine (départ 15 m, 0,6) : ce n'est pas leur valeur qui joue mais l'existence d'une voie de drainage de la couche 2 vers la rivière, que les deux graines trouvent pareillement. Le Q7min reste haut (1,41 à 1,47).
+
+Correction de la piste de R295 : l'écoulement latéral de la couche 3 est déjà freiné par le gel (facteur 1 − fraction gelée, `bv3c2.py`), mais seulement hors manteau protecteur (moins de 10 mm de neige), le sol restant perméable sous la neige, ce qui est physique. L'excès d'hiver sous le manteau n'est donc pas un oubli de la porte de gel ; avec l'excès d'automne (novembre 1,07 à 1,23), il désigne des réservoirs lents trop pleins à l'entrée de l'hiver. Ajout redondant retiré.
