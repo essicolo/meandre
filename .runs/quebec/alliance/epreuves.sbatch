@@ -11,7 +11,7 @@
 # Chaque tache finit par une passe avant sur la DERNIERE epoque qui exporte les series aux
 # stations (ETL_DUMP_Q), jugees sur le KGE 2022-2024, le volume, le Q7min et l'ete.
 #SBATCH --job-name=meandre-epreuves
-#SBATCH --time=06:00:00
+#SBATCH --time=10:00:00
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=48000M
 #SBATCH --gres=gpu:1
