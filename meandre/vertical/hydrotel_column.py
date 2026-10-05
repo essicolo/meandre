@@ -472,6 +472,10 @@ class HydrotelColumn(nn.Module):
             for _nom in getattr(self, "_soil_learn_names", ()):
                 _champ[_nom] = torch.exp(getattr(self, _nom))
             p_soil["soil_profile"] = _profile.resolved(_champ)
+            # Part agricole brute du troncon, lue par le drainage agricole declare (2026-10-04).
+            _lca = getattr(self, "_land_cover", None) or {}
+            if "f_agriculture_raw" in _lca:
+                p_soil["agri_frac"] = torch.as_tensor(_lca["f_agriculture_raw"]).to(like)
             p_soil["thetacc2"] = sp.theta_fc_2
             p_soil["thetacc3"] = sp.theta_fc_3
             # Points de fletrissement des couches 2 et 3, lus par la vidange lente au-dessus

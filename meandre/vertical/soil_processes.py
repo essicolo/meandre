@@ -116,16 +116,43 @@ def perc_power_law(ctx, prm):
 
 
 # Catalogue. La clé est le nom Raven, la valeur la fonction et les paramètres exigés.
+def drain_hooghoudt(ctx, prm):
+    """Drainage souterrain agricole, formule de Hooghoudt (2026-10-04).
+
+    q = f · K · z · min(1, (8·d_e·m + 4·m²) / L²), f la fraction drainee (part `share` des terres
+    agricoles du troncon), K la conductivite de la couche, z son epaisseur, m la charge de la
+    zone saturee au-dessus des drains, d_e la profondeur equivalente sous les drains (par defaut
+    l'epaisseur de la couche) et L l'espacement. La hauteur saturee se lit comme z·theta/theta_s
+    depuis la base de la couche, et le drain est pose a `depth_m` sous la surface. Le facteur de
+    Hooghoudt, sans dimension, est borne a 1 : un drain ne transmet pas plus que la capacite
+    laterale saturee de la couche. Meme forme que la branche historique de bv3c2, qu'un profil
+    declare n'execute pas.
+    """
+    z = ctx["thickness"]
+    agri = ctx.get("agri_frac")
+    if agri is None:
+        return torch.zeros_like(ctx["theta"])
+    frac = torch.clamp(prm["share"] * agri, 0.0, 1.0)
+    s = z * ctx["theta"] / (ctx["porosity"] + 1e-9)
+    h_drain = torch.clamp(ctx["z_top"] + z - prm["depth_m"], min=0.0)
+    m = torch.clamp(s - h_drain, min=0.0)
+    de = prm.get("equiv_depth_m", z)
+    L = prm["spacing_m"]
+    hoog = (8.0 * de * m + 4.0 * m * m) / (L * L)
+    return frac * ctx["conductivity"] * z * torch.clamp(hoog, max=1.0)
+
+
 FORMS = {
     "BASE_LINEAR": (base_linear, ()),
     "BASE_THRESH_POWER": (base_thresh_power, ("tau",)),
     "PERC_LINEAR": (perc_linear, ("krec",)),
     "PERC_THRESH_POWER": (perc_thresh_power, ("tau",)),
     "PERC_POWER_LAW": (perc_power_law, ("krec", "exponent")),
+    "DRAIN_HOOGHOUDT": (drain_hooghoudt, ("spacing_m", "depth_m", "share")),
 }
 
 FORMS_BY_KIND = {
-    KIND_LATERAL: ("BASE_LINEAR", "BASE_THRESH_POWER"),
+    KIND_LATERAL: ("BASE_LINEAR", "BASE_THRESH_POWER", "DRAIN_HOOGHOUDT"),
     KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_POWER_LAW"),
 }
 
