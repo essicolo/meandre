@@ -5212,3 +5212,16 @@ Modèle de l'époque 8 de la prolongation (R293), passes avant avec comparaison 
 Avec R294 : ni la modulation saisonnière de la fonte ni le partage pluie-neige ne retirent l'excès de février-mars sans dégrader le manteau ou le KGE. Reste le débit de base hivernal : par temps de gel les réservoirs lents (couche 3, nappe) se vident sans que rien ne les retienne, alors que la rivière observée sous glace porte peu. Pistes : la porte de gel sur le drainage profond, et la part des débits d'hiver reconstruits (R292) dans la perte.
 
 Complément de R295, porte de gel sur la percolation de la couche 3 (`ETL_L3_GEL`), même modèle : facteur 0,1, KGE médian 0,7555, janvier 1,17, février 1,35 ; facteur 0,5 (fidèle), 0,7550, 1,19, 1,37. Sans effet : le débit de base d'hiver ne passe pas par la percolation. Il vient plutôt de l'écoulement latéral lent de la couche 3, que le profil à deux vitesses draine au-dessus du point de flétrissement avec un temps appris de 160 à 260 jours, et qui alimente la rivière toute l'année. Piste suivante : soumettre cet écoulement au gel du sol, comme la percolation, ou le borner par la capacité au champ.
+
+## R296 — Le drainage agricole déclaré (Hooghoudt sur la couche 2, part drainée des terres agricoles) rend la Montérégie reproductible : KGE 2020-2024 0,698 et 0,696 sur deux graines, contre 0,744 et 0,572 sans drainage au même routage de 6 h ; il n'existait pas jusqu'ici sous un profil déclaré (2026-10-05, 2 h) — ÉTABLI, deux graines, époque 8
+
+Le drainage historique de bv3c2 (`PROV_DRAIN`) ne s'exécute pas quand un profil de sol est déclaré, la déclaration étant complète : toutes les épreuves de drainage avec profil déclaré, dont celles de la Montérégie du 2 octobre, l'avaient sans le savoir éteint (passe avant identique au chiffre près). Ajout au catalogue de la forme `DRAIN_HOOGHOUDT` (processus latéral : q = f K z min(1, (8 d_e m + 4 m²)/L²), f = part drainée × fraction agricole du tronçon), espacement `spacing_m` et part `share` apprenables (test `tests/test_drainage_declare.py`).
+
+| Montérégie, routage 6 h, époque 8 | sans drainage 1234 | sans drainage 777 | avec drainage 1234 | avec drainage 777 |
+| --- | --- | --- | --- | --- |
+| KGE 2020-2024 (r ; gamma) | 0,744 (0,750 ; 0,99) | 0,572 (0,612 ; 1,18) | 0,698 (0,707 ; 1,00) | 0,696 (0,702 ; 0,97) |
+| Q7min ; jours sous Q90 (obs 148) | 1,52 ; 163 | 1,28 ; 179 | 1,47 ; 155 | 1,41 ; 160 |
+| août-sept | 0,87 | 0,88 | 0,93 | 0,86 |
+| espacement ; part appris | | | 13,8 m ; 0,65 | 15,0 m ; 0,60 |
+
+KGE moyen 0,658 → 0,697, écart entre graines 0,17 → 0,002. Les paramètres du drain bougent à peine (départ 15 m, 0,6) : ce n'est pas leur valeur qui joue mais l'existence d'une voie de drainage de la couche 2 vers la rivière, que les deux graines trouvent pareillement. Le Q7min reste haut (1,41 à 1,47).
