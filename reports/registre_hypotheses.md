@@ -5242,3 +5242,5 @@ Mécanisme (`SpatialFieldNetwork.enable_routing_head`, banc `MEANDRE_BANC_ROUTAG
 Le temps de transfert appris par le terrain porte le meilleur KGE de la fin de semaine sur ce bassin, et l'apprentissage converge (époques 7 et 8 : 0,833 et 0,837). Le compromis déjà vu revient : à mesure que la réponse s'accélère, l'ET apprise baisse et l'eau d'été monte. Valeurs apprises du temps de transfert à lire.
 
 Complément de R297, temps de transfert appris sur l'Outaouais (époque 8) : médiane 24,3 h, inchangée, mais centiles 1 et 99 de 1,1 à 42,6 h. La tête ne raccourcit pas le temps moyen : elle le différencie selon les attributs du tronçon, et c'est cette variation qui porte le gain de KGE.
+
+Complément de R297, Montérégie, graine 1234, époque 8 : tête apprise, KGE 2020-2024 0,734 (r 0,769, gamma 0,89), Q7min 1,66, jours sous Q90 138 pour 148, août-septembre 0,93 ; contre 0,522 au routage gelé à 24 h et 0,744 à 6 h. La même tête, partie de 24 h dans les deux bassins, accélère le routage en Montérégie et le différencie sur l'Outaouais, sans réglage à la main. L'étiage se dégrade dans les deux cas (Q7min 1,25 et 1,66).
