@@ -55,7 +55,7 @@ REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont
            "outv", "sagu", "slno", "slso", "vaud"]
 # Rouge pour une perte d'eau, bleu pour un apport, gris neutre au centre : le blanc des
 # palettes divergentes usuelles disparaît sur le fond de carte.
-DIVERGENTE = ["#b2182b", "#ef8a62", "#bdbdbd", "#67a9cf", "#2166ac"]
+DIVERGENTE = ["#b2182b", "#ef8a62", "#7f7f7f", "#67a9cf", "#2166ac"]
 MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
 
 
@@ -136,7 +136,26 @@ def charge_territoire(reg):
         con.close()
     return dict(reg=reg, dates=dates[garde], q=a["q"][garde], qn=s["q"][garde],
                 ids=[f"{reg.upper()}{int(n):05d}" for n in nodes.node_id],
-                lon=nodes.lon.to_numpy(), lat=nodes.lat.to_numpy(), lac=nodes.is_lake.to_numpy())
+                node_id=nodes.node_id.to_numpy(), lac=nodes.is_lake.to_numpy(), lacs=polygones_lacs(reg))
+
+
+def polygones_lacs(reg):
+    """Polygones des lacs du projet PHYSITEL, par identifiant de tronçon.
+
+    Dans lacs.shp, un lac porte l'identifiant de son tronçon au signe près (-51 pour le
+    tronçon 51). Les lacs en plusieurs morceaux sont fusionnés, puis la géométrie est
+    simplifiée à environ 100 m pour garder la couche légère.
+    """
+    import geopandas as gpd
+    import shapely
+    from shapely.geometry import mapping
+
+    f = os.path.join(_paths.PLATFORMS_ROOT, "LN24HA", f"{reg.upper()}_LN24HA_2020", "physitel", "lacs.shp")
+    if not os.path.exists(f):
+        return {}
+    g = gpd.read_file(f).to_crs(4326).dissolve(by="ident")
+    g["geometry"] = shapely.set_precision(g.geometry.simplify(0.001, preserve_topology=True).values, 1e-5)
+    return {int(-i): mapping(geom) for i, geom in g.geometry.items()}
 
 
 def main():
@@ -170,9 +189,9 @@ def main():
         for i, tid in enumerate(t["ids"]):
             if tid in geom:
                 nom, g = geom[tid]
-            elif t["lac"][i]:
-                # Les lacs n'ont pas de tracé de tronçon : un point à leur nœud.
-                nom, g = None, {"type": "Point", "coordinates": [round(float(t["lon"][i]), 5), round(float(t["lat"][i]), 5)]}
+            elif t["lac"][i] and int(t["node_id"][i]) in t["lacs"]:
+                # Un tronçon de lac est le polygone du lac.
+                nom, g = None, t["lacs"][int(t["node_id"][i])]
             else:
                 n_sans_geom += 1
                 continue
@@ -197,17 +216,17 @@ def main():
 
     # Un chunk par tronçon et les deux séries ensemble : un clic lit un seul fichier.
     n, T = len(series), len(dates)
-    arr = np.empty((2, n, T), dtype=np.float32)
+    arr = np.empty((3, n, T), dtype=np.float32)
     for k, (qa, qb) in enumerate(series):
-        arr[0, k], arr[1, k] = qa, qb
+        arr[0, k], arr[1, k], arr[2, k] = qa, qb, qa - qb
     root = zarr.open_group(os.path.join(SORTIE, "debits.zarr"), mode="w")
-    root.create_array("debit", data=arr, chunks=(2, 1, T), dimension_names=["serie", "zidx", "time"])
-    root.create_array("serie", data=np.array([0, 1], dtype=np.int32), dimension_names=["serie"])
+    root.create_array("debit", data=arr, chunks=(3, 1, T), dimension_names=["serie", "zidx", "time"])
+    root.create_array("serie", data=np.array([0, 1, 2], dtype=np.int32), dimension_names=["serie"])
     root.create_array("zidx", data=np.arange(n, dtype=np.int32), dimension_names=["zidx"])
     tz = root.create_array("time", data=((dates - pd.Timestamp("1970-01-01")).days.to_numpy().astype(np.int32)),
                            dimension_names=["time"])
     tz.attrs["units"] = "days since 1970-01-01"
-    root["serie"].attrs["description"] = "0 : modélisé avec prélèvements et rejets ; 1 : naturalisé"
+    root["serie"].attrs["description"] = "0 : modélisé avec prélèvements et rejets ; 1 : naturalisé ; 2 : modélisé moins naturalisé"
     root.attrs["description"] = f"Débits journaliers simulés par meandre, m³/s, {DEBUT[:4]}-{FIN[:4]}"
     zarr.consolidate_metadata(root.store)
     print(f"debits.zarr : {n} tronçons x {T} jours")
@@ -226,14 +245,24 @@ def ecrit_config(feats_sites, feats_tr):
         "type": "chart", "chart_type": "line",
         "data_source": {"type": "zarr", "store_url": ZARR_URL, "value_array": "debit",
                         "feature_dim": "zidx", "feature_id_property": "zidx", "time_array": "time",
-                        "series": [{"name": "modélisé", "role": "main", "layer": nom_mod,
-                                    "indexers": {"serie": 0}},
-                                   {"name": "naturalisé", "role": "main", "layer": nom_nat,
-                                    "indexers": {"serie": 1}}]},
+                        # Chart.js dessine la première série par-dessus : le modélisé, fin,
+                        # reste visible sur le naturalisé, large, là où les deux coïncident.
+                        "series": [{"name": "modélisé", "role": "main", "layer": nom_mod, "color": "rgba(37, 99, 235, 1)",
+                                    "width": 1.2, "indexers": {"serie": 0}},
+                                   {"name": "naturalisé", "role": "main", "layer": nom_nat, "color": "rgba(217, 119, 6, 0.9)",
+                                    "width": 3, "indexers": {"serie": 1}}]},
         "options": {"title": f"Débit journalier, {DEBUT[:4]}-{FIN[:4]}", "xlabel": "Date",
                     "ylabel": "m³/s"}}
+    graphique_ecart = {
+        "type": "chart", "chart_type": "line",
+        "data_source": {"type": "zarr", "store_url": ZARR_URL, "value_array": "debit",
+                        "feature_dim": "zidx", "feature_id_property": "zidx", "time_array": "time",
+                        "series": [{"name": "modélisé moins naturalisé", "role": "main",
+                                    "color": "rgba(124, 58, 237, 1)", "indexers": {"serie": 2}}]},
+        "options": {"title": "Effet des prélèvements et rejets : modélisé moins naturalisé", "xlabel": "Date",
+                    "ylabel": "m³/s"}}
     fiche_troncon = {"title": "Tronçon {properties.troncon} {properties.nom}", "display": "sidebar",
-                     "sections": [graphique,
+                     "sections": [graphique, graphique_ecart,
                                   {"type": "properties",
                                    "fields": ["q_moyen_m3s", "q_nat_moyen_m3s", "q7min_m3s", "q7min_nat_m3s",
                                               "influence_etiage_pct", "influence_annuelle_pct"],
@@ -243,8 +272,7 @@ def ecrit_config(feats_sites, feats_tr):
                                               "q7min_nat_m3s": "Étiage naturalisé, Q7 min. (m³/s)",
                                               "influence_etiage_pct": "Écart de l'étiage (%)",
                                               "influence_annuelle_pct": "Écart du débit moyen (%)"}}]}
-    largeur = {"property": "q_nat_moyen_m3s", "range": [0.4, 6]}
-    taille_lac = {"property": "q_nat_moyen_m3s", "range": [1.5, 6]}
+    largeur = {"property": "q_nat_moyen_m3s", "range": [1.8, 7]}
     config = {
         "view": {"name": "meandre : débits reconstruits",
                  "description": "Débits modélisés et naturalisés, prélèvements et rejets ponctuels",
@@ -253,11 +281,11 @@ def ecrit_config(feats_sites, feats_tr):
             {"name": nom_inf, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": True, "popup_template": "troncon",
              "color_by": {"property": "influence_etiage_pct", "colors": DIVERGENTE,
                           "domain": [-borne, borne], "label": "écart du débit d'étiage, %"},
-             "width_by": largeur, "size_by": taille_lac},
+             "width_by": largeur, "fill_opacity": 0.75},
             {"name": nom_mod, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": False, "popup_template": "troncon",
-             "color": "#2563eb", "width_by": largeur, "size_by": taille_lac},
+             "color": "#2563eb", "width_by": largeur, "fill_opacity": 0},
             {"name": nom_nat, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": False, "popup_template": "troncon",
-             "color": "#d97706", "width_by": largeur, "size_by": taille_lac},
+             "color": "#d97706", "width_by": largeur, "fill_opacity": 0},
             {"name": "Prélèvements et rejets ponctuels", "url": "./data/meandre/prelevements-rejets.geojson",
              "visible": True, "popup_template": "site",
              "color_by": {"property": "debit_net_l_s", "colors": DIVERGENTE,
@@ -266,7 +294,7 @@ def ecrit_config(feats_sites, feats_tr):
         ],
         "popup_templates": {
             "troncon": fiche_troncon,
-            "site": {"title": "{properties.nom}",
+            "site": {"title": "{properties.nom}", "display": "sidebar",
                      "sections": [{"type": "properties",
                                    "fields": ["nature", "origine", "source", "secteur", "municipalite",
                                               "debit_net_l_s", "debit_net_ete_l_s", "troncon"],
