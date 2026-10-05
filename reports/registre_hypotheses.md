@@ -5200,3 +5200,13 @@ Modèle de l'époque 8 de la prolongation (R293), passes avant avec comparaison 
 | 0 | 0,737 | +20,9 % | 1,36 ; 1,43 ; 1,39 ; 1,02 | 0,86 ; 0,84 ; 0,68 |
 
 Époque 8, par station : Q7min médian 1,06 (quartiles 0,76 à 1,36), jours sous Q90 0,91 de l'observé, août-septembre 1,17. La règle du banc (R282) vaut pour le pilote : juger et retenir la dernière époque. Réduire la modulation saisonnière fait fondre davantage l'hiver ; l'excès de janvier à mars ne vient donc pas d'une fonte de printemps trop précoce mais d'un apport d'hiver trop fort (pluie d'hiver ou fonte de redoux), à chercher dans le partage pluie-neige.
+
+## R295 — Relever le seuil pluie-neige ne règle pas l'excès d'hiver du modèle régional : à +0,8 °C au thermomètre mouillé le manteau dépasse le réseau au sol de 25 % en janvier et février reste à 1,28 fois l'observé ; l'excès de fin d'hiver est un débit de base hivernal trop fort, pas un apport (2026-10-05, 1 h 45) — ÉTABLI EN PASSE AVANT, modèle de R294
+
+| seuil Twb | KGE médian | volume | janvier ; février ; mars ; mai | neige sim/mesure janvier ; avril |
+| --- | --- | --- | --- | --- |
+| −0,8 °C (entraînement) | 0,755 | +21,2 % | 1,19 ; 1,37 ; 1,40 ; 1,08 | 1,07 ; 0,72 |
+| 0 °C | 0,731 | +21,6 % | 1,11 ; 1,32 ; 1,32 ; 1,15 | 1,16 ; 0,81 |
+| +0,8 °C | 0,714 | +21,9 % | 1,03 ; 1,28 ; 1,21 ; 1,26 | 1,25 ; 0,90 |
+
+Avec R294 : ni la modulation saisonnière de la fonte ni le partage pluie-neige ne retirent l'excès de février-mars sans dégrader le manteau ou le KGE. Reste le débit de base hivernal : par temps de gel les réservoirs lents (couche 3, nappe) se vident sans que rien ne les retienne, alors que la rivière observée sous glace porte peu. Pistes : la porte de gel sur le drainage profond, et la part des débits d'hiver reconstruits (R292) dans la perte.
