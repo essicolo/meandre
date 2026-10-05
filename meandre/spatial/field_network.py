@@ -600,6 +600,20 @@ class SpatialFieldNetwork(nn.Module):
                 off = int(getattr(self, "latent_offset", 0))
                 raw = raw + self.latent_codes[off:off + raw.shape[0]]
 
+        _sp = getattr(self, "sans_position_pour", None)
+        if _sp and self.param_mode != "static":
+            # DIAGNOSTIC (2026-10-05) : les sorties nommees sont recalculees avec la position
+            # fixee au centre du domaine, si bien qu'elles ne varient plus qu'avec les attributs
+            # du troncon. Mesure ce que la geographie apporte a un parametre (R303).
+            from dataclasses import fields as _fds
+            _noms = [f.name for f in _fds(SpatialParams)]
+            _c0 = coords.mean(dim=0, keepdim=True).expand_as(coords)
+            _raw0 = self.fc_out(self._trunk(_c0, territorial))
+            _col = torch.zeros(raw.shape[1], dtype=torch.bool, device=raw.device)
+            for _n in _sp:
+                _col[_noms.index(_n)] = True
+            raw = torch.where(_col.unsqueeze(0), _raw0, raw)
+
         _rh = getattr(self, "routing_head", None)
         if _rh is not None:
             # TETE DU TEMPS DE TRANSFERT (2026-10-04, opt-in) : une combinaison lineaire des

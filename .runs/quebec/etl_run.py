@@ -1235,6 +1235,10 @@ if os.environ.get("ETL_ROUTAGE_TETE") == "1":
     model.spatial_encoder.enable_routing_head(r["territorial"].n_features)
     model.spatial_encoder.routing_head.to(DEVICE)
     print(f"[etl] temps de transfert : tete lineaire sur {r['territorial'].n_features} attributs, routage a {os.environ.get('ETL_ROUTAGE_SOUSPAS', '2')} sous-pas")
+if os.environ.get("ETL_SANS_POSITION"):
+    # Sorties du champ recalculees sans position (R303), diagnostic en passe avant.
+    model.spatial_encoder.sans_position_pour = [x for x in os.environ["ETL_SANS_POSITION"].split(",") if x]
+    print(f"[etl] champ spatial : sans position pour {model.spatial_encoder.sans_position_pour}")
 if os.environ.get("ETL_MULT_FIXE"):
     # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
