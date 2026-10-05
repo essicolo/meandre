@@ -231,8 +231,8 @@ def ecrit_config(feats_sites, feats_tr):
                                     "indexers": {"serie": 0}},
                                    {"name": "naturalisé", "role": "main", "layer": nom_nat,
                                     "indexers": {"serie": 1}}]},
-        "options": {"title": f"Débit journalier, {DEBUT[:4]}-{FIN[:4]}, échelle logarithmique", "xlabel": "Date",
-                    "ylabel": "m³/s", "ylog": True}}
+        "options": {"title": f"Débit journalier, {DEBUT[:4]}-{FIN[:4]}", "xlabel": "Date",
+                    "ylabel": "m³/s"}}
     fiche_troncon = {"title": "Tronçon {properties.troncon} {properties.nom}", "display": "sidebar",
                      "sections": [graphique,
                                   {"type": "properties",
