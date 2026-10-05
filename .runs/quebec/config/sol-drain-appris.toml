@@ -1,0 +1,45 @@
+# Profil a deux vitesses plus drainage agricole de Hooghoudt sur la couche 2 (R296).
+# couche 2 lineaire d'Hydrotel ; couche 3 avec un ecoulement lateral rapide au-dessus de la capacite
+# au champ, un lent au-dessus du point de fletrissement (temps appris) et une percolation plafonnee.
+[soil]
+layers = 3
+
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+exponent = 2
+scale_mm = 5
+max_ratio = 2
+smooth_mm = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+threshold = "wilting_point"
+tau_days = 100.0
+learn = ["tau_days"]
+smooth_mm = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = 2
+
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "DRAIN_HOOGHOUDT"
+spacing_m = 15.0
+depth_m = 1.0
+share = 0.6
+learn = ["spacing_m", "share"]
