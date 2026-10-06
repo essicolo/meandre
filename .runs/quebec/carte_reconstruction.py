@@ -276,7 +276,7 @@ def ecrit_config(feats_sites, feats_tr):
     config = {
         "view": {"name": "meandre : débits reconstruits",
                  "description": "Débits modélisés et naturalisés, prélèvements et rejets ponctuels",
-                 "center": [47.0, -72.5], "zoom": 5.5, "basemap": "osm"},
+                 "center": [47.0, -72.5], "zoom": 5.5, "basemap": "esri-gris"},
         "layers": [
             {"name": nom_inf, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": True, "popup_template": "troncon",
              "color_by": {"property": "influence_etiage_pct", "colors": DIVERGENTE,
@@ -314,7 +314,7 @@ def ecrit_config(feats_sites, feats_tr):
     prelev = {"view": {**config["view"], "name": "meandre : prélèvements et rejets ponctuels",
                        "description": "Débit net moyen par site, 2015-2024, table io-eau"},
               "layers": [sites], "popup_templates": {"site": config["popup_templates"]["site"]}}
-    config["layers"][-1] = {**sites, "visible": False}
+    config["layers"][-1] = {**sites, "visible": True}
     for nom, c in (("config-meandre-reconstruction.json", config), ("config-meandre-prelevements.json", prelev)):
         with open(os.path.join(FEUILLAGE, nom), "w", encoding="utf-8") as f:
             json.dump(c, f, ensure_ascii=False, indent=2)
