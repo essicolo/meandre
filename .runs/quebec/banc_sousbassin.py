@@ -700,6 +700,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  racines : profondeur x {col.root_depth_scale:g}", flush=True)
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
             col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), apprise=os.environ.get("ETL_NAPPE_APPRIS") == "1")
+            if "ETL_NAPPE_GEL" in os.environ:
+                col.nappe_gel_facteur = float(os.environ["ETL_NAPPE_GEL"])
+                print(f"  porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}", flush=True)
         return m
 
     def _tranche(a, b):

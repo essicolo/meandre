@@ -842,6 +842,16 @@ class HydrotelColumn(nn.Module):
                 else:
                     _kb_t = torch.tensor(p["k_b"], dtype=pb.dtype, device=pb.device)
                     _ef_t = torch.tensor(p["e_frac"], dtype=pb.dtype, device=pb.device)
+                # PORTE DE GEL SUR LA VIDANGE DE LA NAPPE (2026-10-06, R316). En decembre-janvier
+                # la nappe porte plus de la moitie du debit des grands bassins du nord, trop
+                # fort de 30 a 40 %, pendant que le sol gele et que les berges se ferment. Le
+                # debit de reference k_b est multiplie par le facteur quand le gel atteint la
+                # couche de surface (30 cm), proportionnellement en dessous. Opt-in :
+                # `nappe_gel_facteur` absent, rien ne change.
+                _gel_f = getattr(self, "nappe_gel_facteur", None)
+                if _gel_f is not None and diag.get("prof_gel_cm") is not None:
+                    _w_gel = torch.clamp(diag["prof_gel_cm"] / 30.0, 0.0, 1.0).to(pb.dtype)
+                    _kb_t = _kb_t * (1.0 - (1.0 - float(_gel_f)) * _w_gel)
                 e_max = torch.clamp(diag["etp"], min=0.0) * _ef_t / 1000.0
                 prel = None if gw_withdrawal_mm is None else -gw_withdrawal_mm / 1000.0
                 z_new, q_m, e_m = self.nappe_libre(
