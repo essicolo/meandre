@@ -234,6 +234,15 @@ class SoilProcess:
     def flux(self, ctx):
         """Flux en mètres par heure, dans les unités internes de la boucle de sous-pas."""
         q = FORMS[self.form][0](ctx, self.params)
+        # PORTE DE GEL (2026-10-06, R316) : `frost_factor` multiplie le flux par ce facteur
+        # quand le sol est gelé sur toute la couche de surface, et par une valeur
+        # intermédiaire quand le gel est partiel (poids = profondeur de gel de Rankinen
+        # rapportée à la couche 1, indépendant du manteau). Opt-in : sans la clé, rien ne
+        # change. Motif : en décembre-janvier, la voie latérale lente de la couche 3 porte
+        # plus de la moitié du débit des grands bassins du nord, trop fort de 30 à 40 %.
+        f = self.params.get("frost_factor")
+        if f is not None and ctx.get("frost_frac") is not None:
+            q = q * (1.0 - (1.0 - f) * ctx["frost_frac"])
         if self.ceiling is not None:
             if isinstance(self.ceiling, str):
                 raise RuntimeError(f"plafond « {self.ceiling} » non resolu : appeler "
