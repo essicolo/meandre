@@ -186,7 +186,10 @@ print(f"[etl] {REG}: {n_nodes} nœuds, {r['n_gauges']} jauges")
 # ── demande évaporative du module appris (MLP du banc, gelé) ────────────────
 norm = torch.load(f"{ETB}/norm.pt", weights_only=False)
 H_HIST, H_COMP = norm["h_hist"], norm["h_comp"]
-F_STATIC = r["territorial"].n_features
+# Le module appris ne lit que les attributs sur lesquels il a ete entraine : les colonnes
+# ajoutees au champ depuis (depots quaternaires, ETL_ATTRIBUTS_DEPOTS) en sont ecartees.
+_COLS_ETB = [i for i, c in enumerate(r["territorial"].columns) if not c.startswith("depot_")]
+F_STATIC = len(_COLS_ETB)
 mlp = nn.Sequential(nn.Linear(12 + F_STATIC + 3, 64), nn.ReLU(), nn.Linear(64, 1), nn.Softplus()).to(DEVICE)
 sd = torch.load(f"{ETB}/mlp.pt", weights_only=True)
 mlp.load_state_dict({k.replace("head.", ""): v for k, v in sd.items()})
@@ -216,7 +219,7 @@ with torch.no_grad():
     sc = torch.stack([torch.sin(2 * np.pi * doy / 365.25), torch.cos(2 * np.pi * doy / 365.25)], dim=1)
     lat_col = 0 if 40 < float(td.node_coords[:, 0].mean()) < 62 else 1
     lat = td.node_coords[:, lat_col].float() / 50.0
-    stat = torch.cat([r["territorial"].data, lat[:, None]], dim=1)   # (N, F+1)
+    stat = torch.cat([r["territorial"].data[:, _COLS_ETB], lat[:, None]], dim=1)   # (N, F+1)
     demand = torch.empty(T, n_nodes, device=DEVICE)
     for lo in range(0, T, 365):
         hi = min(lo + 365, T)

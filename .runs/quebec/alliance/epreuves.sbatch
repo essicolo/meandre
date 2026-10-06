@@ -3,11 +3,12 @@
 # pilote regional, entraine en entier ? Un affinage court depuis le modele regional ne peut
 # pas le dire (une epoque, meme a 1e-5, le fait derailler, registre R301).
 #
-#   sbatch --account=def-atlas01_gpu --array=0-9 epreuves.sbatch
+#   sbatch --account=def-atlas01_gpu --array=0-11 epreuves.sbatch
 #
-# Dix taches, seize epoques chacune, deux graines par variante :
-#   0-3  Outaouais : recette du 4 octobre ; recette plus tete du temps de transfert
-#   4-9  Monteregie : recette ; plus drainage agricole ; plus drainage et tete
+# Douze taches, seize epoques chacune, deux graines par variante, code corrige du 2026-10-06
+# (prelevements dans l'entrainement, reference du terme MOD16 posee au debut de l'epoque) :
+#   0-5   Outaouais : recette ; plus depots quaternaires ; plus depots et tete du temps de transfert
+#   6-11  Monteregie : recette ; plus depots ; plus depots, drainage agricole et tete
 # Chaque tache finit par une passe avant sur la DERNIERE epoque qui exporte les series aux
 # stations (ETL_DUMP_Q), jugees sur le KGE 2022-2024, le volume, le Q7min et l'ete.
 #SBATCH --job-name=meandre-epreuves
@@ -28,11 +29,11 @@ SORTIE=$TRAVAIL/meandre/epreuves
 mkdir -p "$TRAVAIL/meandre/journaux" "$SORTIE"
 
 TACHES=(
-  "outv temoin 1234" "outv temoin 777" "outv tete 1234" "outv tete 777"
-  "mont temoin 1234" "mont temoin 777" "mont drain 1234" "mont drain 777" "mont drain-tete 1234" "mont drain-tete 777"
+  "outv temoin 1234" "outv temoin 777" "outv depots 1234" "outv depots 777" "outv depots-tete 1234" "outv depots-tete 777"
+  "mont temoin 1234" "mont temoin 777" "mont depots 1234" "mont depots 777" "mont depots-drain-tete 1234" "mont depots-drain-tete 777"
 )
 read -r REG VAR GRAINE <<< "${TACHES[$SLURM_ARRAY_TASK_ID]}"
-TAG=-ep1005-$VAR-g$GRAINE
+TAG=-ep1006-$VAR-g$GRAINE
 EPOQUES=${ETL_EPOCHS:-16}
 exec > "$TRAVAIL/meandre/journaux/$REG$TAG-$SLURM_ARRAY_JOB_ID.log" 2>&1
 
@@ -49,6 +50,7 @@ cp "$D"/quebec/*.parquet "$LOCAL/quebec/"
 cp -r "$D/quebec/checkpoints-etbench" "$LOCAL/quebec/" 2>/dev/null || true
 cp "$D"/derives/auxiliaires/*-"${REG}".* "$LOCAL/derives/auxiliaires/" 2>/dev/null || true
 cp "$D"/derives/auxiliaires/rsesq-puits.parquet "$LOCAL/derives/auxiliaires/" 2>/dev/null || true
+cp "$D"/derives/auxiliaires/depots-sigeom-troncons.parquet "$LOCAL/derives/auxiliaires/" 
 export MEANDRE_DATA="$LOCAL" MEANDRE_DERIVES="$LOCAL/derives" MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MEANDRE_DIAG_CPU=1
 
@@ -56,10 +58,12 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MEANDRE_DIAG_CPU=1
 # heure, borne basse du temps de transfert a une heure, taux propre x 100. Le drainage est
 # le profil a deux vitesses plus Hooghoudt sur la couche 2 (R296).
 VARIANTE=()
+# Les depots ajoutent six attributs au champ (R314, R315).
+TETE=(ETL_ROUTAGE_TETE=1 ETL_ROUTAGE_SOUSPAS=24 MEANDRE_KMUSK=1,48,24)
 case "$VAR" in
-  tete) VARIANTE=(ETL_ROUTAGE_TETE=1 ETL_ROUTAGE_SOUSPAS=24 MEANDRE_KMUSK=1,48,24) ;;
-  drain) VARIANTE=(ETL_SOIL_TOML=.runs/quebec/config/sol-drain-appris.toml) ;;
-  drain-tete) VARIANTE=(ETL_SOIL_TOML=.runs/quebec/config/sol-drain-appris.toml ETL_ROUTAGE_TETE=1 ETL_ROUTAGE_SOUSPAS=24 MEANDRE_KMUSK=1,48,24) ;;
+  depots) VARIANTE=(ETL_ATTRIBUTS_DEPOTS=1) ;;
+  depots-tete) VARIANTE=(ETL_ATTRIBUTS_DEPOTS=1 "${TETE[@]}") ;;
+  depots-drain-tete) VARIANTE=(ETL_ATTRIBUTS_DEPOTS=1 ETL_SOIL_TOML=.runs/quebec/config/sol-drain-appris.toml "${TETE[@]}") ;;
 esac
 COMMUN=(ETL_CONFIG=.runs/quebec/config/socle-2026-10-04.toml ETL_REGION=$REG ETL_SEED=$GRAINE
         JOINT_FX_SUFFIX=-casr-brut ETL_COMPILE=${ETL_COMPILE:-1} "${VARIANTE[@]}")

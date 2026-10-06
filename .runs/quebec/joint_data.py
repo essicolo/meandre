@@ -38,6 +38,38 @@ def _territorial_global(reg, fallback, device):
                                    physical=fallback.physical)
     except Exception:
         return fallback
+def _ajoute_depots(reg, territorial, node_ids, device):
+    """Dépôts quaternaires du SIGEOM par tronçon, ajoutés aux attributs du champ (R314, R315).
+
+    Six colonnes : parts perméable (très perméable et perméable), till, imperméable (peu et
+    très peu perméable), roc et non cartographiée, et densité d'eskers en log(1 + km par
+    100 km²). Centrées et réduites sur toute la province, pour qu'un même dépôt ait la même
+    valeur d'un territoire à l'autre. Un tronçon absent de la table compte comme non
+    cartographié : une absence de carte n'est pas un dépôt imperméable.
+    """
+    f = f"{_mpaths.DERIVED_ROOT}/auxiliaires/depots-sigeom-troncons.parquet"
+    if not os.path.exists(f):
+        raise FileNotFoundError(f"attributs de dépôts absents : {f} (depots_troncons.py)")
+    t = pd.read_parquet(f)
+    t["depot_perm"] = t.depot_tres_permeable + t.depot_permeable
+    t["depot_till"] = t.depot_moyennement_permeable
+    t["depot_imperm"] = t.depot_peu_permeable + t.depot_tres_peu_permeable
+    t["depot_eskers"] = np.log1p(t.esker_km_100km2)
+    cols = ["depot_perm", "depot_till", "depot_imperm", "depot_roc", "depot_non_carto", "depot_eskers"]
+    moy, ect = t[cols].mean(), t[cols].std().replace(0.0, 1.0)
+    r = t[t.region == reg].set_index("troncon")[cols]
+    ids = np.asarray(node_ids.cpu() if hasattr(node_ids, "cpu") else node_ids).astype(int)
+    v = r.reindex(ids)
+    manque = int(v.isna().any(axis=1).sum())
+    v = v.fillna({"depot_perm": 0.0, "depot_till": 0.0, "depot_imperm": 0.0, "depot_roc": 0.0,
+                  "depot_non_carto": 1.0, "depot_eskers": 0.0})
+    z = ((v - moy) / ect).to_numpy(dtype=np.float32)
+    data = torch.cat([territorial.data, torch.tensor(z, device=territorial.data.device)], dim=1)
+    print(f"[depots] {reg}: {len(cols)} attributs ajoutés ({manque} tronçons sans carte) ; "
+          f"perméables {v.depot_perm.mean():.2f}, non cartographié {v.depot_non_carto.mean():.2f}")
+    return TerritorialFeatures(data=data, columns=list(territorial.columns) + cols, physical=territorial.physical)
+
+
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.training.trainer import TrainingData
 from meandre.training.loss import HydroLoss
@@ -127,6 +159,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     if os.environ.get("JOINT_GLOBAL_NORM", "0") == "1":
         territorial = _territorial_global(reg, territorial, device)
     node_coords, n_nodes, node_ids = h["node_coords"], h["n_nodes"], h["node_ids"]
+    if os.environ.get("ETL_ATTRIBUTS_DEPOTS", "0") == "1":
+        territorial = _ajoute_depots(reg, territorial, node_ids, device)
 
     print(f"[forcage] {reg}: {os.path.basename(fx_path)}")
     d = xr.open_dataset(fx_path)
