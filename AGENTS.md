@@ -1,4 +1,4 @@
-# AGENTS.md : état du chantier au 6 octobre 2026, 16 h 15
+# AGENTS.md : état du chantier au 6 octobre 2026, 17 h 15
 
 Ce fichier passe le relais à un autre agent. Il dit où on en est, ce qui a été fait depuis le 5 octobre, quels fichiers ont changé, quelle est la prochaine étape exacte, et où lire l'histoire des hypothèses. Les règles de travail sont dans `CLAUDE.md` ; lire d'abord ses deux premières sections et la section « Le banc ne vaut pas le territoire ». Tout ce qui est écrit pour un humain est en français ; identifiants, clés TOML et noms de fichiers sont en anglais.
 
@@ -69,6 +69,20 @@ Outils ajoutés :
 Diagnostics établis, à lire dans le registre : R305 (Narval reproduit le poste ; les bases DuckDB d'Ubuntu ont été resynchronisées sur celles du poste), R307 (sur 040841, toutes les cibles poussent K_c vers le haut), R312 (K_c est la variable d'ajustement d'une mauvaise répartition entre écoulement rapide et écoulement de base), R313 (réentraînement de l'Outaouais : 0,755 vers 0,796, volume +21 % vers +16 %), R314 (indice d'écoulement de base : le modèle plafonne vers 0,60 là où l'observé atteint 0,70, et aucun attribut ne distingue ces bassins), R315 (dépôts quaternaires : signal partiel, carte muette au nord), R316 (excès d'hiver : base trop forte au nord en décembre-janvier, fonte trop précoce vers l'hypodermique au sud en février-mars).
 
 Non consigné au registre, à faire : le verdict de la Montérégie au socle (0,549) et, quand elle sortira, celui de la Montérégie avec drainage et tête.
+
+## 5 bis. Ajouts de l'après-midi du 6 octobre (16 h à 17 h)
+
+Chaînes sur Ubuntu, dans l'ordre : `chaine_nuit.sh` (Montérégie faite, Saint-Laurent nord-ouest en cours, Saguenay), puis `chaine_nuit4.sh` (Montérégie avec drainage et tête `-corr1006-dt`, Gaspésie, Abitibi, Outaouais moyen, Côte-Nord B C D A E, Labrador, Saint-Laurent sud-ouest), puis `chaine_nuit5.sh` (Outaouais `-corr1006-sublim`, puis `-corr1006-gelsublim`). Journaux `chaine_nuit*.log` dans `~/meandre-data/carte-essai/`.
+
+Mécanismes ajoutés, tous opt-in, testés en passe avant seulement :
+
+- porte de gel sur la vidange de la nappe libre, `ETL_NAPPE_GEL=0.3` (pilote et banc), `nappe_gel_facteur` dans `meandre/vertical/hydrotel_column.py` ; règle l'hiver du nord mais déplace l'eau en mai (R318) ;
+- porte de gel par processus de sol déclaré, clé `frost_factor` dans un `[[soil.process]]` (`meandre/vertical/soil_processes.py`, `hydrotel_clone/bv3c2.py`), test `tests/test_porte_gel_declaree.py` ; pas encore éprouvée ;
+- sublimation de Kuzmin au banc, `ETL_SUBLIM=1` (existait au pilote depuis le 22 août, R36) : sous CaSR brut elle ramène le manteau du nord sur NEISIM et retire la moitié de l'excès de volume (R320).
+
+Diagnostics : le manteau du modèle régional dépasse NEISIM de 16 à 36 % et fond en mai (R319, qui corrige la lecture de R316 au sud) ; CaSR brut est 1,3 à 1,44 fois les stations en hiver sur l'Outaouais et 0,69 à 0,86 fois les stations en été en Montérégie (R321, `.runs/quebec/pluie_casr_vs_stations.py` avec `JOINT_FX_SUFFIX=-casr-brut MEANDRE_PLUIE_MARGE=1.0 MEANDRE_PLUIE_ANNEES=2011,2024`). La correction du forçage par territoire et par saison est une décision d'Essi, hors de meandre.
+
+Jugement des épreuves de Narval quand elles sortiront : `python .runs/quebec/indicateurs_stations.py <q-*.npz>` sur les fichiers de `~/scratch/meandre/epreuves/`, rapatriés sur le poste.
 
 ## 6. Où lire l'histoire
 
