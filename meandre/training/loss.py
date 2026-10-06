@@ -961,9 +961,14 @@ class HydroLoss(nn.Module):
         # direction indépendante et un rapport de participation de 1,1, c'est-à-dire une seule
         # courbe saisonnière. Prétendre en faire une contrainte spatiale est faux, et coûte
         # 3150 séries en mémoire sur une carte qui débordait déjà.
-        if et_mode not in ("level", "anomaly", "bassin"):
+        # "forme" (2026-10-06) : centré PUIS divisé par l'écart-type de chaque côté, par
+        # nœud, comme GRACE en forme. Le mode centré n'est pas aveugle au niveau : K_c
+        # multiplie l'ET, donc son amplitude saisonnière, et le terme baissait K_c pour
+        # réduire l'amplitude simulée, entraînant le niveau avec elle (R310). En forme, MOD16
+        # ne contraint que la phase et la forme ; le niveau revient aux débits.
+        if et_mode not in ("level", "anomaly", "bassin", "forme"):
             raise ValueError(f"et_mode inconnu : {et_mode!r} "
-                             "(attendu 'level', 'anomaly' ou 'bassin')")
+                             "(attendu 'level', 'anomaly', 'bassin' ou 'forme')")
         self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
         # Niveaux de nappe mesurés (2026-09-19), contrainte de FORME en anomalies réduites.

@@ -971,7 +971,7 @@ class Trainer:
                 )
         else:
             # Full spinup from cold start
-            _ref_et = (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin")
+            _ref_et = (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
                        and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
                        and getattr(self, "_et_sim_base", None) is None
                        and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1")
@@ -1013,9 +1013,11 @@ class Trainer:
                         _e = _r[2].etr.to(device).float()
                         _ww = (_Wsp[_t:_u].to(device, _e.dtype) if _Wsp is not None else torch.ones_like(_e))
                         _num = (_ww * _e).sum(dim=0) if _num is None else _num + (_ww * _e).sum(dim=0)
+                        _num2 = (_ww * _e * _e).sum(dim=0) if _t == data.train_slice.start else _num2 + (_ww * _e * _e).sum(dim=0)
                         _den = _ww.sum(dim=0) if _den is None else _den + _ww.sum(dim=0)
                         _t = _u
                 self._et_sim_base = (_num / _den.clamp(min=1e-6)).detach()
+                self._et_sim_std = torch.sqrt((_num2 / _den.clamp(min=1e-6) - self._et_sim_base ** 2).clamp(min=1e-6)).detach()
                 logger.info("ET centree : reference initiale exacte sur la periode d'entrainement, moyenne %.3f mm/j", float(self._et_sim_base.mean()))
             elif _ref_et and len(_res) == 3:
                 # Reference initiale de l'ET centree : annees completes de la mise en regime.
@@ -1097,7 +1099,7 @@ class Trainer:
         par nœud, détachée (la moyenne long-terme n'est pas connue d'avance).
         Retourne (et_sim_centré, et_obs_centré) ; identité en mode "level".
         """
-        if getattr(self.loss_fn, "et_mode", "level") not in ("anomaly", "bassin"):
+        if getattr(self.loss_fn, "et_mode", "level") not in ("anomaly", "bassin", "forme"):
             return et_sim, et_obs
         # Poids hors neige du bloc (t0 = indice du premier jour du bloc sur l'axe du forcage).
         _W = getattr(data, "et_weight", None)
@@ -1112,9 +1114,12 @@ class Trainer:
                 _wo = _W[_s0:_s0 + eo.shape[0]].to(eo.device, eo.dtype) * (~torch.isnan(eo))
                 base_obs = (_wo * torch.nan_to_num(eo, nan=0.0)).sum(dim=0) / _wo.sum(dim=0).clamp(min=1e-6)
             else:
+                _wo = (~torch.isnan(eo)).to(eo.dtype)
                 cnt = (~torch.isnan(eo)).sum(dim=0).clamp(min=1)
                 base_obs = torch.nan_to_num(eo, nan=0.0).sum(dim=0) / cnt  # (n_nodes,)
             self._et_obs_base = base_obs
+            _var_o = (_wo * (torch.nan_to_num(eo, nan=0.0) - base_obs) ** 2).sum(dim=0) / _wo.sum(dim=0).clamp(min=1e-6)
+            self._et_obs_std = torch.sqrt(_var_o.clamp(min=1e-6))
         # REFERENCE SIMULEE (corrigee le 2026-10-02). L'ancienne partait de la moyenne du
         # PREMIER bloc (45 jours d'hiver, ET ~0,05 mm/j) et la suivait par une moyenne mobile de
         # poids 0,02 par bloc, soit environ six ans de memoire : les anomalies simulees etaient
@@ -1127,14 +1132,26 @@ class Trainer:
         _d = et_sim.detach()
         _wd = w if w is not None else torch.ones_like(_d)
         if _acc is None:
-            self._et_sim_acc = [(_wd * _d).sum(dim=0), _wd.sum(dim=0)]
+            self._et_sim_acc = [(_wd * _d).sum(dim=0), _wd.sum(dim=0), (_wd * _d * _d).sum(dim=0)]
         else:
             _acc[0] = _acc[0] + (_wd * _d).sum(dim=0)
             _acc[1] = _acc[1] + _wd.sum(dim=0)
+            _acc[2] = _acc[2] + (_wd * _d * _d).sum(dim=0)
         if os.environ.get("MEANDRE_ET_CENTRAGE_EMA") == "1" or getattr(self, "_et_sim_base", None) is None:
             cur = _d.mean(dim=0)
             prev = getattr(self, "_et_sim_base", None)
             self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
+        if getattr(self.loss_fn, "et_mode", "") == "forme":
+            # Chaque cote divise par son propre ecart-type : phase et forme seulement.
+            _ss = getattr(self, "_et_sim_std", None)
+            if _ss is None:
+                raise RuntimeError("et_mode forme : ecart-type simule absent (passe de reference non faite)")
+            _zs = (et_sim - self._et_sim_base) / _ss.to(et_sim.device).clamp(min=1e-3)
+            _zo = (et_obs - base_obs) / self._et_obs_std.to(et_obs.device).clamp(min=1e-3)
+            if w is None:
+                return _zs, _zo
+            _r = torch.sqrt(w.clamp(min=0.0))
+            return _zs * _r, _zo * _r
         if w is None:
             return et_sim - self._et_sim_base, et_obs - base_obs
         # Ecart pondere : chaque cote multiplie par la racine du poids, si bien que l'ecart
@@ -1150,6 +1167,8 @@ class Trainer:
             _n = torch.as_tensor(_acc[1])
             if bool((_n > 0).all()):
                 self._et_sim_base = _acc[0] / _n
+                if len(_acc) > 2:
+                    self._et_sim_std = torch.sqrt((_acc[2] / _n - self._et_sim_base ** 2).clamp(min=1e-6))
         self._et_sim_acc = None
 
     def _train_epoch(self) -> tuple[Tensor, dict[str, Tensor]]:
@@ -1984,8 +2003,10 @@ class Trainer:
                 # pondere de la perte par rapport a un facteur par troncon pose sur les champs
                 # demandes, cumule sur l'epoque. Negatif : augmenter le champ fait baisser le
                 # terme, l'optimiseur le poussera vers le haut.
+                # La perte rend aussi son total parmi ses composantes : il est ecarte ici, le
+                # total du bloc etant mesure a part.
                 _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
-                           if torch.is_tensor(v_) and v_.requires_grad}
+                           if torch.is_tensor(v_) and v_.requires_grad and k_ not in ("total", "total_loss")}
                 for _nom, _var in (("prior", locals().get("prior_loss")),
                                    ("tws", locals().get("L_tws")),
                                    ("tws_clim", locals().get("L_tws_clim")),
@@ -1994,6 +2015,9 @@ class Trainer:
                         _termes[_nom] = _var
                 _noms_m = list(self._sonde_mult)
                 _facteurs = [self._sonde_mult[k_] for k_ in _noms_m]
+                _seuls = [x for x in os.environ.get("MEANDRE_SONDE_TERMES_SEULS", "").split(",") if x]
+                if _seuls:
+                    _termes = {k_: v_ for k_, v_ in _termes.items() if k_ in _seuls}
                 for _nom, _v in list(_termes.items()) + [("total", loss_chunk)]:
                     if _nom == "total":
                         _w = 1.0
