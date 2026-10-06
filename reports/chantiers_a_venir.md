@@ -2,6 +2,19 @@
 
 Ouvert le 2026-09-08, remis en ordre le 2026-09-16. Ce document liste les chantiers identifiés mais non entrepris, avec leur raison d'être, leur coût et le test qui dira s'ils tiennent. Le registre des hypothèses dit ce qui est vrai aujourd'hui ; le journal des expériences raconte ce qui a été fait. Un chantier n'entre ici qu'avec un critère de réussite mesurable.
 
+## Ordre de priorité au 2026-10-06
+
+L'ordre du 30 septembre est remplacé. Deux défauts de l'entraîneur ont été corrigés le 6 octobre : les prélèvements n'entraient pas dans l'entraînement, et la référence du terme MOD16 centré n'était jamais posée au pilote régional. La Montérégie entière, jamais relancée après la semaine de banc sur la Châteauguay, sort à 0,55 de KGE. Le détail est au registre, entrées du 5 et du 6 octobre.
+
+| rang | chantier | raison du rang |
+|---|---|---|
+| 1 | Portage au pilote régional de ce que le banc a établi (14) | Drainage agricole et temps de transfert appris n'étaient dans aucune recette de territoire ; la Montérégie en file sur Ubuntu avec les deux, les épreuves de Narval sur deux graines |
+| 2 | Répartition entre écoulement rapide et écoulement de base (11, rouvert) | Le modèle plafonne l'écoulement de base vers 0,60 là où l'observé atteint 0,70 ; K_c compense en évaporant moins et le volume monte ; aucun attribut reçu par le champ ne distingue ces bassins |
+| 3 | Excès d'hiver (nouveau) | Deux mécanismes : nappe trop forte en décembre-janvier au nord, fonte trop précoce vers l'hypodermique en février-mars au sud ; porte de gel sur la nappe en épreuve |
+| 4 | Dépôts quaternaires comme attributs du champ (nouveau) | Signal partiel sur l'écoulement de base, carte muette au nord ; en épreuve sur Narval |
+| 5 | Carte provinciale de la reconstruction des débits (livrable) | Quatorze territoires en chaîne sur Ubuntu, province complète le 8 octobre au soir |
+| 6 | Les chantiers du 30 septembre non cités ci-dessus | Inchangés, dans l'ordre d'alors |
+
 ## Ordre de priorité au 2026-09-30
 
 L'ordre du 16 septembre est remplacé. La semaine du 25 au 30 septembre a été passée sur le banc d'essai de sous-bassin, sans simulation provinciale. Les deux bassins d'essai font 1 163 km² en Outaouais et 2 492 km² en Montérégie. Elle a déplacé le levier principal vers l'eau souterraine et l'étiage, et ouvert quatre chantiers. Le détail mesuré est au registre des hypothèses, entrées du 25 au 30 septembre.
