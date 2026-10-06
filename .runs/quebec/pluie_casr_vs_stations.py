@@ -44,7 +44,8 @@ def main(paires):
         lon0, lon1 = c[:, 0].min() - _mg, c[:, 0].max() + _mg
         lat0, lat1 = c[:, 1].min() - _mg, c[:, 1].max() + _mg
         proches = st[(st.lon >= lon0) & (st.lon <= lon1) & (st.lat >= lat0) & (st.lat <= lat1)]
-        ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
+        # Le forcage compare suit JOINT_FX_SUFFIX (defaut -budyko, celui de la mesure du 1er octobre).
+        ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}{os.environ.get('JOINT_FX_SUFFIX', '-budyko')}.nc")
         temps = pd.DatetimeIndex(ds.time.values)
         P = ds["forcing"].sel(var="P").isel(node=idx)
         couples = []
