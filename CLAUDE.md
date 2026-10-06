@@ -256,6 +256,14 @@ Règle posée par Essi le 2026-09-13, après une journée où la plupart des heu
 - Le terme MOD16 CENTRÉ contraignait le NIVEAU, dans le mauvais sens, jusqu'au 2026-10-02. `Trainer._center_et` retirait à la simulation une moyenne mobile partie du premier bloc de 45 jours (janvier, ET ~0,05 mm/j) avec un poids de 0,02 par bloc, quand l'observation perdait sa vraie moyenne : le terme poussait toute l'ET vers le bas. Sur 052805, deux époques, l'ET passait à 1,05 mm/j contre 1,44 pour MOD16 et le Q7min à 2,04 fois l'observé ; corrigé, 1,28 et 1,47. La référence est désormais la moyenne exacte de l'époque précédente (de la mise en régime à la première). Tout verdict tiré d'un entraînement avec `et_mode = "anomaly"` avant cette date, au banc comme au pilote, porte ce biais.
 - Activating the four auxiliary constraints costs 0.032 of held-out KGE on the OUTV témoin and DIVIDES the seed-to-seed dispersion by four, from 0.0141 to 0.0036. Judge auxiliary data on identifiability and reproducibility, never on KGE.
 
+## Le banc ne vaut pas le territoire (2026-10-06)
+
+Une semaine de banc sur la Châteauguay avait établi le remède de la Montérégie (drainage agricole de Hooghoudt plus temps de transfert appris, KGE 0,52 vers 0,73 sur deux graines). Il n'a jamais été porté dans la recette du territoire, et la Montérégie entière n'a pas été relancée avant de passer à l'Outaouais : le 6 octobre elle sort à 0,55, avec des étés à moitié vides, dans la flotte qui devait produire la carte provinciale.
+
+- Un mécanisme établi au banc est une hypothèse pour le territoire, pas un acquis : le banc entraîne une station et quelques dizaines de tronçons, le territoire des dizaines de stations et un champ partagé.
+- Le jour où le banc établit un mécanisme, le porter dans la recette TOML du territoire, ou dans la liste explicite des réglages à éprouver, et relancer le territoire entier avant de changer de territoire.
+- Avant toute carte ou flotte, un tableau KGE / volume / étiage par territoire au pilote, et aucun territoire en-dessous de ce qu'il valait avant.
+
 ## Autonomie : une consigne de durée se respecte jusqu'au bout
 
 Les prompts d'Essi méritent d'être pris au mot. Le 2026-09-26, la consigne était d'itérer des tests pendant deux jours ; le tour s'est terminé sur un compte rendu annonçant les prochaines vérifications au lieu de les lancer, et deux jours et trois nuits ont été perdus, machines à l'arrêt.
