@@ -1185,6 +1185,13 @@ class Trainer:
         total_loss = torch.tensor(0.0, device=data.forcing.device)
         all_components: dict[str, float] = {}
         n_chunks = 0
+        if os.environ.get("MEANDRE_SONDE_TERMES"):
+            # Facteurs par troncon, valant un (neutres), hors de l'optimiseur.
+            _champs_s = [x for x in os.environ["MEANDRE_SONDE_TERMES"].split(",") if x]
+            self._sonde_mult = {k_: torch.ones(self.model.n_nodes, device=data.forcing.device, requires_grad=True)
+                                for k_ in _champs_s}
+            self._sonde_acc = {}
+            self.model.spatial_encoder.multiplicateurs = self._sonde_mult
         sp_tensor: Tensor | None = None  # cached spatial params for SpatialNoiseHead
         # HISTORIQUE DÉTACHÉ des débits aux stations, pour que le KGE et la famille
         # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
@@ -1972,6 +1979,35 @@ class Trainer:
                 print(f"[grad-debug] bloc {n_chunks} (t={t_start}) : " + " | ".join(_lignes), flush=True)
                 if n_chunks == 2 and os.environ.get("MEANDRE_DEBUG_GRAD_STOP", "0") == "1":
                     raise SystemExit("grad-debug termine apres trois blocs")
+            if getattr(self, "_sonde_mult", None) is not None and loss_chunk.requires_grad:
+                # SONDE PAR TERME (2026-10-06, MEANDRE_SONDE_TERMES) : gradient de chaque terme
+                # pondere de la perte par rapport a un facteur par troncon pose sur les champs
+                # demandes, cumule sur l'epoque. Negatif : augmenter le champ fait baisser le
+                # terme, l'optimiseur le poussera vers le haut.
+                _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
+                           if torch.is_tensor(v_) and v_.requires_grad}
+                for _nom, _var in (("prior", locals().get("prior_loss")),
+                                   ("tws", locals().get("L_tws")),
+                                   ("tws_clim", locals().get("L_tws_clim")),
+                                   ("nappe", locals().get("L_nappe"))):
+                    if torch.is_tensor(_var) and _var.requires_grad:
+                        _termes[_nom] = _var
+                _noms_m = list(self._sonde_mult)
+                _facteurs = [self._sonde_mult[k_] for k_ in _noms_m]
+                for _nom, _v in list(_termes.items()) + [("total", loss_chunk)]:
+                    if _nom == "total":
+                        _w = 1.0
+                    else:
+                        _w = getattr(self.loss_fn, f"w_{_nom}", None)
+                        if _w is None:
+                            _w = getattr(self.config, f"w_{_nom}", 1.0)
+                    if float(_w) == 0.0:
+                        continue
+                    _g = torch.autograd.grad(_v * float(_w) * weight, _facteurs, retain_graph=True, allow_unused=True)
+                    _acc = self._sonde_acc.setdefault(_nom, {k_: torch.zeros_like(f_) for k_, f_ in zip(_noms_m, _facteurs)})
+                    for k_, g_ in zip(_noms_m, _g):
+                        if g_ is not None:
+                            _acc[k_] += torch.nan_to_num(g_.detach())
             if not torch.isnan(loss_chunk) and loss_chunk.requires_grad:
                 # FILET PAR BLOC (2026-09-04). Le pas d'optimisation est UNIQUE par
                 # epoque, sur les gradients accumules de tous les blocs. Un seul bloc
@@ -2140,6 +2176,16 @@ class Trainer:
             )
             self.optimizer.step()
 
+        if getattr(self, "_sonde_mult", None) is not None:
+            import numpy as _np_s
+            _out = os.environ.get("MEANDRE_SONDE_TERMES_SORTIE", "sonde_termes.npz")
+            _np_s.savez_compressed(_out, **{f"{t_}__{k_}": g_.cpu().numpy() for t_, d_ in self._sonde_acc.items()
+                                         for k_, g_ in d_.items()})
+            print(f"[sonde] gradient par terme, somme sur le domaine (negatif : le champ sera pousse vers le haut) -> {_out}", flush=True)
+            for t_, d_ in sorted(self._sonde_acc.items()):
+                print(f"[sonde]   {t_:14s} " + "  ".join(f"{k_} {float(g_.sum()):+.3e}" for k_, g_ in d_.items()), flush=True)
+            self.model.spatial_encoder.multiplicateurs = None
+            self._sonde_mult = None
         comp_tensors = {k: torch.tensor(v) for k, v in all_components.items()}
         return total_loss, comp_tensors
 
