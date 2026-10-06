@@ -1347,10 +1347,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             for jour in [int(x) for x in os.environ.get("MEANDRE_SONDE_JOURS", "30,60,90,120,150,200,250,300").split(",")]:
                 t0 = tr_sl.start + jour
                 with torch.no_grad():
-                    _, st = mm.simulate(forcing=F[:t0], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:t0]), day_of_year=doy[:t0])
+                    _, st = mm.simulate(forcing=F[:t0], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w.slice(0, t0), day_of_year=doy[:t0])
                 th = [st.theta1.clone().requires_grad_(True), st.theta2.clone().requires_grad_(True), st.theta3.clone().requires_grad_(True)]
                 st_g = _dc2.replace(st, theta1=th[0], theta2=th[1], theta3=th[2])
-                _, st1 = mm.simulate(forcing=F[t0:t0 + 1], initial_state=st_g, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[t0:t0 + 1]), day_of_year=doy[t0:t0 + 1], poursuivre_etat=True)
+                _, st1 = mm.simulate(forcing=F[t0:t0 + 1], initial_state=st_g, graph=g, node_coords=coords, territorial=terr, withdrawals=w.slice(t0, t0 + 1), day_of_year=doy[t0:t0 + 1], poursuivre_etat=True)
                 out = [st1.theta1, st1.theta2, st1.theta3]
                 J = torch.zeros(n, 3, 3, device=dev)
                 for i in range(3):
@@ -1378,7 +1378,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             with torch.no_grad():
                 sp0 = mm.spatial_encoder(coords, terr.data)
                 noms = [f.name for f in _dc.fields(sp0) if torch.is_tensor(getattr(sp0, f.name)) and getattr(sp0, f.name).ndim >= 1 and getattr(sp0, f.name).shape[0] == n]
-                _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:tr_sl.start]), day_of_year=doy[:tr_sl.start])
+                _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w.slice(0, tr_sl.start), day_of_year=doy[:tr_sl.start])
             for H, _var in [(int(h), v) for v in os.environ.get("MEANDRE_SONDE_DETACHE", "aucun").split(",") for h in os.environ.get("MEANDRE_SONDE_HORIZONS", "30,90,180,365").split(",")]:
                 os.environ["MEANDRE_CASCADE_DETACHE"] = "1" if _var == "cascade" else "0"
                 os.environ["MEANDRE_DETACHE_JOUR"] = "" if _var in ("aucun", "cascade") else _var.replace("+", ",")
@@ -1387,9 +1387,9 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 mm.spatial_encoder.multiplicateurs = mult
                 # Chaque horizon repart du meme etat interne de mise en regime.
                 with torch.no_grad():
-                    _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[:tr_sl.start]), day_of_year=doy[:tr_sl.start])
+                    _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w.slice(0, tr_sl.start), day_of_year=doy[:tr_sl.start])
                 _cible = os.environ.get("MEANDRE_SONDE_CIBLE", "kge")
-                _res = mm.simulate(forcing=F[sl], initial_state=st0, graph=g, node_coords=coords, territorial=terr, withdrawals=WithdrawalData(net=w.net[sl]), day_of_year=doy[sl], poursuivre_etat=True, return_diagnostics=(_cible in ("et", "et_neige")))
+                _res = mm.simulate(forcing=F[sl], initial_state=st0, graph=g, node_coords=coords, territorial=terr, withdrawals=w.slice(sl.start, sl.stop), day_of_year=doy[sl], poursuivre_etat=True, return_diagnostics=(_cible in ("et", "et_neige")))
                 Q = _res[0]
                 k = _kge_t(Q[:, s["exutoire"]], _o_all[sl])
                 # CIBLE DE LA SONDE (2026-10-02) : « kge » (1 - KGE, defaut historique),
