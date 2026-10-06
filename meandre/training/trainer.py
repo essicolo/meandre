@@ -987,39 +987,7 @@ class Trainer:
                     return_diagnostics=_ref_et,
                 )
             spun_state = _res[1]
-            if _ref_et and os.environ.get("MEANDRE_ET_REF_MISE_EN_REGIME") != "1":
-                # Reference initiale de l'ET centree (2026-10-05) : moyenne EXACTE de la
-                # simulation sur la periode d'entrainement, poids de depart, passe sans
-                # gradient par blocs d'un an depuis l'etat de mise en regime. L'ancienne
-                # reference, la mise en regime elle-meme, part d'un etat vide et ne dure
-                # qu'un an : sols secs, ET trop basse, anomalies simulees surestimees, et
-                # le terme poussait toute l'ET vers le bas a la premiere epoque de chaque
-                # lancement (K_c du champ regional de l'Outaouais 0,72 -> 0,40 en une
-                # epoque, reprise a chaud comprise). MEANDRE_ET_REF_MISE_EN_REGIME=1
-                # restitue l'ancienne reference.
-                _Wsp = getattr(data, "et_weight", None)
-                _s, _num, _den = spun_state, None, None
-                _t, _fin = data.train_slice.start, data.train_slice.stop
-                with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-                    while _t < _fin:
-                        _u = min(_t + 365, _fin)
-                        _r = self.model.simulate(
-                            forcing=data.forcing[_t:_u], initial_state=_s, graph=data.graph,
-                            node_coords=data.node_coords, territorial=data.territorial,
-                            withdrawals=data.withdrawals.slice(_t, _u),
-                            day_of_year=data.day_of_year[_t:_u], return_diagnostics=True,
-                        )
-                        _s = _r[1]
-                        _e = _r[2].etr.to(device).float()
-                        _ww = (_Wsp[_t:_u].to(device, _e.dtype) if _Wsp is not None else torch.ones_like(_e))
-                        _num = (_ww * _e).sum(dim=0) if _num is None else _num + (_ww * _e).sum(dim=0)
-                        _num2 = (_ww * _e * _e).sum(dim=0) if _t == data.train_slice.start else _num2 + (_ww * _e * _e).sum(dim=0)
-                        _den = _ww.sum(dim=0) if _den is None else _den + _ww.sum(dim=0)
-                        _t = _u
-                self._et_sim_base = (_num / _den.clamp(min=1e-6)).detach()
-                self._et_sim_std = torch.sqrt((_num2 / _den.clamp(min=1e-6) - self._et_sim_base ** 2).clamp(min=1e-6)).detach()
-                logger.info("ET centree : reference initiale exacte sur la periode d'entrainement, moyenne %.3f mm/j", float(self._et_sim_base.mean()))
-            elif _ref_et and len(_res) == 3:
+            if _ref_et and len(_res) == 3 and os.environ.get("MEANDRE_ET_REF_MISE_EN_REGIME") == "1":
                 # Reference initiale de l'ET centree : annees completes de la mise en regime.
                 _n_ans = spinup_end // 365
                 if _n_ans >= 1:
@@ -1171,6 +1139,45 @@ class Trainer:
                     self._et_sim_std = torch.sqrt((_acc[2] / _n - self._et_sim_base ** 2).clamp(min=1e-6))
         self._et_sim_acc = None
 
+    def _et_reference_exacte(self, data: TrainingData, etat: HydroState) -> None:
+        """Reference simulee du terme MOD16 centre ou en forme, avant la premiere epoque.
+
+        Moyenne et ecart-type EXACTS de l'ET simulee sur la periode d'entrainement, aux poids
+        de depart, par une passe sans gradient par blocs d'un an depuis l'etat de mise en
+        regime. Appelee au debut de l'epoque d'entrainement, et non dans la mise en regime :
+        le pilote evalue avant d'entrainer, si bien que la premiere mise en regime tourne sur
+        les donnees de validation, sans MOD16, et que l'epoque reprend ensuite l'etat en
+        cache. La reference n'etait alors jamais posee, et `_center_et` retombait sur la
+        moyenne du premier bloc d'hiver (2026-10-06, R311). MEANDRE_ET_REF_MISE_EN_REGIME=1
+        restitue la reference de la mise en regime.
+        """
+        device = data.forcing.device
+        _Wsp = getattr(data, "et_weight", None)
+        _s, _num, _num2, _den = etat, None, None, None
+        _t, _fin = data.train_slice.start, data.train_slice.stop
+        with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
+            while _t < _fin:
+                _u = min(_t + 365, _fin)
+                _r = self.model.simulate(
+                    forcing=data.forcing[_t:_u], initial_state=_s, graph=data.graph,
+                    node_coords=data.node_coords, territorial=data.territorial,
+                    withdrawals=data.withdrawals.slice(_t, _u),
+                    day_of_year=data.day_of_year[_t:_u], return_diagnostics=True,
+                    poursuivre_etat=True,
+                )
+                _s = _r[1]
+                _e = _r[2].etr.to(device).float()
+                _ww = (_Wsp[_t:_u].to(device, _e.dtype) if _Wsp is not None else torch.ones_like(_e))
+                _a, _b, _c = (_ww * _e).sum(dim=0), (_ww * _e * _e).sum(dim=0), _ww.sum(dim=0)
+                _num = _a if _num is None else _num + _a
+                _num2 = _b if _num2 is None else _num2 + _b
+                _den = _c if _den is None else _den + _c
+                _t = _u
+        self._et_sim_base = (_num / _den.clamp(min=1e-6)).detach()
+        self._et_sim_std = torch.sqrt((_num2 / _den.clamp(min=1e-6) - self._et_sim_base ** 2).clamp(min=1e-6)).detach()
+        print(f"[et] reference initiale exacte sur la periode d'entrainement : moyenne {float(self._et_sim_base.mean()):.3f} mm/j, "
+              f"ecart-type {float(self._et_sim_std.mean()):.3f} mm/j", flush=True)
+
     def _train_epoch(self) -> tuple[Tensor, dict[str, Tensor]]:
         """One training epoch: simulate -> loss -> backward -> step.
 
@@ -1197,6 +1204,15 @@ class Trainer:
         # Memory ∝ chunk_steps, no checkpointing overhead.
         initial_state, h_ctx = self._run_spinup(data)
         _spinup_a_tourne = min(self.config.spinup_steps, data.train_slice.start) > 0
+        if (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
+                and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
+                and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1"
+                and os.environ.get("MEANDRE_ET_REF_MISE_EN_REGIME") != "1"
+                and (getattr(self, "_et_sim_base", None) is None or getattr(self, "_et_sim_std", None) is None)):
+            self._et_reference_exacte(data, initial_state)
+            # La passe laisse l'etat interne (manteau, gel, lacs) a la fin de la periode :
+            # la mise en regime est rejouee pour que le premier bloc reparte de son etat.
+            initial_state, h_ctx = self._run_spinup(data)
 
         state = initial_state
         t_start = data.train_slice.start
