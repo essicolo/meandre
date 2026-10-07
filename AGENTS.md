@@ -21,9 +21,9 @@ Trois machines.
 
 ## 3. Ce qui tourne sur Ubuntu en ce moment (état du 7 octobre, 14 h)
 
-Journaux dans `~/meandre-data/carte-essai/`. Les chaînes 1, 4 et 5 sont finies ; treize territoires sur quatorze ont leurs exports et sont sur la carte.
+Journaux dans `~/meandre-data/carte-essai/`. Les chaînes 1, 4 et 5 sont finies ; les quatorze territoires ont leurs exports et sont sur la carte (feuillage, 27 834 tronçons, commis le 7 octobre à 14 h 30).
 
-- `/tmp/chaine_nuit6.sh` (journal `chaine_nuit6.log`) : Saint-Laurent sud-ouest (`slso`, départ 12 h 08, sans MOD16 ni GRACE, sa base ne les porte pas : `ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0`), puis deux réentraînements de l'Outaouais, `-corr1006-sublim` (`ETL_SUBLIM=1`) et `-corr1006-gelsublim` (`ETL_SUBLIM=1 ETL_NAPPE_GEL=0.3`), chacun suivi d'une passe avant sur la dernière époque disponible (`passe_derniere.sh`, l'arrêt précoce peut s'arrêter avant la seizième).
+- `/tmp/chaine_nuit6.sh` (journal `chaine_nuit6.log`) : Saint-Laurent sud-ouest fini à 14 h 12 (registre R331), puis deux réentraînements de l'Outaouais, `-corr1006-sublim` (`ETL_SUBLIM=1`) et `-corr1006-gelsublim` (`ETL_SUBLIM=1 ETL_NAPPE_GEL=0.3`), chacun suivi d'une passe avant sur la dernière époque disponible (`passe_derniere.sh`, l'arrêt précoce peut s'arrêter avant la seizième).
 - `/tmp/sonde_mont_depart.sh` (journal `sonde_mont_depart.log`) : sonde par terme au pilote sur la Montérégie, au point de départ (init littérature) puis à l'époque 4, pour dire quel terme pousse la conductivité de surface K_sat_1 vers le haut (elle finit à 0,40 m/j en médiane et 0,90 sur les nœuds agricoles, départ 0,08 ; registre R326). Les sondes au point d'ARRIVÉE (banc, 030905, `sonde_mont.log`) ne la désignent dans aucune cible : à convergence le gradient est à l'équilibre, seul le départ dit la poussée.
 
 Chaque territoire : seize époques avec la recette `.runs/quebec/config/socle-2026-10-04.toml`, forçage `JOINT_FX_SUFFIX=-casr-brut`, un point de reprise par époque (`MEANDRE_SAUVER_EPOQUES=1`), puis une passe avant sur la dernière époque avec `ETL_DUMP_REACH` et `ETL_DUMP_NATUREL=1`, qui écrit `<reg>-q-journalier.npz` et `<reg>-sans-journalier.npz` dans `~/meandre-data/carte-essai/`. Le jugement se fait toujours sur la DERNIÈRE époque, jamais sur celle retenue par la validation (registre R282, R294).
@@ -42,6 +42,7 @@ Résultats sur 2022-2024, dernière époque, code corrigé, recette du socle (`i
 | Outaouais moyen (outm) | | 0,56 | 1,30 | |
 | Côte-Nord B, C, D, A, E | | 0,75 ; 0,77 ; 0,77 ; 0,70 ; 0,86 | cndc 1,30 | cndd une station régulée, cnde deux stations |
 | Labrador (labi) | 1 | 0,63 | | |
+| Saint-Laurent sud-ouest (slso), sans MOD16 ni GRACE | 29 | 0,62 | 0,95 | 0,65 ; août-septembre 0,60 |
 
 Diagnostics de la Montérégie (registre R325 à R328) : l'été à moitié vide vient des ÉVÉNEMENTS (écoulement de base simulé 1,00 fois l'observé, pointes 0,40) ; K_sat_1 est appris dix fois trop haut et plus encore sur les nœuds agricoles ; le ramener à un dixième en passe avant rend les pointes mais fait tomber la corrélation de 0,73 à 0,54 ; la texture PHYSITEL ne donne aucun contraste agricole contre forêt ; CaSR brut manque les gros jours de pluie d'été sur 70 % des jauges de la Montérégie (stations canadiennes seules : 0,83 à 0,89 du mesuré). Forçage et modèle y comptent chacun pour environ la moitié. Le prétraitement du forçage est hors de méandre et appartient à Essi.
 
