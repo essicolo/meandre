@@ -44,7 +44,14 @@ _DEPOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 IO_EAU = os.environ.get("MEANDRE_IO_EAU", os.path.join(os.path.dirname(_DEPOT), "io-eau", "data", "derived"))
 FEUILLAGE = os.environ.get("MEANDRE_FEUILLAGE", os.path.join(os.path.dirname(_DEPOT), "feuillage"))
 SORTIE = os.path.join(FEUILLAGE, "data", "meandre")
-ZARR_URL = os.environ.get("MEANDRE_CARTE_ZARR_URL", "./data/meandre/debits.zarr")
+# Le magasin porte l'heure de sa construction dans son nom : les fichiers de ses morceaux sont
+# nommés par position (c/0/<indice>/0), et l'indice d'un tronçon change à chaque territoire
+# ajouté. Un navigateur qui garde en cache un morceau d'une construction précédente affichait
+# alors l'hydrogramme d'un autre tronçon (2026-10-07, rivière du Diable). Les anciens magasins
+# sont supprimés à chaque construction.
+import datetime as _dt
+STORE_NAME = f"debits-{_dt.datetime.now():%Y%m%dT%H%M}.zarr"
+ZARR_URL = os.environ.get("MEANDRE_CARTE_ZARR_URL", f"./data/meandre/{STORE_NAME}")
 # Période des hydrogrammes et des indicateurs, en années civiles complètes.
 DEBUT = os.environ.get("MEANDRE_CARTE_DEBUT", "2015-01-01")
 FIN = os.environ.get("MEANDRE_CARTE_FIN", "2024-12-31")
@@ -232,7 +239,11 @@ def main():
     arr = np.empty((3, n, T), dtype=np.float32)
     for k, (qa, qb) in enumerate(series):
         arr[0, k], arr[1, k], arr[2, k] = qa, qb, qa - qb
-    root = zarr.open_group(os.path.join(SORTIE, "debits.zarr"), mode="w")
+    import glob as _glob
+    import shutil as _shutil
+    for ancien in _glob.glob(os.path.join(SORTIE, "debits*.zarr")):
+        _shutil.rmtree(ancien, ignore_errors=True)
+    root = zarr.open_group(os.path.join(SORTIE, STORE_NAME), mode="w")
     root.create_array("debit", data=arr, chunks=(3, 1, T), dimension_names=["serie", "zidx", "time"])
     root.create_array("serie", data=np.array([0, 1, 2], dtype=np.int32), dimension_names=["serie"])
     root.create_array("zidx", data=np.arange(n, dtype=np.int32), dimension_names=["zidx"])
@@ -242,7 +253,7 @@ def main():
     root["serie"].attrs["description"] = "0 : modélisé avec prélèvements et rejets ; 1 : naturalisé ; 2 : modélisé moins naturalisé"
     root.attrs["description"] = f"Débits journaliers simulés par meandre, m³/s, {DEBUT[:4]}-{FIN[:4]}"
     zarr.consolidate_metadata(root.store)
-    print(f"debits.zarr : {n} tronçons x {T} jours")
+    print(f"{STORE_NAME} : {n} tronçons x {T} jours")
 
     ecrit_config(feats_sites, feats_tr)
 
