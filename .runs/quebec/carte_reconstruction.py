@@ -86,6 +86,16 @@ def sites_ponctuels(d):
             pr = ft["properties"]
             noms[pr["id"]] = {"nom": pr.get("nom"), "secteur": pr.get("secteur"),
                               "municipalite": pr.get("municipalite"), "nature_declaree": nature}
+    # Coordonnées du nœud de chaque tronçon rattaché, pour mesurer l'écart entre le site déclaré
+    # et le tronçon où le modèle applique son débit (R327 : un site peut être à 28 km).
+    noeuds = {}
+    for reg in sorted({t[:4].lower() for t in df.troncon.dropna()}):
+        base = _paths.data_path("quebec", f"{reg}.duckdb")
+        if os.path.exists(base):
+            con = duckdb.connect(base, read_only=True)
+            for nid_, lo_, la_ in con.execute("SELECT node_id, lon, lat FROM nodes").fetchall():
+                noeuds[f"{reg.upper()}{int(nid_):05d}"] = (float(lo_), float(la_))
+            con.close()
     feats = []
     for sid, g in df.groupby("site_id"):
         base = sid.replace("_synth", "")
@@ -103,6 +113,9 @@ def sites_ponctuels(d):
             "nature": "rejet" if moy > 0 else ("prélèvement" if moy < 0 else "débit net nul"),
             "origine": "retour estimé" if sid.endswith("_synth") else "déclaré",
             "debit_net_l_s": round(1000.0 * moy, 2),
+            "distance_troncon_km": (round(float(np.hypot((g.lon.iloc[0] - noeuds[g.troncon.iloc[0]][0]) * 78.0,
+                                                          (g.lat.iloc[0] - noeuds[g.troncon.iloc[0]][1]) * 111.0)), 1)
+                                    if g.troncon.iloc[0] in noeuds else None),
             "debit_net_ete_l_s": round(1000.0 * ete, 2) if np.isfinite(ete) else None,
             "profil_mensuel": json.dumps({"labels": MOIS,
                                           "values": [round(1000.0 * float(v), 2) if np.isfinite(v) else None
@@ -297,12 +310,13 @@ def ecrit_config(feats_sites, feats_tr):
             "site": {"title": "{properties.nom}", "display": "sidebar",
                      "sections": [{"type": "properties",
                                    "fields": ["nature", "origine", "source", "secteur", "municipalite",
-                                              "debit_net_l_s", "debit_net_ete_l_s", "troncon"],
+                                              "debit_net_l_s", "debit_net_ete_l_s", "troncon", "distance_troncon_km"],
                                    "labels": {"nature": "Nature", "origine": "Origine", "source": "Milieu",
                                               "secteur": "Secteur", "municipalite": "Municipalité",
                                               "debit_net_l_s": "Débit net moyen (L/s)",
                                               "debit_net_ete_l_s": "Débit net, juil. à sept. (L/s)",
-                                              "troncon": "Tronçon"}},
+                                              "troncon": "Tronçon où le débit est appliqué",
+                                              "distance_troncon_km": "Distance du site à ce tronçon (km)"}},
                                   {"type": "chart", "chart_type": "bar", "data_field": "profil_mensuel",
                                    "options": {"title": f"Débit net moyen par mois, {DEBUT[:4]}-{FIN[:4]}",
                                                "xlabel": "Mois", "ylabel": "L/s"}}]},
