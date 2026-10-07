@@ -11,6 +11,7 @@ ancrages, meme sol impose. Le juge est le rapport des pointes annuelles et l'err
 d'amplitude par evenement, non le KGE, qu'un champ non entraine ne renseigne pas.
 
     .venv/Scripts/python.exe .runs/quebec/essai_hortonien.py gasp 011003
+    MEANDRE_HORTON_SUFFIXES=-casr-brut,-casr-brut-intens python .runs/quebec/essai_hortonien.py mont 030905
 """
 import os
 import sys
@@ -51,8 +52,11 @@ def main(reg, station):
     from meandre.model import HydroModel
 
     res = {}
-    for nom, sfx, horton in (("six canaux, mécanisme inerte", "-budyko", False),
-                             ("sept canaux, mécanisme actif", "-budyko-dt", True)):
+    # Les deux forçages se choisissent par MEANDRE_HORTON_SUFFIXES="-casr-brut,-casr-brut-intens"
+    # (2026-10-07) ; le second porte le septième canal DT_eff (QC_INTENS=1 au constructeur).
+    _s6, _s7 = os.environ.get("MEANDRE_HORTON_SUFFIXES", "-budyko,-budyko-dt").split(",")
+    for nom, sfx, horton in (("six canaux, mécanisme inerte", _s6, False),
+                             ("sept canaux, mécanisme actif", _s7, True)):
         os.environ["JOINT_FX_SUFFIX"] = sfx
         os.environ["ETL_SEED"] = "1234"
         _orig = HydroModel.__init__
