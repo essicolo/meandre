@@ -1,0 +1,220 @@
+id,nature,nom,cours_eau_declare,troncon_rattache,nom_du_troncon_rattache,distance_km,troncons_a_moins_de_5_km_portant_le_nom_declare
+X0202232,prélèvement,Centrale de Shipshaw,"SAGUENAY, RIVIÈRE",SAGU00002,,0.1,SAGU00425;SAGU00426
+X2117030,prélèvement,Ski Mont Gabriel,"NORD, RIVIÈRE DU",OUTV03269,Rivière à Simon,0.0,OUTV03267;OUTV03268;OUTV03282
+12240388,prélèvement,Ville de Québec - Dépôt et fondeuse à neige,FLEUVE SAINT-LAURENT,SLNO00002,,0.2,SLNO00003;SLSO00650
+X2083687,prélèvement,Club de golf Larrimac,"GATINEAU, RIVIÈRE",OUTV01194,,0.0,OUTV02309
+X0009037,prélèvement,Station de purification d'eau - Sainte-Madeleine-de-la-Rivière-Madeleine (Poste chl.),PETITE RIVIERE MADELEINE,GASP02573,Golfe du Saint-Laurent,0.7,GASP02417;GASP02419
+X2106952,prélèvement,DERIVATION ROMAINE 3,"ROMAINE, RIVIÈRE",CNDD00929,Réservoir de la Romaine-3,24.2,CNDD00924;CNDD00925;CNDD01145
+X2117792,prélèvement,Station de pompage - SPPI,FLEUVE SAINT-LAURENT,MONT00002,,0.3,MONT01295
+19050129,prélèvement,"Station de purification Régie intermunicipale de l'eau de Varennes, Sainte-Julie, Saint-Am",FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01292;MONT01293;MONT01294
+X2110077,prélèvement,Centre de ski Saint-Georges (1981) inc.,"FAMINE, RIVIÈRE",SLSO00159,Rivière Chaudière,0.0,SLSO00160;SLSO00240
+X0010697,prélèvement,Poste d'eau potable Lauzon,FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLNO00340;SLSO02532
+11991619,prélèvement,Olymel s.e.c. Boucherville (1580 Eiffel),FLEUVE SAINT-LAURENT,MONT00002,,5.5,MONT01295
+X0008671,prélèvement,"Station de purification, Lavaltrie",FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00562
+51236412,prélèvement,Centrale thermique de Tracy,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00561
+11823648,prélèvement,IPL inc.,AUX BILLOTS,SLSO02407,Étangs des Soeurs,0.0,SLSO02406
+X0008299,prélèvement,Station de purification Bécancour (sta.pur.),FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLNO00930;SLSO00918;SLSO00931
+52868791,prélèvement,Centrale nucléaire Gentilly II  Bécancour (en dormance),FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLSO00732;SLSO00733;SLSO00763
+53079380,prélèvement,Centrale Chute-à-Caron,"SAGUENAY, RIVIÈRE",SAGU00002,,0.0,SAGU00425;SAGU00426
+X2170325,prélèvement,Lacolle,LACOLLE,MONT00590,Rivière Richelieu,0.0,MONT00591
+90271198,prélèvement,BP Canada - Usine de LaSalle,FLEUVE SAINT-LAURENT,MONT00002,,1.8,MONT01332
+51474831,prélèvement,"Raffinerie Suncor Energy, S.E.N.C.",FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01292;MONT01293;MONT01294
+X2124026,prélèvement,Station de traitement (Ville Port-Cartier),AUX ROCHERS,CNDB00906,Rivière Pasteur,0.1,CNDB00902
+90307828,prélèvement,Chimie ParaChem S.E.C.,FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01292;MONT01293;MONT01294
+24143562,prélèvement,"Cascades Canada ULC, Trois-Rivières",FLEUVE SAINT-LAURENT,SLNO00002,,0.7,SLNO00930;SLNO02926;SLSO00767
+X2131916,prélèvement,"Les Productions Margiric inc., D'Autray",FLEUVE SAINT-LAURENT,SLNO00002,,0.9,SLNO00561
+X2136030,prélèvement,Prise d'eau brute Hydro-Québec,FLEUVE SAINT-LAURENT,MONT00002,,0.0,VAUD00001;VAUD00199
+54697941,prélèvement,Club de golf Balmoral,SIMON,OUTV03277,Lac Seale,0.2,OUTV03269;OUTV03270
+X2117027,prélèvement,Sommet Saint-Sauveur,"NORD, RIVIÈRE DU",OUTV03352,Lac Lapointe,0.0,OUTV03267;OUTV03268;OUTV03282
+X2073084,prélèvement,Club de Golf Rawdon inc.,ROUGE,SLNO00704,Lac Rawdon,0.1,SLNO00705;SLNO00710
+X2078735,prélèvement,LE CLUB DE GOLF DE BERTHIER (2008) INC,FLEUVE SAINT-LAURENT,MONT00002,,0.1,SLNO00561;SLNO00821
+X2075876,prélèvement,Club de golf Laval-sur-le-Lac,DES MILLE ILES,MONT00002,,11.7,OUTV03406
+X0008186,prélèvement,Installation de production - UTE Sainte-Foy,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00003;SLSO00650;SLSO00651
+X0501817,prélèvement,Bois Hunting inc.,MASSAWIPPI,SLSO02304,Rivière aux Saumons,0.0,SLSO02078;SLSO02079;SLSO02080
+29087319,prélèvement,Société du parc industriel et portuaire de Bécancour (S.P.I.P.B.),FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLNO02926;SLSO00764;SLSO00765
+11592136,prélèvement,Chantier Davie inc.,FLEUVE SAINT-LAURENT,SLSO00002,,0.1,SLNO00340;SLSO02532
+X0008085,prélèvement,Station de purification Montreal (usine Desbaillets),FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01332
+53205712,prélèvement,Produits Shell Canada  Dépôt pétrolier,FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01292;MONT01293;MONT01295
+54134762,prélèvement,Rio Tinto Fer et Titane - Complexe métallurgique (ancien QIT),FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00561;SLNO00821
+X2029128,prélèvement,Les jardins M Lavoie et fils inc,ROUGE,SLNO00704,Lac Rawdon,0.0,SLNO00694
+X2141150,prélèvement,ILE BOUCHARD,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,MONT01285
+12870218,prélèvement,"Club de golf Val-Morin, ltée.","NORD, RIVIÈRE DU",OUTV03289,Lac Raymond,0.5,OUTV03287;OUTV03290;OUTV03291
+NUL-5c8adb6c,prélèvement,Chloretec s.e.c.,FLEUVE SAINT-LAURENT,MONT00002,,0.4,VAUD00001
+X2056183,prélèvement,Golf de L'Auberivière inc.,"SCIE, RIVIÈRE À LA",SLSO02523,Rivière Etchemin,0.0,SLSO02516;SLSO02517;SLSO02524
+X0500436,prélèvement,Station de purification Windsor,WATOPEKA,SLSO01290,Rivière Saint-François,0.0,SLSO01291
+90261033,prélèvement,Centre de ski Mont Belu (Société Belu inc.),"SAGUENAY, RIVIÈRE",SAGU00002,,0.2,SAGU00148
+X0200617,prélèvement,Le Club de golf Saguenay Arvida,"SAGUENAY, RIVIÈRE",SAGU00002,,0.0,SAGU00425;SAGU00426
+X0008924,prélèvement,Station de purification Dorval (usine),FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01334
+X0008255,prélèvement,Station de purification Port-Cartier (aut. trait. 2001),AUX ROCHERS,CNDB00906,Rivière Pasteur,0.1,CNDB00902
+X2184152,prélèvement,Prise d'eau-rivière Jaune-fabrication neige,JAUNE,SLNO00034,Lac Josée,0.1,SLNO00035
+X2009010,prélèvement,Club de golf de Valleyfield,FLEUVE SAINT-LAURENT,VAUD00002,,0.1,VAUD00199
+X2010287,prélèvement,Golf Manoir des Sables inc.,MAGOG,SLSO01533,Branche de l'Est,0.1,SLSO01377;SLSO01522
+X0303560,prélèvement,Rivière Jaune (Centre ski Le Relais),JAUNE,SLNO00034,Lac Josée,0.0,SLNO00035
+X0008336,prélèvement,Station de purification Danville,"NICOLET SUD-OUEST, RIVIÈRE",SLSO01149,Rivière Danville,0.1,SLSO01104;SLSO01105;SLSO01106
+X0009678,prélèvement,Station de purification Beauharnois - sta. purif. complète,FLEUVE SAINT-LAURENT,MONT00002,,0.0,VAUD00001
+90512179,prélèvement,ArcelorMittal Montréal inc. - Usine Est,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00562
+X2018050,prélèvement,Ferme Diane & Denis Champagne inc.,FLEUVE SAINT-LAURENT,MONT00002,,0.9,SLNO00561
+24846859,prélèvement,"Station de purification, Terrebonne, Régie intermunicipale des Moulins","ÎLES, RIVIÈRE DES",OUTV00002,,0.0,OUTV03404
+19356310,prélèvement,La Brasserie Labatt limitée  (Lasalle),FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01332;MONT01334
+NUL-97f875cd,prélèvement,Dérivation Romaine 4,"ROMAINE, RIVIÈRE",CNDD01108,Petite rivière Romaine,18.1,CNDD00928;CNDD00929;CNDD01113
+53966255,prélèvement,General Dynamics produits de défense et systèmes tactiques-Canada Valleyfield inc.,FLEUVE SAINT-LAURENT,VAUD00002,,0.8,VAUD00199
+55126163,prélèvement,Service de transformation Bécancour inc. (STB INC.),FLEUVE SAINT-LAURENT,SLSO00002,,2.0,SLSO00764;SLSO00765;SLSO00766
+X1401995,prélèvement,"Les fermes Rivest, Bourgeois inc., Matawinie",ROUGE,SLNO00704,Lac Rawdon,0.1,SLNO00694
+51615219,prélèvement,Kruger Trois-Rivières S.E.C.,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00930;SLSO00918;SLSO00931
+X0009538,prélèvement,Station de purification Parent,BAZIN,OUTV01681,Rivière Dandurand,0.0,OUTV01654;OUTV01655;OUTV01656
+X0008090,prélèvement,Station de purification Lachine (usine 2),FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01332;MONT01334
+X0010056,prélèvement,Installation de production - UTE Beauport,"MONTMORENCY, RIVIÈRE",SLNO00296,Réservoir des Marches Naturelles,0.0,SLNO00294;SLNO00295;SLNO00297
+X2125841,prélèvement,Gestions Kev-nic inc.,"L'ASSOMPTION, RIVIÈRE",SLNO00791,Rivière de l'Achigan,0.0,SLNO00790
+X2170322,prélèvement,Les Gazonnières Fairlawn inc. Les Jardins de Napierville,LACOLLE,MONT00590,Rivière Richelieu,0.0,MONT00591;MONT00592
+12636544,prélèvement,Club de Golf Orléans inc.,FLEUVE SAINT-LAURENT,SLNO00002,,0.1,SLNO00340
+54880745,prélèvement,Club de Golf de St-André,DU NORD,OUTV03216,Rivière des Outaouais,0.1,OUTV03217;OUTV03218;OUTV03358
+X0010036,prélèvement,Station de purification Contrecoeur,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00562
+X0600605,prélèvement,Entreprise Indorama PTA Montréal s.e.c.,FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01295
+X2162049,prélèvement,Campement industriel permanent de Boisaco inc.,"BETSIAMITES, RIVIÈRE ",CNDA00762,,0.0,CNDA00771
+90473620,prélèvement,Produits forestiers Arbec S.E.N.C. (scierie Port-Cartier),AUX ROCHERS,CNDB00906,Rivière Pasteur,0.1,CNDB00902
+X0008624,prélèvement,Station de purification - Municipalité de Verchères (sta.pur.),FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01285
+X0009983,prélèvement,Municipalité de Pontiac,"OUTAOUAIS, RIVIÈRE DES",OUTV02384,Ruisseau à Knight,0.1,OUTV02358;OUTV02359;OUTV02360
+X0008659,prélèvement,"Station de purification, Berthierville",FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00561;SLNO00821
+X0010478,prélèvement,Installation de production St-Romuald,FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLSO00001;SLSO02515;SLSO02532
+53894853,prélèvement,Pépinière Forestière de Berthierville,FLEUVE SAINT-LAURENT,MONT00002,,1.3,SLNO00561;SLNO00821
+90486168,prélèvement,AB Mauri (Canada) Ltée,FLEUVE SAINT-LAURENT,MONT00002,,0.1,MONT01332;MONT01334
+53995098,prélèvement,Glencore Canada Corporation - Affinerie CCR,FLEUVE SAINT-LAURENT,MONT00002,,0.1,MONT01292;MONT01293;MONT01295
+X2152621,prélèvement,"Prise d'eau brute (Arbec, bois d'oeuvre inc.)",AUX ROCHERS,CNDB00906,Rivière Pasteur,0.1,CNDB00902
+52133105,prélèvement,"Produits Kruger s.e.c., usine de Sherbrooke",MASSAWIPPI,SLSO02077,Rivière Saint-François,0.0,SLSO02078;SLSO02079;SLSO02080
+X2189070,prélèvement,"Ferme Roch Morin inc., équidé",FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00561;SLNO00821
+53261210,prélèvement,Les Entreprises Atlas enr. (Low),STAG,OUTV01235,Rivière Gatineau,0.3,OUTV01236;OUTV01238
+28631430,prélèvement,ArcelorMittal Produits longs Canada - Contrecoeur-Ouest,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00562
+X0009050,prélèvement,Station de purification Huntingdon - sta. purif. complète,"CHÂTEAUGUAY, RIVIÈRE",MONT01362,Rivière Trout,0.1,MONT01356;MONT01357;MONT01358
+X0010696,prélèvement,Installation de production Lévis,FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLSO02515;SLSO02532
+X2124091,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Roch-des-Aulnaies,FLEUVE SAINT-LAURENT,SLSO00002,,0.3,SLSO02779;SLSO02780;SLSO02781
+X2049594,rejet,Ouvrage municipal d'assainissement des eaux usées de Chandler,DU GRAND PABOS,GASP01895,Golfe du Saint-Laurent,0.2,GASP01897;GASP01898;GASP01899
+X2013738,rejet,Ouvrage municipal d'assainissement des eaux usées de Lévis (Saint-Romuald),FLEUVE SAINT-LAURENT,SLSO00002,,2.7,SLSO02515;SLSO02532
+X2048326,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Prime,"SAINT-JEAN, LAC",SAGU00606,,0.0,SAGU00817;SAGU00818
+X2048109,rejet,Ouvrage municipal d'assainissement des eaux usées de Rimouski (secteur Le Bic),DU BIC,GASP00002,,0.2,GASP03586;GASP03587
+X2049637,rejet,Ouvrage municipal d'assainissement des eaux usées de Nicolet,FLEUVE SAINT-LAURENT,SLSO00002,,1.8,SLSO00938;SLSO00939;SLSO00940
+X2013258,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Damien-de-Buckland,AUX BILLOTS,SLSO02407,Étangs des Soeurs,0.1,SLSO02406
+X1101287,rejet,Ouvrage municipal d'assainissement des eaux usées de Percé (Cap-d'Espoir),"SAINT-LAURENT, GOLFE DU",GASP00002,,0.4,GASP00055;GASP02028
+X2117334,rejet,Ouvrage municipal d'assainissement des eaux usées de Bégin,"RAPHAEL, RUISSEAU",SAGU02036,Lac Huron,0.3,SAGU02037
+X1606308,rejet,Ouvrage municipal d'assainissement des eaux usées de Rivière-Beaudette,NORD-EST DE LA RIVIERE BEAUDETTE,VAUD00163,Lac Saint-François,0.0,VAUD00164;VAUD00165
+X0300160,rejet,Ouvrage municipal d'assainissement des eaux usées de La Malbaie,FLEUVE SAINT-LAURENT,SLNO00002,,0.1,SLNO00089
+X2154995,rejet,Ouvrage municipal d'assainissement des eaux usées de Chelsea (Farm Point),"GATINEAU, RIVIÈRE",OUTV01194,,0.0,OUTV01198
+X2048112,rejet,Ouvrage municipal d'assainissement des eaux usées de Les Méchins,FLEUVE SAINT-LAURENT,GASP00002,,0.0,GASP02815;GASP02816;GASP02825
+X2048667,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Raymond,SAINTE-ANNE,SLNO03246,Bras du Nord de la Rivière Sainte-Anne,0.6,SLNO03245;SLNO03299;SLNO03300
+X2012084,rejet,Ouvrage municipal d'assainissement des eaux usées de Havre-Saint-Pierre,"SAINT-LAURENT, GOLFE DU",CNDD00002,,0.0,CNDD00855
+X0501367,rejet,Ouvrage municipal d'assainissement des eaux usées de Stanstead Canton (Georgeville),TAYLOR,SLSO01384,,0.6,SLSO01387;SLSO01388
+X2049215,rejet,Ouvrage municipal d'assainissement des eaux usées de Lavaltrie,FLEUVE SAINT-LAURENT,SLNO00002,,0.8,SLNO00562
+X2049034,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Mélanie,COURS D'EAU MARTIAL-PERREAULT,SLNO00596,Rivière L'Assomption,2.5,SLNO00703
+X2048285,rejet,Ouvrage municipal d'assainissement des eaux usées de Trois-Pistoles,FLEUVE SAINT-LAURENT,GASP00002,,0.1,GASP03646;GASP03649
+90002692,rejet,Ouvrage municipal d'assainissement des eaux usées de Beaulac,"AYLMER, LAC",SLSO01610,,0.2,SLSO01789;SLSO01794;SLSO01898
+90486168,rejet,AB MAURI (CANADA) LIMITÉE,FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01332;MONT01334
+X2013096,rejet,Ouvrage municipal d'assainissement des eaux usées de Beaumont,FLEUVE SAINT-LAURENT,SLSO00002,,0.1,SLSO02533;SLSO02536
+X2055901,rejet,Ouvrage municipal d'assainissement des eaux usées de Métis-sur-Mer,FLEUVE SAINT-LAURENT,GASP00002,,0.6,GASP03102;GASP03103;GASP03104
+X2049740,rejet,Ouvrage municipal d'assainissement des eaux usées de Terrebonne,DES MILLE ILES,MONT00002,,18.7,OUTV03404
+X2012823,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Justine,"FAMINE, RIVIÈRE",SLSO00189,Petit lac Lachance,0.2,SLSO00188;SLSO00191;SLSO00192
+X2008659,rejet,Ouvrage municipal d'assainissement des eaux usées de Frontenac (Mercier),"MÉGANTIC, LAC",SLSO00343,,0.2,SLSO00344;SLSO00345;SLSO00346
+X2011837,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Antoine-de-Tilly,FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLSO00665;SLSO00666
+X2048354,rejet,Ouvrage municipal d'assainissement des eaux usées de Donnacona,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLSO00673
+X2049190,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Adèle (Alpine Inn),"NORD, RIVIÈRE DU",OUTV03289,Lac Raymond,0.1,OUTV03284;OUTV03285;OUTV03286
+X2049420,rejet,Ouvrage municipal d'assainissement des eaux usées de Varennes,FLEUVE SAINT-LAURENT,MONT00002,,0.2,MONT01293
+X2048318,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Fulgence,"SAGUENAY, RIVIÈRE",SAGU00002,,0.0,SAGU02052;SAGU02055
+X2200155,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Hubert-de-Rivière-du-Loup (cam),SENESCOUPE,GASP03726,,0.0,GASP03725
+X2011560,rejet,Ouvrage municipal d'assainissement des eaux usées de Disraeli,"AYLMER, LAC",SLSO01610,,0.6,SLSO01795;SLSO01898
+X2049077,rejet,Ouvrage municipal d'assainissement des eaux usées de Saguenay (Jonquière),"SAGUENAY, RIVIÈRE",SAGU00002,,0.7,SAGU00425;SAGU00426
+X2048141,rejet,Ouvrage municipal d'assainissement des eaux usées de Rivière-du-Loup,FLEUVE SAINT-LAURENT,GASP00002,,0.2,GASP03796;GASP03797;GASP03894
+X2047547,rejet,Ouvrage municipal d'assainissement des eaux usées de Val-Brillant,"MATAPÉDIA, LAC",GASP00991,,0.8,GASP00996;GASP00997
+X2048134,rejet,Ouvrage municipal d'assainissement des eaux usées de Rimouski,FLEUVE SAINT-LAURENT,GASP00002,,1.3,GASP03320;GASP03329
+X0201849,rejet,Ouvrage municipal d'assainissement des eaux usées de Saguenay (Chicoutimi),"SAGUENAY, RIVIÈRE",SAGU00002,,0.2,SAGU00200;SAGU00201;SAGU02045
+X2049013,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Gabriel,MASKINONGE,SLNO00509,,0.5,SLNO00508;SLNO00510;SLNO00511
+X2012798,rejet,OMAEU de la Régie intermunicipale d'assainissement du canton de Metgermette (RIACM),DES ABENAQUIS,SLSO00232,,0.7,SLSO00233;SLSO00234;SLSO00237
+X2049093,rejet,Ouvrage municipal d'assainissement des eaux usées de Saguenay (Shipshaw-Sud),"SAGUENAY, RIVIÈRE",SAGU00002,,0.7,SAGU00426
+X2013488,rejet,Ouvrage municipal d'assainissement des eaux usées de Tring-Jonction,DES FERMES,SLSO00083,Ruisseau Labbé,0.0,SLSO00084;SLSO00085
+X2048300,rejet,Ouvrage municipal d'assainissement des eaux usées de Lac-Bouchette,"OUIATCHOUAN, RIVIÈRE",SAGU00772,,0.1,SAGU00771;SAGU00776
+X2005849,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Sulpice,FLEUVE SAINT-LAURENT,MONT00002,,0.2,SLNO00562
+X2013437,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Michel-de-Bellechasse,FLEUVE SAINT-LAURENT,SLSO00002,,0.3,SLSO02538;SLSO02541
+X2048349,rejet,Ouvrage municipal d'assainissement des eaux usées de Beaupré,"SAINTE-ANNE, RIVIÈRE ",SLNO00002,,0.2,SLNO00242;SLNO00243
+X2048622,rejet,Ouvrage municipal d'assainissement des eaux usées d'Alma (Saint-Coeur-de-Marie),"GRANDE DÉCHARGE, LA",SAGU00606,,0.1,SAGU00607;SAGU00612;SAGU02024
+X2049461,rejet,Ouvrage municipal d'assainissement des eaux usées de Fortierville,AUX ORMES,SLSO00711,Petite rivière du Chêne,0.2,SLSO00712;SLSO00714
+X2011839,rejet,Ouvrage municipal d'assainissement des eaux usées de Cap-Saint-Ignace,FLEUVE SAINT-LAURENT,SLSO00002,,0.2,SLSO02740;SLSO02741;SLSO02742
+51615219,rejet,KRUGER TROIS-RIVIÈRES S.E.C.,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00930;SLSO00918;SLSO00931
+X2049283,rejet,Ouvrage municipal d'assainissement des eaux usées de Les Cèdres,FLEUVE SAINT-LAURENT,VAUD00002,,0.6,VAUD00199
+X2154236,rejet,Ouvrage municipal d'assainissement des eaux usées de Beaumont (2011),FLEUVE SAINT-LAURENT,SLSO00002,,0.1,SLSO02533;SLSO02536
+X2122939,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Mathieu-du-Parc,SHAWINIGAN,SLNO02899,Lac Montclair,0.0,SLNO02897
+90241159,rejet,Ouvrage municipal d'assainissement des eaux usées de Boisbriand,DES MILLE ILES,MONT00002,,17.4,OUTV03405
+X2011844,rejet,Ouvrage municipal d'assainissement des eaux usées de Montmagny,FLEUVE SAINT-LAURENT,SLSO00002,,0.3,SLSO02565
+X2007201,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Croix,FLEUVE SAINT-LAURENT,SLSO00002,,0.2,SLSO00673
+X2062668,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Anicet,"SAINT-FRANÇOIS, LAC",MONT00002,,0.0,MONT01564;MONT01574;MONT01575
+X2124794,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Marc-du-Lac-Long,"LONG, LAC",GASP00628,,0.0,GASP00629;GASP00630
+X2047472,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Ulric,FLEUVE SAINT-LAURENT,GASP00002,,0.3,GASP03017;GASP03024
+X2013735,rejet,Ouvrage municipal d'assainissement des eaux usées de Lévis (station Desjardins),FLEUVE SAINT-LAURENT,SLSO00002,,2.6,SLSO02515;SLSO02532
+X1100138,rejet,Ouvrage municipal d'assainissement des eaux usées de Gaspé,"SAINT-LAURENT, GOLFE DU",GASP00002,,0.3,GASP00043
+X2061853,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Famille,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00293
+X1400202,rejet,Ouvrage municipal d'assainissement des eaux usées de l'Épiphanie (V),DE L'ACHIGAN,SLNO00790,Rivière L'Assomption,0.4,SLNO00791
+X2049774,rejet,Ouvrage municipal d'assainissement des eaux usées de Melocheville (Beauharnois),"SAINT-LOUIS, LAC",VAUD00002,,0.2,MONT01551;MONT01552;MONT01553
+90026840,rejet,Ouvrage municipal d'assainissement des eaux usées de Trois-Rivières métropolitain,FLEUVE SAINT-LAURENT,SLNO00002,,3.6,SLNO02926
+X2140483,rejet,Ouvrage municipal d'assainissement des eaux usées de Champlain (rue Jacob),FLEUVE SAINT-LAURENT,SLNO00002,,0.1,SLNO02926;SLSO00764;SLSO00765
+X2048159,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Épiphane,CACOUNA,GASP03744,Rivière Verte,0.1,GASP03745;GASP03748
+X2048102,rejet,Ouvrage municipal d'assainissement des eaux usées de Kamouraska,"KAMOURASKA, RIVIÈRE",GASP03901,Fleuve Saint-Laurent,0.1,GASP03907;SLSO02877;SLSO02878
+X2140382,rejet,Ouvrage municipal d'assainissement des eaux usées de Rivière-Beaudette (Pointe-Lalonde),"SAINT-FRANÇOIS, LAC",VAUD00002,,0.1,VAUD00156;VAUD00163;VAUD00180
+90252123,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Siméon (Charlevoix),FLEUVE SAINT-LAURENT,SLNO00002,,0.5,SLNO00048;SLNO00078
+X0500469,rejet,Ouvrage municipal d'assainissement des eaux usées de Sherbrooke (Saint-Élie),"KEE, RUISSEAU",SLSO02323,Ruisseau Meadow,0.1,SLSO02310;SLSO02311;SLSO02312
+X2155536,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Laurent-de-l'Île-d'Orléans,FLEUVE SAINT-LAURENT,SLSO00002,,0.9,SLSO02533;SLSO02536;SLSO02537
+X2048270,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Valérien,GAMACHE,GASP03587,Rivière du Bic,0.1,GASP03589;GASP03590;GASP03592
+X2048121,rejet,Ouvrage municipal d'assainissement des eaux usées de Témiscouata-sur-le-Lac (N.-D.-du-Lac),"TÉMISCOUATA, LAC",GASP00471,,0.0,GASP00472;GASP00473
+X2048104,rejet,Ouvrage municipal d'assainissement des eaux usées de Lac-au-Saumon,"SAUMON, LAC AU",GASP00983,,0.1,GASP00985;GASP01072
+X2129912,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Cuthbert,CHICOT,SLNO00841,Fleuve Saint-Laurent,0.1,SLNO00842
+90025131,rejet,Ouvrage municipal d'assainissement des eaux usées de Roxton Pond,MAWCOOK,MONT00205,Lac Roxton,0.6,MONT00201;MONT00202;MONT00204
+54134762,rejet,Rio Tinto Fer et Titane inc.,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00561;SLNO00821
+X2048241,rejet,Ouvrage municipal d'assainissement des eaux usées de L'Isle-Verte,VERTE,GASP00002,,0.1,GASP03738;GASP03739;GASP03740
+X2048107,rejet,Ouvrage municipal d'assainissement des eaux usées de Lac-des-Aigles,"HORTON, RIVIÈRE",GASP00541,Lac des Aigles,0.5,GASP00558;GASP00559;GASP00560
+X2048274,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Félicité (Matane),FLEUVE SAINT-LAURENT,GASP00002,,0.5,GASP02835;GASP02836;GASP02837
+X2125170,rejet,OMAEU de Sainte-Cécile-de-Whitton (Saint-Samuel),RAT MUSQUE (DU),SLSO00320,,0.6,SLSO00319;SLSO00321
+X2008572,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Adrien,NICOLET NORD-EST,SLSO01116,Rivière à Bissonnette,0.4,SLSO01034;SLSO01113;SLSO01114
+X2048707,rejet,Ouvrage municipal d'assainissement des eaux usées de Plaisance,"PETITE NATION, RIVIÈRE DE LA",OUTV00438,Rivière des Outaouais,0.1,OUTV00439;OUTV00592;OUTV03187
+X2069451,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Frédéric,DES FERMES,SLSO00083,Ruisseau Labbé,0.5,SLSO00084;SLSO00085
+X2049222,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Ignace-de-Loyola,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00821
+X2049393,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Zotique,"SAINT-FRANÇOIS, LAC",VAUD00002,,1.0,VAUD00180
+X0302016,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Irénée,FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00087
+90512179,rejet,ArcelorMittal Produits longs Canada s.e.n.c.,FLEUVE SAINT-LAURENT,MONT00002,,0.0,SLNO00562
+X0501637,rejet,Ouvrage municipal d'assainissement des eaux usées de Orford,AUX CERISES,SLSO01523,Étang Sayat-Noya,0.3,SLSO01526
+X0201770,rejet,Ouvrage municipal d'assainissement des eaux usées de Desbiens (Chambord),"SAINT-JEAN, LAC",SAGU00606,,0.2,SAGU00637
+X2048103,rejet,Ouvrage municipal d'assainissement des eaux usées de La Pocatière,FLEUVE SAINT-LAURENT,SLSO00002,,0.9,SLSO02788
+X2011592,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Jean-Port-Joli,FLEUVE SAINT-LAURENT,SLSO00002,,0.1,SLSO02773;SLSO02776
+X2008671,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Claude,SAINT-LAURENT,SLSO01384,,45.5,SLSO01286
+X2090012,rejet,Ouvrage municipal d'assainissement des eaux usées de Fassett,"OUTAOUAIS, RIVIÈRE DES",OUTV00431,Rivière Saumon,0.1,OUTV00390;OUTV00391;OUTV00392
+X0201754,rejet,Ouvrage municipal d'assainissement des eaux usées de Métabetchouan (Métabetchouan),"SAINT-JEAN, LAC",SAGU00606,,1.2,SAGU00636
+X2048375,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Luce,A LA LOUTRE,GASP03312,Fleuve Saint-Laurent,0.0,GASP03314
+X2002795,rejet,OMAEU Les Éboulements (Saint-Joseph-de-la-Rive),FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO00194
+X2049827,rejet,Ouvrage municipal d'assainissement des eaux usées de Trois-Rivières (Red Mill),FLEUVE SAINT-LAURENT,SLNO00002,,0.0,SLNO02926;SLSO00766;SLSO00767
+X2048334,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Flavie (Mont-Joli),FLEUVE SAINT-LAURENT,GASP00002,,0.9,GASP03306
+X2048111,rejet,Ouvrage municipal d'assainissement des eaux usées de Rimouski (Secteur des Berges),HATEE,GASP03575,Fleuve Saint-Laurent,0.0,GASP03577;GASP03578;GASP03580
+X2048656,rejet,Ouvrage municipal d'assainissement des eaux usées de Shawinigan-Sud,"SAINT-MAURICE, RIVIÈRE",SLNO00935,,0.5,SLNO00939
+X2074574,rejet,Ouvrage municipal d'assainissement des eaux usées de Petit-Saguenay,"PETIT SAGUENAY, RIVIÈRE",SAGU00002,,3.2,SAGU00012;SAGU00013;SAGU00014
+X2049440,rejet,Ouvrage municipal d'assainissement des eaux usées de Bécancour (Gentilly),FLEUVE SAINT-LAURENT,SLSO00002,,0.2,SLSO00723;SLSO00728;SLSO00732
+13426754,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Onésime-d'Ixworth,SAINT-JEAN,SLSO02788,Fleuve Saint-Laurent,0.0,SLSO02790
+X2049442,rejet,Ouvrage municipal d'assainissement des eaux usées de Bécancour (Précieux-Sang),BRAS OUEST DE LA RIVIÈRE GAGNON,SLSO00777,Rivière Bécancour,1.5,SLSO00929;SLSO00930
+X2048580,rejet,Ouvrage municipal d'assainissement des eaux usées de Québec (Est),FLEUVE SAINT-LAURENT,SLNO00002,,0.1,SLNO00340
+X2011998,rejet,Ouvrage municipal d'assainissement des eaux usées de Berthier-sur-Mer,FLEUVE SAINT-LAURENT,SLSO00002,,0.7,SLSO02564
+90256801,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Vallier,FLEUVE SAINT-LAURENT,SLSO00002,,0.0,SLSO02560;SLSO02561
+X2048692,rejet,Ouvrage municipal d'assainissement des eaux usées de La Pêche (Wakefield),"GATINEAU, RIVIÈRE",OUTV01199,Rivière la Pêche,0.2,OUTV01198
+X2048984,rejet,Ouvrage municipal d'assainissement des eaux usées de Berthierville,FLEUVE SAINT-LAURENT,SLNO00002,,1.2,SLNO00821;SLNO00841
+51474831,rejet,"PRODUITS SUNCOR ÉNERGIE, S.E.N.C.",FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01292;MONT01293;MONT01294
+X2048303,rejet,Ouvrage municipal d'assainissement des eaux usées de Péribonka,"PÉRIBONKA, RIVIÈRE",SAGU02019,Rivière Moreau,0.4,SAGU01948;SAGU01949;SAGU02018
+X2012039,rejet,Ouvrage municipal d'assainissement des eaux usées de Notre-Dame-des-Bois,"SAUMONS, RIVIÈRE AUX",SLSO01709,Rivière Chesham,0.2,SLSO01705
+X2049427,rejet,Ouvrage municipal d'assainissement des eaux usées de Verchères,FLEUVE SAINT-LAURENT,MONT00002,,1.3,MONT01285
+X2011445,rejet,Ouvrage municipal d'assainissement des eaux usées de L'Islet,FLEUVE SAINT-LAURENT,SLSO00002,,1.4,SLSO02747;SLSO02748;SLSO02749
+X2011907,rejet,Ouvrage municipal d'assainissement des eaux usées de Lotbinière,FLEUVE SAINT-LAURENT,SLSO00002,,0.1,SLNO00001;SLNO03346;SLSO00674
+X2049396,rejet,Ouvrage municipal d'assainissement des eaux usées de Sainte-Hélène-de-Bagot,CHIBOUET,MONT00044,Ruisseau Lapierre,0.1,MONT00043
+52674595,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Eustache,DES MILLE ILES,MONT00002,,14.5,OUTV03405;OUTV03406
+X2048117,rejet,Ouvrage municipal d'assainissement des eaux usées de Matane (Petit-Matane),FLEUVE SAINT-LAURENT,GASP00002,,0.5,GASP02838;GASP02839;GASP02844
+X2048664,rejet,Ouvrage municipal d'assainissement des eaux usées de Lac-des-Écorces,KIAMIKA,OUTV00957,Lac des Écorces,0.7,OUTV00958;OUTV00999
+X2049445,rejet,Ouvrage municipal d'assainissement des eaux usées de Bécancour (secteur Ouest),FLEUVE SAINT-LAURENT,SLSO00002,,0.6,SLNO02926;SLSO00766;SLSO00767
+X2049746,rejet,Ouvrage municipal d'assainissement des eaux usées de Longueuil,FLEUVE SAINT-LAURENT,MONT00002,,0.0,MONT01295
+X2129980,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Luc-de-Vincennes,CHAMPLAIN,SLNO00472,Rivière à la Fourche,0.2,SLNO00471
+X2066156,rejet,Ouvrage municipal d'assainissement des eaux usées de Taschereau,BELLEFEUILLE,LABI00177,,0.0,LABI00176
+X2108713,rejet,Ouvrage municipal d'assainissement des eaux usées de Landrienne,LANDRIENNE,ABIT01490,Rivière Peter-Brown,0.2,ABIT01489
+X2048120,rejet,Ouvrage municipal d'assainissement des eaux usées de Mont-Carmel,"DUFOUR, RIVIÈRE",GASP03916,Lac Saint-Pierre,0.2,GASP03915;SLSO02886
+X2048222,rejet,Ouvrage municipal d'assainissement des eaux usées de Saint-Mathieu-de-Rioux,DU SUD-OUEST,GASP03629,,0.1,GASP03626;GASP03627
+X2008647,rejet,Ouvrage municipal d'assainissement des eaux usées de Coaticook (Barnston),"NIGER, RIVIÈRE",SLSO02137,,0.3,SLSO02134
+X2125183,rejet,Ouvrage municipal d'assainissement des eaux usées de Cacouna,FLEUVE SAINT-LAURENT,GASP00002,,0.2,GASP03797
+90183617,rejet,Ouvrage municipal d'assainissement des eaux usées de Laval (Fabreville),DES MILLE ILES,MONT00002,,14.6,OUTV03405;OUTV03406
+X2049216,rejet,OMAEU de la Régie d'assainissement des eaux Terrebonne-Mascouche,DES MILLE ILES,SLNO00002,,7.6,OUTV03403
