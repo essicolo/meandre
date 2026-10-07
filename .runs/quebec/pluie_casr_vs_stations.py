@@ -78,6 +78,13 @@ def main(paires):
         print(f"{reg} {station} : {n_st} stations GHCN, {len(t)} couples station-mois, {A0}-{A1}")
         print("  rapport CaSR / station par mois (mediane), pluie mensuelle moyenne station et CaSR en mm :")
         print("  " + " ".join(f"{int(m):2d}:{r.rapport:.2f}({r.st:.0f}/{r.cs:.0f})" for m, r in par_mois.iterrows()))
+        # Par pays de la station (prefixe GHCN) et distance au noeud : un bassin frontalier
+        # compare des stations americaines de relief au noeud quebecois le plus proche.
+        t["pays"] = t.station.str[:2]
+        for pays, tp in t.groupby("pays"):
+            pm = tp.groupby("mois").rapport.median()
+            print(f"  {pays} ({tp.station.nunique()} stations, {len(tp)} couples) : "
+                  + " ".join(f"{int(m):2d}:{v:.2f}" for m, v in pm.items()))
         ete = t[t.mois.isin((6, 7, 8, 9))]; hiv = t[t.mois.isin((12, 1, 2, 3))]
         print(f"  juin-septembre {ete.rapport.median():.2f} | decembre-mars {hiv.rapport.median():.2f} | annee {t.rapport.median():.2f}")
         # Par annee : sommes CaSR et station sur les memes couples station-mois, annee entiere et
