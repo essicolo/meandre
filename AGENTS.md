@@ -19,23 +19,35 @@ Trois machines.
 - Ubuntu (`ssh essi@192.168.40.165`), carte graphique de 8 Go, code dans `~/meandre-claude` (copie par `scp` ou `tar`, pas un clone git), Python `~/Documents/git/meandre/.venv/bin/python`, données sous `~/meandre-data`. Scripts lancés par `nohup setsid bash /tmp/<script>.sh`, après `sed -i 's/\r$//'`. Ne jamais faire `pkill -f` avec un motif qui apparaît dans la ligne de commande ssh : cela coupe la session (mémoire `project_ubuntu_pkill_autodestruction`).
 - Narval (Alliance), compte `def-atlas01_gpu`, code cloné dans `~/meandre` (branche `requalification-masse`, `git pull` pour mettre à jour), données dans `/home/atlas01/projects/def-atlas01/atlas01/meandre/{donnees,plateformes,checkpoints-reference}`. Seule Essi peut s'y connecter (double authentification). Un seul lot y attend : les épreuves `4801184_[0-11]`, départ prévu le 7 octobre vers 15 h, fin dans la nuit. Le lot provincial y a été annulé : Ubuntu le fait.
 
-## 3. Ce qui tourne sur Ubuntu en ce moment
+## 3. Ce qui tourne sur Ubuntu en ce moment (état du 7 octobre, 14 h)
 
-Deux scripts enchaînés, journaux dans `~/meandre-data/carte-essai/` :
+Journaux dans `~/meandre-data/carte-essai/`. Les chaînes 1, 4 et 5 sont finies ; treize territoires sur quatorze ont leurs exports et sont sur la carte.
 
-- `/tmp/chaine_nuit.sh` (journal `chaine_nuit.log`) : Montérégie (finie 15 h 50), Saint-Laurent sud-ouest (échoué, projet PHYSITEL absent, repris plus bas), Saint-Laurent nord-ouest (en cours, fin vers 18 h 30), Saguenay.
-- `/tmp/chaine_nuit4.sh` (journal `chaine_nuit4.log`), démarre quand le premier écrit `fini` : Montérégie avec drainage agricole et tête du temps de transfert (étiquette `-corr1006-dt`, 5 à 6 heures), puis Gaspésie, Abitibi, Outaouais moyen, Côte-Nord B, C, D, A, E, Labrador, Saint-Laurent sud-ouest. Vaudreuil n'a aucune station et n'est pas entraîné.
+- `/tmp/chaine_nuit6.sh` (journal `chaine_nuit6.log`) : Saint-Laurent sud-ouest (`slso`, départ 12 h 08, sans MOD16 ni GRACE, sa base ne les porte pas : `ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0`), puis deux réentraînements de l'Outaouais, `-corr1006-sublim` (`ETL_SUBLIM=1`) et `-corr1006-gelsublim` (`ETL_SUBLIM=1 ETL_NAPPE_GEL=0.3`), chacun suivi d'une passe avant sur la dernière époque disponible (`passe_derniere.sh`, l'arrêt précoce peut s'arrêter avant la seizième).
+- `/tmp/sonde_mont_depart.sh` (journal `sonde_mont_depart.log`) : sonde par terme au pilote sur la Montérégie, au point de départ (init littérature) puis à l'époque 4, pour dire quel terme pousse la conductivité de surface K_sat_1 vers le haut (elle finit à 0,40 m/j en médiane et 0,90 sur les nœuds agricoles, départ 0,08 ; registre R326). Les sondes au point d'ARRIVÉE (banc, 030905, `sonde_mont.log`) ne la désignent dans aucune cible : à convergence le gradient est à l'équilibre, seul le départ dit la poussée.
 
 Chaque territoire : seize époques avec la recette `.runs/quebec/config/socle-2026-10-04.toml`, forçage `JOINT_FX_SUFFIX=-casr-brut`, un point de reprise par époque (`MEANDRE_SAUVER_EPOQUES=1`), puis une passe avant sur la dernière époque avec `ETL_DUMP_REACH` et `ETL_DUMP_NATUREL=1`, qui écrit `<reg>-q-journalier.npz` et `<reg>-sans-journalier.npz` dans `~/meandre-data/carte-essai/`. Le jugement se fait toujours sur la DERNIÈRE époque, jamais sur celle retenue par la validation (registre R282, R294).
 
-Résultats sur 2022-2024 à ce jour, dernière époque, code corrigé :
+Résultats sur 2022-2024, dernière époque, code corrigé, recette du socle (`indicateurs_stations.py`) :
 
 | territoire | stations | KGE médian | volume sim/obs | minimum annuel sur 7 jours sim/obs |
 | --- | --- | --- | --- | --- |
-| Outaouais | 16 | 0,796 | 1,16 | 0,85 |
-| Montérégie, recette du socle | 23 | 0,549 | 1,04 | 1,46 ; juillet et août à 0,45 et 0,52 |
+| Outaouais (outv) | 16 | 0,80 | 1,16 | 0,85 |
+| Montérégie (mont) | 23 | 0,55 | 1,04 | 1,46 ; juillet et août à 0,45 et 0,52 |
+| Montérégie, drainage et tête du temps de transfert (`-dt`) | 23 | 0,555 | | 1,63 ; le remède du banc ne se transfère pas (R323) |
+| Saint-Laurent nord-ouest (slno) | | 0,72 | 1,14 | 0,59 |
+| Saguenay (sagu) | | 0,75 | | |
+| Gaspésie (gasp) | | 0,77 | 1,00 | 0,81 ; neige deux fois NEISIM |
+| Abitibi (abit) | 3 | 0,79 | | |
+| Outaouais moyen (outm) | | 0,56 | 1,30 | |
+| Côte-Nord B, C, D, A, E | | 0,75 ; 0,77 ; 0,77 ; 0,70 ; 0,86 | cndc 1,30 | cndd une station régulée, cnde deux stations |
+| Labrador (labi) | 1 | 0,63 | | |
 
-La Montérégie au socle est mauvaise : temps de transfert figé à 24 h, crues d'orage manquées. Le remède établi au banc (drainage de Hooghoudt sur la couche 2, profil `.runs/quebec/config/sol-drain-appris.toml`, plus tête linéaire du temps de transfert, `ETL_ROUTAGE_TETE=1 ETL_ROUTAGE_SOUSPAS=24 MEANDRE_KMUSK=1,48,24`) n'avait jamais été porté au territoire : c'est la Montérégie `-dt` de la chaîne 4, et c'est la faute de méthode consignée dans `CLAUDE.md`.
+Diagnostics de la Montérégie (registre R325 à R328) : l'été à moitié vide vient des ÉVÉNEMENTS (écoulement de base simulé 1,00 fois l'observé, pointes 0,40) ; K_sat_1 est appris dix fois trop haut et plus encore sur les nœuds agricoles ; le ramener à un dixième en passe avant rend les pointes mais fait tomber la corrélation de 0,73 à 0,54 ; la texture PHYSITEL ne donne aucun contraste agricole contre forêt ; CaSR brut manque les gros jours de pluie d'été sur 70 % des jauges de la Montérégie (stations canadiennes seules : 0,83 à 0,89 du mesuré). Forçage et modèle y comptent chacun pour environ la moitié. Le prétraitement du forçage est hors de méandre et appartient à Essi.
+
+Prélèvements et rejets : le rattachement io-eau des sites aux tronçons est faux pour une part importante (107 sites à plus de 5 km de leur tronçon, 219 rattachés à un cours d'eau dont le nom diffère de celui déclaré ; listes dans `reports/diagnostics/`). Essi reprend le rattachement avec un autre agent ; TOUT devra être remodélisé ensuite. Jusque-là, les travaux portent sur le code et la physique, pas sur de nouveaux entraînements provinciaux.
+
+Suite de tests : 541 tests passent (7 octobre). Huit échecs qui n'apparaissaient qu'en suite complète venaient de trois modules posant la double précision sans la rendre ; `tests/conftest.py` rend le dtype par défaut après chaque test.
 
 ## 4. La prochaine étape exacte
 
