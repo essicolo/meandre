@@ -254,7 +254,7 @@ class SoilProcess:
             if frac is None:
                 raise KeyError(f"occupation « {cover} » absente du contexte du sol (fractions connues : "
                                f"{sorted(k[:-5] for k in ctx if k.endswith('_frac') and k != 'frost_frac')})")
-            q = q * torch.clamp(frac * float(self.params.get("share", 1.0)), 0.0, 1.0)
+            q = q * torch.clamp(frac * self.params.get("share", 1.0), 0.0, 1.0)   # `share` peut etre appris (tenseur)
         if self.ceiling is not None:
             if isinstance(self.ceiling, str):
                 raise RuntimeError(f"plafond « {self.ceiling} » non resolu : appeler "
