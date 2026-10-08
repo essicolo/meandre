@@ -1133,6 +1133,24 @@ if os.environ.get("ETL_LAKE_AREA", "1") == "1":
     set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
     _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
     print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
+# BORNES DE CONDUCTIVITE PAR TRONCON (2026-10-08, R349) : `[field.texture_bounds]` du TOML,
+# conductivite de texture SIIGSOL (repli PHYSITEL) par couche, bornes a `factor` autour ; le
+# champ ne peut plus apprendre les conductivites a l'envers de la pedologie. ETL_TEXTURE_BOUNDS
+# (0 ou facteur) surcharge le TOML.
+_tb = dict((cfg.get("field") or {}).get("texture_bounds") or {})
+if os.environ.get("ETL_TEXTURE_BOUNDS"):
+    _tb = {"enabled": float(os.environ["ETL_TEXTURE_BOUNDS"]) > 0, "factor": float(os.environ["ETL_TEXTURE_BOUNDS"]) or _tb.get("factor", 3.0)}
+if _tb.get("enabled", False):
+    from meandre.data.texture_bounds import texture_conductivity as _tcond, bounds_from_texture as _tbornes
+    from meandre.spatial.field_network import FIELD_BOUNDS as _FB
+    _tx = _tcond(_paths.data_path("quebec", f"{REG}.duckdb"), n_nodes, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", REG)
+    _fac = float(_tb.get("factor", 3.0))
+    for _c in [int(x) for x in _tb.get("layers", [1, 2, 3])]:
+        _nm = f"K_sat_{_c}"
+        _lo, _hi = _tbornes(_tx[_nm], _fac, _FB[_nm][0], _FB[_nm][1])
+        model.spatial_encoder.set_node_bounds(_nm, torch.tensor(_lo), torch.tensor(_hi))
+    _src = _tx["source"]
+    print(f"[etl] bornes de conductivite par troncon (facteur {_fac:g}) : siigsol {int((_src == 'siigsol').sum())}, physitel {int((_src == 'physitel').sum())}, aucune {int((_src == 'aucune').sum())} | K_sat_1 texture med {float(np.nanmedian(_tx['K_sat_1'])):.2f} m/j")
 if os.environ.get("ETL_PEDO", "0") == "1":
     # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
     # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete

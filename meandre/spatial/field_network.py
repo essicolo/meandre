@@ -535,6 +535,8 @@ class SpatialFieldNetwork(nn.Module):
 
         def inv_borne(nom, val):
             """Inverse de `borne` dans _apply_constraints : sortie brute qui rend `val`."""
+            if nom in (getattr(self, "node_bounds", None) or set()):
+                return 0.0   # bornes par troncon : le brut nul rend la valeur de texture
             lo, hi = B[nom][0], B[nom][1]
             if len(B[nom]) > 2 and B[nom][2] == "log":
                 llo, lhi = math.log(lo), math.log(hi)
@@ -806,6 +808,29 @@ class SpatialFieldNetwork(nn.Module):
         beta = 1.0 + 1.5 * torch.sigmoid(raw[:, 1] - math.log(2.0))
         return k_lake, beta
 
+    def set_node_bounds(self, nom: str, lo: Tensor, hi: Tensor) -> None:
+        """Bornes PAR TRONCON d'une sortie en log (conductivites), tirees de la pedologie.
+
+        Les bornes uniques (0,0003 a 55 m/j) laissaient le champ apprendre les conductivites a
+        l'envers de la texture : 0,43 m/j en surface sur l'argile de la Monteregie, 0,028 sur
+        le till sableux de l'Outaouais (R349). `lo` et `hi` sont des tenseurs (n_nodes,) en
+        unites de la sortie ; la valeur de texture est leur moyenne geometrique.
+        """
+        if nom not in FIELD_BOUNDS or len(FIELD_BOUNDS[nom]) < 3 or FIELD_BOUNDS[nom][2] != "log":
+            raise KeyError(f"bornes par troncon : sortie {nom} inconnue ou non logarithmique")
+        lo = torch.as_tensor(lo, dtype=torch.float32); hi = torch.as_tensor(hi, dtype=torch.float32)
+        if not bool((hi > lo).all()) or not bool((lo > 0).all()):
+            raise ValueError(f"bornes par troncon de {nom} : il faut 0 < lo < hi partout")
+        if getattr(self, "node_bounds", None) is None:
+            self.node_bounds = set()
+        dev = next(self.parameters()).device
+        # Tampons non persistants : relus par leur nom a chaque appel, pour suivre `.to(device)`.
+        for k, v in ((f"_nb_lo_{nom}", lo), (f"_nb_hi_{nom}", hi)):
+            if hasattr(self, k):
+                delattr(self, k)
+            self.register_buffer(k, v.clone().to(dev), persistent=False)
+        self.node_bounds.add(nom)
+
     def _apply_constraints(self, raw: Tensor) -> SpatialParams:
         """Map raw network outputs to physically plausible ranges.
 
@@ -824,8 +849,20 @@ class SpatialFieldNetwork(nn.Module):
 
         B = self.bounds
 
+        NB = getattr(self, "node_bounds", None) or set()
+
         def borne(nom, x):
-            """Sortie bornee doucement selon la table : lineaire, ou logarithmique si marquee."""
+            """Sortie bornee doucement selon la table : lineaire, ou logarithmique si marquee.
+
+            BORNES PAR TRONCON (2026-10-08, R349) : si `set_node_bounds` a pose des tenseurs pour
+            cette sortie, la sigmoide en log est centree sur leur moyenne geometrique (la valeur
+            de texture) et bornee par eux ; une sortie brute nulle rend la valeur de texture.
+            """
+            if nom in NB:
+                llo = torch.log(getattr(self, f"_nb_lo_{nom}")).to(x.device)
+                lhi = torch.log(getattr(self, f"_nb_hi_{nom}")).to(x.device)
+                a = _LOG_SLOPE / ((lhi - llo) * 0.25)
+                return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x))
             lo, hi = B[nom][0], B[nom][1]
             if len(B[nom]) > 2 and B[nom][2] == "log":
                 # Sigmoide en log : centre et pente au centre de l'ancienne loi exp(0,3 x + log c).
