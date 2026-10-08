@@ -2020,6 +2020,32 @@ if os.environ.get("ETL_BILAN", "0") == "1":
                 continue
             _f = lambda a: float(np.nanmean(a[_sel].sum(axis=0))) / _na
             print(f"        {_m:4d} {_f(_P_tot):7.0f} {_f(_etr):6.0f} {_f(_lat):7.0f} {_f(_dsw):8.0f} {_f(_dso):6.0f} {_f(_dgw):7.0f}")
+        # ETR PAR COUCHE et teneur en eau relative (2026-10-08) : d'ou l'evaporation d'ete tire-t-elle
+        # son eau, et la zone racinaire est-elle jamais limitee ? theta rapporte a la porosite, et
+        # position entre point de fletrissement (0) et capacite au champ (1).
+        _e123 = [getattr(_DIAG, f"etr{i}", None) for i in (1, 2, 3)]
+        if all(e is not None for e in _e123):
+            _e123 = [e.cpu().numpy() for e in _e123]
+            _th = [_DIAG.theta1.cpu().numpy(), _DIAG.theta2.cpu().numpy(), _DIAG.theta3.cpu().numpy()]
+            def _stv(k, defaut=None):
+                v = _st.get(k)
+                return _mmv(v) if v is not None else defaut
+            print("[etl] ETR PAR COUCHE (mm/mois) et teneur relative (theta/porosite ; (theta-pf)/(cc-pf)), juin a septembre :")
+            print("        mois  ETR1  ETR2  ETR3 | th1/por th2/por th3/por | dispo1 dispo2 dispo3")
+            for _m in (5, 6, 7, 8, 9):
+                _sel = _moisB == _m
+                _na = len(np.unique(_anB[_sel]))
+                if _na == 0:
+                    continue
+                _e = [float(np.nanmean(e[_sel].sum(axis=0))) / _na for e in _e123]
+                _r, _d = [], []
+                for i in (1, 2, 3):
+                    _por = _stv(f"thetas{i}")
+                    _cc, _pf = _stv(f"thetacc{i}" if i > 1 else "thetacc"), _stv(f"thetapf{i}" if i > 1 else "thetapf")
+                    _t = _th[i - 1][_sel].mean(axis=0)
+                    _r.append(float(np.nanmean(_t / _por)) if _por is not None else np.nan)
+                    _d.append(float(np.nanmean((_t - _pf) / np.clip(_cc - _pf, 1e-6, None))) if (_cc is not None and _pf is not None) else np.nan)
+                print(f"        {_m:4d} {_e[0]:5.0f} {_e[1]:5.0f} {_e[2]:5.0f} | {_r[0]:7.2f} {_r[1]:7.2f} {_r[2]:7.2f} | {_d[0]:6.2f} {_d[1]:6.2f} {_d[2]:6.2f}")
         _abs = abs(float(np.nanmean(_rel)))
         # LA FUITE SUIT-ELLE LES FRACTIONS D'OCCUPATION ? Prediction : prod_surf pondere
         # lruis par fsa, leau par fse (eau libre) et lprec par fsi (impermeable), avec
