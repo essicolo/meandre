@@ -2046,6 +2046,23 @@ if os.environ.get("ETL_BILAN", "0") == "1":
                     _r.append(float(np.nanmean(_t / _por)) if _por is not None else np.nan)
                     _d.append(float(np.nanmean((_t - _pf) / np.clip(_cc - _pf, 1e-6, None))) if (_cc is not None and _pf is not None) else np.nan)
                 print(f"        {_m:4d} {_e[0]:5.0f} {_e[1]:5.0f} {_e[2]:5.0f} | {_r[0]:7.2f} {_r[1]:7.2f} {_r[2]:7.2f} | {_d[0]:6.2f} {_d[1]:6.2f} {_d[2]:6.2f}")
+        # DEMANDE ET PARTAGE DE LA PRODUCTION (2026-10-08) : ETP de la formule en vigueur, et
+        # production de surface, hypodermique et de base, par mois. Dit si la demande d'ete
+        # est trop haute et d'ou vient (ou ne vient pas) l'eau des averses (R340).
+        _etp_d = getattr(_DIAG, "etp", None)
+        _ps, _ph, _pb = (getattr(_DIAG, k, None) for k in ("prod_surf", "prod_hypo", "prod_base"))
+        if _etp_d is not None and _ps is not None:
+            _etp_d, _ps, _ph, _pb = (x.cpu().numpy() for x in (_etp_d, _ps, _ph, _pb))
+            print("[etl] DEMANDE ET PRODUCTION PAR MOIS (mm/mois, moyenne du domaine) :")
+            print("        mois    ETP    ETR  ETR/ETP | surf  hypo  base")
+            for _m in range(1, 13):
+                _sel = _moisB == _m
+                _na = len(np.unique(_anB[_sel]))
+                if _na == 0:
+                    continue
+                _g = lambda a: float(np.nanmean(a[_sel].sum(axis=0))) / _na
+                _p, _e = _g(_etp_d), _g(_etr)
+                print(f"        {_m:4d} {_p:6.0f} {_e:6.0f} {_e / max(_p, 1e-6):8.2f} | {_g(_ps):4.0f} {_g(_ph):5.0f} {_g(_pb):5.0f}")
         _abs = abs(float(np.nanmean(_rel)))
         # LA FUITE SUIT-ELLE LES FRACTIONS D'OCCUPATION ? Prediction : prod_surf pondere
         # lruis par fsa, leau par fse (eau libre) et lprec par fsi (impermeable), avec
