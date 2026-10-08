@@ -75,7 +75,7 @@ env -u ETL_WARM_FROM "${COMMUN[@]}" ETL_EPOCHS=$EPOQUES ETL_TAG=$TAG MEANDRE_SAU
 # Jugement sur la DERNIERE epoque, jamais sur celle retenue par la validation. L'arret
 # anticipe (patience 8) peut s'arreter avant la seizieme : on prend la plus haute epoque
 # ecrite (2026-10-08 : trois taches de la Monteregie sur six ont echoue faute de cette ligne).
-DERNIER=$(ls .runs/quebec/checkpoints/best-${REG}-etl${TAG}-e*.pt | sed 's/.*-e\([0-9]*\)\.pt/ &/' | sort -n | tail -1 | cut -d" " -f2)
+DERNIER=$(ls .runs/quebec/checkpoints/best-${REG}-etl${TAG}-e*.pt | sed 's/.*-e\([0-9]*\)\.pt/\1 &/' | sort -n | tail -1 | cut -d" " -f2)
 echo "=== $REG $VAR graine $GRAINE : passe avant sur $DERNIER $(date +%T) ==="
 env "${COMMUN[@]}" ETL_EPOCHS=0 ETL_TAG=$TAG-eval ETL_WARM_FROM="$DERNIER" \
     ETL_DUMP_Q="$SORTIE/q-$REG$TAG.npz" \
