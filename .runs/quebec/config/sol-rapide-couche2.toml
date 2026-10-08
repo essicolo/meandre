@@ -1,0 +1,29 @@
+# EPREUVE (2026-10-08, R341-R342) : l'eau gravitaire de la deuxieme couche sort en UN jour au
+# lieu de la sortie lineaire lente du socle. Chemin rapide d'ete pour l'eau des averses, qui
+# entrait dans une couche humide et y etait evaporee. Reste du profil identique au socle.
+[soil]
+layers = 3
+
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 1.0
+exponent = 1.0
+smooth_mm = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+exponent = 2.0
+scale_mm = 5.0
+max_ratio = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = 2.0
