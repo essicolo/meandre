@@ -1,0 +1,37 @@
+# EPREUVE (2026-10-08, R343-R346) : chemin d'evenement propre aux terres cultivees. L'eau
+# gravitaire de la deuxieme couche sort en un jour sur la fraction agricole du troncon
+# (drains, fosses), la sortie lineaire du socle reste pour le reste. Profil du socle sinon.
+[soil]
+layers = 3
+
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 1.0
+exponent = 1.0
+smooth_mm = 2.0
+cover = "agri"
+share = 0.5
+learn = ["share"]
+
+[[soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+exponent = 2.0
+scale_mm = 5.0
+max_ratio = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = 2.0
