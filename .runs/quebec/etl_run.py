@@ -1998,6 +1998,28 @@ if os.environ.get("ETL_BILAN", "0") == "1":
               f"({100*np.nanmean(_rel):+.2f} % de la precipitation)")
         print(f"        par noeud : q10 {100*np.nanpercentile(_rel,10):+.2f} % | "
               f"med {100*np.nanmedian(_rel):+.2f} % | q90 {100*np.nanpercentile(_rel,90):+.2f} %")
+        # BILAN MENSUEL (2026-10-08) : ou va la pluie de chaque mois, moyenne du domaine, en
+        # mm par mois et par an. Pose pour la Monteregie : l'ete simule a moitie vide avec un
+        # volume annuel juste, il faut savoir quel reservoir retient l'eau de juillet (R329).
+        import pandas as _pdb2
+        _moisB = _pdb2.DatetimeIndex(times).month.to_numpy()
+        _anB = _pdb2.DatetimeIndex(times).year.to_numpy()
+        _swe_b = _DIAG.swe.cpu().numpy()
+        _sol_b = 1000.0 * (_DIAG.theta1.cpu().numpy() * _z1 + _DIAG.theta2.cpu().numpy() * _z2 + _DIAG.theta3.cpu().numpy() * _z3)
+        _gw_b = _DIAG.s_gw.cpu().numpy()
+        def _dmois(x):
+            d = np.diff(x, axis=0, prepend=x[0:1])
+            return d
+        _dsw, _dso, _dgw = _dmois(_swe_b), _dmois(_sol_b), _dmois(_gw_b)
+        print("[etl] BILAN MENSUEL de la colonne, moyenne du domaine, mm par mois (moyenne des annees) :")
+        print("        mois   pluie    ETR   prod.   dNeige   dSol  dNappe")
+        for _m in range(1, 13):
+            _sel = _moisB == _m
+            _na = len(np.unique(_anB[_sel]))
+            if _na == 0:
+                continue
+            _f = lambda a: float(np.nanmean(a[_sel].sum(axis=0))) / _na
+            print(f"        {_m:4d} {_f(_P_tot):7.0f} {_f(_etr):6.0f} {_f(_lat):7.0f} {_f(_dsw):8.0f} {_f(_dso):6.0f} {_f(_dgw):7.0f}")
         _abs = abs(float(np.nanmean(_rel)))
         # LA FUITE SUIT-ELLE LES FRACTIONS D'OCCUPATION ? Prediction : prod_surf pondere
         # lruis par fsa, leau par fse (eau libre) et lprec par fsi (impermeable), avec
