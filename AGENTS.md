@@ -50,17 +50,17 @@ Prélèvements et rejets : le rattachement io-eau des sites aux tronçons est fa
 
 Suite de tests : 541 tests passent (7 octobre). Huit échecs qui n'apparaissaient qu'en suite complète venaient de trois modules posant la double précision sans la rendre ; `tests/conftest.py` rend le dtype par défaut après chaque test.
 
-## 4. La prochaine étape exacte
+## 4. La prochaine étape exacte (révisée le 8 octobre, 11 h 45)
 
-1. Quand un territoire écrit `=== <reg> fini` dans son journal, rapatrier ses deux fichiers sur le poste :
-   `scp essi@192.168.40.165:meandre-data/carte-essai/<reg>-q-journalier.npz essi@192.168.40.165:meandre-data/carte-essai/<reg>-sans-journalier.npz D:/meandre-data/carte-essai/`
-   (pour la Montérégie corrigée, les fichiers s'appellent `mont-corr1006-dt-*` ; les renommer en `mont-*` à la place des actuels si son KGE et son étiage sont meilleurs, en gardant les anciens dans `D:/meandre-data/carte-essai/ancien/`).
-2. Reconstruire la carte : `PYTHONIOENCODING=utf-8 MEANDRE_CARTE_DUMPS=D:/meandre-data/carte-essai uv run --offline python .runs/quebec/carte_reconstruction.py`. Le script prend tous les territoires dont les deux fichiers existent et écrit dans le dépôt feuillage : `data/meandre/reconstruction-troncons.geojson`, `data/meandre/prelevements-rejets.geojson`, `data/meandre/debits.zarr` (ignoré par git), `config-meandre-reconstruction.json`, `config-meandre-prelevements.json`.
-3. Vérifier à l'écran : un serveur `uv run --offline python -m http.server 8765 --directory C:/Users/parse01/documents-locaux/GitHub/feuillage` tourne en tâche de fond depuis cette session (le relancer s'il est mort), carte à `http://localhost:8765/index.html?config=config-meandre-reconstruction.json`. Scripts de capture Playwright dans le dossier de travail de la session : `verif_deux.py`, `verif_clic2.py` (`uv run --offline --no-project --with playwright python ...`, Edge via `channel="msedge"`).
-4. Consigner dans feuillage (`git add` des quatre fichiers ci-dessus, jamais le zarr, jamais de `push`) et donner à Essi le tableau KGE / volume / étiage du territoire, calculé par `etiage_stations.py <q-<reg>-corr1006.npz>` (dossier de travail de la session) ou par la ligne `HELD-OUT` du journal.
-5. Mercredi 8 au soir, province complète : refaire la carte, puis écrire une note d'état dans `reports/`.
+La carte provinciale est faite (quatorze territoires). Le rattachement io-eau est en reprise par Essi ; tout sera remodélisé ensuite. D'ici là, pas de nouvel entraînement provincial. Le diagnostic du 8 octobre (registre R335 à R338) fixe le programme :
 
-Indicateurs d'étiage à juger d'abord (objectif d'Essi : les étiages, pour la naturalisation et les prélèvements) : minimum annuel du débit moyen sur 7 jours, jours sous le Q90 observé, volume d'août-septembre ; le KGE en dernier.
+1. Deux familles de défaut, lues sur la table provinciale (`saisons_stations.py` sur les exports `q-<reg>-corr1006.npz`, `table_bilan_province.py` sur les bilans mensuels `ETL_BILAN=1`) : au NORD un excès d'hiver (1,16 à 1,64 de décembre à mars), au SUD agricole un été vide (0,51 à 0,77) avec l'évaporation estivale la plus haute (83 à 121 mm par mois). La Montérégie est l'extrême du sud, pas un cas à part.
+2. Nord : éprouver la porte de gel de la nappe SANS sublimation (`ETL_NAPPE_GEL=0.3`), deux graines, Outaouais puis Abitibi et Labrador en passe avant ; la sublimation seule est réfutée (R332).
+3. Sud : le niveau d'évaporation estivale n'est ancré par rien (MOD16 centré) ; Hydrotel y calibre 0,40 fois Linacre (R337). Chercher l'ancrage non circulaire (bilan d'eau à long terme des bassins jaugés) et le lire d'abord en passe avant sur Montérégie, Saint-Laurent sud-ouest, Gaspésie. Réduire K_c seul déborde ailleurs (R336) : ce n'est pas la solution.
+4. Avant toute ronde : GRACE pour le Saint-Laurent sud-ouest (jeton Earthdata d'Essi à renouveler, puis `python .runs/quebec/ingest_grace_region.py SLSO`, copier la base sur Ubuntu) ; l'Outaouais moyen n'a pas GRACE non plus (vérifier sa base).
+5. Ne JAMAIS lire la ligne « simule/observe par mois » du pilote pour un territoire à observé d'hiver nul : c'est un rapport de sommes (1e12 en Abitibi et sur la Côte-Nord). La médiane des stations la remplace.
+
+Verdicts réfutés à ne pas relancer : chemin rapide de surface et hortonien sous-journalier (R330), attributs de dépôts SIGEOM (R334), sublimation comme remède au volume (R332), drainage et tête du temps de transfert portés à la Montérégie (R323).
 
 ## 5. Ce qui a été fait depuis le 5 octobre, et les fichiers touchés
 
