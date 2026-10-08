@@ -243,6 +243,18 @@ class SoilProcess:
         f = self.params.get("frost_factor")
         if f is not None and ctx.get("frost_frac") is not None:
             q = q * (1.0 - (1.0 - f) * ctx["frost_frac"])
+        # FRACTION D'OCCUPATION (2026-10-08, R346) : `cover = "agri"` restreint le flux à la part
+        # du tronçon portant cette occupation, multipliée par `share` (1 par défaut). Un chemin
+        # d'événement propre aux terres cultivées drainées se déclare ainsi sans borner le flux
+        # par la conductivité apprise, ce que fait DRAIN_HOOGHOUDT. Le contexte expose
+        # aujourd'hui `agri_frac` ; une autre occupation demande sa fraction dans le contexte.
+        cover = self.params.get("cover")
+        if cover is not None:
+            frac = ctx.get(f"{cover}_frac")
+            if frac is None:
+                raise KeyError(f"occupation « {cover} » absente du contexte du sol (fractions connues : "
+                               f"{sorted(k[:-5] for k in ctx if k.endswith('_frac') and k != 'frost_frac')})")
+            q = q * torch.clamp(frac * float(self.params.get("share", 1.0)), 0.0, 1.0)
         if self.ceiling is not None:
             if isinstance(self.ceiling, str):
                 raise RuntimeError(f"plafond « {self.ceiling} » non resolu : appeler "
