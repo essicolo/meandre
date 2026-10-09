@@ -50,17 +50,17 @@ Prélèvements et rejets : le rattachement io-eau des sites aux tronçons est fa
 
 Suite de tests : 541 tests passent (7 octobre). Huit échecs qui n'apparaissaient qu'en suite complète venaient de trois modules posant la double précision sans la rendre ; `tests/conftest.py` rend le dtype par défaut après chaque test.
 
-## 4. La prochaine étape exacte (révisée le 8 octobre, 11 h 45)
+## 4. La prochaine étape exacte (révisée le 9 octobre, 1 h)
 
-La carte provinciale est faite (quatorze territoires). Le rattachement io-eau est en reprise par Essi ; tout sera remodélisé ensuite. D'ici là, pas de nouvel entraînement provincial. Le diagnostic du 8 octobre (registre R335 à R338) fixe le programme :
+Rien ne tourne sur aucune machine. La carte provinciale est faite ; le nouveau rattachement io-eau (8 octobre) est ingéré dans les quinze bases et copié sur Ubuntu ; GRACE manque encore au Saint-Laurent sud-ouest et à l'Outaouais moyen (jeton Earthdata d'Essi à renouveler, puis `ingest_grace_region.py`).
 
-1. Deux familles de défaut, lues sur la table provinciale (`saisons_stations.py` sur les exports `q-<reg>-corr1006.npz`, `table_bilan_province.py` sur les bilans mensuels `ETL_BILAN=1`) : au NORD un excès d'hiver (1,16 à 1,64 de décembre à mars), au SUD agricole un été vide (0,51 à 0,77) avec l'évaporation estivale la plus haute (83 à 121 mm par mois). La Montérégie est l'extrême du sud, pas un cas à part.
-2. Nord : éprouver la porte de gel de la nappe SANS sublimation (`ETL_NAPPE_GEL=0.3`), deux graines, Outaouais puis Abitibi et Labrador en passe avant ; la sublimation seule est réfutée (R332).
-3. Sud : le niveau d'évaporation estivale n'est ancré par rien (MOD16 centré) ; Hydrotel y calibre 0,40 fois Linacre (R337). Chercher l'ancrage non circulaire (bilan d'eau à long terme des bassins jaugés) et le lire d'abord en passe avant sur Montérégie, Saint-Laurent sud-ouest, Gaspésie. Réduire K_c seul déborde ailleurs (R336) : ce n'est pas la solution.
-4. Avant toute ronde : GRACE pour le Saint-Laurent sud-ouest (jeton Earthdata d'Essi à renouveler, puis `python .runs/quebec/ingest_grace_region.py SLSO`, copier la base sur Ubuntu) ; l'Outaouais moyen n'a pas GRACE non plus (vérifier sa base).
-5. Ne JAMAIS lire la ligne « simule/observe par mois » du pilote pour un territoire à observé d'hiver nul : c'est un rapport de sommes (1e12 en Abitibi et sur la Côte-Nord). La médiane des stations la remplace.
+Journée du 8 octobre, Montérégie (registre R335 à R351), en une ligne : l'été vide n'est ni le forçage, ni la demande, ni la conductivité, ni les drains, ni les puits ; la colonne évapore la pluie d'été à la demande parce que le volume d'entraînement et l'amplitude de MOD16 l'y poussent et que rien dans la perte ne demande les crues d'orage ; au pas journalier le KGE y plafonne à 0,7 (R344).
 
-Verdicts réfutés à ne pas relancer : chemin rapide de surface et hortonien sous-journalier (R330), attributs de dépôts SIGEOM (R334), sublimation comme remède au volume (R332), drainage et tête du temps de transfert portés à la Montérégie (R323).
+Ce qui est acquis et à garder : bornes de conductivité par tronçon tirées de SIIGSOL (`[field.texture_bounds]`, recette `socle-2026-10-08.toml`) ; processus déclaré restreint à une fraction d'occupation (`cover`, `share`) ; bilans mensuels, ETR par couche, demande et partage de production sous `ETL_BILAN=1` ; `saisons_stations.py`, `table_bilan_province.py`, `ete_hydrotel_vs_meandre.py`, `sensibilite_des_observables.py` (existant).
+
+À décider avec Essi avant tout lancement : (1) une observation d'évaporation d'été plus juste que MOD16 pour le sud agricole (MOD16 est 30 % trop haut sur la Châteauguay) ; (2) un terme de perte qui voie les événements d'été sans payer le retard d'un jour ; (3) la ronde provinciale sur la recette du 8 octobre (bornes de texture) contre celle du 4 octobre, à deux graines, nouveaux prélèvements.
+
+Réfuté, à ne pas relancer : hortonien sous-journalier (R330), attributs de dépôts (R334), sublimation seule (R332), drainage et tête du temps de transfert portés à la Montérégie (R323), K_c réduit (R336), formule de demande (R341), drains de Hooghoudt (R342, R346), vidange rapide de la couche 2 toute occupation (R343-R345), puits comme garde-fou de la conductivité (R350).
 
 ## 5. Ce qui a été fait depuis le 5 octobre, et les fichiers touchés
 
