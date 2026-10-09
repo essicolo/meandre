@@ -1460,6 +1460,27 @@ class Trainer:
                     _hist_o.append(q_obs_chunk.detach())
                     _hist_s.append(Q_chunk_loss[:, data.station_mask].detach())
 
+                # NIVEAU ANNUEL DE L'ET (2026-10-09, R360). Le terme MOD16 centre ne voit que la
+                # forme ; rien n'ancrait le niveau, et le modele evapore 412 mm/an sur les bassins
+                # jauges de l'Outaouais contre 550 d'ET implicite (pluie moins debit) et 502 a 540
+                # pour MOD16, d'ou un exces de volume de 6 a 17 %. Ici : rapport, par noeud, de
+                # l'ET simulee moyenne de l'epoque precedente a la moyenne MOD16 de la periode
+                # d'entrainement ; son ecart a 1, en forme absolue (premier ordre au-dela de 5 %),
+                # pousse l'ET du bloc vers le niveau observe. MEANDRE_W_ET_NIVEAU (poids, defaut 0).
+                _w_niv = float(os.environ.get("MEANDRE_W_ET_NIVEAU", "0") or 0.0)
+                L_et_niv = None
+                if (_w_niv > 0 and _need_et and getattr(self, "_et_sim_base", None) is not None
+                        and getattr(self, "_et_obs_base", None) is not None):
+                    _raw_et = _diag_chunk.etr[burnin:]
+                    _bo = torch.nan_to_num(self._et_obs_base.to(_raw_et.device), nan=0.0)
+                    _ok_n = _bo > 0.05
+                    _r_n = (self._et_sim_base.to(_raw_et.device) / _bo.clamp(min=0.05)).detach()
+                    _coef = torch.clamp((_r_n - 1.0) / 0.05, -1.0, 1.0)
+                    L_et_niv = (_coef * _raw_et.mean(dim=0) / _bo.clamp(min=0.05))[_ok_n].mean()
+                    self.loss_fn.w_et_niveau = _w_niv
+                    loss_chunk = loss_chunk + _w_niv * L_et_niv
+                    all_components["et_niveau"] = all_components.get("et_niveau", 0.0) + float(((_r_n - 1.0).abs())[_ok_n].mean()) * _part_bloc
+
                 # ── NIVEAUX DE NAPPE MESURES : contrainte de FORME ──────────
                 # Anomalies REDUITES, centrees et normalisees DANS LE BLOC, donc compatible
                 # avec l'accumulation par blocs sans calendrier a transporter. La serie est
@@ -2026,7 +2047,8 @@ class Trainer:
                 for _nom, _var in (("prior", locals().get("prior_loss")),
                                    ("tws", locals().get("L_tws")),
                                    ("tws_clim", locals().get("L_tws_clim")),
-                                   ("nappe", locals().get("L_nappe"))):
+                                   ("nappe", locals().get("L_nappe")),
+                                   ("et_niveau", locals().get("L_et_niv"))):
                     if torch.is_tensor(_var) and _var.requires_grad:
                         _termes[_nom] = _var
                 _noms_m = list(self._sonde_mult)
