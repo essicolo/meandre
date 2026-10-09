@@ -50,17 +50,15 @@ Prélèvements et rejets : le rattachement io-eau des sites aux tronçons est fa
 
 Suite de tests : 541 tests passent (7 octobre). Huit échecs qui n'apparaissaient qu'en suite complète venaient de trois modules posant la double précision sans la rendre ; `tests/conftest.py` rend le dtype par défaut après chaque test.
 
-## 4. La prochaine étape exacte (révisée le 9 octobre, 1 h)
+## 4. La prochaine étape exacte (révisée le 9 octobre, 14 h)
 
-Rien ne tourne sur aucune machine. La carte provinciale est faite ; le nouveau rattachement io-eau (8 octobre) est ingéré dans les quinze bases et copié sur Ubuntu ; GRACE manque encore au Saint-Laurent sud-ouest et à l'Outaouais moyen (jeton Earthdata d'Essi à renouveler, puis `ingest_grace_region.py`).
+LE DÉFAUT DE LA MONTÉRÉGIE ÉTAIT LA FENÊTRE D'ÉVALUATION (registre R355 à R359). Hors 2022-2024 la Montérégie se comporte comme l'Outaouais (volume 1,06 à 1,11, été médian 0,99 sur 25 ans) ; 2022-2024 contient les deux pires étés des 25 ans (orages de juillet 2023 et d'août 2024, que CaSR sous-estime). Réseau, cartes physiques, évapotranspiration (SSEBop et MOD16 concordent) et bilan annuel des bassins sont sains. Ne plus chercher de défaut de colonne propre à la Montérégie.
 
-Journée du 8 octobre, Montérégie (registre R335 à R351), en une ligne : l'été vide n'est ni le forçage, ni la demande, ni la conductivité, ni les drains, ni les puits ; la colonne évapore la pluie d'été à la demande parce que le volume d'entraînement et l'amplitude de MOD16 l'y poussent et que rien dans la perte ne demande les crues d'orage ; au pas journalier le KGE y plafonne à 0,7 (R344).
+Fait le 9 octobre : périodes déclarées dans le TOML (`[period]`) et KGE par année dans l'évaluation ; la recette `socle-2026-10-08.toml` évalue sur 2019-2024 (entraînement 2000-2015, validation 2016-2018) et porte les bornes de conductivité SIIGSOL (`ETL_TEXTURE_BOUNDS=0` pour le témoin). Téléchargés : SSEBop v6.1 mensuel 2012-2026 (`D:/meandre-data/ssebop/v61`), humidité du sol C3S mensuelle 2005-2024 (`D:/meandre-data/esa_cci_sm/mensuel`). Outils : `audit_reseau.py`, `fermeture_bassins.py`, `et_sources_comparees.py`, `stations_contrastees.py`, `saisons_stations.py`.
 
-Ce qui est acquis et à garder : bornes de conductivité par tronçon tirées de SIIGSOL (`[field.texture_bounds]`, recette `socle-2026-10-08.toml`) ; processus déclaré restreint à une fraction d'occupation (`cover`, `share`) ; bilans mensuels, ETR par couche, demande et partage de production sous `ETL_BILAN=1` ; `saisons_stations.py`, `table_bilan_province.py`, `ete_hydrotel_vs_meandre.py`, `sensibilite_des_observables.py` (existant).
+Prochain pas, à décider avec Essi : la ronde de remodélisation sur la recette du 8 octobre (nouveaux prélèvements, évaluation 2019-2024), témoin contre bornes de texture, avec ou sans amplitude saisonnière de fonte (R356), deux graines, GPU d'Ubuntu et du poste. Défauts réels communs à traiter ensuite : volume en excès de 6 à 17 %, erreur interannuelle d'été là où il n'y a pas de lacs.
 
-À décider avec Essi avant tout lancement : (1) une observation d'évaporation d'été plus juste que MOD16 pour le sud agricole (MOD16 est 30 % trop haut sur la Châteauguay) ; (2) un terme de perte qui voie les événements d'été sans payer le retard d'un jour ; (3) la ronde provinciale sur la recette du 8 octobre (bornes de texture) contre celle du 4 octobre, à deux graines, nouveaux prélèvements.
-
-Réfuté, à ne pas relancer : hortonien sous-journalier (R330), attributs de dépôts (R334), sublimation seule (R332), drainage et tête du temps de transfert portés à la Montérégie (R323), K_c réduit (R336), formule de demande (R341), drains de Hooghoudt (R342, R346), vidange rapide de la couche 2 toute occupation (R343-R345), puits comme garde-fou de la conductivité (R350).
+Réfuté, à ne pas relancer : hortonien sous-journalier (R330), attributs de dépôts (R334), sublimation seule (R332), K_c réduit (R336), formule de demande (R341), drains de Hooghoudt (R342, R346), vidange rapide de la couche 2 (R343-R345), puits comme garde-fou de la conductivité (R350), excès de printemps (R353), prélèvements déclarés comme cause de l'étiage (R354).
 
 ## 5. Ce qui a été fait depuis le 5 octobre, et les fichiers touchés
 
