@@ -75,6 +75,17 @@ cfg = tomllib.load(open(BASE_CFG, "rb"))
 # La recette du fichier est posee AVANT que le pilote ne lise quoi que ce soit. Ordre de
 # priorite : variable d'environnement, puis fichier, puis defaut du code.
 _posees = _appliquer_recette(cfg.get("recette"))
+# PÉRIODES DÉCLARÉES (2026-10-09, R355) : `[period]` fixe l'entraînement, la validation et
+# l'évaluation ; une variable d'environnement posée prime, comme pour [recette]. Motif : la
+# fenêtre 2022-2024 contient les deux pires étés des vingt-cinq ans en Montérégie ; juger une
+# variante sur elle seule, c'est la juger sur deux orages.
+_per = cfg.get("period") or {}
+if _per:
+    if "train_end" in _per and "JOINT_SPLIT" not in os.environ:
+        os.environ["JOINT_SPLIT"] = f"{_per['train_end']},{_per['val_start']},{_per['val_end']}"
+    if "eval_start" in _per and "ETL_HELDOUT" not in os.environ:
+        os.environ["ETL_HELDOUT"] = f"{_per['eval_start']},{_per['eval_end']}"
+    print(f"[etl] periodes declarees : decoupage {os.environ.get('JOINT_SPLIT', 'standard')} | evaluation {os.environ.get('ETL_HELDOUT', '2022-01-01,2024-12-31')}")
 if _posees:
     print(f"[recette] {os.path.basename(BASE_CFG)} : {len(_posees)} reglage(s) pose(s) "
           f"depuis le fichier : {', '.join(_posees)}")
@@ -1586,7 +1597,26 @@ for s in range(Qs.shape[1]):
     if v.sum() < 60: continue
     ks.append(float(kge_fn(qo_test[v, s], Qs[v, s])))
 ks = np.array(ks)
-print(f"\n[etl] HELD-OUT 2022-2024 {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
+print(f"\n[etl] HELD-OUT {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
+# PAR ANNÉE DE LA FENÊTRE (2026-10-09, R355) : KGE médian des stations et rapport simulé sur
+# observé de juillet-août, année par année, pour qu'un verdict ne repose pas sur un été.
+import pandas as _pdho
+_idx_ho = _pdho.DatetimeIndex(np.asarray(times)[np.asarray(sl)])
+_ann, _mois_ho = _idx_ho.year.to_numpy(), _idx_ho.month.to_numpy()
+_lig = []
+for _a in sorted(set(_ann)):
+    _ka, _ea = [], []
+    for s in range(Qs.shape[1]):
+        _ok = ~torch.isnan(qo_test[:, s]) & ~torch.isnan(Qs[:, s])
+        _m = torch.tensor(_ann == _a) & _ok
+        if _m.sum() >= 120:
+            _ka.append(float(kge_fn(qo_test[_m, s], Qs[_m, s])))
+        _me = torch.tensor((_ann == _a) & np.isin(_mois_ho, (7, 8))) & _ok
+        if _me.sum() >= 40 and float(qo_test[_me, s].mean()) > 0:
+            _ea.append(float(Qs[_me, s].mean() / qo_test[_me, s].mean()))
+    if _ka:
+        _lig.append(f"{_a} KGE {np.median(_ka):.3f} ete {np.median(_ea) if _ea else float('nan'):.2f}")
+print(f"[etl] PAR ANNEE {REG} (mediane des stations ; ete = juillet-aout sim/obs) : " + " | ".join(_lig))
 
 # FORME DE L'HYDROGRAMME, A COTE DU KGE (Essi, 2026-09-05 : « un modele hydrologique
 # incapable de modeliser l'hydrologie a une seule destination : la poubelle »). La flotte

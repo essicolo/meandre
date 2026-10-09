@@ -83,12 +83,18 @@ DATE_START, DATE_END = "2000-01-01", "2024-12-31"
 # anodin : c'est exactement le régime où méandre est le plus faible (excès d'été de
 # 25-40 % contre Hydrotel). Pouvoir déplacer les trois fenêtres est la condition pour
 # vérifier ce que le tenu de côté doit à la période plutôt qu'au modèle.
-_SPLIT = os.environ.get("JOINT_SPLIT")
-if _SPLIT:
-    TRAIN_END, VAL_START, VAL_END = (x.strip() for x in _SPLIT.split(","))
-    print(f"[joint] découpage NON STANDARD : train -> {TRAIN_END} | val {VAL_START}..{VAL_END}")
-else:
-    TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
+# Le découpage est lu À L'APPEL de load_region et non à l'import (2026-10-09) : le pilote importe
+# ce module avant d'appliquer la section [recette] du TOML, si bien qu'un JOINT_SPLIT déclaré
+# dans un fichier était ignoré sans bruit. La section [period] du TOML le pose aussi.
+TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
+
+
+def decoupage():
+    """(fin d'entraînement, début et fin de validation) en vigueur, JOINT_SPLIT d'abord."""
+    _split = os.environ.get("JOINT_SPLIT")
+    if _split:
+        return tuple(x.strip() for x in _split.split(","))
+    return TRAIN_END, VAL_START, VAL_END
 
 FORCINGS = {
     "slso": f"{_mpaths.DATA_ROOT}/slso/forcing-casr-corr.nc",
@@ -283,8 +289,11 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         i0 = int(np.searchsorted(times.values, np.datetime64(d0)))
         i1 = int(np.searchsorted(times.values, np.datetime64(d1))) + 1
         return slice(i0, i1)
-    train_sl = sl(DATE_START, TRAIN_END)
-    val_sl = sl(VAL_START, VAL_END)
+    _te, _vs, _ve = decoupage()
+    if (_te, _vs, _ve) != (TRAIN_END, VAL_START, VAL_END):
+        print(f"[joint] découpage NON STANDARD : train -> {_te} | val {_vs}..{_ve}")
+    train_sl = sl(DATE_START, _te)
+    val_sl = sl(_vs, _ve)
 
     # loss régionale : poids partagés, stats stations locales
     station_var = torch.ones(n_stations, dtype=torch.float32, device=device)
