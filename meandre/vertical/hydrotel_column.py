@@ -384,6 +384,12 @@ class HydrotelColumn(nn.Module):
                 se_c = se_f = se_d = torch.zeros_like(like)
             tgeo = torch.full_like(like, 0.5); dmax = torch.full_like(like, 466.0)
             tass = torch.full_like(like, 0.1)
+        # FONTE PAR LA CHALEUR DU SOL (2026-10-09, opt-in) : le calage d'Hydrotel pose 0,5 mm/j
+        # constants tout l'hiver ; SNOW-17 (Anderson 2006) place la fonte journaliere au sol
+        # entre 0 et 0,3 mm/j. None = clone fidele.
+        _gm = getattr(self, "ground_melt_mm_per_day", None)
+        if _gm is not None:
+            tgeo = torch.full_like(like, float(_gm))
         p_snow = dict(lat=lat, ce1=ce1, ce0=ce0,
                       pct_conifers=pct_conif, pct_feuillus=pct_feu,
                       pct_autres=torch.clamp(1.0 - pct_conif - pct_feu, 0.0, 1.0),

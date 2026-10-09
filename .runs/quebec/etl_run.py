@@ -631,6 +631,12 @@ if "ETL_SEUIL_TWB" in os.environ:
     model.vertical_column.t_neige_seuil = float(os.environ["ETL_SEUIL_TWB"])
     print(f"[etl] partage pluie/neige au BULBE HUMIDE, seuil Twb "
           f"{float(os.environ['ETL_SEUIL_TWB']):+.2f} degres (Stull 2011, e_a du forcage)")
+if "ETL_FONTE_SOL" in os.environ:
+    # Fonte journaliere par la chaleur du sol (mm/j), a la place du taux cale d'Hydrotel.
+    model.vertical_column.ground_melt_mm_per_day = float(os.environ["ETL_FONTE_SOL"])
+    _tg = getattr(model.vertical_column, "melt_taux_geo", None)
+    print(f"[etl] fonte au sol imposee : {os.environ['ETL_FONTE_SOL']} mm/j"
+          + (f" (calage : moyenne {float(_tg.mean()):.2f} mm/j)" if _tg is not None else ""))
 if "ETL_MELT_SAISON" in os.environ:
     # Modulation saisonniere du facteur de fonte (R32). Un degre-jour constant absorbe
     # le cycle annuel de radiation ; cale sur la crue, il fond trop en novembre-decembre
@@ -1162,6 +1168,33 @@ if _tb.get("enabled", False):
         model.spatial_encoder.set_node_bounds(_nm, torch.tensor(_lo), torch.tensor(_hi))
     _src = _tx["source"]
     print(f"[etl] bornes de conductivite par troncon (facteur {_fac:g}) : siigsol {int((_src == 'siigsol').sum())}, physitel {int((_src == 'physitel').sum())}, aucune {int((_src == 'aucune').sum())} | K_sat_1 texture med {float(np.nanmedian(_tx['K_sat_1'])):.2f} m/j")
+# PLAFOND DE PERCOLATION PAR LA TEXTURE (2026-10-09) : `[soil.ceiling_from_texture]`, cles
+# `ratio` (sans dimension) et `layer`. Le plafond de la percolation vers la nappe vaut
+# ratio x conductivite de Saxton et Rawls de la couche declaree, par troncon : la
+# percolation sous gradient unitaire est bornee par la conductivite verticale du sous-sol.
+# La valeur de matrice de Saxton et Rawls depasse la conductivite effective de deux a trois
+# ordres de grandeur, d'ou le rapport unique. Passes avant du 9 octobre : la perte prefere
+# 0,5 mm/j en Monteregie (texture 0,69 m/j) et 2 mm/j en Outaouais (1,95 m/j).
+# ETL_PLAFOND_TEXTURE (rapport, 0 pour eteindre) surcharge le TOML.
+_ct = dict((cfg.get("soil") or {}).get("ceiling_from_texture") or {})
+if os.environ.get("ETL_PLAFOND_TEXTURE"):
+    _ct["ratio"] = float(os.environ["ETL_PLAFOND_TEXTURE"])
+if float(_ct.get("ratio", 0) or 0) > 0 and getattr(model.vertical_column, "soil_profile", None) is not None:
+    from dataclasses import replace as _rempl
+    from meandre.data.texture_bounds import texture_conductivity as _tcond2
+    _tx2 = _tcond2(_paths.data_path("quebec", f"{REG}.duckdb"), n_nodes, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", REG)
+    _ks = _tx2[f"K_sat_{int(_ct.get('layer', 3))}"]
+    _sp = model.vertical_column.soil_profile
+    _procs = []
+    for _pr in _sp.processes:
+        if _pr.kind == "percolation" and isinstance(_pr.ceiling, (int, float)):
+            _pl = np.where(np.isfinite(_ks), float(_ct["ratio"]) * _ks / 24.0, float(_pr.ceiling))
+            _pr = _rempl(_pr, ceiling=torch.tensor(_pl, dtype=torch.get_default_dtype(), device=DEVICE))
+            print(f"[etl] plafond de percolation par la texture (couche {int(_ct.get('layer', 3))}, rapport {float(_ct['ratio']):.3g}) : "
+                  f"mediane {np.median(_pl) * 24000:.2f} mm/j, 10e-90e centiles {np.quantile(_pl, 0.1) * 24000:.2f}-{np.quantile(_pl, 0.9) * 24000:.2f} mm/j, "
+                  f"{int(np.isfinite(_ks).sum())}/{n_nodes} troncons avec texture")
+        _procs.append(_pr)
+    model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs))
 if os.environ.get("ETL_PEDO", "0") == "1":
     # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
     # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete
@@ -1598,6 +1631,24 @@ for s in range(Qs.shape[1]):
     ks.append(float(kge_fn(qo_test[v, s], Qs[v, s])))
 ks = np.array(ks)
 print(f"\n[etl] HELD-OUT {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG}: n={len(ks)} | médian {np.median(ks):.4f} | mean {ks.mean():.4f}")
+# PERTE SUR LA FENÊTRE D'ÉVALUATION (2026-10-09) : les modèles se comparent sur la fonction de
+# perte, mêmes termes de débit et mêmes poids que la validation, jamais sur le KGE.
+from meandre.training import loss as _lmod
+_lf = r["loss_fn"]
+_termes_ho = {"kge": (_lf.w_kge, _lmod.differentiable_kge_loss), "pbias": (_lf.w_pbias, _lmod.differentiable_pbias_loss),
+              "log_mse": (getattr(_lf, "w_log_mse", 0.0), _lmod.differentiable_log_mse_loss),
+              "etiage": (getattr(_lf, "w_etiage", 0.0), _lmod.differentiable_etiage_loss),
+              "fdc_bas": (getattr(_lf, "w_fdc_bas", 0.0), _lmod.differentiable_fdc_bas_loss)}
+_som_ho = {k: [] for k, (w, _) in _termes_ho.items() if w > 0}
+for s in range(Qs.shape[1]):
+    v = ~torch.isnan(qo_test[:, s]) & ~torch.isnan(Qs[:, s])
+    if v.sum() < 60: continue
+    for k in _som_ho:
+        w, f = _termes_ho[k]
+        _som_ho[k].append(w * float(f(qo_test[v, s].float(), Qs[v, s].float())))
+_tot_ho = sum(np.mean(x) for x in _som_ho.values())
+print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG} (termes de debit ponderes, moyenne des stations) : total {_tot_ho:.4f} | "
+      + " | ".join(f"{k} {np.mean(x):.4f}" for k, x in _som_ho.items()))
 # PAR ANNÉE DE LA FENÊTRE (2026-10-09, R355) : KGE médian des stations et rapport simulé sur
 # observé de juillet-août, année par année, pour qu'un verdict ne repose pas sur un été.
 import pandas as _pdho
