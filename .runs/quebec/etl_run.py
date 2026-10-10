@@ -1613,6 +1613,10 @@ with torch.no_grad():
                               graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
                               withdrawals=td.withdrawals, day_of_year=td.day_of_year)
 times = r["times"]
+# Parametres de sol appris (profil declare, `learn`) : valeur finale en unites lisibles.
+for _nm in getattr(model.vertical_column, "_soil_learn_names", ()):
+    _v = float(torch.exp(getattr(model.vertical_column, _nm)))
+    print(f"[etl] sol appris {_nm} : {_v:.3e} (unites internes)" + (f" = {_v * 24000:.2f} mm/j" if _nm.endswith("ceiling") else f" = {_v / 24:.2f} j" if _nm.endswith("tau") else ""))
 # Le tenu de côté suit le découpage : par défaut ce qui suit la validation
 # (2022-2024), sinon ETL_HELDOUT="debut,fin". Voir joint_data : la fenêtre historique
 # est un juge biaisé (été 30 % plus humide que la période de sélection).
