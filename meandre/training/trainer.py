@@ -422,18 +422,9 @@ class Trainer:
             fc_out_params: list[torch.nn.Parameter] = []
             new_params: list[torch.nn.Parameter] = []
             base_params: list[torch.nn.Parameter] = []
-            # PARAMETRES DE SOL APPRIS (2026-10-10) : scalaires en logarithme declares par
-            # `learn` dans le profil de sol. Au taux de base (3e-5), Adam les deplace d'au plus
-            # 5 % en huit epoques ; un plafond qui doit passer de 2 a 0,5 mm/j ne bouge pas.
-            # MEANDRE_LR_SOL_APPRIS leur donne leur propre taux.
-            _lr_sol = os.environ.get("MEANDRE_LR_SOL_APPRIS")
-            sol_params: list[torch.nn.Parameter] = []
             for name, p in model.named_parameters():
                 if name == "spatial_encoder.fc_out.weight":
                     fc_out_params.append(p)
-                    continue
-                if _lr_sol and "soil_learn_" in name:
-                    sol_params.append(p)
                     continue
                 layer = ".".join(name.split(".")[:-1])
                 if padded and mult is not None and layer in padded:
@@ -452,9 +443,6 @@ class Trainer:
                     self.config.lr, self.config.lr * mult,
                     sum(p.numel() for p in new_params),
                 )
-            if sol_params:
-                groups.append({"params": sol_params, "lr": float(_lr_sol), "weight_decay": 0.0})
-                logger.info("Discriminative LR: parametres de sol appris=%.1e (%d)", float(_lr_sol), len(sol_params))
             if fc_out_params:
                 groups.append({"params": fc_out_params,
                                "lr": self.config.lr * fc_out_mult,
