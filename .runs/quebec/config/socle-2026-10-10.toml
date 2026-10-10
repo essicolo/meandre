@@ -1,4 +1,4 @@
-# Socle du 10 octobre 2026 : socle du 4 octobre, plafond de percolation de la couche 3 appris par troncon (sortie k_sub du champ spatial). Le terme de volume de la perte porte desormais sur la serie continue (code, MEANDRE_PBIAS_CONTINU=1 par defaut).
+# Socle du 10 octobre 2026 : socle du 4 octobre ; plafond de percolation de la couche 3 appris par troncon (sortie k_sub, depart 0,5 mm/j) ; blocs d entrainement de 90 jours ; GRACE retire. Le terme de volume porte sur la serie continue (code).
 # ─── SLSO Basin Configuration ─────────────────────────────────────────────
 # All paths are relative to repo root (project runs from there).
 # Weather grid is an absolute path (large external dataset).
@@ -385,7 +385,10 @@ MEANDRE_PAS_PAR_BLOC = 1        # un pas d'optimisation par bloc ; sans lui une 
 MEANDRE_LR_MULT_TETES = 1       # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
 ETL_LR = 2e-4                   # taux de depart : trajectoires convergees, ecart entre graines divise par trois (R283)
 ETL_WARMUP = 0
-ETL_CHUNK = 30                  # blocs de 30 jours : 45 deborde la carte de 8 Go en regional (R283)
+ETL_CHUNK = 90                  # blocs de 90 jours (2026-10-10) : a 30 jours le gradient ne voyait pas l effet differe de la recharge sur l etiage ; 90 jours tiennent dans 8 Go (Gaspesie 4 Go)
+ETL_MULT_FIXE = "k_sub:0.5"     # le plafond appris part de 0,5 mm/j (la sortie k_sub du champ vaut environ 1 mm/j au depart)
+ETL_WTWS = 0                    # GRACE retire : par bloc il etait eteint a 30 jours et explosait a 90 ; corrige dans le code, non encore eprouve
+ETL_WTWSCLIM = 0
 ETL_ET_NEIGE_MM = 10            # terme MOD16 pondere hors neige, w = exp(-SWE NEISIM / 10 mm) (R278, R281)
 ETL_EVAP_EAU_LIBRE = 1          # evaporation de l'eau libre par temps sec (R285, R286)
 MEANDRE_PENMAN_NEIGE = 1        # couvert nival dans Penman (R265)
