@@ -1140,6 +1140,22 @@ class HydroLoss(nn.Module):
                     diff_sum = ((q_s - q_o) * _m).sum(dim=0)    # (S_keep,)
                     obs_sum = (q_o * _m).sum(dim=0)              # (S_keep,)
                     pbias_per = (diff_sum / (obs_sum + 1e-8)).abs()
+                    # VOLUME SUR LA SERIE CONTINUE (2026-10-09). Calcule sur le seul bloc de 45
+                    # jours, le terme exigeait le volume observe dans CHAQUE fenetre et
+                    # combattait tout transfert d'eau entre saisons : 0,44 de la perte
+                    # d'entrainement de la Monteregie contre 0,06 sur la serie entiere qui sert
+                    # de juge. Comme le KGE : historique detache plus bloc courant, gradient
+                    # remis a l'echelle du jour vivant. MEANDRE_PBIAS_CONTINU=0 restitue le bloc.
+                    if (os.environ.get("MEANDRE_PBIAS_CONTINU", "1") == "1" and q_obs_hist is not None
+                            and q_sim_hist is not None and q_obs_hist.numel() > 0):
+                        _ho = q_obs_hist[:, keep]
+                        _hs = q_sim_hist[:, keep]
+                        _hm = (~torch.isnan(_ho) & ~torch.isnan(_hs)).to(q_s.dtype)
+                        _hd = ((torch.nan_to_num(_hs) - torch.nan_to_num(_ho)) * _hm).sum(dim=0).detach()
+                        _hob = (torch.nan_to_num(_ho) * _hm).sum(dim=0).detach()
+                        _ech = (_hm.sum(dim=0) + _n_val) / _n_val
+                        _pb = ((diff_sum + _hd) / (obs_sum + _hob + 1e-8)).abs()
+                        pbias_per = _pb.detach() + (_pb - _pb.detach()) * _ech
                     L_pbias = (pbias_per * w).sum()
                 else:
                     L_pbias = zero
