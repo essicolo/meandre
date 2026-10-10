@@ -1665,8 +1665,27 @@ class Trainer:
                         if bool(getattr(self.config, "tws_shape_only", False)):
                             _rs = _s - _sbv
                             _ro = _g - _gbv
-                            _ss = _rs.detach().std().clamp(min=1e-3)
-                            _so = _ro.std().clamp(min=1e-3)
+                            # ECARTS-TYPES DE LONGUE DUREE (2026-10-10). Pris sur les seules
+                            # valeurs mensuelles du bloc, ils valaient un ou trois mois : le
+                            # terme etait eteint a 30 jours (0,0004) et explosait a 90 jours
+                            # (83,9, 98 % de la perte). Observation : toute la serie, une fois ;
+                            # simulation : moyenne mobile detachee, comme la ligne de base.
+                            # MEANDRE_TWS_SD_BLOC=1 restitue l'ecart-type du bloc.
+                            if os.environ.get("MEANDRE_TWS_SD_BLOC", "0") == "1":
+                                _ss = _rs.detach().std().clamp(min=1e-3)
+                                _so = _ro.std().clamp(min=1e-3)
+                            else:
+                                if getattr(self, "_tws_obs_sd", None) is None:
+                                    # anomalie par bassin quand il y a des groupes, pour ne pas
+                                    # compter l'ecart de niveau entre bassins comme une amplitude
+                                    _a2 = data.tws_obs - (self._tws_obs_base if data.tws_obs.ndim == 2 and _gi is not None else 0.0)
+                                    _ao2 = _a2[~torch.isnan(_a2)]
+                                    self._tws_obs_sd = (_ao2.std() if _ao2.numel() > 2 else torch.ones((), device=_s.device)).clamp(min=1e-3)
+                                _so = self._tws_obs_sd
+                                _v2 = _rs.detach().pow(2).mean()
+                                _pv = getattr(self, "_tws_sim_var", None)
+                                self._tws_sim_var = _v2 if _pv is None else (0.98 * _pv + 0.02 * _v2)
+                                _ss = self._tws_sim_var.sqrt().clamp(min=1e-3)
                             L_tws = ((_rs / _ss) - (_ro / _so)).pow(2).mean()
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                             all_components["tws_loss"] = (
