@@ -1221,6 +1221,10 @@ class Trainer:
         all_components: dict[str, float] = {}
         n_chunks = 0
         if os.environ.get("MEANDRE_SONDE_TERMES"):
+            # La sonde retropropage chaque terme avec retain_graph ; une fonction compilee qui
+            # recycle ses tampons (donated buffers) le refuse des que la taille du bloc change.
+            import torch._functorch.config as _fconf
+            _fconf.donated_buffer = False
             # Facteurs par troncon, valant un (neutres), hors de l'optimiseur.
             _champs_s = [x for x in os.environ["MEANDRE_SONDE_TERMES"].split(",") if x]
             self._sonde_mult = {k_: torch.ones(self.model.n_nodes, device=data.forcing.device, requires_grad=True)
