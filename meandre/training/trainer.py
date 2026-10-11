@@ -2126,6 +2126,15 @@ class Trainer:
                               flush=True)
                 else:
                     (loss_chunk * weight).backward()
+                if os.environ.get("MEANDRE_SONDE_SEGMENT") == "1" and n_chunks >= 1:
+                    # SONDE DU RECALCUL PAR SEGMENTS : gradient et memoire du deuxieme bloc (le
+                    # premier porte la mise en regime), puis arret. Deux executions, avec et sans
+                    # MEANDRE_SEGMENT_GRADIENT, doivent rendre la meme empreinte du gradient.
+                    _gs = [p_.grad.detach().double().flatten() for p_ in self.model.parameters() if p_.grad is not None]
+                    _gv = torch.cat(_gs) if _gs else torch.zeros(1, dtype=torch.float64)
+                    _pic = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
+                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {os.environ.get('MEANDRE_SEGMENT_GRADIENT', '0')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_pic:.2f} Go", flush=True)
+                    raise SystemExit(0)
                 _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
                               for p_ in _instantane)
                 if _pourri and os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":

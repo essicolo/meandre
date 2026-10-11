@@ -47,6 +47,21 @@ def drop_obsolete_init_kwargs(kw: dict) -> dict:
     return {k: v for k, v in kw.items() if k not in OBSOLETE_INIT_KEYS}
 
 
+
+def _copie_attribut(v):
+    """Copie superficielle d'un attribut de module : l'etat interne de la colonne et les
+    conteneurs sont modifies en place d'un pas a l'autre, les tenseurs ne le sont pas."""
+    import copy
+    from meandre.vertical.hydrotel_column import HydrotelColumnState
+    if isinstance(v, HydrotelColumnState):
+        v = copy.copy(v)
+        v.snow = dict(v.snow)
+        return v
+    if isinstance(v, (dict, list)):
+        return copy.copy(v)
+    return v
+
+
 class HydroModel(nn.Module):
     """End-to-end differentiable hydrological model.
 
@@ -363,6 +378,36 @@ class HydroModel(nn.Module):
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
 
+    _CLES_MODULE = frozenset(nn.Module().__dict__)
+
+    def _instantane_attributs(self) -> list:
+        """Photographie les attributs simples de tous les sous-modules (hors parametres et
+        sous-modules), pour rejouer un segment a l'identique pendant la retropropagation."""
+        photo = []
+        for m in self.modules():
+            d = {k: _copie_attribut(v) for k, v in m.__dict__.items() if k not in self._CLES_MODULE}
+            photo.append((m, d))
+        return photo
+
+    def _restaurer_attributs(self, photo: list) -> None:
+        for m, d in photo:
+            for k in [k for k in m.__dict__ if k not in self._CLES_MODULE and k not in d]:
+                del m.__dict__[k]
+            for k, v in d.items():
+                # Copie : la colonne modifie son etat interne en place, la photo doit rester intacte.
+                m.__dict__[k] = _copie_attribut(v)
+
+    @staticmethod
+    def _copier_report(c: dict) -> dict:
+        """Copie du report d'un segment : le tampon des debits sortants est modifie en place."""
+        import copy
+        c = dict(c)
+        tampon = copy.copy(c["outflow_buffer"])
+        tampon._buf = tampon._buf.clone()
+        c["outflow_buffer"] = tampon
+        c["state_buffer"] = list(c["state_buffer"])
+        return c
+
     def simulate(
         self,
         forcing: Tensor,
@@ -565,8 +610,13 @@ class HydroModel(nn.Module):
 
         do_temp = self.temperature is not None
 
-        # ── Main simulation loop (interleaved vertical + routing) ──────
-        for t in range(n_timesteps):
+        # Report d'un pas au suivant : tout ce que la boucle fait vivre d'un jour a l'autre.
+        report = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "lac_diffus_S": lac_diffus_S, "noise": noise, "outflow_buffer": outflow_buffer, "state_buffer": state_buffer}
+
+        def _pas(t: int, c: dict) -> dict:
+            """Un jour de simulation ; lit et met a jour le report `c`, rend les sorties du jour."""
+            state, Q_out_prev, lake_storage, hgm_queue, ow_S, lac_diffus_S, noise, outflow_buffer, state_buffer = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["lac_diffus_S"], c["noise"], c["outflow_buffer"], c["state_buffer"])
+            sortie: dict[str, Tensor] = {}
             # Truncated BPTT: detach state and Q_out at chunk boundaries
             if tbptt_steps > 0 and t > 0 and t % tbptt_steps == 0:
                 state = state.detach()
@@ -807,25 +857,25 @@ class HydroModel(nn.Module):
 
             outflow_buffer.push(Q_out)
             Q_out_prev = Q_out
-            Q_all.append(Q_out)
+            sortie["Q"] = Q_out
             if do_temp and T_water_t is not None:
-                T_water_all.append(T_water_t)
+                sortie["T_water_route"] = T_water_t
 
             # Collect diagnostics
             if return_diagnostics:
-                diag_lists["etp"].append(vc_out.diag["etp"])
-                diag_lists["etr"].append(vc_out.diag["etr"])
-                diag_lists["snowmelt"].append(vc_out.diag["snowmelt"])
+                sortie["etp"] = vc_out.diag["etp"]
+                sortie["etr"] = vc_out.diag["etr"]
+                sortie["snowmelt"] = vc_out.diag["snowmelt"]
                 for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm", "prof_gel_cm", "temps_non_traite",
                            "profondeur_nappe_m", "etr_nappe"):
                     if _k in vc_out.diag:
-                        diag_lists[_k].append(vc_out.diag[_k])
+                        sortie[_k] = vc_out.diag[_k]
                 for _k in ("prod_surf", "prod_hypo", "prod_base", "etr1", "etr2", "etr3"):
                     if _k in vc_out.diag:
-                        diag_lists[_k].append(vc_out.diag[_k])
-                diag_lists["lateral_mm"].append(vc_out.diag["lateral_mm"])
-                diag_lists["recharge"].append(vc_out.recharge)
-                diag_lists["q_baseflow"].append(vc_out.Q_baseflow)
+                        sortie[_k] = vc_out.diag[_k]
+                sortie["lateral_mm"] = vc_out.diag["lateral_mm"]
+                sortie["recharge"] = vc_out.recharge
+                sortie["q_baseflow"] = vc_out.Q_baseflow
                 conv_area = area_km2_local if area_km2_local is not None else area_km2
                 q_lat_m3s = (
                     lateral_inflow * 1e-3 * conv_area * 1e6 / 86400.0
@@ -837,19 +887,69 @@ class HydroModel(nn.Module):
                         0, graph.edge_index[1],
                         Q_out[graph.edge_index[0]],
                     )
-                diag_lists["q_lateral"].append(q_lat_m3s)
-                diag_lists["q_upstream"].append(q_up)
-                diag_lists["swe"].append(state.swe)
-                diag_lists["theta1"].append(state.theta1)
-                diag_lists["theta2"].append(state.theta2)
-                diag_lists["theta3"].append(state.theta3)
-                diag_lists["s_gw"].append(state.S_gw)
-                diag_lists["canopy"].append(state.canopy_storage)
-                diag_lists["wetland"].append(state.wetland_storage)
-                diag_lists["T_water"].append(
+                sortie["q_lateral"] = q_lat_m3s
+                sortie["q_upstream"] = q_up
+                sortie["swe"] = state.swe
+                sortie["theta1"] = state.theta1
+                sortie["theta2"] = state.theta2
+                sortie["theta3"] = state.theta3
+                sortie["s_gw"] = state.S_gw
+                sortie["canopy"] = state.canopy_storage
+                sortie["wetland"] = state.wetland_storage
+                sortie["T_water"] = (
                     T_water_t if T_water_t is not None
                     else torch.full((self.n_nodes,), float('nan'), device=forcing.device)
                 )
+            c.update(state=state, Q_out_prev=Q_out_prev, lake_storage=lake_storage, hgm_queue=hgm_queue, ow_S=ow_S, lac_diffus_S=lac_diffus_S, noise=noise, outflow_buffer=outflow_buffer, state_buffer=state_buffer)
+            return sortie
+
+        def _ranger(sortie: dict) -> None:
+            Q_all.append(sortie.pop("Q"))
+            _tw = sortie.pop("T_water_route", None)
+            if _tw is not None:
+                T_water_all.append(_tw)
+            for _cle, _v in sortie.items():
+                diag_lists[_cle].append(_v)
+
+        # ── Main simulation loop (interleaved vertical + routing) ──────
+        # RECALCUL PAR SEGMENTS (MEANDRE_SEGMENT_GRADIENT, en jours ; 0 = inactif). Seuls les
+        # reports aux bornes des segments restent en memoire ; l'interieur de chaque segment est
+        # recalcule pendant la retropropagation (Chen et al. 2016, gradient checkpointing). La
+        # memoire ne croit plus avec la longueur du bloc : l'horizon du gradient ne depend plus
+        # de la taille du domaine, et le gradient reste celui d'un seul passage.
+        _seg = int(os.environ.get("MEANDRE_SEGMENT_GRADIENT", "0") or 0)
+        if _seg > 0 and torch.is_grad_enabled() and n_timesteps > _seg:
+            from torch.utils.checkpoint import checkpoint
+            instantanes: dict[int, list] = {}
+
+            def _segment(k: int, t0: int, t1: int, c: dict):
+                # Au recalcul, les attributs des modules (etat interne de la colonne, stock des
+                # lacs, operateur de routage) valent ceux de la FIN de la simulation : on remet
+                # ceux du debut du segment, puis on rend ceux de la fin.
+                courant = None
+                if k in instantanes:
+                    courant = self._instantane_attributs()
+                    self._restaurer_attributs(instantanes[k])
+                else:
+                    instantanes[k] = self._instantane_attributs()
+                try:
+                    c = self._copier_report(c)
+                    sorties = [_pas(t, c) for t in range(t0, t1)]
+                    empile = {cle: torch.stack([x[cle] for x in sorties]) for cle in sorties[0]}
+                finally:
+                    if courant is not None:
+                        self._restaurer_attributs(courant)
+                return empile, c
+
+            for k, t0 in enumerate(range(0, n_timesteps, _seg)):
+                t1 = min(t0 + _seg, n_timesteps)
+                empile, report = checkpoint(_segment, k, t0, t1, report, use_reentrant=False)
+                for _i in range(t1 - t0):
+                    _ranger({cle: v[_i] for cle, v in empile.items()})
+        else:
+            for t in range(n_timesteps):
+                _ranger(_pas(t, report))
+        state, lake_storage = report["state"], report["lake_storage"]
 
         # Store final GRU hidden state for optional carryover to next call
         self._last_h_context: Tensor | None = (
