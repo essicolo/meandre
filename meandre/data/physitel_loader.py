@@ -61,7 +61,9 @@ _LC_WETLAND = (7, 8)       # tourbiere + milieu_humide
 _LC_WATER = (1,)           # eau
 
 # Approximate sand/silt/clay fractions by soil texture (USDA classification)
-# Row order matches proprietehydrolique.sol (1-indexed → subtract 1 for 0-based)
+# Row order matches proprietehydrolique.sol. La classe de type_sol.cla est l'indice de la
+# rangee COMPTE A PARTIR DE ZERO : Hydrotel l'emploie tel quel (propriete_hydroliques.cpp,
+# LectureCouche). Retirer 1 decalait chaque classe d'une rangee vers le sable (corrige 2026-10-11).
 _TEXTURE_FRACTIONS: list[tuple[float, float, float]] = [
     (0.92, 0.05, 0.03),   #  1 sand
     (0.82, 0.12, 0.06),   #  2 loamy_sand
@@ -276,7 +278,7 @@ def _parse_occupation_sol_cla(path: Path, uhrh: dict) -> dict[int, np.ndarray]:
 
 
 def _parse_type_sol_cla(path: Path, uhrh: dict) -> dict[int, int]:
-    """Parse type_sol.cla.  Returns {uhrh_id: 1-based soil class index}."""
+    """Parse type_sol.cla.  Returns {uhrh_id: 0-based soil class index (row of the .sol table)}."""
     lines = path.read_text(encoding="latin-1").splitlines()
     # Line 0: '1' (single class per UHRH)
     # Lines 1+: uhrh_id class_id
@@ -791,8 +793,8 @@ def _build_territorial(
         # Soil texture (area-weighted, then to sand/silt/clay fractions)
         s_sand, s_silt, s_clay = 0.0, 0.0, 0.0
         for uid, wi in zip(uids, w):
-            cls = soil_class.get(uid, 1)  # default: sand
-            idx = max(0, min(cls - 1, len(_TEXTURE_FRACTIONS) - 1))
+            cls = soil_class.get(uid, 0)  # default: sand
+            idx = max(0, min(cls, len(_TEXTURE_FRACTIONS) - 1))
             fs, fsi, fc = _TEXTURE_FRACTIONS[idx]
             s_sand += wi * fs
             s_silt += wi * fsi
