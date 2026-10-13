@@ -81,9 +81,17 @@ class OperatorTopo(NamedTuple):
     lake_in_offsets: list[int] # (n_stages+1,)
 
 
-def build_operator_topo(graph: RiverGraph, lagged: bool) -> OperatorTopo:
+def build_operator_topo(graph: RiverGraph, lagged: bool, max_block: int | None = None) -> OperatorTopo:
     """Construit la topologie étagée. En mode lagged, un seul étage rivière
-    (les lacs ne sont pas des barrières : leurs sorties sont connues)."""
+    (les lacs ne sont pas des barrières : leurs sorties sont connues).
+
+    ``max_block`` : un étage de plus de ``max_block`` rivières est découpé en sous-étages
+    formés de bassins entiers (composantes connexes de l'étage, regroupées jusqu'à cette
+    taille). Les bassins d'un même étage ne s'échangent rien : le résultat est identique,
+    mais la mémoire de W passe du carré de l'étage à la somme des carrés des blocs (Québec
+    entier : 27 834 tronçons, plusieurs gigaoctets en un bloc). Les lacs de l'étage vont au
+    dernier sous-étage, après toutes ses rivières. ``None`` : aucun découpage.
+    """
     device = graph.edge_index.device
     n = graph.is_lake.shape[0]
     src = graph.edge_index[0].tolist()
@@ -116,6 +124,8 @@ def build_operator_topo(graph: RiverGraph, lagged: bool) -> OperatorTopo:
                 if ind[v] == 0:
                     q.append(v)
     n_stages = max(stage) + 1 if n else 1
+    if max_block is not None and n:
+        stage, n_stages = _split_stages(stage, n_stages, src, dst, is_lake, max_block)
 
     # Rivières par étage, ordre topologique intra-étage
     riv_by_stage: list[list[int]] = [[] for _ in range(n_stages)]
@@ -185,6 +195,49 @@ def build_operator_topo(graph: RiverGraph, lagged: bool) -> OperatorTopo:
         lake_idx=tl(lake_idx), lake_offsets=lake_offsets,
         lake_in_src_glob=tl(l_s), lake_in_dst_pos=tl(l_d), lake_in_offsets=l_off,
     )
+
+
+def _split_stages(stage: list[int], n_stages: int, src: list[int], dst: list[int],
+                  is_lake: list[bool], max_block: int) -> tuple[list[int], int]:
+    """Renumérote les étages en découpant ceux de plus de ``max_block`` rivières."""
+    n = len(stage)
+    parent = list(range(n))
+
+    def racine(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for s, d in zip(src, dst):
+        if not is_lake[s] and not is_lake[d] and stage[s] == stage[d]:
+            parent[racine(s)] = racine(d)
+    comp_par_etage: list[dict[int, list[int]]] = [{} for _ in range(n_stages)]
+    for i in range(n):
+        if not is_lake[i]:
+            comp_par_etage[stage[i]].setdefault(racine(i), []).append(i)
+    nouveau = [0] * n
+    k_new = 0
+    for k in range(n_stages):
+        comps = sorted(comp_par_etage[k].values(), key=len, reverse=True)
+        if sum(len(c) for c in comps) <= max_block:
+            bacs = [[i for c in comps for i in c]]
+        else:
+            # Premier ajustement décroissant ; un bassin plus grand que le bloc reste entier.
+            bacs, tailles = [], []
+            for c in comps:
+                j = next((j for j, t in enumerate(tailles) if t + len(c) <= max_block), None)
+                if j is None:
+                    bacs.append(list(c)); tailles.append(len(c))
+                else:
+                    bacs[j].extend(c); tailles[j] += len(c)
+        for b, bac in enumerate(bacs):
+            for i in bac:
+                nouveau[i] = k_new + b
+        k_new += max(len(bacs), 1)
+        for i in range(n):
+            if is_lake[i] and stage[i] == k:
+                nouveau[i] = k_new - 1
+    return nouveau, k_new
 
 
 class OperatorState(NamedTuple):

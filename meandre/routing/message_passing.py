@@ -19,6 +19,8 @@ Two execution paths
 
 from __future__ import annotations
 
+import os
+
 from typing import NamedTuple
 
 import torch
@@ -258,7 +260,10 @@ class RoutingLayer(nn.Module):
             lagged = self.routing_mode == "operator-lagged"
             topo_cache = getattr(graph, "_operator_topo", None)
             if topo_cache is None or getattr(graph, "_operator_topo_lagged", None) != lagged:
-                graph._operator_topo = build_operator_topo(graph, lagged)
+                # Taille maximale d'un bloc de l'opérateur (MEANDRE_OPERATOR_BLOCK, posée par
+                # la recette) ; sans elle, un bloc par étage comme avant.
+                _blk = os.environ.get("MEANDRE_OPERATOR_BLOCK")
+                graph._operator_topo = build_operator_topo(graph, lagged, int(_blk) if _blk else None)
                 graph._operator_topo_lagged = lagged
             # fp32 forcé : le solve/GEMV sous autocast bf16 mélange les dtypes
             # et dégrade les récurrences longues.

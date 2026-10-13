@@ -143,3 +143,43 @@ def test_operator_no_lakes_single_stage():
         res[mode] = torch.stack(out)
     assert torch.allclose(res["operator"], res["level"], rtol=1e-4, atol=1e-5)
     assert torch.allclose(res["operator-lagged"], res["level"], rtol=1e-4, atol=1e-5)
+
+
+def _two_copies() -> RiverGraph:
+    """Deux copies disjointes du graphe à lacs, comme deux territoires fondus en un domaine."""
+    g = _branched_graph_with_lakes()
+    ei = torch.cat([g.edge_index, g.edge_index + N], dim=1)
+    is_lake = torch.cat([g.is_lake, g.is_lake])
+    return RiverGraph(ei, torch.ones(ei.shape[1], 3), _topological_sort(ei, 2 * N), is_lake,
+                      torch.ones(ei.shape[1], dtype=torch.long))
+
+
+@pytest.mark.parametrize("with_withdrawals", [False, True])
+def test_operator_block_split_is_exact(monkeypatch, with_withdrawals):
+    # Le découpage des étages en bassins indépendants ne change ni débits ni gradients.
+    args = [torch.cat([a, b], dim=-1) for a, b in zip(_inputs(seed=5)[:5], _inputs(seed=6)[:5])]
+    wd = WithdrawalData.zeros(T, 2 * N)
+    if with_withdrawals:
+        wd.net[:, 0] = -5.0
+    res = {}
+    for blk in (None, "3"):
+        if blk is None:
+            monkeypatch.delenv("MEANDRE_OPERATOR_BLOCK", raising=False)
+        else:
+            monkeypatch.setenv("MEANDRE_OPERATOR_BLOCK", blk)
+        graph = _two_copies()
+        layer = RoutingLayer(use_travel_time_attention=False, routing_mode="operator")
+        buf = OutflowRingBuffer(2 * N, depth=5)
+        K = args[0].clone().requires_grad_(True)
+        Q_prev, storage, out = torch.zeros(2 * N), args[4].clone(), []
+        for t in range(T):
+            Q, storage, _ = layer(args[2][t], graph, Q_prev, buf, wd, t, K, args[1],
+                                  lake_storage=storage, area_km2=args[3])
+            out.append(Q)
+            Q_prev = Q
+        Qs = torch.stack(out)
+        Qs.sum().backward()
+        res[blk] = (Qs.detach(), K.grad.clone(), graph._operator_topo.n_stages)
+    assert res["3"][2] > res[None][2], "le découpage n'a pas eu lieu"
+    assert torch.allclose(res["3"][0], res[None][0], rtol=1e-5, atol=1e-6)
+    assert torch.allclose(res["3"][1], res[None][1], rtol=1e-4, atol=1e-8)

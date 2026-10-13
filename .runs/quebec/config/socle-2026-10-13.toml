@@ -354,6 +354,7 @@ ETL_WET = 0.4
 
 # -- Numerique et routage ----------------------------------------------------
 MEANDRE_NSUBSTEP = 64           # sous-pas du sol (stabilite du Muskingum a K court)
+MEANDRE_OPERATOR_BLOCK = 4096   # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier (27 834 troncons) ne tient pas dans 8 Go
 MEANDRE_KMUSK = "4,48,24"       # bornes du temps de transfert, en heures : min,max,init
                                 # R62 : le troncon median est parcouru en UNE heure, donc
                                 # la borne basse excede le temps physique d'un facteur 4.
