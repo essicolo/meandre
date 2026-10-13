@@ -1220,6 +1220,8 @@ class Trainer:
         total_loss = torch.tensor(0.0, device=data.forcing.device)
         all_components: dict[str, float] = {}
         n_chunks = 0
+        import time as _time
+        _t_bloc = _time.perf_counter()  # duree du bloc courant, lue par la sonde du recalcul
         if os.environ.get("MEANDRE_SONDE_TERMES"):
             # La sonde retropropage chaque terme avec retain_graph ; une fonction compilee qui
             # recycle ses tampons (donated buffers) le refuse des que la taille du bloc change.
@@ -2133,7 +2135,7 @@ class Trainer:
                     _gs = [p_.grad.detach().double().flatten() for p_ in self.model.parameters() if p_.grad is not None]
                     _gv = torch.cat(_gs) if _gs else torch.zeros(1, dtype=torch.float64)
                     _pic = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
-                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {os.environ.get('MEANDRE_SEGMENT_GRADIENT', '0')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_pic:.2f} Go", flush=True)
+                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {os.environ.get('MEANDRE_SEGMENT_GRADIENT', '0')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_pic:.2f} Go | duree du bloc {_time.perf_counter() - _t_bloc:.1f} s", flush=True)
                     raise SystemExit(0)
                 _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
                               for p_ in _instantane)
@@ -2217,6 +2219,7 @@ class Trainer:
             for k, v in comps.items():
                 all_components[k] = all_components.get(k, 0.0) + float(v.detach()) * weight
             n_chunks += 1
+            _t_bloc = _time.perf_counter()
 
             # Detach state for next chunk (TBPTT across chunks)
             state = state_out.detach()
