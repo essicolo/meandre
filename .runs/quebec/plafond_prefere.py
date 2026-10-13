@@ -73,6 +73,27 @@ def prefere(g: pd.DataFrame) -> float:
     return float(np.clip(-b / (2 * a), x[i - 1], x[i + 1])) if a > 0 else float(x[i])
 
 
+def perte_predite(p, t, cols, blocs):
+    """Perte moyenne si chaque station recevait le plafond prédit hors territoire, interpolée
+    linéairement en logarithme du plafond entre les points du balayage, bornée à ses extrémités."""
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    X, y = t[cols].to_numpy(), t.log_plafond.to_numpy()
+    pred = np.full(len(t), np.nan)
+    for b in np.unique(blocs):
+        m = HistGradientBoostingRegressor(max_depth=2, max_iter=120, random_state=0, min_samples_leaf=3, l2_regularization=1.0)
+        m.fit(X[blocs != b], y[blocs != b])
+        pred[blocs == b] = m.predict(X[blocs == b])
+    glob = p.groupby("plafond").perte.mean().idxmin()
+    a, g = [], []
+    for (reg, sid), lp in zip(t[["region", "station"]].itertuples(index=False), pred):
+        c = p[(p.region == reg) & (p.station == sid)].dropna().sort_values("plafond")
+        x = np.log10(c.plafond.to_numpy())
+        a.append(float(np.interp(lp, x, c.perte.to_numpy())))
+        g.append(float(c.perte[c.plafond == glob].iloc[0]))
+    return float(np.mean(a)), float(np.mean(g))
+
+
 def main():
     dossier = Path(sys.argv[1])
     regions = [r.lower() for r in sys.argv[2:]]
@@ -117,7 +138,8 @@ def main():
         t = t[t.region.isin(gros[gros >= 10].index)]
         blocs = t.region.astype("category").cat.codes.to_numpy()
         e, w = _ii.erreur_hors_bloc(t[cols].to_numpy(), t.log_plafond.to_numpy(), blocs)
-        print(f"  {'+'.join(src):38s} {len(t):3d} st., {t.region.nunique()} terr. | erreur {e:.3f} contre témoin {w:.3f} (log10 mm/j), soit {100 * (1 - e / w):+.0f} %")
+        gain = perte_predite(p, t, cols, blocs)
+        print(f"  {'+'.join(src):38s} {len(t):3d} st., {t.region.nunique()} terr. | erreur {e:.3f} contre témoin {w:.3f} (log10 mm/j), soit {100 * (1 - e / w):+.0f} % | perte au plafond prédit {gain[0]:.3f} contre {gain[1]:.3f} au plafond global, mêmes stations")
     return 0
 
 
