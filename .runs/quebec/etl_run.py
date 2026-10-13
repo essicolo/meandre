@@ -1195,6 +1195,32 @@ if float(_ct.get("ratio", 0) or 0) > 0 and getattr(model.vertical_column, "soil_
                   f"{int(np.isfinite(_ks).sum())}/{n_nodes} troncons avec texture")
         _procs.append(_pr)
     model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs))
+# PLAFOND DE PERCOLATION PAR LA CLASSE DE DRAINAGE (2026-10-12) : `[soil.ceiling_from_drainage]`,
+# cles `table` (parquet region, troncon, drainage, couv_drainage ; classe de 1, tres rapidement,
+# a 7, tres mal draine), `intercept` et `slope` de log10(plafond en mm/j) = intercept + slope x
+# classe, `min_mm_per_day` et `max_mm_per_day`. Une seule regle pour tout le Quebec, ajustee
+# sur le plafond prefere par station des passes avant (R370) ; un troncon sans classe garde le
+# plafond declare du processus. ETL_PLAFOND_DRAINAGE=0 l'eteint.
+_cd = dict((cfg.get("soil") or {}).get("ceiling_from_drainage") or {})
+if _cd and os.environ.get("ETL_PLAFOND_DRAINAGE", "1") != "0" and getattr(model.vertical_column, "soil_profile", None) is not None:
+    from dataclasses import replace as _rempl
+    import pandas as _pdd
+    _td = _pdd.read_parquet(str(_cd["table"]).replace("{DERIVES}", _paths.DERIVED_ROOT))
+    _td = _td[_td.region.str.lower() == REG.lower()].set_index("troncon")
+    _dr = _td.drainage.where(_td.couv_drainage > 0).reindex(np.arange(1, n_nodes + 1)).to_numpy(dtype=float)
+    _sp = model.vertical_column.soil_profile
+    _procs = []
+    for _pr in _sp.processes:
+        if _pr.kind == "percolation" and isinstance(_pr.ceiling, (int, float)):
+            _mm = np.clip(10 ** (float(_cd["intercept"]) + float(_cd["slope"]) * _dr), float(_cd["min_mm_per_day"]), float(_cd["max_mm_per_day"]))
+            _decl = float(_pr.ceiling)
+            _pl = np.where(np.isfinite(_dr), _mm / 24000.0, _decl)
+            _pr = _rempl(_pr, ceiling=torch.tensor(_pl, dtype=torch.get_default_dtype(), device=DEVICE))
+            print(f"[etl] plafond de percolation par la classe de drainage : mediane {np.median(_pl) * 24000:.2f} mm/j, "
+                  f"10e-90e centiles {np.quantile(_pl, 0.1) * 24000:.2f}-{np.quantile(_pl, 0.9) * 24000:.2f} mm/j, "
+                  f"{int(np.isfinite(_dr).sum())}/{n_nodes} troncons avec classe, les autres au plafond declare {_decl * 24000:.2f} mm/j")
+        _procs.append(_pr)
+    model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs))
 if os.environ.get("ETL_PEDO", "0") == "1":
     # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
     # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete
