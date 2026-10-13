@@ -1742,15 +1742,30 @@ _termes_ho = {"kge": (_lf.w_kge, _lmod.differentiable_kge_loss), "pbias": (_lf.w
               "etiage": (getattr(_lf, "w_etiage", 0.0), _lmod.differentiable_etiage_loss),
               "fdc_bas": (getattr(_lf, "w_fdc_bas", 0.0), _lmod.differentiable_fdc_bas_loss)}
 _som_ho = {k: [] for k, (w, _) in _termes_ho.items() if w > 0}
+_noeud_ho = []
+_st_noeuds = td.station_idx.cpu().numpy()
 for s in range(Qs.shape[1]):
     v = ~torch.isnan(qo_test[:, s]) & ~torch.isnan(Qs[:, s])
     if v.sum() < 60: continue
+    _noeud_ho.append(int(_st_noeuds[s]))
     for k in _som_ho:
         w, f = _termes_ho[k]
         _som_ho[k].append(w * float(f(qo_test[v, s].float(), Qs[v, s].float())))
 _tot_ho = sum(np.mean(x) for x in _som_ho.values())
 print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG} (termes de debit ponderes, moyenne des stations) : total {_tot_ho:.4f} | "
       + " | ".join(f"{k} {np.mean(x):.4f}" for k, x in _som_ho.items()))
+# En mode domaine, la meme perte par territoire, sur ses seules stations, pour la comparer
+# aux modeles territoriaux.
+if DOMAINE:
+    _noeud_ho = np.array(_noeud_ho)
+    for _nom, _, _o, _n in _territoires():
+        _m = (_noeud_ho >= _o) & (_noeud_ho < _o + _n)
+        if not _m.any():
+            print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_nom} : aucune station evaluable")
+            continue
+        _parts = {k: float(np.mean(np.array(x)[_m])) for k, x in _som_ho.items()}
+        print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_nom} ({int(_m.sum())} stations) : total {sum(_parts.values()):.4f} | "
+              + " | ".join(f"{k} {v:.4f}" for k, v in _parts.items()))
 # PAR ANNÉE DE LA FENÊTRE (2026-10-09, R355) : KGE médian des stations et rapport simulé sur
 # observé de juillet-août, année par année, pour qu'un verdict ne repose pas sur un été.
 import pandas as _pdho
