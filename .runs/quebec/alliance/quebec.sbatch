@@ -49,7 +49,8 @@ cp "$D"/derives/auxiliaires/*.parquet "$LOCAL/derives/auxiliaires/"
 export MEANDRE_DATA="$LOCAL" MEANDRE_DERIVES="$LOCAL/derives" MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True MEANDRE_DIAG_CPU=1
 COMMUN=(ETL_CONFIG=.runs/quebec/config/socle-2026-10-13.toml ETL_REGION=quebec
-        JOINT_FX_SUFFIX=-casr-brut ETL_SEED=1234 ETL_FORCE=1 MEANDRE_SEGMENT_GRADIENT=$SEGMENTS)
+        JOINT_FX_SUFFIX=-casr-brut ETL_SEED=1234 ETL_FORCE=1 MEANDRE_SEGMENT_GRADIENT=$SEGMENTS
+        ETL_HELDOUT=2019-01-01,2024-12-31)
 echo "=== quebec $MODE, segments $SEGMENTS, $(date +%T) ==="
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 if [ "$MODE" = sonde ]; then
