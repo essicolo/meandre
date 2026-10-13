@@ -43,6 +43,14 @@ from joint_data import load_region
 from meandre.utils import paths as _paths
 
 REG = os.environ.get("ETL_REGION", "gasp").lower()
+# DOMAINE (2026-10-13) : ETL_REGION accepte une liste separee par des virgules, ou `quebec` pour
+# les quatorze territoires. Les reseaux sont fondus en un seul domaine (`domain_data.load_domain`)
+# et un seul champ spatial est appris pour tous ; REG devient le nom du domaine (ETL_DOMAINE_NOM).
+TERRITOIRES = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont", "outm", "outv", "sagu", "slno", "slso"]
+REGS = TERRITOIRES if REG == "quebec" else [x.strip() for x in REG.split(",") if x.strip()]
+DOMAINE = len(REGS) > 1 or os.environ.get("ETL_DOMAINE", "0") == "1"
+if DOMAINE:
+    REG = os.environ.get("ETL_DOMAINE_NOM", "quebec").lower()
 N_EPOCHS = int(os.environ.get("ETL_EPOCHS", "12"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # FICHIER DE RECETTE. Le defaut reste gasp-v4.toml, qui n'est plus une configuration
@@ -189,93 +197,111 @@ if "ETL_WET" in os.environ:
     lcfg["w_et"] = float(os.environ["ETL_WET"])
     print(f"[etl] w_et override = {lcfg['w_et']}")
 
-r = load_region(REG, lcfg, device=DEVICE)
+if DOMAINE:
+    from domain_data import load_domain
+    r = load_domain(REGS, lcfg, device=DEVICE)
+else:
+    r = load_region(REG, lcfg, device=DEVICE)
 td, vd = r["train_data"], r["val_data"]
 n_nodes = r["n_nodes"]
+
+
+def _territoires():
+    """(nom, identifiants locaux des troncons, decalage, taille) de chaque territoire."""
+    if DOMAINE:
+        return r["parts_meta"]
+    return [(REG, r["node_ids"], 0, n_nodes)]
 print(f"[etl] {REG}: {n_nodes} nœuds, {r['n_gauges']} jauges")
 
-# ── demande évaporative du module appris (MLP du banc, gelé) ────────────────
-norm = torch.load(f"{ETB}/norm.pt", weights_only=False)
-H_HIST, H_COMP = norm["h_hist"], norm["h_comp"]
-# Le module appris ne lit que les attributs sur lesquels il a ete entraine : les colonnes
-# ajoutees au champ depuis (depots quaternaires, ETL_ATTRIBUTS_DEPOTS) en sont ecartees.
-_COLS_ETB = [i for i, c in enumerate(r["territorial"].columns) if not c.startswith("depot_")]
-F_STATIC = len(_COLS_ETB)
-mlp = nn.Sequential(nn.Linear(12 + F_STATIC + 3, 64), nn.ReLU(), nn.Linear(64, 1), nn.Softplus()).to(DEVICE)
-sd = torch.load(f"{ETB}/mlp.pt", weights_only=True)
-mlp.load_state_dict({k.replace("head.", ""): v for k, v in sd.items()})
-mlp.eval()
-
-with torch.no_grad():
-    F = td.forcing            # (T, N, 6+) sur device
-    T = F.shape[0]
-    mean, std = norm["mean"].to(DEVICE), norm["std"].to(DEVICE)
-    # LA SOMME CUMULEE VIT SUR LE PROCESSEUR. Elle pese 748 Mio sur un territoire de 3412
-    # nœuds et vingt-cinq ans, et son calcul en demande le double d'un coup : c'est la
-    # derniere grosse allocation du pre-calcul, et elle debordait encore la carte avec la
-    # recette complete, dont les cibles d'observation occupent deja la place. Les tranches
-    # remontent sur la carte dans la boucle, une annee a la fois.
-    _Fc = F[:, :, :6].to("cpu")
-    C = torch.cat([torch.zeros(1, n_nodes, 6), _Fc.cumsum(0)], dim=0)
-    del _Fc
-    t_ar = torch.arange(T, device=DEVICE)
-    lo8 = torch.clamp(t_ar - (H_COMP - 1), min=0)
-    hi90, lo90 = torch.clamp(t_ar - (H_COMP - 1), min=1), torch.clamp(t_ar - (H_COMP - 1) - H_HIST, min=0)
-    # Les moyennes glissantes se prennent PAR TRANCHE dans la boucle plus bas : materialisees
-    # sur toute la periode elles pesent 748 Mio chacune sur un territoire de 3412 nœuds, et
-    # le total depassait la memoire de la carte avant meme le premier pas de simulation.
-    # NB : fenêtres TRAÎNANTES (8 j finissant à t, 90 j avant) — au banc la fenêtre 8 j
-    # était le composite [t, t+8) ; décalage ~4 j << cycle saisonnier de l'ET.
-    doy = td.day_of_year
-    sc = torch.stack([torch.sin(2 * np.pi * doy / 365.25), torch.cos(2 * np.pi * doy / 365.25)], dim=1)
-    lat_col = 0 if 40 < float(td.node_coords[:, 0].mean()) < 62 else 1
-    lat = td.node_coords[:, lat_col].float() / 50.0
-    stat = torch.cat([r["territorial"].data[:, _COLS_ETB], lat[:, None]], dim=1)   # (N, F+1)
-    demand = torch.empty(T, n_nodes, device=DEVICE)
-    for lo in range(0, T, 365):
-        hi = min(lo + 365, T)
-        _t = t_ar[lo:hi].cpu()
-        _l8, _h9, _l9 = lo8[lo:hi].cpu(), hi90[lo:hi].cpu(), lo90[lo:hi].cpu()
-        _a8 = ((C[_t + 1] - C[_l8]) / (_t + 1 - _l8).reshape(-1, 1, 1)).to(DEVICE)
-        _a90 = ((C[_h9] - C[_l9]) / torch.clamp(_h9 - _l9, min=1).reshape(-1, 1, 1)).to(DEVICE)
-        a8n = (_a8 - mean) / std
-        a90n = (_a90 - mean) / std
-        scb = sc[lo:hi, None, :].expand(hi - lo, n_nodes, 2)
-        x = torch.cat([a8n, a90n, stat[None, :, :-1].expand(hi - lo, -1, -1), scb, stat[None, :, -1:].expand(hi - lo, -1, -1)], dim=2)
-        demand[lo:hi] = mlp(x.reshape(-1, x.shape[-1])).reshape(hi - lo, n_nodes)
-print(f"[etl] demande ET apprise : {float(demand.mean()) * 365.25:.0f} mm/an moyen | max {float(demand.max()):.1f} mm/j")
-
-_ds = float(os.environ.get("ETL_DEMAND_SCALE", "1.0"))
-if _ds != 1.0:
-    # débiaisage RÉGIONAL structurel de la demande (ratio bilan P-Q / MOD16) : appliqué
-    # au canal, le gradient ne peut pas le défaire (le prior K_c doux était re-défait
-    # à l'entraînement : mont-kc 0.583 < 0.617 inférence)
-    demand = demand * _ds
-    print(f"[etl] demande ET débiaisée × {_ds} (bilan/MOD16 régional)")
-# ETL_ETI=1 : fonte au bilan radiatif reel (Enhanced Temperature Index, valide en
-# juin sur SLSO). Le canal 6, qui porte la demande ET apprise, est REMPLACE par FB
-# (sw_in W/m2, cache forcing-<reg>-swin.nc de build_swin_region.py) : sous
-# ETL_ETP=linacre la demande est ignoree de toute facon (etp_channel=None), le canal
-# est donc libre -- la colonne ETI lit sw_channel=6. Motif (R42) : l'amplitude
-# saisonniere est un SUBSTITUT du cycle radiatif, faux en climat maritime ; la
-# radiation reelle dissout ce scalaire comme le bulbe humide a dissous le seuil.
-_ETI = os.environ.get("ETL_ETI", "0") == "1"
-if _ETI:
-    if os.environ.get("ETL_ETP", "appris") != "linacre":
-        raise SystemExit("ETL_ETI=1 exige ETL_ETP=linacre (le canal 6 doit etre libre)")
-    import xarray as _xsw
-    _swf = f"{_paths.DATA_ROOT}/quebec/forcing-{REG}-swin.nc"
-    if not os.path.exists(_swf):
-        raise SystemExit(f"ETL_ETI=1 : {_swf} absent (lancer build_swin_region.py {REG.upper()})")
-    _dsw = _xsw.open_dataset(_swf)
-    _swv = torch.tensor(_dsw["forcing"].values[:, :, 0], dtype=F.dtype, device=F.device)
-    _dsw.close()
-    assert _swv.shape == F.shape[:2], (_swv.shape, F.shape)
-    f7 = torch.cat([F[:, :, :6], _swv[:, :, None]], dim=2)
-    print(f"[etl] ETI : canal 6 = FB reel (moy {float(_swv.mean()):.0f} W/m2) ; "
-          f"la demande apprise n'est PAS embarquee")
+_ETP_FORMULE = os.environ.get("ETL_ETP") or str((cfg.get("et") or {}).get("formula") or "")
+if DOMAINE:
+    if _ETP_FORMULE != "penman" or os.environ.get("ETL_ETI", "0") == "1":
+        raise SystemExit(f"domaine : seule l'ETP de Penman sans ETI est prise en charge (ETP {_ETP_FORMULE!r})")
+    f7 = td.forcing
+    print("[etl] domaine : forcage a six canaux sur disque, demande apprise non calculee (Penman)")
 else:
-    f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
+    # ── demande évaporative du module appris (MLP du banc, gelé) ────────────────
+    norm = torch.load(f"{ETB}/norm.pt", weights_only=False)
+    H_HIST, H_COMP = norm["h_hist"], norm["h_comp"]
+    # Le module appris ne lit que les attributs sur lesquels il a ete entraine : les colonnes
+    # ajoutees au champ depuis (depots quaternaires, ETL_ATTRIBUTS_DEPOTS) en sont ecartees.
+    _COLS_ETB = [i for i, c in enumerate(r["territorial"].columns) if not c.startswith("depot_")]
+    F_STATIC = len(_COLS_ETB)
+    mlp = nn.Sequential(nn.Linear(12 + F_STATIC + 3, 64), nn.ReLU(), nn.Linear(64, 1), nn.Softplus()).to(DEVICE)
+    sd = torch.load(f"{ETB}/mlp.pt", weights_only=True)
+    mlp.load_state_dict({k.replace("head.", ""): v for k, v in sd.items()})
+    mlp.eval()
+
+    with torch.no_grad():
+        F = td.forcing            # (T, N, 6+) sur device
+        T = F.shape[0]
+        mean, std = norm["mean"].to(DEVICE), norm["std"].to(DEVICE)
+        # LA SOMME CUMULEE VIT SUR LE PROCESSEUR. Elle pese 748 Mio sur un territoire de 3412
+        # nœuds et vingt-cinq ans, et son calcul en demande le double d'un coup : c'est la
+        # derniere grosse allocation du pre-calcul, et elle debordait encore la carte avec la
+        # recette complete, dont les cibles d'observation occupent deja la place. Les tranches
+        # remontent sur la carte dans la boucle, une annee a la fois.
+        _Fc = F[:, :, :6].to("cpu")
+        C = torch.cat([torch.zeros(1, n_nodes, 6), _Fc.cumsum(0)], dim=0)
+        del _Fc
+        t_ar = torch.arange(T, device=DEVICE)
+        lo8 = torch.clamp(t_ar - (H_COMP - 1), min=0)
+        hi90, lo90 = torch.clamp(t_ar - (H_COMP - 1), min=1), torch.clamp(t_ar - (H_COMP - 1) - H_HIST, min=0)
+        # Les moyennes glissantes se prennent PAR TRANCHE dans la boucle plus bas : materialisees
+        # sur toute la periode elles pesent 748 Mio chacune sur un territoire de 3412 nœuds, et
+        # le total depassait la memoire de la carte avant meme le premier pas de simulation.
+        # NB : fenêtres TRAÎNANTES (8 j finissant à t, 90 j avant) — au banc la fenêtre 8 j
+        # était le composite [t, t+8) ; décalage ~4 j << cycle saisonnier de l'ET.
+        doy = td.day_of_year
+        sc = torch.stack([torch.sin(2 * np.pi * doy / 365.25), torch.cos(2 * np.pi * doy / 365.25)], dim=1)
+        lat_col = 0 if 40 < float(td.node_coords[:, 0].mean()) < 62 else 1
+        lat = td.node_coords[:, lat_col].float() / 50.0
+        stat = torch.cat([r["territorial"].data[:, _COLS_ETB], lat[:, None]], dim=1)   # (N, F+1)
+        demand = torch.empty(T, n_nodes, device=DEVICE)
+        for lo in range(0, T, 365):
+            hi = min(lo + 365, T)
+            _t = t_ar[lo:hi].cpu()
+            _l8, _h9, _l9 = lo8[lo:hi].cpu(), hi90[lo:hi].cpu(), lo90[lo:hi].cpu()
+            _a8 = ((C[_t + 1] - C[_l8]) / (_t + 1 - _l8).reshape(-1, 1, 1)).to(DEVICE)
+            _a90 = ((C[_h9] - C[_l9]) / torch.clamp(_h9 - _l9, min=1).reshape(-1, 1, 1)).to(DEVICE)
+            a8n = (_a8 - mean) / std
+            a90n = (_a90 - mean) / std
+            scb = sc[lo:hi, None, :].expand(hi - lo, n_nodes, 2)
+            x = torch.cat([a8n, a90n, stat[None, :, :-1].expand(hi - lo, -1, -1), scb, stat[None, :, -1:].expand(hi - lo, -1, -1)], dim=2)
+            demand[lo:hi] = mlp(x.reshape(-1, x.shape[-1])).reshape(hi - lo, n_nodes)
+    print(f"[etl] demande ET apprise : {float(demand.mean()) * 365.25:.0f} mm/an moyen | max {float(demand.max()):.1f} mm/j")
+
+    _ds = float(os.environ.get("ETL_DEMAND_SCALE", "1.0"))
+    if _ds != 1.0:
+        # débiaisage RÉGIONAL structurel de la demande (ratio bilan P-Q / MOD16) : appliqué
+        # au canal, le gradient ne peut pas le défaire (le prior K_c doux était re-défait
+        # à l'entraînement : mont-kc 0.583 < 0.617 inférence)
+        demand = demand * _ds
+        print(f"[etl] demande ET débiaisée × {_ds} (bilan/MOD16 régional)")
+    # ETL_ETI=1 : fonte au bilan radiatif reel (Enhanced Temperature Index, valide en
+    # juin sur SLSO). Le canal 6, qui porte la demande ET apprise, est REMPLACE par FB
+    # (sw_in W/m2, cache forcing-<reg>-swin.nc de build_swin_region.py) : sous
+    # ETL_ETP=linacre la demande est ignoree de toute facon (etp_channel=None), le canal
+    # est donc libre -- la colonne ETI lit sw_channel=6. Motif (R42) : l'amplitude
+    # saisonniere est un SUBSTITUT du cycle radiatif, faux en climat maritime ; la
+    # radiation reelle dissout ce scalaire comme le bulbe humide a dissous le seuil.
+    _ETI = os.environ.get("ETL_ETI", "0") == "1"
+    if _ETI:
+        if os.environ.get("ETL_ETP", "appris") != "linacre":
+            raise SystemExit("ETL_ETI=1 exige ETL_ETP=linacre (le canal 6 doit etre libre)")
+        import xarray as _xsw
+        _swf = f"{_paths.DATA_ROOT}/quebec/forcing-{REG}-swin.nc"
+        if not os.path.exists(_swf):
+            raise SystemExit(f"ETL_ETI=1 : {_swf} absent (lancer build_swin_region.py {REG.upper()})")
+        _dsw = _xsw.open_dataset(_swf)
+        _swv = torch.tensor(_dsw["forcing"].values[:, :, 0], dtype=F.dtype, device=F.device)
+        _dsw.close()
+        assert _swv.shape == F.shape[:2], (_swv.shape, F.shape)
+        f7 = torch.cat([F[:, :, :6], _swv[:, :, None]], dim=2)
+        print(f"[etl] ETI : canal 6 = FB reel (moy {float(_swv.mean()):.0f} W/m2) ; "
+              f"la demande apprise n'est PAS embarquee")
+    else:
+        f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
 
 # ETL_SANS_PRELEV=1 : met les prelevements et rejets a ZERO. C'est le protocole de
 # RENATURALISATION en miniature, et le seul moyen de comparer proprement avec/sans
@@ -827,8 +853,10 @@ if os.environ.get("ETL_KGW_FIELD", "0") == "1":
     import pandas as _pd
     _cf = _pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/champ_kgw_QC.parquet")
     _cf = _cf[_cf.region == REG].sort_values("node_idx")
+    if DOMAINE and r.get("kgw") is not None:
+        _cf = r["kgw"]
     if len(_cf) == n_nodes:
-        _kv = torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE)
+        _kv = (r["kgw"].to(DEVICE).float() if DOMAINE else torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE))
         # ETL_KGW_ECHELLE : facteur sur le champ, pour allonger le temps de sejour sans
         # retirer la structure spatiale. Le champ vient des recessions de debit, soit 7 a
         # 16 jours, alors que les nappes mesurees demandent des mois (R114).
@@ -971,8 +999,13 @@ if os.environ.get("ETL_OCCUPATION", "1") == "1":
     try:
         from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
                                                  load_phenologie)
-        _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
-        _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
+        if DOMAINE:
+            _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
+            _lc = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k not in _WET}
+            _mh = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k in _WET}
+        else:
+            _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
+            _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
         # ETL_SANS_MH=1 : DIAGNOSTIC seulement. Le couplage du milieu humide au troncon
         # est desequilibre (2026-08-20) : la colonne retire prod x wet_fr de la
         # production mais le reservoir ne recoit que prod x (wet_fr - wetsa/hru), et il
@@ -992,7 +1025,8 @@ if os.environ.get("ETL_OCCUPATION", "1") == "1":
             print("[etl] MILIEUX HUMIDES DESACTIVES (diagnostic de bilan)")
         _lc.update(_mh)
         model.vertical_column.set_land_cover(_lc)
-        _ph = load_phenologie(_pl)
+        # En domaine, le calendrier du premier projet : ceux des projets ne different que d'un jour.
+        _ph = r["phenology"] if DOMAINE else load_phenologie(_pl)
         model.vertical_column.set_phenology(_ph or None)
         if _ph:
             print(f"[etl] phénologie du projet : {len(_ph)} classes "
@@ -1147,9 +1181,10 @@ if os.environ.get("ETL_LAKE_AREA", "1") == "1":
     # le faisaient pas, et le champion y ressortait à 0.7591 au lieu de 0.7880.
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from recipe import set_lake_area_from_hydrolakes
-    set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
-    _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
-    print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
+    if not DOMAINE:
+        set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
+        _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
+        print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
 # BORNES DE CONDUCTIVITE PAR TRONCON (2026-10-08, R349) : `[field.texture_bounds]` du TOML,
 # conductivite de texture SIIGSOL (repli PHYSITEL) par couche, bornes a `factor` autour ; le
 # champ ne peut plus apprendre les conductivites a l'envers de la pedologie. ETL_TEXTURE_BOUNDS
@@ -1206,8 +1241,10 @@ if _cd and os.environ.get("ETL_PLAFOND_DRAINAGE", "1") != "0" and getattr(model.
     from dataclasses import replace as _rempl
     import pandas as _pdd
     _td = _pdd.read_parquet(str(_cd["table"]).replace("{DERIVES}", _paths.DERIVED_ROOT))
-    _td = _td[_td.region.str.lower() == REG.lower()].set_index("troncon")
-    _dr = _td.drainage.where(_td.couv_drainage > 0).reindex(np.arange(1, n_nodes + 1)).to_numpy(dtype=float)
+    _dr = np.full(n_nodes, np.nan)
+    for _nom, _ids, _o, _n in _territoires():
+        _tt = _td[_td.region.str.lower() == _nom.lower()].set_index("troncon")
+        _dr[_o:_o + _n] = _tt.drainage.where(_tt.couv_drainage > 0).reindex(np.asarray(_ids, dtype=int)).to_numpy(dtype=float)
     _sp = model.vertical_column.soil_profile
     _procs = []
     for _pr in _sp.processes:
@@ -1268,7 +1305,12 @@ if os.environ.get("ETL_HGM", "1") == "1":
     # n'apprenne plus a compenser l'etalement manquant.
     from meandre.data.hgm_loader import lire_hgm
     _projh = _PROJ_M
-    _K = lire_hgm(_projh, r["node_ids"])
+    if DOMAINE:
+        _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
+        _L = max(k.shape[1] for k in _Ks)
+        _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
+    else:
+        _K = lire_hgm(_projh, r["node_ids"])
     model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
     import numpy as _nph
     print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={_K.shape[1]}")
@@ -1280,26 +1322,23 @@ if os.environ.get("ETL_LAKE_TRL", "1") == "1":
     # Q = c*h^k (le parseur historique JETAIT c et k et lisait la surface comme une
     # largeur). k_lake = c/A, beta = k. Impose HORS gradient (surcharge de lake_params).
     from pathlib import Path as _Pl
-    _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020/physitel/troncon.trl")
-    _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
-    _dl = {}
-    for _l in _lgn[3:]:
-        _t = _l.split()
-        if int(_t[1]) != 1:
-            _ptr = 4 + int(_t[3])
-            # BLOC LAC = (surface en m2, profondeur moyenne en m, coefficient c, exposant k),
-            # la lecture etablie par R60 (physitel_loader.py). Jusqu'au 2026-09-05 cette
-            # ligne lisait la PROFONDEUR comme surface en km2 : 3,5 km2 en mediane au lieu
-            # de 0,63, jusqu'a 17,8 au p90, donc k_lake = c/A cinq a trente fois trop petit
-            # et des constantes de temps de lac de 12 a 17 jours en mediane (0,5 a 1,3 jour
-            # avec la vraie surface), jusqu'a plusieurs annees. La surface est rendue en km2.
-            _dl[int(_t[0])] = (float(_t[_ptr]) / 1e6, float(_t[_ptr+2]), float(_t[_ptr+3]))
-    _idxl = {int(i): j for j, i in enumerate(r["node_ids"])}
     import numpy as _npl
     _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
-    for _tid, (_s2, _c2, _k2) in _dl.items():
-        if _tid in _idxl:
-            _surf[_idxl[_tid]], _c[_idxl[_tid]], _k[_idxl[_tid]] = _s2, _c2, _k2
+    for _nom, _ids, _o, _n in _territoires():
+        _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{_nom.upper()}_LN24HA_2020/physitel/troncon.trl")
+        _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
+        _dl = {}
+        for _l in _lgn[3:]:
+            _t = _l.split()
+            if int(_t[1]) != 1:
+                _ptr = 4 + int(_t[3])
+                # BLOC LAC = (surface en m2, profondeur moyenne en m, coefficient c, exposant k),
+                # la lecture etablie par R60 (physitel_loader.py) ; surface rendue en km2.
+                _dl[int(_t[0])] = (float(_t[_ptr]) / 1e6, float(_t[_ptr+2]), float(_t[_ptr+3]))
+        _idxl = {int(i): _o + j for j, i in enumerate(_ids)}
+        for _tid, (_s2, _c2, _k2) in _dl.items():
+            if _tid in _idxl:
+                _surf[_idxl[_tid]], _c[_idxl[_tid]], _k[_idxl[_tid]] = _s2, _c2, _k2
     _lacb = td.graph.is_lake.bool().cpu().numpy()
     _cv = _npl.isfinite(_surf) & _lacb & (_surf > 0)
     _cvt = torch.tensor(_cv, device=DEVICE)
@@ -1595,6 +1634,39 @@ if os.environ.get("MEANDRE_SENSIBILITE") == "1":
     _banc.mesurer(model, td, r["times"], DEVICE,
                   jours=int(os.environ.get("MEANDRE_SENSIBILITE_JOURS", "365")),
                   sortie=os.environ.get("MEANDRE_SENSIBILITE_SORTIE"))
+    sys.stdout.flush()
+    os._exit(0)
+
+if os.environ.get("MEANDRE_SONDE_DOMAINE"):
+    # SONDE DU DOMAINE (2026-10-13) : tout ce qui est pose par troncon dans le modele et les
+    # donnees, juste avant l'entrainement. Un territoire seul et le meme territoire dans un
+    # domaine doivent donner les memes valeurs a son decalage pres.
+    def _np(x):
+        return x.detach().float().cpu().numpy() if torch.is_tensor(x) else np.asarray(x, dtype=float)
+    _sd = {"node_coords": _np(td.node_coords), "q_obs": _np(td.q_obs), "station_idx": _np(td.station_idx),
+           "station_var": _np(r["loss_fn"].station_var), "is_lake": _np(td.graph.is_lake)}
+    for _k, _v in (getattr(model.vertical_column, "_land_cover", None) or {}).items():
+        _sd[f"lc_{_k}"] = _np(_v)
+    for _i, _pr in enumerate(getattr(getattr(model.vertical_column, "soil_profile", None), "processes", ()) or ()):
+        if torch.is_tensor(_pr.ceiling):
+            _sd[f"plafond_{_i}"] = _np(_pr.ceiling)
+    for _k in ("_hgm_kernel", "_lake_area_km2", "_open_water_f"):
+        if getattr(model, _k, None) is not None:
+            _sd[_k.strip("_")] = _np(getattr(model, _k))
+    for _k in td.territorial.physical:
+        _sd[f"phys_{_k}"] = _np(td.territorial.physical[_k])
+    if td.et_obs is not None:
+        _sd["et_obs"] = _np(td.et_obs)
+    if td.et_weight is not None:
+        _sd["et_weight"] = _np(td.et_weight)
+    with torch.no_grad():
+        _sp0 = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
+        _kl, _bl = model.spatial_encoder.lake_params(td.node_coords, td.territorial.to_tensor())
+    _sd["k_lake"], _sd["beta_lake"] = _np(_kl), _np(_bl)
+    _sd["k_gw"] = _np(_sp0.k_gw)
+    _sd["territoires"] = np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territoires()])
+    np.savez(os.environ["MEANDRE_SONDE_DOMAINE"], **_sd)
+    print(f"[sonde-domaine] {len(_sd)} grandeurs ecrites dans {os.environ['MEANDRE_SONDE_DOMAINE']}")
     sys.stdout.flush()
     os._exit(0)
 

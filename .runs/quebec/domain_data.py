@@ -266,6 +266,11 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     et_obs = _cat_nodes([p["train_data"].et_obs for p in parts], sizes, T)
     if et_obs is not None:
         et_obs = et_obs.to(device)
+    # Poids du terme MOD16 hors neige (NEISIM), sur le CPU comme dans la region.
+    et_weight = None
+    if any(p["train_data"].et_weight is not None for p in parts):
+        et_weight = torch.cat([(p["train_data"].et_weight if p["train_data"].et_weight is not None
+                                else torch.ones(T, sz)) for p, sz in zip(parts, sizes)], dim=1)
     swe_obs = _cat_nodes([p["train_data"].swe_obs for p in parts], sizes, T)
     if swe_obs is not None:
         swe_obs = swe_obs.to(device)
@@ -293,19 +298,23 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     swe_mass_node = torch.cat(sm_node).to(device) if sm_node else None
 
     # ── perte unique ────────────────────────────────────────────────────────
+    # Tous les poids de la perte regionale, lus sur la signature de HydroLoss : une liste
+    # ecrite a la main avait oublie l'etiage, la queue basse et les facteurs du KGE.
+    import inspect as _inspect
+
     ref = parts[0]["loss_fn"]
+    _acceptes = set(_inspect.signature(HydroLoss.__init__).parameters)
+    _poids = {k: getattr(ref, k) for k in _acceptes if k.startswith("w_") and hasattr(ref, k)}
+    for p in parts[1:]:
+        _ecart = [k for k, v in _poids.items() if abs(float(getattr(p["loss_fn"], k, 0.0)) - float(v)) > 1e-12]
+        if _ecart:
+            raise ValueError(f"{p['name']} : poids de perte differents du premier territoire : {_ecart}")
+    if swe_mass_obs is None:
+        _poids["w_swe_mass"] = 0.0
     loss_fn = HydroLoss(
-        w_nse=ref.w_nse, w_kge=ref.w_kge, w_pbias=ref.w_pbias, w_mse=ref.w_mse,
-        w_nrmse=ref.w_nrmse, w_log_nse=ref.w_log_nse, w_log_mse=ref.w_log_mse,
-        w_et=ref.w_et, et_mode=lcfg.get("et_mode", "level"),
-        w_tws=ref.w_tws, w_tws_clim=ref.w_tws_clim, w_snow=ref.w_snow,
-        w_swe_mass=ref.w_swe_mass if swe_mass_obs is not None else 0.0,
-        w_peak=ref.w_peak, w_physics=ref.w_physics, w_residual=ref.w_residual,
+        **_poids, et_mode=lcfg.get("et_mode", "level"),
         per_station=True, station_weights=None,
         station_var=torch.cat(st_var).to(device),
-        # Le seuil sert aux DEUX termes de pics : celui en ecart quadratique et celui
-        # par rapport des magnitudes, ajoute le 2026-09-20. Ne le construire que pour le
-        # premier rendait le second inerte precisement quand on remplace l'un par l'autre.
         peak_threshold=(torch.cat(st_peak).to(device)
                         if (ref.w_peak > 0 or getattr(ref, 'w_peak_ratio', 0.0) > 0)
                         else None),
@@ -321,7 +330,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
             station_idx=station_idx, graph=graph, node_coords=node_coords,
             territorial=territorial, withdrawals=withdrawals, day_of_year=day_of_year,
             train_slice=sl_, val_slice=sl_,
-            et_obs=_shift(et_obs, sl_), swe_obs=_shift(swe_obs, sl_),
+            et_obs=_shift(et_obs, sl_), et_weight=et_weight, swe_obs=_shift(swe_obs, sl_),
             tws_obs=tws_obs[sl_.start:], tws_group=tws_group,
             swe_mass_obs=(swe_mass_obs[sl_.start:] if swe_mass_obs is not None else None),
             swe_mass_node=swe_mass_node,
@@ -483,7 +492,12 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
                 times=parts[0]["times"], station_ids=st_ids, slices=slices,
                 n_gauges=q_obs.shape[1], land_cover=land_cover,
                 melt_params=melt_params, phenology=phenology,
-                linacre=linacre, kgw=kgw, soil=soil)
+                linacre=linacre, kgw=kgw, soil=soil,
+                # Par territoire : nom, identifiants locaux des troncons dans l'ordre des
+                # noeuds, decalage et taille dans le domaine. Sert aux donnees livrees par
+                # projet PHYSITEL (lacs, noyau de versant, tables par troncon).
+                parts_meta=[(p["name"], p["node_ids"], int(o), int(sz))
+                            for p, o, sz in zip(parts, offs[:-1], sizes)])
 
 
 def _mpaths_root():
