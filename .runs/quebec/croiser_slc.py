@@ -122,6 +122,8 @@ def main(regions):
         d = pd.concat([ancien[~ancien.region.isin(d.region.unique())], d], ignore_index=True)
     d.to_parquet(f, index=False)
     print(f"\n{f} : {len(d)} tronçons, {len(d.columns)} colonnes", flush=True)
+    # Table lue par [soil.ceiling_from_drainage] : la classe de drainage seule.
+    d[["region", "troncon", "aire_m2", "drainage", "couv_drainage"]].to_parquet(f"{SORTIE}/slc-drainage-troncons.parquet", index=False)
     return 0
 
 
