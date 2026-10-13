@@ -151,6 +151,16 @@ class SparseWithdrawals:
     def gw_withdrawal(self, t: int):
         return self._scatter(self._cols_gw, self._vals_gw, t)
 
+    def slice(self, start: int | None, stop: int | None) -> "SparseWithdrawals":
+        """Tranche temporelle alignee sur celle du forcage, comme WithdrawalData.slice."""
+        sl = slice(start, stop)
+        out = SparseWithdrawals.__new__(SparseWithdrawals)
+        out._cols, out._cols_gw = self._cols, self._cols_gw
+        out._vals = self._vals[sl] if self._vals.ndim == 2 and self._vals.shape[1] else self._vals
+        out._vals_gw = self._vals_gw[sl] if self._vals_gw.ndim == 2 and self._vals_gw.shape[1] else self._vals_gw
+        out.n_reaches, out._device = self.n_reaches, self._device
+        return out
+
 
 def _compress(dense: torch.Tensor):
     """(T, N) dense -> (colonnes non nulles, valeurs sur ces colonnes)."""
