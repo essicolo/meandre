@@ -2128,6 +2128,24 @@ class Trainer:
                               flush=True)
                 else:
                     (loss_chunk * weight).backward()
+                if os.environ.get("MEANDRE_SONDE_CONFLIT"):
+                    # SONDE DES CONFLITS (2026-10-14) : gradient de la perte de chaque bloc par
+                    # rapport a la sortie brute du champ (troncons x sorties), sans pas
+                    # d'optimisation ; arret apres MEANDRE_SONDE_CONFLIT_BLOCS blocs. Les bassins
+                    # etant independants, la part de chaque bassin s'en deduit exactement.
+                    _se = self.model.spatial_encoder
+                    _g = getattr(getattr(_se, "brut_capture", None), "grad", None)
+                    _liste = getattr(self, "_sonde_conflit", [])
+                    if _g is not None:
+                        _liste.append(_g.detach().float().cpu().numpy())
+                    self._sonde_conflit = _liste
+                    print(f"[sonde-conflit] bloc {n_chunks} (t={t_start}) : perte {float(loss_chunk):.4f} | gradient du champ {'capte' if _g is not None else 'ABSENT'}", flush=True)
+                    if len(_liste) >= int(os.environ.get("MEANDRE_SONDE_CONFLIT_BLOCS", "4")):
+                        import numpy as _np_c
+                        _np_c.save(os.environ["MEANDRE_SONDE_CONFLIT"], _np_c.stack(_liste))
+                        print(f"[sonde-conflit] {len(_liste)} blocs ecrits dans {os.environ['MEANDRE_SONDE_CONFLIT']}", flush=True)
+                        os._exit(0)
+                    self.optimizer.zero_grad()
                 if os.environ.get("MEANDRE_SONDE_SEGMENT") == "1" and n_chunks >= 1:
                     # SONDE DU RECALCUL PAR SEGMENTS : gradient et memoire du deuxieme bloc (le
                     # premier porte la mise en regime), puis arret. Deux executions, avec et sans

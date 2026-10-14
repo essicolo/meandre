@@ -634,6 +634,10 @@ class SpatialFieldNetwork(nn.Module):
         if _bi is not None:
             raw = _bi.to(device=raw.device, dtype=raw.dtype)
         self.dernier_brut = raw.detach()
+        if getattr(self, "capture_brut", False) and raw.requires_grad:
+            # Sonde des conflits (2026-10-14) : garde la sortie brute et son gradient.
+            raw.retain_grad()
+            self.brut_capture = raw
         return self._apply_constraints(raw)
 
     def enable_routing_head(self, n_territorial: int) -> None:

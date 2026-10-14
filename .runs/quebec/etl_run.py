@@ -1690,6 +1690,8 @@ if os.environ.get("MEANDRE_CHAMP_EXPORT"):
     print(f"[champ] sortie brute {_ex['brut'].shape} ecrite dans {os.environ['MEANDRE_CHAMP_EXPORT']}")
     sys.stdout.flush()
     os._exit(0)
+if os.environ.get("MEANDRE_SONDE_CONFLIT"):
+    model.spatial_encoder.capture_brut = True
 if os.environ.get("MEANDRE_CHAMP_IMPOSE"):
     model.spatial_encoder.brut_impose = torch.from_numpy(np.load(os.environ["MEANDRE_CHAMP_IMPOSE"])).to(DEVICE)
     print(f"[champ] sortie brute IMPOSEE depuis {os.environ['MEANDRE_CHAMP_IMPOSE']} {tuple(model.spatial_encoder.brut_impose.shape)}")
