@@ -627,6 +627,13 @@ class SpatialFieldNetwork(nn.Module):
             _col[:, self._k_musk_row] = _rh(territorial.to(raw.dtype)).squeeze(-1)
             raw = raw + _col
 
+        # DIAGNOSTIC (2026-10-14) : `brut_impose` remplace la sortie brute par un champ fourni,
+        # par exemple celui de modeles territoriaux, pour juger un champ sans son reseau ;
+        # `dernier_brut` garde la derniere sortie brute pour l'exporter.
+        _bi = getattr(self, "brut_impose", None)
+        if _bi is not None:
+            raw = _bi.to(device=raw.device, dtype=raw.dtype)
+        self.dernier_brut = raw.detach()
         return self._apply_constraints(raw)
 
     def enable_routing_head(self, n_territorial: int) -> None:

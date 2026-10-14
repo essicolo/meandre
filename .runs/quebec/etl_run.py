@@ -1673,6 +1673,27 @@ if os.environ.get("MEANDRE_SONDE_DOMAINE"):
     sys.stdout.flush()
     os._exit(0)
 
+# CHAMP EXPORTE OU IMPOSE (diagnostic de capacite, 2026-10-14, R374). MEANDRE_CHAMP_EXPORT=<f.npz>
+# ecrit la sortie brute du champ (avant contraintes), ses entrees et les identifiants des troncons
+# par territoire, puis s'arrete ; MEANDRE_CHAMP_IMPOSE=<f.npy> remplace la sortie brute du champ
+# par ce tableau (troncons x sorties) pour toute la simulation.
+if os.environ.get("MEANDRE_CHAMP_EXPORT"):
+    with torch.no_grad():
+        model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
+    _ex = {"brut": model.spatial_encoder.dernier_brut.float().cpu().numpy(),
+           "coords": td.node_coords.float().cpu().numpy(),
+           "territorial": td.territorial.to_tensor().float().cpu().numpy(),
+           "territoires": np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territoires()])}
+    for _n, _ids, _o, _t in _territoires():
+        _ex[f"ids_{_n}"] = np.asarray(_ids)
+    np.savez(os.environ["MEANDRE_CHAMP_EXPORT"], **_ex)
+    print(f"[champ] sortie brute {_ex['brut'].shape} ecrite dans {os.environ['MEANDRE_CHAMP_EXPORT']}")
+    sys.stdout.flush()
+    os._exit(0)
+if os.environ.get("MEANDRE_CHAMP_IMPOSE"):
+    model.spatial_encoder.brut_impose = torch.from_numpy(np.load(os.environ["MEANDRE_CHAMP_IMPOSE"])).to(DEVICE)
+    print(f"[champ] sortie brute IMPOSEE depuis {os.environ['MEANDRE_CHAMP_IMPOSE']} {tuple(model.spatial_encoder.brut_impose.shape)}")
+
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
 tr.fit()
