@@ -2134,12 +2134,15 @@ class Trainer:
                     # d'optimisation ; arret apres MEANDRE_SONDE_CONFLIT_BLOCS blocs. Les bassins
                     # etant independants, la part de chaque bassin s'en deduit exactement.
                     _se = self.model.spatial_encoder
-                    _g = getattr(getattr(_se, "brut_capture", None), "grad", None)
+                    _gs = [t_.grad for t_ in getattr(_se, "brut_capture", []) if t_.grad is not None]
+                    _se.brut_capture = []
+                    _g = torch.stack(_gs).sum(0) if _gs else None
                     _liste = getattr(self, "_sonde_conflit", [])
                     if _g is not None:
                         _liste.append(_g.detach().float().cpu().numpy())
                     self._sonde_conflit = _liste
-                    print(f"[sonde-conflit] bloc {n_chunks} (t={t_start}) : perte {float(loss_chunk):.4f} | gradient du champ {'capte' if _g is not None else 'ABSENT'}", flush=True)
+                    _nrm = [f"{float(t_.norm()):.2e}" for t_ in _gs]
+                    print(f"[sonde-conflit] bloc {n_chunks} (t={t_start}) : perte {float(loss_chunk):.4f} | {len(_gs)} appels du champ, normes {_nrm}", flush=True)
                     if len(_liste) >= int(os.environ.get("MEANDRE_SONDE_CONFLIT_BLOCS", "4")):
                         import numpy as _np_c
                         _np_c.save(os.environ["MEANDRE_SONDE_CONFLIT"], _np_c.stack(_liste))

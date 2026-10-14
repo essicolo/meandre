@@ -636,8 +636,10 @@ class SpatialFieldNetwork(nn.Module):
         self.dernier_brut = raw.detach()
         if getattr(self, "capture_brut", False) and raw.requires_grad:
             # Sonde des conflits (2026-10-14) : garde la sortie brute et son gradient.
+            # Toutes les sorties du bloc sont gardees : le champ est appele par la simulation
+            # puis par l'ancrage sur la litterature, et seule la somme fait le gradient du bloc.
             raw.retain_grad()
-            self.brut_capture = raw
+            self.brut_capture = getattr(self, "brut_capture", []) + [raw]
         return self._apply_constraints(raw)
 
     def enable_routing_head(self, n_territorial: int) -> None:
