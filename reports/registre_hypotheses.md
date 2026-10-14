@@ -5608,3 +5608,29 @@ Biais du volume annuel de débit total, modèles du 10 octobre, test 2019-2024, 
 Domaine des 14 territoires fondus (27 834 tronçons, 170 stations, normalisation provinciale). Le premier essai sur la carte de 8 Go d'Ubuntu échoue faute de mémoire dans `build_operator_state` : la matrice W de chaque étage est dense, de taille rivières × rivières, et l'étage principal du domaine en compte plus de 25 000 (plusieurs gigaoctets, plus les temporaires du solve). Sous Windows, le même débordement passe en mémoire partagée et la mise en place prend 1 h 50 au lieu de 5 min. Les bassins d'un même étage ne s'échangent rien ; `MEANDRE_OPERATOR_BLOCK` (4096 dans `socle-2026-10-13.toml`) regroupe les composantes connexes de chaque étage en blocs d'au plus cette taille, et le test `test_operator_block_split_is_exact` vérifie débits et gradients identiques. Aucun territoire seul ne dépasse 4096 tronçons (Gaspésie 3917), donc les modèles territoriaux sont inchangés. Mesure d'un pas d'entraînement, diagnostics sur le processeur, blocs de 90 jours, segments de 10 jours : pic de mémoire 6,61 Go, 205 s pour le premier bloc (compilation comprise), contre environ 10 s par bloc pour Outaouais-Montréal seul (2379 tronçons). Entraînement provincial de 16 époques lancé sur Ubuntu (`~/quebec1013.sh`), même nombre d'époques que les modèles territoriaux du 6 octobre ; le jugement se fera par territoire sur la perte 2019-2024, contre les modèles territoriaux affinés.
 
 Vérification sur données réelles : passe avant de la Montérégie à poids de départ, perte 2019-2024 de 1,6999 sans découpage et de 1,6999 avec des blocs de 500 tronçons, chaque terme identique au dix-millième. La première époque provinciale prend 19 min (1134 s), les suivantes environ 16 min, soit environ 4 h 30 pour 16 époques ; l'estimation de 36 h tirée du premier bloc comptait la compilation.
+
+## R374 — Un seul modèle pour le Québec, entraîné de zéro, perd contre les modèles territoriaux sur douze territoires sur quatorze (2026-10-14) — ÉTABLI pour cette configuration
+
+Configuration `socle-2026-10-13.toml` (plafond de percolation par la classe de drainage, blocs de 90 jours), normalisation provinciale, 16 époques depuis zéro sur Ubuntu (`~/quebec1013.sh`, environ 4 h 30). La validation plafonne dès l'époque 7 (perte de validation 1,1615 puis 1,1511 à l'époque 12, retenue). Perte jugée 2019-2024 : 1,083 pour le Québec entier. Par territoire, contre le modèle territorial de 16 époques (ref, plafond 2 mm/j) et contre le meilleur affinage territorial avec la règle de drainage :
+
+| territoire | stations | territorial ref | territorial affiné | provincial |
+|---|---|---|---|---|
+| mont | 23 | 1,532 | 1,385 | 1,423 |
+| slno | 27 | 0,993 | 0,913 | 0,883 |
+| slso | 29 | 1,325 | 1,203 | 1,198 |
+| sagu | 19 | 0,951 | 0,943 | 1,033 |
+| outv | 16 | 0,898 | 0,880 | 1,015 |
+| gasp | 15 | 0,779 | 0,778 | 0,920 |
+| abit | 3 | 0,766 | 0,743 | 0,879 |
+| outm | 3 | 1,108 | 0,930 | 1,145 |
+| cnda | 1 | 0,722 | 0,677 | 0,850 |
+| cndb | 2 | 0,882 | 0,834 | 1,011 |
+| cndc | 2 | 0,593 | 0,505 | 0,912 |
+| cndd | 1 | — | 0,526 | 1,043 |
+| cnde | 2 | — | 0,687 | 0,861 |
+| labi | 1 | 1,388 | 1,101 | 1,401 |
+
+Moyenne des quatorze territoires : 0,865 pour les territoriaux affinés, 1,041 pour le provincial. Le provincial bat les modèles territoriaux de référence seulement dans les trois territoires les plus jaugés du sud-ouest (79 des 145 stations), et l'affiné territorial seulement en slno et slso. La perte moyenne par station donne à ces trois territoires plus de la moitié du gradient : le champ partagé s'ajuste à eux au détriment des territoires peu jaugés. Les deux comparaisons ne sont pas à effort égal (affiné = 16 époques plus un affinage), mais même contre la référence le provincial perd neuf territoires sur onze. Ouvert : poids par territoire dans la perte, ou affinage provincial à partir des modèles territoriaux.
+
+Écart non résolu : la référence initiale de l'ET simulée vaut 2,281 mm/j sur Ubuntu contre 2,239 sur Windows (même code, vérifié le 2026-10-13) et sur Narval. Forçage provincial, quinze bases de territoire, cibles MOD16 et projets Hydrotel lus par le pilote sont identiques ; torch 2.11 des deux côtés. Cause à trouver (données dérivées non comparées, ou calcul propre à la carte RTX 3070 Ti).
+
