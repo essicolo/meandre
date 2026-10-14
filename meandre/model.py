@@ -215,6 +215,9 @@ class HydroModel(nn.Module):
         # Nombre de bandes de fréquences Fourier pour l'encodage (lon,lat). Les
         # coords sont projetées isotropes + normalisées [-1,1] (cf. _project_coords).
         n_coord_freqs: int = 6,
+        # Largeur des couches cachees du champ spatial (neurones par couche). Meme valeur pour
+        # un territoire et pour le Quebec entier tant qu'elle n'est pas posee.
+        field_hidden: int = 256,
         use_latent_codes: bool = False,
         latent_dim: int = 8,
         latent_mode: str = "additive",
@@ -240,6 +243,7 @@ class HydroModel(nn.Module):
         self.spatial_encoder = SpatialFieldNetwork(
             n_territorial=n_territorial,
             n_coord_freqs=n_coord_freqs,
+            hidden=field_hidden,
             dropout=dropout,
             param_mode=param_mode,
             soil_bounds=soil_bounds,
@@ -1141,6 +1145,8 @@ class HydroModel(nn.Module):
                 "predict_lake_params": getattr(self.spatial_encoder, "predict_lake_params", False),
                 "use_latent_codes": getattr(self.spatial_encoder, "use_latent_codes", False),
                 "latent_dim": getattr(self.spatial_encoder, "latent_dim", 8) or 8,
+                "field_hidden": (self.spatial_encoder.fc1.out_features
+                                 if hasattr(self.spatial_encoder, "fc1") else 256),
                 "latent_mode": getattr(self.spatial_encoder, "latent_mode", "additive"),
                 "soil_quickflow_reservoir": getattr(self.vertical_column.soil, "use_quickflow_reservoir", False),
                 "soil_quickflow_beta": getattr(self.vertical_column.soil, "quickflow_beta", 0.5),

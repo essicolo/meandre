@@ -377,6 +377,9 @@ model = HydroModel(
     # Bandes de Fourier sur la position (2026-10-05) : -1 retire toute position, le champ ne
     # varie plus qu'avec les attributs du troncon (question d'Essi, R303).
     n_coord_freqs=int(os.environ.get("ETL_CHAMP_FREQS", "6")),
+    # Largeur du champ spatial ([model] field_hidden, 256 par defaut) : la meme pour un
+    # territoire et pour le Quebec entier, dont le champ partage sous-ajuste (R374).
+    field_hidden=int(mcfg.get("field_hidden", 256)),
     n_forcing=6,
     use_temporal=False,
     use_residual=False,
