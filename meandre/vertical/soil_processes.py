@@ -255,6 +255,10 @@ class SoilProcess:
                 raise KeyError(f"occupation « {cover} » absente du contexte du sol (fractions connues : "
                                f"{sorted(k[:-5] for k in ctx if k.endswith('_frac') and k != 'frost_frac')})")
             q = q * torch.clamp(frac * self.params.get("share", 1.0), 0.0, 1.0)   # `share` peut etre appris (tenseur)
+        elif "share" in self.params and self.form != "DRAIN_HOOGHOUDT":
+            # Sans occupation, `share` est la part du flux prise sur toutes les occupations
+            # (2026-10-15). DRAIN_HOOGHOUDT lit deja `share` dans sa forme.
+            q = q * torch.clamp(torch.as_tensor(self.params["share"], dtype=q.dtype, device=q.device), 0.0, 1.0)
         if self.ceiling is not None:
             if isinstance(self.ceiling, str):
                 raise RuntimeError(f"plafond « {self.ceiling} » non resolu : appeler "

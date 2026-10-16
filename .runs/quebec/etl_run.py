@@ -587,6 +587,11 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
         # Porte de gel sur la vidange de la nappe (R316) : facteur quand le gel atteint 30 cm.
         model.vertical_column.nappe_gel_facteur = float(os.environ["ETL_NAPPE_GEL"])
         print(f"[etl] porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}")
+    if "ETL_NAPPE_KB_CHAMP" in os.environ:
+        # Conductance de la nappe par troncon (R380) : « reference_1/j,exposant », k_b x (k_gw/reference)^exposant.
+        _ref, _ex = (float(x) for x in os.environ["ETL_NAPPE_KB_CHAMP"].split(","))
+        model.vertical_column.nappe_kb_champ = (_ref, _ex)
+        print(f"[etl] conductance de la nappe par troncon : k_b x (k_gw / {_ref:g})^{_ex:g}")
 # PROFIL DE SOL DECLARE (2026-09-20). Une section `[soil]` du TOML remplace les variables
 # d'environnement ci-dessous, qui etaient dix-sept a s'etre accumulees. Elle est COMPLETE :
 # une couche sans processus declare n'a pas de flux. Sans la section, rien ne change.
