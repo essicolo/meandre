@@ -1348,6 +1348,33 @@ class HydrotelColumn(nn.Module):
             e1_sol, e2_sol, e3_sol = e1 / _fsa, e2 / _fsa, e3 / _fsa
         else:
             e1_sol, e2_sol, e3_sol = e1, e2, e3
+        # VISCOSITE DE L'EAU (2026-10-16, R384, opt-in MEANDRE_VISCOSITE_TREF en degres). La
+        # conductivite hydraulique varie comme l'inverse de la viscosite de l'eau, qui double
+        # presque de 20 a 2 degres (Vogel). Le sol drainait l'hiver au rythme de l'automne et
+        # rechargeait la nappe tout l'hiver (R383). Facteur par couche mu(T_ref)/mu(T), T moyenne
+        # du profil de Rankinen sur la couche, bornee a 0 degre (le gel est traite a part).
+        _vref = os.environ.get("MEANDRE_VISCOSITE_TREF")
+        if _vref is not None and self.use_frost and frost_profile is not None and frost_profile.dim() == 2:
+            _nd = frost_profile.shape[1]
+            _dz = float(getattr(self.frost, "dz", 0.05))
+            _prof = torch.arange(_nd, device=frost_profile.device, dtype=frost_profile.dtype) * _dz
+            _za = torch.as_tensor(pe["z11"], device=frost_profile.device, dtype=frost_profile.dtype)
+            _zb = _za + torch.as_tensor(pe["z22"], device=frost_profile.device, dtype=frost_profile.dtype)
+            _zc = _zb + torch.as_tensor(pe["z33"], device=frost_profile.device, dtype=frost_profile.dtype)
+
+            def _mu(t):
+                return 2.414e-5 * torch.pow(10.0, 247.8 / (t + 133.15))
+
+            _visc = []
+            for _haut, _bas in ((torch.zeros_like(_za), _za), (_za, _zb), (_zb, _zc)):
+                _m = ((_prof[None, :] >= _haut.reshape(-1, 1)) & (_prof[None, :] < _bas.reshape(-1, 1))).to(frost_profile.dtype)
+                _m = _m.expand_as(frost_profile)
+                _tk = (frost_profile * _m).sum(dim=1) / _m.sum(dim=1).clamp(min=1.0)
+                _tk = torch.where(_m.sum(dim=1) > 0, _tk, frost_profile[:, -1])
+                _visc.append(_mu(torch.tensor(float(_vref), dtype=_tk.dtype, device=_tk.device)) / _mu(torch.clamp(_tk, min=0.0)))
+            pso = dict(pso)
+            pso["ks1"], pso["ks2"], pso["ks3"] = pso["ks1"] * _visc[0], pso["ks2"] * _visc[1], pso["ks3"] * _visc[2]
+            pso["visc2"], pso["visc3"] = _visc[1], _visc[2]
         ps_surf, ph, pb, rech, (t1, t2, t3), sdiag = self.soil(
             state.theta1, state.theta2, state.theta3, apport, etp, prof_gel_cm, couvert_mm, pso,
             etr1_mm=e1_sol * 1000.0, etr2_mm=e2_sol * 1000.0, etr3_mm=e3_sol * 1000.0, storm_hours=storm_hours)

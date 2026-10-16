@@ -240,6 +240,11 @@ class SoilProcess:
         # rapportée à la couche 1, indépendant du manteau). Opt-in : sans la clé, rien ne
         # change. Motif : en décembre-janvier, la voie latérale lente de la couche 3 porte
         # plus de la moitié du débit des grands bassins du nord, trop fort de 30 à 40 %.
+        # VISCOSITE (R384) : les vidanges a constante de temps sont des ecoulements gravitaires,
+        # proportionnels a la conductivite donc a l'inverse de la viscosite. Les formes qui lisent
+        # deja la conductivite (BASE_LINEAR, DRAIN_HOOGHOUDT) la recoivent corrigee.
+        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "DRAIN_HOOGHOUDT"):
+            q = q * ctx["visc"]
         f = self.params.get("frost_factor")
         if f is not None and ctx.get("frost_frac") is not None:
             q = q * (1.0 - (1.0 - f) * ctx["frost_frac"])
