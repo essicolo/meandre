@@ -1439,6 +1439,8 @@ class Trainer:
                     scf_sim_chunk = 1.0 - torch.exp(-_swe_mm / self.config.snow_swe_ref)
                     snow_obs_chunk = data.swe_obs[obs_offset + burnin:obs_offset + chunk_len]
 
+                if hasattr(self.loss_fn, "doy_bloc"):
+                    self.loss_fn.doy_bloc = data.day_of_year[sl][burnin:]
                 loss_chunk, comps = self.loss_fn(
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,

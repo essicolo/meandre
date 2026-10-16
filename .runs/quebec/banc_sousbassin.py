@@ -1483,7 +1483,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
-                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")),
+                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_plat=float(os.environ.get("MEANDRE_BANC_W_PLAT", "0")),
                             w_dq_log=float(w_dq_log), station_var=_svar,
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
@@ -1507,7 +1507,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # trois resultats identiques sans que rien ne le signale.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
                             w_nse=0.0, w_nrmse=0.0, station_var=_svar,
-                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_dq_log=float(w_dq_log),
+                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_plat=float(os.environ.get("MEANDRE_BANC_W_PLAT", "0")), w_dq_log=float(w_dq_log),
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
                             peak_threshold=_pthr if float(w_peak) > 0 else None,

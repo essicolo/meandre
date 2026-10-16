@@ -252,6 +252,12 @@ def differentiable_dq_log_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return torch.abs(s_s / s_o.clamp(min=1e-8) - 1.0)
 
 
+def _mois_du_jour(doy: Tensor) -> Tensor:
+    """Mois (1 a 12) d'un jour de l'annee, calendrier non bissextile ; un jour d'ecart au plus."""
+    fins = torch.tensor([31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 366], device=doy.device)
+    return torch.bucketize(doy.long(), fins, right=False) + 1
+
+
 def differentiable_flat_days_loss(q_obs: Tensor, q_sim: Tensor, seuil: float = 0.01,
                                   largeur: float = 0.003) -> Tensor:
     """Écart sur la PART DE JOURS PLATS, variation relative d'un jour à l'autre sous `seuil`.
@@ -943,6 +949,7 @@ class HydroLoss(nn.Module):
         w_plat: float = 0.0,
         plat_seuil: float = 0.01,
         plat_largeur: float = 0.003,
+        plat_mois: tuple = (12, 1, 2, 3),
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
@@ -1032,6 +1039,10 @@ class HydroLoss(nn.Module):
         self.w_plat = w_plat
         self.plat_seuil = plat_seuil
         self.plat_largeur = plat_largeur
+        self.plat_mois = tuple(int(m) for m in plat_mois)
+        # Jour de l'annee de chaque pas du bloc courant, pose par le trainer avant l'appel :
+        # le terme de platitude ne regarde que les mois `plat_mois` du bloc (R382).
+        self.doy_bloc = None
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -1282,8 +1293,19 @@ class HydroLoss(nn.Module):
                             gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
                         if self.w_recession > 0:
                             rec_v.append(_remis(differentiable_recession_loss(q_o_v, q_s_v)))
-                        if self.w_plat > 0:
-                            plat_v.append(_remis(differentiable_flat_days_loss(q_o_v, q_s_v, self.plat_seuil, self.plat_largeur)))
+                        if self.w_plat > 0 and self.doy_bloc is not None:
+                            # BLOC SEUL ET MOIS CIBLES (2026-10-16, R382). Sur la serie entiere,
+                            # l'optimiseur satisfaisait le terme en rendant l'ete nerveux et
+                            # gardait l'hiver plat. Sur le seul bloc de 90 jours et les seuls
+                            # jours des mois cibles, aucune compensation entre saisons.
+                            _mois = _mois_du_jour(self.doy_bloc.to(v.device))
+                            _k = v & torch.isin(_mois, torch.tensor(self.plat_mois, device=v.device))
+                            if int(_k.sum()) >= 20:
+                                plat_v.append(differentiable_flat_days_loss(
+                                    q_obs[_k, si], q_sim_at_stations[_k, si], self.plat_seuil, self.plat_largeur))
+                            else:
+                                # Meme longueur que les poids par station : zero hors des mois cibles.
+                                plat_v.append(q_sim_at_stations[v, si].sum() * 0.0)
                         if self.w_peak_ratio > 0 and self.peak_threshold is not None:
                             _seuil = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
                             pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _seuil)))
