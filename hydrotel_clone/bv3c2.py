@@ -158,6 +158,19 @@ class BV3C2Clone(torch.nn.Module):
                                         ks1 * storm_hours * 1000.0)
                 runoff_horton = torch.clamp(apport_mm - infil_cap, min=0.0)
             apport_mm = apport_mm - runoff_horton    # le reste entre dans le sol (fraction fsa)
+        # ── AIRE CONTRIBUTIVE VARIABLE (2026-10-16, R386, opt-in MEANDRE_VSA_B) ──
+        # Une part de l'apport, croissante avec l'humidite de la couche de surface, ruisselle
+        # directement : les bandes riveraines et bas de versant satures, forme VIC/TOPMODEL,
+        # part = (theta1/thetas1)^b. Le clone n'avait de ruissellement de saturation que si
+        # toute la couche 1 saturait, ce qui n'arrive jamais a l'echelle du troncon ; les
+        # orages d'ete rendaient 0,64 du volume d'evenement observe (0,32 en Monteregie).
+        # Comme le hortonien : retire de l'apport du sol, ajoute au ruissellement de fsa.
+        _vsa = _os.environ.get("MEANDRE_VSA_B")
+        if _vsa is not None:
+            _se1 = torch.clamp(theta1 / torch.clamp(ths1, min=1e-6), 0.0, 1.0)
+            _r_vsa = apport_mm * _se1 ** float(_vsa)
+            apport_mm = apport_mm - _r_vsa
+            runoff_horton = runoff_horton + _r_vsa
         b1, b2, b3 = p["b1"], p["b2"], p["b3"]
         psis1, psis2, psis3 = p["psis1"], p["psis2"], p["psis3"]
         krec, slope, cin = p["krec"], p["slope"], p["cin"]
