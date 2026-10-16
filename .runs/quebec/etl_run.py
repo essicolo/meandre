@@ -1205,7 +1205,13 @@ if os.environ.get("ETL_TEXTURE_BOUNDS"):
 if _tb.get("enabled", False):
     from meandre.data.texture_bounds import texture_conductivity as _tcond, bounds_from_texture as _tbornes
     from meandre.spatial.field_network import FIELD_BOUNDS as _FB
-    _tx = _tcond(_paths.data_path("quebec", f"{REG}.duckdb"), n_nodes, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", REG)
+    # Domaine (2026-10-16) : textures lues territoire par territoire, dans l'ordre du domaine.
+    _tx = {f"K_sat_{_i}": np.full(n_nodes, np.nan) for _i in (1, 2, 3)}
+    _tx["source"] = np.array(["aucune"] * n_nodes, dtype=object)
+    for _nom_t, _, _o_t, _n_t in _territoires():
+        _t1 = _tcond(_paths.data_path("quebec", f"{_nom_t}.duckdb"), _n_t, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", _nom_t)
+        for _k1, _v1 in _t1.items():
+            _tx[_k1][_o_t:_o_t + _n_t] = _v1
     _fac = float(_tb.get("factor", 3.0))
     for _c in [int(x) for x in _tb.get("layers", [1, 2, 3])]:
         _nm = f"K_sat_{_c}"
