@@ -114,9 +114,16 @@ class HydroModel(nn.Module):
         """
         import os as _os_diag
 
+        # MEANDRE_DIAG_F16=1 : diagnostics non derives gardes en demi-precision sur le
+        # processeur. Le Quebec entier (27 834 troncons, 25 ans) demande environ 1 Go par
+        # variable en simple precision, et la trentaine de variables a epuise 29 Go
+        # (2026-10-15). Trois chiffres significatifs suffisent aux climatologies mensuelles ;
+        # l'audit de fermeture du bilan, lui, n'est plus lisible au dix-millieme.
+        _dt_cpu = torch.float16 if _os_diag.environ.get("MEANDRE_DIAG_F16", "0") == "1" else None
+
         class _ListeProcesseur(list):
             def append(self, t):
-                super().append(t.detach().to("cpu") if torch.is_tensor(t) else t)
+                super().append(t.detach().to("cpu", dtype=_dt_cpu or t.dtype) if torch.is_tensor(t) else t)
 
         class _ListeProcesseurDerivable(list):
             # On ne deplace PAS : un tenseur qui garde son graphe maintient de toute facon
@@ -980,46 +987,48 @@ class HydroModel(nn.Module):
         if not return_diagnostics:
             return Q_sim, state
 
+        # `pop` libere chaque liste des qu'elle est empilee : sans lui, listes et piles
+        # coexistent et la memoire des diagnostics double au dernier moment.
         diagnostics = SimDiagnostics(
-            etp=torch.stack(diag_lists["etp"], dim=0),
-            etr=torch.stack(diag_lists["etr"], dim=0),
-            snowmelt=torch.stack(diag_lists["snowmelt"], dim=0),
-            lateral_mm=torch.stack(diag_lists["lateral_mm"], dim=0),
-            etr_mh=(torch.stack(diag_lists["etr_mh_mm"], dim=0)
+            etp=torch.stack(diag_lists.pop("etp"), dim=0),
+            etr=torch.stack(diag_lists.pop("etr"), dim=0),
+            snowmelt=torch.stack(diag_lists.pop("snowmelt"), dim=0),
+            lateral_mm=torch.stack(diag_lists.pop("lateral_mm"), dim=0),
+            etr_mh=(torch.stack(diag_lists.pop("etr_mh_mm"), dim=0)
                     if diag_lists.get("etr_mh_mm") else None),
-            wet_vol=(torch.stack(diag_lists["wet_vol_mm"], dim=0)
+            wet_vol=(torch.stack(diag_lists.pop("wet_vol_mm"), dim=0)
                      if diag_lists.get("wet_vol_mm") else None),
-            sublimation=(torch.stack(diag_lists["subl_mm"], dim=0)
+            sublimation=(torch.stack(diag_lists.pop("subl_mm"), dim=0)
                          if diag_lists.get("subl_mm") else None),
-            prof_gel_cm=(torch.stack(diag_lists["prof_gel_cm"], dim=0)
+            prof_gel_cm=(torch.stack(diag_lists.pop("prof_gel_cm"), dim=0)
                          if diag_lists.get("prof_gel_cm") else None),
-            prod_surf=(torch.stack(diag_lists["prod_surf"], dim=0)
+            prod_surf=(torch.stack(diag_lists.pop("prod_surf"), dim=0)
                        if diag_lists["prod_surf"] else None),
-            prod_hypo=(torch.stack(diag_lists["prod_hypo"], dim=0)
+            prod_hypo=(torch.stack(diag_lists.pop("prod_hypo"), dim=0)
                        if diag_lists["prod_hypo"] else None),
-            prod_base=(torch.stack(diag_lists["prod_base"], dim=0)
+            prod_base=(torch.stack(diag_lists.pop("prod_base"), dim=0)
                        if diag_lists["prod_base"] else None),
             # ETR par couche (2026-10-02) : d'ou l'evapotranspiration prend son eau.
-            etr1=(torch.stack(diag_lists["etr1"], dim=0) if diag_lists.get("etr1") else None),
-            etr2=(torch.stack(diag_lists["etr2"], dim=0) if diag_lists.get("etr2") else None),
-            etr3=(torch.stack(diag_lists["etr3"], dim=0) if diag_lists.get("etr3") else None),
-            temps_non_traite=(torch.stack(diag_lists["temps_non_traite"], dim=0)
+            etr1=(torch.stack(diag_lists.pop("etr1"), dim=0) if diag_lists.get("etr1") else None),
+            etr2=(torch.stack(diag_lists.pop("etr2"), dim=0) if diag_lists.get("etr2") else None),
+            etr3=(torch.stack(diag_lists.pop("etr3"), dim=0) if diag_lists.get("etr3") else None),
+            temps_non_traite=(torch.stack(diag_lists.pop("temps_non_traite"), dim=0)
                               if diag_lists.get("temps_non_traite") else None),
-            profondeur_nappe=(torch.stack(diag_lists["profondeur_nappe_m"], dim=0)
+            profondeur_nappe=(torch.stack(diag_lists.pop("profondeur_nappe_m"), dim=0)
                               if diag_lists.get("profondeur_nappe_m") else None),
-            etr_nappe=(torch.stack(diag_lists["etr_nappe"], dim=0)
+            etr_nappe=(torch.stack(diag_lists.pop("etr_nappe"), dim=0)
                        if diag_lists.get("etr_nappe") else None),
-            q_lateral=torch.stack(diag_lists["q_lateral"], dim=0),
-            q_upstream=torch.stack(diag_lists["q_upstream"], dim=0),
-            recharge=torch.stack(diag_lists["recharge"], dim=0),
-            q_baseflow=torch.stack(diag_lists["q_baseflow"], dim=0),
-            swe=torch.stack(diag_lists["swe"], dim=0),
-            theta1=torch.stack(diag_lists["theta1"], dim=0),
-            theta2=torch.stack(diag_lists["theta2"], dim=0),
-            theta3=torch.stack(diag_lists["theta3"], dim=0),
-            s_gw=torch.stack(diag_lists["s_gw"], dim=0),
-            canopy=torch.stack(diag_lists["canopy"], dim=0),
-            wetland=torch.stack(diag_lists["wetland"], dim=0),
+            q_lateral=torch.stack(diag_lists.pop("q_lateral"), dim=0),
+            q_upstream=torch.stack(diag_lists.pop("q_upstream"), dim=0),
+            recharge=torch.stack(diag_lists.pop("recharge"), dim=0),
+            q_baseflow=torch.stack(diag_lists.pop("q_baseflow"), dim=0),
+            swe=torch.stack(diag_lists.pop("swe"), dim=0),
+            theta1=torch.stack(diag_lists.pop("theta1"), dim=0),
+            theta2=torch.stack(diag_lists.pop("theta2"), dim=0),
+            theta3=torch.stack(diag_lists.pop("theta3"), dim=0),
+            s_gw=torch.stack(diag_lists.pop("s_gw"), dim=0),
+            canopy=torch.stack(diag_lists.pop("canopy"), dim=0),
+            wetland=torch.stack(diag_lists.pop("wetland"), dim=0),
             T_water=torch.stack(diag_lists["T_water"], dim=0),
             profondeur_eau_m=self._profondeur_deau(Q_sim, graph, spatial_params),
         )
