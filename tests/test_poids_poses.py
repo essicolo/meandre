@@ -45,7 +45,7 @@ def test_les_poids_des_configurations_sont_tous_poses():
 
 def test_les_termes_du_kge_decompose_sont_poses():
     poses = _poids_de_lappel()
-    for cle in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession"):
+    for cle in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession", "w_plat"):
         assert cle in poses, f"{cle} n'atteint pas l'objet de perte"
 
 

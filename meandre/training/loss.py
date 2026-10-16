@@ -252,6 +252,31 @@ def differentiable_dq_log_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return torch.abs(s_s / s_o.clamp(min=1e-8) - 1.0)
 
 
+def differentiable_flat_days_loss(q_obs: Tensor, q_sim: Tensor, seuil: float = 0.01,
+                                  largeur: float = 0.003) -> Tensor:
+    """Écart sur la PART DE JOURS PLATS, variation relative d'un jour à l'autre sous `seuil`.
+
+    POURQUOI (2026-10-16, R382). L'hiver du modèle unique est plat (17 % de jours plats contre
+    7 % observés) et l'entraînement reconstruit cette platitude même quand la physique la
+    retire, parce qu'aucun terme ne la voit : les variations journalières comparent des
+    écarts-types dominés par les crues, et une baisse régulière de 1 % par jour y pèse peu.
+    Ce terme compare la grandeur même du diagnostic. La part est rendue dérivable par une
+    sigmoïde de largeur `largeur` autour du seuil ; la variation est prise sur le logarithme
+    du débit, donc relative. Écart absolu, premier ordre ; parfait = 0. Il punit aussi
+    l'excès de nervosité (part simulée sous l'observée).
+    """
+    if q_obs.numel() < 3:
+        return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
+    eps = (1e-3 * q_obs.median().abs()).clamp(min=1e-8)
+
+    def _part(q):
+        lq = torch.log(q.clamp(min=0.0) + eps)
+        d = torch.sqrt((lq[1:] - lq[:-1]) ** 2 + 1e-8)
+        return torch.sigmoid((seuil - d) / largeur).mean()
+
+    return torch.abs(_part(q_sim) - _part(q_obs))
+
+
 def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
                                 bas: float = 0.2, ref: float = 0.5) -> Tensor:
     """Ecart sur le SOUTIEN d'etiage : quantile bas rapporte a la mediane.
@@ -915,6 +940,9 @@ class HydroLoss(nn.Module):
         w_gamma: float = 0.0,
         w_peak_ratio: float = 0.0,
         w_recession: float = 0.0,
+        w_plat: float = 0.0,
+        plat_seuil: float = 0.01,
+        plat_largeur: float = 0.003,
         w_physics: float = 0.01,
         w_residual: float = 0.001,
         per_station: bool = False,
@@ -1001,6 +1029,9 @@ class HydroLoss(nn.Module):
         # Vitesse de vidange sur les jours de decrue : seule grandeur qui identifie la
         # partition entre ecoulement hypodermique et nappe.
         self.w_recession = w_recession
+        self.w_plat = w_plat
+        self.plat_seuil = plat_seuil
+        self.plat_largeur = plat_largeur
         self.w_physics = w_physics
         self.w_residual = w_residual
         self.per_station = per_station
@@ -1057,6 +1088,7 @@ class HydroLoss(nn.Module):
         # station les remplissait, d'ou une variable non liee sur l'autre.
         L_r = L_beta = L_gamma = L_peak_ratio = torch.tensor(0.0, device=q_sim.device)
         L_recession = torch.tensor(0.0, device=q_sim.device)
+        L_plat = torch.tensor(0.0, device=q_sim.device)
 
         if self.per_station:
             n_stations = q_sim_at_stations.shape[1]
@@ -1188,13 +1220,13 @@ class HydroLoss(nn.Module):
                              or self.w_nrmse > 0 or self.w_log_nse > 0
                              or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0
                              or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0
-                             or self.w_peak_ratio > 0 or self.w_recession > 0)
+                             or self.w_peak_ratio > 0 or self.w_recession > 0 or self.w_plat > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     dq_v, fdc_v, dql_v = [], [], []
                     etiage_v = []
                     r_v, beta_v, gamma_v = [], [], []
-                    pr_v, rec_v = [], []
+                    pr_v, rec_v, plat_v = [], [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -1250,6 +1282,8 @@ class HydroLoss(nn.Module):
                             gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
                         if self.w_recession > 0:
                             rec_v.append(_remis(differentiable_recession_loss(q_o_v, q_s_v)))
+                        if self.w_plat > 0:
+                            plat_v.append(_remis(differentiable_flat_days_loss(q_o_v, q_s_v, self.plat_seuil, self.plat_largeur)))
                         if self.w_peak_ratio > 0 and self.peak_threshold is not None:
                             _seuil = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
                             pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _seuil)))
@@ -1292,6 +1326,8 @@ class HydroLoss(nn.Module):
                         L_peak_ratio = (torch.stack(pr_v) * w).sum()
                     if self.w_recession > 0 and rec_v:
                         L_recession = (torch.stack(rec_v) * w).sum()
+                    if self.w_plat > 0 and plat_v:
+                        L_plat = (torch.stack(plat_v) * w).sum()
                     if self.w_nrmse > 0 and nrmse_v:
                         L_nrmse = (torch.stack(nrmse_v) * w).sum()
                     if self.w_log_nse > 0 and lnse_v:
@@ -1393,12 +1429,13 @@ class HydroLoss(nn.Module):
                 + self.w_fdc_bas * L_fdc
                 + self.w_etiage * L_etiage
                 + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma
-                + self.w_peak_ratio * L_peak_ratio + self.w_recession * L_recession)
+                + self.w_peak_ratio * L_peak_ratio + self.w_recession * L_recession
+                + self.w_plat * L_plat)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc, "etiage_loss": L_etiage,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "r_loss": L_r, "beta_loss": L_beta, "gamma_loss": L_gamma,
-                      "peak_ratio_loss": L_peak_ratio, "recession_loss": L_recession,
+                      "peak_ratio_loss": L_peak_ratio, "recession_loss": L_recession, "plat_loss": L_plat,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,

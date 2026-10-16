@@ -327,6 +327,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         w_r=lcfg.get("w_r", 0.0), w_beta=lcfg.get("w_beta", 0.0),
         w_gamma=lcfg.get("w_gamma", 0.0), w_peak_ratio=lcfg.get("w_peak_ratio", 0.0),
         w_recession=lcfg.get("w_recession", 0.0),
+        w_plat=lcfg.get("w_plat", 0.0),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
         peak_threshold=(peak_thr if (lcfg.get("w_peak", 0.0) > 0

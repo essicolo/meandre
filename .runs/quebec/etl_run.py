@@ -143,7 +143,9 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
                    # terme qui y reagit s'y fait absorber. Sa specificite vaut 2,37 contre
                    # 1,58 pour le meilleur des autres, au prix d'une reponse brute 23 %
                    # plus faible.
-                   ("ETL_WRECESS", "w_recession")):
+                   ("ETL_WRECESS", "w_recession"),
+                   # PART DE JOURS PLATS (2026-10-16, R382) : seul terme qui voie la platitude d'hiver.
+                   ("ETL_WPLAT", "w_plat")):
     # Poids des termes de debit, exposes le 2026-09-05 : le balayage de neuf pertes du
     # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
     # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle
