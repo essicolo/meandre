@@ -43,7 +43,17 @@ One model covers the province: the 15 PHYSITEL territories form a single domain 
 | Interquartile range of KGE per station | 0.60 to 0.81 |
 | Share of stations with KGE above 0.5 | 88 % |
 
-Low flows and small streams, with a typical low flow under 0.5 m³/s, remain the hardest cases. Their low-flow error is about 1.7 times that of the other stations. The calibration of the probabilistic intervals on 2022-2024 will be added once it has been judged.
+Low flows and small streams, with a typical low flow under 0.5 m³/s, remain the hardest cases. Their low-flow error is about 1.7 times that of the other stations.
+
+The quantile head was trained on 2001-2018 with the deterministic model frozen. Its median is the deterministic discharge, to within 3e-7 in relative terms. On 2022-2024, over the same 143 stations:
+
+| Nominal interval | Share of observations inside |
+|---|---|
+| 50 % | 51 % |
+| 80 % | 80 % |
+| 90 % | 90 % |
+
+The 90 % interval covers between 88 % (summer) and 94 % (autumn) of the observations depending on the season. Its median width is 2.2 times the median discharge. Coverage is lowest on the North Shore territories, with few and partly regulated stations (76 to 86 %).
 
 ## Forcing
 
