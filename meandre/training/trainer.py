@@ -2801,9 +2801,13 @@ class Trainer:
                 sp_q = self.model.spatial_encoder(
                     data.node_coords, data.territorial.to_tensor()
                 )
-                offsets_v = self.model.quantile_head(sp_q.to_tensor(), Q_sim.detach())
-            q_pred_v = Q_sim.detach().unsqueeze(-1) + offsets_v  # (T, N, K)
-            q_pred_st = q_pred_v[:, data.station_mask, :]         # (T, n_st, K)
+                # La tete traite chaque troncon independamment : on ne l'evalue qu'aux
+                # stations. Sur tout le Quebec (27 834 troncons, trois ans), l'enveloppe
+                # complete demandait plus de 7 Go et saturait la carte (2026-10-18).
+                _m = data.station_mask
+                Q_st = Q_sim.detach()[:, _m]
+                offsets_st = self.model.quantile_head(sp_q.to_tensor()[_m], Q_st)
+            q_pred_st = Q_st.unsqueeze(-1) + offsets_st           # (T, n_st, K)
             taus = list(self.model.quantile_head.taus)
             valid_q = ~torch.isnan(q_obs_val) & ~torch.isnan(q_pred_st[..., 0])
             # Couvertures par intervalles inter-quantiles (en m³/s, sans hypothèse)
