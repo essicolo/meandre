@@ -53,7 +53,7 @@ The quantile head was trained on 2001-2018 with the deterministic model frozen. 
 | 80 % | 80 % |
 | 90 % | 90 % |
 
-The 90 % interval covers between 88 % (summer) and 94 % (autumn) of the observations depending on the season. Its median width is 2.2 times the median discharge. Coverage is lowest on the North Shore territories, with few and partly regulated stations (76 to 86 %).
+The 90 % interval covers between 88 % (summer) and 94 % (autumn) of the observations depending on the season. Its median width is 2.2 times the median discharge. Coverage is lowest on three of the five North Shore territories, which have few and partly regulated stations (76 to 86 %).
 
 ## Forcing
 
