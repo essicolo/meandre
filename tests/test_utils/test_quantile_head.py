@@ -161,3 +161,20 @@ def test_la_tete_apprend_la_bonne_largeur():
         cov50 = float(((obs > q25) & (obs < q75)).float().mean())
     assert abs(cov90 - 0.90) < 0.05, f"couverture a 90 % apprise : {cov90:.3f}"
     assert abs(cov50 - 0.50) < 0.05, f"couverture a 50 % apprise : {cov50:.3f}"
+
+
+def test_enveloppe_aux_stations_seulement():
+    """La tete est independante par troncon : l'evaluer sur les seules stations rend la meme
+    enveloppe que l'evaluer partout puis extraire les stations. La validation et l'export du
+    pilote en dependent pour tenir dans 8 Go sur tout le Quebec."""
+    import torch
+    from meandre.utils.quantile_head import QuantileHead
+    torch.manual_seed(0)
+    head = QuantileHead(n_spatial_params=10)
+    for p in head.parameters():
+        torch.nn.init.normal_(p, 0.0, 0.5)
+    params = torch.randn(50, 10)
+    q = torch.rand(30, 50) * 100.0
+    mask = torch.zeros(50, dtype=torch.bool)
+    mask[[3, 7, 20, 49]] = True
+    assert torch.allclose(head(params, q)[:, mask], head(params[mask], q[:, mask]))

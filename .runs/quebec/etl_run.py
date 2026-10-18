@@ -1941,9 +1941,11 @@ if os.environ.get("ETL_DUMP_Q"):
             _pq = torch.stack([getattr(_spq, k) for k in _spq.__dataclass_fields__
                                if torch.is_tensor(getattr(_spq, k))
                                and getattr(_spq, k).shape[:1] == (n_nodes,)], dim=1)
-            _qfull = Q[slt].to(_pq.device)
-            _quant = model.quantile_head(_pq, _qfull)          # (T, N, K)
-            _quant_st = _quant[:, td.station_idx, :].cpu().numpy()
+            # Aux stations seulement : la tete est independante par troncon, et l'enveloppe
+            # du Quebec entier ne tient pas dans 8 Go.
+            _ist = torch.as_tensor(td.station_idx, device=_pq.device)
+            _qst = Q[slt].to(_pq.device)[:, _ist]
+            _quant_st = model.quantile_head(_pq[_ist], _qst).cpu().numpy()   # (T, n_st, K)
         _extra["q_quantiles"] = _quant_st.astype(np.float32)
         _extra["quantile_taus"] = np.array(getattr(model.quantile_head, "taus",
                                                    [0.05, 0.10, 0.25, 0.75, 0.90, 0.95]))
