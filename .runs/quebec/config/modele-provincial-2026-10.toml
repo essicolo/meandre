@@ -404,6 +404,9 @@ ETL_TEXTURE_BOUNDS = 3          # conductivite bornee par la texture du sol, fac
 MEANDRE_VISCOSITE_TREF = 5      # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
 MEANDRE_VSA_B = 8               # ruissellement sur les aires saturees, part (theta1/thetas1)^8
 ETL_WDQ = 0.5                   # terme des variations journalieres du debit
+# Phase probabiliste (ETL_QUANTILE=1), sans effet sur le modele deterministe
+MEANDRE_QUANTILE_LOG_STEP = 0.05   # largeur de chaque niveau de quantile, dans le logarithme du debit
+MEANDRE_QUANTILE_LOG_BOUND = 4.0   # un quantile extreme reste entre e^-4 et e^4 fois la mediane
 
 [phenology]
 enabled = true

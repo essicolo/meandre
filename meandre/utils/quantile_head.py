@@ -35,6 +35,12 @@ class QuantileHead(nn.Module):
         Quantile levels to predict. Sorted ascending internally.
     eps : float
         Stabiliser inside ``log(|Q| + ε)``.
+    log_step : float, optional
+        Facteur appliqué à chaque largeur cumulée dans le logarithme du débit.
+        Par défaut `MEANDRE_QUANTILE_LOG_STEP`, sinon 0,05.
+    log_bound : float, optional
+        Borne du cumul logarithmique : un quantile extrême reste entre e^-borne et
+        e^borne fois la médiane. Par défaut `MEANDRE_QUANTILE_LOG_BOUND`, sinon 4.
     """
 
     def __init__(
@@ -43,8 +49,19 @@ class QuantileHead(nn.Module):
         hidden: int = 32,
         taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
         eps: float = 1.0,
+        log_step: float | None = None,
+        log_bound: float | None = None,
     ) -> None:
         super().__init__()
+        import os as _os
+        if log_step is None:
+            log_step = float(_os.environ.get("MEANDRE_QUANTILE_LOG_STEP", "0.05"))
+        if log_bound is None:
+            log_bound = float(_os.environ.get("MEANDRE_QUANTILE_LOG_BOUND", "4.0"))
+        if log_step <= 0.0 or log_bound <= 0.0:
+            raise ValueError(f"log_step et log_bound doivent etre positifs ; recu {log_step}, {log_bound}")
+        self.log_step = log_step
+        self.log_bound = log_bound
         taus_sorted = sorted(set(taus))
         if any(t <= 0.0 or t >= 1.0 or t == 0.5 for t in taus_sorted):
             raise ValueError(f"taus must be in (0,1) and exclude 0.5; got {taus}")
@@ -114,7 +131,7 @@ class QuantileHead(nn.Module):
         # 10^13 fois la mediane et un cinquieme centile numeriquement nul, donc une queue
         # basse toujours vide et une couverture de 96 % pour un intervalle annonce a 90.
         # On ramene donc la largeur dans un domaine logarithmique raisonnable : un facteur
-        # ECH par niveau, et un cumul borne a BORNE, soit au plus un facteur e^BORNE entre
+        # log_step par niveau, et un cumul borne a log_bound, soit au plus un facteur e^log_bound entre
         # un quantile extreme et la mediane. A l'initialisation le cinquieme centile vaut
         # environ 0,9 fois la mediane, et l'entrainement elargit si les observations le
         # demandent.
@@ -126,12 +143,11 @@ class QuantileHead(nn.Module):
         # 0,90 a 1,12 fois la mediane, a 100 m3/s de 0,018 a 55. On passe donc par une
         # fonction douce du meme predicteur lineaire, qui croit comme log Q et non comme
         # une puissance de Q, si bien que la largeur relative ne derive que lentement.
-        _ECH, _BORNE = 0.05, 4.0
         s = torch.nn.functional.softplus(log_w)                 # (T, N, K) > 0, doux
         s_lower = s[..., : self.n_lower]
         cum_l = -s_lower.flip(-1).cumsum(dim=-1).flip(-1)
         s_upper = s[..., self.n_lower:]
         cum_u = s_upper.cumsum(dim=-1)
-        cum_log = (_ECH * torch.cat([cum_l, cum_u], dim=-1)).clamp(-_BORNE, _BORNE)
+        cum_log = (self.log_step * torch.cat([cum_l, cum_u], dim=-1)).clamp(-self.log_bound, self.log_bound)
         q_pos = Q.clamp(min=0.0).unsqueeze(-1)
         return q_pos * (torch.exp(cum_log) - 1.0)
