@@ -1738,7 +1738,11 @@ model.eval()
 _VEUT_NEIGE = os.environ.get("ETL_CMP_NEIGE", "0") == "1"
 # Le cache de carte a besoin des memes diagnostics pour la recharge et l'ETR
 # (2026-09-06 : la premiere serie de caches est sortie sans eux, faute de cette ligne).
-_VEUT_NEIGE = _VEUT_NEIGE or bool(os.environ.get("ETL_DUMP_REACH"))
+# ETL_DUMP_REACH_DIAG=0 les retire : sur le Quebec entier et 25 ans, les diagnostics
+# journaliers de 27 834 troncons depassent 29 Go de memoire vive (2026-10-19). Le cache
+# garde alors debits, parametres et prelevements, sans les flux verticaux.
+_VEUT_NEIGE = _VEUT_NEIGE or (bool(os.environ.get("ETL_DUMP_REACH"))
+                              and os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "1")
 with torch.no_grad():
     if _VEUT_NEIGE:
         Q, _, _DIAG = model.simulate(
