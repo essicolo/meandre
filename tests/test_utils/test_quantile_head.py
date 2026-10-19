@@ -178,3 +178,24 @@ def test_enveloppe_aux_stations_seulement():
     mask = torch.zeros(50, dtype=torch.bool)
     mask[[3, 7, 20, 49]] = True
     assert torch.allclose(head(params, q)[:, mask], head(params[mask], q[:, mask]))
+
+
+def test_echelle_et_borne_lues_de_la_configuration(monkeypatch):
+    """L'echelle et la borne de l'enveloppe logarithmique viennent de la configuration :
+    les valeurs par defaut redonnent la tete du modele livre, et la borne limite bien le
+    rapport entre un quantile extreme et la mediane."""
+    import math
+    import torch
+    from meandre.utils.quantile_head import QuantileHead
+    monkeypatch.delenv("MEANDRE_QUANTILE_LOG_STEP", raising=False)
+    monkeypatch.delenv("MEANDRE_QUANTILE_LOG_BOUND", raising=False)
+    head = QuantileHead(n_spatial_params=4)
+    assert (head.log_step, head.log_bound) == (0.05, 4.0)
+    monkeypatch.setenv("MEANDRE_QUANTILE_LOG_STEP", "10")
+    monkeypatch.setenv("MEANDRE_QUANTILE_LOG_BOUND", "1.5")
+    head = QuantileHead(n_spatial_params=4)
+    assert (head.log_step, head.log_bound) == (10.0, 1.5)
+    q = torch.full((5, 3), 50.0)
+    ratio = (q.unsqueeze(-1) + head(torch.zeros(3, 4), q)) / q.unsqueeze(-1)
+    assert float(ratio.max()) <= math.exp(1.5) * (1 + 1e-6)
+    assert float(ratio.min()) >= math.exp(-1.5) * (1 - 1e-6)
