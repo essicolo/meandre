@@ -151,6 +151,34 @@ class SparseWithdrawals:
     def gw_withdrawal(self, t: int):
         return self._scatter(self._cols_gw, self._vals_gw, t)
 
+    def _dense_mean(self, cols, vals, absolute=False, total=False):
+        """Moyenne (ou somme) temporelle par troncon, en dense (n_reaches,)."""
+        out = torch.zeros(self.n_reaches, dtype=torch.float32, device=self._device)
+        if cols.numel() and vals.numel():
+            v = vals.abs() if absolute else vals
+            out[cols] = (v.sum(dim=0) if total else v.mean(dim=0)).to(out.dtype)
+        return out
+
+    def mean_net(self):
+        """Debit net moyen par troncon, en m3/s : positif quand le troncon recoit de l'eau."""
+        return self._dense_mean(self._cols, self._vals)
+
+    def mean_gw(self):
+        """Prelevement net moyen dans la nappe par troncon, en m3/s."""
+        return self._dense_mean(self._cols_gw, self._vals_gw)
+
+    def abs_sum_net(self):
+        """Somme sur les pas de temps de la valeur absolue du debit net, par troncon."""
+        return self._dense_mean(self._cols, self._vals, absolute=True, total=True)
+
+    def empty_like(self) -> "SparseWithdrawals":
+        """Scenario naturalise : aucun troncon ne porte de prelevement ni de rejet."""
+        out = SparseWithdrawals.__new__(SparseWithdrawals)
+        out._cols = out._cols_gw = torch.zeros(0, dtype=torch.long, device=self._device)
+        out._vals = out._vals_gw = torch.zeros(0, 0, device=self._device)
+        out.n_reaches, out._device = self.n_reaches, self._device
+        return out
+
     def slice(self, start: int | None, stop: int | None) -> "SparseWithdrawals":
         """Tranche temporelle alignee sur celle du forcage, comme WithdrawalData.slice."""
         sl = slice(start, stop)

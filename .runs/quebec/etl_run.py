@@ -1979,17 +1979,25 @@ if os.environ.get("ETL_DUMP_REACH"):
                    for k in _sp_d.__dataclass_fields__
                    if torch.is_tensor(getattr(_sp_d, k))
                    and getattr(_sp_d, k).shape[:1] == (n_nodes,)}
+        # Le domaine provincial stocke les prelevements en creux (SparseWithdrawals) : sans
+        # ces branches, le cache portait des prelevements nuls partout (2026-10-19).
         _wnet = (td.withdrawals.net.abs().sum(dim=0).cpu().numpy()
-                 if hasattr(td.withdrawals, "net") else np.zeros(n_nodes))
+                 if hasattr(td.withdrawals, "net")
+                 else td.withdrawals.abs_sum_net().cpu().numpy() if hasattr(td.withdrawals, "abs_sum_net")
+                 else np.zeros(n_nodes))
         # BILAN SIGNE (demande d'Essi, 2026-09-08). prelev_net_abs est une SOMME sur les
         # pas de temps de la valeur absolue : elle perd le signe et n'a pas la dimension
         # d'un debit. Ici la moyenne journaliere signee, en m3/s, positive quand le troncon
         # recoit de l'eau (rejets), negative quand il en perd (prelevements), en surface et
         # dans la nappe. Rapportee au debit naturalise, c'est la fraction interpretable.
         _wmoy = (td.withdrawals.net.mean(dim=0).cpu().numpy()
-                 if hasattr(td.withdrawals, "net") else np.zeros(n_nodes))
+                 if hasattr(td.withdrawals, "net")
+                 else td.withdrawals.mean_net().cpu().numpy() if hasattr(td.withdrawals, "mean_net")
+                 else np.zeros(n_nodes))
         _wgw = (td.withdrawals.net_gw.mean(dim=0).cpu().numpy()
-                if getattr(td.withdrawals, "net_gw", None) is not None else np.zeros(n_nodes))
+                if getattr(td.withdrawals, "net_gw", None) is not None
+                else td.withdrawals.mean_gw().cpu().numpy() if hasattr(td.withdrawals, "mean_gw")
+                else np.zeros(n_nodes))
         # Serie mensuelle COMPLETE, pas seulement la climatologie (annotations
         # d'Essi, 2026-08-31) : la variance INTERANNUELLE devient calculable, ce
         # qu'exige l'analyse signal sur bruit -- l'effet des prelevements sur un
@@ -2162,7 +2170,8 @@ if os.environ.get("ETL_DUMP_REACH"):
             _Qn, _ = model.simulate(
                 forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
                 graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
-                withdrawals=_WD.zeros_like(td.withdrawals), day_of_year=td.day_of_year)
+                withdrawals=(td.withdrawals.empty_like() if hasattr(td.withdrawals, "empty_like")
+                             else _WD.zeros_like(td.withdrawals)), day_of_year=td.day_of_year)
         _Qn = _Qn.cpu().numpy()
         _qmn = np.stack([_Qn[_moisR == m].mean(axis=0) for m in range(1, 13)])
         _qmsn = np.stack([_Qn[_cle_mois == m].mean(axis=0) for m in _mois_u])
