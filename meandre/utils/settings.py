@@ -48,10 +48,26 @@ SCHEMA: dict[str, Setting] = {
     "routing.lake_evaporation": Setting("MEANDRE_EVAP_LACS", bool, True, "Évaporation des lacs routés par temps sec."),
     "compute.operator_block": Setting("MEANDRE_OPERATOR_BLOCK", int, None, "Taille maximale d'un bloc de l'opérateur de routage ; absent, un bloc par étage. Résultat identique, mémoire bornée."),
     "compute.gradient_segments": Setting("MEANDRE_SEGMENT_GRADIENT", int, 0, "Longueur, en jours, des segments recalculés à la rétropropagation ; 0, pas de recalcul. Gradient identique, mémoire bornée."),
+    # -- Tête de quantiles ----------------------------------------------------------------
+    "quantile.log_step": Setting("MEANDRE_QUANTILE_LOG_STEP", float, 0.05, "Largeur de chaque niveau de quantile, dans le logarithme du débit."),
+    "quantile.log_bound": Setting("MEANDRE_QUANTILE_LOG_BOUND", float, 4.0, "Un quantile extrême reste entre e^-b et e^b fois la médiane."),
+    "quantile.additive": Setting("MEANDRE_QUANTILE_ADDITIF", bool, False, "Enveloppe additive en débit au lieu de multiplicative en logarithme."),
+    # -- Perte ----------------------------------------------------------------------------
+    "loss_options.pbias_continuous": Setting("MEANDRE_PBIAS_CONTINU", bool, True, "Biais de volume calculé sur la série continue (historique plus bloc), et non sur le bloc seul."),
+    # -- Diagnostics de sortie --------------------------------------------------------------
+    "diagnostics.cpu": Setting("MEANDRE_DIAG_CPU", bool, False, "Diagnostics journaliers gardés sur le processeur plutôt que sur la carte graphique."),
+    "diagnostics.half_precision": Setting("MEANDRE_DIAG_F16", bool, False, "Diagnostics non dérivés gardés en demi-précision sur le processeur."),
+    "diagnostics.retained": Setting("MEANDRE_DIAG_DERIVES", str, None, "Diagnostics gardés avec leur graphe, séparés par des virgules ; absent, tous ceux qu'un terme peut dériver."),
+    # -- Données -----------------------------------------------------------------------------
+    "data.withdrawals_table": Setting("MEANDRE_WITHDRAWALS_TABLE", str, "withdrawals", "Table des prélèvements lue dans la base de chaque territoire."),
+    "data.territorial_extra": Setting("MEANDRE_TERRITORIAL_EXTRA", str, "", "Tables territoriales supplémentaires ajoutées aux attributs du champ, séparées par des virgules."),
+    "data.field_capacity_from_calibration": Setting("MEANDRE_THETA_CC_CALAGE", bool, False, "Capacité au champ et point de flétrissement repris du calage d'Hydrotel."),
     # -- Diagnostics du gradient, jamais dans un modèle livré ----------------------------
     "debug.detach_dtc": Setting("MEANDRE_DTC_DETACHE", bool, False, "Détache le pas de temps adaptatif du sol ; valeur simulée identique."),
     "debug.detach_cascade": Setting("MEANDRE_CASCADE_DETACHE", bool, False, "Détache la cascade de saturation du sol, pour mesurer sa part dans le gradient."),
     "debug.zero_padding": Setting("MEANDRE_REMBOURRAGE_NUL", bool, False, "Poids nuls pour les colonnes d'entrée ajoutées à un réseau chargé : le modèle chargé reste identique."),
+    "debug.nan_mask": Setting("MEANDRE_MASQUE_NAN", bool, False, "Témoin : masquage par NaN d'avant le 2026-09-08."),
+    "debug.kge_trace": Setting("MEANDRE_DEBUG_KGE", bool, False, "Trace de contrôle du terme KGE de la perte."),
     "debug.detach_day": Setting("MEANDRE_DETACHE_JOUR", str, "", "Détache l'état de la colonne aux jours listés."),
 }
 
@@ -119,13 +135,15 @@ def get(key: str):
     return _parse(key, raw) if raw is not None else s.default
 
 
-def override(key: str, value) -> None:
+def override(key: str, value, force: bool = False) -> None:
     """Fixe un réglage en cours d'exécution, sauf si son alias d'environnement est posé.
+
+    `force` passe outre l'environnement, pour un réglage que le pilote calcule toujours lui-même.
 
     Pour un pilote qui décide d'un réglage après avoir lu son fichier, par exemple des poids
     nuls pour des colonnes d'entrée qu'il vient d'ajouter. L'environnement garde la priorité.
     """
-    if os.environ.get(SCHEMA[key].env) is None:
+    if force or os.environ.get(SCHEMA[key].env) is None:
         _configured[key] = value
 
 

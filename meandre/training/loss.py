@@ -14,6 +14,8 @@ import math
 import os
 import torch
 import torch.nn as nn
+
+from meandre.utils import settings
 from torch import Tensor
 
 logger = logging.getLogger(__name__)
@@ -1151,7 +1153,7 @@ class HydroLoss(nn.Module):
                 q_s = q_sim_at_stations[:, keep]                 # (T, S_keep), jamais NaN
                 _m = valid[:, keep].to(q_s.dtype)                # 1 si observe, 0 sinon
                 _n_val = _m.sum(dim=0).clamp(min=1.0)            # (S_keep,)
-                if os.environ.get("MEANDRE_MASQUE_NAN", "0") == "1":
+                if settings.get("debug.nan_mask"):
                     # TEMOIN : restitue le masquage par NaN d'avant le 2026-09-08, pour
                     # mesurer en apparie ce que le correctif change. A n'utiliser que pour
                     # cela : il empoisonne le gradient de tout bloc a lacune (R92).
@@ -1189,7 +1191,7 @@ class HydroLoss(nn.Module):
                     # d'entrainement de la Monteregie contre 0,06 sur la serie entiere qui sert
                     # de juge. Comme le KGE : historique detache plus bloc courant, gradient
                     # remis a l'echelle du jour vivant. MEANDRE_PBIAS_CONTINU=0 restitue le bloc.
-                    if (os.environ.get("MEANDRE_PBIAS_CONTINU", "1") == "1" and q_obs_hist is not None
+                    if (settings.get("loss_options.pbias_continuous") and q_obs_hist is not None
                             and q_sim_hist is not None and q_obs_hist.numel() > 0):
                         _ho = q_obs_hist[:, keep]
                         _hs = q_sim_hist[:, keep]
@@ -1317,7 +1319,7 @@ class HydroLoss(nn.Module):
                             etiage_v.append(_remis(differentiable_etiage_loss(q_o_v, q_s_v)))
                         if self.w_fdc_bas > 0:
                             fdc_v.append(_remis(differentiable_fdc_bas_loss(q_o_v, q_s_v)))
-                            if os.environ.get("MEANDRE_DEBUG_KGE", "0") == "1":
+                            if settings.get("debug.kge_trace"):
                                 # Trace de controle (2026-09-04) : le terme KGE de la perte
                                 # valait 0.04 quand le KGE de l'annee d'entrainement
                                 # mesure hors ligne valait 0.75. On imprime ce que le

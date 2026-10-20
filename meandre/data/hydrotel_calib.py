@@ -15,11 +15,11 @@ l'aire UHRH (cohérente avec _build_territorial), par troncon dans l'ordre node_
 """
 from __future__ import annotations
 from pathlib import Path
-import os as _os
 import torch
 
 from hydrotel_clone.hydrotel_params import load_project, uhrh_fractions
 from meandre.data.physitel_loader import _parse_troncon
+from meandre.utils import settings
 
 
 def _spline_coeffs(b, psis):
@@ -130,7 +130,7 @@ def imposed_retention_curve(cs: dict, use_aquifer: bool) -> dict:
     # ajustement par le leur, sans rien gagner en physique. `MEANDRE_THETA_CC_CALAGE=1` les
     # impose pour qui veut comparer.
     exclus_prefixes = ("ks", "thetas")
-    if _os.environ.get("MEANDRE_THETA_CC_CALAGE") != "1":
+    if not settings.get("data.field_capacity_from_calibration"):
         exclus_prefixes = exclus_prefixes + ("thetacc", "thetapf")
     exclus_cles = ("krec", "coef_recharge") if use_aquifer else ()
     return {k: v for k, v in cs.items()

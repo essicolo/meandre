@@ -53,11 +53,11 @@ class QuantileHead(nn.Module):
         log_bound: float | None = None,
     ) -> None:
         super().__init__()
-        import os as _os
+        from meandre.utils import settings
         if log_step is None:
-            log_step = float(_os.environ.get("MEANDRE_QUANTILE_LOG_STEP", "0.05"))
+            log_step = float(settings.get("quantile.log_step"))
         if log_bound is None:
-            log_bound = float(_os.environ.get("MEANDRE_QUANTILE_LOG_BOUND", "4.0"))
+            log_bound = float(settings.get("quantile.log_bound"))
         if log_step <= 0.0 or log_bound <= 0.0:
             raise ValueError(f"log_step et log_bound doivent etre positifs ; recu {log_step}, {log_bound}")
         self.log_step = log_step
@@ -121,8 +121,8 @@ class QuantileHead(nn.Module):
         w_upper = w[..., self.n_lower:]              # (T, N, n_upper)
         cum_upper = w_upper.cumsum(dim=-1)           # >= 0, ordre τ ascendant
         cum = torch.cat([cum_lower, cum_upper], dim=-1)         # (T, N, K)
-        import os as _os
-        if _os.environ.get("MEANDRE_QUANTILE_ADDITIF", "0") == "1":
+        from meandre.utils import settings
+        if settings.get("quantile.additive"):
             return cum
         # ECHELLE (2026-09-11, deuxieme passe). Les largeurs `w` sont calibrees en unites
         # de DEBIT : les reutiliser telles quelles comme largeurs en LOGARITHME les fait

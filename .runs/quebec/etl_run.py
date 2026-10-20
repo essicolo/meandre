@@ -1640,7 +1640,7 @@ _besoins = {"etr": _poids("w_et") or _poids("w_nll_et"),
             "theta1": _poids("w_tws"), "theta2": _poids("w_tws"),
             "theta3": _poids("w_tws")}
 _garde = sorted(k for k, v in _besoins.items() if float(v or 0.0) > 0.0)
-os.environ["MEANDRE_DIAG_DERIVES"] = ",".join(_garde)
+_settings.override("diagnostics.retained", ",".join(_garde), force=True)
 print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
 
 # BANC DE SENSIBILITE. Le pilote appelle le banc plutot que l'inverse : il lit

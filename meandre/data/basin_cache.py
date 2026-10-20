@@ -57,6 +57,7 @@ import torch
 from torch import Tensor
 
 from meandre.routing.graph import RiverGraph
+from meandre.utils import settings
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.spatial.territorial import TerritorialFeatures, DEFAULT_PHYSICAL_COLUMNS
 from meandre.utils.state import HydroState
@@ -729,7 +730,7 @@ class BasinCache:
         # Table lue : `withdrawals` par defaut ; MEANDRE_WITHDRAWALS_TABLE en nomme une
         # autre, par exemple la sauvegarde `withdrawals_avant_20260925`, pour comparer deux
         # reconstructions des prelevements a poids geles.
-        _table = os.environ.get("MEANDRE_WITHDRAWALS_TABLE", "withdrawals")
+        _table = settings.get("data.withdrawals_table")
         import duckdb
 
         con = duckdb.connect(str(self.path), read_only=True)
@@ -1624,7 +1625,7 @@ class BasinCache:
         # node_idx, valeurs manquantes a zero apres normalisation, donc a la moyenne.
         # Opt-in parce que le nombre d'attributs fixe la dimension d'entree du champ :
         # un point de reprise ne se recharge qu'avec les memes tables.
-        for extra in [t for t in os.environ.get("MEANDRE_TERRITORIAL_EXTRA", "").split(",") if t]:
+        for extra in [t for t in settings.get("data.territorial_extra").split(",") if t]:
             tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
             if extra not in tables:
                 raise KeyError(f"table territoriale supplementaire absente de la base : {extra}")

@@ -113,14 +113,13 @@ class HydroModel(nn.Module):
         sud-ouest, 2026-09-17). On déplace donc, mais on ne détache QUE ce dont aucune perte
         ne dérive : le gradient traverse les appareils, le détachement non.
         """
-        import os as _os_diag
 
         # MEANDRE_DIAG_F16=1 : diagnostics non derives gardes en demi-precision sur le
         # processeur. Le Quebec entier (27 834 troncons, 25 ans) demande environ 1 Go par
         # variable en simple precision, et la trentaine de variables a epuise 29 Go
         # (2026-10-15). Trois chiffres significatifs suffisent aux climatologies mensuelles ;
         # l'audit de fermeture du bilan, lui, n'est plus lisible au dix-millieme.
-        _dt_cpu = torch.float16 if _os_diag.environ.get("MEANDRE_DIAG_F16", "0") == "1" else None
+        _dt_cpu = torch.float16 if settings.get("diagnostics.half_precision") else None
 
         class _ListeProcesseur(list):
             def append(self, t):
@@ -139,7 +138,7 @@ class HydroModel(nn.Module):
                 else:
                     super().append(t)
 
-        if _os_diag.environ.get("MEANDRE_DIAG_CPU", "0") != "1":
+        if not settings.get("diagnostics.cpu"):
             return lambda nom: list()
         # NE RETENIR QUE CE QUI SERT (2026-09-21). Garder le graphe d'un diagnostic coute la
         # memoire que `MEANDRE_DIAG_CPU` economise : avec toutes les contraintes actives, la
@@ -148,7 +147,7 @@ class HydroModel(nn.Module):
         # depuis les poids reellement non nuls. Sans elle, tous sont retenus, ce qui reste le
         # comportement sur : un terme actif dont le diagnostic serait detache ne produirait
         # aucun gradient, defaut qui a coute deux jours.
-        _demande = _os_diag.environ.get("MEANDRE_DIAG_DERIVES")
+        _demande = settings.get("diagnostics.retained")
         _derives = (frozenset(x.strip() for x in _demande.split(",") if x.strip())
                     if _demande is not None else HydroModel.DIAGNOSTICS_DERIVES)
         return lambda nom: (_ListeProcesseurDerivable()

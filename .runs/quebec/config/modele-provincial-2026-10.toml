@@ -41,6 +41,11 @@ muskingum_k_hours = [4.0, 48.0, 24.0]   # temps de transfert, en heures : borne 
 operator_block = 4096      # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
 gradient_segments = 10     # gradient recalcule par segments de 10 jours : la province tient dans 8 Go
 
+[quantile]
+# Phase probabiliste (ETL_QUANTILE=1), sans effet sur le modele deterministe.
+log_step = 0.05     # largeur de chaque niveau de quantile, dans le logarithme du debit
+log_bound = 4.0     # un quantile extreme reste entre e^-4 et e^4 fois la mediane
+
 [et]
 formula = "penman"   # Linacre inverse la saison de l'evapotranspiration (avril/octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit (R208)
 
@@ -154,10 +159,6 @@ MEANDRE_LR_MULT_TETES = 1       # tetes du champ au taux commun : la volatilite 
 ETL_LR = 2e-4                   # taux de depart : trajectoires convergees, ecart entre graines divise par trois (R283)
 ETL_WARMUP = 0
 ETL_CHUNK = 90                  # blocs de 90 jours : a 30 jours le gradient ne voyait pas l'effet differe de la recharge sur l'etiage (R365)
-
-# -- Phase probabiliste (ETL_QUANTILE=1), sans effet sur le modele deterministe --
-MEANDRE_QUANTILE_LOG_STEP = 0.05   # largeur de chaque niveau de quantile, dans le logarithme du debit
-MEANDRE_QUANTILE_LOG_BOUND = 4.0   # un quantile extreme reste entre e^-4 et e^4 fois la mediane
 
 [phenology]
 enabled = true
