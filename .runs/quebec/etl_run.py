@@ -83,6 +83,11 @@ cfg = tomllib.load(open(BASE_CFG, "rb"))
 # La recette du fichier est posee AVANT que le pilote ne lise quoi que ce soit. Ordre de
 # priorite : variable d'environnement, puis fichier, puis defaut du code.
 _posees = _appliquer_recette(cfg.get("recette"))
+# Reglages declares du paquet (meandre/utils/settings.py), lus dans les sections du fichier.
+from meandre.utils import settings as _settings
+_reglages_fichier = _settings.configure(cfg)
+if _reglages_fichier:
+    print(f"[reglages] {len(_reglages_fichier)} reglage(s) du paquet pris dans le fichier : {', '.join(_reglages_fichier)}")
 # PÉRIODES DÉCLARÉES (2026-10-09, R355) : `[period]` fixe l'entraînement, la validation et
 # l'évaluation ; une variable d'environnement posée prime, comme pour [recette]. Motif : la
 # fenêtre 2022-2024 contient les deux pires étés des vingt-cinq ans en Montérégie ; juger une

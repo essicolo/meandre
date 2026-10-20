@@ -81,7 +81,8 @@ def capturer_recette() -> dict:
         contexte["cuda"] = str(torch.version.cuda or "aucun")
     except Exception:
         pass
-    return {"variables": dict(sorted(variables.items())),
+    from meandre.utils import settings
+    return {"variables": dict(sorted(variables.items())), "settings": settings.snapshot(),
             "contexte": contexte, "code": _empreinte_code()}
 
 
@@ -135,6 +136,11 @@ def ecrire_recette_toml(chemin, recette: dict, fiche: dict | None = None,
             lignes.append(f"{k} = {_toml_valeur(v)}")
         if not var:
             lignes.append("# aucune : l'exécution tournait entièrement sur les défauts du code")
+        reglages = recette.get("settings") or {}
+        if reglages:
+            lignes += ["", "# Réglages du paquet qui s'écartent de leur défaut (meandre/utils/settings.py).", "[settings]"]
+            for k, v in sorted(reglages.items()):
+                lignes.append(f'"{k}" = {_toml_valeur(v)}')
         p.write_text("\n".join(lignes) + "\n", encoding="utf-8")
         return p
     except Exception:

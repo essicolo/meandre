@@ -24,6 +24,16 @@ compile_soil = true              # ~1.5x plus rapide qu'en mode eager
 field_hidden = 256               # neurones par couche du champ spatial ; meme taille pour un territoire et pour le Quebec entier
 spatial_melt = true
 
+[column]
+# Reglages de la colonne verticale, declares dans meandre/utils/settings.py.
+n_substeps = 64                       # sous-pas du sol par jour (stabilite du Muskingum a K court)
+z_tensor = true                       # Z2/Z3 en tenseurs sur la voie racinaire
+semi_implicit_soil = true             # schema lineairement implicite du sol : gradient borne, graines reproductibles
+penman_snow = true                    # couvert nival dans Penman (R265)
+transpiration_soil_temp_ref = 1.0     # transpiration freinee par le sol froid, echelle 1 degre (R264)
+viscosity_tref = 5.0                  # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
+saturated_area_exponent = 8.0         # ruissellement sur les aires saturees, part (theta1/thetas1)^8
+
 [et]
 formula = "penman"   # Linacre inverse la saison de l'evapotranspiration (avril/octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit (R208)
 
@@ -112,22 +122,15 @@ ETL_NAPPE_ZEXT = 6
 ETL_NAPPE_EFRAC = 0.15          # extraction depuis la zone saturee, coherente avec le debit d'aout
 
 # -- Numerique et routage ----------------------------------------------------
-MEANDRE_NSUBSTEP = 64           # sous-pas du sol (stabilite du Muskingum a K court)
 MEANDRE_OPERATOR_BLOCK = 4096   # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
 MEANDRE_KMUSK = "4,48,24"       # bornes du temps de transfert, en heures : min,max,init
 MEANDRE_ETAT_CONTINU = 1        # l'etat riche traverse les frontieres de bloc (R64)
 MEANDRE_KGE_CONTINU = 1         # le KGE porte sur la sequence continue (R67)
-MEANDRE_Z_TENSEUR = 1           # Z2/Z3 en tenseurs sur la voie racinaire
-MEANDRE_SOL_SEMI_IMPLICITE = 1  # schema lineairement implicite du sol : gradient borne, graines reproductibles
 MEANDRE_SEGMENT_GRADIENT = 10   # gradient par segments : la province tient dans 8 Go
 
 # -- Evaporation et physique ajoutee ----------------------------------------
 ETL_EVAP_EAU_LIBRE = 1          # evaporation de l'eau libre par temps sec (R285, R286)
-MEANDRE_PENMAN_NEIGE = 1        # couvert nival dans Penman (R265)
-MEANDRE_TRANSP_TSOL_REF = 1     # transpiration freinee par le sol froid, echelle 1 degre (R264)
 ETL_TEXTURE_BOUNDS = 3          # conductivite bornee par la texture du sol, facteur 3 de part et d'autre
-MEANDRE_VISCOSITE_TREF = 5      # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
-MEANDRE_VSA_B = 8               # ruissellement sur les aires saturees, part (theta1/thetas1)^8
 JOINT_GLOBAL_NORM = 1           # normalisation commune a tout le Quebec (un seul domaine)
 
 # -- Perte --------------------------------------------------------------------

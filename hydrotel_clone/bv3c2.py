@@ -26,7 +26,8 @@ import torch
 
 # Fermeture de masse (2026-08-09) debrayable pour test temoin : BV3C_FERMETURE=0
 # reproduit le comportement historique (fuite du temps non traite).
-_FERMETURE_MASSE = os.environ.get("BV3C_FERMETURE", "1") == "1"
+from meandre.utils import settings
+_FERMETURE_MASSE = settings.get("column.mass_closure")
 from torch import Tensor
 
 # Table proprietehydrolique.sol (Hydrotel) — thetas, thetacc, thetapf, ks(m/h), psis(m), lambda
@@ -42,18 +43,18 @@ SOIL_TEXTURES = {
 EPAISSEUR = (0.21941, 0.15725, 2.65)   # z11, z22, z33 (m), bv3c.csv SLSO
 KREC_DEFAULT = 1.2869e-7               # m/h
 import os as _os
-_DTC_DETACHE = _os.environ.get("MEANDRE_DTC_DETACHE", "0") == "1"
+_DTC_DETACHE = settings.get("debug.detach_dtc")
 # Diagnostic (2026-09-26) : MEANDRE_CASCADE_DETACHE=1 detache les quantites deplacees par la
 # cascade de saturation et la correction de negativite, pour mesurer leur part dans
 # l'explosion du gradient a travers l'humidite du sol. Lu a chaque appel.
 
 
-_SEMI_IMPLICITE = _os.environ.get("MEANDRE_SOL_SEMI_IMPLICITE", "0") == "1"
-_GEL_SANS_NEIGE = _os.environ.get("MEANDRE_GEL_SANS_NEIGE", "0") == "1"
+_SEMI_IMPLICITE = settings.get("column.semi_implicit_soil")
+_GEL_SANS_NEIGE = settings.get("column.freeze_without_snow")
 
 
 def _cd(x):
-    return x.detach() if _os.environ.get("MEANDRE_CASCADE_DETACHE", "0") == "1" else x
+    return x.detach() if settings.get("debug.detach_cascade") else x
 
 
 CIN_DEFAULT = 0.03                     # VARIATION MAXIMALE (Courant)
@@ -110,12 +111,10 @@ class BV3C2Clone(torch.nn.Module):
         # ruisselle. La porte continue, qui réduit la conductivité, ne mord presque jamais
         # parce que la conductivité saturée dépasse de loin l'intensité d'une pluie d'hiver.
         self.frozen_gate_areal = False
-        # DRAPEAUX RELUS A LA CONSTRUCTION (2026-09-30). Les constantes de module ci-dessus
-        # sont evaluees a l'import, AVANT que le pilote ne pose la recette du fichier TOML :
-        # `MEANDRE_SOL_SEMI_IMPLICITE = 1` dans une section [recette] restait sans effet.
-        # Le clone est construit apres la recette, donc l'environnement y est complet.
-        self.semi_implicite = _os.environ.get("MEANDRE_SOL_SEMI_IMPLICITE", "0") == "1"
-        self.gel_sans_neige = _os.environ.get("MEANDRE_GEL_SANS_NEIGE", "0") == "1"
+        # Reglages relus a la construction : les constantes de module ci-dessus sont evaluees
+        # a l'import, avant que le pilote ne lise son fichier de configuration.
+        self.semi_implicite = settings.get("column.semi_implicit_soil")
+        self.gel_sans_neige = settings.get("column.freeze_without_snow")
         # static=True : pas de break data-dépendant (les itérations no-op après
         # convergence sont idempotentes, dtc=0). Permet torch.compile (pas de
         # synchro GPU `bool().all()` par itération, boucle statique fusionnable).
@@ -165,7 +164,7 @@ class BV3C2Clone(torch.nn.Module):
         # toute la couche 1 saturait, ce qui n'arrive jamais a l'echelle du troncon ; les
         # orages d'ete rendaient 0,64 du volume d'evenement observe (0,32 en Monteregie).
         # Comme le hortonien : retire de l'apport du sol, ajoute au ruissellement de fsa.
-        _vsa = _os.environ.get("MEANDRE_VSA_B")
+        _vsa = settings.get("column.saturated_area_exponent")
         if _vsa is not None:
             _se1 = torch.clamp(theta1 / torch.clamp(ths1, min=1e-6), 0.0, 1.0)
             _r_vsa = apport_mm * _se1 ** float(_vsa)

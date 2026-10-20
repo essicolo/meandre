@@ -32,6 +32,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from meandre.utils import settings
 from meandre.utils.state import HydroState
 from hydrotel_clone.snow import DegreJourModifie, init_ce, init_state as snow_init_state
 from hydrotel_clone.frost import Rankinen, n_intervalles
@@ -98,7 +99,8 @@ class HydrotelColumn(nn.Module):
                  horton_precomputed: bool = False, spatial_melt: bool = False,
                  canopy_melt_lag: bool = False) -> None:
         super().__init__()
-        soil_n_substep = int(os.environ.get("MEANDRE_NSUBSTEP", soil_n_substep))
+        _n_sub = settings.get("column.n_substeps")
+        soil_n_substep = int(_n_sub if _n_sub is not None else soil_n_substep)
         self.et_mode = str(et_mode)
         # Fonte SPATIALE : module les facteurs de fonte par classe avec le C_f du
         # NeRF (borné [0.5, 8], cible littérature 4.5 -> échelle neutre 1.0). Le
@@ -182,9 +184,8 @@ class HydrotelColumn(nn.Module):
             # sert toutes les regions, le cache de l'inductor la reportant d'un processus
             # a l'autre. Defaut INCHANGE : le mode fixe reste celui qui a ete mesure a
             # x17,6 sur l'entrainement, et le dynamique peut couter quelques pour cent au
-            # pas. MEANDRE_COMPILE_DYNAMIQUE=1 l'active.
-            import os as _osd
-            _dyn = _osd.environ.get("MEANDRE_COMPILE_DYNAMIQUE", "0") == "1"
+            # pas. Le reglage column.dynamic_compile l'active.
+            _dyn = settings.get("column.dynamic_compile")
             self.soil = torch.compile(self.soil, dynamic=True if _dyn else False)
         # Ancrage OPTIONNEL sur la calibration Hydrotel (reproduce). None = init
         # NeRF/littérature (objectif ultime : découplé). Posé via set_calibrated_soil.
@@ -500,7 +501,6 @@ class HydrotelColumn(nn.Module):
             # La capacite au champ se DEDUIT de la courbe de retention quand celle-ci est
             # imposee par le calage : une capacite apprise a cote d'une courbe imposee decrit
             # un autre sol. `theta_fc_du_champ` retablit l'ancien comportement.
-            import os as _os_tfc
 
             # LA DEDUCTION EST OPT-IN, ET LE MOTIF EST MESURE (2026-09-22). Deduire la
             # capacite au champ de la courbe imposee suppose que cette courbe soit une
@@ -512,7 +512,7 @@ class HydrotelColumn(nn.Module):
             # coute 0,394 de KGE en Gaspesie, ou b vaut 1,99, contre 0,041 en Outaouais, ou il
             # vaut 3,97, seule valeur presque plausible du lot.
             _deduite = (self.capacite_au_champ_de_la_courbe(p_soil, 3)
-                        if _os_tfc.environ.get("MEANDRE_THETA_FC_COURBE") == "1"
+                        if settings.get("column.field_capacity_from_curve")
                         else None)
             p_soil["thetacc3"] = sp.theta_fc_3 if _deduite is None else _deduite
             _ksub = getattr(self, "l3_k_sub", None)
@@ -616,7 +616,7 @@ class HydrotelColumn(nn.Module):
         # tenseurs. `calcule_etr` accepte déjà l'un ou l'autre (il convertit les scalaires
         # en tenseurs), donc les deux usages se séparent sans risque.
         # MEANDRE_Z_TENSEUR=0 restitue l'ancien comportement, pour comparaison.
-        _z_tenseur = os.environ.get("MEANDRE_Z_TENSEUR", "1") == "1"
+        _z_tenseur = settings.get("column.z_tensor")
         # .detach() explicite : ces deux scalaires ne servent QU'A dimensionner le
         # maillage de gel. Sans lui, torch emet un avertissement de conversion qui
         # finirait par masquer une vraie fuite de gradient.
@@ -763,7 +763,7 @@ class HydrotelColumn(nn.Module):
         # DIAGNOSTIC (2026-09-26) : detache chaque jour les parties nommees de l'etat
         # (theta, neige, gel, mh), pour localiser le compartiment dont la recurrence fait
         # exploser le gradient. MEANDRE_DETACHE_JOUR vide : sans effet.
-        _dj = os.environ.get("MEANDRE_DETACHE_JOUR", "")
+        _dj = settings.get("debug.detach_day")
         if _dj:
             _dj = set(_dj.split(","))
             if "theta" in _dj:
@@ -1251,7 +1251,7 @@ class HydrotelColumn(nn.Module):
             # prenait l'albedo de la neige sous le manteau, Penman non. On rapporte la demande
             # au rayonnement absorbe, avec une fraction enneigee continue
             # f = 1 - exp(-SWE / 5 mm) : facteur 1 - f + f (1 - albedo_neige) / (1 - 0,23).
-            if self.et_mode == "penman" and os.environ.get("MEANDRE_PENMAN_NEIGE", "0") == "1":
+            if self.et_mode == "penman" and settings.get("column.penman_snow"):
                 _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
                 _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                             * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
@@ -1318,7 +1318,7 @@ class HydrotelColumn(nn.Module):
         # printemps au-dessus de MOD16 (+0,5 a 0,7 mm/j en mai-juillet sur le bassin a lacs).
         # Facteur continu par couche, f = 1 - exp(-softplus(T) / T_ref), T moyenne du profil
         # de Rankinen sur la couche : nul sous zero, proche de 1 quand le sol est chaud.
-        _tref = os.environ.get("MEANDRE_TRANSP_TSOL_REF")
+        _tref = settings.get("column.transpiration_soil_temp_ref")
         if _tref is not None and self.use_frost and frost_profile is not None and frost_profile.dim() == 2:
             _nd = frost_profile.shape[1]
             _dz = float(getattr(self.frost, "dz", 0.05))
@@ -1343,7 +1343,7 @@ class HydrotelColumn(nn.Module):
         # croissant avec l'eau libre et l'impermeable). Masque sous le calage d'Hydrotel, qui
         # pose fsa = 1. On retire du sol e / fsa, pour que le tronçon perde exactement e.
         # MEANDRE_ETR_FIDELE=1 restitue la formulation d'origine (comparaisons au binaire).
-        if os.environ.get("MEANDRE_ETR_FIDELE", "0") != "1":
+        if not settings.get("column.etr_faithful"):
             _fsa = torch.clamp(pso["fsa"], min=1e-3)
             e1_sol, e2_sol, e3_sol = e1 / _fsa, e2 / _fsa, e3 / _fsa
         else:
@@ -1353,7 +1353,7 @@ class HydrotelColumn(nn.Module):
         # presque de 20 a 2 degres (Vogel). Le sol drainait l'hiver au rythme de l'automne et
         # rechargeait la nappe tout l'hiver (R383). Facteur par couche mu(T_ref)/mu(T), T moyenne
         # du profil de Rankinen sur la couche, bornee a 0 degre (le gel est traite a part).
-        _vref = os.environ.get("MEANDRE_VISCOSITE_TREF")
+        _vref = settings.get("column.viscosity_tref")
         if _vref is not None and self.use_frost and frost_profile is not None and frost_profile.dim() == 2:
             _nd = frost_profile.shape[1]
             _dz = float(getattr(self.frost, "dz", 0.05))
