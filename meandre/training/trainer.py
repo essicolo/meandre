@@ -416,9 +416,9 @@ class Trainer:
             # multiplicateurs ont ete regles pour UN pas d'Adam par epoque (registre,
             # 2026-09-04) ; avec un pas par bloc, ils sont appliques huit a soixante-cinq
             # fois par epoque. Opt-in, pour mesurer leur part dans l'instabilite du banc.
-            _mt = os.environ.get("MEANDRE_LR_MULT_TETES")
-            fc_out_mult = float(_mt) if _mt else 10.0
-            lake_mult = float(_mt) if _mt else self.config.lake_lr_mult
+            _mt = settings.get("trainer.lr_mult_heads")
+            fc_out_mult = float(_mt) if _mt is not None else 10.0
+            lake_mult = float(_mt) if _mt is not None else self.config.lake_lr_mult
 
             fc_out_params: list[torch.nn.Parameter] = []
             new_params: list[torch.nn.Parameter] = []
@@ -519,7 +519,7 @@ class Trainer:
             # centaine de pas ; taux nominal pris de MEANDRE_LR_MULT_SOL si pose.
             soil_params = [p for name, p in model.named_parameters() if "soil_learn_" in name]
             if soil_params:
-                _ms = float(os.environ.get("MEANDRE_LR_MULT_SOL", "50"))
+                _ms = float(settings.get("trainer.lr_mult_soil"))
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in soil_params)]
                 groups.append({"params": soil_params, "lr": self.config.lr * _ms, "weight_decay": 0.0})
                 logger.info("Discriminative LR: profil de sol appris=%.1e (%gx), wd=0", self.config.lr * _ms, _ms)
@@ -528,13 +528,13 @@ class Trainer:
             # Tete du temps de transfert (2026-10-04) : taux propre, MEANDRE_LR_MULT_ROUTAGE.
             routing_params = [p for name, p in model.named_parameters() if "routing_head" in name]
             if routing_params:
-                _mr = float(os.environ.get("MEANDRE_LR_MULT_ROUTAGE", "100"))
+                _mr = float(settings.get("trainer.lr_mult_routing"))
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in routing_params)]
                 groups.append({"params": routing_params, "lr": self.config.lr * _mr, "weight_decay": 0.0})
             lakes_params = [p for name, p in model.named_parameters() if "lakes_learn_" in name]
 
             if lakes_params:
-                _ml = float(os.environ.get("MEANDRE_LR_MULT_LACS", "50"))
+                _ml = float(settings.get("trainer.lr_mult_lakes"))
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in lakes_params)]
                 groups.append({"params": lakes_params, "lr": self.config.lr * _ml, "weight_decay": 0.0})
                 logger.info("Discriminative LR: lacs hors reseau=%.1e (%gx), wd=0", self.config.lr * _ml, _ml)
@@ -882,7 +882,7 @@ class Trainer:
                 # validation d'une station sur deux ans saute d'une epoque a l'autre, et le choix
                 # du meilleur point y ajoute un bruit que seule l'evaluation de toute la
                 # trajectoire permet de mesurer.
-                if self.checkpoint_path and os.environ.get("MEANDRE_SAUVER_EPOQUES") == "1":
+                if self.checkpoint_path and settings.get("trainer.save_every_epoch"):
                     self.model.save(self.checkpoint_path.replace(".pt", f"-e{epoch + 1}.pt"))
 
             # ── Kendall-Gal phase 1→2 transition (one-shot) ────────────
@@ -904,7 +904,7 @@ class Trainer:
             # la fin pour constater qu'on plafonne à 0.3 quand la cible est 0.77.
             # MEANDRE_ABANDON="époque:seuil" (ex "5:0.55") : au-delà de cette époque, si
             # la métrique de sélection reste sous le seuil, on arrête.
-            _ab = os.environ.get("MEANDRE_ABANDON")
+            _ab = settings.get("trainer.abandon")
             if _ab and last_val_metrics:
                 try:
                     _ae, _as = _ab.split(":")
@@ -975,7 +975,7 @@ class Trainer:
             _ref_et = (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
                        and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
                        and getattr(self, "_et_sim_base", None) is None
-                       and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1")
+                       and not settings.get("trainer.et_center_ema"))
             with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
                 _res = self.model.simulate(
                     forcing=data.forcing[:spinup_end],
@@ -988,7 +988,7 @@ class Trainer:
                     return_diagnostics=_ref_et,
                 )
             spun_state = _res[1]
-            if _ref_et and len(_res) == 3 and os.environ.get("MEANDRE_ET_REF_MISE_EN_REGIME") == "1":
+            if _ref_et and len(_res) == 3 and settings.get("trainer.et_reference_from_spinup"):
                 # Reference initiale de l'ET centree : annees completes de la mise en regime.
                 _n_ans = spinup_end // 365
                 if _n_ans >= 1:
@@ -1106,7 +1106,7 @@ class Trainer:
             _acc[0] = _acc[0] + (_wd * _d).sum(dim=0)
             _acc[1] = _acc[1] + _wd.sum(dim=0)
             _acc[2] = _acc[2] + (_wd * _d * _d).sum(dim=0)
-        if os.environ.get("MEANDRE_ET_CENTRAGE_EMA") == "1" or getattr(self, "_et_sim_base", None) is None:
+        if settings.get("trainer.et_center_ema") or getattr(self, "_et_sim_base", None) is None:
             cur = _d.mean(dim=0)
             prev = getattr(self, "_et_sim_base", None)
             self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
@@ -1132,7 +1132,7 @@ class Trainer:
         """Pose la reference simulee de l'ET centree sur la moyenne exacte de l'epoque qui
         s'acheve (somme des blocs sur toute la periode d'entrainement), puis remet a zero."""
         _acc = getattr(self, "_et_sim_acc", None)
-        if _acc is not None and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1":
+        if _acc is not None and not settings.get("trainer.et_center_ema"):
             _n = torch.as_tensor(_acc[1])
             if bool((_n > 0).all()):
                 self._et_sim_base = _acc[0] / _n
@@ -1207,8 +1207,8 @@ class Trainer:
         _spinup_a_tourne = min(self.config.spinup_steps, data.train_slice.start) > 0
         if (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
                 and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
-                and os.environ.get("MEANDRE_ET_CENTRAGE_EMA") != "1"
-                and os.environ.get("MEANDRE_ET_REF_MISE_EN_REGIME") != "1"
+                and not settings.get("trainer.et_center_ema")
+                and not settings.get("trainer.et_reference_from_spinup")
                 and (getattr(self, "_et_sim_base", None) is None or getattr(self, "_et_sim_std", None) is None)):
             self._et_reference_exacte(data, initial_state)
             # La passe laisse l'etat interne (manteau, gel, lacs) a la fin de la periode :
@@ -1223,13 +1223,13 @@ class Trainer:
         n_chunks = 0
         import time as _time
         _t_bloc = _time.perf_counter()  # duree du bloc courant, lue par la sonde du recalcul
-        if os.environ.get("MEANDRE_SONDE_TERMES"):
+        if settings.get("probe.terms"):
             # La sonde retropropage chaque terme avec retain_graph ; une fonction compilee qui
             # recycle ses tampons (donated buffers) le refuse des que la taille du bloc change.
             import torch._functorch.config as _fconf
             _fconf.donated_buffer = False
             # Facteurs par troncon, valant un (neutres), hors de l'optimiseur.
-            _champs_s = [x for x in os.environ["MEANDRE_SONDE_TERMES"].split(",") if x]
+            _champs_s = [x for x in settings.get("probe.terms").split(",") if x]
             self._sonde_mult = {k_: torch.ones(self.model.n_nodes, device=data.forcing.device, requires_grad=True)
                                 for k_ in _champs_s}
             self._sonde_acc = {}
@@ -1239,10 +1239,10 @@ class Trainer:
         # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
         # (voir la note dans loss.py). MEANDRE_KGE_CONTINU=0 restitue le comportement
         # historique, pour comparaison.
-        _kge_continu = os.environ.get("MEANDRE_KGE_CONTINU", "1") == "1"
-        _etat_continu = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
-        _pas_par_bloc = os.environ.get("MEANDRE_PAS_PAR_BLOC", "0") == "1"
-        if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "2" and not torch.is_anomaly_enabled():
+        _kge_continu = settings.get("trainer.kge_continuous")
+        _etat_continu = settings.get("trainer.state_continuous")
+        _pas_par_bloc = settings.get("trainer.step_per_block")
+        if settings.get("debug.nan_level") == "2" and not torch.is_anomaly_enabled():
             # NIVEAU 2 : mode anomalie pose des la passe AVANT, seul moyen d'obtenir la
             # ligne de code qui cree le tenseur fautif. Le niveau 1 ne nomme que
             # l'operation de la passe arriere (2026-09-08 : PowBackward0), ce qui ne suffit
@@ -1257,7 +1257,7 @@ class Trainer:
         # 0.83 -> 0.55 apres 65 pas). Ici, une passe SANS gradient en debut d'epoque
         # fournit la serie de toute la periode ; le bloc k voit alors le KGE de toute la
         # periode, lui-meme en direct et le reste detache.
-        _amorce = os.environ.get("MEANDRE_HISTORIQUE_AMORCE", "0") == "1" and _kge_continu
+        _amorce = settings.get("trainer.history_priming") and _kge_continu
         _pre_o = _pre_s = None
         _hist_o: list[Tensor] = []
         _hist_s: list[Tensor] = []
@@ -1476,7 +1476,7 @@ class Trainer:
                 # l'ET simulee moyenne de l'epoque precedente a la moyenne MOD16 de la periode
                 # d'entrainement ; son ecart a 1, en forme absolue (premier ordre au-dela de 5 %),
                 # pousse l'ET du bloc vers le niveau observe. MEANDRE_W_ET_NIVEAU (poids, defaut 0).
-                _w_niv = float(os.environ.get("MEANDRE_W_ET_NIVEAU", "0") or 0.0)
+                _w_niv = float(settings.get("trainer.et_level_weight"))
                 L_et_niv = None
                 if (_w_niv > 0 and _need_et and getattr(self, "_et_sim_base", None) is not None
                         and getattr(self, "_et_obs_base", None) is not None):
@@ -1530,7 +1530,7 @@ class Trainer:
                     # termes de debit, plus l'evapotranspiration et la neige que la fonction
                     # de perte a deja ajoutes. La gravimetrie et la masse du manteau viennent
                     # apres et n'en font pas partie.
-                    _part_max = float(os.environ.get("ETL_NAPPE_PART_MAX", "0.15"))
+                    _part_max = float(settings.get("trainer.groundwater_max_share"))
                     _poids_n = self.loss_fn.w_nappe
                     _ref = float(loss_chunk.detach())
                     if _part_max > 0 and _ref > 0 and float(L_nappe.detach()) > 0:
@@ -1676,7 +1676,7 @@ class Trainer:
                             # (83,9, 98 % de la perte). Observation : toute la serie, une fois ;
                             # simulation : moyenne mobile detachee, comme la ligne de base.
                             # MEANDRE_TWS_SD_BLOC=1 restitue l'ecart-type du bloc.
-                            if os.environ.get("MEANDRE_TWS_SD_BLOC", "0") == "1":
+                            if settings.get("debug.tws_sd_block"):
                                 _ss = _rs.detach().std().clamp(min=1e-3)
                                 _so = _ro.std().clamp(min=1e-3)
                             else:
@@ -2039,7 +2039,7 @@ class Trainer:
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = _part_bloc
-            if os.environ.get("MEANDRE_DEBUG_GRAD", "0") == "1" and n_chunks < 3:
+            if settings.get("debug.grad") and n_chunks < 3:
                 # QUI POUSSE LE PLUS FORT (2026-09-05). Norme du gradient de chaque terme
                 # pondere, mesuree sur les trois premiers blocs, pour savoir quel terme
                 # domine la descente : la flotte du 4 septembre a diverge dans les regions
@@ -2061,7 +2061,7 @@ class Trainer:
                     _n2 = sum(float((g_ ** 2).sum()) for g_ in _g if g_ is not None)
                     _lignes.append(f"{_nom}={float(_v):.3g} x{float(_w):g} -> grad {float(_w) * _n2 ** 0.5:.3g}")
                 print(f"[grad-debug] bloc {n_chunks} (t={t_start}) : " + " | ".join(_lignes), flush=True)
-                if n_chunks == 2 and os.environ.get("MEANDRE_DEBUG_GRAD_STOP", "0") == "1":
+                if n_chunks == 2 and settings.get("debug.grad_stop"):
                     raise SystemExit("grad-debug termine apres trois blocs")
             if getattr(self, "_sonde_mult", None) is not None and loss_chunk.requires_grad:
                 # SONDE PAR TERME (2026-10-06, MEANDRE_SONDE_TERMES) : gradient de chaque terme
@@ -2081,7 +2081,7 @@ class Trainer:
                         _termes[_nom] = _var
                 _noms_m = list(self._sonde_mult)
                 _facteurs = [self._sonde_mult[k_] for k_ in _noms_m]
-                _seuls = [x for x in os.environ.get("MEANDRE_SONDE_TERMES_SEULS", "").split(",") if x]
+                _seuls = [x for x in settings.get("probe.terms_only").split(",") if x]
                 if _seuls:
                     _termes = {k_: v_ for k_, v_ in _termes.items() if k_ in _seuls}
                 for _nom, _v in list(_termes.items()) + [("total", loss_chunk)]:
@@ -2109,7 +2109,7 @@ class Trainer:
                 # la restaure et on compte le bloc comme jete, au lieu de perdre l'epoque.
                 _instantane = {p_: (p_.grad.detach().clone() if p_.grad is not None else None)
                                for p_ in self.model.parameters() if p_.requires_grad}
-                if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "2":
+                if settings.get("debug.nan_level") == "2":
                     # NIVEAU 2 SEULEMENT (2026-09-09). Ce bloc interrompt la
                     # retropropagation des qu'un NaN parait, si bien que les gradients ne
                     # deviennent jamais non finis et que l'autopsie PAR TERME, qui vit plus
@@ -2131,7 +2131,7 @@ class Trainer:
                               flush=True)
                 else:
                     (loss_chunk * weight).backward()
-                if os.environ.get("MEANDRE_SONDE_CONFLIT"):
+                if settings.get("probe.conflict"):
                     # SONDE DES CONFLITS (2026-10-14) : gradient de la perte de chaque bloc par
                     # rapport a la sortie brute du champ (troncons x sorties), sans pas
                     # d'optimisation ; arret apres MEANDRE_SONDE_CONFLIT_BLOCS blocs. Les bassins
@@ -2146,13 +2146,13 @@ class Trainer:
                     self._sonde_conflit = _liste
                     _nrm = [f"{float(t_.norm()):.2e}" for t_ in _gs]
                     print(f"[sonde-conflit] bloc {n_chunks} (t={t_start}) : perte {float(loss_chunk):.4f} | {len(_gs)} appels du champ, normes {_nrm}", flush=True)
-                    if len(_liste) >= int(os.environ.get("MEANDRE_SONDE_CONFLIT_BLOCS", "4")):
+                    if len(_liste) >= int(settings.get("probe.conflict_blocks")):
                         import numpy as _np_c
-                        _np_c.save(os.environ["MEANDRE_SONDE_CONFLIT"], _np_c.stack(_liste))
-                        print(f"[sonde-conflit] {len(_liste)} blocs ecrits dans {os.environ['MEANDRE_SONDE_CONFLIT']}", flush=True)
+                        _np_c.save(settings.get("probe.conflict"), _np_c.stack(_liste))
+                        print(f"[sonde-conflit] {len(_liste)} blocs ecrits dans {settings.get('probe.conflict')}", flush=True)
                         os._exit(0)
                     self.optimizer.zero_grad()
-                if os.environ.get("MEANDRE_SONDE_SEGMENT") == "1" and n_chunks >= 1:
+                if settings.get("probe.segment") and n_chunks >= 1:
                     # SONDE DU RECALCUL PAR SEGMENTS : gradient et memoire du deuxieme bloc (le
                     # premier porte la mise en regime), puis arret. Deux executions, avec et sans
                     # MEANDRE_SEGMENT_GRADIENT, doivent rendre la meme empreinte du gradient.
@@ -2163,7 +2163,7 @@ class Trainer:
                     raise SystemExit(0)
                 _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
                               for p_ in _instantane)
-                if _pourri and os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":
+                if _pourri and settings.get("debug.nan_level") == "1":
                     # AVANT restauration : quels parametres, NaN ou inf, et quel TERME de
                     # la perte porte le gradient non fini (le detecteur d'anomalie ne voit
                     # que les NaN ; un inf de debordement passe).
@@ -2200,7 +2200,7 @@ class Trainer:
                         print(f"[train] bloc {n_chunks} (t={t_start}) : gradient non fini, "
                               f"bloc JETE, gradients restaures ({_n_jetes} bloc(s) jete(s) "
                               f"jusqu'ici)", flush=True)
-                    if os.environ.get("MEANDRE_DEBUG_NAN", "0") == "1":
+                    if settings.get("debug.nan_level") == "1":
                         # Autopsie du bloc (2026-09-05) : quels parametres portent le
                         # gradient non fini, et la perte elle-meme etait-elle finie ?
                         _noms = [n_ for n_, p_ in self.model.named_parameters()
@@ -2299,7 +2299,7 @@ class Trainer:
 
         if getattr(self, "_sonde_mult", None) is not None:
             import numpy as _np_s
-            _out = os.environ.get("MEANDRE_SONDE_TERMES_SORTIE", "sonde_termes.npz")
+            _out = settings.get("probe.terms_output")
             _np_s.savez_compressed(_out, **{f"{t_}__{k_}": g_.cpu().numpy() for t_, d_ in self._sonde_acc.items()
                                          for k_, g_ in d_.items()})
             print(f"[sonde] gradient par terme, somme sur le domaine (negatif : le champ sera pousse vers le haut) -> {_out}", flush=True)
@@ -2580,7 +2580,7 @@ class Trainer:
         return float(sum(termes) / len(termes)) if termes else float("inf")
 
     def _val_epoch_metriques(self) -> dict[str, float]:
-        _etat_continu_val = os.environ.get("MEANDRE_ETAT_CONTINU", "1") == "1"
+        _etat_continu_val = settings.get("trainer.state_continuous")
         """Validation: simulate val period, compute evaluation metrics.
 
         Reports both pooled metrics (all stations flattened) and per-station

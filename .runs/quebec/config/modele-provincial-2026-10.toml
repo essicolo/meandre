@@ -46,6 +46,13 @@ gradient_segments = 10     # gradient recalcule par segments de 10 jours : la pr
 log_step = 0.05     # largeur de chaque niveau de quantile, dans le logarithme du debit
 log_bound = 4.0     # un quantile extreme reste entre e^-4 et e^4 fois la mediane
 
+[trainer]
+# Reglages de l'entraineur, declares dans meandre/utils/settings.py.
+state_continuous = true     # l'etat riche traverse les frontieres de bloc (R64)
+kge_continuous = true       # le KGE porte sur la sequence continue (R67)
+step_per_block = true       # un pas d'optimisation par bloc ; sans lui une epoque = un pas (R78, R288)
+lr_mult_heads = 1.0         # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
+
 [et]
 formula = "penman"   # Linacre inverse la saison de l'evapotranspiration (avril/octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit (R208)
 
@@ -134,8 +141,6 @@ ETL_NAPPE_ZEXT = 6
 ETL_NAPPE_EFRAC = 0.15          # extraction depuis la zone saturee, coherente avec le debit d'aout
 
 # -- Numerique et routage ----------------------------------------------------
-MEANDRE_ETAT_CONTINU = 1        # l'etat riche traverse les frontieres de bloc (R64)
-MEANDRE_KGE_CONTINU = 1         # le KGE porte sur la sequence continue (R67)
 
 # -- Evaporation et physique ajoutee ----------------------------------------
 ETL_EVAP_EAU_LIBRE = 1          # evaporation de l'eau libre par temps sec (R285, R286)
@@ -154,8 +159,6 @@ ETL_WDQ = 0.5                   # variations journalieres du debit
 ETL_WPEAK = 0
 
 # -- Entrainement -----------------------------------------------------------------
-MEANDRE_PAS_PAR_BLOC = 1        # un pas d'optimisation par bloc ; sans lui une epoque = un pas (R78, R288)
-MEANDRE_LR_MULT_TETES = 1       # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
 ETL_LR = 2e-4                   # taux de depart : trajectoires convergees, ecart entre graines divise par trois (R283)
 ETL_WARMUP = 0
 ETL_CHUNK = 90                  # blocs de 90 jours : a 30 jours le gradient ne voyait pas l'effet differe de la recharge sur l'etiage (R365)
