@@ -43,9 +43,15 @@ SCHEMA: dict[str, Setting] = {
     "column.dynamic_compile": Setting("MEANDRE_COMPILE_DYNAMIQUE", bool, False, "Compilation du sol en formes dynamiques ; faux garde le mode fixe mesuré à x17,6."),
     "column.field_capacity_from_curve": Setting("MEANDRE_THETA_FC_COURBE", bool, False, "Capacité au champ de la couche 3 déduite de la courbe de rétention plutôt qu'apprise."),
     "column.mass_closure": Setting("BV3C_FERMETURE", bool, True, "Fermeture de masse du sol ; faux reproduit la fuite historique d'Hydrotel."),
+    # -- Routage et calcul ----------------------------------------------------------------
+    "routing.muskingum_k_hours": Setting("MEANDRE_KMUSK", tuple, (4.0, 48.0, 24.0), "Temps de transfert de Muskingum, en heures : borne basse, borne haute, valeur initiale."),
+    "routing.lake_evaporation": Setting("MEANDRE_EVAP_LACS", bool, True, "Évaporation des lacs routés par temps sec."),
+    "compute.operator_block": Setting("MEANDRE_OPERATOR_BLOCK", int, None, "Taille maximale d'un bloc de l'opérateur de routage ; absent, un bloc par étage. Résultat identique, mémoire bornée."),
+    "compute.gradient_segments": Setting("MEANDRE_SEGMENT_GRADIENT", int, 0, "Longueur, en jours, des segments recalculés à la rétropropagation ; 0, pas de recalcul. Gradient identique, mémoire bornée."),
     # -- Diagnostics du gradient, jamais dans un modèle livré ----------------------------
     "debug.detach_dtc": Setting("MEANDRE_DTC_DETACHE", bool, False, "Détache le pas de temps adaptatif du sol ; valeur simulée identique."),
     "debug.detach_cascade": Setting("MEANDRE_CASCADE_DETACHE", bool, False, "Détache la cascade de saturation du sol, pour mesurer sa part dans le gradient."),
+    "debug.zero_padding": Setting("MEANDRE_REMBOURRAGE_NUL", bool, False, "Poids nuls pour les colonnes d'entrée ajoutées à un réseau chargé : le modèle chargé reste identique."),
     "debug.detach_day": Setting("MEANDRE_DETACHE_JOUR", str, "", "Détache l'état de la colonne aux jours listés."),
 }
 
@@ -61,6 +67,10 @@ def _parse(key: str, raw: str):
         return raw == "1"
     if kind is str:
         return raw
+    if raw == "":
+        return SCHEMA[key].default
+    if kind is tuple:
+        return tuple(float(x) for x in raw.split(","))
     return kind(raw)
 
 
@@ -68,6 +78,8 @@ def _from_file(key: str, value):
     kind = SCHEMA[key].kind
     if kind is bool and not isinstance(value, bool):
         raise ValueError(f"réglage {key} : {value!r} n'est pas un booléen")
+    if kind is tuple:
+        return tuple(float(x) for x in value)
     return kind(value) if kind in (int, float) else value
 
 
@@ -105,6 +117,16 @@ def get(key: str):
     s = SCHEMA[key]
     raw = os.environ.get(s.env)
     return _parse(key, raw) if raw is not None else s.default
+
+
+def override(key: str, value) -> None:
+    """Fixe un réglage en cours d'exécution, sauf si son alias d'environnement est posé.
+
+    Pour un pilote qui décide d'un réglage après avoir lu son fichier, par exemple des poids
+    nuls pour des colonnes d'entrée qu'il vient d'ajouter. L'environnement garde la priorité.
+    """
+    if os.environ.get(SCHEMA[key].env) is None:
+        _configured[key] = value
 
 
 def snapshot() -> dict[str, object]:

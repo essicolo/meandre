@@ -22,10 +22,15 @@ from dataclasses import fields as _dc_fields
 import torch
 
 # Bornes du temps de transfert Muskingum (heures). Défaut historique [4, 48] avec init
-# 24 ; MEANDRE_KMUSK="min,max,init" permet de descendre au temps de parcours PHYSIQUE
+# 24 ; le reglage routing.muskingum_k_hours (alias MEANDRE_KMUSK) permet de descendre au temps de parcours PHYSIQUE
 # (~0.2-0.35 h mesuré par Manning sur troncon.trl). Voir le commentaire dans forward().
-_kmb = os.environ.get("MEANDRE_KMUSK", "4,48,24").split(",")
-_KMUSK_MIN, _KMUSK_MAX, _KMUSK_INIT = (float(_kmb[0]), float(_kmb[1]), float(_kmb[2]))
+from meandre.utils import settings
+
+
+def _kmusk():
+    """(borne basse, borne haute, valeur initiale), relues a chaque usage : le module est importe
+    avant que le pilote ne lise son fichier de configuration."""
+    return settings.get("routing.muskingum_k_hours")
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -487,7 +492,7 @@ class SpatialFieldNetwork(nn.Module):
             # van Genuchten n — loam ~1.5
             "vg_n": 1.5,
             # Muskingum
-            "K_musk_hours": _KMUSK_INIT, "x_musk": 0.20,
+            "K_musk_hours": _kmusk()[2], "x_musk": 0.20,
             # ETP scaling — défaut 1.0 (FAO-56 reference comme Hydrotel PM).
             "K_c": 1.0,
             # Sub-daily storm duration — 12h par défaut (vs 6h hardcodé avant).
@@ -565,7 +570,7 @@ class SpatialFieldNetwork(nn.Module):
         for nom in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
                     "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
             raw[i] = inv_borne(nom, d[nom]); i += 1
-        raw[i] = inv_bounded(d["K_musk_hours"], _KMUSK_MIN, _KMUSK_MAX); i += 1
+        raw[i] = inv_bounded(d["K_musk_hours"], _kmusk()[0], _kmusk()[1]); i += 1
         for nom in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
                     "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
             raw[i] = inv_borne(nom, d[nom]); i += 1
@@ -924,15 +929,15 @@ class SpatialFieldNetwork(nn.Module):
         # K_musk_hours : bornes de MEANDRE_KMUSK, ou ancre geometrique modulee (set_routing_anchor).
         _kanc = getattr(self, "_k_musk_anchor", None)
         if _kanc is None:
-            constrained.append(bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX)); i += 1
+            constrained.append(bounded(cols[i], _kmusk()[0], _kmusk()[1])); i += 1
         else:
             _a = _kanc.to(cols[i].device)
             # Modulation de l'ancre bornee doucement entre x exp(-1,5) et x exp(1,5), comme l'ancienne borne dure.
             _mod = torch.exp(1.5 * torch.tanh(cols[i] / 1.5))
-            _anc = torch.clamp(torch.nan_to_num(_a, nan=1.0) * _mod, min=0.05, max=_KMUSK_MAX)
+            _anc = torch.clamp(torch.nan_to_num(_a, nan=1.0) * _mod, min=0.05, max=_kmusk()[1])
             # Un noeud a ancre NaN, un lac notamment, garde le parametre borne libre.
             constrained.append(torch.where(torch.isfinite(_a), _anc,
-                                           bounded(cols[i], _KMUSK_MIN, _KMUSK_MAX))); i += 1
+                                           bounded(cols[i], _kmusk()[0], _kmusk()[1]))); i += 1
         for nom in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
                     "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
             constrained.append(borne(nom, cols[i])); i += 1

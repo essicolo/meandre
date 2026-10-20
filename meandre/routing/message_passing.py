@@ -47,6 +47,7 @@ class TopoLevelData(NamedTuple):
     edge_offsets: Tensor       # (n_levels+1,) prefix sums into edge_src/edge_dst_global
 
 from meandre.routing.dam import DamData
+from meandre.utils import settings
 from meandre.routing.graph import RiverGraph
 from meandre.routing.kinematic import MuskingumCunge
 from meandre.routing.lake import LakeModule
@@ -262,8 +263,8 @@ class RoutingLayer(nn.Module):
             if topo_cache is None or getattr(graph, "_operator_topo_lagged", None) != lagged:
                 # Taille maximale d'un bloc de l'opérateur (MEANDRE_OPERATOR_BLOCK, posée par
                 # la recette) ; sans elle, un bloc par étage comme avant.
-                _blk = os.environ.get("MEANDRE_OPERATOR_BLOCK")
-                graph._operator_topo = build_operator_topo(graph, lagged, int(_blk) if _blk else None)
+                _blk = settings.get("compute.operator_block")
+                graph._operator_topo = build_operator_topo(graph, lagged, _blk)
                 graph._operator_topo_lagged = lagged
             # fp32 forcé : le solve/GEMV sous autocast bf16 mélange les dtypes
             # et dégrade les récurrences longues.

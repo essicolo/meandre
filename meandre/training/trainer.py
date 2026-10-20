@@ -21,6 +21,7 @@ from torch import Tensor
 from torch.optim import AdamW
 
 from meandre.routing.graph import RiverGraph
+from meandre.utils import settings
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.spatial.territorial import TerritorialFeatures
 from meandre.training.loss import CompositeKGELoss, HydroLoss
@@ -2158,7 +2159,7 @@ class Trainer:
                     _gs = [p_.grad.detach().double().flatten() for p_ in self.model.parameters() if p_.grad is not None]
                     _gv = torch.cat(_gs) if _gs else torch.zeros(1, dtype=torch.float64)
                     _pic = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
-                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {os.environ.get('MEANDRE_SEGMENT_GRADIENT', '0')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_pic:.2f} Go | duree du bloc {_time.perf_counter() - _t_bloc:.1f} s", flush=True)
+                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {settings.get('compute.gradient_segments')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_pic:.2f} Go | duree du bloc {_time.perf_counter() - _t_bloc:.1f} s", flush=True)
                     raise SystemExit(0)
                 _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
                               for p_ in _instantane)

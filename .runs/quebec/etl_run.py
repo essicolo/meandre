@@ -353,7 +353,7 @@ if os.environ.get("ETL_IRDA", "0") == "1":
     _terr = r["territorial"]
     _terr.data = torch.cat([_terr.data, torch.tensor(_xi, device=_terr.data.device)], dim=1)
     _terr.columns = list(_terr.columns) + _noms_irda
-    os.environ.setdefault("MEANDRE_REMBOURRAGE_NUL", "1")
+    _settings.override("debug.zero_padding", True)
     print(f"[etl] IRDA : {len(_noms_irda)} colonnes ajoutées au champ | couverture médiane {float(np.median(_xi[:, -1])):.2f}")
 
 # ETL_DESCRIPTEURS=source1,source2 : toute source ingérée par le cadre commun entre à l'entrée
@@ -366,7 +366,7 @@ if os.environ.get("ETL_DESCRIPTEURS"):
         _terr.data = torch.cat([_terr.data, torch.tensor(_xd, device=_terr.data.device)], dim=1)
         _terr.columns = list(_terr.columns) + _noms_d
         print(f"[etl] descripteurs {_src} : {len(_noms_d)} colonnes | couverture médiane {float(np.median(_xd[:, -1])):.2f}")
-    os.environ.setdefault("MEANDRE_REMBOURRAGE_NUL", "1")
+    _settings.override("debug.zero_padding", True)
 
 # Bornes des sorties du champ (2026-10-01) : `[field.bounds]` et cles z2/z3/rain_hours de
 # `[soil]`, que le pilote ne transmettait pas au modele.
@@ -2120,7 +2120,8 @@ if os.environ.get("ETL_DUMP_REACH"):
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue
         _jour[_nom] = _v.detach().cpu().numpy().astype(np.float32)
-    if _jour:
+    # Sans diagnostics (ETL_DUMP_REACH_DIAG=0), le debit journalier seul reste ecrit : la carte en a besoin.
+    if _jour or os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "0":
         _fj = os.environ["ETL_DUMP_REACH"]
         _fj = _fj[:-4] + "-journalier.npz" if _fj.endswith(".npz") else _fj + "-journalier.npz"
         np.savez_compressed(_fj, dates=np.array([str(_t)[:10] for _t in times]),

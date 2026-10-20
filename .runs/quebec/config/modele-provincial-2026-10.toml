@@ -34,6 +34,13 @@ transpiration_soil_temp_ref = 1.0     # transpiration freinee par le sol froid, 
 viscosity_tref = 5.0                  # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
 saturated_area_exponent = 8.0         # ruissellement sur les aires saturees, part (theta1/thetas1)^8
 
+[routing]
+muskingum_k_hours = [4.0, 48.0, 24.0]   # temps de transfert, en heures : borne basse, borne haute, valeur initiale
+
+[compute]
+operator_block = 4096      # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
+gradient_segments = 10     # gradient recalcule par segments de 10 jours : la province tient dans 8 Go
+
 [et]
 formula = "penman"   # Linacre inverse la saison de l'evapotranspiration (avril/octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit (R208)
 
@@ -122,11 +129,8 @@ ETL_NAPPE_ZEXT = 6
 ETL_NAPPE_EFRAC = 0.15          # extraction depuis la zone saturee, coherente avec le debit d'aout
 
 # -- Numerique et routage ----------------------------------------------------
-MEANDRE_OPERATOR_BLOCK = 4096   # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
-MEANDRE_KMUSK = "4,48,24"       # bornes du temps de transfert, en heures : min,max,init
 MEANDRE_ETAT_CONTINU = 1        # l'etat riche traverse les frontieres de bloc (R64)
 MEANDRE_KGE_CONTINU = 1         # le KGE porte sur la sequence continue (R67)
-MEANDRE_SEGMENT_GRADIENT = 10   # gradient par segments : la province tient dans 8 Go
 
 # -- Evaporation et physique ajoutee ----------------------------------------
 ETL_EVAP_EAU_LIBRE = 1          # evaporation de l'eau libre par temps sec (R285, R286)

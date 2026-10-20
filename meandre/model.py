@@ -17,6 +17,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from meandre.routing.dam import DamData
+from meandre.utils import settings
 from meandre.routing.graph import RiverGraph
 from meandre.routing.message_passing import RoutingLayer
 from meandre.routing.temperature import StreamTemperatureModule
@@ -847,7 +848,7 @@ class HydroModel(nn.Module):
             # la pluie reste dans la colonne, sans double compte. MEANDRE_EVAP_LACS=0 restitue
             # l'ancien routage.
             _vd = getattr(vc_out, "diag", None) or {}
-            if os.environ.get("MEANDRE_EVAP_LACS", "1") != "0" and "etp" in _vd and "apport" in _vd:
+            if settings.get("routing.lake_evaporation") and "etp" in _vd and "apport" in _vd:
                 self.routing._lake_evap_mm = torch.clamp(_vd["etp"] - _vd["apport"], min=0.0).detach()
             else:
                 self.routing._lake_evap_mm = None
@@ -928,7 +929,7 @@ class HydroModel(nn.Module):
         # recalcule pendant la retropropagation (Chen et al. 2016, gradient checkpointing). La
         # memoire ne croit plus avec la longueur du bloc : l'horizon du gradient ne depend plus
         # de la taille du domaine, et le gradient reste celui d'un seul passage.
-        _seg = int(os.environ.get("MEANDRE_SEGMENT_GRADIENT", "0") or 0)
+        _seg = int(settings.get("compute.gradient_segments"))
         if _seg > 0 and torch.is_grad_enabled() and n_timesteps > _seg:
             from torch.utils.checkpoint import checkpoint
             instantanes: dict[int, list] = {}
@@ -1353,8 +1354,7 @@ class HydroModel(nn.Module):
                     fan_in = new_in  # full input dim after padding
                     std = (2.0 / fan_in) ** 0.5 * 0.1  # Kaiming * 0.1 scale
                     # MEANDRE_REMBOURRAGE_NUL=1 : poids nuls, le modèle chargé reste identique.
-                    import os as _os_pad
-                    if _os_pad.environ.get("MEANDRE_REMBOURRAGE_NUL", "0") == "1":
+                    if settings.get("debug.zero_padding"):
                         std = 0.0
                     # fc1: small random init for new input columns
                     sd[fc1_key] = torch.cat([

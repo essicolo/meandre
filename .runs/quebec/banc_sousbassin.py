@@ -906,7 +906,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # ici le biais de cette seule sortie pour qu'elle parte de la valeur demandee.
         import math as _mk
         from dataclasses import fields as _dcf
-        from meandre.spatial.field_network import SpatialParams as _SPk, _KMUSK_MIN as _k0, _KMUSK_MAX as _k1, _KMUSK_INIT as _ki
+        from meandre.spatial.field_network import SpatialParams as _SPk, _kmusk
+        _k0, _k1, _ki = _kmusk()
         _row = [f.name for f in _dcf(_SPk)].index("K_musk_hours")
         _fr = min(max((_ki - _k0) / (_k1 - _k0), 1e-4), 1 - 1e-4)
         with torch.no_grad():
@@ -1230,7 +1231,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             # stockage absent (borne haute) ou suit le parcours physique (borne basse).
             try:
                 _km = _sp.K_musk_hours.detach().float().cpu().numpy().ravel()
-                from meandre.spatial.field_network import _KMUSK_MIN as _kmn, _KMUSK_MAX as _kmx
+                from meandre.spatial.field_network import _kmusk
+                _kmn, _kmx, _ = _kmusk()
                 print(f"  temps de transfert Muskingum : mediane {np.median(_km):.1f} h, quartiles {np.quantile(_km, 0.25):.1f} a {np.quantile(_km, 0.75):.1f} h | a la borne basse {100 * np.mean(_km < _kmn + 0.5):.0f} %, a la borne haute {100 * np.mean(_km > _kmx - 0.5):.0f} % ({_kmn:.0f} a {_kmx:.0f} h)", flush=True)
             except Exception as _ek:
                 print(f"  temps de transfert Muskingum : lecture impossible ({type(_ek).__name__})", flush=True)

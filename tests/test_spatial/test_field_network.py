@@ -88,7 +88,7 @@ def test_bornes_de_muskingum_configurables(monkeypatch):
     monkeypatch.setenv("MEANDRE_KMUSK", "0.5,12,3")
     importlib.reload(fn)
     try:
-        assert (fn._KMUSK_MIN, fn._KMUSK_MAX, fn._KMUSK_INIT) == (0.5, 12.0, 3.0)
+        assert fn._kmusk() == (0.5, 12.0, 3.0)
         net = fn.SpatialFieldNetwork(n_territorial=17, hidden=64)
         p = net(torch.randn(64, 2), torch.randn(64, 17))
         k = p.K_musk_hours

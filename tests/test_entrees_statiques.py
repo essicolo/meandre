@@ -152,7 +152,7 @@ def test_bornes_kmusk_par_defaut():
     """Les bornes du temps de transfert restent celles d'origine tant que
     MEANDRE_KMUSK n'est pas posé (les checkpoints existants en dépendent)."""
     from meandre.spatial import field_network as fn
-    assert (fn._KMUSK_MIN, fn._KMUSK_MAX, fn._KMUSK_INIT) == (4.0, 48.0, 24.0)
+    assert fn._kmusk() == (4.0, 48.0, 24.0)
 
 
 # ── IDENTITÉ DES TRONÇONS ───────────────────────────────────────────────────
