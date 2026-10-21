@@ -278,7 +278,7 @@ else:
             demand[lo:hi] = mlp(x.reshape(-1, x.shape[-1])).reshape(hi - lo, n_nodes)
     print(f"[etl] demande ET apprise : {float(demand.mean()) * 365.25:.0f} mm/an moyen | max {float(demand.max()):.1f} mm/j")
 
-    _ds = float(os.environ.get("ETL_DEMAND_SCALE", "1.0"))
+    _ds = float(_settings.raw("evaporation.demand_scale", "1.0"))
     if _ds != 1.0:
         # débiaisage RÉGIONAL structurel de la demande (ratio bilan P-Q / MOD16) : appliqué
         # au canal, le gradient ne peut pas le défaire (le prior K_c doux était re-défait
@@ -454,8 +454,8 @@ lp["K_c"] = float(os.environ.get("ETL_KC", "1.0"))   # autour de la demande appr
 if "ETL_KSAT1" in os.environ:
     lp["K_sat_1"] = float(os.environ["ETL_KSAT1"])
     print(f"[etl] K_sat_1 prior recalé -> {lp['K_sat_1']} m/j (génération de crue)")
-if "ETL_KGW" in os.environ:
-    lp["k_gw"] = float(os.environ["ETL_KGW"])   # prior mesuré (récessions jauges)
+if _settings.raw("groundwater.kgw_prior") is not None:
+    lp["k_gw"] = float(_settings.raw("groundwater.kgw_prior"))   # prior mesuré (récessions jauges)
     print(f"[etl] k_gw prior -> {lp['k_gw']} /j (récessions mesurées)")
 if "ETL_TMELT" in os.environ:
     # seuil de fonte NeRF : cible init+prior Hydrotel-comme-littérature (QC ~ +2°C),
@@ -539,12 +539,12 @@ if os.environ.get("ETL_ETI", "0") == "1" and ("ETL_ETI_TF" in os.environ or "ETL
             model.vertical_column.sp_srf.copy_(torch.tensor(_me.log(_me.expm1(_srf))))
     print(f"[etl] ETI re-echelle : tf {float(torch.nn.functional.softplus(model.vertical_column.sp_tf))*1000:.2f} mm/C/j | "
           f"srf {float(torch.nn.functional.softplus(model.vertical_column.sp_srf))*1000:.4f} mm/j/(W/m2)")
-if "ETL_KREC_PRIOR" in os.environ:
+if _settings.raw("groundwater.krec_prior") is not None:
     # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
     # a krec ~5e-5..1e-4 avec la vanne non lineaire, pas a 2e-5). La moyenne du champ
     # reste ancree, la variation spatiale reste libre.
     _t = getattr(model.spatial_encoder, "_prior_targets", None) or {}
-    _t["krec"] = float(os.environ["ETL_KREC_PRIOR"])
+    _t["krec"] = float(_settings.raw("groundwater.krec_prior"))
     model.spatial_encoder._prior_targets = _t
     print(f"[etl] cible du prior krec -> {_t['krec']:.1e} m/h")
 if "ETL_L3_EXP" in os.environ:
@@ -590,13 +590,13 @@ if _settings.raw("groundwater.water_table", "0") == "1":
                couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
     model.vertical_column.activer_nappe_libre(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
-    if "ETL_NAPPE_GEL" in os.environ:
+    if _settings.raw("groundwater.frost_factor") is not None:
         # Porte de gel sur la vidange de la nappe (R316) : facteur quand le gel atteint 30 cm.
-        model.vertical_column.nappe_gel_facteur = float(os.environ["ETL_NAPPE_GEL"])
-        print(f"[etl] porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}")
-    if "ETL_NAPPE_KB_CHAMP" in os.environ:
+        model.vertical_column.nappe_gel_facteur = float(_settings.raw("groundwater.frost_factor"))
+        print(f"[etl] porte de gel sur la nappe : facteur {_settings.raw("groundwater.frost_factor")}")
+    if _settings.raw("groundwater.conductance_field") is not None:
         # Conductance de la nappe par troncon (R380) : « reference_1/j,exposant », k_b x (k_gw/reference)^exposant.
-        _ref, _ex = (float(x) for x in os.environ["ETL_NAPPE_KB_CHAMP"].split(","))
+        _ref, _ex = (float(x) for x in _settings.raw("groundwater.conductance_field").split(","))
         model.vertical_column.nappe_kb_champ = (_ref, _ex)
         print(f"[etl] conductance de la nappe par troncon : k_b x (k_gw / {_ref:g})^{_ex:g}")
 # PROFIL DE SOL DECLARE (2026-09-20). Une section `[soil]` du TOML remplace les variables
@@ -875,7 +875,7 @@ if _settings.raw("groundwater.conductivity_field", "0") == "1":
         # ETL_KGW_ECHELLE : facteur sur le champ, pour allonger le temps de sejour sans
         # retirer la structure spatiale. Le champ vient des recessions de debit, soit 7 a
         # 16 jours, alors que les nappes mesurees demandent des mois (R114).
-        _kv = _kv * float(os.environ.get("ETL_KGW_ECHELLE", "1.0"))
+        _kv = _kv * float(_settings.raw("groundwater.kgw_scale", "1.0"))
         _o_se = model.spatial_encoder.forward
         # MODULATION plutot qu'ECRASEMENT (2026-09-03). `sp.k_gw = _k` remplacait la
         # sortie du champ par un tenseur SANS GRADIENT : la conductivite souterraine
@@ -926,7 +926,7 @@ if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
 # champ en espace log et laisse la variation spatiale libre -- meme traitement que k_gw.
 # Inutile quand krec est impose : la sortie du NeRF n'est alors pas utilisee, le calage
 # etant fusionne par-dessus dans la colonne.
-if _settings.raw("groundwater.free_recession", "0") == "1" and "ETL_KREC_GEL" not in os.environ:
+if _settings.raw("groundwater.free_recession", "0") == "1" and _settings.raw("groundwater.krec_frozen") is None:
     model.spatial_encoder.prior_on_krec = True
     print("[etl] krec APPRIS par le champ, moyenne ancree par le prior physique "
           "(cible 2e-5 m/h, ~34 % de debit de base ; le calage Hydrotel donne 1.3e-7)")
@@ -949,9 +949,9 @@ if os.environ.get("ETL_KSUB_PRIOR", "0") != "0":
     print(f"[etl] plafond de percolation : moyenne du logarithme ancree, variation spatiale "
           f"LIBRE, poids {model.spatial_encoder.poids_k_sub}")
 
-if "ETL_KREC" in os.environ:
+if _settings.raw("groundwater.krec") is not None:
     import math as _mk
-    _kv = float(os.environ["ETL_KREC"])
+    _kv = float(_settings.raw("groundwater.krec"))
     model.spatial_encoder.set_uniform_krec(_kv)
     print(f"[etl] krec pose UNIFORME -> {_kv:.0e} m/h (mode degrade : annule la "
           f"variation spatiale du champ, reserve aux bancs)")
@@ -960,7 +960,7 @@ if "ETL_KREC" in os.environ:
     # débit et le KGE tombe à 0.589 ; à 1e-4 il devient négatif). Quand on la pose à une
     # valeur choisie pour des raisons PHYSIQUES, il faut la geler, sinon l'apprentissage
     # la déplace et on ne sait plus ce qu'on a mesuré.
-    if os.environ.get("ETL_KREC_GEL", "0") == "1":
+    if _settings.raw("groundwater.krec_frozen", "0") == "1":
         model.spatial_encoder.freeze_krec()
         print(f"[etl] krec GELÉ à {_kv:.1e} (sortie exclue de l'apprentissage)")
 # GEOMETRIE DU LIT (2026-09-22). Le modele n'en avait aucune : sa table des tronçons ne porte
@@ -1729,8 +1729,8 @@ if os.path.exists(CKPT):
     # en évaluation pure et un balayage de recharge mesure onze fois la même chose
     # (mesuré le 2026-08-19). Quand la recharge est GELÉE, elle vaut la valeur choisie
     # de bout en bout, y compris après le chargement.
-    if os.environ.get("ETL_KREC_GEL", "0") == "1" and "ETL_KREC" in os.environ:
-        _kv2 = float(os.environ["ETL_KREC"])
+    if _settings.raw("groundwater.krec_frozen", "0") == "1" and _settings.raw("groundwater.krec") is not None:
+        _kv2 = float(_settings.raw("groundwater.krec"))
         model.spatial_encoder.set_uniform_krec(_kv2)
         print(f"[etl] krec ré-imposé après chargement : {_kv2:.1e} (gelé, uniforme)")
 else:
