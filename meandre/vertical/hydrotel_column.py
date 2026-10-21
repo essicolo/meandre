@@ -1266,7 +1266,7 @@ class HydrotelColumn(nn.Module):
             pheno = self._pheno_tensors(pe["classes"], P)
         d = doy_t.reshape(-1)[0]                  # jour julien scalaire (tenseur, sans synchro)
         etp_classes, roots, leaves = [], [], []
-        _cl_pheno = getattr(self, "phenology_classes", None) or os.environ.get("MEANDRE_PHENOLOGIE_CLASSES")
+        _cl_pheno = getattr(self, "phenology_classes", None) or settings.get("phenology.classes")
         if isinstance(_cl_pheno, str):
             _cl_pheno = _cl_pheno.split(",")
         _cl_pheno = set(_cl_pheno) if _cl_pheno else None

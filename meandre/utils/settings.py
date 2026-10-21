@@ -84,6 +84,13 @@ SCHEMA: dict[str, Setting] = {
     "probe.conflict": Setting("MEANDRE_SONDE_CONFLIT", str, "", "Fichier de sortie de la sonde de conflit des gradients ; vide, sonde éteinte."),
     "probe.conflict_blocks": Setting("MEANDRE_SONDE_CONFLIT_BLOCS", int, 4, "Nombre de blocs mesurés par la sonde de conflit avant l'arrêt."),
     "probe.segment": Setting("MEANDRE_SONDE_SEGMENT", bool, False, "Sonde du recalcul par segments : gradient et mémoire du deuxième bloc."),
+    # -- Phénologie : la section [phenology] est lue par le pilote, qui transmet ses valeurs
+    # au modèle ; ces réglages ne servent qu'en son absence (voir PILOT_SECTIONS). ------------
+    "phenology.mode": Setting("MEANDRE_PHENOLOGIE_MODE", str, "gdd", "Forme saisonnière de K_c : gdd (degrés-jours), photo (longueur du jour), modis (indice foliaire observé)."),
+    "phenology.params": Setting("MEANDRE_PHENOLOGIE_PARAMS", str, None, "Paramètres gelés du mode photo, « emergence,seuil,largeur1,largeur2 »."),
+    "phenology.target": Setting("MEANDRE_PHENOLOGIE_CIBLE", str, "kc", "Grandeur modulée : kc (coefficient cultural) ou lai (indice foliaire, transpiration seule)."),
+    "phenology.classes": Setting("MEANDRE_PHENOLOGIE_CLASSES", str, None, "Classes d'occupation modulées, séparées par des virgules ; absent, toutes."),
+    "phenology.lai_modis_csv": Setting("MEANDRE_LAI_MODIS_CSV", str, None, "Fichier de l'indice foliaire MODIS (colonnes date, lai_median) du mode modis."),
     # -- Diagnostics du gradient, jamais dans un modèle livré ----------------------------
     "debug.detach_dtc": Setting("MEANDRE_DTC_DETACHE", bool, False, "Détache le pas de temps adaptatif du sol ; valeur simulée identique."),
     "debug.detach_cascade": Setting("MEANDRE_CASCADE_DETACHE", bool, False, "Détache la cascade de saturation du sol, pour mesurer sa part dans le gradient."),
@@ -96,6 +103,10 @@ SCHEMA: dict[str, Setting] = {
     "debug.grad_stop": Setting("MEANDRE_DEBUG_GRAD_STOP", bool, False, "Arrêt après les trois blocs de debug.grad."),
     "debug.detach_day": Setting("MEANDRE_DETACHE_JOUR", str, "", "Détache l'état de la colonne aux jours listés."),
 }
+
+# Sections lues par le pilote lui-même et transmises au modèle : `configure` ne les lit pas,
+# et la valeur transmise prime sur l'alias d'environnement, qui ne sert qu'en son absence.
+PILOT_SECTIONS = frozenset({"phenology"})
 
 _configured: dict[str, object] = {}
 
@@ -133,7 +144,7 @@ def configure(sections: dict | None) -> list[str]:
     section déclarée ici, absente de SCHEMA, arrête tout : elle ne serait lue par personne.
     """
     sections = sections or {}
-    for name in {k.split(".")[0] for k in SCHEMA}:
+    for name in {k.split(".")[0] for k in SCHEMA} - PILOT_SECTIONS:
         for key in (sections.get(name) or {}):
             if f"{name}.{key}" not in SCHEMA:
                 raise ValueError(f"réglage inconnu [{name}] {key} : aucune entrée de SCHEMA ne le déclare")
@@ -142,6 +153,8 @@ def configure(sections: dict | None) -> list[str]:
     for key, s in SCHEMA.items():
         section, name = key.split(".", 1)
         raw = os.environ.get(s.env)
+        if section in PILOT_SECTIONS:
+            continue
         if raw is not None:
             _configured[key] = _parse(key, raw)
         elif name in (sections.get(section) or {}):

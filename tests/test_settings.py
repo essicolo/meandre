@@ -52,3 +52,12 @@ def test_instantane_ne_garde_que_les_ecarts(monkeypatch):
     snap = settings.snapshot()
     assert snap.get("column.n_substeps") == 64
     assert "column.z_tensor" not in snap
+
+
+def test_section_du_pilote_ni_lue_ni_refusee(monkeypatch):
+    monkeypatch.delenv("MEANDRE_PHENOLOGIE_MODE", raising=False)
+    pris = settings.configure({"phenology": {"enabled": True, "mode": "photo", "classes": ["feuillus"]}})
+    assert not [k for k in pris if k.startswith("phenology.")]
+    assert settings.get("phenology.mode") == "gdd"
+    monkeypatch.setenv("MEANDRE_PHENOLOGIE_MODE", "photo")
+    assert settings.get("phenology.mode") == "photo"

@@ -39,6 +39,7 @@ import os
 import torch
 import torch.nn as nn
 from torch import Tensor
+from meandre.utils import settings
 
 
 class PhenologyModulator(nn.Module):
@@ -79,8 +80,8 @@ class PhenologyModulator(nn.Module):
         params=None,
     ) -> None:
         """`mode` et `params` viennent de la configuration déclarée ([phenology] du TOML) ;
-        absents, les variables d'environnement MEANDRE_PHENOLOGIE_MODE et
-        MEANDRE_PHENOLOGIE_PARAMS gardent leur rôle (2026-09-30)."""
+        absents, les réglages phenology.mode et phenology.params s'appliquent
+        (meandre/utils/settings.py)."""
         super().__init__()
         # Paramètres appris (4)
         self.gdd_emerg = nn.Parameter(torch.tensor(float(gdd_emerg_init)))
@@ -92,7 +93,7 @@ class PhenologyModulator(nn.Module):
         # la longueur du jour, qui décroît après le solstice ; c'est le déclencheur
         # principal de la sénescence des feuillus tempérés (Delpierre et al. 2009). Seuil
         # de longueur du jour photo_crit_h = 12 + 3·tanh(photo_crit), initialisé à 12 h.
-        self.mode = mode or os.environ.get("MEANDRE_PHENOLOGIE_MODE", "gdd")
+        self.mode = mode or settings.get("phenology.mode")
         if self.mode == "photo":
             self.photo_crit = nn.Parameter(torch.tensor(0.0))
             self.register_buffer("photo_pente_h", torch.tensor(0.5))
@@ -102,7 +103,7 @@ class PhenologyModulator(nn.Module):
         # sont ajustées sur l'indice foliaire observé (`.runs/quebec/caler_phenologie_modis.py`)
         # et GELÉES : la saison vient d'une observation indépendante du débit, et reste
         # pilotée par la seule météo, donc utilisable en prédiction.
-        _cal = params if params is not None else os.environ.get("MEANDRE_PHENOLOGIE_PARAMS")
+        _cal = params if params is not None else settings.get("phenology.params")
         if _cal and self.mode == "photo":
             _vals = _cal.split(",") if isinstance(_cal, str) else list(_cal)
             e, c, s1, s2 = [float(x) for x in _vals]
@@ -121,7 +122,10 @@ class PhenologyModulator(nn.Module):
         if self.mode == "modis":
             import numpy as _np
             import pandas as _pd
-            t = _pd.read_csv(os.environ["MEANDRE_LAI_MODIS_CSV"], parse_dates=["date"])
+            _csv = settings.get("phenology.lai_modis_csv")
+            if _csv is None:
+                raise KeyError("phenologie modis : le reglage phenology.lai_modis_csv (MEANDRE_LAI_MODIS_CSV) n'est pas pose")
+            t = _pd.read_csv(_csv, parse_dates=["date"])
             t["doy"] = t.date.dt.dayofyear
             clim = t.groupby("doy").lai_median.mean()
             jours = _np.arange(1, 367)

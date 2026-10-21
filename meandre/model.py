@@ -677,7 +677,7 @@ class HydroModel(nn.Module):
                     _doy_p = int(day_of_year[t].item()) if day_of_year is not None else None
                     if self.phenology_classes is not None:
                         self.vertical_column.phenology_classes = self.phenology_classes
-                    if (self.phenology_target or os.environ.get("MEANDRE_PHENOLOGIE_CIBLE", "kc")) == "lai":
+                    if (self.phenology_target or settings.get("phenology.target")) == "lai":
                         # La phénologie module l'INDICE FOLIAIRE, donc la seule transpiration :
                         # l'évaporation du sol nu reste entière hors saison (2026-09-28).
                         self.vertical_column._lai_forme = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
