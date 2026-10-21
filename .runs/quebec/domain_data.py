@@ -38,6 +38,7 @@ from meandre.routing.graph import RiverGraph
 from meandre.spatial.territorial import TerritorialFeatures
 from meandre.training.loss import HydroLoss
 from meandre.training.trainer import TrainingData
+from meandre.utils import settings as _settings
 
 
 class HostSeries:
@@ -102,7 +103,7 @@ def _memmap_forcing(parts, names, device):
     # c'est ce qui faisait rendre 0.68 et 0.36 au MEME modele sur les MEMES stations,
     # le forcage differant de 70 % de son echelle entre les deux chargements. Trois
     # jours de diagnostic sont partis la-dedans.
-    _sfx = os.environ.get("JOINT_FX_SUFFIX", "-defaut") or "-defaut"
+    _sfx = _settings.raw("forcing.suffix", "-defaut") or "-defaut"
     cle = "-".join(names) + _sfx + f"_{T}x{N}x{C}"
     if len(cle) > 120:                      # noms de fichiers Windows
         import hashlib
@@ -209,7 +210,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     # differencier (diagnostic 2026-07-31, cause des cinq echecs conjoints). Dans un
     # domaine fusionne ce n'est plus une option : deux troncons voisins de part et
     # d'autre d'une frontiere recevraient des attributs incomparables.
-    os.environ["JOINT_GLOBAL_NORM"] = "1"
+    _settings.override("spatial.global_normalization", "1", force=True)
 
     parts = [load_region(n, dict(lcfg), device="cpu") for n in names]
     sizes = [p["n_nodes"] for p in parts]

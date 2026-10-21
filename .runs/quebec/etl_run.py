@@ -418,7 +418,7 @@ model = HydroModel(
     # ETL_NO_LATENT : les codes latents sont par NOEUD, donc non transferables entre
     # regions (dimensions differentes). A desactiver pour un depart a chaud depuis le
     # champion d'une AUTRE region.
-    use_latent_codes=(os.environ.get("ETL_NO_LATENT", "0") != "1"
+    use_latent_codes=(_settings.raw("spatial.no_latent_codes", "0") != "1"
                       and bool(mcfg.get("use_latent_codes", True))),
     latent_mode="additive",
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
@@ -436,7 +436,7 @@ model = HydroModel(
     # AQUIFÈRE RESTITUANT (spec Essi 2026-07-28) : recharge -> réservoir lent par nœud,
     # vidange k_gw NeRF (prior = récessions MESURÉES des jauges). Banc partition :
     # krec 5e-5 + k_gw 0.068 = baseflow 24%, +0.07 KGE en inférence pure.
-    use_aquifer=os.environ.get("ETL_AQUIFER", "0") == "1",
+    use_aquifer=_settings.raw("groundwater.aquifer", "0") == "1",
     # LEVIERS PICS (r vs Hydrotel) : advection pure (onde cinématique sans diffusion),
     # célérité dépendante du débit, UH de versant. Activés par env pour le banc GASP.
     pure_advection=os.environ.get("ETL_ADVECTION", "0") == "1",
@@ -552,7 +552,7 @@ if "ETL_L3_EXP" in os.environ:
     # dessous -> L3 respire, la recharge devient saisonniere. n=1 == fidele.
     model.vertical_column.l3_drain_exp = float(os.environ["ETL_L3_EXP"])
     print(f"[etl] drainage L3 NON LINEAIRE : exposant {float(os.environ['ETL_L3_EXP'])}")
-if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
+if _settings.raw("groundwater.water_table", "0") == "1":
     # Nappe libre a la place du reservoir restituant. Le banc du 2026-09-18 montre qu'un
     # reservoir lineaire ne peut pas tenir ensemble les 0,93 m de battement mesures et un
     # maximum un mois apres la fonte, et que l'extraction depuis la zone saturee est le
@@ -568,7 +568,7 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
         fonte entrent deja par la loi des ancrages. Mesures du 2026-09-21 : 1,36 en Monteregie
         drainee, 2,06 au Saint-Laurent sud-ouest, 4,65 en Outaouais.
         """
-        brut = os.environ.get("ETL_NAPPE_EXP", "2.0")
+        brut = _settings.raw("groundwater.exponent", "2.0")
         if brut.lower() not in ("mesure", "mesuré", "ancrage"):
             return float(brut)
         from meandre.data.recession_anchor import ancrage as _ancrage
@@ -580,12 +580,12 @@ if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
               f"quartiles {a.etendue[0]:.2f} a {a.etendue[1]:.2f}){etat}")
         return a.exposant_stock if a.fiable else 2.0
 
-    _np = dict(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)),
-               k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)),
-               z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)),
-               h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)),
-               e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)),
-               z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)),
+    _np = dict(sy=float(_settings.raw("groundwater.specific_yield", 0.05)),
+               k_b=float(_settings.raw("groundwater.conductance", 2.0e-3)),
+               z_riv=float(_settings.raw("groundwater.river_depth_m", 8.0)),
+               h_ref=float(_settings.raw("groundwater.reference_head_m", 4.0)),
+               e_frac=float(_settings.raw("groundwater.extraction_fraction", 0.35)),
+               z_ext=float(_settings.raw("groundwater.extinction_depth_m", 9.0)),
                exposant=_exposant_de_nappe(),
                couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
     model.vertical_column.activer_nappe_libre(**_np)
@@ -664,26 +664,26 @@ if "ETL_L3_GEL" in os.environ:
     # plus vite. 1.0 retire la porte, 0.5 est la valeur fidele.
     model.vertical_column.l3_gel_facteur = float(os.environ["ETL_L3_GEL"])
     print(f"[etl] porte de gel du drainage L3 : facteur {float(os.environ['ETL_L3_GEL'])} (0.5 = fidele)")
-if "ETL_SEUIL_TWB" in os.environ:
+if _settings.raw("snow.wet_bulb_threshold") is not None:
     # Partage pluie-neige au BULBE HUMIDE (generalisation du seuil, remarque d'Essi
     # sur R35) : un seuil unique en Twb remplace le seuil AIR par region. Sur nos 6
     # regions, le Twb equivalent au +0.3 air d'OUTV tient dans [-1.0, -0.7].
     model.vertical_column.split_mode = "wet_bulb"
-    model.vertical_column.t_neige_seuil = float(os.environ["ETL_SEUIL_TWB"])
+    model.vertical_column.t_neige_seuil = float(_settings.raw("snow.wet_bulb_threshold"))
     print(f"[etl] partage pluie/neige au BULBE HUMIDE, seuil Twb "
-          f"{float(os.environ['ETL_SEUIL_TWB']):+.2f} degres (Stull 2011, e_a du forcage)")
+          f"{float(_settings.raw("snow.wet_bulb_threshold")):+.2f} degres (Stull 2011, e_a du forcage)")
 if "ETL_FONTE_SOL" in os.environ:
     # Fonte journaliere par la chaleur du sol (mm/j), a la place du taux cale d'Hydrotel.
     model.vertical_column.ground_melt_mm_per_day = float(os.environ["ETL_FONTE_SOL"])
     _tg = getattr(model.vertical_column, "melt_taux_geo", None)
     print(f"[etl] fonte au sol imposee : {os.environ['ETL_FONTE_SOL']} mm/j"
           + (f" (calage : moyenne {float(_tg.mean()):.2f} mm/j)" if _tg is not None else ""))
-if "ETL_MELT_SAISON" in os.environ:
+if _settings.raw("snow.seasonal_melt_amplitude") is not None:
     # Modulation saisonniere du facteur de fonte (R32). Un degre-jour constant absorbe
     # le cycle annuel de radiation ; cale sur la crue, il fond trop en novembre-decembre
     # -- le deficit mesure (accumulation 58 % de CanSWE, fonte de coeur d'hiver juste).
     # s(j) = 1 + amp*sin(2*pi*(j-81)/365), moyenne annuelle 1. amp=0 = clone fidele.
-    _msa = float(os.environ["ETL_MELT_SAISON"])
+    _msa = float(_settings.raw("snow.seasonal_melt_amplitude"))
     model.vertical_column.melt_seasonal_amp = _msa
     print(f"[etl] fonte SAISONNIERE : amplitude {_msa} "
           f"(decembre x{1-_msa:.2f}, juin x{1+_msa:.2f}, moyenne annuelle inchangee)")
@@ -691,7 +691,7 @@ if "ETL_SEUIL_VALEUR" in os.environ:
     _sv = float(os.environ["ETL_SEUIL_VALEUR"])
     model.vertical_column.t_neige_seuil = _sv
     print(f"[etl] seuil pluie/neige IMPOSE : {_sv:+.4f} °C")
-elif os.environ.get("ETL_SEUIL_NEIGE", "1") == "1":
+elif _settings.raw("snow.project_threshold", "1") == "1":
     from meandre.data.hydrotel_calib import load_passage_pluie_neige as _lppn
     _pls = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _sn = _lppn(_pls)
@@ -735,7 +735,7 @@ elif _etp_choix == "linacre":
     print(f"[etl] ETP : Linacre CALÉE du projet (paquet cohérent avec le sol ancré)")
 else:
     model.vertical_column.etp_channel = 6
-if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
+if _settings.raw("spatial.init_from_hydrotel", "0") in ("1", "courbe", "sauf_ks"):
     # DÉPART SUR LE CHAMP D'HYDROTEL puis optimisation libre (proposition d'Essi,
     # 2026-08-13). Différence essentielle avec ETL_SOIL_CALIB : celui-ci COURT-CIRCUITE
     # la sortie du réseau, qui n'apprend alors plus rien sur le sol. Ici on AJUSTE le
@@ -773,7 +773,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
     # incapable de représenter ce sol. Correctif minimal : imposer PAR NŒUD la seule
     # courbe de rétention (propriété de texture), en laissant au champ les conductivités,
     # porosités et épaisseurs.
-    _mode_init = os.environ.get("ETL_INIT_HYDROTEL")
+    _mode_init = _settings.raw("spatial.init_from_hydrotel")
     if _mode_init in ("courbe", "sauf_ks"):
         if _mode_init == "sauf_ks":
             # CONFLIT AQUIFÈRE/CALAGE (2026-08-17). La courbe imposée comprend krec,
@@ -790,7 +790,7 @@ if os.environ.get("ETL_INIT_HYDROTEL", "0") in ("1", "courbe", "sauf_ks"):
             # AVANT ce correctif, donc avec krec IMPOSÉ. On revient au comportement qui
             # tient le record, et la libération devient EXPLICITE (ETL_KREC_LIBRE=1),
             # à n'utiliser qu'avec une valeur choisie et gelée (ETL_KREC + ETL_KREC_GEL).
-            _aq_actif = os.environ.get("ETL_KREC_LIBRE", "0") == "1"
+            _aq_actif = _settings.raw("groundwater.free_recession", "0") == "1"
             # Tout imposer SAUF ce qu'on veut laisser apprendre (conductivités et
             # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
             # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
@@ -861,7 +861,7 @@ if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
         print("[etl] épaisseurs de couches laissées LIBRES (calage uniforme, non informatif)")
     model.vertical_column.set_calibrated_soil(_calib)
     print(f"[etl] sol ANCRÉ sur le calage Hydrotel : {_pd_}")
-if os.environ.get("ETL_KGW_FIELD", "0") == "1":
+if _settings.raw("groundwater.conductivity_field", "0") == "1":
     # CHAMP k_gw provincial (GP sur les récessions de 127 stations, R2 blocs 0.62,
     # incertitude calibrée) : remplace le k_gw régional constant par un champ continu
     # par nœud. Le NeRF module autour ; le champ fixe le niveau local mesuré.
@@ -884,7 +884,7 @@ if os.environ.get("ETL_KGW_FIELD", "0") == "1":
         # impose desormais le NIVEAU et le reseau module le CONTRASTE spatial autour de 1,
         # borne a un facteur deux pour que le niveau reste celui du champ.
         # MEANDRE_KGW_MODULE=0 restitue l'ecrasement, pour comparaison.
-        _kgw_module = os.environ.get("MEANDRE_KGW_MODULE", "1") == "1"
+        _kgw_module = _settings.raw("groundwater.conductivity_modulation", "1") == "1"
 
         def _se_kgw(*a, _o=_o_se, _k=_kv, **kw):
             sp = _o(*a, **kw)
@@ -926,7 +926,7 @@ if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
 # champ en espace log et laisse la variation spatiale libre -- meme traitement que k_gw.
 # Inutile quand krec est impose : la sortie du NeRF n'est alors pas utilisee, le calage
 # etant fusionne par-dessus dans la colonne.
-if os.environ.get("ETL_KREC_LIBRE", "0") == "1" and "ETL_KREC_GEL" not in os.environ:
+if _settings.raw("groundwater.free_recession", "0") == "1" and "ETL_KREC_GEL" not in os.environ:
     model.spatial_encoder.prior_on_krec = True
     print("[etl] krec APPRIS par le champ, moyenne ancree par le prior physique "
           "(cible 2e-5 m/h, ~34 % de debit de base ; le calage Hydrotel donne 1.3e-7)")
@@ -1374,7 +1374,7 @@ if os.environ.get("ETL_LAKE_TRL", "1") == "1":
     model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
     print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lacb.sum())} | "
           f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
-if os.environ.get("ETL_EVAP_EAU_LIBRE", "0") == "1":
+if _settings.raw("evaporation.open_water", "0") == "1":
     # EVAPORATION DE L'EAU LIBRE PAR TEMPS SEC (2026-10-04, registre R285) : la colonne
     # n'evapore l'eau libre qu'a hauteur de la pluie du jour. Fraction d'eau libre de
     # l'occupation, moins la surface des lacs routes rapportee a l'aire locale.

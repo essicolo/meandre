@@ -61,3 +61,13 @@ def test_section_du_pilote_ni_lue_ni_refusee(monkeypatch):
     assert settings.get("phenology.mode") == "gdd"
     monkeypatch.setenv("MEANDRE_PHENOLOGIE_MODE", "photo")
     assert settings.get("phenology.mode") == "photo"
+
+
+def test_reglage_texte_du_pilote(monkeypatch):
+    for v in ("ETL_AQUIFER", "ETL_NAPPE_EXP", "ETL_SEUIL_NEIGE"):
+        monkeypatch.delenv(v, raising=False)
+    settings.configure({"groundwater": {"aquifer": True, "exponent": 2.0}, "snow": {"project_threshold": False}})
+    assert settings.raw("groundwater.aquifer") == "1"
+    assert settings.raw("groundwater.exponent") == "2.0"
+    assert settings.raw("snow.project_threshold") == "0"
+    assert settings.raw("groundwater.specific_yield", 0.05) == 0.05

@@ -91,6 +91,28 @@ SCHEMA: dict[str, Setting] = {
     "phenology.target": Setting("MEANDRE_PHENOLOGIE_CIBLE", str, "kc", "Grandeur modulée : kc (coefficient cultural) ou lai (indice foliaire, transpiration seule)."),
     "phenology.classes": Setting("MEANDRE_PHENOLOGIE_CLASSES", str, None, "Classes d'occupation modulées, séparées par des virgules ; absent, toutes."),
     "phenology.lai_modis_csv": Setting("MEANDRE_LAI_MODIS_CSV", str, None, "Fichier de l'indice foliaire MODIS (colonnes date, lai_median) du mode modis."),
+    # -- Pilote régional : réglages lus sous forme de texte, comme dans l'environnement --------
+    "snow.wet_bulb_threshold": Setting("ETL_SEUIL_TWB", str, None, "Seuil de partage pluie-neige au thermomètre mouillé, en degrés (Stull 2011) ; absent, seuil sur la température de l'air."),
+    "snow.seasonal_melt_amplitude": Setting("ETL_MELT_SAISON", str, None, "Amplitude de la modulation saisonnière du facteur de fonte, s(j) = 1 + a sin(2π(j−81)/365) ; absent ou 0, clone fidèle."),
+    "snow.project_threshold": Setting("ETL_SEUIL_NEIGE", str, None, "Seuil pluie-neige repris du projet Hydrotel (1) ou non (0) ; absent, 1."),
+    "groundwater.aquifer": Setting("ETL_AQUIFER", str, None, "Voie souterraine active (aquifère restituant ou nappe libre)."),
+    "groundwater.free_recession": Setting("ETL_KREC_LIBRE", str, None, "Constante de récession apprise par le champ, moyenne ancrée au prior."),
+    "groundwater.conductivity_field": Setting("ETL_KGW_FIELD", str, None, "Champ provincial de conductivité souterraine imposé en niveau."),
+    "groundwater.conductivity_modulation": Setting("MEANDRE_KGW_MODULE", str, None, "Le réseau module le contraste autour du champ imposé ; 0, il l'écrase."),
+    "groundwater.water_table": Setting("ETL_NAPPE_LIBRE", str, None, "Nappe libre dont la profondeur est l'état, à la place du réservoir restituant."),
+    "groundwater.exponent": Setting("ETL_NAPPE_EXP", str, None, "Exposant de vidange de la nappe, ou « mesure » pour l'ancrer sur les récessions observées ; absent, 2."),
+    "groundwater.specific_yield": Setting("ETL_NAPPE_SY", str, None, "Porosité de drainage de la nappe ; absent, 0,05."),
+    "groundwater.conductance": Setting("ETL_NAPPE_KB", str, None, "Conductance de vidange de la nappe ; absent, 2e-3."),
+    "groundwater.river_depth_m": Setting("ETL_NAPPE_ZRIV", str, None, "Profondeur du lit de la rivière sous la surface, en mètres ; absent, 8."),
+    "groundwater.reference_head_m": Setting("ETL_NAPPE_HREF", str, None, "Charge de référence de la nappe, en mètres ; absent, 4."),
+    "groundwater.extinction_depth_m": Setting("ETL_NAPPE_ZEXT", str, None, "Profondeur d'extinction de l'extraction par les racines, en mètres ; absent, 9."),
+    "groundwater.extraction_fraction": Setting("ETL_NAPPE_EFRAC", str, None, "Part de l'évapotranspiration prise dans la zone saturée ; absent, 0,35."),
+    "spatial.no_latent_codes": Setting("ETL_NO_LATENT", str, None, "Codes latents par tronçon coupés (non transférables)."),
+    "spatial.init_from_hydrotel": Setting("ETL_INIT_HYDROTEL", str, None, "Départ du sol sur le calage d'Hydrotel : 0, 1, courbe ou sauf_ks ; absent, 0."),
+    "spatial.global_normalization": Setting("JOINT_GLOBAL_NORM", str, None, "Attributs du territoire normalisés sur toute la province."),
+    "evaporation.open_water": Setting("ETL_EVAP_EAU_LIBRE", str, None, "Évaporation de l'eau libre par temps sec (R285, R286)."),
+    "evaporation.mod16_snow_scale_mm": Setting("ETL_ET_NEIGE_MM", str, None, "Échelle, en mm, de la pondération du terme MOD16 hors neige, w = exp(−SWE/échelle) ; absent, poids 1."),
+    "forcing.suffix": Setting("JOINT_FX_SUFFIX", str, None, "Forçage météo d'entrée : suffixe du fichier, -casr-brut pour CaSR brut."),
     # -- Diagnostics du gradient, jamais dans un modèle livré ----------------------------
     "debug.detach_dtc": Setting("MEANDRE_DTC_DETACHE", bool, False, "Détache le pas de temps adaptatif du sol ; valeur simulée identique."),
     "debug.detach_cascade": Setting("MEANDRE_CASCADE_DETACHE", bool, False, "Détache la cascade de saturation du sol, pour mesurer sa part dans le gradient."),
@@ -129,6 +151,9 @@ def _parse(key: str, raw: str):
 
 def _from_file(key: str, value):
     kind = SCHEMA[key].kind
+    if kind is str:
+        # Texte, comme une variable d'environnement : vrai et faux s'écrivent 1 et 0.
+        return ("1" if value else "0") if isinstance(value, bool) else str(value)
     if kind is bool and not isinstance(value, bool):
         raise ValueError(f"réglage {key} : {value!r} n'est pas un booléen")
     if kind is tuple:
@@ -184,6 +209,16 @@ def override(key: str, value, force: bool = False) -> None:
     """
     if force or os.environ.get(SCHEMA[key].env) is None:
         _configured[key] = value
+
+
+def raw(key: str, default=None):
+    """Valeur d'un réglage de type texte, ou `default` s'il n'est posé nulle part.
+
+    Remplace `os.environ.get(alias, default)` mot pour mot dans le pilote : la valeur arrive
+    sous la même forme, si bien que les tests existants (`== "1"`, `float(...)`) ne changent pas.
+    """
+    v = get(key)
+    return default if v is None else v
 
 
 def snapshot() -> dict[str, object]:

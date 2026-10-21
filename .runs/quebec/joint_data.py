@@ -73,6 +73,7 @@ def _ajoute_depots(reg, territorial, node_ids, device):
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.training.trainer import TrainingData
 from meandre.training.loss import HydroLoss
+from meandre.utils import settings as _settings
 
 DATE_START, DATE_END = "2000-01-01", "2024-12-31"
 # DÉCOUPAGE TEMPOREL, configurable par JOINT_SPLIT="fin_train,debut_val,fin_val".
@@ -127,7 +128,7 @@ def _paths(reg):
     pour du brut dans toute la carte provinciale du 2 août (bug d'étiquette relevé par
     Essi). Le fichier retenu est imprimé : on doit toujours savoir ce qu'on mesure."""
     db = _resoudre_db(reg)
-    sfx = os.environ.get("JOINT_FX_SUFFIX")
+    sfx = _settings.raw("forcing.suffix")
     if sfx == "-none":
         fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}.nc"
         if not os.path.exists(fx):
@@ -162,7 +163,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     cache = BasinCache(db_path)
     h = cache.load(device=device)
     graph, territorial = h["graph"], h["territorial"]
-    if os.environ.get("JOINT_GLOBAL_NORM", "0") == "1":
+    if _settings.raw("spatial.global_normalization", "0") == "1":
         territorial = _territorial_global(reg, territorial, device)
     node_coords, n_nodes, node_ids = h["node_coords"], h["n_nodes"], h["node_ids"]
     if os.environ.get("ETL_ATTRIBUTS_DEPOTS", "0") == "1":
@@ -256,8 +257,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     # du forcage ; noeuds sans serie NEISIM a poids 1. En mode centre, l'ecart de printemps
     # sous la neige tirait K_c vers le bas et laissait le bilan ouvert.
     et_weight = None
-    if et_obs is not None and os.environ.get("ETL_ET_NEIGE_MM"):
-        _tau_n = float(os.environ["ETL_ET_NEIGE_MM"])
+    if et_obs is not None and _settings.raw("evaporation.mod16_snow_scale_mm"):
+        _tau_n = float(_settings.raw("evaporation.mod16_snow_scale_mm"))
         _fz = f"{_mpaths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
         if not os.path.exists(_fz):
             raise FileNotFoundError(f"poids hors neige : NEISIM absent, {_fz} (build_neisim_targets.py)")
