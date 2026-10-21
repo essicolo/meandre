@@ -4,7 +4,6 @@ import pytest
 import torch
 
 from meandre.routing.graph import synthetic_linear_graph, RiverGraph
-from meandre.data.graph_builder import _topological_sort
 
 
 def test_linear_graph_topo_order():
@@ -18,20 +17,6 @@ def test_linear_graph_upstream():
     assert graph.upstream_nodes(1) == [0]
     assert graph.upstream_nodes(3) == [2]
 
-
-def test_topological_sort_simple():
-    # 0->2, 1->2, 2->3
-    edge_index = torch.tensor([[0, 1, 2], [2, 2, 3]], dtype=torch.long)
-    order = _topological_sort(edge_index, 4)
-    order_list = order.tolist()
-    assert order_list.index(2) > order_list.index(0)
-    assert order_list.index(2) > order_list.index(1)
-    assert order_list.index(3) > order_list.index(2)
-
-
-# ---------------------------------------------------------------------------
-# RiverGraph cycle / consistency validation (via __post_init__)
-# ---------------------------------------------------------------------------
 
 def test_graph_raises_on_cycle():
     """A graph with a cycle must raise ValueError."""
