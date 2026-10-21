@@ -1491,7 +1491,7 @@ tconf = TrainingConfig(
     # divergeaient après le pic epoch ~7-12, val -0.15 non rattrapée — bug 2026-07-22)
     # Montee du taux : cinq epoques par defaut, ce qui vide un entrainement de huit epoques ;
     # ETL_WARMUP la regle (2026-10-01).
-    warmup_epochs=int(os.environ.get("ETL_WARMUP", "5")),
+    warmup_epochs=int(os.environ.get("ETL_WARMUP", tcfg.get("warmup_epochs", 5))),
     autopilot=bool(tcfg.get("autopilot", True)),
     autopilot_grace_epochs=int(tcfg.get("autopilot_grace_epochs", 8)),
     autopilot_lr_patience=int(tcfg.get("autopilot_lr_patience", 6)),
