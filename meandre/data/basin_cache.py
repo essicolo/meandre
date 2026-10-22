@@ -112,18 +112,6 @@ class BasinCache:
         cache.write(hydro, source=str(project_dir))
         return cache
 
-    @classmethod
-    def from_dict(
-        cls,
-        hydro: dict,
-        path: str | Path,
-        source: str = "synthetic",
-    ) -> "BasinCache":
-        """Write any standard hydro dict directly to DuckDB."""
-        cache = cls(path)
-        cache.write(hydro, source=source)
-        return cache
-
     # ------------------------------------------------------------------
     # Load static data
     # ------------------------------------------------------------------
@@ -341,41 +329,6 @@ class BasinCache:
             con.close()
 
         print(f"[import_observations] {n:,} rows imported from {source.name}")
-        return n
-
-    def import_observations_df(
-        self,
-        stations_df,
-        obs_df,
-    ) -> int:
-        """Import from DataFrames directly.
-
-        Parameters
-        ----------
-        stations_df :
-            DataFrame with columns: station_id, node_idx, lon, lat,
-            drainage_area_km2.
-        obs_df :
-            DataFrame with columns: station_id, date, discharge.
-
-        Returns
-        -------
-        int : number of observation rows inserted.
-        """
-        import duckdb
-
-        con = duckdb.connect(str(self.path))
-        try:
-            self._ensure_obs_tables(con)
-            con.execute(
-                "INSERT OR REPLACE INTO stations SELECT * FROM stations_df"
-            )
-            con.execute(
-                "INSERT OR REPLACE INTO observations SELECT * FROM obs_df"
-            )
-            n = len(obs_df)
-        finally:
-            con.close()
         return n
 
     def load_observations(
@@ -929,19 +882,6 @@ class BasinCache:
         import torch
         return torch.from_numpy(et_arr).to(device)
 
-    def has_modis_et(self) -> bool:
-        """Return True if the modis_et table exists and has at least one row."""
-        import duckdb
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
-            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
-            if "modis_et" not in tables:
-                return False
-            count = con.execute("SELECT COUNT(*) FROM modis_et").fetchone()[0]
-            return int(count) > 0
-        finally:
-            con.close()
-
     def import_modis_snow(self, df: "pd.DataFrame") -> int:
         """Import MOD10A1 snow cover fraction into ``modis_snow`` table."""
         import duckdb, pandas as pd
@@ -999,16 +939,6 @@ class BasinCache:
                     arr[t, n] = float(row["snow_frac"])
         import torch
         return torch.from_numpy(arr).to(device)
-
-    def has_modis_snow(self) -> bool:
-        import duckdb
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
-            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
-            return "modis_snow" in tables and \
-                int(con.execute("SELECT COUNT(*) FROM modis_snow").fetchone()[0]) > 0
-        finally:
-            con.close()
 
     # ── CanSWE : neige MESUREE, appariee aux noeuds (patron stations/observations) ──
     def import_canswe(self, sites: "pd.DataFrame", mesures: "pd.DataFrame") -> int:
@@ -1089,74 +1019,6 @@ class BasinCache:
         finally:
             con.close()
 
-    def import_modis_ndvi(self, df: "pd.DataFrame") -> int:
-        """Import MOD13A2 NDVI into ``modis_ndvi`` table."""
-        import duckdb, pandas as pd
-        df = df.copy()
-        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-        con = duckdb.connect(str(self.path))
-        try:
-            con.execute("""
-                CREATE TABLE IF NOT EXISTS modis_ndvi (
-                    date        DATE    NOT NULL,
-                    node_idx    INTEGER NOT NULL,
-                    ndvi        FLOAT,
-                    quality_ok  BOOLEAN,
-                    PRIMARY KEY (date, node_idx)
-                )
-            """)
-            con.execute("INSERT OR REPLACE INTO modis_ndvi SELECT * FROM df")
-            n = len(df)
-        finally:
-            con.close()
-        print(f"[import_modis_ndvi] {n:,} rows upserted")
-        return n
-
-    def load_modis_ndvi(
-        self, date_start: str, date_end: str,
-        device: "torch.device | None" = None,
-    ) -> "torch.Tensor | None":
-        """Load MOD13A2 NDVI as (T, n_nodes) tensor. None if absent."""
-        import duckdb, pandas as pd
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
-            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
-            if "modis_ndvi" not in tables:
-                return None
-            n_nodes = int(con.execute(
-                "SELECT value FROM metadata WHERE key = 'n_nodes'"
-            ).fetchone()[0])
-            dates = pd.date_range(date_start, date_end, freq="D")
-            date_idx = {d: i for i, d in enumerate(dates.normalize())}
-            df = con.execute(
-                "SELECT date, node_idx, ndvi FROM modis_ndvi "
-                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
-                "  AND quality_ok = TRUE ORDER BY date, node_idx",
-                [date_start, date_end],
-            ).df()
-        finally:
-            con.close()
-        arr = np.full((len(dates), n_nodes), np.nan, dtype=np.float32)
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-            for _, row in df.iterrows():
-                t = date_idx.get(row["date"])
-                n = int(row["node_idx"])
-                if t is not None and n < n_nodes:
-                    arr[t, n] = float(row["ndvi"])
-        import torch
-        return torch.from_numpy(arr).to(device)
-
-    def has_modis_ndvi(self) -> bool:
-        import duckdb
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
-            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
-            return "modis_ndvi" in tables and \
-                int(con.execute("SELECT COUNT(*) FROM modis_ndvi").fetchone()[0]) > 0
-        finally:
-            con.close()
-
     def import_grace_tws(self, df: "pd.DataFrame") -> int:
         """Import GRACE/GRACE-FO TWS anomaly into ``grace_tws`` table.
 
@@ -1182,29 +1044,6 @@ class BasinCache:
         print(f"[import_grace_tws] {n:,} rows upserted")
         return n
 
-    def load_grace_tws(
-        self, date_start: str, date_end: str,
-    ) -> "pd.DataFrame | None":
-        """Load GRACE TWS as DataFrame(date, tws_mm, uncertainty). None if absent."""
-        import duckdb, pandas as pd
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
-            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
-            if "grace_tws" not in tables:
-                return None
-            df = con.execute(
-                "SELECT date, tws_mm, uncertainty FROM grace_tws "
-                "WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE) "
-                "  AND quality_ok = TRUE ORDER BY date",
-                [date_start, date_end],
-            ).df()
-        finally:
-            con.close()
-        if df.empty:
-            return None
-        df["date"] = pd.to_datetime(df["date"])
-        return df
-
     def has_grace_tws(self) -> bool:
         import duckdb
         con = duckdb.connect(str(self.path), read_only=True)
@@ -1214,30 +1053,6 @@ class BasinCache:
                 int(con.execute("SELECT COUNT(*) FROM grace_tws").fetchone()[0]) > 0
         finally:
             con.close()
-
-    def list_stations(self) -> list[dict]:
-        """List stations with their metadata and observation date ranges."""
-        import duckdb
-
-        con = duckdb.connect(str(self.path), read_only=True)
-        try:
-            rows = con.execute("""
-                SELECT s.station_id, s.node_idx, s.drainage_area_km2,
-                       MIN(o.date) AS first_date,
-                       MAX(o.date) AS last_date,
-                       COUNT(o.discharge) AS n_obs
-                FROM stations s
-                LEFT JOIN observations o ON o.station_id = s.station_id
-                GROUP BY s.station_id, s.node_idx, s.drainage_area_km2
-                ORDER BY s.station_id
-            """).fetchall()
-        finally:
-            con.close()
-        return [
-            {"station_id": r[0], "node_idx": r[1], "area_km2": r[2],
-             "first_date": r[3], "last_date": r[4], "n_obs": r[5]}
-            for r in rows
-        ]
 
     # ------------------------------------------------------------------
     # Observations — private helpers

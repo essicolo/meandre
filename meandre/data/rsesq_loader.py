@@ -49,13 +49,6 @@ class CiblesNappe:
     def n_puits(self) -> int:
         return len(self.puits)
 
-    def resume(self) -> str:
-        n = self.masque.sum(axis=0)
-        return (f"{self.n_puits} puits, {int(self.masque.sum())} couples mois-puits, "
-                f"{int(np.median(n))} mois en médiane par puits, "
-                f"distance médiane {float(np.median(self.distance_km)):.1f} km")
-
-
 def _chemin_defaut() -> str:
     racine = os.environ.get("MEANDRE_DERIVES")
     if not racine:

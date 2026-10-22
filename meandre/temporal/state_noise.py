@@ -70,8 +70,3 @@ class CorrelatedStateNoise(nn.Module):
         """
         eps = torch.randn_like(prev_noise)
         return self.rho * prev_noise + self.sigma * eps
-
-    def step_deterministic(self, prev_noise: Tensor) -> Tensor:
-        """Decay without a new innovation — useful during gradient-based training
-        when stochastic sampling would break gradient flow."""
-        return self.rho * prev_noise

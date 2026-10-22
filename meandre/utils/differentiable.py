@@ -36,19 +36,3 @@ def soft_relu(x: Tensor, sharpness: float = 10.0) -> Tensor:
     """
     return F.softplus(x * sharpness) / sharpness
 
-
-def smooth_partition(
-    value: Tensor, threshold: float, sharpness: float = 10.0
-) -> tuple[Tensor, Tensor]:
-    """Split value into (below_threshold, above_threshold) parts smoothly.
-
-    Useful for rain/snow partitioning at 0C:
-        rain, snow = smooth_partition(precip, T, threshold=0.0)
-
-    Returns:
-        below: value when x < threshold (e.g. snowfall fraction * precip)
-        above: value when x > threshold (e.g. rainfall fraction * precip)
-    """
-    rain_frac = soft_threshold(threshold, threshold=0.0, sharpness=sharpness)
-    snow_frac = 1.0 - rain_frac
-    return snow_frac * value, rain_frac * value

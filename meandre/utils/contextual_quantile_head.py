@@ -91,36 +91,6 @@ class ContextualQuantileHead(nn.Module):
         taus_t = torch.tensor(self.taus, device=q_pred.device, dtype=q_pred.dtype)
         return torch.maximum(taus_t * resid, (taus_t - 1.0) * resid).mean()
 
-    def cdf_interp(self, y_obs: Tensor, features: Tensor, Q_sim: Tensor) -> Tensor:
-        """PIT analytique : interpolation linéaire de la CDF entre les K quantile points.
-
-        Renvoie F(y_obs | x) ∈ [0, 1].
-        """
-        q = self._quantiles(features, Q_sim)                     # (M, K)
-        taus_t = torch.tensor(self.taus, device=q.device, dtype=q.dtype)
-        y = y_obs
-        out = torch.zeros_like(y)
-        # Intérieur : par segment k → k+1
-        for k in range(self.K - 1):
-            mask = (y >= q[:, k]) & (y < q[:, k + 1])
-            w = (q[:, k + 1] - q[:, k]).clamp(min=1e-9)
-            out = torch.where(
-                mask,
-                taus_t[k] + (taus_t[k + 1] - taus_t[k]) * (y - q[:, k]) / w,
-                out,
-            )
-        # Extrapolation queue basse : F ramp linéaire de (0, 0) à (q[0], τ[0])
-        below = y < q[:, 0]
-        if below.any():
-            ramp_low = (taus_t[0] * y / q[:, 0].clamp(min=1e-9)).clamp(min=0.0, max=float(taus_t[0]))
-            out = torch.where(below, ramp_low, out)
-        # Extrapolation queue haute : F → 1 linéairement au-delà de q[-1]
-        above = y >= q[:, -1]
-        if above.any():
-            extra = ((1.0 - taus_t[-1]) * (y - q[:, -1]) / q[:, -1].clamp(min=1e-9)).clamp(min=0.0)
-            out = torch.where(above, (taus_t[-1] + extra).clamp(max=1.0), out)
-        return out.clamp(0.0, 1.0)
-
     def median(self, features: Tensor, Q_sim: Tensor) -> Tensor:
         """Médiane prédictive q_0.5 (utile pour KGE déterministe)."""
         q = self._quantiles(features, Q_sim)

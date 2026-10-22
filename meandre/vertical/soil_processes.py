@@ -33,11 +33,6 @@ KIND_PERCOLATION = "percolation"
 KINDS = (KIND_LATERAL, KIND_PERCOLATION)
 
 
-def _above_field_capacity(ctx):
-    """Eau gravitaire de la couche, en mètres : ce que la gravité draine par définition."""
-    return torch.clamp(ctx["theta"] - ctx["theta_fc"], min=0.0) * ctx["thickness"]
-
-
 def _stock_above(ctx, prm):
     """Stock au-dessus d'un niveau de la couche, en mètres, coupé net ou lissé (2026-10-02).
 

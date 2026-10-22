@@ -130,64 +130,6 @@ class MixtureDensityHead(nn.Module):
         log_normal = -0.5 * z * z - log_sigma - LOG_SQRT_2_PI    # (M, K)
         return torch.logsumexp(log_pi + log_normal, dim=-1)      # (M,)
 
-    def cdf(self, y: Tensor, features: Tensor, Q_sim: Tensor) -> Tensor:
-        """F(y | x) = Σ_k π_k Φ((y - μ_k)/σ_k). Pour calcul PIT.
-
-        y : (M,), features (M, n_features), Q_sim : (M,)
-        Returns (M,) ∈ [0, 1]
-        """
-        log_pi, mu, log_sigma = self._conditioner(features, Q_sim)
-        sigma = log_sigma.exp()
-        z = (y.unsqueeze(-1) - mu) / sigma
-        # Φ(z) = 0.5 * (1 + erf(z/√2))
-        Phi_k = 0.5 * (1.0 + torch.erf(z / SQRT_2))               # (M, K)
-        pi = log_pi.exp()
-        return (pi * Phi_k).sum(dim=-1).clamp(0.0, 1.0)
-
-    def crps_gaussian_mixture(
-        self, y: Tensor, features: Tensor, Q_sim: Tensor,
-    ) -> Tensor:
-        """CRPS closed-form pour mélange gaussien (Grimit et al. 2006).
-
-        CRPS(F, y) = Σ_k π_k · A(y, μ_k, σ_k)
-                    − 0.5 · Σ_{k,l} π_k π_l · A_pairwise(μ_k, μ_l, σ_k, σ_l)
-
-        avec A(y, μ, σ) = σ · [z·(2Φ(z) − 1) + 2φ(z) − 1/√π · 0]  Note: terme pour 1 composante
-        Formule simplifiée Grimit 2006 :
-          CRPS_N(y; μ, σ) = σ · (z · (2Φ(z) − 1) + 2φ(z) − 1/√π)
-        Pour mélange, on doit aussi soustraire le terme de divergence interne.
-        Voir Grimit, Gneiting, Berrocal, Johnson 2006 « The continuous ranked
-        probability score for circular variables and its application to mesoscale
-        forecast ensemble verification ».
-        """
-        log_pi, mu, log_sigma = self._conditioner(features, Q_sim)
-        sigma = log_sigma.exp()
-        # E[|X-y|] = Σ_k π_k · σ_k · [z_k·(2Φ(z_k)−1) + 2·φ(z_k)]
-        # (le terme −1/√π appartient à E[|X-X'|] traité plus bas — ne pas l'inclure ici)
-        z = (y.unsqueeze(-1) - mu) / sigma                        # (M, K)
-        Phi_z = 0.5 * (1.0 + torch.erf(z / SQRT_2))
-        phi_z = torch.exp(-0.5 * z * z) / SQRT_2_PI
-        crps_per_k = sigma * (z * (2 * Phi_z - 1) + 2 * phi_z)    # (M, K)
-        pi = log_pi.exp()
-        term_obs = (pi * crps_per_k).sum(dim=-1)                  # (M,)
-        # Terme de divergence interne : 0.5 · Σ_{k,l} π_k π_l · A(μ_k, μ_l, σ_k, σ_l)
-        # A(μ_k, μ_l, σ_k, σ_l) = (μ_k − μ_l) · (2Φ(δ) − 1) + 2 · √(σ_k² + σ_l²) · φ(δ)
-        # avec δ = (μ_k − μ_l) / √(σ_k² + σ_l²)
-        mu_k = mu.unsqueeze(-2)                                    # (M, 1, K)
-        mu_l = mu.unsqueeze(-1)                                    # (M, K, 1)
-        s_k2 = (sigma.unsqueeze(-2)) ** 2
-        s_l2 = (sigma.unsqueeze(-1)) ** 2
-        ss = torch.sqrt(s_k2 + s_l2 + 1e-12)
-        diff = mu_k - mu_l
-        delta = diff / ss
-        Phi_d = 0.5 * (1.0 + torch.erf(delta / SQRT_2))
-        phi_d = torch.exp(-0.5 * delta * delta) / SQRT_2_PI
-        A_pair = diff * (2 * Phi_d - 1) + 2 * ss * phi_d           # (M, K, K)
-        pi_k = pi.unsqueeze(-2)
-        pi_l = pi.unsqueeze(-1)
-        term_div = 0.5 * (pi_k * pi_l * A_pair).sum(dim=(-1, -2))  # (M,)
-        return term_obs - term_div                                  # (M,)
-
     def sample(
         self, features: Tensor, Q_sim: Tensor, n_samples: int = 1,
     ) -> Tensor:

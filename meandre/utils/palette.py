@@ -65,13 +65,6 @@ SEQUENTIEL_SOMBRE_BAS = BLEU_800
 SEQUENTIEL_SOMBRE_HAUT = BLEU_150
 
 
-def qualitatif(n):
-    """First n colours of the nested qualitative palette."""
-    if n > len(QUALITATIF):
-        raise ValueError(f"{n} categories exceeds the {len(QUALITATIF)} distinguishable colours; regroup or facet")
-    return QUALITATIF[:n]
-
-
 # Control points of the continuous ramp: the official blue ladder, already near-regular
 # in L* (90.7, 81.0, 70.5, 59.8, 46.9, 36.2, 26.6, 17.2).
 _RAMPE_ANCRES = [BLEU_PALE, BLEU_200, BLEU_300, BLEU_400, BLEU, BLEU_PIV, BLEU_MOYEN, BLEU_800]

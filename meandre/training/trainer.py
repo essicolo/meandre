@@ -2310,60 +2310,6 @@ class Trainer:
         comp_tensors = {k: torch.tensor(v) for k, v in all_components.items()}
         return total_loss, comp_tensors
 
-    def _checkpointed_chunk(
-        self,
-        data: TrainingData,
-        sl: slice,
-        state: HydroState,
-        h_ctx: Tensor | None,
-    ) -> tuple[Tensor, HydroState]:
-        """Simulate one chunk with gradient checkpointing.
-
-        The state must flow between chunks (it carries soil moisture, SWE, etc.),
-        but we detach it at chunk boundaries so the backward graph of each chunk
-        is independent.  This is equivalent to TBPTT with segment length =
-        chunk_steps — the gradient for each chunk is exact, but cross-chunk
-        temporal gradients are truncated.
-
-        The output state is captured as a side-effect during the forward pass
-        (detached, so it doesn't affect the grad graph) to avoid running the
-        simulation twice.
-        """
-        from torch.utils.checkpoint import checkpoint
-
-        # Pack state into a single tensor so checkpoint can track it
-        state_tensor = state.to_tensor()  # (n_nodes, n_state_vars)
-
-        # Mutable container to capture the output state during forward
-        captured_state: list[HydroState] = []
-
-        def _run_chunk(state_t: Tensor) -> Tensor:
-            """Inner function wrapped by checkpoint — must return tensors only."""
-            s = HydroState.from_tensor(state_t)
-            with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-                Q_chunk, state_out = self.model.simulate(
-                    forcing=data.forcing[sl],
-                    initial_state=s,
-                    graph=data.graph,
-                    node_coords=data.node_coords,
-                    territorial=data.territorial,
-                    withdrawals=data.withdrawals.slice(sl.start, sl.stop),
-                    day_of_year=data.day_of_year[sl],
-                    h_context=h_ctx,
-                    tbptt_steps=self.config.tbptt_steps,
-                )
-            # Capture detached state as side-effect (not part of grad graph).
-            # checkpoint calls _run_chunk twice (forward + recompute during
-            # backward), so always overwrite with the latest.
-            captured_state.clear()
-            captured_state.append(state_out.detach())
-            return Q_chunk
-
-        # use_reentrant=False is the modern, safer API
-        Q_chunk = checkpoint(_run_chunk, state_tensor, use_reentrant=False)
-
-        return Q_chunk, captured_state[0]
-
     def _train_epoch_single(self, data: TrainingData) -> tuple[Tensor, dict[str, Tensor]]:
         """Original single-pass training (no chunking)."""
         with torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):

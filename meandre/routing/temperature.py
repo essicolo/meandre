@@ -67,32 +67,3 @@ class StreamTemperatureModule(nn.Module):
         H_lateral = q_lat_m3s * T_lateral
 
         return H_lateral, T_lateral
-
-    def atmospheric_exchange(
-        self,
-        T_water: Tensor,
-        T_air: Tensor,
-        R_n: Tensor,
-        K_atm: Tensor,
-    ) -> Tensor:
-        """Apply linearized atmospheric heat exchange.
-
-        Simple exponential relaxation toward an equilibrium temperature
-        approximated from air temperature and net radiation.
-
-        Args:
-            T_water: (n_nodes,) current stream temperature (°C)
-            T_air:   (n_nodes,) air temperature (°C)
-            R_n:     (n_nodes,) net radiation (MJ/m²/day)
-            K_atm:   (n_nodes,) exchange coefficient (1/day), [0.05, 0.55]
-
-        Returns:
-            T_new: (n_nodes,) updated stream temperature (°C)
-        """
-        # Equilibrium temperature: T_air + small radiation boost
-        # R_n in MJ/m²/day; ~1 MJ/m²/day ≈ 0.3°C warming for shallow streams
-        T_eq = T_air + R_n * 0.3
-
-        # Exponential relaxation (dt = 1 day)
-        T_new = T_water + K_atm * (T_eq - T_water)
-        return torch.clamp(T_new, min=-0.05, max=40.0)

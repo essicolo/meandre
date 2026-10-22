@@ -121,11 +121,6 @@ class RiverGraph:
         mask = self.edge_index[1] == node
         return self.edge_index[0][mask].tolist()
 
-    def upstream_travel_times(self, node: int) -> list[int]:
-        """Return travel times (days) for edges incoming to *node*."""
-        mask = self.edge_index[1] == node
-        return self.travel_time_days[mask].tolist()
-
     def to(self, device: torch.device) -> "RiverGraph":
         return RiverGraph(
             edge_index=self.edge_index.to(device),

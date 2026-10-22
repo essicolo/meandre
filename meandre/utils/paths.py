@@ -13,25 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def run_dir_from_config(config_path: str | Path) -> Path:
-    """Return the run directory for a given config file.
-
-    Convention: `.runs/<case>/config/<name>.toml` → `.runs/<case>/`.
-    """
-    return Path(config_path).resolve().parent.parent
-
-
-def resolve_run_path(p: str | Path, run_dir: str | Path) -> Path:
-    """Resolve a path declared in a TOML, relative to the run directory.
-
-    Absolute paths are returned unchanged. Forward and backslashes both work.
-    """
-    pp = Path(p)
-    if pp.is_absolute():
-        return pp
-    return Path(run_dir) / pp
-
-
 # ── Data roots, overridable by environment ──────────────────────────────────
 # The repo carried 24 absolute paths hard-coded in source, making it impossible to
 # run anywhere else: another workstation, a rented compute node, a container. The

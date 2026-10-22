@@ -43,20 +43,6 @@ class OutflowRingBuffer:
         self._ptr = (self._ptr + 1) % self.depth
         self._filled = min(self._filled + 1, self.depth)
 
-    def get_history(self, node_idx: int, tau: int) -> Tensor:
-        """Return the last *tau* outflow values for node_idx.
-
-        Returns a (min(tau, filled),) tensor in chronological order
-        (oldest first). Returns zeros(1) if the buffer is empty.
-        """
-        if self._filled == 0:
-            return torch.zeros(1, device=self.device)
-        tau = min(tau, self._filled)
-        # Indices in circular order, starting from the oldest relevant entry
-        end = self._ptr  # next write position = oldest valid slot's index
-        indices = [(end - tau + i) % self.depth for i in range(tau)]
-        return self._buf[indices, node_idx]
-
     def get_all_history(self, tau: int) -> Tensor:
         """Return the last *tau* timesteps for ALL nodes.
 

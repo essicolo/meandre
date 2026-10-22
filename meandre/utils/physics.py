@@ -20,7 +20,3 @@ CP_AIR = 1013.0        # J kg-1 K-1
 CP_SOIL_DRY = 840.0    # J kg-1 K-1
 RHO_SOIL_DRY = 1500.0  # kg m-3
 
-
-def saturation_vapour_pressure(T_c: float) -> float:
-    """Tetens formula: saturation vapour pressure (kPa) at T_c (Celsius)."""
-    return 0.6108 * (17.27 * T_c / (T_c + 237.3))
