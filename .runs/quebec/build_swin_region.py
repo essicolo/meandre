@@ -10,9 +10,8 @@ humide pour le seuil pluie-neige.
 Les forçages québécois ont 6 canaux (P, Tmin, Tmax, R_n, u2, e_a) : R_n est DÉRIVÉ de
 FB mais FB seul n'y est pas, et la colonne ETI lit le canal 6. Ce script extrait FB des
 mêmes tuiles CaSR, par la même mosaïque et la même interpolation bilinéaire en pôle
-tourné que build_forcing_region.py, et écrit forcing-<reg>-swin.nc (time, node). Le
-pilote l'injecte dans le canal 6 (libre sous ETL_ETP=linacre, où la demande apprise
-est ignorée) via ETL_ETI=1.
+tourné que build_forcing_region.py, et écrit forcing-<reg>-swin.nc (time, node), que
+province.py ajoute en septième canal sous PROV_ETI=1.
 
     .venv/Scripts/python.exe .runs/quebec/build_swin_region.py OUTV
 """

@@ -222,8 +222,8 @@ print(f"[etl] {REG}: {n_nodes} nœuds, {r['n_gauges']} jauges")
 
 _ETP_FORMULE = os.environ.get("ETL_ETP") or str((cfg.get("et") or {}).get("formula") or "")
 if DOMAINE:
-    if _ETP_FORMULE != "penman" or os.environ.get("ETL_ETI", "0") == "1":
-        raise SystemExit(f"domaine : seule l'ETP de Penman sans ETI est prise en charge (ETP {_ETP_FORMULE!r})")
+    if _ETP_FORMULE != "penman":
+        raise SystemExit(f"domaine : seule l'ETP de Penman est prise en charge (ETP {_ETP_FORMULE!r})")
     f7 = td.forcing
     print("[etl] domaine : forcage a six canaux sur disque, demande apprise non calculee (Penman)")
 else:
@@ -231,7 +231,7 @@ else:
     norm = torch.load(f"{ETB}/norm.pt", weights_only=False)
     H_HIST, H_COMP = norm["h_hist"], norm["h_comp"]
     # Le module appris ne lit que les attributs sur lesquels il a ete entraine : les colonnes
-    # ajoutees au champ depuis (depots quaternaires, ETL_ATTRIBUTS_DEPOTS) en sont ecartees.
+    # de depots quaternaires (`depot_`), si un territoire en porte, en sont ecartees.
     _COLS_ETB = [i for i, c in enumerate(r["territorial"].columns) if not c.startswith("depot_")]
     F_STATIC = len(_COLS_ETB)
     mlp = nn.Sequential(nn.Linear(12 + F_STATIC + 3, 64), nn.ReLU(), nn.Linear(64, 1), nn.Softplus()).to(DEVICE)
@@ -285,30 +285,7 @@ else:
         # à l'entraînement : mont-kc 0.583 < 0.617 inférence)
         demand = demand * _ds
         print(f"[etl] demande ET débiaisée × {_ds} (bilan/MOD16 régional)")
-    # ETL_ETI=1 : fonte au bilan radiatif reel (Enhanced Temperature Index, valide en
-    # juin sur SLSO). Le canal 6, qui porte la demande ET apprise, est REMPLACE par FB
-    # (sw_in W/m2, cache forcing-<reg>-swin.nc de build_swin_region.py) : sous
-    # ETL_ETP=linacre la demande est ignoree de toute facon (etp_channel=None), le canal
-    # est donc libre -- la colonne ETI lit sw_channel=6. Motif (R42) : l'amplitude
-    # saisonniere est un SUBSTITUT du cycle radiatif, faux en climat maritime ; la
-    # radiation reelle dissout ce scalaire comme le bulbe humide a dissous le seuil.
-    _ETI = os.environ.get("ETL_ETI", "0") == "1"
-    if _ETI:
-        if os.environ.get("ETL_ETP", "appris") != "linacre":
-            raise SystemExit("ETL_ETI=1 exige ETL_ETP=linacre (le canal 6 doit etre libre)")
-        import xarray as _xsw
-        _swf = f"{_paths.DATA_ROOT}/quebec/forcing-{REG}-swin.nc"
-        if not os.path.exists(_swf):
-            raise SystemExit(f"ETL_ETI=1 : {_swf} absent (lancer build_swin_region.py {REG.upper()})")
-        _dsw = _xsw.open_dataset(_swf)
-        _swv = torch.tensor(_dsw["forcing"].values[:, :, 0], dtype=F.dtype, device=F.device)
-        _dsw.close()
-        assert _swv.shape == F.shape[:2], (_swv.shape, F.shape)
-        f7 = torch.cat([F[:, :, :6], _swv[:, :, None]], dim=2)
-        print(f"[etl] ETI : canal 6 = FB reel (moy {float(_swv.mean()):.0f} W/m2) ; "
-              f"la demande apprise n'est PAS embarquee")
-    else:
-        f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
+    f7 = torch.cat([F[:, :, :6], demand[:, :, None]], dim=2)
 
 # ETL_SANS_PRELEV=1 : met les prelevements et rejets a ZERO. C'est le protocole de
 # RENATURALISATION en miniature, et le seul moyen de comparer proprement avec/sans
@@ -373,7 +350,7 @@ model = HydroModel(
     phenology=cfg.get("phenology"),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
     column_mode="hydrotel",
-    melt_mode=("eti" if os.environ.get("ETL_ETI", "0") == "1" else "degree_day"),
+    melt_mode="degree_day",
     # Phase probabiliste (ETL_QUANTILE=1) : tete quantile K=6, offsets monotones
     # depuis la mediane = Q_sim -- le KGE du socle est PRESERVE par construction.
     # Pipeline etabli sur SLSO (memoire pipeline_final) : backbone GELE, w_quantile,
@@ -388,11 +365,11 @@ model = HydroModel(
                       and bool(mcfg.get("use_latent_codes", True))),
     latent_mode="additive",
     spatial_melt=bool(mcfg.get("spatial_melt", True)),
-    # ETL_ROUTING : mode de routage. Le defaut operator-lagged impose UN JOUR de delai a
+    # Mode de routage, cle routing_mode de [model]. Le defaut operator-lagged impose UN JOUR de delai a
     # chaque lac traverse (sortie calculee sur le stockage de la veille) ; en serie, les
     # lacs additionnent ces jours. Mesure du 2026-09-03 : mediane de 5 a 8 lacs en serie
     # au-dessus des stations d'abit, outm et cnde. "operator" (etage) n'a pas ce delai.
-    routing_mode=os.environ.get("ETL_ROUTING", mcfg.get("routing_mode", "operator-lagged")),
+    routing_mode=mcfg.get("routing_mode", "operator-lagged"),
     predict_lake_params=bool(mcfg.get("predict_lake_params", True)),
     # ETL_COMPILE=0 : desactive torch.compile du sol. Necessaire la ou Triton est
     # absent (grappes de l'Alliance, 2026-09-01) ; la compilation n'apporte que de la
@@ -433,11 +410,6 @@ if _MEMBRE != "LN24HA":
     os.environ.setdefault("ETL_MELT_DIR", _PROJ_M)
     print(f"[etl] plateforme d'ancrage : {_MEMBRE} ({_PROJ_M.split('/')[-1]})")
 
-# ETL_SEUIL_VALEUR impose un seuil EXPLICITE (en °C) au lieu de celui du projet.
-# Motif (2026-08-20) : le profil mensuel du champion montre decembre en EXCES (1.207)
-# et avril en DEFICIT (0.729), signature d'eau relachee en debut d'hiver au lieu d'etre
-# stockee jusqu'a la crue. Le seuil du projet est a -2.2168 °C, donc tout ce qui est
-# au-dessus compte comme PLUIE : un seuil aussi bas fabrique de la pluie en decembre.
 if _settings.raw("groundwater.krec_prior") is not None:
     # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
     # a krec ~5e-5..1e-4 avec la vanne non lineaire, pas a 2e-5). La moyenne du champ
@@ -534,11 +506,7 @@ if _settings.raw("snow.seasonal_melt_amplitude") is not None:
     model.vertical_column.melt_seasonal_amp = _msa
     print(f"[etl] fonte SAISONNIERE : amplitude {_msa} "
           f"(decembre x{1-_msa:.2f}, juin x{1+_msa:.2f}, moyenne annuelle inchangee)")
-if "ETL_SEUIL_VALEUR" in os.environ:
-    _sv = float(os.environ["ETL_SEUIL_VALEUR"])
-    model.vertical_column.t_neige_seuil = _sv
-    print(f"[etl] seuil pluie/neige IMPOSE : {_sv:+.4f} °C")
-elif _settings.raw("snow.project_threshold", "1") == "1":
+if _settings.raw("snow.project_threshold", "1") == "1":
     from meandre.data.hydrotel_calib import load_passage_pluie_neige as _lppn
     _pls = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _sn = _lppn(_pls)
@@ -584,7 +552,7 @@ else:
     model.vertical_column.etp_channel = 6
 if _settings.raw("spatial.init_from_hydrotel", "0") in ("1", "courbe", "sauf_ks"):
     # DÉPART SUR LE CHAMP D'HYDROTEL puis optimisation libre (proposition d'Essi,
-    # 2026-08-13). Différence essentielle avec ETL_SOIL_CALIB : celui-ci COURT-CIRCUITE
+    # 2026-08-13). Différence essentielle avec l'ancien ancrage direct du sol : celui-ci COURT-CIRCUITAIT
     # la sortie du réseau, qui n'apprend alors plus rien sur le sol. Ici on AJUSTE le
     # réseau par régression sur les valeurs calibrées par nœud, puis on le laisse
     # entièrement libre. Mesuré : le réseau reproduit le champ à 2 % près, dispersion
@@ -676,36 +644,6 @@ if _settings.raw("spatial.init_from_hydrotel", "0") in ("1", "courbe", "sauf_ks"
     model.spatial_encoder._prior_targets = _pt
     print(f"[etl] cibles du prior réalignées sur le calage (K_sat_1 -> {_pt['K_sat_1']:.4f} m/j)")
 
-if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
-    # ANCRAGE DU SOL SUR LE CALAGE HYDROTEL (bv3c.csv + textures, agrégé UHRH->tronçon).
-    # Réfuté deux fois en juillet (MONT-v3 -0.31, MONT-v9 0.125) d'où la « loi des
-    # ancrages ». Mais ces deux essais précèdent l'AQUIFÈRE (28 juillet) : l'explication
-    # écrite à l'époque était justement que le NeRF compensait par le sol les divergences
-    # structurelles de la colonne, aquifère manquant en tête. Hypothèse d'Essi (2 août) :
-    # avec le réservoir souterrain actif, geler le sol devrait passer. Test rejoué ici.
-    from meandre.data.hydrotel_calib import load_calibrated_soil
-    _pd_ = _PROJ_M
-    _z1 = float(getattr(model.vertical_column, "z1", 0.15))
-    _calib = load_calibrated_soil(_pd_, r["node_ids"], _z1, device=DEVICE)
-    # Le calage Hydrotel porte coef_recharge = 0 et krec ~ 1.3e-7 (vérifié sur MONT) :
-    # Hydrotel n'a PAS de voie profonde, toute l'eau ressort latéralement. Geler ces
-    # deux-là éteindrait l'aquifère de méandre et saborderait le test. Par défaut on
-    # hérite donc de ce qu'Hydrotel a réellement calibré (géométrie + hydraulique des
-    # couches) et on laisse libre la PARTITION verticale, qui est notre extension.
-    for _k in ("krec", "coef_recharge"):
-        _calib.pop(_k, None)
-    print("[etl] partition verticale (krec, coef_recharge) laissée LIBRE (aquifère)")
-    if os.environ.get("ETL_SOIL_CALIB_TEXTURE", "0") == "1":
-        # GEOMETRIE LIBRE : les épaisseurs du calage MONT sont UNIFORMES (0.22/0.16/2.65 m
-        # sur tous les nœuds) — ce n'est pas un champ calibré mais une colonne unique de
-        # 3 m appliquée partout, qui amortit tout (val bloquée, beta 0.71, gamma 0.58,
-        # run mont-ancresol du 2 août). On n'hérite donc que de la TEXTURE, qui elle varie
-        # spatialement et qu'Hydrotel a réellement calée.
-        for _k in ("z1", "z2", "z3"):
-            _calib.pop(_k, None)
-        print("[etl] épaisseurs de couches laissées LIBRES (calage uniforme, non informatif)")
-    model.vertical_column.set_calibrated_soil(_calib)
-    print(f"[etl] sol ANCRÉ sur le calage Hydrotel : {_pd_}")
 if _settings.raw("groundwater.conductivity_field", "0") == "1":
     # CHAMP k_gw provincial (GP sur les récessions de 127 stations, R2 blocs 0.62,
     # incertitude calibrée) : remplace le k_gw régional constant par un champ continu
@@ -847,101 +785,6 @@ except Exception as _e:
           f"-> la physique verra 0 % de forêt et 0 % d'eau")
 
 
-# ANCRAGE GEOMETRIQUE DU ROUTAGE (opt-in, 2026-09-14). Mesure du jour : le temps de
-# transfert appris vaut 23,96 h avec un ecart-type de 0,3 h sur 2 212 troncons du Saguenay
-# et le coefficient de ponderation 0,202 a 0,006 pres, donc les deux sont constants ; la
-# ligne de poids qui les produit a une norme de 0,058 contre 0,878 pour la conductivite a
-# saturation. Le routage est reste a son initialisation, faute de gradient. Or le temps de
-# parcours physique d'un troncon de riviere median, 5,7 km au Saguenay, vaut environ une
-# heure, contre 24 h initialisees.
-# L'ancre pose K = L / c par troncon et laisse le reseau moduler autour.
-if os.environ.get("ETL_ROUTAGE_ANCRE", "0") == "1":
-    # La longueur vient de l'attribut d'arete du graphe, en metres, rangee cote amont. Deux
-    # pieges ont ete payes le 2026-09-15 : le graphe est sur le GPU sur la grappe et l'etait
-    # deja quand l'affectation indexee visait un tenseur CPU, ce qui levait une erreur avalee
-    # par le except et faisait croire la donnee absente ; et la pente etait lue dans une
-    # variable posee par l'ancrage d'exutoire, donc absente des que celui-ci est inactif, si
-    # bien que l'ancre serait tombee a celerite constante sans le dire. Tout est desormais lu
-    # sur le CPU, la pente independamment, et chaque echec nomme sa cause.
-    _lg, _src = None, ""
-    try:
-        _ei = td.graph.edge_index.detach().cpu().long()
-        _ea = getattr(td.graph, "edge_attr", None)
-        if _ea is None:
-            raise ValueError("graphe sans attribut d'arete")
-        _ea = _ea.detach().cpu().float()
-        if _ea.shape[-1] < 1 or _ea.shape[0] != _ei.shape[1]:
-            raise ValueError(f"attribut d'arete de forme {tuple(_ea.shape)}")
-        _lg = torch.zeros(n_nodes)
-        _lg[_ei[0]] = _ea[:, 0] / 1000.0
-        _src = "attribut d'arete du graphe"
-        if float(_lg.max()) <= 0.002:
-            raise ValueError(f"longueurs constantes ou nulles (max {float(_lg.max()) * 1000:.1f} m)")
-    except Exception as _e:
-        _lg = None
-        print(f"[etl] longueur d'arete indisponible ({type(_e).__name__}: {_e}), "
-              f"lecture directe de la table des aretes")
-        try:
-            import duckdb as _ddb
-            _cx = _ddb.connect(f"{_paths.DATA_ROOT}/quebec/{REG}.duckdb", read_only=True)
-            _ed = _cx.sql("select src, edge_attr_0 from edges").fetchdf()
-            _cx.close()
-            _lg = torch.zeros(n_nodes)
-            _lg[torch.tensor(_ed["src"].values, dtype=torch.long)] = torch.tensor(
-                _ed["edge_attr_0"].values / 1000.0, dtype=torch.float32)
-            _src = "table des aretes de la base"
-        except Exception as _e2:
-            print(f"[etl] table des aretes illisible ({type(_e2).__name__}: {_e2})")
-            _lg = None
-    if _lg is None or float(_lg.max()) <= 0.002:
-        # Le 2026-09-15, une tache de controle a tourne six heures sous l'etiquette de
-        # l'ancrage en etant en realite le temoin, parce que ce cas se contentait d'un
-        # avertissement. Un bras qui ne porte pas ce qu'il annonce est pire qu'un bras mort.
-        raise SystemExit("[etl] ancrage du routage DEMANDÉ mais aucune longueur de tronçon "
-                         "exploitable : la tâche s'arrête plutôt que de se faire passer "
-                         "pour un bras ancré")
-    else:
-        # LES LACS SORTENT DE L'ANCRAGE. Mesure du 2026-09-15 sur le Saguenay : la colonne
-        # de longueur vaut 461 km en mediane sur un noeud de lac contre 5,7 km sur un
-        # troncon de riviere, et 344 des 357 aretes de plus de 50 km sont des lacs. Ce
-        # n'est donc pas une longueur de chenal mais un perimetre de rive. L'attenuation
-        # d'un lac est de toute facon portee par le module de lac et ses parametres appris.
-        # Un lac recoit NaN et garde le parametre borne libre.
-        _lac = None
-        try:
-            _lac = td.graph.is_lake.detach().cpu().bool()
-        except Exception as _e4:
-            print(f"[etl] masque de lac indisponible : {type(_e4).__name__}: {_e4}")
-        _riv = (_lg > 0) if _lac is None else ((_lg > 0) & (~_lac))
-        # Un noeud sans arete sortante, l'exutoire notamment, resterait a zero et recevrait
-        # la borne basse de la longueur. Il recoit la mediane des troncons de riviere.
-        _med = float(_lg[_riv].median())
-        _nz = int((_lg <= 0).sum())
-        _nlac = 0 if _lac is None else int(_lac.sum())
-        _lg = torch.where(_lg > 0, _lg, torch.full_like(_lg, _med))
-        if _lac is not None:
-            _lg = torch.where(_lac, torch.full_like(_lg, float("nan")), _lg)
-        _pente = None
-        try:
-            import pandas as _pda
-            _rwa = _pda.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
-            _rwa = _rwa[_rwa.region == REG]
-            if len(_rwa) == n_nodes:
-                _pente = torch.tensor(_rwa["mean_slope_pct"].values / 100.0, dtype=torch.float32)
-            else:
-                print(f"[etl] pente de versant ignorée ({len(_rwa)} vs {n_nodes} nœuds)")
-        except Exception as _e3:
-            print(f"[etl] pente de versant indisponible : {type(_e3).__name__}: {_e3}")
-        model.spatial_encoder.set_routing_anchor(_lg, slope_frac=_pente)
-        _ka = model.spatial_encoder._k_musk_anchor
-        _fi = _ka[torch.isfinite(_ka)]
-        print(f"[etl] ancrage du routage : K = L/c | source {_src} | "
-              f"pente {'lue' if _pente is not None else 'ABSENTE, célérité constante'} | "
-              f"{_nz} nœud(s) sans arête sortante ramenés à la médiane | "
-              f"{_nlac} lac(s) laissés libres")
-        print(f"[etl] ancrage du routage : ancre méd {float(_fi.median()):.2f} h "
-              f"| q10-q90 {float(_fi.quantile(0.1)):.2f}-{float(_fi.quantile(0.9)):.2f} h "
-              f"| longueur de rivière méd {_med:.1f} km")
 # ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
 # DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
 # tenu de côté, gain survivant au réentraînement. Désactivable par ETL_LAKE_AREA=0.
@@ -1007,9 +850,9 @@ if float(_ct.get("ratio", 0) or 0) > 0 and getattr(model.vertical_column, "soil_
 # a 7, tres mal draine), `intercept` et `slope` de log10(plafond en mm/j) = intercept + slope x
 # classe, `min_mm_per_day` et `max_mm_per_day`. Une seule regle pour tout le Quebec, ajustee
 # sur le plafond prefere par station des passes avant (R370) ; un troncon sans classe garde le
-# plafond declare du processus. ETL_PLAFOND_DRAINAGE=0 l'eteint.
+# plafond declare du processus. Sans la section, pas de plafond par classe.
 _cd = dict((cfg.get("soil") or {}).get("ceiling_from_drainage") or {})
-if _cd and os.environ.get("ETL_PLAFOND_DRAINAGE", "1") != "0" and getattr(model.vertical_column, "soil_profile", None) is not None:
+if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
     from dataclasses import replace as _rempl
     import pandas as _pdd
     _td = _pdd.read_parquet(str(_cd["table"]).replace("{DERIVES}", _paths.DERIVED_ROOT))
@@ -1102,15 +945,6 @@ if _settings.raw("evaporation.open_water", "0") == "1":
     _fw = torch.clamp(_lcw["f_water_raw"].float().cpu() - _rw / _Alw.clamp(min=1e-6), 0.0, 1.0)
     model.set_open_water_evaporation(_fw.to(DEVICE))
     print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
-if os.environ.get("ETL_ROUTAGE_TETE") == "1":
-    # Tete lineaire du temps de transfert sur les attributs du troncon (R297, R299), nulle au
-    # depart, taux propre MEANDRE_LR_MULT_ROUTAGE. Creee AVANT le depart a chaud : le
-    # chargement ignore sans le dire les poids absents du modele, si bien qu'une tete creee
-    # apres serait remise a zero sur un point de reprise qui la porte. Un point de reprise
-    # anterieur, qui ne la porte pas, la laisse nulle.
-    model.spatial_encoder.enable_routing_head(r["territorial"].n_features)
-    model.spatial_encoder.routing_head.to(DEVICE)
-    print(f"[etl] temps de transfert : tete lineaire sur {r['territorial'].n_features} attributs, routage a {os.environ.get('ETL_ROUTAGE_SOUSPAS', '2')} sous-pas")
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
