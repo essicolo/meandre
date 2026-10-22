@@ -656,10 +656,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 for k in ("ks1", "ks2", "ks3"):
                     calib.pop(k, None)
             col.set_calibrated_soil(calib)
-        # CORRECTIFS DE LA COUCHE 3 ET NAPPE LIBRE (2026-09-28), lus depuis les MEMES
-        # variables que le pilote regional : sans eux le banc tournait avec le clone
-        # d'origine, couche 3 engorgee, 86 % de ruissellement de surface, alors que la
-        # ronde les porte. ETL_L3_KSUB n'accepte ici qu'une constante en mm/jour.
+        # PORTE DE GEL, PROFIL DE SOL ET NAPPE LIBRE, lus depuis les MEMES variables que le
+        # pilote regional. Les couches du sol se declarent par MEANDRE_BANC_SOIL_TOML.
         if os.environ.get("MEANDRE_GEL_CONTINU") == "1":
             # Infiltration reduite en proportion de la fraction gelee de la couche de surface,
             # au lieu du tout ou rien du clone (2026-09-28).
@@ -669,7 +667,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             col.soil.frozen_gate_areal = True
         if os.environ.get("MEANDRE_BANC_SOIL_TOML"):
             # Profil de sol declare par couche, comme le pilote regional (section [soil] d'un
-            # TOML) : remplace les branches ETL_L3_* par une declaration complete (2026-09-29).
+            # TOML).
             import tomllib
             from meandre.vertical import soil_processes as _soil_proc
             with open(os.environ["MEANDRE_BANC_SOIL_TOML"], "rb") as _f:
@@ -681,14 +679,6 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  profil de sol declare : {_profile.layers} couches, {len(_profile.processes)} processus, appris : {', '.join(_appris) or 'aucun'}", flush=True)
             for _pr in _profile.processes:
                 print(f"    couche {_pr.layer} {_pr.kind} {_pr.form} {_pr.params}", flush=True)
-        if "ETL_L3_TAU" in os.environ:
-            col.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
-        if "ETL_L3_KSUB" in os.environ:
-            col.l3_k_sub = float(os.environ["ETL_L3_KSUB"]) / 1000.0 / 24.0
-        if "ETL_L3_TAULAT" in os.environ:
-            # SANS EFFET quand un profil de sol est declare par MEANDRE_BANC_SOIL_TOML : la
-            # sortie laterale vient alors du profil (mesure 2026-10-01, passe identique a 3 et 8 j).
-            col.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
         if os.environ.get("PROV_DRAIN", "0") == "1":
             # Drainage souterrain agricole (Hooghoudt), memes cles que le pilote provincial.
             col.drainage_agricole = dict(espacement_m=float(os.environ.get("PROV_DRAIN_L", "15")),
@@ -700,11 +690,6 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  racines : profondeur x {col.root_depth_scale:g}", flush=True)
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
             col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), apprise=os.environ.get("ETL_NAPPE_APPRIS") == "1")
-            if os.environ.get("ETL_SUBLIM") == "1":
-                # Sublimation de Kuzmin, comme au pilote (R32) : le manteau du modele regional
-                # depasse NEISIM de 16 a 36 % pendant l'accumulation (R319).
-                col.sublimation_mode = "kuzmin"
-                print("  sublimation du manteau : Kuzmin", flush=True)
             if "ETL_NAPPE_GEL" in os.environ:
                 col.nappe_gel_facteur = float(os.environ["ETL_NAPPE_GEL"])
                 print(f"  porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}", flush=True)

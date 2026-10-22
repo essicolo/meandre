@@ -344,18 +344,6 @@ else:
     print(f"[etl] prelevements et rejets ACTIFS"
           + (f" (somme des |termes| = {_wsum:.0f})" if _wsum is not None else ""))
 
-if os.environ.get("ETL_IRDA", "0") == "1":
-    # Propriétés de sol de l'IRDA, ajoutées à l'entrée du champ seulement : la demande
-    # évaporative ci-dessus garde ses F_STATIC colonnes. Un point de reprise sans ces
-    # colonnes les reçoit avec des poids nuls, donc un modèle inchangé au départ.
-    from irda_proprietes import colonnes_noeuds as _irda_colonnes
-    _xi, _noms_irda = _irda_colonnes(REG, r["node_ids"])
-    _terr = r["territorial"]
-    _terr.data = torch.cat([_terr.data, torch.tensor(_xi, device=_terr.data.device)], dim=1)
-    _terr.columns = list(_terr.columns) + _noms_irda
-    _settings.override("debug.zero_padding", True)
-    print(f"[etl] IRDA : {len(_noms_irda)} colonnes ajoutées au champ | couverture médiane {float(np.median(_xi[:, -1])):.2f}")
-
 # Bornes des sorties du champ (2026-10-01) : `[field.bounds]` et cles z2/z3/rain_hours de
 # `[soil]`, que le pilote ne transmettait pas au modele.
 from meandre.spatial.field_network import field_bounds_from_toml as _bornes_toml
@@ -418,13 +406,6 @@ model = HydroModel(
 ).to(DEVICE)
 lp = dict(cfg.get("literature_prior") or {})
 lp.setdefault("K_c", 1.0)   # autour de la demande apprise : 1,0 neutre
-# K_sat_1 (surface) : l'init/prior littérature à 0.080 m/j est 6× trop perméable
-# (diag GASP : le sol absorbe 83% de l'orage, coeff ruiss 17% vs 30-50% réel).
-# Recaler l'ancre du prior plus bas re-génère la crue (banc d'impulsion), K_sat_3
-# intact => baseflow préservé. Cible via env (défaut = valeur actuelle).
-if "ETL_KSAT1" in os.environ:
-    lp["K_sat_1"] = float(os.environ["ETL_KSAT1"])
-    print(f"[etl] K_sat_1 prior recalé -> {lp['K_sat_1']} m/j (génération de crue)")
 if _settings.raw("groundwater.kgw_prior") is not None:
     lp["k_gw"] = float(_settings.raw("groundwater.kgw_prior"))   # prior mesuré (récessions jauges)
     print(f"[etl] k_gw prior -> {lp['k_gw']} /j (récessions mesurées)")
@@ -457,11 +438,6 @@ if _MEMBRE != "LN24HA":
 # et avril en DEFICIT (0.729), signature d'eau relachee en debut d'hiver au lieu d'etre
 # stockee jusqu'a la crue. Le seuil du projet est a -2.2168 °C, donc tout ce qui est
 # au-dessus compte comme PLUIE : un seuil aussi bas fabrique de la pluie en decembre.
-if os.environ.get("ETL_SUBLIM", "0") == "1":
-    # Sublimation Kuzmin (R32) : 15-40 mm/hiver attendus en foret boreale. Sortie
-    # atmospherique exposee a diag.sublimation, comptee par ETL_BILAN.
-    model.vertical_column.sublimation_mode = "kuzmin"
-    print("[etl] SUBLIMATION du manteau : Kuzmin (u2, e_a du forcage)")
 if _settings.raw("groundwater.krec_prior") is not None:
     # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
     # a krec ~5e-5..1e-4 avec la vanne non lineaire, pas a 2e-5). La moyenne du champ
@@ -470,11 +446,6 @@ if _settings.raw("groundwater.krec_prior") is not None:
     _t["krec"] = float(_settings.raw("groundwater.krec_prior"))
     model.spatial_encoder._prior_targets = _t
     print(f"[etl] cible du prior krec -> {_t['krec']:.1e} m/h")
-if "ETL_L3_EXP" in os.environ:
-    # Drainage non lineaire de L3 (R37) : meme plafond a saturation, coupure en
-    # dessous -> L3 respire, la recharge devient saisonniere. n=1 == fidele.
-    model.vertical_column.l3_drain_exp = float(os.environ["ETL_L3_EXP"])
-    print(f"[etl] drainage L3 NON LINEAIRE : exposant {float(os.environ['ETL_L3_EXP'])}")
 if _settings.raw("groundwater.water_table", "0") == "1":
     # Nappe libre a la place du reservoir restituant. Le banc du 2026-09-18 montre qu'un
     # reservoir lineaire ne peut pas tenir ensemble les 0,93 m de battement mesures et un
@@ -546,34 +517,6 @@ if _profile is not None:
     for _pr in _profile.processes:
         print(f"[etl]   {_pr.decrire()}")
 
-if "ETL_L3_TAU" in os.environ:
-    # Drainage de l'eau gravitaire de la couche 3, en JOURS. Remplace la loi fidele, dont
-    # la constante de temps vient des recessions de debit et laisse 472 mm d'eau gravitaire
-    # immobilises en permanence sur l'Outaouais.
-    model.vertical_column.l3_tau_fc = float(os.environ["ETL_L3_TAU"]) * 24.0
-    print(f"[etl] drainage L3 au-dessus de la CAPACITE AU CHAMP, constante {os.environ['ETL_L3_TAU']} jours")
-if "ETL_L3_KSUB" in os.environ:
-    # Plafond de percolation du substratum, en mm/JOUR. L'exces reste dans la couche et
-    # repart lateralement par la cascade de saturation, comme dans un sol reel ou l'eau
-    # circule au-dessus de l'interface sol-depot.
-    _v_ksub = os.environ["ETL_L3_KSUB"]
-    if _v_ksub.strip().lower() in ("champ", "k_sub", "field"):
-        # Le plafond suit le champ spatial plutot qu'une constante. La sortie k_sub est
-        # decodee en log-normal centree sur 1 mm/jour et bornee a [0,048 ; 48] mm/jour ; son
-        # ancrage de MOYENNE est pose par ETL_KSUB_PRIOR, sans quoi rien ne la tient.
-        model.vertical_column.l3_k_sub = "k_sub"
-        if "ETL_KSUB_PRIOR" not in os.environ:
-            raise SystemExit("ETL_L3_KSUB=champ demande un ancrage : poser ETL_KSUB_PRIOR")
-        print("[etl] plafond de percolation du substratum : CHAMP SPATIAL k_sub")
-    else:
-        model.vertical_column.l3_k_sub = float(_v_ksub) / 1000.0 / 24.0
-        print(f"[etl] plafond de percolation du substratum : {_v_ksub} mm/jour")
-if "ETL_L3_TAULAT" in os.environ:
-    # Constante de temps de l'ecoulement hypodermique profond, en JOURS. Forme transferable :
-    # la partition entre chemin lateral et chemin vertical est le rapport de deux constantes,
-    # sans dependre du champ de conductivite, qui varie d'un facteur quatre entre territoires.
-    model.vertical_column.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
-    print(f"[etl] hypodermique PROFOND, constante {os.environ['ETL_L3_TAULAT']} jours")
 if _settings.raw("snow.wet_bulb_threshold") is not None:
     # Partage pluie-neige au BULBE HUMIDE (generalisation du seuil, remarque d'Essi
     # sur R35) : un seuil unique en Twb remplace le seuil AIR par region. Sur nos 6
@@ -811,24 +754,6 @@ if _settings.raw("groundwater.free_recession", "0") == "1" and _settings.raw("gr
     model.spatial_encoder.prior_on_krec = True
     print("[etl] krec APPRIS par le champ, moyenne ancree par le prior physique "
           "(cible 2e-5 m/h, ~34 % de debit de base ; le calage Hydrotel donne 1.3e-7)")
-
-# PLAFOND DE PERCOLATION : moyenne ancree, comme krec et k_gw. La variation spatiale reste
-# LIBRE, et c'est une decision du projet et non un oubli : penaliser la variance du champ est
-# la cause mathematique du collapse diagnostique le 2026-07-01. Mesure du 2026-09-21 : laisse
-# libre, ce plafond apprend un motif positionnel, sa variation etant expliquee a 0,67 par les
-# seules coordonnees et a 0,30 par la texture, parce que la granulometrie ne gouverne pas la
-# conductivite d'un till. Le remede n'est pas d'ecraser la variance mais de tenir ce plafond
-# UNIFORME, par la valeur constante d'un profil declare, tant qu'aucune observation ne
-# l'identifie.
-if os.environ.get("ETL_KSUB_PRIOR", "0") != "0":
-    model.spatial_encoder.prior_on_k_sub = True
-    model.spatial_encoder.poids_k_sub = float(os.environ["ETL_KSUB_PRIOR"])
-    # Le message annoncait une variation RETRECIE : c'etait la premiere version du prior,
-    # retiree le jour meme parce qu'elle penalisait la variance spatiale au meme poids que le
-    # biais de moyenne, forme diagnostiquee en juillet comme la cause mathematique du collapse
-    # du champ. Seule la MOYENNE du logarithme est ancree.
-    print(f"[etl] plafond de percolation : moyenne du logarithme ancree, variation spatiale "
-          f"LIBRE, poids {model.spatial_encoder.poids_k_sub}")
 
 if _settings.raw("groundwater.krec") is not None:
     import math as _mk
@@ -1277,61 +1202,6 @@ tconf = TrainingConfig(
     patience=int(tcfg.get("patience", 0)),
     val_every=1,
 )
-# ── NIVEAUX DE NAPPE MESURES (ETL_WNAPPE > 0) ───────────────────────────────
-# Seule observation directe et non circulaire de l'eau souterraine : les cartes de recharge
-# regionales sont calees sur le debit de base et le tableau des lignes rouges les ecarte.
-# Contrainte de FORME, en anomalies reduites : le balayage du 2026-09-18 montre que la
-# mesure identifie la phase et la presence des mecanismes, non la valeur des parametres.
-# Le chargeur a deja retire les puits captifs, les puits influences et les series trop
-# courtes ; il ne reste ici qu'a aligner la serie journaliere sur les pas de la simulation.
-if float(os.environ.get("ETL_WNAPPE", 0.0)) > 0:
-    import pandas as _pdn
-
-    from meandre.data.rsesq_loader import _chemin_defaut, read_rsesq
-
-    # L'axe temporel n'est nomme `times` que plus bas, apres la construction du domaine :
-    # on le lit ici dans le dictionnaire du pilote plutot que de deplacer ce bloc, qui doit
-    # rester avant le tableau des contraintes effectives pour y figurer.
-    _cn = read_rsesq(os.environ["ETL_REGION"].lower(), r["times"])
-    if _cn.n_puits == 0:
-        print("[etl] niveaux de nappe : aucun puits recevable sur ce territoire, terme inactif")
-    else:
-        _niv = _pdn.read_parquet(f"{_chemin_defaut()}/rsesq-niveaux-journaliers.parquet",
-                                 columns=["puits", "date", "niveau_m"])
-        _niv = _niv[_niv.puits.isin(list(_cn.puits))]
-        _tab = _niv.pivot_table(index="date", columns="puits", values="niveau_m", aggfunc="mean")
-        _tab = _tab.reindex(index=_pdn.DatetimeIndex(r["times"]), columns=list(_cn.puits))
-        _puits = list(_cn.puits)
-        _idx_n = list(_cn.node_idx)
-        # PART TENUE DE COTE (2026-09-22). Les niveaux mesures sont la seule corroboration
-        # INDEPENDANTE que la physique de drainage profond ait recue : elle vaut parce que
-        # les puits n'etaient dans aucune perte. Les mettre tous dans la perte detruirait la
-        # preuve en meme temps qu'elle servirait. ETL_NAPPE_VALID tient de cote une part des
-        # puits, choisis par un ordre stable et non par un tirage, pour que deux executions
-        # tiennent les memes de cote.
-        _part = float(os.environ.get("ETL_NAPPE_VALID", "0.5"))
-        _garde = []
-        if 0.0 < _part < 1.0 and len(_puits) >= 4:
-            _rang = sorted(range(len(_puits)), key=lambda i: str(_puits[i]))
-            _n_val = max(1, int(round(_part * len(_puits))))
-            _garde = sorted(_rang[::max(len(_puits) // _n_val, 1)][:_n_val])
-        _entraine = [i for i in range(len(_puits)) if i not in set(_garde)]
-        if not _entraine:
-            _entraine, _garde = list(range(len(_puits))), []
-        _val = _tab.to_numpy(dtype="float32")
-        td = _dc_replace(td,
-                         nappe_obs=torch.tensor(_val[:, _entraine], device=DEVICE),
-                         nappe_idx=torch.tensor([_idx_n[i] for i in _entraine],
-                                                dtype=torch.long, device=DEVICE))
-        r["train_data"] = td
-        r["nappe_valid"] = {"puits": [_puits[i] for i in _garde],
-                            "node_idx": [_idx_n[i] for i in _garde],
-                            "niveaux": _val[:, _garde] if _garde else None}
-        r["loss_fn"].w_nappe = float(os.environ["ETL_WNAPPE"])
-        print(f"[etl] niveaux de nappe : {_cn.resume()}, poids {r['loss_fn'].w_nappe}")
-        print(f"[etl] puits : {len(_entraine)} dans la perte, {len(_garde)} tenus de cote "
-              f"pour la validation independante")
-
 # CE QUI CONTRAINT REELLEMENT LE MODELE, lu dans l'objet de perte et dans les donnees,
 # jamais dans la config (dette #15 : une ligne codee en dur a fait croire pendant des
 # semaines que la demande ET apprise etait active alors que la colonne l'ignorait ;
@@ -1822,30 +1692,6 @@ if os.environ.get("ETL_DUMP_REACH"):
     # ETL_DUMP_NAPPE=<chemin.npz> : stock souterrain, recharge et debit de base JOURNALIERS
     # aux noeuds portant un puits du reseau de suivi. La mesure du reseau est une profondeur
     # sous le repere du tubage : seules les VARIATIONS se comparent, jamais l'absolu.
-    # PUITS TENUS DE COTE : la seule preuve que le terme achete de la nappe et non seulement
-    # du debit perdu. Correlation entre la profondeur simulee et le niveau mesure, sur les
-    # puits qui n'etaient dans aucune perte, en moyennes mensuelles.
-    _nv = r.get("nappe_valid")
-    if _nv and _nv.get("niveaux") is not None and _dg_r is not None:
-        _zsim = getattr(_dg_r, "profondeur_nappe", None)
-        _zsim = _zsim if _zsim is not None else getattr(_dg_r, "s_gw", None)
-        if _zsim is not None:
-            import pandas as _pdv
-
-            _zs = _zsim.detach().cpu().numpy()[:, _nv["node_idx"]]
-            _ax = _pdv.DatetimeIndex(times)
-            _rs = []
-            for _j in range(_zs.shape[1]):
-                _o = _pdv.Series(_nv["niveaux"][:, _j], index=_ax).resample("MS").mean()
-                _s = _pdv.Series(_zs[:, _j], index=_ax).resample("MS").mean()
-                _ok = _o.notna() & _s.notna()
-                if int(_ok.sum()) >= 24:
-                    _rs.append(float(np.corrcoef(-_s[_ok], -_o[_ok])[0, 1]))
-            if _rs:
-                print(f"[etl] PUITS TENUS DE COTE : {len(_rs)} puits, correlation mediane "
-                      f"{float(np.median(_rs)):.2f}, minimum {float(np.min(_rs)):.2f}")
-            else:
-                print("[etl] puits tenus de cote : aucun avec 24 mois communs")
     if os.environ.get("ETL_DUMP_NAPPE") and _dg_r is not None and _dg_r.s_gw is not None:
         import pandas as _pdn
         _pu = _pdn.read_parquet(f"{_paths.DERIVED_ROOT}/auxiliaires/rsesq-puits.parquet")
