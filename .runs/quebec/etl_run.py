@@ -356,18 +356,6 @@ if os.environ.get("ETL_IRDA", "0") == "1":
     _settings.override("debug.zero_padding", True)
     print(f"[etl] IRDA : {len(_noms_irda)} colonnes ajoutées au champ | couverture médiane {float(np.median(_xi[:, -1])):.2f}")
 
-# ETL_DESCRIPTEURS=source1,source2 : toute source ingérée par le cadre commun entre à l'entrée
-# du champ par `descriptors.columns_for_nodes`, compositions en ilr et masque de couverture.
-if os.environ.get("ETL_DESCRIPTEURS"):
-    from meandre.data.auxiliary.descriptors import columns_for_nodes as _descripteurs
-    _terr = r["territorial"]
-    for _src in [x.strip() for x in os.environ["ETL_DESCRIPTEURS"].split(",") if x.strip()]:
-        _xd, _noms_d = _descripteurs(_src, REG, r["node_ids"])
-        _terr.data = torch.cat([_terr.data, torch.tensor(_xd, device=_terr.data.device)], dim=1)
-        _terr.columns = list(_terr.columns) + _noms_d
-        print(f"[etl] descripteurs {_src} : {len(_noms_d)} colonnes | couverture médiane {float(np.median(_xd[:, -1])):.2f}")
-    _settings.override("debug.zero_padding", True)
-
 # Bornes des sorties du champ (2026-10-01) : `[field.bounds]` et cles z2/z3/rain_hours de
 # `[soil]`, que le pilote ne transmettait pas au modele.
 from meandre.spatial.field_network import field_bounds_from_toml as _bornes_toml
@@ -381,9 +369,6 @@ model = HydroModel(
     # Sous-pas du routage (2026-10-05) : 2 par defaut ; 24 rend le gradient du temps de
     # transfert sous 7,5 h (R241), exige par la tete du temps de transfert (R299).
     routing_substeps=int(os.environ.get("ETL_ROUTAGE_SOUSPAS", "2")),
-    # Bandes de Fourier sur la position (2026-10-05) : -1 retire toute position, le champ ne
-    # varie plus qu'avec les attributs du troncon (question d'Essi, R303).
-    n_coord_freqs=int(os.environ.get("ETL_CHAMP_FREQS", "6")),
     # Largeur du champ spatial ([model] field_hidden, 256 par defaut) : la meme pour un
     # territoire et pour le Quebec entier, dont le champ partage sous-ajuste (R374).
     field_hidden=int(mcfg.get("field_hidden", 256)),
@@ -399,13 +384,6 @@ model = HydroModel(
     use_phenology_modulator=bool(cfg.get("phenology", {}).get("enabled", False)),
     phenology=cfg.get("phenology"),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
-    # ETL_STATIC : parametres GLOBAUX (37 scalaires) au lieu d'un champ spatial, comme
-    # Hydrotel. Argument d'Essi (2026-08-08) : Hydrotel est cale sur les MEMES jauges et
-    # atteint 0.82 en tenu de cote sur OUTV la ou meandre plafonne a 0.50 ; les observations
-    # ne sont donc pas en cause. Ce qui differe est le nombre de degres de liberte : une
-    # poignee de coefficients globaux chez Hydrotel contre un champ spatial + un effet
-    # aleatoire par noeud chez meandre, pour 16 jauges. Test de parcimonie.
-    param_mode=("static" if os.environ.get("ETL_STATIC", "0") == "1" else "nerf"),
     column_mode="hydrotel",
     melt_mode=("eti" if os.environ.get("ETL_ETI", "0") == "1" else "degree_day"),
     # Phase probabiliste (ETL_QUANTILE=1) : tete quantile K=6, offsets monotones
@@ -437,16 +415,9 @@ model = HydroModel(
     # vidange k_gw NeRF (prior = récessions MESURÉES des jauges). Banc partition :
     # krec 5e-5 + k_gw 0.068 = baseflow 24%, +0.07 KGE en inférence pure.
     use_aquifer=_settings.raw("groundwater.aquifer", "0") == "1",
-    # LEVIERS PICS (r vs Hydrotel) : advection pure (onde cinématique sans diffusion),
-    # célérité dépendante du débit, UH de versant. Activés par env pour le banc GASP.
-    pure_advection=os.environ.get("ETL_ADVECTION", "0") == "1",
-    discharge_dependent_celerity=os.environ.get("ETL_DQCEL", "0") == "1",
-    use_hillslope_uh=os.environ.get("ETL_HILLSLOPE", "0") == "1",
 ).to(DEVICE)
 lp = dict(cfg.get("literature_prior") or {})
-lp["K_c"] = float(os.environ.get("ETL_KC", "1.0"))   # autour de la demande apprise : 1.0 neutre,
-# ou PRIOR MESURÉ = ratio bilan P-Q / MOD16 par région (MOD16 sur-évapore le sud +17-25%,
-# et_bilan_check 2026-07-21 ; K_c×0.8 en inférence : MONT test 0.544->0.617, beta 0.73->0.91)
+lp.setdefault("K_c", 1.0)   # autour de la demande apprise : 1,0 neutre
 # K_sat_1 (surface) : l'init/prior littérature à 0.080 m/j est 6× trop perméable
 # (diag GASP : le sol absorbe 83% de l'orage, coeff ruiss 17% vs 30-50% réel).
 # Recaler l'ancre du prior plus bas re-génère la crue (banc d'impulsion), K_sat_3
@@ -457,20 +428,7 @@ if "ETL_KSAT1" in os.environ:
 if _settings.raw("groundwater.kgw_prior") is not None:
     lp["k_gw"] = float(_settings.raw("groundwater.kgw_prior"))   # prior mesuré (récessions jauges)
     print(f"[etl] k_gw prior -> {lp['k_gw']} /j (récessions mesurées)")
-if "ETL_TMELT" in os.environ:
-    # seuil de fonte NeRF : cible init+prior Hydrotel-comme-littérature (QC ~ +2°C),
-    # le champ reste libre par nœud (PAS un delta autour d'un squelette figé)
-    lp["T_melt"] = float(os.environ["ETL_TMELT"])
-    print(f"[etl] T_melt prior -> {lp['T_melt']} °C (seuil de fonte NeRF)")
 model.spatial_encoder.init_from_literature(lp)
-if os.environ.get("ETL_FONTE_LIT", "0") == "1":
-    # taux de fonte par couvert : init Hydrotel-littérature (4.5/9/18 mm/j/°C au lieu
-    # de 12/14/16) — apprenables comme avant, C_f NeRF = leur variation spatiale
-    import math as _mth
-    with torch.no_grad():
-        for nm, v in [("sp_fonte_conif", 4.5), ("sp_fonte_feu", 9.0), ("sp_fonte_dec", 18.0)]:
-            getattr(model.vertical_column, nm).copy_(torch.tensor(_mth.log(_mth.expm1(v))))
-    print("[etl] taux de fonte init littérature-Hydrotel : 4.5/9/18 mm/j/°C")
 # ETP : par défaut la demande APPRISE injectée en 7e canal. ETL_ETP=linacre bascule sur
 # la formule Linacre CALÉE du projet, celle qu'utilise la configuration ancrée à 0.7748.
 # Motif (2026-08-14) : ancrer le sol d'Hydrotel pendant l'entraînement EFFONDRE le score
@@ -504,41 +462,6 @@ if os.environ.get("ETL_SUBLIM", "0") == "1":
     # atmospherique exposee a diag.sublimation, comptee par ETL_BILAN.
     model.vertical_column.sublimation_mode = "kuzmin"
     print("[etl] SUBLIMATION du manteau : Kuzmin (u2, e_a du forcage)")
-if "ETL_WET_CPROD" in os.environ:
-    # Allonge la constante de vidange du reservoir de milieu humide (c_prod, en jours
-    # au-dessus du volume normal ; defaut SWAT 10 j). LE candidat rapide-lent de R39 :
-    # retenir la crue quelques SEMAINES -- le souterrain rend trop tard, le milieu
-    # humide est deja conservatif et sur le chemin de la crue. L'attribut est lu par
-    # la colonne AU MOMENT ou elle construit le bloc wetland (le dict n'existe pas
-    # encore ici : premiere version plantee sur _static None, corrigee).
-    model.vertical_column.c_prod_override = float(os.environ["ETL_WET_CPROD"])
-    print(f"[etl] milieu humide : c_prod impose a "
-          f"{float(os.environ['ETL_WET_CPROD']):.0f} jours (defaut 10)")
-if "ETL_GW_POWER" in os.environ:
-    # Nappe non lineaire Q = q_ref*(S/100)^b (R38) : "q_ref,b", ex. "2.6,2.2" --
-    # jeu qui reproduit les DEUX residences mesurees (37 j plein, 111 j bas).
-    _qr, _b = (float(x) for x in os.environ["ETL_GW_POWER"].split(","))
-    model.vertical_column.gw_power_law = (_qr, _b)
-    print(f"[etl] nappe NON LINEAIRE : q_ref {_qr} mm/j a 100 mm, exposant {_b}")
-if os.environ.get("ETL_ETI", "0") == "1" and ("ETL_ETI_TF" in os.environ or "ETL_ETI_SRF" in os.environ):
-    # Re-echelle des coefficients ETI. Les valeurs litterature (Pellicciotti 2005 :
-    # tf 1.2 mm/degre/j, srf 9.4e-3 mm/j par W/m2) viennent de glaciers alpins d'ete ;
-    # aux conditions de crue boreale (T ~5, SW ~250, albedo ~0.5) elles donnent
-    # ~7 mm/j quand le degre-jour CALE d'Hydrotel en libere ~25 (taux 8.5 x indice_rad
-    # x (1-albedo)). Le run eti-outv l'a paye : accumulation parfaite SANS sinusoide
-    # (1.02/0.97/1.04) mais mai a 4.10 -- le manteau ne part plus, et deux scalaires
-    # ne remontent pas d'un facteur 3.5 en dix epoques. On initialise donc a
-    # l'equivalence energetique et on laisse l'apprentissage AFFINER.
-    import math as _me
-    with torch.no_grad():
-        if "ETL_ETI_TF" in os.environ:
-            _tf = float(os.environ["ETL_ETI_TF"])
-            model.vertical_column.sp_tf.copy_(torch.tensor(_me.log(_me.expm1(_tf))))
-        if "ETL_ETI_SRF" in os.environ:
-            _srf = float(os.environ["ETL_ETI_SRF"])
-            model.vertical_column.sp_srf.copy_(torch.tensor(_me.log(_me.expm1(_srf))))
-    print(f"[etl] ETI re-echelle : tf {float(torch.nn.functional.softplus(model.vertical_column.sp_tf))*1000:.2f} mm/C/j | "
-          f"srf {float(torch.nn.functional.softplus(model.vertical_column.sp_srf))*1000:.4f} mm/j/(W/m2)")
 if _settings.raw("groundwater.krec_prior") is not None:
     # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
     # a krec ~5e-5..1e-4 avec la vanne non lineaire, pas a 2e-5). La moyenne du champ
@@ -586,8 +509,7 @@ if _settings.raw("groundwater.water_table", "0") == "1":
                h_ref=float(_settings.raw("groundwater.reference_head_m", 4.0)),
                e_frac=float(_settings.raw("groundwater.extraction_fraction", 0.35)),
                z_ext=float(_settings.raw("groundwater.extinction_depth_m", 9.0)),
-               exposant=_exposant_de_nappe(),
-               couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)))
+               exposant=_exposant_de_nappe())
     model.vertical_column.activer_nappe_libre(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
     if _settings.raw("groundwater.frost_factor") is not None:
@@ -652,18 +574,6 @@ if "ETL_L3_TAULAT" in os.environ:
     # sans dependre du champ de conductivite, qui varie d'un facteur quatre entre territoires.
     model.vertical_column.l3_tau_lat = float(os.environ["ETL_L3_TAULAT"]) * 24.0
     print(f"[etl] hypodermique PROFOND, constante {os.environ['ETL_L3_TAULAT']} jours")
-if "ETL_L3_LAT" in os.environ:
-    # Ecoulement hypodermique PROFOND : l'eau qui percole se perche sur le substratum et
-    # repart lateralement. Sans lui, plafonner la percolation force la couche a se
-    # resaturer et le modele revient a son defaut d'origine.
-    model.vertical_column.l3_lateral = float(os.environ["ETL_L3_LAT"])
-    print(f"[etl] ecoulement hypodermique PROFOND, multiplicateur {os.environ['ETL_L3_LAT']}")
-if "ETL_L3_GEL" in os.environ:
-    # Porte de gel du drainage profond. Hydrotel divise q3 par deux des que le sol est
-    # gele, ce qui place la recharge minimale en avril, mois ou la nappe mesuree monte le
-    # plus vite. 1.0 retire la porte, 0.5 est la valeur fidele.
-    model.vertical_column.l3_gel_facteur = float(os.environ["ETL_L3_GEL"])
-    print(f"[etl] porte de gel du drainage L3 : facteur {float(os.environ['ETL_L3_GEL'])} (0.5 = fidele)")
 if _settings.raw("snow.wet_bulb_threshold") is not None:
     # Partage pluie-neige au BULBE HUMIDE (generalisation du seuil, remarque d'Essi
     # sur R35) : un seuil unique en Twb remplace le seuil AIR par region. Sur nos 6
@@ -672,12 +582,6 @@ if _settings.raw("snow.wet_bulb_threshold") is not None:
     model.vertical_column.t_neige_seuil = float(_settings.raw("snow.wet_bulb_threshold"))
     print(f"[etl] partage pluie/neige au BULBE HUMIDE, seuil Twb "
           f"{float(_settings.raw("snow.wet_bulb_threshold")):+.2f} degres (Stull 2011, e_a du forcage)")
-if "ETL_FONTE_SOL" in os.environ:
-    # Fonte journaliere par la chaleur du sol (mm/j), a la place du taux cale d'Hydrotel.
-    model.vertical_column.ground_melt_mm_per_day = float(os.environ["ETL_FONTE_SOL"])
-    _tg = getattr(model.vertical_column, "melt_taux_geo", None)
-    print(f"[etl] fonte au sol imposee : {os.environ['ETL_FONTE_SOL']} mm/j"
-          + (f" (calage : moyenne {float(_tg.mean()):.2f} mm/j)" if _tg is not None else ""))
 if _settings.raw("snow.seasonal_melt_amplitude") is not None:
     # Modulation saisonniere du facteur de fonte (R32). Un degre-jour constant absorbe
     # le cycle annuel de radiation ; cale sur la crue, il fond trop en novembre-decembre
@@ -754,7 +658,7 @@ if _settings.raw("spatial.init_from_hydrotel", "0") in ("1", "courbe", "sauf_ks"
     print(f"[etl] départ sur le champ Hydrotel ({os.path.basename(_plh)}) : ajustement du NeRF")
     model.spatial_encoder.fit_to_field(
         td.node_coords, r["territorial"].data, _cib,
-        n_iter=int(os.environ.get("ETL_INIT_ITER", "2000")))
+        n_iter=2000)
     # Le prior ne contraint que la MOYENNE du champ : si sa cible reste la valeur
     # littérature (K_sat 0.04) il ramènerait le champ ajusté (0.32) vers le bas. On
     # réaligne donc les cibles du prior sur les médianes calibrées.
@@ -837,8 +741,7 @@ if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
     # structurelles de la colonne, aquifère manquant en tête. Hypothèse d'Essi (2 août) :
     # avec le réservoir souterrain actif, geler le sol devrait passer. Test rejoué ici.
     from meandre.data.hydrotel_calib import load_calibrated_soil
-    _pd_ = os.environ.get("ETL_SOIL_DIR",
-        _PROJ_M)
+    _pd_ = _PROJ_M
     _z1 = float(getattr(model.vertical_column, "z1", 0.15))
     _calib = load_calibrated_soil(_pd_, r["node_ids"], _z1, device=DEVICE)
     # Le calage Hydrotel porte coef_recharge = 0 et krec ~ 1.3e-7 (vérifié sur MONT) :
@@ -846,10 +749,9 @@ if os.environ.get("ETL_SOIL_CALIB", "0") == "1":
     # deux-là éteindrait l'aquifère de méandre et saborderait le test. Par défaut on
     # hérite donc de ce qu'Hydrotel a réellement calibré (géométrie + hydraulique des
     # couches) et on laisse libre la PARTITION verticale, qui est notre extension.
-    if os.environ.get("ETL_SOIL_CALIB_FULL", "0") != "1":
-        for _k in ("krec", "coef_recharge"):
-            _calib.pop(_k, None)
-        print("[etl] partition verticale (krec, coef_recharge) laissée LIBRE (aquifère)")
+    for _k in ("krec", "coef_recharge"):
+        _calib.pop(_k, None)
+    print("[etl] partition verticale (krec, coef_recharge) laissée LIBRE (aquifère)")
     if os.environ.get("ETL_SOIL_CALIB_TEXTURE", "0") == "1":
         # GEOMETRIE LIBRE : les épaisseurs du calage MONT sont UNIFORMES (0.22/0.16/2.65 m
         # sur tous les nœuds) — ce n'est pas un champ calibré mais une colonne unique de
@@ -899,27 +801,6 @@ if _settings.raw("groundwater.conductivity_field", "0") == "1":
               f"{float(_kv.quantile(0.1)):.4f}-{float(_kv.quantile(0.9)):.4f}")
     else:
         print(f"[etl] champ k_gw ignoré ({len(_cf)} vs {n_nodes} nœuds)")
-if os.environ.get("ETL_FRESHET_FIELD", "0") == "1":
-    # CHAMP DE TIMING DE FONTE : le centre de masse observé du freshet (GP sur 126
-    # stations, R2 blocs 0.62, contraste 32 jours du sud-ouest au nord-est) est converti
-    # en décalage du seuil de fonte par nœud, via la sensibilité ΔCM/ΔT_melt mesurée au
-    # banc (.runs/quebec/freshet_bench.py). Le NeRF module autour ; le champ fixe la DATE.
-    import pandas as _pd
-    _sens = float(os.environ.get("ETL_FRESHET_SENS", "0"))  # jours de CM par +1 °C de T_melt
-    _cf = _pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/champ_freshet_QC.parquet")
-    _cf = _cf[_cf.region == REG].sort_values("node_idx")
-    if len(_cf) == n_nodes and abs(_sens) > 1e-6:
-        _cm = torch.tensor(_cf.cm_freshet.values, dtype=torch.float32, device=DEVICE)
-        _dT = ((_cm - _cm.median()) / _sens).clamp(-2.0, 2.0)  # écart AU CHAMP, pas niveau absolu
-        _o_se = model.spatial_encoder.forward
-        def _se_freshet(*a, _o=_o_se, _d=_dT, **kw):
-            sp = _o(*a, **kw); sp.T_melt = sp.T_melt + _d
-            return sp
-        model.spatial_encoder.forward = _se_freshet
-        print(f"[etl] champ freshet appliqué : CM méd j{float(_cm.median()):.0f} | "
-              f"ΔT_melt {float(_dT.min()):+.2f} à {float(_dT.max()):+.2f} °C (sens {_sens:.2f} j/°C)")
-    else:
-        print(f"[etl] champ freshet ignoré ({len(_cf)} vs {n_nodes} nœuds, sens={_sens})")
 # krec LIBRE veut dire krec APPRIS PAR LE CHAMP, donc ancre comme les autres sorties
 # (Essi, 2026-08-22 : « krec devrait etre dans le nerf »). Sans ancrage il n'a que le
 # debit pour juge, et le debit seul le pousse a zero (R11). Le prior tient la MOYENNE du
@@ -1006,90 +887,40 @@ if "ETL_MELT_DIR" in os.environ:
 # physique reçoit 0 % de forêt, 0 % d'eau libre, 0 % d'imperméable et 0 % de milieu
 # humide : tout le Québec en classe DÉCOUVERT (la plus fondante), fse=fsi=0, et une
 # phénologie unique. Mesuré sur OUTV à intrants identiques et paramètres figés :
-# r réseau 0.526 -> 0.896, KGE aux jauges 0.482 -> 0.749. ETL_OCCUPATION=0 pour l'ancien
-# comportement (comparaisons historiques).
-if os.environ.get("ETL_OCCUPATION", "1") == "1":
-    _plat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
-    _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
-    try:
-        from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
-                                                 load_phenologie)
-        if DOMAINE:
-            _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
-            _lc = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k not in _WET}
-            _mh = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k in _WET}
-        else:
-            _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
-            _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
-        # ETL_SANS_MH=1 : DIAGNOSTIC seulement. Le couplage du milieu humide au troncon
-        # est desequilibre (2026-08-20) : la colonne retire prod x wet_fr de la
-        # production mais le reservoir ne recoit que prod x (wet_fr - wetsa/hru), et il
-        # se voit crediter en echange la precipitation directe sur sa propre surface,
-        # eau que le sol a deja traitee. La difference (apport - prod) x wetsa/hru est
-        # creee ou detruite. Le reservoir lui-meme conserve EXACTEMENT sa masse (teste
-        # sur 4 regimes) : c'est le couplage, porte fidelement de bv3c2.cpp, qui ne
-        # ferme pas. Cet interrupteur mesure sa contribution a l'erreur de bilan.
-        # Couplage conservatif par DEFAUT depuis le 2026-08-20. ETL_MH_FIDELE=1
-        # restitue la formulation d'Hydrotel, qui perd 1.38 % de la precipitation, pour
-        # les comparaisons module par module avec le binaire C++.
-        if os.environ.get("ETL_MH_FIDELE", "0") == "1":
-            model.vertical_column.mh_conservatif = False
-            print("[etl] milieu humide FIDELE a Hydrotel (perd 1.38 % de la precipitation)")
-        if os.environ.get("ETL_SANS_MH", "0") == "1":
-            _mh = {}
-            print("[etl] MILIEUX HUMIDES DESACTIVES (diagnostic de bilan)")
-        _lc.update(_mh)
-        model.vertical_column.set_land_cover(_lc)
-        # En domaine, le calendrier du premier projet : ceux des projets ne different que d'un jour.
-        _ph = r["phenology"] if DOMAINE else load_phenologie(_pl)
-        model.vertical_column.set_phenology(_ph or None)
-        if _ph:
-            print(f"[etl] phénologie du projet : {len(_ph)} classes "
-                  f"(racines conifères {_ph['conifers'][2][0]:.2f} m, codé en dur 1.00)")
-        if _mh:
-            _wa = _mh["wet_a_raw"]
-            print(f"[etl] milieux humides isolés : {int((_wa > 0).sum())} tronçons | "
-                  f"aire méd {float(_wa[_wa > 0].median()):.2f} km² (module jamais actif avant le 10 août)")
-        print(f"[etl] occupation PHYSITEL : forêt {float(_lc['f_forest_raw'].mean()):.3f} "
-              f"(conif {float(_lc['f_forest_conifer_raw'].mean()):.3f}) | "
-              f"eau {float(_lc['f_water_raw'].mean()):.3f} | "
-              f"imperméable {float(_lc['f_urban_raw'].mean()):.3f} | "
-              f"humide {float(_lc['f_wetland_raw'].mean()):.3f}")
-    except Exception as _e:
-        print(f"[etl] AVERTISSEMENT occupation du sol NON chargée ({type(_e).__name__}: {_e}) "
-              f"-> la physique verra 0 % de forêt et 0 % d'eau")
-
-# CÉLÉRITÉ : le K_musk appris collapse à 24h/tronçon (init) -> retard cumulé 6j du pic
-# (diag GASP). Facteur d'échelle sur K_musk_hours (célérité de base plus rapide), en
-# gardant le routage opérateur rapide (contrairement à dq_celerity qui le casse).
-_kms = float(os.environ.get("ETL_KMUSK_SCALE", "1"))
-if _kms != 1.0:
-    _orig_fwd = model.spatial_encoder.forward
-    def _fwd_kscale(*a, _o=_orig_fwd, _s=_kms, **k):
-        sp = _o(*a, **k)
-        sp.K_musk_hours = torch.clamp(sp.K_musk_hours * _s, min=1.0, max=48.0)
-        return sp
-    model.spatial_encoder.forward = _fwd_kscale
-    print(f"[etl] K_musk × {_kms} (célérité accélérée, routage opérateur préservé)")
-if os.environ.get("ETL_LAKE_ANCHOR", "0") == "1":
-    # ANCRAGE D'EXUTOIRE : k_lake ancré sur k0*(A_ref/A), la tête module autour.
-    # Mesuré le 5 août : imposé en inférence, ce prior rapporte +0.026 sur OUTV ; la même
-    # tête laissée LIBRE apprend une direction opposée qui ne transfère pas (+0.002).
-    import pandas as _pdl
-    _rw = _pdl.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
-    _rw = _rw[_rw.region == REG]
-    _A = r["territorial"].get_physical("area_km2_local").cpu().numpy()
-    if len(_rw) == n_nodes:
-        _Alac = _A * _rw["lake_fraction"].values.clip(0, 1)
-        model.spatial_encoder.set_lake_anchor(
-            torch.tensor(_Alac, dtype=torch.float32),
-            a_ref_km2=float(os.environ.get("ETL_LAKE_AREF", "20")),
-            alpha=float(os.environ.get("ETL_LAKE_ALPHA", "1.0")))
-        _anc = model.spatial_encoder._lake_k_anchor
-        print(f"[etl] ancrage d'exutoire : k0*(A_ref/A) | ancre méd {float(_anc.median()):.2e} "
-              f"| q10-q90 {float(_anc.quantile(0.1)):.2e}-{float(_anc.quantile(0.9)):.2e}")
+# r réseau 0.526 -> 0.896, KGE aux jauges 0.482 -> 0.749.
+_plat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
+_pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
+try:
+    from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+                                             load_phenologie)
+    if DOMAINE:
+        _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
+        _lc = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k not in _WET}
+        _mh = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k in _WET}
     else:
-        print(f"[etl] ancrage d'exutoire ignoré ({len(_rw)} vs {n_nodes} nœuds)")
+        _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
+        _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
+    _lc.update(_mh)
+    model.vertical_column.set_land_cover(_lc)
+    # En domaine, le calendrier du premier projet : ceux des projets ne different que d'un jour.
+    _ph = r["phenology"] if DOMAINE else load_phenologie(_pl)
+    model.vertical_column.set_phenology(_ph or None)
+    if _ph:
+        print(f"[etl] phénologie du projet : {len(_ph)} classes "
+              f"(racines conifères {_ph['conifers'][2][0]:.2f} m, codé en dur 1.00)")
+    if _mh:
+        _wa = _mh["wet_a_raw"]
+        print(f"[etl] milieux humides isolés : {int((_wa > 0).sum())} tronçons | "
+              f"aire méd {float(_wa[_wa > 0].median()):.2f} km² (module jamais actif avant le 10 août)")
+    print(f"[etl] occupation PHYSITEL : forêt {float(_lc['f_forest_raw'].mean()):.3f} "
+          f"(conif {float(_lc['f_forest_conifer_raw'].mean()):.3f}) | "
+          f"eau {float(_lc['f_water_raw'].mean()):.3f} | "
+          f"imperméable {float(_lc['f_urban_raw'].mean()):.3f} | "
+          f"humide {float(_lc['f_wetland_raw'].mean()):.3f}")
+except Exception as _e:
+    print(f"[etl] AVERTISSEMENT occupation du sol NON chargée ({type(_e).__name__}: {_e}) "
+          f"-> la physique verra 0 % de forêt et 0 % d'eau")
+
 
 # ANCRAGE GEOMETRIQUE DU ROUTAGE (opt-in, 2026-09-14). Mesure du jour : le temps de
 # transfert appris vaut 23,96 h avec un ecart-type de 0,3 h sur 2 212 troncons du Saguenay
@@ -1176,9 +1007,7 @@ if os.environ.get("ETL_ROUTAGE_ANCRE", "0") == "1":
                 print(f"[etl] pente de versant ignorée ({len(_rwa)} vs {n_nodes} nœuds)")
         except Exception as _e3:
             print(f"[etl] pente de versant indisponible : {type(_e3).__name__}: {_e3}")
-        model.spatial_encoder.set_routing_anchor(
-            _lg, slope_frac=_pente,
-            celerite_ms=float(os.environ.get("ETL_CELERITE", "1.0")))
+        model.spatial_encoder.set_routing_anchor(_lg, slope_frac=_pente)
         _ka = model.spatial_encoder._k_musk_anchor
         _fi = _ka[torch.isfinite(_ka)]
         print(f"[etl] ancrage du routage : K = L/c | source {_src} | "
@@ -1188,18 +1017,17 @@ if os.environ.get("ETL_ROUTAGE_ANCRE", "0") == "1":
         print(f"[etl] ancrage du routage : ancre méd {float(_fi.median()):.2f} h "
               f"| q10-q90 {float(_fi.quantile(0.1)):.2f}-{float(_fi.quantile(0.9)):.2f} h "
               f"| longueur de rivière méd {_med:.1f} km")
-if os.environ.get("ETL_LAKE_AREA", "1") == "1":
-    # ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
-    # DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
-    # tenu de côté, gain survivant au réentraînement. Désactivable par ETL_LAKE_AREA=0.
-    # La pièce vit dans recette.py pour que les DIAGNOSTICS l'appliquent aussi : ils ne
-    # le faisaient pas, et le champion y ressortait à 0.7591 au lieu de 0.7880.
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from recipe import set_lake_area_from_hydrolakes
-    if not DOMAINE:
-        set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
-        _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
-        print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
+# ASSEMBLAGE (promu par défaut le 2026-08-09) : le module de lac recevait l'aire de
+# DRAINAGE au lieu de la surface d'eau libre (facteur 66 sur outv). Mesuré +0.015 en
+# tenu de côté, gain survivant au réentraînement. Désactivable par ETL_LAKE_AREA=0.
+# La pièce vit dans recette.py pour que les DIAGNOSTICS l'appliquent aussi : ils ne
+# le faisaient pas, et le champion y ressortait à 0.7591 au lieu de 0.7880.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from recipe import set_lake_area_from_hydrolakes
+if not DOMAINE:
+    set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
+    _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
+    print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
 # BORNES DE CONDUCTIVITE PAR TRONCON (2026-10-08, R349) : `[field.texture_bounds]` du TOML,
 # conductivite de texture SIIGSOL (repli PHYSITEL) par couche, bornes a `factor` autour ; le
 # champ ne peut plus apprendre les conductivites a l'envers de la pedologie. ETL_TEXTURE_BOUNDS
@@ -1231,10 +1059,8 @@ if _tb.get("enabled", False):
 # La valeur de matrice de Saxton et Rawls depasse la conductivite effective de deux a trois
 # ordres de grandeur, d'ou le rapport unique. Passes avant du 9 octobre : la perte prefere
 # 0,5 mm/j en Monteregie (texture 0,69 m/j) et 2 mm/j en Outaouais (1,95 m/j).
-# ETL_PLAFOND_TEXTURE (rapport, 0 pour eteindre) surcharge le TOML.
+# Le rapport se declare dans [soil.ceiling_from_texture] ; absent ou 0, pas de plafond.
 _ct = dict((cfg.get("soil") or {}).get("ceiling_from_texture") or {})
-if os.environ.get("ETL_PLAFOND_TEXTURE"):
-    _ct["ratio"] = float(os.environ["ETL_PLAFOND_TEXTURE"])
 if float(_ct.get("ratio", 0) or 0) > 0 and getattr(model.vertical_column, "soil_profile", None) is not None:
     from dataclasses import replace as _rempl
     from meandre.data.texture_bounds import texture_conductivity as _tcond2
@@ -1279,101 +1105,65 @@ if _cd and os.environ.get("ETL_PLAFOND_DRAINAGE", "1") != "0" and getattr(model.
                   f"{int(np.isfinite(_dr).sum())}/{n_nodes} troncons avec classe, les autres au plafond declare {_decl * 24000:.2f} mm/j")
         _procs.append(_pr)
     model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs))
-if os.environ.get("ETL_PEDO", "0") == "1":
-    # STRUCTURE PEDOTRANSFERT (Saxton & Rawls 2006) appliquee aux 12 parametres de sol.
-    # On n'importe QUE le motif spatial, normalise a mediane 1 : le NIVEAU du modele a ete
-    # mesure (recalage K_sat_1 = 0.04) et la conductivite de Saxton-Rawls est une valeur de
-    # matrice au point, 40-80x au-dessus de la conductivite effective journaliere.
-    # Mesure du 6 aout en inference : a mi-intensite, outv +0.065, gasp +0.006, sagu -0.038,
-    # mont -0.079 -> ce n'est pas une amelioration universelle mais un RATTRAPAGE, utile la
-    # ou le reseau a mal appris sa structure spatiale. ETL_PEDO_F regle l'intensite.
-    import pandas as _pdp
-    from meandre.data.pedotransfert import saxton_rawls as _sr
-    _rwp = _pdp.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
-    _rwp = _rwp[_rwp.region == REG]
-    if len(_rwp) == n_nodes:
-        _f = float(os.environ.get("ETL_PEDO_F", "0.5"))
-        _p = _sr(_rwp.f_sand.values, _rwp.f_clay.values)
-        _mot = {}
-        for _b, _k in [("K_sat", "k_sat"), ("porosity", "theta_s"),
-                       ("theta_fc", "theta_fc"), ("theta_wp", "theta_wp")]:
-            _v = _p[_k] / float(np.median(_p[_k]))
-            _mot[_b] = torch.tensor(1.0 + _f * (_v - 1.0), dtype=torch.float32, device=DEVICE)
-        _o_pd = model.spatial_encoder.forward
-        def _fwd_pedo(*a, _o=_o_pd, _m=_mot, **k):
-            sp = _o(*a, **k)
-            for _b, _fac in _m.items():
-                for _i in (1, 2, 3):
-                    _nm = f"{_b}_{_i}"
-                    if hasattr(sp, _nm):
-                        setattr(sp, _nm, getattr(sp, _nm) * _fac)
-            return sp
-        model.spatial_encoder.forward = _fwd_pedo
-        print(f"[etl] structure pedotransfert appliquee (intensite {_f}) : "
-              f"K_sat q10-q90 {float(_mot['K_sat'].quantile(.1)):.2f}-{float(_mot['K_sat'].quantile(.9)):.2f}")
-    else:
-        print(f"[etl] pedotransfert ignoree ({len(_rwp)} vs {n_nodes} noeuds)")
 # ASSEMBLAGE (promu par défaut le 2026-08-09) : Hydrotel étale la production au VERSANT
 # par son hydrogramme géomorphologique (<=10 j) avant le canal ; méandre livrait tout le
 # jour même. Mesuré : r réseau contre Hydrotel 0.335 -> 0.470, +0.027 aux jauges en
 # inférence pure. Désactivable par ETL_HGM=0.
-if os.environ.get("ETL_HGM", "1") == "1":
-    # NOYAU DE VERSANT D'HYDROTEL (cache .hgm du projet) : etale la production laterale
-    # comme le C++ (convolution <=10 j, onde cinematique pixel par pixel precalculee).
-    # Sans lui, l'eau du jour J arrive au troncon le jour J et les tetes de bassin
-    # decorrelaient d'Hydrotel (r 0.27-0.31 quotidien). En inference sur le champion :
-    # +0.027 aux jauges. Ici : ACTIF PENDANT L'ENTRAINEMENT, pour que le reseau
-    # n'apprenne plus a compenser l'etalement manquant.
-    from meandre.data.hgm_loader import lire_hgm
-    _projh = _PROJ_M
-    if DOMAINE:
-        _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
-        _L = max(k.shape[1] for k in _Ks)
-        _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
-    else:
-        _K = lire_hgm(_projh, r["node_ids"])
-    model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
-    import numpy as _nph
-    print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={_K.shape[1]}")
+# NOYAU DE VERSANT D'HYDROTEL (cache .hgm du projet) : etale la production laterale
+# comme le C++ (convolution <=10 j, onde cinematique pixel par pixel precalculee).
+# Sans lui, l'eau du jour J arrive au troncon le jour J et les tetes de bassin
+# decorrelaient d'Hydrotel (r 0.27-0.31 quotidien). En inference sur le champion :
+# +0.027 aux jauges. Ici : ACTIF PENDANT L'ENTRAINEMENT, pour que le reseau
+# n'apprenne plus a compenser l'etalement manquant.
+from meandre.data.hgm_loader import lire_hgm
+_projh = _PROJ_M
+if DOMAINE:
+    _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
+    _L = max(k.shape[1] for k in _Ks)
+    _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
+else:
+    _K = lire_hgm(_projh, r["node_ids"])
+model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
+import numpy as _nph
+print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={_K.shape[1]}")
 # ASSEMBLAGE (promu par défaut le 2026-08-09) : loi de tarage Q = c·h^k calibrée du
 # troncon.trl, que le lecteur PHYSITEL jetait. Fidélité des tronçons-lacs 0.202 -> 0.669.
 # Désactivable par ETL_LAKE_TRL=0.
-if os.environ.get("ETL_LAKE_TRL", "1") == "1":
-    # LACS D'HYDROTEL depuis troncon.trl : surface d'eau + loi de tarage calibree
-    # Q = c*h^k (le parseur historique JETAIT c et k et lisait la surface comme une
-    # largeur). k_lake = c/A, beta = k. Impose HORS gradient (surcharge de lake_params).
-    from pathlib import Path as _Pl
-    import numpy as _npl
-    _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
-    for _nom, _ids, _o, _n in _territoires():
-        _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{_nom.upper()}_LN24HA_2020/physitel/troncon.trl")
-        _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
-        _dl = {}
-        for _l in _lgn[3:]:
-            _t = _l.split()
-            if int(_t[1]) != 1:
-                _ptr = 4 + int(_t[3])
-                # BLOC LAC = (surface en m2, profondeur moyenne en m, coefficient c, exposant k),
-                # la lecture etablie par R60 (physitel_loader.py) ; surface rendue en km2.
-                _dl[int(_t[0])] = (float(_t[_ptr]) / 1e6, float(_t[_ptr+2]), float(_t[_ptr+3]))
-        _idxl = {int(i): _o + j for j, i in enumerate(_ids)}
-        for _tid, (_s2, _c2, _k2) in _dl.items():
-            if _tid in _idxl:
-                _surf[_idxl[_tid]], _c[_idxl[_tid]], _k[_idxl[_tid]] = _s2, _c2, _k2
-    _lacb = td.graph.is_lake.bool().cpu().numpy()
-    _cv = _npl.isfinite(_surf) & _lacb & (_surf > 0)
-    _cvt = torch.tensor(_cv, device=DEVICE)
-    _ktl = torch.tensor(_npl.nan_to_num(_npl.where(_cv, _c / _npl.clip(_surf*1e6, 1, None), _npl.nan), nan=1e-4),
-                        dtype=torch.float32, device=DEVICE)
-    _btl = torch.tensor(_npl.nan_to_num(_k, nan=1.5), dtype=torch.float32, device=DEVICE)
-    _olp = model.spatial_encoder.lake_params
-    def _lp_trl(*a, _o=_olp, **kw):
-        kk3, bb3 = _o(*a, **kw)
-        return torch.where(_cvt, _ktl, kk3), torch.where(_cvt, _btl, bb3)
-    model.spatial_encoder.lake_params = _lp_trl
-    model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
-    print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lacb.sum())} | "
-          f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
+# LACS D'HYDROTEL depuis troncon.trl : surface d'eau + loi de tarage calibree
+# Q = c*h^k (le parseur historique JETAIT c et k et lisait la surface comme une
+# largeur). k_lake = c/A, beta = k. Impose HORS gradient (surcharge de lake_params).
+from pathlib import Path as _Pl
+import numpy as _npl
+_surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
+for _nom, _ids, _o, _n in _territoires():
+    _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{_nom.upper()}_LN24HA_2020/physitel/troncon.trl")
+    _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
+    _dl = {}
+    for _l in _lgn[3:]:
+        _t = _l.split()
+        if int(_t[1]) != 1:
+            _ptr = 4 + int(_t[3])
+            # BLOC LAC = (surface en m2, profondeur moyenne en m, coefficient c, exposant k),
+            # la lecture etablie par R60 (physitel_loader.py) ; surface rendue en km2.
+            _dl[int(_t[0])] = (float(_t[_ptr]) / 1e6, float(_t[_ptr+2]), float(_t[_ptr+3]))
+    _idxl = {int(i): _o + j for j, i in enumerate(_ids)}
+    for _tid, (_s2, _c2, _k2) in _dl.items():
+        if _tid in _idxl:
+            _surf[_idxl[_tid]], _c[_idxl[_tid]], _k[_idxl[_tid]] = _s2, _c2, _k2
+_lacb = td.graph.is_lake.bool().cpu().numpy()
+_cv = _npl.isfinite(_surf) & _lacb & (_surf > 0)
+_cvt = torch.tensor(_cv, device=DEVICE)
+_ktl = torch.tensor(_npl.nan_to_num(_npl.where(_cv, _c / _npl.clip(_surf*1e6, 1, None), _npl.nan), nan=1e-4),
+                    dtype=torch.float32, device=DEVICE)
+_btl = torch.tensor(_npl.nan_to_num(_k, nan=1.5), dtype=torch.float32, device=DEVICE)
+_olp = model.spatial_encoder.lake_params
+def _lp_trl(*a, _o=_olp, **kw):
+    kk3, bb3 = _o(*a, **kw)
+    return torch.where(_cvt, _ktl, kk3), torch.where(_cvt, _btl, bb3)
+model.spatial_encoder.lake_params = _lp_trl
+model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
+print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lacb.sum())} | "
+      f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
 if _settings.raw("evaporation.open_water", "0") == "1":
     # EVAPORATION DE L'EAU LIBRE PAR TEMPS SEC (2026-10-04, registre R285) : la colonne
     # n'evapore l'eau libre qu'a hauteur de la pluie du jour. Fraction d'eau libre de
@@ -1399,32 +1189,11 @@ if os.environ.get("ETL_ROUTAGE_TETE") == "1":
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
-if os.environ.get("ETL_SANS_POSITION"):
-    # Sorties du champ recalculees sans position (R303), diagnostic en passe avant.
-    model.spatial_encoder.sans_position_pour = [x for x in os.environ["ETL_SANS_POSITION"].split(",") if x]
-    print(f"[etl] champ spatial : sans position pour {model.spatial_encoder.sans_position_pour}")
 if os.environ.get("ETL_MULT_FIXE"):
     # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
     model.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=DEVICE) for a in os.environ["ETL_MULT_FIXE"].split(",")}
     print(f"[etl] champ spatial : multiplicateurs fixes {os.environ['ETL_MULT_FIXE']}")
-if os.environ.get("ETL_CAPACITE", "0") == "1":
-    # TEST DE CAPACITÉ (question d'Essi, 3 août) : « si les paramètres ne s'ajustent pas
-    # à la météo, il y a un problème ». On mesure le PLAFOND du modèle, pas sa
-    # généralisation : tout est gelé sauf les codes latents additifs, qui sont un décalage
-    # LIBRE par nœud sur les 37 paramètres, et la régularisation est coupée. C'est du
-    # surajustement volontaire sur la période d'entraînement. Si le KGE d'ENTRAÎNEMENT
-    # plafonne malgré cette liberté totale, la limite est dans la donnée ou la structure,
-    # pas dans l'optimisation ni dans le réseau spatial.
-    if not getattr(model.spatial_encoder, "use_latent_codes", False):
-        raise SystemExit("[etl] ETL_CAPACITE exige use_latent_codes=true (mode additif)")
-    _libre = []
-    for _n, _p in model.named_parameters():
-        _p.requires_grad = ("latent_codes" in _n)
-        if _p.requires_grad:
-            _libre.append((_n, _p.numel()))
-    print(f"[etl] CAPACITÉ : {sum(k for _, k in _libre):,} params libres ({[n for n, _ in _libre]}), "
-          f"tout le reste GELÉ, régularisation latente coupée")
 # CE QUI EST IMPRIME DOIT ETRE CE QUI TOURNE. La ligne annoncait `etp_channel=6
 # (demande apprise)` EN DUR, donc y compris sous ETL_ETP=linacre|mcguinness qui posent
 # `etp_channel = None` : tous les journaux du chantier quebecois affirmaient que la
@@ -1435,7 +1204,7 @@ print(f"[etl] modèle {sum(p.numel() for p in model.parameters()):,} params | "
       + (f"etp_channel={_ch} (demande apprise × K_c NeRF)" if _ch is not None
          else f"ETP = {model.vertical_column.et_mode} (demande apprise CHARGEE MAIS IGNOREE)"))
 
-_lake_lr = float(os.environ.get("ETL_LAKE_LR", "50"))
+_lake_lr = float(tcfg.get("lake_lr_mult", 50.0))
 # ── VALIDATION CROISÉE SPATIALE (ETL_FOLD="k/K") ────────────────────────────
 # Retire les jauges du pli k de l'ENTRAÎNEMENT (leur q_obs passe à NaN, donc elles ne
 # pèsent ni dans la perte ni dans la validation) et rapporte le tenu de côté SUR ELLES.
@@ -1481,8 +1250,8 @@ tconf = TrainingConfig(
     # insatisfaisable, et qui avait fait tomber le modele de 0,52 a 0,34 a la mesure du
     # 2026-08-26.
     tws_shape_only=os.environ.get("ETL_TWS_FORME", str(int(tcfg.get("tws_shape_only", 0)))) == "1",
-    w_prior=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_prior", 0.005)),
-    w_latent_reg=0.0 if os.environ.get("ETL_CAPACITE", "0") == "1" else float(tcfg.get("w_latent_reg", 1e-3)),
+    w_prior=float(tcfg.get("w_prior", 0.005)),
+    w_latent_reg=float(tcfg.get("w_latent_reg", 1e-3)),
     # Choix du point de reprise (2026-10-01) : par la perte de debit sur la validation des que
     # l'etiage est dans la perte ; avec le KGE seul, l'etiage ne comptait pas dans le modele
     # retenu. ETL_CHOIX force kge_median ou val_loss.

@@ -113,7 +113,7 @@ w_physics = 0.01
 w_residual = 0.01
 
 [literature_prior]
-K_c = 0.6     # coefficient cultural initial
+K_c = 1.0     # coefficient cultural initial, autour de la demande apprise
 
 [field.texture_bounds]
 enabled = true

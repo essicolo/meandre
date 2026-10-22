@@ -200,10 +200,6 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     # plus tot alors qu'il lit deja moins de neige que le reseau au sol, 0,77 en mars sur
     # OUTV. Filtres de representativite dans build_swe_targets.
     swe_mass_obs = swe_mass_node = None
-    # Le poids demande est retenu AVANT la branche du reseau au sol, qui l'eteint quand
-    # aucun site ne passe les filtres. Sans cela, poser NEISIM sur un territoire sans site,
-    # ce qui est precisement l'interet de NEISIM, chargeait une cible de poids nul.
-    _w_swe_demande = float(lcfg.get("w_swe_mass", 0.0))
     if lcfg.get("w_swe_mass", 0.0) > 0 and cache.has_canswe():
         from meandre.data.canswe_loader import build_swe_targets
         _mes, _sit = cache.load_canswe(DATE_START, DATE_END)
@@ -222,36 +218,6 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
             swe_mass_node = swe_mass_node.to(device)
             _n = int(torch.isfinite(swe_mass_obs).sum())
             print(f"[canswe] {reg}: {len(_gard)}/{len(_sit)} sites retenus, {_n} releves de masse")
-    # NEISIM EN EXTENSION DU RESEAU AU SOL (2026-09-21). Le reseau compte 76 sites en
-    # Outaouais et AUCUN au Saint-Laurent sud-ouest : la ou il se tait, rien ne contraint la
-    # masse du manteau. NEISIM est un MODELE, pas une mesure, et la condition prealable a ete
-    # mesuree avant de l'employer : sur 246 sites du reseau et 111 532 couples journaliers,
-    # rapport median 0,98, correlation mediane 0,87, erreur absolue moyenne 33 mm pour une
-    # moyenne observee de 112 mm. Il entre par la MEME cible que le reseau, sans poids
-    # nouveau, et la SOURCE est dite a voix haute dans le journal.
-    _src = os.environ.get("ETL_SWE_SOURCE", "canswe").lower()
-    if _src in ("neisim", "les-deux") and lcfg.get("w_swe_mass", 0.0) >= 0:
-        _f = f"{_mpaths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
-        if not os.path.exists(_f):
-            raise FileNotFoundError(f"cible NEISIM absente : {_f} "
-                                    "(construire avec .runs/quebec/build_neisim_targets.py)")
-        _z = np.load(_f)
-        _v = torch.tensor(_z["valeurs"], dtype=torch.float32, device=device)
-        _n_idx = torch.tensor(_z["node_idx"], dtype=torch.long, device=device)
-        assert _v.shape[0] == len(times), f"{reg}: axe de temps NEISIM {_v.shape[0]} vs {len(times)}"
-        if _src == "neisim" or swe_mass_obs is None:
-            swe_mass_obs, swe_mass_node = _v, _n_idx
-        else:
-            swe_mass_obs = torch.cat([swe_mass_obs, _v], dim=1)
-            swe_mass_node = torch.cat([swe_mass_node, _n_idx])
-        if lcfg.get("w_swe_mass", 0.0) <= 0 < _w_swe_demande:
-            lcfg["w_swe_mass"] = _w_swe_demande
-            print(f"[neisim] {reg}: aucun site au sol, le poids demande {_w_swe_demande} "
-                  "est rendu a la cible NEISIM")
-        elif _w_swe_demande <= 0:
-            print(f"[neisim] {reg}: cible chargee mais w_swe_mass vaut 0, elle n'agit pas")
-        print(f"[neisim] {reg}: source {_src}, {swe_mass_obs.shape[1]} series, "
-              f"{int(torch.isfinite(swe_mass_obs).sum())} valeurs")
     # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03, registre R278 a R281). ETL_ET_NEIGE_MM = tau
     # en mm d'equivalent en eau : w = exp(-SWE_NEISIM / tau) par noeud et par jour, sur l'axe
     # du forcage ; noeuds sans serie NEISIM a poids 1. En mode centre, l'ecart de printemps
@@ -329,7 +295,6 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         w_gamma=lcfg.get("w_gamma", 0.0), w_peak_ratio=lcfg.get("w_peak_ratio", 0.0),
         w_recession=lcfg.get("w_recession", 0.0),
         w_plat=lcfg.get("w_plat", 0.0),
-        plat_mois=tuple(int(x) for x in os.environ.get("ETL_PLAT_MOIS", "12,1,2,3").split(",")),
         w_physics=lcfg.get("w_physics", 0.0), w_residual=lcfg.get("w_residual", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
         peak_threshold=(peak_thr if (lcfg.get("w_peak", 0.0) > 0
