@@ -206,7 +206,7 @@ if "ETL_WET" in os.environ:
 
 if DOMAINE:
     from domain_data import load_domain
-    r = load_domain(REGS, lcfg, device=DEVICE)
+    r = load_domain(REGS, lcfg, device=DEVICE, schema_names=TERRITOIRES)
 else:
     r = load_region(REG, lcfg, device=DEVICE)
 td, vd = r["train_data"], r["val_data"]
@@ -806,8 +806,8 @@ if _tb.get("enabled", False):
     # Domaine (2026-10-16) : textures lues territoire par territoire, dans l'ordre du domaine.
     _tx = {f"K_sat_{_i}": np.full(n_nodes, np.nan) for _i in (1, 2, 3)}
     _tx["source"] = np.array(["aucune"] * n_nodes, dtype=object)
-    for _nom_t, _, _o_t, _n_t in _territoires():
-        _t1 = _tcond(_paths.data_path("quebec", f"{_nom_t}.duckdb"), _n_t, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", _nom_t)
+    for _nom_t, _ids_t, _o_t, _n_t in _territoires():
+        _t1 = _tcond(_paths.data_path("quebec", f"{_nom_t}.duckdb"), _n_t, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", _nom_t, node_ids=_ids_t)
         for _k1, _v1 in _t1.items():
             _tx[_k1][_o_t:_o_t + _n_t] = _v1
     _fac = float(_tb.get("factor", 3.0))

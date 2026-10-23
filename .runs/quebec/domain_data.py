@@ -104,7 +104,10 @@ def _memmap_forcing(parts, names, device):
     # le forcage differant de 70 % de son echelle entre les deux chargements. Trois
     # jours de diagnostic sont partis la-dedans.
     _sfx = _settings.raw("forcing.suffix", "-defaut") or "-defaut"
-    cle = "-".join(names) + _sfx + f"_{T}x{N}x{C}"
+    # Un sous-bassin (ETL_SUBBASIN) entre aussi dans la cle : deux sous-bassins de meme
+    # taille partageraient sinon le meme fichier.
+    _sb = os.environ.get("ETL_SUBBASIN", "").replace(":", "-")
+    cle = "-".join(names) + (f"-sb{_sb}" if _sb else "") + _sfx + f"_{T}x{N}x{C}"
     if len(cle) > 120:                      # noms de fichiers Windows
         import hashlib
         cle = f"dom{len(names)}_{T}x{N}x{C}_{hashlib.md5(cle.encode()).hexdigest()[:8]}"
@@ -199,8 +202,14 @@ def _compress(dense: torch.Tensor):
     return nz.cpu(), dense[:, nz].cpu()
 
 
-def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
+def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names: list[str] | None = None):
     """Charge les plateformes et les fond en un domaine unique.
+
+    `schema_names` : territoires dont les champs physiques communs definissent le schema du
+    domaine, meme s'ils ne sont pas charges. Sans lui, le schema dependait des territoires
+    charges : un troncon de LABI recevait ses neuf champs de milieu humide charge seul, et
+    les perdait fondu avec un territoire qui ne les porte pas, comme dans le modele
+    provincial (2026-10-23).
 
     Retourne le meme contrat qu'une region de `joint_data.load_region`, plus la table
     des tranches par plateforme (`slices`) dont l'evaluation a besoin.
@@ -258,6 +267,8 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
     for p in parts[1:]:
         phys_keys &= set(p["territorial"].physical)
         union |= set(p["territorial"].physical)
+    if schema_names:
+        phys_keys &= _common_physical(schema_names)
     perdus = sorted(union - phys_keys)
     if perdus:
         _qui = [p["name"] for p in parts if set(p["territorial"].physical) - phys_keys]
@@ -465,7 +476,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
         _cf = _pd.read_parquet(f"{_mpaths_root()}/quebec/champ_kgw_QC.parquet")
         vals = []
         for p, sz in zip(parts, sizes):
-            sub = _cf[_cf.region == p["name"]].sort_values("node_idx")
+            sub = _cf[_cf.region == p["name"]].sort_values("node_idx").iloc[p["node_index"]]
             if len(sub) != sz:
                 raise ValueError(f"{p['name']} : {len(sub)} noeuds dans le champ k_gw "
                                  f"pour {sz} attendus")
@@ -512,7 +523,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
         _raw = _pd2.read_parquet(f"{_mpaths_root()}/quebec/territorial-raw-QC.parquet")
         _ag = []
         for p, sz in zip(parts, sizes):
-            sub = _raw[_raw.region == p["name"]]
+            sub = _raw[_raw.region == p["name"]].iloc[p["node_index"]]
             if len(sub) != sz:
                 raise ValueError(f"{p['name']} : {len(sub)} lignes pour {sz} noeuds")
             _ag.append(torch.tensor(sub["f_agriculture"].to_numpy(), dtype=torch.float32))
@@ -537,6 +548,22 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda"):
                 # projet PHYSITEL (lacs, noyau de versant, tables par troncon).
                 parts_meta=[(p["name"], p["node_ids"], int(o), int(sz))
                             for p, o, sz in zip(parts, offs[:-1], sizes)])
+
+
+def _common_physical(names: list[str]) -> set:
+    """Colonnes physiques communes aux bases des territoires nommes, lues sans les charger."""
+    import duckdb
+    from meandre.data.basin_cache import DEFAULT_PHYSICAL_COLUMNS
+    common = None
+    for n in names:
+        con = duckdb.connect(f"{_mpaths_root()}/quebec/{n}.duckdb", read_only=True)
+        try:
+            cols = {c[0] for c in con.execute("describe territorial").fetchall()}
+        finally:
+            con.close()
+        phys = {c for c in cols if c in DEFAULT_PHYSICAL_COLUMNS or c.endswith("_raw")}
+        common = phys if common is None else common & phys
+    return common or set()
 
 
 def _mpaths_root():

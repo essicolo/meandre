@@ -31,15 +31,31 @@ def _parts_siigsol(con, bandes):
     return df.node_idx.to_numpy(), parts
 
 
-def texture_conductivity(basin_db: str, n_nodes: int, raw_parquet: str | None = None, region: str | None = None) -> dict:
+def texture_conductivity(basin_db: str, n_nodes: int, raw_parquet: str | None = None, region: str | None = None, node_ids=None) -> dict:
     """Conductivite de texture (m/j) par couche et par noeud, et la source de chaque noeud.
 
     Retourne {"K_sat_1": ks, "K_sat_2": ks, "K_sat_3": ks, "source": tableau de "siigsol" |
     "physitel" | "aucune"}. Un noeud sans aucune texture garde NaN : l'appelant lui laisse les
     bornes uniques.
+
+    `node_ids` (identifiants des troncons voulus, dans l'ordre de l'appelant) sert quand on
+    ne prend qu'une partie du territoire, par exemple un sous-bassin : le calcul se fait sur
+    tout le territoire, puis les troncons sont retrouves par leur identifiant. Sans lui, les
+    `n_nodes` premiers troncons de la base sont pris dans l'ordre (2026-10-23 : un
+    sous-bassin recevait en silence les textures des premiers troncons du territoire).
     """
     import duckdb
     import pandas as pd
+    if node_ids is not None:
+        con = duckdb.connect(basin_db, read_only=True)
+        try:
+            table = con.execute("select node_idx, node_id from nodes order by node_idx").fetchall()
+        finally:
+            con.close()
+        rang = {int(nid): int(ni) for ni, nid in table}
+        pos = np.array([rang[int(v)] for v in node_ids], dtype=np.int64)
+        full = texture_conductivity(basin_db, len(table), raw_parquet, region)
+        return {k: v[pos] for k, v in full.items()}
     out = {f"K_sat_{i}": np.full(n_nodes, np.nan) for i in (1, 2, 3)}
     source = np.array(["aucune"] * n_nodes, dtype=object)
     con = duckdb.connect(basin_db, read_only=True)

@@ -39,6 +39,7 @@ def _territorial_global(reg, fallback, device):
     except Exception:
         return fallback
 from meandre.routing.withdrawals import WithdrawalData
+import subbasin as _subbasin
 from meandre.training.trainer import TrainingData
 from meandre.training.loss import HydroLoss
 from meandre.utils import settings as _settings
@@ -217,6 +218,46 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         tws_obs = tws
     con.close()
 
+    # SOUS-BASSIN (2026-10-23) : ETL_SUBBASIN=<territoire>:<station> restreint le territoire aux
+    # troncons en amont de la station. Tout ce qui suit, statistiques par station, perte et
+    # tranches, se calcule alors sur le sous-bassin. `node_index` garde l'indice d'origine de
+    # chaque troncon, pour les tables lues par indice (champ k_gw, attributs bruts).
+    node_index = np.arange(n_nodes)
+    _station_sb = _subbasin.requested(reg)
+    if _station_sb is not None:
+        if _station_sb not in station_node_map:
+            raise SystemExit(f"{reg}: ETL_SUBBASIN vise la station {_station_sb}, absente des observations retenues")
+        keep = _subbasin.upstream(graph, station_node_map[_station_sb])
+        rank = {int(v): k for k, v in enumerate(keep)}
+        keep_t = torch.as_tensor(keep, device=forcing.device)
+        graph = _subbasin.restrict_graph(graph, keep)
+        territorial = _subbasin.restrict_territorial(territorial, keep)
+        node_coords = node_coords[torch.as_tensor(keep, device=node_coords.device)]
+        node_ids = [node_ids[i] for i in keep]
+        forcing = forcing[:, keep_t]
+        cols = [j for j, ni in enumerate(station_indices) if ni in rank]
+        q_obs = q_obs[:, torch.as_tensor(cols, dtype=torch.long, device=q_obs.device)]
+        station_indices = [rank[station_indices[j]] for j in cols]
+        station_node_map = {s: rank[ni] for s, ni in station_node_map.items() if ni in rank}
+        n_stations = len(station_indices)
+        station_mask = torch.zeros(len(keep), dtype=torch.bool, device=device)
+        station_mask[torch.as_tensor(station_indices, dtype=torch.long, device=device)] = True
+        withdrawals = _subbasin.restrict_withdrawals(withdrawals, keep)
+        et_obs = _subbasin.restrict_nodes(et_obs, keep)
+        swe_obs = _subbasin.restrict_nodes(swe_obs, keep)
+        et_weight = _subbasin.restrict_nodes(et_weight, keep)
+        if swe_mass_node is not None:
+            _sites = [k for k, ni in enumerate(swe_mass_node.tolist()) if int(ni) in rank]
+            if _sites:
+                _st = torch.as_tensor(_sites, dtype=torch.long, device=swe_mass_obs.device)
+                swe_mass_obs = swe_mass_obs[:, _st]
+                swe_mass_node = torch.as_tensor([rank[int(swe_mass_node[k])] for k in _sites], dtype=torch.long, device=swe_mass_node.device)
+            else:
+                swe_mass_obs = swe_mass_node = None
+        n_nodes = len(keep)
+        node_index = keep
+        print(f"[sous-bassin] {reg}: {n_nodes} troncons en amont de la station {_station_sb}, {n_stations} station(s) dedans")
+
     # slices temporels (mêmes conventions que slso.py)
     def sl(d0, d1):
         i0 = int(np.searchsorted(times.values, np.datetime64(d0)))
@@ -309,7 +350,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         print(f"[stations] {len(_double)} noeud(s) vises par plusieurs stations, "
               f"une seule retenue par noeud : {_double}")
 
-    return dict(name=reg, n_nodes=n_nodes, node_ids=node_ids, n_gauges=n_stations,
+    return dict(name=reg, n_nodes=n_nodes, node_ids=node_ids, node_index=node_index, n_gauges=n_stations,
                 train_data=mk(train_sl), val_data=mk(val_sl), loss_fn=loss_fn,
                 node_coords=node_coords, territorial=territorial, times=times,
                 station_ids=station_ids, station_indices=station_indices)
