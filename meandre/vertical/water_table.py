@@ -36,7 +36,7 @@ import torch.nn as nn
 from torch import Tensor
 
 
-class NappeLibre(nn.Module):
+class WaterTable(nn.Module):
     """Nappe libre différentiable, profondeur de la surface libre en variable d'état.
 
     Toutes les grandeurs sont en mètres et en jours. Les flux d'entrée et de sortie sont

@@ -13,7 +13,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from meandre.vertical.nappe import NappeLibre
+from meandre.vertical.water_table import WaterTable
 
 SY = 0.05
 Z_RIV = 8.0
@@ -26,7 +26,7 @@ def _col(v, n=4):
 
 
 def _module(exposant=1.0, n_substep=8):
-    return NappeLibre(n_substep=n_substep, exposant=exposant)
+    return WaterTable(n_substep=n_substep, exposant=exposant)
 
 
 def test_equilibre_analytique_cas_lineaire():
@@ -92,12 +92,12 @@ def test_amplitude_et_retard_du_cas_lineaire_suivent_la_theorie():
 
     torch.set_default_dtype(torch.float64)
     k = K_B / (SY * H_REF)
-    gain, retard = NappeLibre.reponse_analytique(k)
+    gain, retard = WaterTable.reponse_analytique(k)
     w = 2.0 * math.pi / 365.25
     assert gain == pytest.approx(1.0 / math.sqrt(k * k + w * w), rel=1e-12)
     assert retard == pytest.approx(math.atan2(w, k) / w, rel=1e-12)
     # Un temps de réponse long achète de l'amplitude et paie du retard, toujours.
-    gain_lent, retard_lent = NappeLibre.reponse_analytique(k / 10.0)
+    gain_lent, retard_lent = WaterTable.reponse_analytique(k / 10.0)
     assert gain_lent > gain
     assert retard_lent > retard
 

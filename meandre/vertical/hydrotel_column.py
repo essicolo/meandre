@@ -920,9 +920,9 @@ class HydrotelColumn(nn.Module):
         à celle où la nappe s'établit. `e_frac` est la part de l'évapotranspiration
         potentielle que la zone saturée peut fournir quand la surface libre affleure.
         """
-        from meandre.vertical.nappe import NappeLibre
+        from meandre.vertical.water_table import WaterTable
 
-        self.nappe_libre = NappeLibre(n_substep=n_substep, exposant=exposant)
+        self.nappe_libre = WaterTable(n_substep=n_substep, exposant=exposant)
         self._nappe = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
                            h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext),
                            couplage=float(couplage))

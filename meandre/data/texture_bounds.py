@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from meandre.data.pedotransfert import saxton_rawls
+from meandre.data.pedotransfer import saxton_rawls
 
 BANDES = {1: ("0_5cm", "5_15cm", "15_30cm"), 2: ("30_60cm", "60_100cm"), 3: ("100_200cm",)}
 

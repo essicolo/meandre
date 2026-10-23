@@ -57,9 +57,9 @@ def test_la_relation_entre_exposant_de_stock_et_exposant_de_recession(n, attendu
 
 def test_la_nappe_du_depot_suit_la_loi_de_boussinesq():
     """La pièce réellement utilisée, et non une réécriture, doit donner b proche de 1,5."""
-    from meandre.vertical.nappe import NappeLibre
+    from meandre.vertical.water_table import WaterTable
 
-    nappe = NappeLibre()
+    nappe = WaterTable()
     sy = torch.tensor([0.05])
     k_b = torch.tensor([1.5e-3])
     z_riv = torch.tensor([5.0])
