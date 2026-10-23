@@ -71,6 +71,6 @@ for REG in REGIONS:
 
 df = pd.DataFrame(rows)
 sfx = os.environ.get("JOINT_FX_SUFFIX", "-budyko")
-df.to_csv(f"reports/carte{sfx}.csv", index=False)
+df.to_csv(f".reports/quebec/carte{sfx}.csv", index=False)
 print(f"\nmédiane {df.kge.median():.4f} | moyenne {df.kge.mean():.4f} | {len(df)} régions | forçage {sfx}")
 print(df.to_string(index=False))

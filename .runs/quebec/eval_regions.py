@@ -4,7 +4,7 @@
 - Hydrotel brut : posttraitement_LN24HA.zarr (Dis par troncon_id, 2020-2026, non interpolé).
 - obs : duckdb de chaque région.
   python .runs/quebec/eval_regions.py [REG ...]
-Sortie : reports/quebec_heldout.csv + tableau console.
+Sortie : .reports/quebec/quebec_heldout.csv + tableau console.
 """
 import os, sys
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -83,9 +83,9 @@ z.close()
 df = pd.DataFrame(rows)
 if len(df):
     os.makedirs("reports", exist_ok=True)
-    df.to_csv("reports/quebec_heldout.csv", index=False)
+    df.to_csv(".reports/quebec/quebec_heldout.csv", index=False)
     b = df.dropna()
     print(f"\nGLOBAL ({b.n_sta.sum()} stations, {len(b)} régions) : "
           f"méandre méd-des-méd {b.meandre_med.median():.3f} vs Hydrotel {b.hydrotel_med.median():.3f} "
           f"| stations gagnées {b.meandre_gagne.sum()}/{b.n_sta.sum()}")
-    print("-> reports/quebec_heldout.csv")
+    print("-> .reports/quebec/quebec_heldout.csv")
