@@ -49,17 +49,14 @@ Without this, K_sat starts ~50x too high (0.5 vs 0.01 m/day), making convergence
 # Install
 uv sync
 
-# SLSO training (from repo root); the config picks forcing + recipe
-python .runs/slso/slso.py .runs/slso/config/slso-casr-zn.toml
+# Pilote unique : etl_run.py ; le fichier TOML définit le modèle, le lancement ne pose que
+# le territoire (ou une liste, qui forme un domaine), les époques, l'étiquette et le départ.
+# Passe sans entraînement du modèle gelé sur deux territoires (environ 15 min) :
+ETL_CONFIG=.runs/quebec/config/modele-provincial-2026-10.toml ETL_REGION=labi,cndc ETL_EPOCHS=0   ETL_TAG=-essai ETL_WARM_FROM=.runs/quebec/checkpoints/best-quebec-etl-qv848-e32.pt   ETL_DUMP_Q=q.npz python .runs/quebec/etl_run.py
 
-# Eval-only on the saved checkpoint (held-out + quantile coverage)
-MEANDRE_EVAL_ONLY=1 python .runs/slso/slso.py <config.toml>
-
-# Quebec regions: build + train + compare to the 6-member Hydrotel ensemble
+# Construire un territoire (base DuckDB et forçage)
 python .runs/quebec/build_regions.py GASP
 python .runs/quebec/build_forcing_region.py GASP
-python .runs/slso/slso.py .runs/quebec/config/gasp-v7.toml
-python .runs/quebec/eval_regions.py GASP
 
 # Hydrotel C++ reference run (validation harnesses), via WSL
 # (requires hydro/station.sth — an empty one is accepted)
@@ -82,9 +79,9 @@ meandre/
   training/       # Trainer, loss (incl. pinball), autopilot
   utils/          # State, metrics, quantile head
   model.py        # HydroModel — top-level orchestrator
-hydrotel_clone/   # Faithful C++ ports + validate_*.py harnesses (per-UHRH vs binary)
-.runs/slso/       # SLSO case: slso.py (training script), config/, data builders
-.runs/quebec/     # Quebec scale-up: 15 regions, fleet + eval scripts
+hydrotel_clone/   # Faithful C++ ports (validés par UHRH contre le binaire ; harnais retirés le 2026-10-21)
+.runs/quebec/     # pilote etl_run.py, banc de sous-bassin, constructeurs de données, config/
+experiments/      # expériences en cours, hors du paquet et du pilote
 reports/          # registre_hypotheses.md = ÉTAT COURANT, statut par hypothèse
                   #   (établi / réfuté / caduc / ouvert). À LIRE AVANT de citer un
                   #   chiffre, et à RÉVISER à chaque verdict. Le journal ci-dessous
@@ -112,7 +109,7 @@ ETL_CONFIG=.runs/quebec/config/socle.toml ETL_REGION=GASP python .runs/quebec/et
 **Réglages déclarés (2026-10-20, branche `nettoyage`).** Chaque réglage du paquet et du pilote est déclaré une seule fois dans `meandre/utils/settings.py` : clé en anglais, qui est sa clé dans le fichier (`column.n_substeps` est `n_substeps` de la section `[column]`), ancien nom de variable gardé en alias, défaut, rôle. Le pilote appelle `settings.configure(cfg)` au démarrage ; ordre de priorité inchangé, variable d'environnement, puis fichier, puis défaut. Une clé inconnue dans une section déclarée arrête tout. Le paquet `meandre` ne lit plus l'environnement que pour les emplacements de machine (`MEANDRE_DATA`, `MEANDRE_DERIVES`, `MEANDRE_PLATEFORMES`...). `modele-provincial-2026-10.toml` n'a plus de section `[recette]` : forçage, périodes, physique, perte et entraînement y sont dans des sections déclarées, vérifié par `trace_launch.py` et par des passes identiques à la référence. Restent au lancement : `ETL_REGION`, `ETL_EPOCHS`, `ETL_TAG`, `ETL_WARM_FROM`, les sorties et les sondes. Un nouveau réglage s'ajoute à `SCHEMA`, jamais par un `os.environ.get` dans le code ; un pilote qui fixe un réglage en cours de route passe par `settings.override`. Un `.recette.toml` porte aussi une section `[settings]` : les réglages qui s'écartent de leur défaut.
 
 
-TOML configs in `.runs/slso/config/` and `.runs/quebec/config/`. Key sections:
+TOML configs in `.runs/quebec/config/`. Key sections:
 - `[paths]`: basin_db, forcing_cache, checkpoint, fields_nc, reach_parquet
 - `[model]`: use_latent_codes, spatial_melt, melt_factor_scale (legacy scalar; ignored on warm-start and when spatial_melt), n_forcing, routing/lakes
 - `[et]`: mode + linacre_project_dir ; `formula = "penman"` choisit la formule d'ETP dans le pilote (sinon `ETL_ETP`, sinon la demande apprise) ; `[snow]`: melt_project_dir ; `[soil]`: hydrotel_calib_dir (do not use — see law of anchors), `frozen_gate_continuous = true` pour la porte de gel continue ; `[phenology]`: `enabled`, `mode = "photo"`, `params`, `target`, `classes = ["feuillus", "agri"]` (2026-09-30 ; sans ces clés, les variables MEANDRE_PHENOLOGIE_* gardent leur rôle)
@@ -231,10 +228,9 @@ Règle posée par Essi le 2026-09-13, après une journée où la plupart des heu
 ## Common pitfalls
 
 - Don't use chunk_steps > 0 with NSE/KGE loss (they need full-sequence stats). Use MSE + log-MSE + PBIAS for chunk-safe training.
-- Warm-start changes LR to lr_finetune and skips warmup ON THE SLSO PILOT ONLY (`slso.py` passes `warmup_epochs = 0 if WARM_START else 5`). The Quebec pilot does NOT: `etl_run.py` keeps the default 5 warmup epochs except in the quantile phase, so a warm-started 8-epoch fine-tune spends five epochs ramping from a thousandth of the rate up to it. Measured 2026-09-20.
+- La montée du taux (`[training] warmup_epochs`, 5 par défaut) s'applique aussi à un départ à chaud, sauf en phase de quantiles : un affinage de 8 époques en passe cinq à monter depuis un millième du taux (mesuré 2026-09-20). Le modèle gelé pose 0.
 - `ETL_LR` defaults to 5e-4 on the Quebec pilot, and 34 of 36 shell scripts of the 2026-09-19 weekend left it unset. At that rate an 8-epoch fine-tune is BISTABLE: six identical passes gave exactly two held-out values, 0.7056 and 0.5975, and the better validation gave the worse held-out. Dispersion falls to 0.0075 at 3e-5 and to 0.0000 at 1e-5. Comparisons of variants by short fine-tuning run at 1e-5; forward passes at frozen weights (`ETL_EPOCHS=0`) are unaffected.
 - `melt_factor_scale` is automatically IGNORED on warm-start (double-application bug, fixed 2026-07-13).
-- In quantile mode the held-out block prints BOTH sigma-head coverages (obsolete) and "(quantile)" coverages — only the quantile lines are meaningful.
 - reach_parquet `reach_id` is 1-indexed: compare with node_idx + 1.
 - Dev metrics are selection metrics; only held-out 2022-2024 counts, against the FULL 6-member Hydrotel ensemble (posttraitement_{LN24HA,MG24Hx}.zarr) on common stations/days.
 - Kill background fleets by killing the PARENT loop, then verify; a surviving bash loop silently relaunches trainings.
