@@ -110,7 +110,6 @@ w_dq = 0.5           # variations journalieres du debit
 w_snow = 0.0         # pas de supervision de la fonte par la couverture MODIS
 w_nrmse = 0.0
 w_physics = 0.01
-w_residual = 0.01
 
 [literature_prior]
 K_c = 1.0     # coefficient cultural initial, autour de la demande apprise

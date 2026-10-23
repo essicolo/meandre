@@ -11,7 +11,6 @@ from meandre.routing.graph import RiverGraph, _topological_sort
 from meandre.routing.message_passing import RoutingLayer
 from meandre.routing.lake import LakeModule
 from meandre.routing.withdrawals import WithdrawalData
-from meandre.temporal.ring_buffer import OutflowRingBuffer
 from meandre.spatial.field_network import SpatialFieldNetwork
 
 N = 10
@@ -68,11 +67,11 @@ def test_routing_lake_params_backward_compat():
     wd = WithdrawalData.zeros(T, N)
     q_lat = torch.rand(T, N)
     graph = _graph_with_lakes()
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
     assert layer._lake_k is None and layer._lake_beta is None
-    buf = OutflowRingBuffer(N, depth=5); Q_prev = torch.zeros(N); S = torch.zeros(N)
+    Q_prev = torch.zeros(N); S = torch.zeros(N)
     for t in range(T):
-        Q, S, _ = layer(q_lat[t], graph, Q_prev, buf, wd, t, K, x,
+        Q, S, _ = layer(q_lat[t], graph, Q_prev, wd, t, K, x,
                         lake_storage=S, area_km2=torch.ones(N) * 30)
         Q_prev = Q
     assert torch.isfinite(Q).all()
@@ -84,16 +83,16 @@ def test_gradients_reach_lake_head():
     coords = torch.rand(N, 2); terr = torch.randn(N, 4)
     k, b = net.lake_params(coords, terr)
     graph = _graph_with_lakes()
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
     layer._lake_k = k; layer._lake_beta = b
     wd = WithdrawalData.zeros(T, N)
     K = (4.0 + 40.0 * torch.rand(N)) * 3600.0
     x = torch.full((N,), 0.2)
     q_lat = torch.rand(T, N)
-    buf = OutflowRingBuffer(N, depth=5); Q_prev = torch.zeros(N); S = torch.zeros(N) + 1e5
+    Q_prev = torch.zeros(N); S = torch.zeros(N) + 1e5
     out = []
     for t in range(T):
-        Q, S, _ = layer(q_lat[t], graph, Q_prev, buf, wd, t, K, x,
+        Q, S, _ = layer(q_lat[t], graph, Q_prev, wd, t, K, x,
                         lake_storage=S, area_km2=torch.ones(N) * 30)
         out.append(Q); Q_prev = Q
     torch.stack(out).sum().backward()

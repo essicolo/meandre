@@ -18,9 +18,6 @@ T = 20
 def _make_model(n_nodes=N):
     return HydroModel(
         n_nodes=n_nodes,
-        use_temporal=False,
-        use_residual=False,
-        use_travel_time_attn=False,
     )
 
 

@@ -1,10 +1,7 @@
-"""Training loop with RunLogger logging and curriculum support.
+"""Training loop with RunLogger logging.
 
-Implements the four-phase curriculum from README section 6.6:
-    Phase 1: Pure physics + NeRF (temporal modules disabled)
-    Phase 2: Enable temporal context encoder
-    Phase 3: Enable state residual corrector
-    Phase 4: Enable travel-time attention in routing
+Le curriculum a quatre phases (encodeur temporel, correcteur residuel, attention de temps
+de transfert) a ete retire le 2026-10-23 avec ces modules.
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TrainingConfig:
-    """Hyperparameters and curriculum schedule."""
+    """Hyperparameters of the training loop."""
     lr: float = 1e-3
     weight_decay: float = 1e-4
     grad_clip: float = 1.0
@@ -69,47 +66,11 @@ class TrainingConfig:
     # spatial encoder is unfrozen.
     w_boundary: float = 0.0
 
-    # Anchor on the noise head's log_sigma_a (and optionally log_sigma_b).
-    # Counters the Gaussian NLL degeneracy where σ inflates to fit any μ.
-    # Apply to noise_head (Q), noise_head_et, noise_head_swe symmetrically.
-    # 0 = no regularization. Typical w_sigma_anchor ≈ 0.1-1.0.
-    w_sigma_anchor: float = 0.0
-    sigma_anchor_target_a: float = -3.0   # log σ baseline (5% when b=1 at Q=100)
-    sigma_anchor_target_b: float | None = None   # None = let b float free
-    # Pénalité variance inter-nœuds des coefficients (a, b) du SpatialNoiseHead.
-    # Mode "hybride" : tire la moyenne ET serre la dispersion spatiale, pour
-    # éviter qu'une fraction de nœuds gonfle σ massivement pendant que la
-    # moyenne reste correcte. 0 = ancien comportement.
-    sigma_anchor_var_weight: float = 0.0
-
-    # Concrete Dropout KL regularisation weight for the temporal encoder.
-    # Penalises dropout rate deviation from the prior. 0 = disabled (standard
-    # training). Typical: 0.01-0.1 for moderate epistemic uncertainty.
-    w_concrete_kl: float = 0.0
-
     # LR scheduler shape. Cosine annealing from `lr` to `lr * eta_min_factor`
     # over n_epochs. Set to 1.0 for CONSTANT lr (cosine becomes flat) —
     # useful for short tuning runs where the default 0.01 collapses lr by
     # epoch 2-3 and stalls learning.
     eta_min_factor: float = 0.01
-
-    # Curriculum: epoch at which each module is enabled
-    enable_temporal_context_epoch: int = 10
-    enable_residual_corrector_epoch: int = 30
-    enable_travel_time_attn_epoch: int = 50
-
-    # Residual corrector warm-up: over this many epochs after activation,
-    # the effective gate multiplier ramps linearly from 0.0 to 1.0.  This
-    # avoids the large loss spike that happens when gate_logit and random
-    # GRU weights are activated at once.  Set to 0 to disable.
-    residual_warmup_epochs: int = 5
-
-    # TTA warm-up: over this many epochs after TTA activation, the routing
-    # aggregation blends linearly from simple sum (Σ Q_actuels, factor=0)
-    # to full TTA attention (factor=1).  This avoids a sudden semantic
-    # change in routing when warm-starting from a checkpoint trained
-    # without TTA.  Set to 0 to use pure TTA immediately.
-    tta_warmup_epochs: int = 10
 
     # Spin-up steps (run model without contributing to loss; state initialisation)
     spinup_steps: int = 730       # 2 years of daily data
@@ -196,19 +157,14 @@ class TrainingConfig:
     # epochs.  Lors d'un fresh start (warm_start=false), la convergence
     # initiale produit des drifts beta/gamma temporaires qui ne sont PAS
     # de l'overfitting — c'est la physique qui cherche ses paramètres.
-    # Intervenir trop tôt (w_residual++, LR reduction) freine la convergence.
+    # Intervenir trop tôt (réduction du LR, redémarrage) freine la convergence.
     autopilot_grace_epochs: int = 0  # 0 = pas de grace, 10-15 pour fresh start
 
-    # Beta drift: if pooled β deviates from 1.0 by more than this, increase
-    # w_residual by autopilot_beta_penalty per epoch until β returns.
-    # Catches residual-corrector overfitting (β = volume bias in KGE).
-    autopilot_beta_threshold: float = 0.15   # |β - 1| > 0.15 → act
-    autopilot_beta_penalty: float = 0.005    # increment w_residual per epoch
-
-    # Gamma drift: if pooled γ deviates from 1.0 by more than this, increase
-    # w_residual.  Catches timing/variability overfitting.
-    autopilot_gamma_threshold: float = 0.20  # |γ - 1| > 0.20 → act
-    autopilot_gamma_penalty: float = 0.003   # increment w_residual per epoch
+    # Dérive de β et de γ : seuils au-delà desquels le redémarrage intelligent
+    # (plus bas) considère qu'il y a dérive. La pénalité qui augmentait w_residual
+    # sur dérive est retirée avec le correcteur résiduel (2026-10-23).
+    autopilot_beta_threshold: float = 0.15   # |β - 1| > 0.15 → dérive
+    autopilot_gamma_threshold: float = 0.20  # |γ - 1| > 0.20 → dérive
 
     # ReduceLROnPlateau: if best val metric hasn't improved for this many
     # epochs, multiply LR by autopilot_lr_factor.
@@ -227,23 +183,6 @@ class TrainingConfig:
     autopilot_restart_max: int = 3               # max restarts
     autopilot_restart_min_no_improve: int = 3    # consecutive bad epochs required
 
-    # ── NLL autopilot (Kendall & Gal phase 2) ──────────────────────
-    # Automatically adjust w_nll based on KGE degradation from the
-    # deterministic baseline.  Prevents the NLL from destroying the
-    # mean prediction while still allowing gradual uncertainty learning.
-    autopilot_nll: bool = False
-    autopilot_nll_initial_kge: float | None = None  # set automatically if None
-    autopilot_nll_max_regression: float = 0.05  # max tolerable KGE drop (5%)
-    autopilot_nll_ramp_rate: float = 1.5        # multiply w_nll by this on ramp
-    autopilot_nll_max: float = 0.5             # cap for w_nll
-    autopilot_nll_min: float = 0.001          # floor for w_nll
-
-    # Metric-driven curriculum: instead of fixed epoch numbers, activate
-    # modules when kge_station reaches a threshold.  Overrides the fixed
-    # epoch settings when autopilot is enabled and these are > 0.
-    autopilot_activate_residual_at_kge: float | None = None  # e.g. 0.55
-    autopilot_activate_tta_at_kge: float | None = None       # e.g. 0.65
-
     # Phase-1 → phase-2 transition (Kendall-Gal recipe).  When the spatial
     # encoder is frozen at startup (``freeze_spatial=true``), the autopilot
     # can flip it to trainable mid-run once the NLL stack has stabilised.
@@ -255,30 +194,6 @@ class TrainingConfig:
     autopilot_unfreeze_spatial_epoch: int | None = None     # e.g. 25
     autopilot_unfreeze_spatial_min_kge: float | None = None # e.g. 0.40
     autopilot_unfreeze_spatial_lr_factor: float = 0.05      # lr → lr × 0.05
-
-    # ── Kendall-Gal auto phase 1 → phase 2 transition ──────────────
-    # When enabled, the trainer starts in phase 1 (deterministic, backbone
-    # trainable, w_nll=0) and automatically switches to phase 2 (probabilistic,
-    # backbone frozen, w_nll ramped) when kge_station crosses a threshold OR
-    # the kge_station plateau patience is exhausted.  Reproduces the two-config
-    # warm-start recipe (deterministic.toml → probabilistic.toml) in a single
-    # run.  One-shot transition.
-    kendall_gal_auto: bool = False
-    kga_phase1_kge_threshold: float = 0.85       # transition if kge_sta >= this
-    kga_phase1_plateau_patience: int = 15        # or N epochs without kge_sta improvement
-    kga_phase1_min_epochs: int = 5               # safeguard: never transition before this epoch
-    kga_phase2_freeze_spatial: bool = True
-    kga_phase2_freeze_temporal: bool = True       # keeps ConcreteDropout trainable
-    kga_phase2_freeze_backbone: bool = True       # vertical column + routing
-    kga_phase2_best_metric: str = "nll"
-    kga_phase2_lr: float | None = None            # None = keep current LR
-    kga_phase2_reset_no_improve: bool = True      # reset early-stopping counter
-    # Loss-weight overrides applied at transition. Any key matching a HydroLoss
-    # attribute (w_nll, w_kge, w_mse, w_log_mse, w_pbias, w_nrmse, w_nse,
-    # w_log_nse, w_physics, w_residual, w_nll_et, w_nll_swe) will be setattr'd.
-    # Example: {"w_nll": 0.1, "w_kge": 1.0, "w_mse": 0.0}
-    kga_phase2_loss_weights: dict | None = None
-
 
 @dataclass
 class TrainingData:
@@ -312,8 +227,7 @@ class TrainingData:
     val_slice: slice
     # Multi-objective observations (optional, None when not loaded).
     # Shapes: (n_timesteps, n_nodes) ; NaN = missing (most cells are NaN
-    # because MODIS revisit is irregular). Used by gaussian_nll_loss
-    # against the corresponding sim fields when w_nll_et / w_nll_swe > 0.
+    # because MODIS revisit is irregular).
     et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
     swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
     tws_obs: Tensor | None = None   # GRACE TWS anomalie (mm), valeur mensuelle au 15, NaN ailleurs
@@ -344,9 +258,6 @@ class TrainingData:
     # peu de neige et sous-estime sous couvert forestier ; la masse, non.
     swe_mass_obs: Tensor | None = None    # (T, n_sites) mm, NaN hors relevé
     swe_mass_node: Tensor | None = None   # (n_sites,) nœud visé par chaque site
-    # Indices hydrométéorologiques précalculés pour ContextualQuantileHead.
-    # Forme : (T, n_st, 5) — GDD, API, SPI, FN, SWE_proxy normalisés z-score.
-    indices_ihi: Tensor | None = None
 
     def __post_init__(self) -> None:
         # CONVENTION D'ALIGNEMENT, payee trois fois en deux jours (R75 bis) : q_obs[0]
@@ -368,7 +279,7 @@ class TrainingData:
 
 
 class Trainer:
-    """Training loop with curriculum scheduling and RunLogger logging.
+    """Training loop with RunLogger logging.
 
     Usage
     -----
@@ -451,23 +362,6 @@ class Trainer:
                 logger.info(
                     "Discriminative LR: fc_out.weight=%.1e (%.0f×), wd=0 — NeRF anti-collapse",
                     self.config.lr * fc_out_mult, fc_out_mult,
-                )
-            # Noise head learns at 10× base LR — sigma needs to adapt fast
-            # while spatial_encoder learns slowly from the combined KGE+NLL signal.
-            noise_params: list[torch.nn.Parameter] = []
-            for name, p in model.named_parameters():
-                if "noise_head" in name:
-                    noise_params.append(p)
-            if noise_params:
-                # Remove noise_params from base_params to avoid double-counting
-                base_params_set = set(id(p) for p in base_params)
-                base_params[:] = [p for p in base_params if id(p) not in set(id(p) for p in noise_params)]
-                groups.append({"params": noise_params,
-                               "lr": self.config.lr * 10.0,
-                               "weight_decay": 0.0})
-                logger.info(
-                    "Discriminative LR: noise_head=%.1e (10×), wd=0 — fast sigma adaptation",
-                    self.config.lr * 10.0,
                 )
             # Tête de lac (k_lake, beta) : oubliée jusqu'ici, seule tête sans
             # traitement particulier. Ses poids partent de ZÉRO exactement, sa sortie
@@ -561,23 +455,15 @@ class Trainer:
         # Best-metric init depends on direction (lower-is-better for loss-like)
         self._best_metric_lower_is_better = self.config.best_metric in (
             "loss", "val_loss", "nll", "val_nll", "rmse", "nrmse", "mae", "pbias",
-            "val_flatness", "flatness",
         )
         self._best_val_metric = (
             float("inf") if self._best_metric_lower_is_better else -float("inf")
         )
 
         # Autopilot state
-        self._ap_w_residual_orig: float | None = None  # original w_residual
         self._ap_lr_plateau_count: int = 0
         self._ap_restart_count: int = 0
         self._ap_prev_kge_sta: float | None = None
-
-        # Kendall-Gal auto state (None = feature disabled)
-        self._kga_phase: int | None = 1 if self.config.kendall_gal_auto else None
-        self._kga_best_kge: float = -float("inf")
-        self._kga_plateau_counter: int = 0
-        self._kga_phase1_start_epoch: int = 0
 
         # Mixed precision (AMP) with bfloat16 — même plage d'exposant que
         # float32 (pas d'overflow dans exp/log de l'hydrologie), mais
@@ -650,7 +536,6 @@ class Trainer:
         _rollback_count = 0       # number of LR reductions so far
         _MAX_ROLLBACKS = 3        # stop reducing after this many
         for epoch in pbar:
-            self._apply_curriculum(epoch)
             self._cur_epoch = epoch   # utilisé par l'offset aléatoire des chunks
 
             train_loss, train_comps = self._train_epoch()
@@ -737,12 +622,8 @@ class Trainer:
             if not math.isnan(val_cov90):
                 epoch_msg += f" | cov90={val_cov90:.3f} | cov50={val_cov50:.3f}"
             val_nll_m = last_val_metrics.get("val_nll", float("nan"))
-            val_flat = last_val_metrics.get("val_flatness", float("nan"))
             if not math.isnan(val_nll_m):
                 epoch_msg += f" | nll={val_nll_m:.3f}"
-            if not math.isnan(val_flat):
-                # val_flatness ~ d^2 ; d s'obtient par sqrt (ASCII pour Windows cp1252)
-                epoch_msg += f" | flat_d2={val_flat:.4f} (d={val_flat**0.5:.3f})"
             epoch_msg += f" | lr={current_lr:.2e}"
             logger.info(epoch_msg)
             print(epoch_msg, flush=True)
@@ -834,8 +715,8 @@ class Trainer:
             #     would never count no-improve and disable autopilot LR-plateau)
             _bm = self.config.best_metric
             _tol = self.config.best_metric_tolerance
-            # Alias: "nll"/"flatness" in calibration dict are keyed as "val_*"
-            _bm_key = {"nll": "val_nll", "flatness": "val_flatness"}.get(_bm, _bm)
+            # Alias : "nll" (pinball moyenne en mode quantile) est rangé sous "val_nll"
+            _bm_key = {"nll": "val_nll"}.get(_bm, _bm)
             _default = float("inf") if self._best_metric_lower_is_better else -float("inf")
             if _bm == "loss":
                 _cur = float(train_loss)
@@ -885,14 +766,6 @@ class Trainer:
                 if self.checkpoint_path and settings.get("trainer.save_every_epoch"):
                     self.model.save(self.checkpoint_path.replace(".pt", f"-e{epoch + 1}.pt"))
 
-            # ── Kendall-Gal phase 1→2 transition (one-shot) ────────────
-            # Checked BEFORE regular autopilot so we don't trigger LR plateau
-            # actions on a metric we're about to swap away from.
-            if self.config.kendall_gal_auto and run_val and self._kga_phase == 1:
-                transitioned = self._maybe_transition_kga(epoch, last_val_metrics)
-                if transitioned and self.config.kga_phase2_reset_no_improve:
-                    epochs_without_improvement = 0
-
             # ── Autopilot ──────────────────────────────────────────────
             if self.config.autopilot and run_val:
                 self._run_autopilot(
@@ -939,8 +812,8 @@ class Trainer:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _run_spinup(self, data: TrainingData) -> tuple[HydroState, Tensor | None]:
-        """Return spun-up (state, h_context).
+    def _run_spinup(self, data: TrainingData) -> HydroState:
+        """Return the spun-up state.
 
         On the first call (or when warm_spinup_steps == 0), runs the full
         spinup from cold start.  On subsequent calls, reuses the cached
@@ -952,7 +825,7 @@ class Trainer:
         spinup_end = min(self.config.spinup_steps, data.train_slice.start)
 
         if spinup_end == 0:
-            return HydroState.zeros(self.model.n_nodes, device=device), None
+            return HydroState.zeros(self.model.n_nodes, device=device)
 
         warm_steps = self.config.warm_spinup_steps
         cached = getattr(self, "_cached_spinup_state", None)
@@ -1004,15 +877,13 @@ class Trainer:
 
         # Cache for next epoch
         self._cached_spinup_state = spun_state.detach()
-
-        h_ctx = self.model._last_h_context
-        return spun_state, h_ctx
+        return spun_state
 
     def _simulate(
         self, data: TrainingData, time_slice: slice, tbptt_steps: int = 0,
     ) -> tuple[Tensor, HydroState]:
         """Run model over time_slice (after spin-up on the preceding steps)."""
-        initial_state, h_ctx = self._run_spinup(data)
+        initial_state = self._run_spinup(data)
 
         # Main simulation over the requested slice
         Q_sim, final_state = self.model.simulate(
@@ -1023,7 +894,6 @@ class Trainer:
             territorial=data.territorial,
             withdrawals=data.withdrawals.slice(time_slice.start, time_slice.stop),
             day_of_year=data.day_of_year[time_slice],
-            h_context=h_ctx,
             tbptt_steps=tbptt_steps,
         )
         return Q_sim, final_state
@@ -1045,8 +915,7 @@ class Trainer:
             (getattr(self.loss_fn, "w_snow", 0.0), data.swe_obs, "w_snow / swe_obs (MODIS snow cover)"),
             (getattr(self.loss_fn, "w_tws", 0.0), data.tws_obs, "w_tws / tws_obs (GRACE TWS)"),
             (getattr(self.loss_fn, "w_nappe", 0.0), data.nappe_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
-            (max(getattr(self.loss_fn, "w_et", 0.0), getattr(self.loss_fn, "w_nll_et", 0.0)),
-             data.et_obs, "w_et / et_obs (MODIS MOD16)"),
+            (getattr(self.loss_fn, "w_et", 0.0), data.et_obs, "w_et / et_obs (MODIS MOD16)"),
             (getattr(self.loss_fn, "w_swe_mass", 0.0), data.swe_mass_obs,
              "w_swe_mass / swe_mass_obs (CanSWE, masse du manteau)"),
         ):
@@ -1203,7 +1072,7 @@ class Trainer:
         # For chunk-safe losses (MSE, log-MSE, PBIAS): forward+backward per
         # chunk, accumulate gradients, single optimizer.step().
         # Memory ∝ chunk_steps, no checkpointing overhead.
-        initial_state, h_ctx = self._run_spinup(data)
+        initial_state = self._run_spinup(data)
         _spinup_a_tourne = min(self.config.spinup_steps, data.train_slice.start) > 0
         if (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
                 and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
@@ -1213,7 +1082,7 @@ class Trainer:
             self._et_reference_exacte(data, initial_state)
             # La passe laisse l'etat interne (manteau, gel, lacs) a la fin de la periode :
             # la mise en regime est rejouee pour que le premier bloc reparte de son etat.
-            initial_state, h_ctx = self._run_spinup(data)
+            initial_state = self._run_spinup(data)
 
         state = initial_state
         t_start = data.train_slice.start
@@ -1234,7 +1103,7 @@ class Trainer:
                                 for k_ in _champs_s}
             self._sonde_acc = {}
             self.model.spatial_encoder.multiplicateurs = self._sonde_mult
-        sp_tensor: Tensor | None = None  # cached spatial params for SpatialNoiseHead
+        sp_tensor: Tensor | None = None  # parametres spatiaux du bloc, pour la tete de quantiles
         # HISTORIQUE DÉTACHÉ des débits aux stations, pour que le KGE et la famille
         # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
         # (voir la note dans loss.py). MEANDRE_KGE_CONTINU=0 restitue le comportement
@@ -1315,10 +1184,8 @@ class Trainer:
             _part_bloc = chunk_len / n_train
 
             # ET multi-objectif : on récupère et_sim depuis CE forward (avec
-            # gradient) plutôt qu'un 2e forward détaché — sinon le terme ET
-            # n'entraîne que σ_ET, pas le backbone (μ).
-            _need_et = ((self.loss_fn.w_nll_et > 0 or self.loss_fn.w_et > 0)
-                        and data.et_obs is not None)
+            # gradient) plutôt qu'un 2e forward détaché.
+            _need_et = (self.loss_fn.w_et > 0 and data.et_obs is not None)
             _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
             _need_nappe = (getattr(self.loss_fn, "w_nappe", 0.0) > 0
                            and data.nappe_obs is not None and data.nappe_idx is not None)
@@ -1340,7 +1207,6 @@ class Trainer:
                     territorial=data.territorial,
                     withdrawals=data.withdrawals.slice(sl.start, sl.stop),
                     day_of_year=data.day_of_year[sl],
-                    h_context=h_ctx,
                     tbptt_steps=self.config.tbptt_steps,
                     return_diagnostics=_need_diag,
                     # Les blocs suivants POURSUIVENT la simulation : le manteau neigeux,
@@ -1366,30 +1232,9 @@ class Trainer:
                 burnin = min(60, chunk_len // 4) if n_chunks > 0 else min(90, chunk_len // 4)
                 q_obs_chunk = data.q_obs[obs_offset + burnin:obs_offset + chunk_len]
                 Q_chunk_loss = Q_chunk[burnin:]
-                # Detach Q_sim before noise_head : σ adapts to current
-                # prediction magnitude (heteroscedastic) but gradient doesn't
-                # back-propagate through Q_sim via σ. Prevents the NLL
-                # degeneracy where model inflates μ_Q to gonfler σ and reduce
-                # ((q_obs - q_sim) / σ)² (Kendall & Gal 2017 §2.3).
-                log_sigma_chunk = None
-                # sp_tensor partagé entre noise_head et quantile_head pour
-                # éviter de recalculer le NeRF spatial. None = pas encore
-                # calculé (lazy ; recalculé si une tête le requiert).
+                # Parametres spatiaux du bloc, calcules a la demande par la tete de quantiles.
                 sp_tensor = None
-                if self.loss_fn.w_nll > 0:
-                    Q_det = Q_chunk_loss.detach()
-                    from meandre.utils.noise_head import SpatialNoiseHead
-                    if isinstance(self.model.noise_head, SpatialNoiseHead):
-                        # Per-node noise head conditions on spatial params so
-                        # different catchments get different uncertainty profiles.
-                        sp = self.model.spatial_encoder(
-                            data.node_coords, data.territorial.to_tensor()
-                        )
-                        sp_tensor = sp.to_tensor()
-                        log_sigma_chunk = self.model.noise_head(sp_tensor, Q_det)
-                    else:
-                        log_sigma_chunk = self.model.noise_head(Q_det)
-                # ET sim de ce chunk (avec gradient) + σ_ET (détaché, comme Q)
+                # ET sim de ce chunk (avec gradient)
                 # GARDE CONTRE UN TERME PRESENT ET INERTE (2026-09-20). Trois fois le
                 # meme jour, une piece s'est revelee declaree, affichee et sans effet :
                 # les diagnostics detaches sous MEANDRE_DIAG_CPU=1, la table des poids de
@@ -1425,12 +1270,10 @@ class Trainer:
                                   f"gradient. Verifier MEANDRE_DIAG_CPU et "
                                   f"HydroModel.DIAGNOSTICS_DERIVES.", flush=True)
 
-                et_sim_chunk = et_obs_chunk = log_sigma_et_chunk = None
+                et_sim_chunk = et_obs_chunk = None
                 if _need_et:
                     et_sim_chunk = _diag_chunk.etr[burnin:]
                     et_obs_chunk = data.et_obs[obs_offset + burnin:obs_offset + chunk_len]
-                    if self.loss_fn.w_nll_et > 0 and hasattr(self.model, "noise_head_et"):
-                        log_sigma_et_chunk = self.model.noise_head_et(et_sim_chunk.detach())
                     et_sim_chunk, et_obs_chunk = self._center_et(et_sim_chunk, et_obs_chunk, data, t0=data.train_slice.start + obs_offset + burnin)
 
                 # Neige : fraction de couverture simulée vs MODIS snow_frac.
@@ -1446,18 +1289,10 @@ class Trainer:
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,
                     station_mask=data.station_mask,
-                    log_sigma_sim=log_sigma_chunk,
                     et_obs=et_obs_chunk,
                     et_sim=et_sim_chunk,
-                    log_sigma_et_sim=log_sigma_et_chunk,
                     swe_obs=snow_obs_chunk,
                     swe_sim=scf_sim_chunk,
-                    residual_gate_logits=(
-                        self.model.residual_corrector.gate_logit
-                        if self.model.use_residual and self.model.residual_corrector is not None
-                        else None
-                    ),
-                    log_df=getattr(self.model.noise_head, "log_df", None),
                     q_obs_hist=(torch.cat([_pre_o[:obs_offset + burnin], _pre_o[obs_offset + chunk_len:]])
                                 if _amorce else
                                 (torch.cat(_hist_o) if (_kge_continu and _hist_o) else None)),
@@ -1880,84 +1715,6 @@ class Trainer:
                         all_components["quantile_loss"] = (
                             all_components.get("quantile_loss", 0.0) + float(L_q.detach()) * _part_bloc)
 
-                # ── ContextualQuantileHead (IHI, Phase A) — pinball loss
-                # avec features riches : sp + Q_sim + log Q_sim + indices IHI + DOY.
-                # Médiane libre (pas ancrée à Q_sim).
-                if (self.loss_fn.w_quantile > 0
-                        and getattr(self.model, "use_contextual_quantile_head", False)
-                        and hasattr(self.model, "contextual_quantile_head")
-                        and data.indices_ihi is not None):
-                    if sp_tensor is None:
-                        sp = self.model.spatial_encoder(
-                            data.node_coords, data.territorial.to_tensor()
-                        )
-                        sp_tensor = sp.to_tensor()
-                    _Q_det = Q_chunk_loss.detach()                                  # (T_chunk, N)
-                    _sp_st = sp_tensor[data.station_mask]                           # (n_st, F_sp)
-                    _Q_st = _Q_det[:, data.station_mask]                            # (T, n_st)
-                    _y_obs = q_obs_chunk                                            # (T, n_st)
-                    T_chunk_eff = _Q_st.shape[0]
-                    # Slice des indices au chunk (déjà aux stations) + DOY sin/cos
-                    _idx_chunk = data.indices_ihi[obs_offset + burnin:obs_offset + chunk_len]
-                    # Vérifier dimension
-                    if _idx_chunk.shape[0] != T_chunk_eff:
-                        _idx_chunk = _idx_chunk[:T_chunk_eff]
-                    # DOY sin/cos (T_chunk,)
-                    import math
-                    _doy_chunk = data.day_of_year[sl.start + burnin:sl.stop][:T_chunk_eff].float()
-                    _doy_rad = 2 * math.pi * _doy_chunk / 366.0
-                    _doy_sc = torch.stack([_doy_rad.sin(), _doy_rad.cos()], dim=-1)  # (T, 2)
-                    # Build features (T, n_st, F_total)
-                    _sp_exp = _sp_st.unsqueeze(0).expand(T_chunk_eff, -1, -1)        # (T, n_st, F_sp)
-                    _Q_feat = _Q_st.unsqueeze(-1)                                    # (T, n_st, 1)
-                    _logQ_feat = torch.log(_Q_st.clamp(min=0) + 1.0).unsqueeze(-1)   # (T, n_st, 1)
-                    _doy_feat = _doy_sc.unsqueeze(1).expand(-1, _sp_st.shape[0], -1) # (T, n_st, 2)
-                    _features = torch.cat(
-                        [_sp_exp, _Q_feat, _logQ_feat, _idx_chunk, _doy_feat], dim=-1,
-                    )                                                                # (T, n_st, F_total)
-                    # Filtrer valides
-                    _v = ~torch.isnan(_y_obs) & ~torch.isnan(_Q_st)
-                    if int(_v.sum()) > 0:
-                        _y_flat = _y_obs[_v]
-                        _x_flat = _features[_v]
-                        _Q_flat = _Q_st[_v]
-                        L_cqh = self.model.contextual_quantile_head.pinball(
-                            _y_flat, _x_flat, _Q_flat,
-                        )
-                        loss_chunk = loss_chunk + self.loss_fn.w_quantile * L_cqh
-                        all_components["cqh_pinball"] = (
-                            all_components.get("cqh_pinball", 0.0) + float(L_cqh.detach()) * _part_bloc)
-
-                # ── Mixture Density Network (option 2b) — NLL non-paramétrique ──
-                # p(y | x) = Σ_k π_k · N(y | μ_k, σ_k²) ; loss = -log_prob.
-                # Q_sim détaché : la tête n'entraîne PAS le backbone, seulement le
-                # mapping features → densité (Phase 2 v3 style, comme quantile head).
-                if (self.loss_fn.w_mixture > 0
-                        and getattr(self.model, "use_mixture_head", False)
-                        and hasattr(self.model, "mixture_head")):
-                    if sp_tensor is None:
-                        sp = self.model.spatial_encoder(
-                            data.node_coords, data.territorial.to_tensor()
-                        )
-                        sp_tensor = sp.to_tensor()
-                    _Q_mdn = Q_chunk_loss.detach()                                  # (T-burnin, n_nodes)
-                    _sp_st = sp_tensor[data.station_mask]                           # (n_st, n_features)
-                    _Q_mdn_st = _Q_mdn[:, data.station_mask]                        # (T, n_st)
-                    _y_mdn = q_obs_chunk
-                    _v = ~torch.isnan(_y_mdn) & ~torch.isnan(_Q_mdn_st)
-                    if int(_v.sum()) > 0:
-                        # Broadcast features (statique) sur T
-                        T_chunk = _Q_mdn_st.shape[0]
-                        sp_exp = _sp_st.unsqueeze(0).expand(T_chunk, -1, -1)         # (T, n_st, F)
-                        y_flat = _y_mdn[_v]
-                        sp_flat = sp_exp[_v]
-                        q_flat = _Q_mdn_st[_v]
-                        L_mdn = -self.model.mixture_head.log_prob(y_flat, sp_flat, q_flat).mean()
-                        loss_chunk = loss_chunk + self.loss_fn.w_mixture * L_mdn
-                        all_components["mixture_nll"] = (
-                            all_components.get("mixture_nll", 0.0) + float(L_mdn.detach()) * _part_bloc)
-
-
             # BLOC SANS DONNEE (2026-09-04). Si la perte de donnees n'a pas de gradient
             # (aucune station gardee dans ce bloc), le prior ajoute ci-dessous en aurait
             # un, et le pas par bloc se ferait sur le prior SEUL : mesure sur le banc de
@@ -1991,51 +1748,6 @@ class Trainer:
                 )
                 loss_chunk = loss_chunk + self.config.w_boundary * boundary_loss
                 all_components["boundary"] = all_components.get("boundary", 0.0) + float(boundary_loss.detach()) * _part_bloc
-
-            # Noise head σ anchor — counters NLL degeneracy (σ inflates to
-            # mask a bad μ). Applied symmetrically to Q / ET / SWE heads.
-            if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
-                from meandre.utils.noise_head import SpatialNoiseHead
-                if isinstance(self.model.noise_head, SpatialNoiseHead):
-                    if sp_tensor is None:
-                        sp = self.model.spatial_encoder(
-                            data.node_coords, data.territorial.to_tensor()
-                        )
-                        sp_tensor = sp.to_tensor()
-                    anchor = self.model.noise_head.anchor_loss(
-                        sp_tensor,
-                        self.config.sigma_anchor_target_a,
-                        self.config.sigma_anchor_target_b,
-                        var_weight=self.config.sigma_anchor_var_weight,
-                    )
-                else:
-                    anchor = self.model.noise_head.anchor_loss(
-                        self.config.sigma_anchor_target_a,
-                        self.config.sigma_anchor_target_b,
-                    )
-                if self.loss_fn.w_nll_et > 0:
-                    anchor = anchor + self.model.noise_head_et.anchor_loss(
-                        self.config.sigma_anchor_target_a,
-                        self.config.sigma_anchor_target_b,
-                    )
-                if self.loss_fn.w_nll_swe > 0:
-                    anchor = anchor + self.model.noise_head_swe.anchor_loss(
-                        self.config.sigma_anchor_target_a,
-                        self.config.sigma_anchor_target_b,
-                    )
-                loss_chunk = loss_chunk + self.config.w_sigma_anchor * anchor
-                all_components["sigma_anchor"] = (
-                    all_components.get("sigma_anchor", 0.0) + float(anchor.detach()) * _part_bloc
-                )
-
-            # Concrete Dropout KL regularisation (epistemic uncertainty).
-            # Only active when concrete_dropout is enabled in the temporal encoder.
-            if self.config.w_concrete_kl > 0 and self.model.temporal_encoder is not None:
-                concrete_kl = self.model.temporal_encoder.concrete_kl()
-                loss_chunk = loss_chunk + self.config.w_concrete_kl * concrete_kl
-                all_components["concrete_kl"] = (
-                    all_components.get("concrete_kl", 0.0) + float(concrete_kl.detach()) * _part_bloc
-                )
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
             weight = _part_bloc
@@ -2247,10 +1959,6 @@ class Trainer:
 
             # Detach state for next chunk (TBPTT across chunks)
             state = state_out.detach()
-            h_ctx = (
-                self.model._last_h_context.detach()
-                if self.model._last_h_context is not None else None
-            )
             obs_offset += chunk_len
             t_start = t_end
 
@@ -2259,11 +1967,10 @@ class Trainer:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        # Cache end-of-train state + h_context so _val_epoch can start from
+        # Cache end-of-train state so _val_epoch can start from
         # the realistic state (after train period forward pass) instead of
         # re-simulating from spinup.  Saves ~50 min/epoch on GPU.
         self._cached_train_end_state = state.detach()
-        self._cached_train_end_h_ctx = h_ctx.detach() if h_ctx is not None else None
 
         # Warn if all chunks had no gradient (no obs overlap)
         n_no_grad = getattr(self, "_n_no_grad_chunks", 0)
@@ -2318,34 +2025,16 @@ class Trainer:
             )
             # Cache for fast val_epoch (see chunked path).
             self._cached_train_end_state = final_state.detach()
-            self._cached_train_end_h_ctx = (
-                self.model._last_h_context.detach()
-                if self.model._last_h_context is not None else None
-            )
 
             n_train = data.train_slice.stop - data.train_slice.start
             q_obs_train = data.q_obs[:n_train]
 
-            # Detach Q_sim before noise_head (cf. chunked path above).
-            log_sigma_sim = None
-            if self.loss_fn.w_nll > 0:
-                Q_det = Q_sim.detach()
-                from meandre.utils.noise_head import SpatialNoiseHead
-                if isinstance(self.model.noise_head, SpatialNoiseHead):
-                    sp = self.model.spatial_encoder(
-                        data.node_coords, data.territorial.to_tensor()
-                    )
-                    log_sigma_sim = self.model.noise_head(sp.to_tensor(), Q_det)
-                else:
-                    log_sigma_sim = self.model.noise_head(Q_det)
             # ── Multi-objective ETR wiring (MOD16A2) ─────────────────
-            # When data.et_obs is populated (MODIS loader ran) and w_nll_et > 0,
+            # When data.et_obs is populated (MODIS loader ran) and w_et > 0,
             # we need et_sim from the model diagnostics. We re-run simulate with
             # return_diagnostics=True only if the extra loss weight justifies it.
             et_sim = None
-            log_sigma_et_sim = None
-            need_et = (self.loss_fn.w_nll_et > 0 or self.loss_fn.w_et > 0) \
-                      and data.et_obs is not None
+            need_et = self.loss_fn.w_et > 0 and data.et_obs is not None
             if need_et:
                 # Re-run the train forward with diagnostics. Uses the cached
                 # spinup state so only the train period is re-simulated.
@@ -2374,8 +2063,6 @@ class Trainer:
                         if isinstance(_result, tuple) and len(_result) == 3:
                             _, _, _diag = _result
                             et_sim = _diag.etr  # (T, n_nodes) mm/day
-                if et_sim is not None and hasattr(self.model, "noise_head_et"):
-                    log_sigma_et_sim = self.model.noise_head_et(et_sim.detach())
 
             _et_obs_train = data.et_obs[:n_train] if data.et_obs is not None else None
             if et_sim is not None and _et_obs_train is not None:
@@ -2385,16 +2072,8 @@ class Trainer:
                 q_obs=q_obs_train,
                 q_sim=Q_sim,
                 station_mask=data.station_mask,
-                log_sigma_sim=log_sigma_sim,
                 et_obs=_et_obs_train,
                 et_sim=et_sim,
-                log_sigma_et_sim=log_sigma_et_sim,
-                residual_gate_logits=(
-                    self.model.residual_corrector.gate_logit
-                    if self.model.use_residual and self.model.residual_corrector is not None
-                    else None
-                ),
-                log_df=getattr(self.model.noise_head, "log_df", None),
             )
 
         # Soft physical prior regularization
@@ -2418,43 +2097,6 @@ class Trainer:
             )
             loss = loss + self.config.w_boundary * boundary_loss
             components["boundary"] = boundary_loss.detach()
-
-        # Noise head σ anchor (single-pass path) — same logic as chunked.
-        if self.config.w_sigma_anchor > 0 and self.loss_fn.w_nll > 0:
-            from meandre.utils.noise_head import SpatialNoiseHead
-            if isinstance(self.model.noise_head, SpatialNoiseHead):
-                sp = self.model.spatial_encoder(
-                    data.node_coords, data.territorial.to_tensor()
-                )
-                anchor = self.model.noise_head.anchor_loss(
-                    sp.to_tensor(),
-                    self.config.sigma_anchor_target_a,
-                    self.config.sigma_anchor_target_b,
-                    var_weight=self.config.sigma_anchor_var_weight,
-                )
-            else:
-                anchor = self.model.noise_head.anchor_loss(
-                    self.config.sigma_anchor_target_a,
-                    self.config.sigma_anchor_target_b,
-                )
-            if self.loss_fn.w_nll_et > 0:
-                anchor = anchor + self.model.noise_head_et.anchor_loss(
-                    self.config.sigma_anchor_target_a,
-                    self.config.sigma_anchor_target_b,
-                )
-            if self.loss_fn.w_nll_swe > 0:
-                anchor = anchor + self.model.noise_head_swe.anchor_loss(
-                    self.config.sigma_anchor_target_a,
-                    self.config.sigma_anchor_target_b,
-                )
-            loss = loss + self.config.w_sigma_anchor * anchor
-            components["sigma_anchor"] = anchor.detach()
-
-        # Concrete Dropout KL (single-pass path)
-        if self.config.w_concrete_kl > 0 and self.model.temporal_encoder is not None:
-            concrete_kl = self.model.temporal_encoder.concrete_kl()
-            loss = loss + self.config.w_concrete_kl * concrete_kl
-            components["concrete_kl"] = concrete_kl.detach()
 
         if torch.isnan(loss):
             logger.warning(
@@ -2560,7 +2202,6 @@ class Trainer:
                 # with large weight updates this could lag; for later epochs the
                 # difference is negligible.
                 cached_state = getattr(self, "_cached_train_end_state", None)
-                cached_h_ctx = getattr(self, "_cached_train_end_h_ctx", None)
 
                 if cached_state is not None:
                     # VALIDATION SANS NEIGE (2026-09-04). L'etat mis en cache est celui
@@ -2579,14 +2220,13 @@ class Trainer:
                         territorial=data.territorial,
                         withdrawals=data.withdrawals.slice(data.val_slice.start, data.val_slice.stop),
                         day_of_year=data.day_of_year[data.val_slice],
-                        h_context=cached_h_ctx,
                         tbptt_steps=self.config.tbptt_steps,
                         poursuivre_etat=_etat_continu_val,
                     )
                 else:
                     # Slow path: no cached state (e.g. before first train epoch).
                     # Cold spinup + continuous forward through train + val.
-                    initial_state, h_ctx = self._run_spinup(data)
+                    initial_state = self._run_spinup(data)
                     spinup_end = min(self.config.spinup_steps, data.val_slice.start)
                     full_slice = slice(spinup_end, data.val_slice.stop)
                     # La mise en regime vient de laisser l'etat riche de la colonne au
@@ -2600,7 +2240,6 @@ class Trainer:
                         territorial=data.territorial,
                         withdrawals=data.withdrawals.slice(full_slice.start, full_slice.stop),
                         day_of_year=data.day_of_year[full_slice],
-                        h_context=h_ctx,
                         tbptt_steps=self.config.tbptt_steps,
                     )
                     val_offset = data.val_slice.start - spinup_end
@@ -2670,72 +2309,8 @@ class Trainer:
         kge_info = kge_components(q_o, q_s)
 
         # ── Probabilistic calibration metrics ──────────────────────
-        # Coverage: fraction of obs within [Q_sim ± z*sigma].
         # Well-calibrated model: cov_90 ≈ 0.90, cov_50 ≈ 0.50.
         calibration = {}
-        if (self.loss_fn.w_nll > 0
-                and hasattr(self.model, 'noise_head')
-                and Q_sim is not None):
-            from meandre.utils.noise_head import SpatialNoiseHead
-            with torch.no_grad():
-                Q_det = Q_sim.detach()
-                if isinstance(self.model.noise_head, SpatialNoiseHead):
-                    sp = self.model.spatial_encoder(
-                        data.node_coords, data.territorial.to_tensor()
-                    )
-                    log_sigma = self.model.noise_head(sp.to_tensor(), Q_det)
-                else:
-                    log_sigma = self.model.noise_head(Q_det)
-            sigma = log_sigma[:, data.station_mask].exp()  # (T, n_stations)
-            q_obs_v = q_obs_val  # (T, n_stations)
-            valid_cov = ~torch.isnan(q_obs_v) & ~torch.isnan(Q_sim[:, data.station_mask])
-            # σ vit dans l'espace de la NLL (Box-Cox si nll_lambda != 1). La
-            # couverture doit être mesurée dans CE MÊME espace, sinon un σ
-            # Box-Cox appliqué comme intervalle ± linéaire en m³/s est
-            # dimensionnellement incohérent (la couverture s'effondre quand le
-            # σ Box-Cox se resserre légitimement).
-            from meandre.training.loss import box_cox
-            _lam_cov = getattr(self.loss_fn, "nll_lambda", 1.0)
-            if _lam_cov != 1.0:
-                q_obs_cov = box_cox(q_obs_v, _lam_cov)
-                q_sim_cov = box_cox(q_sim_at_stations, _lam_cov)
-            else:
-                q_obs_cov = q_obs_v
-                q_sim_cov = q_sim_at_stations
-            for level, z in [(50, 0.674), (90, 1.645)]:
-                lo = q_sim_cov - z * sigma
-                hi = q_sim_cov + z * sigma
-                in_interval = (q_obs_cov >= lo) & (q_obs_cov <= hi)
-                cov = (in_interval & valid_cov).sum().float() / valid_cov.sum().float()
-                calibration[f"cov_{level}"] = float(cov)
-            # Mean sigma statistics
-            calibration["sigma_mean"] = float(sigma[valid_cov].mean())
-            calibration["sigma_median"] = float(sigma[valid_cov].median())
-            # NLL et flatness sur le set de validation, dans l'espace
-            # configuré par loss_fn.nll_lambda (Box-Cox/normal/log-normal).
-            from meandre.training.loss import gaussian_nll_loss, flatness_loss, student_t_nll_loss
-            qo_p = q_obs_v[valid_cov]
-            qs_p = q_sim_at_stations[valid_cov]
-            ls_p = log_sigma[:, data.station_mask][valid_cov]
-            _lam = getattr(self.loss_fn, "nll_lambda", 1.0)
-            _dist = getattr(self.loss_fn, "nll_distribution", "normal")
-            if _dist == "student-t" and hasattr(self.model.noise_head, "log_df"):
-                calibration["val_nll"] = float(
-                    student_t_nll_loss(qo_p, qs_p, ls_p, self.model.noise_head.log_df, lam=_lam)
-                )
-            else:
-                calibration["val_nll"] = float(
-                    gaussian_nll_loss(qo_p, qs_p, ls_p, lam=_lam)
-                )
-            calibration["val_flatness"] = float(
-                flatness_loss(
-                    qo_p, qs_p, ls_p,
-                    lam=_lam,
-                    n_bins=getattr(self.loss_fn, "flatness_n_bins", 21),
-                    bandwidth=getattr(self.loss_fn, "flatness_bandwidth", 0.02),
-                )
-            )
-
         # ── Calibration mode quantile (Phase 2 v2) ──────────────────────
         # cov_50, cov_90 par appartenance dans les intervalles inter-quantiles
         # en m³/s ; val_nll remplacé par la pinball moyenne ; CRPS ≈ 2·pinball.
@@ -2805,7 +2380,7 @@ class Trainer:
         diag_sl = slice(sl.stop - n_days, sl.stop)
 
         with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-            initial_state, h_ctx = self._run_spinup(data)
+            initial_state = self._run_spinup(data)
             result = self.model.simulate(
                 forcing=data.forcing[diag_sl],
                 initial_state=initial_state,
@@ -2814,7 +2389,6 @@ class Trainer:
                 territorial=data.territorial,
                 withdrawals=data.withdrawals.slice(diag_sl.start, diag_sl.stop),
                 day_of_year=data.day_of_year[diag_sl],
-                h_context=h_ctx,
                 return_diagnostics=True,
             )
             Q_sim, final_state, diag = result
@@ -2850,170 +2424,6 @@ class Trainer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def _apply_curriculum(self, epoch: int) -> None:
-        """Enable/disable modules according to curriculum phase schedule.
-
-        Both the forward pass AND gradients are controlled so that disabled
-        modules neither consume compute time nor receive gradient updates.
-        """
-        cfg = self.config
-
-        if self.model.temporal_encoder is not None:
-            enabled = epoch >= cfg.enable_temporal_context_epoch
-            self.model.use_temporal = enabled           # skip forward pass when off
-            for p in self.model.temporal_encoder.parameters():
-                p.requires_grad_(enabled)
-
-        if self.model.residual_corrector is not None:
-            enabled = epoch >= cfg.enable_residual_corrector_epoch
-            self.model.use_residual = enabled           # skip forward pass when off
-            for p in self.model.residual_corrector.parameters():
-                p.requires_grad_(enabled)
-            # Linear warm-up of the effective gate multiplier (0 -> 1) over
-            # the first `residual_warmup_epochs` epochs after activation.
-            if enabled and cfg.residual_warmup_epochs > 0:
-                k = epoch - cfg.enable_residual_corrector_epoch
-                factor = min(1.0, max(0.0, (k + 1) / cfg.residual_warmup_epochs))
-            else:
-                factor = 1.0 if enabled else 0.0
-            self.model.residual_corrector.warmup_factor.fill_(factor)
-
-        if hasattr(self.model.routing, "tta"):
-            enabled = epoch >= cfg.enable_travel_time_attn_epoch
-            self.model.routing.use_tta = enabled
-            for p in self.model.routing.tta.parameters():
-                p.requires_grad_(enabled)
-            # Linear warm-up of TTA blending factor (0 -> 1) over
-            # `tta_warmup_epochs` epochs after activation.
-            # factor=0 → pure simple sum (Σ Q_actuels), factor=1 → pure TTA.
-            if enabled and cfg.tta_warmup_epochs > 0:
-                k = epoch - cfg.enable_travel_time_attn_epoch
-                tta_factor = min(1.0, max(0.0, (k + 1) / cfg.tta_warmup_epochs))
-            else:
-                tta_factor = 1.0 if enabled else 0.0
-            if hasattr(self.model.routing, "tta_warmup_factor"):
-                self.model.routing.tta_warmup_factor.fill_(tta_factor)
-
-    def _apply_phase2_config(self, epoch: int, kge_at_transition: float) -> None:
-        """Apply Kendall-Gal phase 2 configuration (one-shot).
-
-        Freezes the requested modules, swaps loss weights and best_metric,
-        and resets the early-stopping counter / best metric tracking.
-        """
-        cfg = self.config
-
-        # ── Freeze modules ──────────────────────────────────────────
-        n_frozen_total = 0
-        if cfg.kga_phase2_freeze_spatial and hasattr(self.model, "spatial_encoder"):
-            for p in self.model.spatial_encoder.parameters():
-                p.requires_grad = False
-            n_frozen_total += sum(p.numel() for p in self.model.spatial_encoder.parameters())
-
-        if cfg.kga_phase2_freeze_temporal and hasattr(self.model, "temporal_encoder"):
-            # Keep ConcreteDropout layers trainable (epistemic uncertainty)
-            for name, p in self.model.temporal_encoder.named_parameters():
-                if "drop." not in name:
-                    p.requires_grad = False
-                    n_frozen_total += p.numel()
-
-        if cfg.kga_phase2_freeze_backbone:
-            if hasattr(self.model, "vertical_column"):
-                for p in self.model.vertical_column.parameters():
-                    p.requires_grad = False
-                    n_frozen_total += p.numel()
-            if hasattr(self.model, "routing"):
-                for p in self.model.routing.parameters():
-                    p.requires_grad = False
-                    n_frozen_total += p.numel()
-
-        # ── Swap loss weights ───────────────────────────────────────
-        applied_weights = {}
-        if cfg.kga_phase2_loss_weights:
-            for key, val in cfg.kga_phase2_loss_weights.items():
-                if hasattr(self.loss_fn, key):
-                    setattr(self.loss_fn, key, float(val))
-                    applied_weights[key] = float(val)
-                else:
-                    logger.warning(
-                        f"  [kga] phase2 loss weight '{key}' not found on loss_fn, skipped"
-                    )
-
-        # ── Swap best_metric tracking ───────────────────────────────
-        old_best_metric = cfg.best_metric
-        cfg.best_metric = cfg.kga_phase2_best_metric
-        self._best_metric_lower_is_better = cfg.best_metric in (
-            "loss", "val_loss", "nll", "val_nll", "rmse", "nrmse", "mae", "pbias",
-        )
-        self._best_val_metric = (
-            float("inf") if self._best_metric_lower_is_better else -float("inf")
-        )
-
-        # ── Optionally adjust LR ────────────────────────────────────
-        if cfg.kga_phase2_lr is not None:
-            for pg in self.optimizer.param_groups:
-                pg["lr"] = float(cfg.kga_phase2_lr)
-
-        # ── Flip phase flag ─────────────────────────────────────────
-        self._kga_phase = 2
-
-        msg = (
-            f"  [kga] PHASE 1→2 transition at epoch {epoch} "
-            f"(kge_sta={kge_at_transition:.4f}) | "
-            f"frozen={n_frozen_total:,} params | "
-            f"best_metric: {old_best_metric}→{cfg.best_metric} | "
-            f"loss_weights: {applied_weights}"
-        )
-        print(msg)
-        logger.info(msg)
-
-    def _maybe_transition_kga(
-        self, epoch: int, val_metrics: dict[str, float],
-    ) -> bool:
-        """Check phase 1→2 transition condition. Returns True if reset needed.
-
-        Uses the SAME metric as ``best_metric`` (set in the config) to evaluate
-        the threshold — so the user sees a consistent number in the log and in
-        the threshold comparison. For example: if best_metric='kge' (pooled),
-        the threshold is compared against val_metrics['kge'] (pooled), not
-        kge_station (per-station weighted).
-
-        Updates plateau counter and triggers _apply_phase2_config when:
-          - epoch - phase1_start >= kga_phase1_min_epochs (safeguard), AND
-          - (best_metric_value >= kga_phase1_kge_threshold) OR
-            (plateau_counter >= kga_phase1_plateau_patience)
-        """
-        if self._kga_phase != 1:
-            return False
-        cfg = self.config
-
-        # Read the SAME metric the user is tracking via best_metric.
-        # Falls back to kge_station for backward compatibility.
-        bm = cfg.best_metric
-        bm_key = "val_nll" if bm == "nll" else bm
-        kge_val = val_metrics.get(bm_key, val_metrics.get("kge_station", float("nan")))
-        if not math.isfinite(kge_val):
-            return False
-
-        # Update plateau counter (improvement = strict gain on the tracked metric)
-        if kge_val > self._kga_best_kge:
-            self._kga_best_kge = kge_val
-            self._kga_plateau_counter = 0
-        else:
-            self._kga_plateau_counter += 1
-
-        epochs_in_phase = epoch - self._kga_phase1_start_epoch
-        if epochs_in_phase < cfg.kga_phase1_min_epochs:
-            return False
-
-        should_transition = (
-            kge_val >= cfg.kga_phase1_kge_threshold
-            or self._kga_plateau_counter >= cfg.kga_phase1_plateau_patience
-        )
-        if should_transition:
-            self._apply_phase2_config(epoch, kge_val)
-            return True
-        return False
-
     def _run_autopilot(
         self,
         epoch: int,
@@ -3039,68 +2449,10 @@ class Trainer:
             )
             return
 
-        # ── 1. Beta / Gamma drift → increase w_residual ─────────────
-        # Original w_residual is captured on first autopilot call
-        if self._ap_w_residual_orig is None:
-            self._ap_w_residual_orig = float(self.loss_fn.w_residual)
-
+        # ── 1. Dérive de β / γ (sert au redémarrage intelligent) ─────
         beta_drift = abs(beta - 1.0)
         gamma_drift = abs(gamma - 1.0)
         actions: list[str] = []
-
-        # Clamp max : w_residual ne peut pas dépasser 5× sa valeur originale
-        # pour éviter d'écraser complètement le residual corrector.
-        _w_res_max = (self._ap_w_residual_orig or 0.01) * 5.0
-
-        # Skip drift→w_residual handler when the residual corrector is
-        # disabled — incrementing w_residual has no effect (no gradient
-        # flows through a disabled module) and just pollutes the log.
-        residual_active = (
-            epoch >= cfg.enable_residual_corrector_epoch
-            and hasattr(self.model, "residual_corrector")
-            and getattr(self.model, "residual_corrector", None) is not None
-        )
-
-        if not residual_active:
-            beta_drift_logged = beta_drift > cfg.autopilot_beta_threshold
-            gamma_drift_logged = gamma_drift > cfg.autopilot_gamma_threshold
-            if beta_drift_logged or gamma_drift_logged:
-                logger.debug(
-                    f"  [autopilot] β/γ drift detected (β-drift={beta_drift:.3f}, "
-                    f"γ-drift={gamma_drift:.3f}) but residual corrector inactive "
-                    f"(enable_residual_corrector_epoch={cfg.enable_residual_corrector_epoch}) "
-                    f"— skipping w_residual update"
-                )
-        else:
-            if beta_drift > cfg.autopilot_beta_threshold:
-                self.loss_fn.w_residual = min(
-                    self.loss_fn.w_residual + cfg.autopilot_beta_penalty, _w_res_max
-                )
-                actions.append(
-                    f"beta drift |beta-1|={beta_drift:.3f} > {cfg.autopilot_beta_threshold} "
-                    f"→ w_residual += {cfg.autopilot_beta_penalty} → {self.loss_fn.w_residual:.4f}"
-                )
-
-            if gamma_drift > cfg.autopilot_gamma_threshold:
-                self.loss_fn.w_residual = min(
-                    self.loss_fn.w_residual + cfg.autopilot_gamma_penalty, _w_res_max
-                )
-                actions.append(
-                    f"gamma drift |gamma-1|={gamma_drift:.3f} > {cfg.autopilot_gamma_threshold} "
-                    f"→ w_residual += {cfg.autopilot_gamma_penalty} → {self.loss_fn.w_residual:.4f}"
-                )
-
-            # Reset w_residual toward original when drift subsides
-            if (beta_drift < cfg.autopilot_beta_threshold * 0.5
-                    and gamma_drift < cfg.autopilot_gamma_threshold * 0.5
-                    and self.loss_fn.w_residual > self._ap_w_residual_orig * 1.1):
-                self.loss_fn.w_residual = max(
-                    self._ap_w_residual_orig,
-                    self.loss_fn.w_residual * 0.9,
-                )
-                actions.append(
-                    f"beta/gamma recovered → w_residual decay → {self.loss_fn.w_residual:.4f}"
-                )
 
         # ── 2. ReduceLROnPlateau ─────────────────────────────────────
         # Bug fix: ne réduire qu'UNE FOIS par plateau de lr_patience epochs.
@@ -3151,45 +2503,15 @@ class Trainer:
             self.model.load(self.checkpoint_path)
             for pg in self.optimizer.param_groups:
                 pg["lr"] = max(pg["lr"] * 0.5, cfg.autopilot_lr_min)
-            # Reset w_residual to original after restart
-            if self._ap_w_residual_orig is not None:
-                self.loss_fn.w_residual = self._ap_w_residual_orig
             # Reset cached spinup state (model weights changed)
             self._cached_spinup_state = None
             actions.append(
                 f"RESTART {self._ap_restart_count}/{cfg.autopilot_restart_max} "
                 f"regression={regression:.1%} + drift → reload best, "
-                f"LR → {self.optimizer.param_groups[0]['lr']:.2e}, "
-                f"w_residual → {self.loss_fn.w_residual:.4f}"
+                f"LR → {self.optimizer.param_groups[0]['lr']:.2e}"
             )
 
-        # ── 4. Metric-driven curriculum ───────────────────────────────
-        # Activate modules when kge_station crosses a threshold (instead of
-        # fixed epoch numbers).  Only override if the threshold is set.
-        if cfg.autopilot_activate_residual_at_kge is not None:
-            threshold = cfg.autopilot_activate_residual_at_kge
-            if (kge_sta >= threshold
-                    and not self.model.use_residual
-                    and self.model.residual_corrector is not None):
-                # Override the fixed epoch — activate now
-                cfg.enable_residual_corrector_epoch = epoch
-                actions.append(
-                    f"Metric curriculum: kge_sta={kge_sta:.4f} ≥ {threshold} "
-                    f"→ activate residual corrector"
-                )
-
-        if cfg.autopilot_activate_tta_at_kge is not None:
-            threshold = cfg.autopilot_activate_tta_at_kge
-            if (kge_sta >= threshold
-                    and hasattr(self.model.routing, 'use_tta')
-                    and not self.model.routing.use_tta):
-                cfg.enable_travel_time_attn_epoch = epoch
-                actions.append(
-                    f"Metric curriculum: kge_sta={kge_sta:.4f} ≥ {threshold} "
-                    f"→ activate TTA"
-                )
-
-        # ── 5. Phase 1 → phase 2 : auto-unfreeze spatial encoder ──────
+        # ── 4. Phase 1 → phase 2 : auto-unfreeze spatial encoder ──────
         # One-shot. After the NLL stack converged on a frozen NeRF (phase 1),
         # unfreeze and reduce LR (phase 2 fine-tune). Replaces the manual
         # two-config Kendall-Gal recipe.
@@ -3216,48 +2538,6 @@ class Trainer:
                     f"at epoch={epoch} (kge_sta={kge_sta:.4f}"
                     + (f" ≥ {min_kge}" if min_kge is not None else "")
                     + f"), LR × {lr_factor} → {self.optimizer.param_groups[0]['lr']:.2e}"
-                )
-
-        # ── 6. NLL autopilot (Kendall & Gal phase 2) ────────────────
-        # Adjust w_nll based on KGE regression from deterministic baseline.
-        # If val_kge drops too much, reduce w_nll to preserve mean prediction.
-        # If val_kge is stable, gradually ramp w_nll to learn more uncertainty.
-        if cfg.autopilot_nll and self.loss_fn.w_nll > 0:
-            if not hasattr(self, "_ap_nll_initial_kge"):
-                # Capture baseline KGE on first autopilot call
-                baseline = cfg.autopilot_nll_initial_kge
-                if baseline is None:
-                    baseline = val_metrics.get("kge", 0.0)
-                self._ap_nll_initial_kge = baseline
-                self._ap_nll_original = float(self.loss_fn.w_nll)
-
-            baseline = self._ap_nll_initial_kge
-            current_kge = val_metrics.get("kge", 0.0)
-            regression = (baseline - current_kge) / (abs(baseline) + 1e-8)
-            w_nll = self.loss_fn.w_nll
-
-            if regression > cfg.autopilot_nll_max_regression:
-                # KGE dropped too much — halve w_nll to protect mean prediction
-                new_w = max(w_nll * 0.5, cfg.autopilot_nll_min)
-                self.loss_fn.w_nll = new_w
-                actions.append(
-                    f"KGE regression {regression:.1%} > {cfg.autopilot_nll_max_regression:.0%} "
-                    f"(kge={current_kge:.4f} vs baseline={baseline:.4f}) "
-                    f"→ w_nll ×0.5 → {new_w:.4f}"
-                )
-            elif regression < 0.01 and w_nll < self._ap_nll_original:
-                # KGE stable and w_nll was previously reduced — ramp back up
-                new_w = min(w_nll * cfg.autopilot_nll_ramp_rate, self._ap_nll_original)
-                self.loss_fn.w_nll = new_w
-                actions.append(
-                    f"KGE stable (kge={current_kge:.4f}) → w_nll ramp ×{cfg.autopilot_nll_ramp_rate} → {new_w:.4f}"
-                )
-            elif regression < 0.01 and w_nll < cfg.autopilot_nll_max:
-                # KGE stable — cautiously increase w_nll to learn more uncertainty
-                new_w = min(w_nll * cfg.autopilot_nll_ramp_rate, cfg.autopilot_nll_max)
-                self.loss_fn.w_nll = new_w
-                actions.append(
-                    f"KGE stable (kge={current_kge:.4f}) → w_nll ramp ×{cfg.autopilot_nll_ramp_rate} → {new_w:.4f}"
                 )
 
         # ── Log autopilot actions ─────────────────────────────────────

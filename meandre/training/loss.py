@@ -5,11 +5,10 @@ full model. Use meandre.utils.metrics for non-differentiable evaluation.
 
 L = w1*(1-NSE) + w2*|PBIAS|/100 + w3*(1-KGE)
   + w4*L_snow  + w5*L_ET
-  + w6*L_physics  + w7*L_residual_reg
+  + w6*L_physics
 """
 
 import logging
-import math
 
 import os
 import torch
@@ -332,122 +331,6 @@ def differentiable_etiage_loss(q_obs: Tensor, q_sim: Tensor, quantile: float = 0
     return torch.abs(torch.log(qs[bas].clamp(min=0.0) + eps) - torch.log(qo[bas] + eps)).mean()
 
 
-def box_cox(x: Tensor, lam: float, eps: float = 1e-3) -> Tensor:
-    """Box-Cox transform sur Q. lam=1 → identité, lam=0.3 → standard hydro
-    (Bates & Campbell 2001), lam=0 → log. Clamp à eps pour éviter Q≤0.
-    """
-    x_safe = x.clamp(min=eps)
-    if lam == 0.0:
-        return torch.log(x_safe)
-    if lam == 1.0:
-        return x_safe - 1.0
-    return (x_safe.pow(lam) - 1.0) / lam
-
-
-def gaussian_nll_loss(
-    q_obs: Tensor, q_sim: Tensor, log_sigma: Tensor, lam: float = 1.0,
-) -> Tensor:
-    """Heteroscedastic Gaussian NLL en espace Box-Cox (lam=1 = linéaire).
-
-        NLL = 0.5 * ((T(q_obs) - T(q_sim)) / σ)² + log σ
-
-    σ est dans l'espace transformé (le noise_head s'adapte). lam=0.3 est
-    le standard hydro (Bates & Campbell 2001) — résidus quasi-normaux.
-
-    Empty inputs (no valid obs) return 0 with requires_grad=False so the
-    chunked training loop can skip the backward pass.
-    """
-    if q_obs.numel() == 0:
-        return torch.zeros((), device=q_sim.device)
-    if lam != 1.0:
-        q_obs = box_cox(q_obs, lam)
-        q_sim = box_cox(q_sim, lam)
-    sigma2 = (2.0 * log_sigma).exp()
-    nll = 0.5 * (q_obs - q_sim).pow(2) / sigma2 + log_sigma
-    return nll.mean()
-
-
-def student_t_nll_loss(
-    q_obs: Tensor, q_sim: Tensor, log_sigma: Tensor, log_df: Tensor,
-    lam: float = 1.0,
-) -> Tensor:
-    """Heteroscedastic Student-t NLL (queues lourdes) en espace Box-Cox.
-
-    Pour des résidus leptokurtiques (PIT gaussien = pic central, σ gonflé pour
-    couvrir les queues), la Student-t ajuste séparément l'échelle σ et la
-    lourdeur des queues via ν = exp(log_df). ν→∞ ⇒ gaussienne.
-
-        z = (T(y) − T(μ)) / σ
-        NLL = log σ + ½(ν+1)·log(1 + z²/ν)
-              − logΓ((ν+1)/2) + logΓ(ν/2) + ½·log(ν·π)
-
-    ``log_df`` peut être un scalaire global appris ou un tenseur par nœud.
-    """
-    if q_obs.numel() == 0:
-        return torch.zeros((), device=q_sim.device)
-    if lam != 1.0:
-        q_obs = box_cox(q_obs, lam)
-        q_sim = box_cox(q_sim, lam)
-    nu = log_df.exp().clamp(min=1e-2)
-    sigma = log_sigma.exp()
-    z = (q_obs - q_sim) / sigma
-    nll = (log_sigma + 0.5 * (nu + 1.0) * torch.log1p(z * z / nu)
-           - torch.lgamma((nu + 1.0) / 2.0) + torch.lgamma(nu / 2.0)
-           + 0.5 * torch.log(nu * math.pi))
-    return nll.mean()
-
-
-def flatness_loss(
-    q_obs: Tensor,
-    q_sim: Tensor,
-    log_sigma: Tensor,
-    lam: float = 0.3,
-    n_bins: int = 21,
-    bandwidth: float = 0.02,
-) -> Tensor:
-    """Loss de calibration directe : pénalise la déviation de l'histogramme
-    PIT par rapport à uniforme.
-
-    Pipeline (tout différentiable) :
-        1. T(q) via Box-Cox(lam)
-        2. PIT_i = Φ((T(y_i) − T(μ_i)) / σ_i)
-        3. Histogramme soft via kernel gaussien (bandwidth)
-        4. δ² = mean((freq_k − 1/K)²) / (1/K)²  (sans cste)
-
-    Le surrogate soft remplace le binning dur : chaque échantillon contribue
-    à chaque bin par exp(−(u−c_k)²/(2·bw²)), permettant au gradient de
-    pousser σ et μ pour aplatir l'histogramme.
-
-    Le 1/K facteur normalise pour que la loss soit comparable entre K
-    différents (δ², comme dans flatness_metrics).
-    """
-    if q_obs.numel() == 0:
-        return torch.zeros((), device=q_sim.device)
-    if lam != 1.0:
-        q_obs_t = box_cox(q_obs, lam)
-        q_sim_t = box_cox(q_sim, lam)
-    else:
-        q_obs_t = q_obs
-        q_sim_t = q_sim
-    sigma = log_sigma.exp().clamp(min=1e-9)
-    z = (q_obs_t - q_sim_t) / sigma
-    # Φ(z) via erf : Φ(z) = 0.5·(1 + erf(z/√2))
-    pit = 0.5 * (1.0 + torch.erf(z / math.sqrt(2.0)))
-    # Soft histogram : (N, K) puis somme sur N
-    centers = torch.linspace(
-        0.5 / n_bins, 1.0 - 0.5 / n_bins, n_bins, device=pit.device, dtype=pit.dtype,
-    )
-    diff = pit.unsqueeze(-1) - centers.unsqueeze(0)  # (N, K)
-    weights = torch.exp(-0.5 * (diff / bandwidth) ** 2)
-    # Normalise par échantillon pour que chaque sample contribue ~1 au total
-    weights = weights / (weights.sum(dim=-1, keepdim=True) + 1e-12)
-    soft_counts = weights.sum(dim=0)  # (K,)
-    freq = soft_counts / (soft_counts.sum() + 1e-12)
-    uniform = 1.0 / n_bins
-    # δ² normalisé : équivalent à flatness_metrics().delta**2 sans la cste
-    return ((freq - uniform) ** 2).mean() / (uniform ** 2)
-
-
 def quantile_loss(y_obs: Tensor, q_pred: Tensor, taus: Tensor) -> Tensor:
     """Loss quantile multi-τ = moyenne des pinball sur K quantiles.
 
@@ -627,7 +510,7 @@ def peak_weighted_mse_loss(
     # IMPORTANT : filtrer AVANT de calculer (q_obs - q_sim) ** 2. Sinon les
     # positions NaN produisent NaN dans le forward, et même si on les masque
     # avec [valid].mean(), le backward propage NaN × 0 = NaN à q_sim → tous
-    # les grads zéroés en aval. Same pattern que gaussian_nll_loss.
+    # les grads zéroés en aval.
     qo = q_obs[valid]
     qs = q_sim[valid]
     sq_err = (qo - qs) ** 2
@@ -769,14 +652,12 @@ class CompositeKGELoss(nn.Module):
         per_station: bool = True,
         station_weights: Tensor | None = None,
         w_physics: float = 0.01,
-        w_residual: float = 0.001,
     ) -> None:
         super().__init__()
         self.alpha = alpha
         self.eps = eps
         self.per_station = per_station
         self.w_physics = w_physics
-        self.w_residual = w_residual
         if station_weights is not None:
             self.register_buffer("station_weights", station_weights)
         else:
@@ -792,7 +673,6 @@ class CompositeKGELoss(nn.Module):
         et_obs: Tensor | None = None,
         et_sim: Tensor | None = None,
         water_balance_residual: Tensor | None = None,
-        residual_gate_logits: Tensor | None = None,
     ) -> tuple[Tensor, dict[str, Tensor]]:
         q_sim_at_stations = q_sim[:, station_mask]  # (T, n_stations)
         dev = q_sim.device
@@ -867,11 +747,6 @@ class CompositeKGELoss(nn.Module):
                 loss = loss + self.w_physics * L_phys
                 components["physics_loss"] = L_phys
 
-        if self.w_residual > 0 and residual_gate_logits is not None:
-            L_reg = (torch.sigmoid(residual_gate_logits) ** 2).mean()
-            loss = loss + self.w_residual * L_reg
-            components["residual_reg"] = L_reg
-
         components["total"] = loss
         return loss, components
 
@@ -906,8 +781,6 @@ class HydroLoss(nn.Module):
         Weight for ET loss (0 if no flux-tower data).
     w_physics : float
         Weight for water balance closure penalty.
-    w_residual : float
-        L2 penalty on residual corrector gate values.
     per_station : bool
         If True, compute NSE/KGE/PBIAS per station and average (equal weight
         per station).  If False (default), pool all stations into one vector
@@ -925,10 +798,6 @@ class HydroLoss(nn.Module):
         w_log_mse: float = 0.0,
         w_tol_mse: float = 0.0,
         tol_days: int = 1,
-        w_nll: float = 0.0,
-        w_nll_et: float = 0.0,
-        w_nll_swe: float = 0.0,
-        w_flatness: float = 0.0,
         w_snow: float = 0.0,
         w_swe_mass: float = 0.0,
         w_et: float = 0.0,
@@ -937,7 +806,6 @@ class HydroLoss(nn.Module):
         w_nappe: float = 0.0,
         w_tws_clim: float = 0.0,
         w_quantile: float = 0.0,
-        w_mixture: float = 0.0,
         w_peak: float = 0.0,
         w_dq: float = 0.0,
         w_dq_log: float = 0.0,
@@ -953,15 +821,10 @@ class HydroLoss(nn.Module):
         plat_largeur: float = 0.003,
         plat_mois: tuple = (12, 1, 2, 3),
         w_physics: float = 0.01,
-        w_residual: float = 0.001,
         per_station: bool = False,
         station_weights: Tensor | None = None,
         station_var: Tensor | None = None,
         peak_threshold: Tensor | None = None,
-        nll_lambda: float = 1.0,
-        nll_distribution: str = "normal",   # "normal" | "box-cox" | "log-normal" | "student-t"
-        flatness_n_bins: int = 21,
-        flatness_bandwidth: float = 0.02,
     ) -> None:
         super().__init__()
         self.w_nse = w_nse
@@ -973,14 +836,6 @@ class HydroLoss(nn.Module):
         self.w_log_mse = w_log_mse
         self.w_tol_mse = w_tol_mse
         self.tol_days = int(tol_days)
-        self.w_nll = w_nll
-        self.w_nll_et = w_nll_et
-        self.w_nll_swe = w_nll_swe
-        self.w_flatness = w_flatness
-        self.nll_lambda = nll_lambda
-        self.nll_distribution = nll_distribution.lower()
-        self.flatness_n_bins = flatness_n_bins
-        self.flatness_bandwidth = flatness_bandwidth
         self.w_snow = w_snow
         # CanSWE : masse du manteau mesurée au sol (R24). Calculé dans le
         # trainer, qui seul dispose du SWE simulé par nœud et de la table
@@ -1016,7 +871,6 @@ class HydroLoss(nn.Module):
         # l'incertitude de la CLIMATOLOGIE (~5 mm). Calculé dans le trainer.
         self.w_tws_clim = w_tws_clim
         self.w_quantile = w_quantile  # Régression quantile (calculée dans le trainer)
-        self.w_mixture = w_mixture    # MDN (option 2b — calculée dans le trainer)
         self.w_peak = w_peak  # Pondération pics (seuil climato Q_p75 par station)
         # FORME (2026-09-05) : variations journalieres et soutien d'etiage.
         self.w_dq = w_dq
@@ -1046,7 +900,6 @@ class HydroLoss(nn.Module):
         # le terme de platitude ne regarde que les mois `plat_mois` du bloc (R382).
         self.doy_bloc = None
         self.w_physics = w_physics
-        self.w_residual = w_residual
         self.per_station = per_station
         if station_weights is not None:
             self.register_buffer("station_weights", station_weights)
@@ -1066,16 +919,11 @@ class HydroLoss(nn.Module):
         q_obs: Tensor,
         q_sim: Tensor,
         station_mask: Tensor,
-        log_sigma_sim: Tensor | None = None,
         swe_obs: Tensor | None = None,
         swe_sim: Tensor | None = None,
-        log_sigma_swe_sim: Tensor | None = None,
         et_obs: Tensor | None = None,
         et_sim: Tensor | None = None,
-        log_sigma_et_sim: Tensor | None = None,
         water_balance_residual: Tensor | None = None,
-        residual_gate_logits: Tensor | None = None,
-        log_df: Tensor | None = None,   # ν Student-t (lu depuis noise_head.log_df par le trainer)
         q_obs_hist: Tensor | None = None,
         q_sim_hist: Tensor | None = None,
     ) -> tuple[Tensor, dict[str, Tensor]]:
@@ -1084,11 +932,6 @@ class HydroLoss(nn.Module):
             q_obs:  (n_timesteps, n_stations) observed streamflow
             q_sim:  (n_timesteps, n_nodes) simulated; masked via station_mask
             station_mask: (n_stations,) bool — which nodes have observations
-            log_sigma_sim: (n_timesteps, n_nodes) log σ per timestep/node, used
-                by the heteroscedastic Gaussian NLL term when ``w_nll > 0``.
-            log_sigma_et_sim, log_sigma_swe_sim: idem pour ET et SWE — utilisés
-                par les NLL multi-objectif (MOD16 ETR, NDSI snow) quand les
-                weights ``w_nll_et`` / ``w_nll_swe`` sont > 0.
             ... optional auxiliary observations
 
         Returns:
@@ -1388,46 +1231,6 @@ class HydroLoss(nn.Module):
             L_fdc = differentiable_fdc_bas_loss(q_o, q_s) if self.w_fdc_bas > 0 else _zero
             L_etiage = differentiable_etiage_loss(q_o, q_s) if self.w_etiage > 0 else _zero
 
-        # Heteroscedastic Gaussian NLL (probabilistic loss replacing the
-        # ensemble UQ stack). Aligns log_sigma to q_sim at station nodes.
-        if self.w_nll > 0 and log_sigma_sim is not None:
-            log_sigma_at_stations = log_sigma_sim[:, station_mask]
-            ls_pool = log_sigma_at_stations.reshape(-1)
-            qs_pool = q_sim_at_stations.reshape(-1)
-            qo_pool = q_obs.reshape(-1)
-            valid_pool = ~torch.isnan(qo_pool) & ~torch.isnan(qs_pool)
-            if self.nll_distribution == "student-t" and log_df is not None:
-                # Queues lourdes : ν = exp(log_df), apprenable depuis noise_head.
-                L_nll = student_t_nll_loss(
-                    qo_pool[valid_pool], qs_pool[valid_pool], ls_pool[valid_pool],
-                    log_df, lam=self.nll_lambda,
-                )
-            else:
-                L_nll = gaussian_nll_loss(
-                    qo_pool[valid_pool], qs_pool[valid_pool], ls_pool[valid_pool],
-                    lam=self.nll_lambda,
-                )
-        else:
-            L_nll = torch.tensor(0.0, device=q_sim.device)
-
-        # Flatness loss : pénalité directe sur la déviation du PIT histogram
-        # par rapport à uniforme. Cible exactement la "vague" Talagrand,
-        # contrairement au NLL qui peut accepter une σ gonflée.
-        if self.w_flatness > 0 and log_sigma_sim is not None:
-            log_sigma_at_stations = log_sigma_sim[:, station_mask]
-            ls_pool_f = log_sigma_at_stations.reshape(-1)
-            qs_pool_f = q_sim_at_stations.reshape(-1)
-            qo_pool_f = q_obs.reshape(-1)
-            valid_f = ~torch.isnan(qo_pool_f) & ~torch.isnan(qs_pool_f)
-            L_flatness = flatness_loss(
-                qo_pool_f[valid_f], qs_pool_f[valid_f], ls_pool_f[valid_f],
-                lam=self.nll_lambda,
-                n_bins=self.flatness_n_bins,
-                bandwidth=self.flatness_bandwidth,
-            )
-        else:
-            L_flatness = torch.tensor(0.0, device=q_sim.device)
-
         # Pondération pics (seuil climato Q_p75 par station) : MSE restreinte
         # aux pas de temps où Q_obs dépasse le seuil. Vise la queue haute
         # diagnostiquée comme sous-dispersée dans le PIT val.
@@ -1445,8 +1248,6 @@ class HydroLoss(nn.Module):
                 + self.w_log_nse * L_log_nse
                 + self.w_log_mse * L_log_mse
                 + self.w_tol_mse * L_tol_mse
-                + self.w_nll * L_nll
-                + self.w_flatness * L_flatness
                 + self.w_peak * L_peak
                 + self.w_dq * L_dq
                 + self.w_dq_log * L_dql
@@ -1464,8 +1265,6 @@ class HydroLoss(nn.Module):
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
                       "tol_mse_loss": L_tol_mse,
-                      "flatness_loss": L_flatness,
-                      "nll_loss": L_nll,
                       "peak_loss": L_peak}
 
         if self.w_snow > 0 and swe_obs is not None and swe_sim is not None:
@@ -1507,39 +1306,12 @@ class HydroLoss(nn.Module):
                 loss = loss + self.w_et * L_et
                 components["et_loss"] = L_et
 
-        # Heteroscedastic NLL on ET (vs MODIS MOD16 par ex.). Identifie K_c.
-        if (self.w_nll_et > 0 and et_obs is not None and et_sim is not None
-                and log_sigma_et_sim is not None):
-            v = ~torch.isnan(et_obs) & ~torch.isnan(et_sim)
-            if v.any():
-                L_nll_et = gaussian_nll_loss(
-                    et_obs[v], et_sim[v], log_sigma_et_sim[v],
-                )
-                loss = loss + self.w_nll_et * L_nll_et
-                components["nll_et_loss"] = L_nll_et
-
-        # Heteroscedastic NLL on SWE (vs MODIS NDSI / SNODAS). Identifie C_f.
-        if (self.w_nll_swe > 0 and swe_obs is not None and swe_sim is not None
-                and log_sigma_swe_sim is not None):
-            v = ~torch.isnan(swe_obs) & ~torch.isnan(swe_sim)
-            if v.any():
-                L_nll_swe = gaussian_nll_loss(
-                    swe_obs[v], swe_sim[v], log_sigma_swe_sim[v],
-                )
-                loss = loss + self.w_nll_swe * L_nll_swe
-                components["nll_swe_loss"] = L_nll_swe
-
         if self.w_physics > 0 and water_balance_residual is not None:
             valid = ~torch.isnan(water_balance_residual)
             if valid.any():
                 L_phys = (water_balance_residual[valid] ** 2).mean()
                 loss = loss + self.w_physics * L_phys
                 components["physics_loss"] = L_phys
-
-        if self.w_residual > 0 and residual_gate_logits is not None:
-            L_reg = (torch.sigmoid(residual_gate_logits) ** 2).mean()
-            loss = loss + self.w_residual * L_reg
-            components["residual_reg"] = L_reg
 
         components["total"] = loss
         return loss, components

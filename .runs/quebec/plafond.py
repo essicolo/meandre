@@ -48,7 +48,6 @@ for nom, ck in [("champion (contraint)", "best-gasp-etl-ds"), ("capacité (libre
     if not os.path.exists(p):
         print(f"{nom}: {p} absent"); continue
     m = HydroModel(n_nodes=n, n_territorial=r["territorial"].n_features, n_forcing=6,
-        use_temporal=False, use_residual=False, use_travel_time_attn=False,
         use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
         column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
         use_latent_codes=True, latent_mode="additive", spatial_melt=True,

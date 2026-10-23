@@ -16,11 +16,7 @@ Reimagines Hydrotel (INRS-ETE) as a fully differentiable pipeline:
 **Spatial Encoder (NeRF + z_n latents) -> Hydrotel Column (faithful physics clone) -> Routing (Muskingum-Cunge, operator mode) -> Quantile head -> Loss**
 
 All operations are vectorised over n_nodes (river reaches/troncons).
-The residual corrector is LEGACY (inactive everywhere, kept for checkpoint compatibility).
-The GRU temporal encoder is inactive on the QUEBEC line only. Measured 2026-09-03: the three
-Quebec pilots hardcode `use_temporal=False`, but `.runs/slso/slso.py` enables it whenever
-`enable_temporal_epoch < 9999`, which holds in 113 of the 114 SLSO configs — so the GRU IS
-trained and concatenated to the forcing on the SLSO bench. Do not call it inactive there.
+Le GRU temporel, le correcteur résiduel, le bruit d'état, les têtes de bruit sigma, la tête de mélange, la tête de quantiles contextuelle et l'attention de temps de transfert ont été RETIRÉS du paquet le 2026-10-23 (branche `nettoyage`). Aucun modèle en service ne les employait ; leurs clés d'init sont filtrées au chargement (`OBSOLETE_INIT_KEYS`), si bien que les anciens points de reprise se relisent.
 
 ## Language
 
@@ -39,7 +35,7 @@ Everything a human READS is in French: comments, docstrings, printed output, rep
 - **ANCHORS ARE TIED TO HYDROTEL'S WEATHER (measured 2026-10-02, registry R259).** The 0.739 below was obtained with the `-hyb` forcing, Hydrotel's own simple kriging of station data. On the same code, zero epochs, OUTV: 0.783 with `-hyb`, 0.592 with the CaSR `-budyko` forcing (+29 % volume, August ×2). The imposed calibration (retention curve, layer thicknesses, Linacre multiplier) compensates the biases of that kriging and must NOT be imposed on CaSR. Decision (Essi, 2026-10-02): CaSR (raw, `-casr-brut`), and meandre LEARNS soil and ET on it. Weather preprocessing is a separate task, outside meandre and outside the TOML.
 - **Regional anchors** (Quebec scale-up, historical — see the line above): `[et].mode="linacre"` + `linacre_project_dir` loads the per-UHRH optimized ETP multiplier; `[snow].melt_project_dir` loads calibrated melt rates AND thresholds. LAW OF ANCHORS, REVISED 2026-08-15 (the old form cost weeks by pointing at obsolete checkpoints): the winning configuration is the SOCLE — impose the whole Hydrotel soil calibration EXCEPT K_sat and porosities, which stay with the field, plus calibrated Linacre ETP and the project rain/snow threshold. Measured on held-out 2022-2024: OUTV 0.739 with zero training and 0.781 after 30 epochs, against 0.499 for the previously trained champion; SLNO 0.711 against 0.546; GASP 0.775 against 0.749. Freezing the retention curve alone (0.592) or nothing at all (0.563) both lose. The `-gen1` fleet (`.runs/quebec/file_generalisation.sh`) carries this recipe and its env block is the reference for any deployment: a checkpoint alone does NOT define a model.
 - **Routing**: Muskingum-Cunge; `routing_mode = "operator"` (triangular solve, ~25-30x faster) is the default for training. Lakes with learned k/beta (NeRF). Message passing along topological sort.
-- **Probabilistic**: quantile head K=6 (offsets from median, median = Q_sim so KGE is preserved), pinball loss on FROZEN backbone (`nll_distribution = "quantile"`, warm_start + freeze_*, `best_metric = "nll"`). Supersedes ParamNoise/ConcreteDropout/sigma head.
+- **Probabilistic**: quantile head K=6 (offsets from median, median = Q_sim so KGE is preserved), pinball loss on FROZEN backbone (`use_quantile_head`, `w_quantile`, warm_start + freeze_*, `best_metric = "nll"`).
 - **Multi-objective**: MODIS ET (`w_et`, auto-fetched per region) + GRACE TWS (`w_tws`) de-collapse the vertical partition.
 
 ## Literature-based parameter initialization
@@ -80,10 +76,7 @@ meandre/
   data/           # Basin cache (DuckDB), PHYSITEL loader, forcing, regional
                   # calib loaders (hydrotel_calib: soil/linacre/melt), MODIS, GRACE
   spatial/        # NeRF field network, positional encoding, latent codes
-  temporal/       # GRU + residual corrector. Residual corrector inactive partout ;
-                  # le GRU est inactif sur la ligne QUEBEC mais ACTIF sur le banc SLSO
-                  # (113 configs sur 114). `indices.py` et `phenology_modulator.py` sont
-                  # vivants et sans rapport avec le GRU.
+  temporal/       # phenology_modulator.py (phénologie du couvert) seulement
   vertical/       # HydrotelColumn + ET modes + spatial melt
   routing/        # Graph, kinematic/operator routing, message passing, lakes
   training/       # Trainer, loss (incl. pinball), autopilot
@@ -124,7 +117,7 @@ TOML configs in `.runs/slso/config/` and `.runs/quebec/config/`. Key sections:
 - `[model]`: use_latent_codes, spatial_melt, melt_factor_scale (legacy scalar; ignored on warm-start and when spatial_melt), n_forcing, routing/lakes
 - `[et]`: mode + linacre_project_dir ; `formula = "penman"` choisit la formule d'ETP dans le pilote (sinon `ETL_ETP`, sinon la demande apprise) ; `[snow]`: melt_project_dir ; `[soil]`: hydrotel_calib_dir (do not use — see law of anchors), `frozen_gate_continuous = true` pour la porte de gel continue ; `[phenology]`: `enabled`, `mode = "photo"`, `params`, `target`, `classes = ["feuillus", "agri"]` (2026-09-30 ; sans ces clés, les variables MEANDRE_PHENOLOGIE_* gardent leur rôle)
 - `[training]`: lr, epochs, chunk_steps, tbptt_steps, best_metric (kge_median; "nll" in quantile mode), warm_start(_from), freeze_*
-- `[loss]`: MSE/log-MSE/PBIAS/peak weights, w_et/w_tws, nll_distribution/quantile_taus
+- `[loss]`: MSE/log-MSE/PBIAS/peak weights, w_et/w_tws, w_quantile/quantile_taus
 - `[literature_prior]`: optional overrides for init_from_literature() targets
 
 ## Conservation de la masse

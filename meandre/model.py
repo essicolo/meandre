@@ -1,7 +1,6 @@
 """Top-level HydroModel model class.
 
-Orchestrates: spatial encoder -> temporal context -> vertical column ->
-              residual corrector -> routing -> loss.
+Orchestrates: spatial encoder -> vertical column -> routing -> loss.
 
 The simulate() method runs one full forward pass over n_timesteps days.
 """
@@ -24,12 +23,7 @@ from meandre.routing.temperature import StreamTemperatureModule
 from meandre.routing.withdrawals import WithdrawalData
 from meandre.spatial.field_network import SpatialFieldNetwork, SpatialParams
 from meandre.spatial.territorial import TerritorialFeatures
-from meandre.temporal.context_encoder import TemporalContextEncoder
-from meandre.temporal.residual_corrector import StateResidualCorrector
-from meandre.temporal.ring_buffer import OutflowRingBuffer
-from meandre.temporal.state_noise import CorrelatedStateNoise
 from meandre.utils.diagnostics import SimDiagnostics
-from meandre.utils.noise_head import HeteroscedasticNoiseHead, SpatialNoiseHead
 from meandre.utils.state import HydroState
 # VerticalColumn (colonne native legacy) importée paresseusement dans __init__
 # uniquement quand column_mode != "hydrotel" (découplage du clone Hydrotel).
@@ -40,7 +34,38 @@ from meandre.utils.state import HydroState
 #   compile_column (retiré le 2026-08-19) : compilait tout le pas de la colonne ; la
 #   compilation échouait et retombait en eager en silence, pour 1,5x plus lent que
 #   l'eager franc (banc OUTV : 240,7 contre 157,5 min/époque).
-OBSOLETE_INIT_KEYS = ("compile_column",)
+#   Retirées le 2026-10-23 avec les branches anciennes qu'aucun modèle en service n'emploie :
+#   l'encodeur temporel GRU et son Concrete Dropout (use_temporal, context_window,
+#   concrete_dropout, concrete_init_p), le correcteur résiduel d'état (use_residual,
+#   residual_history, n_state_vars, clamp_min, clamp_max), le bruit d'état AR(1)
+#   (use_state_noise), l'attention de temps de transfert et son tampon des débits sortants
+#   (use_travel_time_attn, max_travel_time), la tête de mélange (use_mixture_head,
+#   mixture_n_components, mixture_hidden) et la tête de quantiles contextuelle
+#   (use_contextual_quantile_head, cqh_n_features, cqh_taus, cqh_hidden). Les têtes de
+#   bruit sigma n'avaient pas de clé d'init ; les poids noise_head* des anciens points de
+#   reprise sont ignorés au chargement (strict=False).
+OBSOLETE_INIT_KEYS = (
+    "compile_column",
+    "use_temporal",
+    "context_window",
+    "concrete_dropout",
+    "concrete_init_p",
+    "use_residual",
+    "residual_history",
+    "n_state_vars",
+    "clamp_min",
+    "clamp_max",
+    "use_state_noise",
+    "use_travel_time_attn",
+    "max_travel_time",
+    "use_mixture_head",
+    "mixture_n_components",
+    "mixture_hidden",
+    "use_contextual_quantile_head",
+    "cqh_n_features",
+    "cqh_taus",
+    "cqh_hidden",
+)
 
 
 def drop_obsolete_init_kwargs(kw: dict) -> dict:
@@ -72,28 +97,9 @@ class HydroModel(nn.Module):
         Number of graph nodes (subbasins/reaches).
     n_forcing : int
         Number of raw forcing variables (default 6: P, Tmin, Tmax, Rn, u2, ea).
-    context_window : int
-        Number of past days for temporal attention.
-    residual_history : int
-        Number of past states for residual corrector.
-    max_travel_time : int
-        Ring buffer depth = max travel time in the network (days).
-    use_temporal : bool
-        Enable temporal context encoder (Phase 2+).
-    use_residual : bool
-        Enable state residual corrector (Phase 3+).
-    use_travel_time_attn : bool
-        Enable travel-time attention in routing (Phase 4+).
-    use_state_noise : bool
-        Enable AR(1) correlated state noise for ensemble generation.
-        Disabled by default; activate for ensemble / UQ runs.
     use_temperature : bool
         Enable stream temperature tracking. When True, heat loads are
         propagated through the routing network alongside discharge.
-    n_state_vars : int
-        Number of state variables for the residual corrector.
-        Use None to auto-detect from HydroState.N_VARS (default).
-        Old checkpoints may have 7; new models have 9.
     """
 
     # Diagnostics dont une perte DÉRIVE : évapotranspiration MODIS, neige CanSWE, niveaux du
@@ -157,22 +163,10 @@ class HydroModel(nn.Module):
         self,
         n_nodes: int,
         n_forcing: int = 6,
-        context_window: int = 60,
-        residual_history: int = 14,
-        max_travel_time: int = 30,
-        use_temporal: bool = True,
-        use_residual: bool = True,
-        use_travel_time_attn: bool = True,
-        use_state_noise: bool = False,
         use_temperature: bool = True,
         n_territorial: int = 17,
-        n_state_vars: int | None = None,
         dropout: float = 0.0,
-        concrete_dropout: bool = False,
-        concrete_init_p: float = 0.05,
         param_mode: str = "nerf",
-        clamp_min: float = -50.0,
-        clamp_max: float = 500.0,
         soil_z1: float = 0.30,
         soil_vsa_b: float = 2.5,
         soil_quickflow_reservoir: bool = False,
@@ -200,14 +194,6 @@ class HydroModel(nn.Module):
         field_bounds: dict | None = None,
         use_quantile_head: bool = False,
         quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
-        use_mixture_head: bool = False,
-        mixture_n_components: int = 10,
-        mixture_hidden: int = 64,
-        # ContextualQuantileHead (IHI) — médiane libre + features riches
-        use_contextual_quantile_head: bool = False,
-        cqh_n_features: int = 45,
-        cqh_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95),
-        cqh_hidden: int = 64,
         # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD
         use_phenology_modulator: bool = False,
         # Section [phenology] declaree : mode, params, target ("kc" ou "lai"), classes.
@@ -240,11 +226,6 @@ class HydroModel(nn.Module):
         super().__init__()
         self.n_nodes = n_nodes
         self.n_forcing = n_forcing
-        self.context_window = context_window
-        self.residual_history = residual_history
-        self.max_travel_time = max_travel_time
-        self.use_temporal = use_temporal
-        self.use_residual = use_residual
 
         # Modules
         self.spatial_encoder = SpatialFieldNetwork(
@@ -263,15 +244,6 @@ class HydroModel(nn.Module):
         )
         # Store for SoilModule init via VerticalColumn
         self._soil_z1 = soil_z1
-
-        n_context = 16 if use_temporal else 0
-        self.temporal_encoder = TemporalContextEncoder(
-            n_forcing=n_forcing,
-            window=context_window,
-            n_context_out=n_context,
-            concrete_dropout=concrete_dropout,
-            concrete_init_p=concrete_init_p,
-        ) if use_temporal else None
 
         # Colonne verticale. En mode "hydrotel" : clone FIDÈLE Hydrotel (Phase A).
         # Sinon : VerticalColumn native (legacy). Les deux exposent la même
@@ -305,16 +277,7 @@ class HydroModel(nn.Module):
             canopy_melt_lag=bool(canopy_melt_lag),
         )
 
-        _n_state = n_state_vars if n_state_vars is not None else HydroState.N_VARS
-        self.residual_corrector = StateResidualCorrector(
-            n_state_vars=_n_state,
-            history=residual_history,
-            clamp_min=clamp_min,
-            clamp_max=clamp_max,
-        ) if use_residual else None
         self.routing = RoutingLayer(
-            use_travel_time_attention=use_travel_time_attn,
-            max_tau_days=max_travel_time,
             routing_mode=routing_mode,
             routing_substeps=routing_substeps,
         )
@@ -327,55 +290,17 @@ class HydroModel(nn.Module):
         self.routing.da_beta = float(da_beta)
         self.routing.da_qref_specific = float(da_qref_specific)
 
-        # Optional AR(1) state noise for ensemble / UQ runs (Phase 5+)
-        self.state_noise: CorrelatedStateNoise | None = (
-            CorrelatedStateNoise(n_state_vars=4) if use_state_noise else None
-        )
-
         # Stream temperature module
         self.temperature: StreamTemperatureModule | None = (
             StreamTemperatureModule() if use_temperature else None
         )
 
-        # Heteroscedastic noise heads: predict log σ from each observable
-        # magnitude for the probabilistic (Gaussian NLL) training loss.
-        # SpatialNoiseHead conditions on NeRF spatial params for per-node
-        # uncertainty; HeteroscedasticNoiseHead is the 2-scalar global fallback.
-        self.noise_head: SpatialNoiseHead | HeteroscedasticNoiseHead = (
-            SpatialNoiseHead(n_spatial_params=SpatialParams.N_PARAMS)
-        )
-        self.noise_head_et = HeteroscedasticNoiseHead()    # ET (mm/jour)
-        self.noise_head_swe = HeteroscedasticNoiseHead()   # SWE (mm)
         # Tête quantile optionnelle (Phase 2 v2) : offsets monotones depuis μ.
         self.use_quantile_head = use_quantile_head
         if use_quantile_head:
             from meandre.utils.quantile_head import QuantileHead
             self.quantile_head = QuantileHead(
                 n_spatial_params=SpatialParams.N_PARAMS, taus=tuple(quantile_taus),
-            )
-        # Mixture Density Network (option 2b) : densité conditionnelle non-paramétrique
-        self.use_mixture_head = use_mixture_head
-        self.mixture_n_components = mixture_n_components
-        self.mixture_hidden = mixture_hidden
-        if use_mixture_head:
-            from meandre.utils.mixture_density_head import MixtureDensityHead
-            self.mixture_head = MixtureDensityHead(
-                n_features=SpatialParams.N_PARAMS,
-                n_components=mixture_n_components,
-                hidden=mixture_hidden,
-            )
-        # ContextualQuantileHead (IHI) : K quantiles non-paramétriques + médiane libre
-        # + features {spatial_params, Q_sim, log Q_sim, indices hydrométéo, DOY}
-        self.use_contextual_quantile_head = use_contextual_quantile_head
-        self.cqh_n_features = cqh_n_features
-        self.cqh_taus = cqh_taus
-        self.cqh_hidden = cqh_hidden
-        if use_contextual_quantile_head:
-            from meandre.utils.contextual_quantile_head import ContextualQuantileHead
-            self.contextual_quantile_head = ContextualQuantileHead(
-                n_features=cqh_n_features,
-                taus=tuple(cqh_taus),
-                hidden=cqh_hidden,
             )
         # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD cumulé
         self.use_phenology_modulator = use_phenology_modulator
@@ -410,14 +335,8 @@ class HydroModel(nn.Module):
 
     @staticmethod
     def _copier_report(c: dict) -> dict:
-        """Copie du report d'un segment : le tampon des debits sortants est modifie en place."""
-        import copy
-        c = dict(c)
-        tampon = copy.copy(c["outflow_buffer"])
-        tampon._buf = tampon._buf.clone()
-        c["outflow_buffer"] = tampon
-        c["state_buffer"] = list(c["state_buffer"])
-        return c
+        """Copie superficielle du report d'un segment, pour que le recalcul reparte du meme."""
+        return dict(c)
 
     def simulate(
         self,
@@ -428,9 +347,7 @@ class HydroModel(nn.Module):
         territorial: TerritorialFeatures,
         withdrawals: WithdrawalData,
         day_of_year: Tensor,
-        inject_noise: bool = False,
         dam_data: DamData | None = None,
-        h_context: Tensor | None = None,
         tbptt_steps: int = 0,
         return_diagnostics: bool = False,
         poursuivre_etat: bool = False,
@@ -445,14 +362,8 @@ class HydroModel(nn.Module):
             territorial:  TerritorialFeatures
             withdrawals:  WithdrawalData
             day_of_year:  (n_timesteps,) integer 1-366
-            inject_noise: If True and state_noise module is present, add AR(1)
-                          correlated noise to soil/SWE states each timestep.
-                          Use True for ensemble generation, False for training.
             dam_data:     Optional DamData with per-timestep forced releases for
                           regulated reservoir nodes.  None = all lakes unregulated.
-            h_context:    Optional GRU hidden state from a previous simulate()
-                          call (e.g. spinup).  Pass model._last_h_context after
-                          spinup to carry temporal memory into training.
             tbptt_steps:  Truncated BPTT interval in timesteps.  State and
                           Q_out_prev are detached every tbptt_steps steps,
                           limiting backward-pass depth to tbptt_steps instead
@@ -538,7 +449,6 @@ class HydroModel(nn.Module):
 
         Q_all: list[Tensor] = []
         T_water_all: list[Tensor] = []
-        state_buffer: list[Tensor] = []
         Q_out_prev = torch.zeros(self.n_nodes, device=forcing.device)
         # Diagnostic accumulators (only allocated when requested)
         # MEANDRE_DIAG_CPU=1 : les diagnostics sont accumulés sur le processeur plutôt que
@@ -567,10 +477,6 @@ class HydroModel(nn.Module):
                              "profondeur_nappe_m", "etr_nappe")}
             if return_diagnostics else {}
         )
-        outflow_buffer = OutflowRingBuffer(
-            self.n_nodes, depth=self.max_travel_time, device=forcing.device
-        )
-
         # Lake storage state (m3); only allocated when lake nodes exist.
         # Comme l'etat interne de la colonne, il ne tient pas dans HydroState et repartait
         # donc de ZERO a chaque appel, soit tous les 45 jours a l'entrainement : un lac
@@ -606,27 +512,14 @@ class HydroModel(nn.Module):
             else None
         )
 
-        # AR(1) state noise (for ensemble generation)
-        noise: Tensor | None = None
-        if inject_noise and self.state_noise is not None:
-            noise = self.state_noise.init_noise(self.n_nodes, forcing.device)
-
-        # Precompute temporal context for ALL timesteps before the loop.
-        # One chunked GRU pass (O(T·N·d²)) instead of T separate calls.
-        all_context: Tensor | None = None
-        if self.use_temporal and self.temporal_encoder is not None:
-            all_context, h_context = self.temporal_encoder.encode_sequence(
-                forcing, day_of_year, h0=h_context
-            )
-
         do_temp = self.temperature is not None
 
         # Report d'un pas au suivant : tout ce que la boucle fait vivre d'un jour a l'autre.
-        report = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "lac_diffus_S": lac_diffus_S, "noise": noise, "outflow_buffer": outflow_buffer, "state_buffer": state_buffer}
+        report = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "lac_diffus_S": lac_diffus_S}
 
         def _pas(t: int, c: dict) -> dict:
             """Un jour de simulation ; lit et met a jour le report `c`, rend les sorties du jour."""
-            state, Q_out_prev, lake_storage, hgm_queue, ow_S, lac_diffus_S, noise, outflow_buffer, state_buffer = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["lac_diffus_S"], c["noise"], c["outflow_buffer"], c["state_buffer"])
+            state, Q_out_prev, lake_storage, hgm_queue, ow_S, lac_diffus_S = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["lac_diffus_S"])
             sortie: dict[str, Tensor] = {}
             # Truncated BPTT: detach state and Q_out at chunk boundaries
             if tbptt_steps > 0 and t > 0 and t % tbptt_steps == 0:
@@ -639,11 +532,7 @@ class HydroModel(nn.Module):
                 if getattr(self, "column_mode", "meandre") == "hydrotel":
                     self.vertical_column.detach_aux()
 
-            # 1. Temporal context (indexed from pre-computed tensor)
-            if all_context is not None:
-                enriched = torch.cat([forcing[t], all_context[t]], dim=-1)
-            else:
-                enriched = forcing[t]
+            enriched = forcing[t]
 
             # 2. Vertical balance (returns ColumnOutput)
             # Convert groundwater withdrawal (m³/s) → mm/day using local area.
@@ -700,35 +589,7 @@ class HydroModel(nn.Module):
                         if getattr(self, "use_phenology_modulator", False) else None
                     ),
                 )
-            physics_state = vc_out.state
-
-            # 3. State residual correction
-            state_buffer.append(physics_state.to_tensor().detach())
-            if len(state_buffer) > self.residual_history:
-                state_buffer.pop(0)
-            if self.use_residual and self.residual_corrector is not None and len(state_buffer) >= 2:
-                history = torch.stack(state_buffer, dim=1)
-                corrected_tensor = self.residual_corrector(
-                    history, physics_state.to_tensor()
-                )
-                state = HydroState.from_tensor(corrected_tensor)
-            else:
-                state = physics_state
-
-            # 3b. Inject AR(1) correlated noise
-            if noise is not None and self.state_noise is not None:
-                noise = self.state_noise.step(noise)
-                state = HydroState(
-                    theta1=torch.clamp(state.theta1 + noise[:, 0], min=0.0),
-                    theta2=torch.clamp(state.theta2 + noise[:, 1], min=0.0),
-                    theta3=torch.clamp(state.theta3 + noise[:, 2], min=0.0),
-                    swe=torch.clamp(state.swe + noise[:, 3], min=0.0),
-                    t_soil=state.t_soil,
-                    canopy_storage=state.canopy_storage,
-                    wetland_storage=state.wetland_storage,
-                    S_gw=state.S_gw,
-                    T_water=state.T_water,
-                )
+            state = vc_out.state
 
             lateral_inflow = vc_out.lateral_inflow
 
@@ -854,7 +715,7 @@ class HydroModel(nn.Module):
             # 5. Routing
             Q_out, lake_storage, T_water_t = self.routing(
                 lateral_inflow, graph, Q_out_prev,
-                outflow_buffer, withdrawals, t,
+                withdrawals, t,
                 K_musk, x_musk,
                 lake_storage=lake_storage,
                 area_km2=area_km2,
@@ -866,7 +727,6 @@ class HydroModel(nn.Module):
                 K_atm=spatial_params.K_atm if do_temp else None,
             )
 
-            outflow_buffer.push(Q_out)
             Q_out_prev = Q_out
             sortie["Q"] = Q_out
             if do_temp and T_water_t is not None:
@@ -911,7 +771,7 @@ class HydroModel(nn.Module):
                     T_water_t if T_water_t is not None
                     else torch.full((self.n_nodes,), float('nan'), device=forcing.device)
                 )
-            c.update(state=state, Q_out_prev=Q_out_prev, lake_storage=lake_storage, hgm_queue=hgm_queue, ow_S=ow_S, lac_diffus_S=lac_diffus_S, noise=noise, outflow_buffer=outflow_buffer, state_buffer=state_buffer)
+            c.update(state=state, Q_out_prev=Q_out_prev, lake_storage=lake_storage, hgm_queue=hgm_queue, ow_S=ow_S, lac_diffus_S=lac_diffus_S)
             return sortie
 
         def _ranger(sortie: dict) -> None:
@@ -962,10 +822,6 @@ class HydroModel(nn.Module):
                 _ranger(_pas(t, report))
         state, lake_storage = report["state"], report["lake_storage"]
 
-        # Store final GRU hidden state for optional carryover to next call
-        self._last_h_context: Tensor | None = (
-            h_context.detach() if h_context is not None else None
-        )
         # Stockage des lacs en fin d'appel, pour le bloc suivant (poursuivre_etat).
         self._lake_storage_fin = (
             lake_storage.detach() if lake_storage is not None else None
@@ -1094,53 +950,18 @@ class HydroModel(nn.Module):
             "state_dict": self.state_dict(),
             "fiche_execution": fiche,
             "recette": recette,
-            "use_temporal": self.temporal_encoder is not None,
-            "use_residual": self.residual_corrector is not None,
-            "use_tta": hasattr(self.routing, "tta") and self.routing.tta is not None,
             "init_kwargs": {
                 "n_nodes": self.n_nodes,
                 "n_forcing": self.n_forcing,
-                "context_window": self.context_window,
-                "residual_history": self.residual_history,
-                "max_travel_time": self.max_travel_time,
-                # Store module EXISTENCE (not runtime flag) so from_checkpoint
-                # creates matching architecture.  Runtime flags are restored
-                # separately via use_temporal/use_residual/use_tta keys.
-                "use_temporal": self.temporal_encoder is not None,
-                "use_residual": self.residual_corrector is not None,
-                "use_travel_time_attn": hasattr(self.routing, "tta") and self.routing.tta is not None,
-                "use_state_noise": self.state_noise is not None,
                 "use_temperature": self.temperature is not None,
                 "n_territorial": self.spatial_encoder.n_territorial,
                 "dropout": self.spatial_encoder.drop1.p if hasattr(self.spatial_encoder, "drop1") else 0.0,
-                "n_state_vars": self.residual_corrector.gru.input_size if self.residual_corrector is not None else HydroState.N_VARS,
-                "clamp_min": self.residual_corrector.clamp_min if self.residual_corrector is not None else -50.0,
-                "clamp_max": self.residual_corrector.clamp_max if self.residual_corrector is not None else 500.0,
-                "concrete_dropout": (
-                    self.temporal_encoder.drop.__class__.__name__ == "ConcreteDropout"
-                    if self.temporal_encoder is not None else False
-                ),
-                "concrete_init_p": (
-                    self.temporal_encoder.drop.p.detach().item()
-                    if self.temporal_encoder is not None
-                    and hasattr(self.temporal_encoder.drop, "p")
-                    else 0.05
-                ),
                 "use_quantile_head": getattr(self, "use_quantile_head", False),
                 "quantile_taus": (
                     tuple(self.quantile_head.taus)
                     if getattr(self, "use_quantile_head", False)
                     else (0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
                 ),
-                "use_mixture_head": getattr(self, "use_mixture_head", False),
-                "mixture_n_components": getattr(self, "mixture_n_components", 10),
-                "mixture_hidden": getattr(self, "mixture_hidden", 64),
-                "use_contextual_quantile_head": getattr(self, "use_contextual_quantile_head", False),
-                "cqh_n_features": getattr(self, "cqh_n_features", 45),
-                "cqh_taus": (tuple(self.contextual_quantile_head.taus)
-                             if getattr(self, "use_contextual_quantile_head", False)
-                             else (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)),
-                "cqh_hidden": getattr(self, "cqh_hidden", 64),
                 "use_phenology_modulator": getattr(self, "use_phenology_modulator", False),
                 "routing_mode": getattr(self.routing, "routing_mode", "level"),
                 "routing_substeps": getattr(self.routing.muskingum, "n_substeps", 2),
@@ -1386,22 +1207,8 @@ class HydroModel(nn.Module):
                                "vertical_column.soil.log_k_interflow"):
                 sd.pop(legacy_key, None)
 
-            # Backward compatibility: pad residual_corrector state dict if
-            # n_state_vars grew (e.g. when cold_content was added: 9 → 10).
-            # Drop incompatible-shaped corrector weights — they'll re-init.
-            current_n_vars = HydroState.N_VARS
-            corrector_keys = [k for k in sd if k.startswith("residual_corrector.")]
-            for k in corrector_keys:
-                w = sd[k]
-                # Check if any dim equals an old N_VARS value (7, 8, 9) and
-                # mismatches current
-                if w.dim() >= 1 and w.shape[0] in (7, 8, 9) and w.shape[0] != current_n_vars:
-                    sd.pop(k)
-                elif w.dim() >= 2 and w.shape[1] in (7, 8, 9) and w.shape[1] != current_n_vars:
-                    sd.pop(k)
-
             # Drop any key whose shape mismatches the current model (e.g. when
-            # N_PARAMS grew 36→37 with vsa_b: noise_head/quantile heads change
+            # N_PARAMS grew 36→37 with vsa_b: quantile head changes
             # input dim). strict=False ignores missing/unexpected keys but NOT
             # size mismatches → filter them so cross-architecture warm-start works.
             own = self.state_dict()
@@ -1414,10 +1221,6 @@ class HydroModel(nn.Module):
                     sd.pop(k)
 
             self.load_state_dict(sd, strict=False)
-            self.use_temporal = checkpoint.get("use_temporal", False)
-            self.use_residual = checkpoint.get("use_residual", False)
-            if hasattr(self.routing, "use_tta"):
-                self.routing.use_tta = checkpoint.get("use_tta", False)
         else:
             # Legacy checkpoint: raw state_dict
             self.load_state_dict(checkpoint, strict=False)

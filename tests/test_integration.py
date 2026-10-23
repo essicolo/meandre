@@ -58,12 +58,6 @@ def test_forward_pass_no_crash():
     model = HydroModel(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
-        context_window=10,
-        residual_history=5,
-        max_travel_time=5,
-        use_temporal=True,
-        use_residual=True,
-        use_travel_time_attn=False,  # faster for smoke test
     )
     model.eval()
 
@@ -89,9 +83,7 @@ def test_forward_pass_no_crash():
 def test_latent_codes_end_to_end(tmp_path):
     """NeRF avec codes latents : forward, gradient sur z_n, shrinkage, save/load."""
     model = HydroModel(
-        n_nodes=N_NODES, n_forcing=N_FORCING, context_window=10, residual_history=5,
-        max_travel_time=5, use_temporal=True, use_residual=False,
-        use_travel_time_attn=False, use_latent_codes=True, latent_dim=8,
+        n_nodes=N_NODES, n_forcing=N_FORCING, use_latent_codes=True, latent_dim=8,
     )
     from meandre.spatial.field_network import SpatialParams
     enc = model.spatial_encoder
@@ -117,7 +109,9 @@ def test_latent_codes_end_to_end(tmp_path):
     import torch as _t
     ck = _t.load(str(ckpt), map_location="cpu", weights_only=False)
     assert ck["init_kwargs"].get("use_latent_codes") is True
-    model2 = HydroModel(**ck["init_kwargs"]); model2.load(str(ckpt))
+    from meandre.model import drop_obsolete_init_kwargs
+    model2 = HydroModel(**drop_obsolete_init_kwargs(ck["init_kwargs"]))
+    model2.load(str(ckpt))
     assert model2.spatial_encoder.use_latent_codes
     assert _t.allclose(model2.spatial_encoder.latent_codes, enc.latent_codes)
 
@@ -130,11 +124,6 @@ def test_loss_is_differentiable():
     model = HydroModel(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
-        context_window=5,
-        residual_history=3,
-        max_travel_time=3,
-        use_temporal=False,   # Phase 1 training: pure physics
-        use_residual=False,
     )
     model.train()
 
@@ -162,17 +151,8 @@ def test_loss_is_differentiable():
     loss.backward()
 
     # Params that are legitimately gradient-free (submodules not activated by this graph).
-    # noise_head{,_et,_swe} see no gradient when their w_nll{,_et,_swe} = 0 — by design.
-    # SpatialNoiseHead MLP params also have no gradient when w_nll=0.
     expected_no_grad = {
         "routing.lake.log_k_lake", "routing.lake.log_beta",
-        "noise_head.log_sigma_a", "noise_head.log_sigma_b",
-        "noise_head.net.0.weight", "noise_head.net.0.bias",
-        "noise_head.net.2.weight", "noise_head.net.2.bias",
-        "noise_head_et.log_sigma_a", "noise_head_et.log_sigma_b",
-        "noise_head_swe.log_sigma_a", "noise_head_swe.log_sigma_b",
-        # log_df (Student-t) : sans gradient quand w_nll{,_et,_swe}=0, comme les sigma.
-        "noise_head.log_df", "noise_head_et.log_df", "noise_head_swe.log_df",
         # Facteurs de fonte ETI : utilisés seulement si melt_mode="eti" (défaut
         # degree_day), donc sans gradient dans le modèle par défaut.
         "vertical_column.sp_tf", "vertical_column.sp_srf",
@@ -199,10 +179,6 @@ def test_mass_conservation_routing():
     model = HydroModel(
         n_nodes=N_NODES,
         n_forcing=N_FORCING,
-        context_window=5,
-        use_temporal=False,
-        use_residual=False,
-        use_travel_time_attn=False,
     )
     model.eval()
 
@@ -228,8 +204,6 @@ def test_naturalized_flow_equals_or_less_than_anthropic():
     """Q_natural >= Q_anthropic when withdrawals < 0 (net removal from stream)."""
     model = HydroModel(
         n_nodes=N_NODES, n_forcing=N_FORCING,
-        context_window=5, use_temporal=False, use_residual=False,
-        use_travel_time_attn=False,
     )
     model.eval()
 
@@ -258,3 +232,22 @@ def test_naturalized_flow_equals_or_less_than_anthropic():
     # Allow small floating point tolerance
     assert (Q_natural[:, -1] >= Q_anthropic[:, -1] - 1e-4).all(), \
         "Naturalized flow is less than anthropic (withdrawals should reduce flow)"
+
+
+def test_ancien_point_de_reprise_se_relit(tmp_path):
+    """Un point de reprise écrit avant le retrait des branches anciennes (2026-10-23) porte
+    leurs clés d'init et les poids des têtes de bruit : il doit se reconstruire et se charger."""
+    model = HydroModel(n_nodes=N_NODES, n_forcing=N_FORCING)
+    ckpt = tmp_path / "ancien.pt"
+    model.save(str(ckpt))
+    ck = torch.load(str(ckpt), map_location="cpu", weights_only=False)
+    ck["init_kwargs"].update(use_temporal=False, context_window=60, use_residual=False, residual_history=14, n_state_vars=11, clamp_min=-50.0, clamp_max=500.0, use_state_noise=False, use_travel_time_attn=False, max_travel_time=30, concrete_dropout=False, concrete_init_p=0.05, use_mixture_head=False, mixture_n_components=10, mixture_hidden=64, use_contextual_quantile_head=False, cqh_n_features=45, cqh_taus=(0.5,), cqh_hidden=64)
+    ck["state_dict"]["noise_head.log_df"] = torch.zeros(())
+    ck["state_dict"]["noise_head_et.log_sigma_a"] = torch.zeros(())
+    ck.update(use_temporal=False, use_residual=False, use_tta=False)
+    torch.save(ck, str(ckpt))
+
+    model2 = HydroModel.from_checkpoint(str(ckpt))
+    for k, v in model.state_dict().items():
+        assert torch.equal(v, model2.state_dict()[k]), k
+    assert not any(k.startswith("noise_head") for k in model2.state_dict())

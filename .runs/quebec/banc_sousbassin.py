@@ -186,7 +186,6 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     doy = torch.tensor(temps.dayofyear.to_numpy(), dtype=torch.long)
 
     m = HydroModel(n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
-                   use_temporal=False, use_residual=False, use_travel_time_attn=False,
                    use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
                    column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
                    use_latent_codes=False, spatial_melt=True,
@@ -519,7 +518,6 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
 
     def _construire():
         m = HydroModel(field_bounds=_field_bounds, n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
-                       use_temporal=False, use_residual=False, use_travel_time_attn=False,
                        use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode=_mode, n_coord_freqs=_freqs,
                        column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
                        use_latent_codes=False, spatial_melt=True,

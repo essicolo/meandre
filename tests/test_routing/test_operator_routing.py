@@ -11,7 +11,6 @@ import pytest
 from meandre.routing.graph import RiverGraph, _topological_sort
 from meandre.routing.message_passing import RoutingLayer
 from meandre.routing.withdrawals import WithdrawalData
-from meandre.temporal.ring_buffer import OutflowRingBuffer
 
 N = 10
 T = 30
@@ -47,14 +46,13 @@ def _inputs(seed: int = 0, with_withdrawals: bool = False):
 
 def _run(mode: str, K_musk, x_musk, q_lat, area, storage0, wd):
     graph = _branched_graph_with_lakes()
-    layer = RoutingLayer(use_travel_time_attention=False, routing_mode=mode)
-    buf = OutflowRingBuffer(N, depth=5)
+    layer = RoutingLayer(routing_mode=mode)
     Q_prev = torch.zeros(N)
     storage = storage0.clone()
     out = []
     for t in range(T):
         Q, storage, _ = layer(
-            q_lat[t], graph, Q_prev, buf, wd, t, K_musk, x_musk,
+            q_lat[t], graph, Q_prev, wd, t, K_musk, x_musk,
             lake_storage=storage, area_km2=area,
         )
         out.append(Q)
@@ -131,12 +129,11 @@ def test_operator_no_lakes_single_stage():
     q_lat = torch.rand(T, N)
     res = {}
     for mode in ("level", "operator", "operator-lagged"):
-        layer = RoutingLayer(use_travel_time_attention=False, routing_mode=mode)
-        buf = OutflowRingBuffer(N, depth=5)
+        layer = RoutingLayer(routing_mode=mode)
         Q_prev = torch.zeros(N)
         out = []
         for t in range(T):
-            Q, _, _ = layer(q_lat[t], graph, Q_prev, buf, wd, t, K, x,
+            Q, _, _ = layer(q_lat[t], graph, Q_prev, wd, t, K, x,
                             lake_storage=None, area_km2=torch.ones(N) * 30)
             out.append(Q)
             Q_prev = Q
@@ -168,12 +165,11 @@ def test_operator_block_split_is_exact(monkeypatch, with_withdrawals):
         else:
             monkeypatch.setenv("MEANDRE_OPERATOR_BLOCK", blk)
         graph = _two_copies()
-        layer = RoutingLayer(use_travel_time_attention=False, routing_mode="operator")
-        buf = OutflowRingBuffer(2 * N, depth=5)
+        layer = RoutingLayer(routing_mode="operator")
         K = args[0].clone().requires_grad_(True)
         Q_prev, storage, out = torch.zeros(2 * N), args[4].clone(), []
         for t in range(T):
-            Q, storage, _ = layer(args[2][t], graph, Q_prev, buf, wd, t, K, args[1],
+            Q, storage, _ = layer(args[2][t], graph, Q_prev, wd, t, K, args[1],
                                   lake_storage=storage, area_km2=args[3])
             out.append(Q)
             Q_prev = Q

@@ -6,7 +6,6 @@ from meandre.routing.lake import LakeModule
 from meandre.routing.message_passing import RoutingLayer
 from meandre.routing.graph import RiverGraph
 from meandre.routing.withdrawals import WithdrawalData
-from meandre.temporal.ring_buffer import OutflowRingBuffer
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +104,10 @@ def test_routing_with_lake_node_no_crash():
     """RoutingLayer must handle lake nodes without raising NotImplementedError."""
     n_nodes = 5
     graph = _make_lake_graph(n_nodes, lake_node=2)
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
 
     lateral_inflow = torch.rand(n_nodes) * 2.0  # mm/day
     Q_out_prev = torch.zeros(n_nodes)
-    buffer = OutflowRingBuffer(n_nodes, depth=5)
     withdrawals = WithdrawalData.zeros(10, n_nodes)
     lake_storage = torch.zeros(n_nodes)
     area_km2 = torch.ones(n_nodes) * 50.0
@@ -119,7 +117,7 @@ def test_routing_with_lake_node_no_crash():
     dx = torch.ones(n_nodes) * 5000.0
 
     Q_out, lake_storage_new, _ = layer(
-        lateral_inflow, graph, Q_out_prev, buffer, withdrawals, 0,
+        lateral_inflow, graph, Q_out_prev, withdrawals, 0,
         K_musk, x_musk, dx,
         lake_storage=lake_storage,
         area_km2=area_km2,
@@ -137,12 +135,11 @@ def test_routing_lake_storage_accumulates():
     n_nodes = 3
     lake_node = 1
     graph = _make_lake_graph(n_nodes, lake_node)
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
 
     # Force large inflow
     lateral_inflow = torch.ones(n_nodes) * 100.0  # mm/day
     Q_out_prev = torch.zeros(n_nodes)
-    buffer = OutflowRingBuffer(n_nodes, depth=5)
     withdrawals = WithdrawalData.zeros(10, n_nodes)
     lake_storage = torch.zeros(n_nodes)
     area_km2 = torch.ones(n_nodes) * 1.0   # small lake area → limited Q_out
@@ -152,7 +149,7 @@ def test_routing_lake_storage_accumulates():
     dx = torch.ones(n_nodes) * 1000.0
 
     Q_out, lake_storage_new, _ = layer(
-        lateral_inflow, graph, Q_out_prev, buffer, withdrawals, 0,
+        lateral_inflow, graph, Q_out_prev, withdrawals, 0,
         K_musk, x_musk, dx,
         lake_storage=lake_storage,
         area_km2=area_km2,
@@ -167,11 +164,10 @@ def test_routing_no_lake_returns_none_storage():
     from meandre.routing.graph import synthetic_linear_graph
     n_nodes = 4
     graph = synthetic_linear_graph(n_nodes)
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
 
     lateral_inflow = torch.rand(n_nodes)
     Q_out_prev = torch.zeros(n_nodes)
-    buffer = OutflowRingBuffer(n_nodes, depth=5)
     withdrawals = WithdrawalData.zeros(10, n_nodes)
 
     K_musk = torch.ones(n_nodes) * 86400.0
@@ -179,7 +175,7 @@ def test_routing_no_lake_returns_none_storage():
     dx = torch.ones(n_nodes) * 5000.0
 
     Q_out, lake_storage_new, _ = layer(
-        lateral_inflow, graph, Q_out_prev, buffer, withdrawals, 0,
+        lateral_inflow, graph, Q_out_prev, withdrawals, 0,
         K_musk, x_musk, dx,
     )
 

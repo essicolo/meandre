@@ -39,18 +39,10 @@ IGNOREES_SCIEMMENT = {
     "lr_new_features_mult": "idem, mecanisme de warm-start non utilise ici",
     "weight_decay": "jamais active au Quebec ; l'optimiseur du trainer garde son defaut",
     "compile_modules": "compile_column retire le 2026-08-19 (dette #8) ; cle morte a purger des TOML",
-    "autopilot_beta_penalty": "autopilot du pilote ne module pas les penalites beta/gamma",
-    "autopilot_gamma_penalty": "idem",
-    "autopilot_gamma_threshold": "idem (seul beta_threshold participe au drift handler)",
-    "enable_residual_epoch": "correcteur residuel LEGACY, inactif (CLAUDE.md)",
-    "enable_temporal_epoch": "GRU temporel LEGACY, inactif",
-    "enable_travel_epoch": "idem",
-    "residual_warmup_epochs": "correcteur residuel LEGACY",
+    "autopilot_gamma_threshold": "le pilote ne transmet que beta_threshold ; le seuil de gamma garde le defaut du trainer",
     "train_with_param_noise": "stack ParamNoise DEPRECATED 2026-05-11",
     "param_noise_target_sigma": "idem",
     "w_param_noise_kl": "idem",
-    "w_concrete_kl": "ConcreteDropout DEPRECATED 2026-05-11",
-    "tta_warmup_epochs": "mecanisme abandonne avec le stack ensembliste",
 }
 
 

@@ -80,8 +80,7 @@ def test_le_point_de_reprise_porte_sa_recette(tmp_path, monkeypatch):
     from meandre.model import HydroModel
 
     monkeypatch.setenv("ETL_MELT_SAISON", "0.5")
-    m = HydroModel(n_nodes=8, n_territorial=8, n_forcing=6, use_temporal=False,
-                   use_residual=False, use_travel_time_attn=False, param_mode="nerf",
+    m = HydroModel(n_nodes=8, n_territorial=8, n_forcing=6, param_mode="nerf",
                    column_mode="hydrotel", compile_soil=False)
     p = tmp_path / "essai.pt"
     m.save(p)

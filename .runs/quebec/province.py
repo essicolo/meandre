@@ -143,7 +143,6 @@ model = HydroModel(
     n_nodes=dom["n_nodes"],
     n_territorial=dom["territorial"].n_features,
     n_forcing=N_FORCAGE,
-    use_temporal=False, use_residual=False, use_travel_time_attn=False,
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
     column_theta_init_frac=float(mcfg.get("column_theta_init_frac", 0.9)),
     param_mode="nerf", column_mode="hydrotel",

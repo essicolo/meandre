@@ -7,7 +7,6 @@ from meandre.routing.dam import DamData
 from meandre.routing.graph import RiverGraph
 from meandre.routing.message_passing import RoutingLayer
 from meandre.routing.withdrawals import WithdrawalData
-from meandre.temporal.ring_buffer import OutflowRingBuffer
 
 
 # ---------------------------------------------------------------------------
@@ -86,11 +85,10 @@ def _make_lake_graph(n_nodes: int, lake_node: int) -> RiverGraph:
 
 def _routing_step(n_nodes, lake_node, dam_data):
     graph = _make_lake_graph(n_nodes, lake_node)
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
 
     lateral_inflow = torch.ones(n_nodes) * 10.0
     Q_out_prev = torch.zeros(n_nodes)
-    buffer = OutflowRingBuffer(n_nodes, depth=5)
     withdrawals = WithdrawalData.zeros(10, n_nodes)
     lake_storage = torch.ones(n_nodes) * 1e6  # 1 million m3 initial storage
     area_km2 = torch.ones(n_nodes) * 20.0
@@ -100,7 +98,7 @@ def _routing_step(n_nodes, lake_node, dam_data):
     dx = torch.ones(n_nodes) * 5000.0
 
     Q_out, lake_storage_new, _ = layer(
-        lateral_inflow, graph, Q_out_prev, buffer, withdrawals, t=0,
+        lateral_inflow, graph, Q_out_prev, withdrawals, t=0,
         K_musk=K_musk, x_musk=x_musk, dx=dx,
         lake_storage=lake_storage,
         area_km2=area_km2,
@@ -144,13 +142,12 @@ def test_forced_release_mass_balance():
         n_timesteps=10, n_nodes=n_nodes,
     )
     graph = _make_lake_graph(n_nodes, lake_node)
-    layer = RoutingLayer(use_travel_time_attention=False)
+    layer = RoutingLayer()
 
     S0 = 5e5
     lateral_inflow = torch.zeros(n_nodes)
     lateral_inflow[lake_node] = 0.0   # no lateral
     Q_out_prev = torch.zeros(n_nodes)
-    buffer = OutflowRingBuffer(n_nodes, depth=5)
     withdrawals = WithdrawalData.zeros(10, n_nodes)
     lake_storage = torch.full((n_nodes,), S0)
     area_km2 = torch.ones(n_nodes) * 5.0
@@ -160,7 +157,7 @@ def test_forced_release_mass_balance():
     dx = torch.ones(n_nodes) * 1000.0
 
     Q_out, S_new, _ = layer(
-        lateral_inflow, graph, Q_out_prev, buffer, withdrawals, t=0,
+        lateral_inflow, graph, Q_out_prev, withdrawals, t=0,
         K_musk=K_musk, x_musk=x_musk, dx=dx,
         lake_storage=lake_storage,
         area_km2=area_km2,

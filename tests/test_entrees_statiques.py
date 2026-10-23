@@ -183,8 +183,7 @@ def test_garde_fou_occupation_nulle(capsys):
     from meandre.utils.state import HydroState
 
     n, T = 6, 12
-    m = HydroModel(n_nodes=n, use_temporal=False, use_residual=False,
-                   use_travel_time_attn=False, column_mode="hydrotel")
+    m = HydroModel(n_nodes=n, column_mode="hydrotel")
     terr = TerritorialFeatures.zeros(n_nodes=n, n_features=17)
     terr.physical["area_km2_local"] = _t.ones(n) * 2
     terr.physical["area_km2_physical"] = _t.ones(n) * 10

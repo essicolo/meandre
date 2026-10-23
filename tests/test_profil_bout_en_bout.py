@@ -20,8 +20,7 @@ N_TERRITORIAL = 4
 
 def _modele():
     torch.manual_seed(0)
-    return HydroModel(n_nodes=N_NOEUDS, n_territorial=N_TERRITORIAL, use_temporal=False,
-                      use_residual=False)
+    return HydroModel(n_nodes=N_NOEUDS, n_territorial=N_TERRITORIAL)
 
 
 def _profil_declare():

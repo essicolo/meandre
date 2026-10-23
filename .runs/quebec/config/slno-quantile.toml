@@ -39,18 +39,9 @@ discharge_dependent_celerity = false
 dq_beta = 0.5
 use_temperature = false
 n_forcing = 6      # P, T_min, T_max, R_n, u2, e_a (pas de DT_eff)
-context_window = 30
-residual_history = 14
-max_travel_days = 20
-dropout = 0.0    # Standard MC Dropout (0 = disabled when using concrete)
+dropout = 0.0    # Standard MC Dropout
 
 # ── Position B uncertainty stack ───────────────────────────────────────
-# Concrete Dropout on temporal_encoder ONLY (epistemic uncertainty over
-# the interpretation of the meteorological context). The spatial encoder
-# uses ParamNoise below (mass-conserving parametric uncertainty).
-# To fully disable Concrete Dropout, set to false.
-concrete_dropout = false  # Phase B (déterministe) — réactiver pour Phase 2 UQ calibration
-concrete_init_p = 0.1
 # ParamNoise: learnable Gaussian σ injected on fc_out logits of the NeRF
 # (before constraints). Preserves the water balance because constraints
 # bound the perturbed params within their physical ranges. Each ensemble
@@ -154,7 +145,6 @@ best_metric_tolerance = 0.005
 warm_start = true
 warm_start_from = "checkpoints/best-slno.pt"
 freeze_spatial = true
-freeze_temporal = true
 freeze_backbone = true   # cold : checkpoint cleanh = colonne native incompatible avec hydrotel
 # warm_start_from desactive (cold start colonne hydrotel)
 compile_modules = false  # Triton missing on Windows → torch.compile crashes on first forward
@@ -171,26 +161,9 @@ w_prior = 0.005
 # train_with_param_noise: if true, training forward pass uses
 #   perturb_params=True. Lets σ learn via gradient (data loss vs
 #   regularisation). Recommended for true UQ calibration.
-# w_concrete_kl: weight of the Concrete Dropout KL. Kept low to avoid
-#   dominating the data loss (cf. previous collapse).
 w_param_noise_kl = 0.0   # Phase B (déterministe) — KL inactive when param_noise=false
 param_noise_target_sigma = 0.05
 train_with_param_noise = false # Phase B (déterministe)
-w_concrete_kl = 0.0   # Phase B (déterministe) — KL inactive when concrete_dropout=false
-
-# Curriculum: epoch at which each module is activated
-enable_temporal_epoch = 0
-enable_residual_epoch = 9999 # disabled — current design doomed (gate never trained + noise injection at activation), pending redesign
-enable_travel_epoch = 9999 # 10, or 0 for warm-start past epoch 20
-# Over this many epochs after residual activation, the effective gate
-# multiplier ramps linearly 0 -> 1.  Avoids the loss spike caused by
-# activating random-init GRU weights abruptly.  Set to 0 to disable.
-residual_warmup_epochs = 5
-# Over this many epochs after TTA activation, the routing aggregation
-# blends linearly from simple sum (Σ Q_actuels) to full TTA attention.
-# Avoids a sudden semantic change when warm-starting from a checkpoint
-# trained without TTA.  Set to 0 to use pure TTA immediately.
-tta_warmup_epochs = 10
 
 # ── Autopilot ──────────────────────────────────────────────────────────
 # Autonomous calibration — adjusts hyperparameters based on validation
@@ -198,23 +171,14 @@ tta_warmup_epochs = 10
 autopilot = true
 autopilot_grace_epochs = 8      # 15 couvrait le pic
 autopilot_beta_threshold = 0.10  # 1.0 neutralisait la détection (revue autopilote 2026-07-02)
-autopilot_beta_penalty = 0.005 # w_residual increment per epoch
-autopilot_gamma_threshold = 0.20  # |γ-1| > 0.20 → bump w_residual
-autopilot_gamma_penalty = 0.003
+autopilot_gamma_threshold = 0.20  # |γ-1| > 0.20 → dérive (redémarrage intelligent)
 autopilot_lr_patience = 6      # réduire LR plus tôt
 autopilot_lr_factor = 0.5
 autopilot_lr_min = 1e-5
 autopilot_restart_regression = 0.05 # 5% regression + drift → restart
 autopilot_restart_max = 3
-# autopilot_activate_residual_at_kge = 0.55  # disabled: residual must be redesigned (cf. memory 2026-04-24)
-# TTA disabled by autopilot: random-init weights crash the model
-# immediately. Needs a warmup gate like the residual corrector
-# (tta_warmup_factor) but that warmup doesn't yet interact with
-# autopilot restart. Enable only once the warmup is wired.
-# autopilot_activate_tta_at_kge = 0.65
 
 [loss]
-nll_distribution = "quantile"
 quantile_taus = [0.05, 0.10, 0.25, 0.75, 0.90, 0.95]
 w_quantile = 1.0
 # Weights of the loss components.
@@ -227,7 +191,6 @@ w_quantile = 1.0
 #
 # Regularisation:
 #   w_physics  — penalises water-balance residual (mass closure)
-#   w_residual — penalises residual corrector amplitude (keep physics dominant)
 w_nse = 0.0 # Nash-Sutcliffe Efficiency. NOT chunk-safe — disabled with chunk_steps>0
 w_kge = 1.0 # Per-station KGE — directly targets beta, r, gamma.
                    # Chunk-approximate but the signal on beta/r is much stronger
@@ -269,7 +232,6 @@ w_peak = 0.5    # protege le gain de pic de la porte gel (sinon le NeRF le troqu
                    # Lowered from 0.5 to 0.3: too strong was pulling toward a flat signal (collapse 2026-05-04).
 w_nrmse = 0.0 # Normalised RMSE. Dimensionless, gives a relative error.
 w_physics = 0.01 # Penalises water-balance non-closure (P − ET − Q − ΔS ≈ 0). Forces the model to respect physics.
-w_residual = 0.01 # L2 regularisation on the residual corrector. Keeps corrections small so the physics component dominates.
 
 # ─── Literature Prior ─────────────────────────────────────────────────────
 # Override spatial parameter initialization when training from scratch.

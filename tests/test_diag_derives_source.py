@@ -16,7 +16,7 @@ def besoins(loss_fn, lcfg):
         v = getattr(loss_fn, nom, None)
         return float(v if v is not None else lcfg.get(nom, 0.0) or 0.0)
 
-    d = {"etr": poids("w_et") or poids("w_nll_et"),
+    d = {"etr": poids("w_et"),
          "swe": poids("w_snow") or poids("w_swe_mass"),
          "s_gw": poids("w_nappe") or poids("w_tws"),
          "profondeur_nappe_m": poids("w_nappe"),

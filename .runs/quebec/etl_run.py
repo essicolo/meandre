@@ -338,9 +338,6 @@ model = HydroModel(
     # territoire et pour le Quebec entier, dont le champ partage sous-ajuste (R374).
     field_hidden=int(mcfg.get("field_hidden", 256)),
     n_forcing=6,
-    use_temporal=False,
-    use_residual=False,
-    use_travel_time_attn=False,
     use_frost_rankinen=bool(mcfg.get("use_frost_rankinen", True)),
     # CONFIGURATION DECLAREE (2026-09-30) : la porte de gel continue et le modulateur
     # phenologique entrent par le TOML, comme sur le banc de sous-bassin ou ils ont ete
@@ -1106,7 +1103,7 @@ def _poids(nom):
     return float(v if v is not None else lcfg.get(nom, 0.0) or 0.0)
 
 
-_besoins = {"etr": _poids("w_et") or _poids("w_nll_et"),
+_besoins = {"etr": _poids("w_et"),
             "swe": _poids("w_snow") or _poids("w_swe_mass"),
             "s_gw": _poids("w_nappe") or _poids("w_tws"),
             "profondeur_nappe_m": _poids("w_nappe"),

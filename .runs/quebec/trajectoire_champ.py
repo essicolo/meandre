@@ -47,7 +47,6 @@ def main():
     print(f"{n} noeuds, {terr.data.shape[1]} attributs ; bassins : "
           + ", ".join(f"{s} {len(b)} noeuds" for s, b in bassins.items()), flush=True)
     m = HydroModel(n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
-                   use_temporal=False, use_residual=False, use_travel_time_attn=False,
                    use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
                    column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
                    use_latent_codes=False, predict_lake_params=True)

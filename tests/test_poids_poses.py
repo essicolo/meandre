@@ -17,7 +17,7 @@ from meandre.training.loss import HydroLoss
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PILOTE = os.path.join(RACINE, ".runs", "quebec", "joint_data.py")
 # Poses ailleurs que dans l'appel de construction, par le pilote ou la phase quantile.
-HORS_APPEL = {"w_nappe", "w_quantile", "w_nll", "w_nll_et", "w_nll_swe", "w_mixture"}
+HORS_APPEL = {"w_nappe", "w_quantile"}
 
 
 def _poids_de_lappel():
