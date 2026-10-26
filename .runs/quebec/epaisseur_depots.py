@@ -9,7 +9,7 @@ Par tronçon : moyenne géométrique de l'épaisseur sur la surface cartographi�
 à 1 m ou moins, part à 5 m ou plus, part cartographiée avec une épaisseur. Grille de 100 m dans la
 projection du projet PHYSITEL, comme `depots_troncons.py`.
 
-    .venv/Scripts/python.exe experiments/plan_ml/epaisseur-depots.py mont slso outv slno
+    .venv/Scripts/python.exe .runs/quebec/epaisseur_depots.py mont slso outv slno
 """
 import os
 import sys
@@ -26,7 +26,7 @@ from croiser_drainage import RESOLUTION, SIGEOM, rasteriser
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 
-SORTIE = f"{_paths.DATA_ROOT}/experiments/plan_ml/epaisseur-depots-troncons.parquet"
+SORTIE = f"{_paths.DERIVED_ROOT}/auxiliaires/epaisseur-depots-troncons.parquet"
 COUCHE = "F10E15_ZONE_MORPH_SEDIM"
 
 
