@@ -35,7 +35,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from meandre.model import HydroModel
-from meandre.utils.recette import appliquer_recette as _appliquer_recette
+from meandre.utils.recipe import apply_recipe as _apply_recipe
 from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
 from meandre.utils.metrics import kge as kge_fn
 from meandre.utils.state import HydroState
@@ -82,7 +82,8 @@ ETB = f"{_paths.DATA_ROOT}/quebec/checkpoints-etbench"
 cfg = tomllib.load(open(BASE_CFG, "rb"))
 # La recette du fichier est posee AVANT que le pilote ne lise quoi que ce soit. Ordre de
 # priorite : variable d'environnement, puis fichier, puis defaut du code.
-_posees = _appliquer_recette(cfg.get("recette"))
+# [recette] : nom de la section d'avant le 2026-10-26, encore accepte.
+_posees = _apply_recipe(cfg.get("recipe") or cfg.get("recette"))
 # Reglages declares du paquet (meandre/utils/settings.py), lus dans les sections du fichier.
 from meandre.utils import settings as _settings
 _reglages_fichier = _settings.configure(cfg)

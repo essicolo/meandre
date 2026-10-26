@@ -82,5 +82,6 @@ Hydat_sqlite3_*.zip
 # Le dossier exact : « /D*/ » attrapait aussi docs/ sous Windows, insensible a la casse.
 /D:/
 *.recette.toml
+*.recipe.toml
 
 lets-plot-images/

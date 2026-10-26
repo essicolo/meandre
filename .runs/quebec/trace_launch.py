@@ -43,7 +43,7 @@ def reader_location():
     frame = sys._getframe(2)
     while frame is not None:
         name = frame.f_code.co_filename.replace("\\", "/")
-        if name.endswith("meandre/utils/recette.py") or "/.venv/" in name:
+        if name.endswith("meandre/utils/recipe.py") or "/.venv/" in name:
             return None
         if name.startswith(REPO) and not name.endswith("trace_launch.py"):
             return f"{relative(name)}:{frame.f_lineno}"

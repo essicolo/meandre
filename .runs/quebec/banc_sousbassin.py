@@ -1574,10 +1574,11 @@ def main():
     # recette que le pilote, par la meme fonction, sans ecraser une variable deja posee.
     if os.environ.get("ETL_CONFIG"):
         import tomllib
-        from meandre.utils.recette import appliquer_recette
+        from meandre.utils.recipe import apply_recipe
         with open(os.environ["ETL_CONFIG"], "rb") as _f:
-            _rec = tomllib.load(_f).get("recette")
-        _pos = appliquer_recette(_rec)
+            _cfg = tomllib.load(_f)
+            _rec = _cfg.get("recipe") or _cfg.get("recette")
+        _pos = apply_recipe(_rec)
         print(f"  recette du pilote {os.path.basename(os.environ['ETL_CONFIG'])} : {len(_pos)} reglage(s) poses depuis le fichier", flush=True)
     ap = argparse.ArgumentParser()
     ap.add_argument("region")

@@ -950,12 +950,12 @@ class HydroModel(nn.Module):
         # le bloc de variables du script shell qui lancait l'entrainement. On les capture
         # ici, dans le point de reprise, et on ecrit le meme contenu en TOML lisible a
         # cote du fichier.
-        from meandre.utils.recette import capturer_recette, ecrire_recette_toml
-        recette = capturer_recette()
+        from meandre.utils.recipe import capture_recipe, write_recipe_toml
+        recipe = capture_recipe()
         torch.save({
             "state_dict": self.state_dict(),
             "fiche_execution": fiche,
-            "recette": recette,
+            "recipe": recipe,
             "init_kwargs": {
                 "n_nodes": self.n_nodes,
                 "n_forcing": self.n_forcing,
@@ -1010,7 +1010,7 @@ class HydroModel(nn.Module):
         }, path)
         # Document accompagnant, lisible sans torch : meme contenu en TOML a cote du
         # point de reprise. Un echec d'ecriture n'est jamais fatal.
-        ecrire_recette_toml(path, recette, fiche,
+        write_recipe_toml(path, recipe, fiche,
                             {"n_nodes": self.n_nodes, "n_forcing": self.n_forcing,
                              "column_mode": getattr(self, "column_mode", None),
                              "routing_mode": getattr(self.routing, "routing_mode", None)})
@@ -1115,10 +1115,11 @@ class HydroModel(nn.Module):
         # sur l'une d'elles change la physique sans rien changer aux poids, ce qui rend un
         # score incomparable. Les chemins de deploiement sont ignores : ils changent
         # legitimement d'une machine a l'autre.
-        _rec = checkpoint.get("recette") if isinstance(checkpoint, dict) else None
+        # "recette" : cle des points de reprise d'avant le 2026-10-26.
+        _rec = (checkpoint.get("recipe") or checkpoint.get("recette")) if isinstance(checkpoint, dict) else None
         if _rec:
-            from meandre.utils.recette import comparer_recette
-            _ecarts = comparer_recette(_rec)
+            from meandre.utils.recipe import compare_recipe
+            _ecarts = compare_recipe(_rec)
             if _ecarts:
                 print(f"[load] AVERTISSEMENT recette : {len(_ecarts)} ecart(s) entre "
                       f"l'environnement de l'entrainement et celui d'aujourd'hui")

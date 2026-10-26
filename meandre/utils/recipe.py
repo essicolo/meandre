@@ -61,7 +61,7 @@ def _empreinte_code() -> dict:
     return out
 
 
-def capturer_recette() -> dict:
+def capture_recipe() -> dict:
     """Toutes les variables du projet posées dans l'environnement, plus le contexte.
 
     Seules les variables EFFECTIVEMENT posées sont capturées : une variable absente
@@ -94,7 +94,7 @@ def _toml_valeur(v) -> str:
     return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def ecrire_recette_toml(chemin, recette: dict, fiche: dict | None = None,
+def write_recipe_toml(chemin, recette: dict, fiche: dict | None = None,
                         init_kwargs: dict | None = None) -> Path | None:
     """Écrit la recette en TOML lisible. Retourne le chemin, ou None en cas d'échec.
 
@@ -102,7 +102,7 @@ def ecrire_recette_toml(chemin, recette: dict, fiche: dict | None = None,
     perdre le point de reprise.
     """
     try:
-        p = Path(chemin).with_suffix(".recette.toml")
+        p = Path(chemin).with_suffix(".recipe.toml")
         lignes = [
             "# Recette d'exécution de meandre, écrite automatiquement à la sauvegarde.",
             "# Ce document enregistre ce qui a produit le point de reprise du même nom :",
@@ -131,7 +131,7 @@ def ecrire_recette_toml(chemin, recette: dict, fiche: dict | None = None,
         var = recette.get("variables", {})
         lignes += ["", "# Variables d'environnement du projet effectivement posées.",
                    "# Une variable absente signifie que le défaut du code s'applique.",
-                   "[recette]"]
+                   "[recipe]"]
         for k, v in var.items():
             lignes.append(f"{k} = {_toml_valeur(v)}")
         if not var:
@@ -147,7 +147,7 @@ def ecrire_recette_toml(chemin, recette: dict, fiche: dict | None = None,
         return None
 
 
-def appliquer_recette(section: dict | None) -> list[str]:
+def apply_recipe(section: dict | None) -> list[str]:
     """Pose une recette lue en TOML dans l'environnement, SANS jamais écraser.
 
     C'est la brique qui rend les réglages exprimables en fichier. Le pilote lit
@@ -183,7 +183,7 @@ def appliquer_recette(section: dict | None) -> list[str]:
     return sorted(posees)
 
 
-def comparer_recette(sauvee: dict | None, ignorer: tuple[str, ...] = ()) -> list[str]:
+def compare_recipe(sauvee: dict | None, ignorer: tuple[str, ...] = ()) -> list[str]:
     """Écarts entre la recette sauvegardée et l'environnement courant.
 
     Retourne une liste de phrases lisibles, vide si tout concorde. Les chemins de
