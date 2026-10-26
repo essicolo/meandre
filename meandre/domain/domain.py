@@ -60,6 +60,15 @@ class Domain:
     withdrawals: WithdrawalData | None
     observations: dict[str, Observation]
     manifest: Manifest
+    # Pièces livrées par le paysage de données au-delà de la table d'attributs ; optionnelles.
+    # Elles entreront dans `attributes` et dans le catalogue des priors à l'étape 3.
+    land_cover: dict[str, Tensor] | None = None          # fractions brutes par classe, géométrie des milieux humides
+    phenology: dict | None = None                        # calendrier et racines par classe de couvert
+    lake_geometry: dict[str, Tensor] | None = None       # area_km2, k, beta, valid (lacs routés)
+    texture_conductivity: dict | None = None             # K_sat_1..3 de la texture (m/j) et source par tronçon
+    drainage_class: np.ndarray | None = None             # classe de drainage, 1 à 7, NaN si absente
+    groundwater_conductivity: Tensor | None = None       # k_gw par tronçon, des récessions des jauges
+    hgm_kernel: np.ndarray | None = None                 # noyau de versant (n_nodes, L), lignes sommant à 1
 
     @property
     def n_nodes(self) -> int:

@@ -93,7 +93,68 @@ def _normalise_on_province(name: str, local: TerritorialFeatures, device, manife
         return local
 
 
-def load_domain(name: str, date_start: str, date_end: str, device="cuda", observations: set[str] | None = None) -> Domain:
+def project_dir(name: str, member: str = "LN24HA") -> str:
+    """Projet Hydrotel d'un territoire pour un membre de l'ensemble (LN24HA par défaut)."""
+    return f"{_paths.PLATFORMS_ROOT}/{member}/{name.upper()}_{member}_2020"
+
+
+def land_cover(name: str, node_ids, device, project: str | None = None) -> tuple[dict, dict | None]:
+    """Occupation brute par classe et géométrie des milieux humides isolés, et phénologie du projet."""
+    from meandre.adapters.physitel.hydrotel_calib import load_milieux_humides, load_occupation_sol, load_phenologie
+    pl = project or project_dir(name)
+    lc = load_occupation_sol(pl, node_ids, device=device)
+    lc.update(load_milieux_humides(pl, node_ids, device=device))
+    return lc, load_phenologie(pl)
+
+
+def texture_conductivity(name: str, node_ids, n_nodes: int) -> dict:
+    """Conductivité de texture par couche (SIIGSOL, PHYSITEL en repli) et source par tronçon."""
+    from meandre.adapters.physitel.texture_bounds import texture_conductivity as _tc
+    return _tc(_paths.data_path("quebec", f"{name}.duckdb"), n_nodes, QC_RAW, name, node_ids=node_ids)
+
+
+def drainage_class(name: str, node_ids, table: str) -> np.ndarray:
+    """Classe de drainage des Pédo-paysages par tronçon, NaN sans couverture."""
+    td = pd.read_parquet(table)
+    tt = td[td.region.str.lower() == name.lower()].set_index("troncon")
+    return tt.drainage.where(tt.couv_drainage > 0).reindex(np.asarray(node_ids, dtype=int)).to_numpy(dtype=float)
+
+
+def groundwater_conductivity(name: str, n_nodes: int) -> torch.Tensor | None:
+    """Champ k_gw par tronçon tiré des récessions des jauges ; None si la table ne couvre pas le territoire."""
+    path = f"{_paths.DATA_ROOT}/quebec/champ_kgw_QC.parquet"
+    if not os.path.exists(path):
+        return None
+    cf = pd.read_parquet(path)
+    cf = cf[cf.region == name].sort_values("node_idx")
+    if len(cf) != n_nodes:
+        print(f"[adaptateur] champ k_gw ignoré ({len(cf)} vs {n_nodes} nœuds)")
+        return None
+    return torch.tensor(cf.k_gw.values, dtype=torch.float32)
+
+
+def lake_geometry(name: str, node_ids, n_nodes: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Surface (km2), coefficient et exposant de la loi hauteur-débit des lacs routés, lus dans troncon.trl."""
+    from pathlib import Path
+    surf, c, k = (np.full(n_nodes, np.nan) for _ in range(3))
+    pt = Path(project_dir(name)) / "physitel" / "troncon.trl"
+    if not pt.exists():
+        return surf, c, k
+    lines = [l.strip() for l in pt.read_text(encoding="latin-1").splitlines() if l.strip()]
+    rows = {}
+    for l in lines[3:]:
+        t = l.split()
+        if int(t[1]) != 1:
+            ptr = 4 + int(t[3])
+            rows[int(t[0])] = (float(t[ptr]) / 1e6, float(t[ptr + 2]), float(t[ptr + 3]))
+    idx = {int(i): j for j, i in enumerate(node_ids)}
+    for tid, (s2, c2, k2) in rows.items():
+        if tid in idx:
+            surf[idx[tid]], c[idx[tid]], k[idx[tid]] = s2, c2, k2
+    return surf, c, k
+
+
+def load_domain(name: str, date_start: str, date_end: str, device="cuda", observations: set[str] | None = None, drainage_table: str | None = None) -> Domain:
     """Domaine d'un territoire PHYSITEL sur une fenêtre de dates.
 
     `observations` : noms des observations à charger parmi discharge, et, snow, swe_mass, tws ;
@@ -195,7 +256,32 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
         if os.path.exists(path):
             manifest.add(key, path, origin, role)
 
-    domain = Domain(name=name, node_ids=h["node_ids"], node_coords=h["node_coords"], graph=graph, attributes=territorial, attribute_columns=attribute_columns, forcing=forcing, forcing_variables=list(FORCING_VARIABLES), times=times, initial_state=h["initial_state"], withdrawals=withdrawals, observations=obs, manifest=manifest)
+    node_ids = h["node_ids"]
+    pieces = {}
+    if os.path.exists(project_dir(name)):
+        try:
+            pieces["land_cover"], pieces["phenology"] = land_cover(name, node_ids, device)
+        except Exception as e:
+            print(f"[adaptateur] {name}: occupation du projet non chargee ({type(e).__name__}: {e})")
+        s, c, k = lake_geometry(name, node_ids, n_nodes)
+        # En double precision : le pilote derive k = c / surface en float64 avant de passer en float32,
+        # et un arrondi plus tot change le debit au dixieme de millieme.
+        pieces["lake_geometry"] = {"area_km2": torch.tensor(s, dtype=torch.float64), "k": torch.tensor(c, dtype=torch.float64), "beta": torch.tensor(k, dtype=torch.float64)}
+        if os.path.isdir(f"{project_dir(name)}/hgm"):
+            from meandre.adapters.physitel.hgm_loader import lire_hgm
+            try:
+                pieces["hgm_kernel"] = lire_hgm(project_dir(name), node_ids)
+                manifest.add("hgm", f"{project_dir(name)}/hgm", "Hydrotel", "hillslope kernel")
+            except Exception as e:
+                print(f"[adaptateur] {name}: noyau de versant non charge ({type(e).__name__}: {e})")
+    try:
+        pieces["texture_conductivity"] = texture_conductivity(name, node_ids, n_nodes)
+    except Exception as e:
+        print(f"[adaptateur] {name}: conductivite de texture non chargee ({type(e).__name__}: {e})")
+    if drainage_table and os.path.exists(drainage_table):
+        pieces["drainage_class"] = drainage_class(name, node_ids, drainage_table)
+    pieces["groundwater_conductivity"] = groundwater_conductivity(name, n_nodes)
+    domain = Domain(name=name, node_ids=node_ids, node_coords=h["node_coords"], graph=graph, attributes=territorial, attribute_columns=attribute_columns, forcing=forcing, forcing_variables=list(FORCING_VARIABLES), times=times, initial_state=h["initial_state"], withdrawals=withdrawals, observations=obs, manifest=manifest, **pieces)
     issues = domain.validate()
     if issues:
         raise ValueError(f"domaine {name} invalide : " + " ; ".join(issues))

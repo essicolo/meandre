@@ -209,7 +209,8 @@ if DOMAINE:
     from domain_data import load_domain
     r = load_domain(REGS, lcfg, device=DEVICE, schema_names=TERRITOIRES)
 else:
-    r = load_region(REG, lcfg, device=DEVICE)
+    _cd_table = str(((cfg.get("soil") or {}).get("ceiling_from_drainage") or {}).get("table", "")).replace("{DERIVES}", _paths.DERIVED_ROOT) or None
+    r = load_region(REG, lcfg, device=DEVICE, drainage_table=_cd_table)
 td, vd = r["train_data"], r["val_data"]
 n_nodes = r["n_nodes"]
 
@@ -647,12 +648,10 @@ if _settings.raw("groundwater.conductivity_field", "0") == "1":
     # incertitude calibrée) : remplace le k_gw régional constant par un champ continu
     # par nœud. Le NeRF module autour ; le champ fixe le niveau local mesuré.
     import pandas as _pd
-    _cf = _pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/champ_kgw_QC.parquet")
-    _cf = _cf[_cf.region == REG].sort_values("node_idx")
-    if DOMAINE and r.get("kgw") is not None:
-        _cf = r["kgw"]
-    if len(_cf) == n_nodes:
-        _kv = (r["kgw"].to(DEVICE).float() if DOMAINE else torch.tensor(_cf.k_gw.values, dtype=torch.float32, device=DEVICE))
+    # Le champ vient du domaine (adaptateur PHYSITEL, 2026-10-26) ; le chemin province le porte encore lui-meme.
+    _kgw_src = r.get("kgw") if DOMAINE else r["domain"].groundwater_conductivity
+    if _kgw_src is not None and len(_kgw_src) == n_nodes:
+        _kv = _kgw_src.to(DEVICE).float()
         # ETL_KGW_ECHELLE : facteur sur le champ, pour allonger le temps de sejour sans
         # retirer la structure spatiale. Le champ vient des recessions de debit, soit 7 a
         # 16 jours, alors que les nappes mesurees demandent des mois (R114).
@@ -679,7 +678,7 @@ if _settings.raw("groundwater.conductivity_field", "0") == "1":
         print(f"[etl] champ k_gw appliqué : méd {float(_kv.median()):.4f} | q10-q90 "
               f"{float(_kv.quantile(0.1)):.4f}-{float(_kv.quantile(0.9)):.4f}")
     else:
-        print(f"[etl] champ k_gw ignoré ({len(_cf)} vs {n_nodes} nœuds)")
+        print(f"[etl] champ k_gw ignoré (absent du domaine ou de mauvaise taille)")
 # krec LIBRE veut dire krec APPRIS PAR LE CHAMP, donc ancre comme les autres sorties
 # (Essi, 2026-08-22 : « krec devrait etre dans le nerf »). Sans ancrage il n'a que le
 # debit pour juge, et le debit seul le pousse a zero (R11). Le prior tient la MOYENNE du
@@ -754,17 +753,19 @@ _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
 try:
     from meandre.adapters.physitel.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
                                              load_phenologie)
-    if DOMAINE:
-        _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
-        _lc = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k not in _WET}
-        _mh = {k: v.to(DEVICE) for k, v in r["land_cover"].items() if k in _WET}
+    _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
+    if DOMAINE or "ETL_MELT_DIR" in os.environ:
+        # Province, ou plateforme d'ancrage imposee : lecture directe du projet (chemin historique).
+        _all = r["land_cover"] if DOMAINE else {**load_occupation_sol(_pl, r["node_ids"], device=DEVICE), **load_milieux_humides(_pl, r["node_ids"], device=DEVICE)}
     else:
-        _lc = load_occupation_sol(_pl, r["node_ids"], device=DEVICE)
-        _mh = load_milieux_humides(_pl, r["node_ids"], device=DEVICE)
+        # Territoire seul : l'occupation vient du domaine (adaptateur PHYSITEL, 2026-10-26).
+        _all = r["domain"].land_cover or {}
+    _lc = {k: v.to(DEVICE) for k, v in _all.items() if k not in _WET}
+    _mh = {k: v.to(DEVICE) for k, v in _all.items() if k in _WET}
     _lc.update(_mh)
     model.vertical_column.set_land_cover(_lc)
     # En domaine, le calendrier du premier projet : ceux des projets ne different que d'un jour.
-    _ph = r["phenology"] if DOMAINE else load_phenologie(_pl)
+    _ph = r["phenology"] if DOMAINE else (load_phenologie(_pl) if "ETL_MELT_DIR" in os.environ else r["domain"].phenology)
     model.vertical_column.set_phenology(_ph or None)
     if _ph:
         print(f"[etl] phénologie du projet : {len(_ph)} classes "
@@ -808,7 +809,7 @@ if _tb.get("enabled", False):
     _tx = {f"K_sat_{_i}": np.full(n_nodes, np.nan) for _i in (1, 2, 3)}
     _tx["source"] = np.array(["aucune"] * n_nodes, dtype=object)
     for _nom_t, _ids_t, _o_t, _n_t in _territoires():
-        _t1 = _tcond(_paths.data_path("quebec", f"{_nom_t}.duckdb"), _n_t, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", _nom_t, node_ids=_ids_t)
+        _t1 = _tcond(_paths.data_path("quebec", f"{_nom_t}.duckdb"), _n_t, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", _nom_t, node_ids=_ids_t) if DOMAINE else r["domain"].texture_conductivity
         for _k1, _v1 in _t1.items():
             _tx[_k1][_o_t:_o_t + _n_t] = _v1
     _fac = float(_tb.get("factor", 3.0))
@@ -853,11 +854,14 @@ _cd = dict((cfg.get("soil") or {}).get("ceiling_from_drainage") or {})
 if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
     from dataclasses import replace as _rempl
     import pandas as _pdd
-    _td = _pdd.read_parquet(str(_cd["table"]).replace("{DERIVES}", _paths.DERIVED_ROOT))
     _dr = np.full(n_nodes, np.nan)
-    for _nom, _ids, _o, _n in _territoires():
-        _tt = _td[_td.region.str.lower() == _nom.lower()].set_index("troncon")
-        _dr[_o:_o + _n] = _tt.drainage.where(_tt.couv_drainage > 0).reindex(np.asarray(_ids, dtype=int)).to_numpy(dtype=float)
+    if DOMAINE:
+        _td = _pdd.read_parquet(str(_cd["table"]).replace("{DERIVES}", _paths.DERIVED_ROOT))
+        for _nom, _ids, _o, _n in _territoires():
+            _tt = _td[_td.region.str.lower() == _nom.lower()].set_index("troncon")
+            _dr[_o:_o + _n] = _tt.drainage.where(_tt.couv_drainage > 0).reindex(np.asarray(_ids, dtype=int)).to_numpy(dtype=float)
+    elif r["domain"].drainage_class is not None:
+        _dr[:] = r["domain"].drainage_class
     _sp = model.vertical_column.soil_profile
     _procs = []
     for _pr in _sp.processes:
@@ -887,6 +891,8 @@ if DOMAINE:
     _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
     _L = max(k.shape[1] for k in _Ks)
     _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
+elif _MEMBRE == "LN24HA" and r["domain"].hgm_kernel is not None:
+    _K = r["domain"].hgm_kernel
 else:
     _K = lire_hgm(_projh, r["node_ids"])
 model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
@@ -902,6 +908,10 @@ from pathlib import Path as _Pl
 import numpy as _npl
 _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
 for _nom, _ids, _o, _n in _territoires():
+    if not DOMAINE and r["domain"].lake_geometry is not None:
+        _lg = r["domain"].lake_geometry
+        _surf[:], _c[:], _k[:] = _lg["area_km2"].numpy(), _lg["k"].numpy(), _lg["beta"].numpy()
+        break
     _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{_nom.upper()}_LN24HA_2020/physitel/troncon.trl")
     _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
     _dl = {}

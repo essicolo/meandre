@@ -290,7 +290,7 @@ class HydrotelColumn(nn.Module):
         # OCCUPATION DU SOL : les fractions posées par set_land_cover() (PHYSITEL brut)
         # priment sur le territorial, dont les colonnes `f_*` de la base du Québec sont
         # CENTRÉES-RÉDUITES et dont les `f_*_raw` n'existent pas — voir
-        # meandre.data.hydrotel_calib.load_occupation_sol.
+        # meandre.adapters.physitel.hydrotel_calib.load_occupation_sol.
         _lc = getattr(self, "_land_cover", None)
         _gp0 = territorial.get_physical
         gp = (lambda k: (_lc[k] if (_lc is not None and k in _lc) else _gp0(k)))

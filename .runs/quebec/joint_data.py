@@ -43,15 +43,16 @@ def _paths(reg):
     return database_path(reg), forcing_path(reg)
 
 
-def load_region(reg: str, lcfg: dict, device: str = "cuda"):
-    """lcfg = section [loss] du TOML de base (poids identiques pour toutes les régions)."""
+def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str | None = None):
+    """lcfg = section [loss] du TOML de base (poids identiques pour toutes les régions) ;
+    drainage_table = table des classes de drainage nommée par [soil.ceiling_from_drainage]."""
     reg = reg.lower()
     wanted = {"discharge", "et", "tws"}
     if lcfg.get("w_snow", 0.0) > 0:
         wanted.add("snow")
     if lcfg.get("w_swe_mass", 0.0) > 0:
         wanted.add("swe_mass")
-    dom = load_domain(reg, DATE_START, DATE_END, device=device, observations=wanted)
+    dom = load_domain(reg, DATE_START, DATE_END, device=device, observations=wanted, drainage_table=drainage_table)
     graph, territorial = dom.graph, dom.attributes
     node_coords, n_nodes, node_ids = dom.node_coords, dom.n_nodes, dom.node_ids
     forcing, times, doy = dom.forcing, dom.times, dom.day_of_year
@@ -209,7 +210,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda"):
         print(f"[stations] {len(_double)} noeud(s) vises par plusieurs stations, "
               f"une seule retenue par noeud : {_double}")
 
-    return dict(name=reg, n_nodes=n_nodes, node_ids=node_ids, node_index=node_index, n_gauges=n_stations,
+    return dict(name=reg, domain=dom, n_nodes=n_nodes, node_ids=node_ids, node_index=node_index, n_gauges=n_stations,
                 train_data=mk(train_sl), val_data=mk(val_sl), loss_fn=loss_fn,
                 node_coords=node_coords, territorial=territorial, times=times,
                 station_ids=station_ids, station_indices=station_indices)
