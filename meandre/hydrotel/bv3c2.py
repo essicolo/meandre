@@ -187,6 +187,9 @@ class BV3C2Clone(torch.nn.Module):
             frozen = frozen_depth_cm > 0.0
         else:
             frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
+        # Amplitude de la porte continue (2026-10-23) : mesurée contre la réponse observée aux pluies
+        # d'automne, la porte d'amplitude 1 ruisselle deux à trois fois trop sur sol gelé sans neige.
+        _gate_amp = settings.get("column.frozen_gate_amplitude")
 
         # ── Sous-pas internes adaptatifs (TriCoucheOct97), accumulation lames ──
         # FIDÈLE Hydrotel : PAS de clamp de flux. On laisse theta dépasser thetas
@@ -204,7 +207,8 @@ class BV3C2Clone(torch.nn.Module):
         lruis = torch.zeros_like(t1); lhyp = torch.zeros_like(t1); lbase = torch.zeros_like(t1)
         ldrain = torch.zeros_like(t1)   # drainage souterrain agricole (opt-in)
         froz_frac = torch.clamp(frozen_depth_cm / 100.0 / z1, 0.0, 1.0)
-        throttle = torch.where(frozen, torch.clamp(1.0 - froz_frac, 0.0, 1.0), torch.ones_like(t1))
+        # Le gel freine aussi le drainage de la couche 1 ; même amplitude que la porte d'infiltration.
+        throttle = torch.where(frozen, torch.clamp(1.0 - _gate_amp * froz_frac, 0.0, 1.0), torch.ones_like(t1))
         tr = torch.full_like(t1, DT_H)                  # temps restant (h) par nœud
         fdtcmin = DT_H / (24.0 * 60.0 * 60.0 * 1000.0)  # _fDTCMin C++ (l.744)
 
@@ -386,7 +390,7 @@ class BV3C2Clone(torch.nn.Module):
                 # La reduction ne s'applique que hors manteau protecteur (moins de 10 mm de
                 # neige), comme la regle d'origine : sous la neige le sol reste permeable, et
                 # l'ignorer faisait perdre l'hiver en Outaouais (correlation 0,57 -> 0,33, 2026-09-28).
-                infil_cap = torch.minimum(prec, ks1 * (1.0 - froz_frac * frozen.to(froz_frac.dtype)))
+                infil_cap = torch.minimum(prec, ks1 * (1.0 - _gate_amp * froz_frac * frozen.to(froz_frac.dtype)))
                 pinf = torch.where(omega1_sat, torch.zeros_like(prec), infil_cap)
             else:
                 pinf = torch.where(frozen | omega1_sat, torch.zeros_like(prec), torch.minimum(prec, ks1))

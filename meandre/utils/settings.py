@@ -39,6 +39,7 @@ SCHEMA: dict[str, Setting] = {
     "column.viscosity_tref": Setting("MEANDRE_VISCOSITE_TREF", float, None, "Température de référence, en degrés, de la correction de conductivité par la viscosité de l'eau (Vogel) ; absent, pas de correction."),
     "column.semi_implicit_soil": Setting("MEANDRE_SOL_SEMI_IMPLICITE", bool, False, "Schéma linéairement implicite du sol : gradient borné, graines reproductibles."),
     "column.freeze_without_snow": Setting("MEANDRE_GEL_SANS_NEIGE", bool, False, "Le gel ferme le sol même sans manteau neigeux."),
+    "column.frozen_gate_amplitude": Setting("MEANDRE_GEL_AMPLITUDE", float, 1.0, "Amplitude de la porte de gel : capacité d'infiltration ks1 (1 − a · fraction gelée), et même facteur sur le drainage de la couche 1 ; 1 reproduit la porte d'origine, qui ferme le sol dès que le gel atteint l'épaisseur de la couche 1 (2026-10-23)."),
     "column.saturated_area_exponent": Setting("MEANDRE_VSA_B", float, None, "Exposant b du ruissellement sur aire saturée, part (theta1/thetas1)^b (R386) ; absent, pas de ruissellement de saturation partiel."),
     "column.dynamic_compile": Setting("MEANDRE_COMPILE_DYNAMIQUE", bool, False, "Compilation du sol en formes dynamiques ; faux garde le mode fixe mesuré à x17,6."),
     "column.field_capacity_from_curve": Setting("MEANDRE_THETA_FC_COURBE", bool, False, "Capacité au champ de la couche 3 déduite de la courbe de rétention plutôt qu'apprise."),
@@ -88,6 +89,10 @@ SCHEMA: dict[str, Setting] = {
     # au modèle ; ces réglages ne servent qu'en son absence (voir PILOT_SECTIONS). ------------
     "phenology.mode": Setting("MEANDRE_PHENOLOGIE_MODE", str, "gdd", "Forme saisonnière de K_c : gdd (degrés-jours), photo (longueur du jour), modis (indice foliaire observé)."),
     "phenology.params": Setting("MEANDRE_PHENOLOGIE_PARAMS", str, None, "Paramètres gelés du mode photo, « emergence,seuil,largeur1,largeur2 »."),
+    "spatial.gradient_floor": Setting("MEANDRE_PLANCHER_GRADIENT", float, None, "Plancher de la dérivée de la sigmoïde des sorties nommées dans spatial.gradient_floor_outputs, au rétropropagé seulement : la valeur ne change pas, une sortie collée à sa borne reçoit encore un gradient (2026-10-26) ; absent, sigmoïde ordinaire."),
+    "spatial.gradient_floor_outputs": Setting("MEANDRE_PLANCHER_GRADIENT_SORTIES", str, None, "Sorties du champ concernées par spatial.gradient_floor, séparées par des virgules (par exemple « Z2,Z3,porosity »)."),
+    "spatial.extend_below": Setting("MEANDRE_PROLONGE_SOUS", str, None, "Prolongement sous la borne basse, « sortie:nouvelle_borne,... » (par exemple « Z2:0.10,Z3:0.20 ») : sous la plus basse sortie brute du domaine au premier appel, la valeur descend doucement vers la nouvelle borne ; les valeurs de départ sont conservées exactement (2026-10-26)."),
+    "phenology.params_agri": Setting("MEANDRE_PHENOLOGIE_PARAMS_AGRI", str, None, "Calendrier propre à la classe agricole en mode photo, « levée,seuil,largeur1,largeur2 » ; absent, la classe suit le calendrier commun (2026-10-24)."),
     "phenology.target": Setting("MEANDRE_PHENOLOGIE_CIBLE", str, "kc", "Grandeur modulée : kc (coefficient cultural) ou lai (indice foliaire, transpiration seule)."),
     "phenology.classes": Setting("MEANDRE_PHENOLOGIE_CLASSES", str, None, "Classes d'occupation modulées, séparées par des virgules ; absent, toutes."),
     "phenology.lai_modis_csv": Setting("MEANDRE_LAI_MODIS_CSV", str, None, "Fichier de l'indice foliaire MODIS (colonnes date, lai_median) du mode modis."),

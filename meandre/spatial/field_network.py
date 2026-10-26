@@ -272,6 +272,27 @@ class SpatialParams:
         )
 
 
+class _SigmoidGradientFloor(torch.autograd.Function):
+    """Sigmoide dont la derivee, au retropropage seulement, ne descend pas sous un plancher.
+
+    Une sortie collee a sa borne a une derivee de sigmoide quasi nulle : l'optimiseur ne peut
+    plus l'en sortir, meme quand la perte le demande (2026-10-26, champs colles du modele
+    provincial). La valeur est celle de la sigmoide ordinaire ; seul le gradient change.
+    """
+
+    @staticmethod
+    def forward(ctx, x, plancher):
+        s = torch.sigmoid(x)
+        ctx.save_for_backward(s)
+        ctx.plancher = plancher
+        return s
+
+    @staticmethod
+    def backward(ctx, g):
+        (s,) = ctx.saved_tensors
+        return g * torch.clamp(s * (1.0 - s), min=ctx.plancher), None
+
+
 class SpatialFieldNetwork(nn.Module):
     """NeRF-style MLP: (coords + territorial features) -> hydrological params.
 
@@ -861,13 +882,47 @@ class SpatialFieldNetwork(nn.Module):
         """
         import math
 
-        def bounded(x, lo, hi):
-            """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4."""
-            return lo + (hi - lo) * torch.sigmoid(x)
-
         B = self.bounds
 
         NB = getattr(self, "node_bounds", None) or set()
+        from meandre.utils import settings as _settings
+        _plancher = _settings.get("spatial.gradient_floor")
+        _avec_plancher = set((_settings.get("spatial.gradient_floor_outputs") or "").replace(" ", "").split(",")) - {""}
+        _prolonge, _seuils_donnes = {}, {}
+        for a in (_settings.get("spatial.extend_below") or "").replace(" ", "").split(","):
+            if a:
+                morceaux = a.split(":")
+                _prolonge[morceaux[0]] = float(morceaux[1])
+                if len(morceaux) > 2:
+                    _seuils_donnes[morceaux[0]] = float(morceaux[2])
+
+        def sigm(nom, x):
+            if _plancher is not None and nom in _avec_plancher:
+                return _SigmoidGradientFloor.apply(x, float(_plancher))
+            return torch.sigmoid(x)
+
+        def bounded(x, lo, hi, nom=None):
+            """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4.
+
+            PROLONGEMENT SOUS LA BORNE (2026-10-26). Abaisser une borne remappe tous les
+            troncons, puisque la valeur depend de la borne a sortie brute egale : une couche 3 de
+            0,75 m passait a 0,47 m sans que l'optimiseur ait rien choisi. Ici la loi d'origine
+            est conservee au-dessus d'un seuil de sortie brute pose au premier appel sous la plus
+            basse sortie du domaine, et prolongee en dessous vers la nouvelle borne : aucun
+            troncon ne bouge au depart, et seul l'optimiseur peut les faire descendre.
+            """
+            v = lo + (hi - lo) * sigm(nom, x)
+            if nom in _prolonge:
+                seuil = _seuils_donnes.get(nom, self._seuils_prolongement.get(nom))
+                if seuil is None:
+                    seuil = float(x.detach().min()) - 0.5
+                    self._seuils_prolongement[nom] = seuil
+                    print(f"[champ] prolongement de {nom} sous {lo:g} jusqu'a {_prolonge[nom]:g} : seuil de sortie brute {seuil:.4f} (a reprendre tel quel a l'evaluation : {nom}:{_prolonge[nom]:g}:{seuil:.4f})")
+                v = v - (lo - _prolonge[nom]) * (1.0 - torch.exp(-torch.relu(seuil - x)))
+            return v
+
+        if not hasattr(self, "_seuils_prolongement"):
+            self._seuils_prolongement = {}
 
         def borne(nom, x):
             """Sortie bornee doucement selon la table : lineaire, ou logarithmique si marquee.
@@ -890,7 +945,7 @@ class SpatialFieldNetwork(nn.Module):
                 b0 = math.log(u / (1.0 - u))
                 a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
                 return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x + b0))
-            return bounded(x, lo, hi)
+            return bounded(x, lo, hi, nom)
 
         cols = [raw[:, i] for i in range(SpatialParams.N_PARAMS)]
         i = 0

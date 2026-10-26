@@ -945,6 +945,9 @@ if _settings.raw("evaporation.open_water", "0") == "1":
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
+    # Seuils du prolongement sous la borne (spatial.extend_below) : poses au premier appel du
+    # champ CHARGE, jamais sur les poids d'avant le chargement.
+    model.spatial_encoder._seuils_prolongement = {}
 if os.environ.get("ETL_MULT_FIXE"):
     # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
@@ -1218,6 +1221,9 @@ _VEUT_NEIGE = os.environ.get("ETL_CMP_NEIGE", "0") == "1"
 # garde alors debits, parametres et prelevements, sans les flux verticaux.
 _VEUT_NEIGE = _VEUT_NEIGE or (bool(os.environ.get("ETL_DUMP_REACH"))
                               and os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "1")
+# ETL_DUMP_STATIONS demande les diagnostics pour lui aussi (2026-10-23) : le chemin rapide
+# ne se lit pas dans le debit, il se lit dans la part de surface et la part laterale.
+_VEUT_NEIGE = _VEUT_NEIGE or bool(os.environ.get("ETL_DUMP_STATIONS"))
 with torch.no_grad():
     if _VEUT_NEIGE:
         Q, _, _DIAG = model.simulate(
@@ -1436,6 +1442,56 @@ if os.environ.get("ETL_DUMP_Q"):
                                         range(np.flatnonzero(sl)[0], np.flatnonzero(sl)[-1] + 1)]),
                         **_extra)
     print(f"[etl] series Q sauvees : {os.environ['ETL_DUMP_Q']}")
+
+# ETL_DUMP_STATIONS=<chemin.npz> : series JOURNALIERES des diagnostics aux seuls noeuds
+# portant une station (2026-10-23). Les moyennes mensuelles d'ETL_DUMP_REACH ne permettent
+# pas de lire un orage, et c'est ce qu'il faut pour nommer le chemin qui porte la reponse
+# rapide : part de surface (ruissellement de saturation et hortonien) contre part laterale
+# (drainage de la couche 2), en regard de l'humidite de surface theta1. Au tronçon de la
+# station et en moyenne sur son bassin (prefixe basin_). Sur un grand territoire, poser
+# MEANDRE_DIAG_CPU=1 : sinon les diagnostics de toute la periode ne tiennent pas sur la carte.
+if os.environ.get("ETL_DUMP_STATIONS"):
+    _dg_st = globals().get("_DIAG")
+    if _dg_st is None:
+        print("[etl] ETL_DUMP_STATIONS sans diagnostics : poser MEANDRE_DIAG_CPU=1 (rien n'est ecrit)")
+    else:
+        # L'indice doit etre sur le processeur : la tranche est deja rapatriee par .cpu().
+        _ist = torch.as_tensor(td.station_idx, dtype=torch.long).cpu()
+        _i0, _i1 = int(np.flatnonzero(sl)[0]), int(np.flatnonzero(sl)[-1]) + 1
+        _sorties = {}
+        # Moyennes de BASSIN (2026-10-24) : un état ou un flux au seul tronçon exutoire ne dit pas
+        # ce que produit le bassin. Poids : aire locale des tronçons en amont de chaque station.
+        _src, _dst = td.graph.edge_index[0].cpu().numpy(), td.graph.edge_index[1].cpu().numpy()
+        _par = {}
+        for _a, _b in zip(_src, _dst):
+            _par.setdefault(int(_b), []).append(int(_a))
+        _aire = td.territorial.get_physical("area_km2_local").float().cpu().numpy()
+        _W = np.zeros((len(td.station_idx), n_nodes), dtype=np.float32)
+        for _k, _n0 in enumerate(torch.as_tensor(td.station_idx).cpu().tolist()):
+            _vus, _pile = {int(_n0)}, [int(_n0)]
+            while _pile:
+                for _p in _par.get(_pile.pop(), []):
+                    if _p not in _vus:
+                        _vus.add(_p)
+                        _pile.append(_p)
+            _ix = np.fromiter(_vus, int)
+            _W[_k, _ix] = _aire[_ix] / _aire[_ix].sum()
+        _Wt = torch.from_numpy(_W.T)
+        for _att in ("theta1", "theta2", "prod_surf", "prod_hypo", "prod_base",
+                     "lateral_mm", "swe", "recharge", "s_gw", "etr", "prof_gel_cm", "snowmelt"):
+            _v = getattr(_dg_st, _att, None)
+            if _v is None or not hasattr(_v, "shape") or _v.shape[-1] != n_nodes:
+                print(f"[etl] diagnostics aux stations : {_att} absent")
+                continue
+            _vv = _v[_i0:_i1].detach().cpu().float()
+            _sorties[_att] = _vv[:, _ist].numpy().astype(np.float32)
+            _sorties[f"basin_{_att}"] = (_vv @ _Wt).numpy().astype(np.float32)
+        np.savez_compressed(os.environ["ETL_DUMP_STATIONS"],
+                            station_ids=np.array(r.get("station_ids", []), dtype=object),
+                            dates=np.array([str(times[i])[:10] for i in range(_i0, _i1)]),
+                            **_sorties)
+        print(f"[etl] diagnostics journaliers aux stations ({len(_sorties)} grandeurs) : "
+              f"{os.environ['ETL_DUMP_STATIONS']}")
 
 # ETL_DUMP_REACH=<chemin.npz> : cache PAR TRONCON pour le notebook marimo (demande
 # d'Essi, 2026-08-24 : hydrogrammes, cartes de parametres NeRF, cartes d'effet des

@@ -157,17 +157,24 @@ class PhenologyModulator(nn.Module):
         x = -torch.tan(torch.deg2rad(lat_deg)) * math.tan(decl)
         return 24.0 / math.pi * torch.arccos(x.clamp(-1.0, 1.0))
 
-    def forme(self, gdd_cum: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, like: Tensor | None = None) -> Tensor:
-        """Forme saisonnière de la végétation, de 0 (dormance) à 1 (plateau)."""
+    def forme(self, gdd_cum: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, like: Tensor | None = None, calendar=None) -> Tensor:
+        """Forme saisonnière de la végétation, de 0 (dormance) à 1 (plateau).
+
+        `calendar` (mode photo seulement) : (levée en degrés-jours, seuil de longueur du jour en
+        heures, largeur de la levée, largeur de la sénescence) remplaçant ceux du modulateur, pour
+        une classe d'occupation au calendrier propre (cultures, 2026-10-24)."""
         K_c_base = like if like is not None else gdd_cum
         if self.mode == "modis" and doy is not None:
             shape = self.forme_modis[min(max(int(doy), 1), 366) - 1].expand_as(K_c_base)
         elif self.mode == "photo" and doy is not None and lat_deg is not None:
             s1 = getattr(self, "_s1_cal", None) or self.sharpness_emerg
             s2 = getattr(self, "_s2_cal", None) or self.photo_pente_h
-            ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / s1)
+            emerg = self.gdd_emerg
+            if calendar is not None:
+                emerg, _crit_h, s1, s2 = calendar
+            ramp = torch.sigmoid((gdd_cum - emerg) / s1)
             if doy > 172:
-                seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit)
+                seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit) if calendar is None else _crit_h
                 senesc = torch.sigmoid((self.duree_du_jour(lat_deg, doy) - seuil) / s2)
             else:
                 senesc = torch.ones_like(ramp)
@@ -176,14 +183,14 @@ class PhenologyModulator(nn.Module):
             shape = self.shape(gdd_cum)                                   # ∈ [0, 1]
         return shape
 
-    def forward(self, gdd_cum: Tensor, K_c_base: Tensor, doy: int | None = None, lat_deg: Tensor | None = None) -> Tensor:
+    def forward(self, gdd_cum: Tensor, K_c_base: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, calendar=None) -> Tensor:
         """Modulateur K_c effectif au temps t.
 
         gdd_cum  : (N,) ou (T, N) — GDD cumulé
         K_c_base : (N,) — K_c de référence par nœud (sortie NeRF)
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
-        shape = self.forme(gdd_cum, doy, lat_deg, like=K_c_base)
+        shape = self.forme(gdd_cum, doy, lat_deg, like=K_c_base, calendar=calendar)
         # Born K_c_min ≥ 0.05 (floor strict), K_c_max_factor ≥ 0.5 (pas de réduction excessive)
         kc_min_safe = self.k_c_min.clamp(min=0.05, max=1.0)
         kc_max_safe = self.k_c_max_factor.clamp(min=0.5, max=2.0)

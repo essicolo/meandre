@@ -1282,6 +1282,11 @@ class HydrotelColumn(nn.Module):
             _sans_forme = etp * (_kc_base / torch.clamp(self._kc_dynamique, min=1e-6))
         for (pct, jbp_t, leaf_t, root_t), _nom in zip(pheno, _noms):
             _etp_cl = _sans_forme if (_sans_forme is not None and _nom not in _cl_pheno) else etp
+            _kc_agri = getattr(self, "_kc_dynamique_agri", None)
+            if _nom == "agri" and _kc_agri is not None and _cl_pheno is not None and "agri" in _cl_pheno:
+                # Classe agricole à calendrier propre : la demande `etp` porte la forme commune ;
+                # on la remplace par celle des cultures (2026-10-24).
+                _etp_cl = etp * (_kc_agri / torch.clamp(self._kc_dynamique, min=1e-6))
             etp_classes.append(_etp_cl * pct / 1000.0)
             # `root_depth_scale` (defaut 1,0, pose par le pilote) multiplie la profondeur
             # racinaire de toutes les classes : epreuve de l'extraction profonde (R216).

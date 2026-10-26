@@ -310,6 +310,10 @@ class HydroModel(nn.Module):
         if use_phenology_modulator:
             from meandre.temporal.phenology_modulator import PhenologyModulator
             self.phenology_modulator = PhenologyModulator(mode=_ph.get("mode"), params=_ph.get("params"))
+            # Calendrier propre aux cultures (2026-10-24) : levée plus tardive que la forêt. Aucun
+            # paramètre nouveau n'est appris ; les bornes du coefficient restent celles du modulateur.
+            _agri = _ph.get("params_agri") or settings.get("phenology.params_agri")
+            self.phenology_calendar_agri = tuple(float(x) for x in (_agri.split(",") if isinstance(_agri, str) else _agri)) if _agri else None
 
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
@@ -572,6 +576,8 @@ class HydroModel(nn.Module):
                         self.vertical_column._lai_forme = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
                     else:
                         self.vertical_column._kc_dynamique = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
+                        _cal_agri = getattr(self, "phenology_calendar_agri", None)
+                        self.vertical_column._kc_dynamique_agri = (self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1], calendar=_cal_agri) if _cal_agri is not None else None)
                 vc_out = self.vertical_column.column_step(
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,
