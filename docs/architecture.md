@@ -174,7 +174,7 @@ PHYSITEL is a strength in Quebec: validated topology, lakes, wetlands. Outside Q
 
 | step | what changes | accepted when |
 |---|---|---|
-| 1. Domain contract | `meandre/domain/` defined; the Quebec DuckDB bases are produced through a `physitel` adapter; the `[recette]` section, `meandre/utils/recette.py` and `.recette.toml` become `recipe` | forward pass of the frozen model identical on one territory; tests pass |
+| 1. Domain contract (done 2026-10-26) | `meandre/domain/` (vocabulary, manifest, validated `Domain`); `meandre/adapters/physitel/` assembles the Quebec domain from the existing bases; the recipe captures the manifest and `load` reports a changed input file; `recette` renamed `recipe` | forward pass of the frozen model identical to the bit on Montérégie (loss 1.5017); 515 tests pass |
 | 2. Quebec out of the core | Quebec-specific loaders, calibrations and territories move to `meandre/adapters/physitel/`; `meandre/data` keeps only generic readers | no module of the core imports a Quebec source; identical forward pass |
 | 3. Priors and field in deviation | priors catalogue computed from attributes; field learns a penalised deviation; hard bounds removed | identical forward pass at zero deviation from the frozen parameters; then a fine-tuning on Montérégie, Saint-Laurent sud-ouest and Outaouais, judged on the loss |
 | 4. Observables and staged training | observables declared in the recipe with their operator and mode; training by stages | the provincial recipe reproduces the frozen model's loss terms; one staged training compared with the current one on the same three territories |

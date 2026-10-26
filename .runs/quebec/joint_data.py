@@ -1,43 +1,14 @@
 """Chargement d'UNE région pour l'entraînement conjoint (extrait le prep de slso.py).
 Retourne train_data/val_data (TrainingData), loss_fn régionale, et les métadonnées
-(n_nodes, node_ids, n_gauges) pour le MultiBasinTrainer. Forçage tronqué à 6 canaux
-(P, Tmin, Tmax, R_n, u2, e_a) pour homogénéité inter-régions.
+(n_nodes, node_ids, n_gauges) pour le MultiBasinTrainer. Les données viennent du domaine
+produit par l'adaptateur PHYSITEL (meandre.adapters.physitel, 2026-10-26) ; ce module ne
+garde que ce qui relève de l'entraînement : sous-bassin, tranches, perte.
 """
 from __future__ import annotations
 import os
 import numpy as np
-import pandas as pd
 import torch
-import duckdb
-import xarray as xr
-from meandre.data.basin_cache import BasinCache
-from meandre.spatial.territorial import TerritorialFeatures
-from meandre.utils import paths as _mpaths
-
-_QC_RAW = f"{_mpaths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
-_QC_STATS = ".runs/quebec/data/territorial_stats_QC.csv"
-
-
-def _territorial_global(reg, fallback, device):
-    """Attributs normalisés sur les stats PROVINCIALES (et non par région).
-    Sans ça, le nœud médian de CHAQUE région arrive au NeRF avec des attributs ~0 :
-    le modèle ne peut pas différencier les régions (diagnostic 2026-07-31, cause des
-    5 échecs conjoints). Retombe sur la normalisation locale si le brut est absent."""
-    if not (os.path.exists(_QC_RAW) and os.path.exists(_QC_STATS)):
-        return fallback
-    try:
-        raw = pd.read_parquet(_QC_RAW)
-        raw = raw[raw["region"] == reg]
-        if len(raw) != fallback.data.shape[0]:
-            return fallback
-        stats = pd.read_csv(_QC_STATS, index_col=0)
-        cols = list(fallback.columns)
-        arr = np.stack([((raw[c].values - stats.loc[c, "mean"]) / (stats.loc[c, "std"] + 1e-9))
-                        for c in cols], axis=1).astype(np.float32)
-        return TerritorialFeatures(data=torch.tensor(arr, device=device), columns=cols,
-                                   physical=fallback.physical)
-    except Exception:
-        return fallback
+from meandre.adapters.physitel import load_domain
 from meandre.routing.withdrawals import WithdrawalData
 import subbasin as _subbasin
 from meandre.training.trainer import TrainingData
@@ -66,157 +37,45 @@ def decoupage():
         return tuple(x.strip() for x in _split.split(","))
     return TRAIN_END, VAL_START, VAL_END
 
-FORCINGS = {
-    "slso": f"{_mpaths.DATA_ROOT}/slso/forcing-casr-corr.nc",
-}
-DBS = {"slso": ".runs/slso/data/slso.duckdb"}
-
-
-def _resoudre_db(reg):
-    """Base du territoire. SLSO pointait EN DUR sur `.runs/slso/data/slso.duckdb`, le
-    banc d'essai historique : 188 Mo avec ses caches auxiliaires, 40 stations, contre
-    12 Mo et 41 stations pour `quebec/slso.duckdb`. Meme reseau (2889 troncons), mais
-    provenance differente des treize autres plateformes -- et fichier absent d'une
-    machine fraiche, ou le run provincial s'arretait net (2026-08-26).
-
-    Pour un domaine fusionne, l'uniformite de provenance prime sur la continuite avec
-    l'ancien banc : on prend la base quebecoise des qu'elle existe, et on le DIT."""
-    special = DBS.get(reg)
-    commun = f"{_mpaths.DATA_ROOT}/quebec/{reg}.duckdb"
-    if special and os.path.exists(special) and not os.path.exists(commun):
-        return special
-    if special and os.path.exists(commun):
-        print(f"[base] {reg} : {os.path.basename(commun)} (famille quebecoise) plutot "
-              f"que le banc historique {special}")
-    return commun
-
-
 def _paths(reg):
-    """Résout (base, forçage). JOINT_FX_SUFFIX = "-none" signifie CaSR BRUT, donc
-    forcing-<reg>.nc — et non le repli -budyko, qui faisait passer la variante corrigée
-    pour du brut dans toute la carte provinciale du 2 août (bug d'étiquette relevé par
-    Essi). Le fichier retenu est imprimé : on doit toujours savoir ce qu'on mesure."""
-    db = _resoudre_db(reg)
-    sfx = _settings.raw("forcing.suffix")
-    if sfx == "-none":
-        fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}.nc"
-        if not os.path.exists(fx):
-            raise FileNotFoundError(f"{reg}: CaSR brut demandé mais {fx} absent")
-        return db, fx
-    if sfx:
-        fx = f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}{sfx}.nc"
-        if os.path.exists(fx):
-            return db, fx
-        # Le repli etait SILENCIEUX : un suffixe demande mais absent faisait basculer la
-        # mesure sur forcing-<reg>-budyko.nc sans un mot. Le 2026-09-03 il a invalide un
-        # banc entier de quinze regions sur la grappe (les champions de la version 1.0
-        # sont sur le forcage hybride, qui n'avait pas ete televerse ; les scores lus
-        # etaient ceux d'un autre forcage, outv 0.671 au lieu de 0.780). Un forcage
-        # explicitement demande et introuvable est desormais une erreur, sauf pour les
-        # regions qui possedent une entree propre dans FORCINGS.
-        if reg not in FORCINGS:
-            raise FileNotFoundError(
-                f"{reg}: forcage '{sfx}' demande mais {fx} absent. Aucun repli : un "
-                f"point de reprise evalue sur un autre forcage que le sien rend un "
-                f"score faux. Televerser le fichier, ou changer JOINT_FX_SUFFIX.")
-        print(f"[forcage] {reg}: suffixe '{sfx}' introuvable, fichier propre de la "
-              f"region utilise ({os.path.basename(FORCINGS[reg])})")
-    fx = FORCINGS.get(reg, f"{_mpaths.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
-    return db, fx
+    """(base, forçage) du territoire, résolus par l'adaptateur PHYSITEL."""
+    from meandre.adapters.physitel import database_path, forcing_path
+    return database_path(reg), forcing_path(reg)
 
 
 def load_region(reg: str, lcfg: dict, device: str = "cuda"):
     """lcfg = section [loss] du TOML de base (poids identiques pour toutes les régions)."""
     reg = reg.lower()
-    db_path, fx_path = _paths(reg)
-    cache = BasinCache(db_path)
-    h = cache.load(device=device)
-    graph, territorial = h["graph"], h["territorial"]
-    if _settings.raw("spatial.global_normalization", "0") == "1":
-        territorial = _territorial_global(reg, territorial, device)
-    node_coords, n_nodes, node_ids = h["node_coords"], h["n_nodes"], h["node_ids"]
-
-    print(f"[forcage] {reg}: {os.path.basename(fx_path)}")
-    d = xr.open_dataset(fx_path)
-    F = d["forcing"].values[:, :, :6]  # (T, N, 6) — homogénéité (SLSO a 7 canaux)
-    times = pd.to_datetime(d["time"].values); d.close()
-    assert str(times[0])[:10] == DATE_START and str(times[-1])[:10] == DATE_END, f"{reg}: fenêtre forçage"
-    forcing = torch.tensor(F, dtype=torch.float32, device=device)
-    doy = torch.tensor(times.dayofyear.values, dtype=torch.float32, device=device)
-
-    obs = cache.load_observations(date_start=DATE_START, date_end=DATE_END, min_valid_days=365)
-    station_node_map = obs["station_node_map"]
-    station_indices = sorted(set(station_node_map.values()))
+    wanted = {"discharge", "et", "tws"}
+    if lcfg.get("w_snow", 0.0) > 0:
+        wanted.add("snow")
+    if lcfg.get("w_swe_mass", 0.0) > 0:
+        wanted.add("swe_mass")
+    dom = load_domain(reg, DATE_START, DATE_END, device=device, observations=wanted)
+    graph, territorial = dom.graph, dom.attributes
+    node_coords, n_nodes, node_ids = dom.node_coords, dom.n_nodes, dom.node_ids
+    forcing, times, doy = dom.forcing, dom.times, dom.day_of_year
+    _q = dom.observations["discharge"]
+    station_node_map = {s: int(n) for s, n in zip(_q.sites, _q.nodes.tolist())}
+    station_indices = list(_q.nodes.tolist())
     n_stations = len(station_indices)
     station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
     for ni in station_indices:
         station_mask[ni] = True
-    q_obs = torch.from_numpy(obs["discharge"][:, station_indices]).to(device) if n_stations else \
-        torch.full((len(times), 0), float("nan"), device=device)
-
-    withdrawals = cache.load_withdrawals(DATE_START, DATE_END, device=device)
-
-    # multi-obj : ET 8 jours + GRACE (présence vérifiée par l'audit 2026-07-19)
-    et_obs = cache.load_modis_et(DATE_START, DATE_END, device=device)
-    # couvert nival MOD10 (fenêtre fonte mars-juin, ingéré 2026-07-22) : supervise la
-    # fonte de la colonne DANS sa structure via w_snow (fraction simulée 1-exp(-SWE/ref))
-    swe_obs = cache.load_modis_snow(DATE_START, DATE_END, device=device) if lcfg.get("w_snow", 0.0) > 0 else None
-    # CanSWE : MASSE du manteau mesuree au sol (R24, 2026-08-21). Complete MOD10, qui
-    # ne mesure qu'une COUVERTURE : la fraction sature des qu'il y a un peu de neige et
-    # sous-estime sous couvert forestier, si bien qu'elle demandait au modele de fondre
-    # plus tot alors qu'il lit deja moins de neige que le reseau au sol, 0,77 en mars sur
-    # OUTV. Filtres de representativite dans build_swe_targets.
+    q_obs = _q.values
+    withdrawals = dom.withdrawals
+    et_obs = dom.observations["et"].values if "et" in dom.observations else None
+    et_weight = dom.observations["et"].weight if "et" in dom.observations else None
+    swe_obs = dom.observations["snow"].values if "snow" in dom.observations else None
     swe_mass_obs = swe_mass_node = None
-    if lcfg.get("w_swe_mass", 0.0) > 0 and cache.has_canswe():
-        from meandre.data.canswe_loader import build_swe_targets
-        _mes, _sit = cache.load_canswe(DATE_START, DATE_END)
-        swe_mass_obs, swe_mass_node, _gard = build_swe_targets(_mes, _sit, times)
-        if swe_mass_obs is None:
-            # ABSENCE DE DONNEE, pas erreur de cablage : mont et slso n'ont respectivement
-            # qu'un et quatre sites, tous ecartes par les filtres de representativite. On
-            # eteint le poids POUR CETTE REGION plutot que de laisser le garde-fou du
-            # trainer lever -- lequel existe pour attraper une cible perdue en chemin, ce
-            # qui n'est pas le cas ici. Dit a voix haute pour que ca n'ait pas l'air actif.
-            lcfg["w_swe_mass"] = 0.0
-            print(f"[canswe] {reg}: aucun site ne passe les filtres de representativite "
-                  f"-> w_swe_mass mis a 0 POUR CETTE REGION")
-        else:
-            swe_mass_obs = swe_mass_obs.to(device)
-            swe_mass_node = swe_mass_node.to(device)
-            _n = int(torch.isfinite(swe_mass_obs).sum())
-            print(f"[canswe] {reg}: {len(_gard)}/{len(_sit)} sites retenus, {_n} releves de masse")
-    # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03, registre R278 a R281). ETL_ET_NEIGE_MM = tau
-    # en mm d'equivalent en eau : w = exp(-SWE_NEISIM / tau) par noeud et par jour, sur l'axe
-    # du forcage ; noeuds sans serie NEISIM a poids 1. En mode centre, l'ecart de printemps
-    # sous la neige tirait K_c vers le bas et laissait le bilan ouvert.
-    et_weight = None
-    if et_obs is not None and _settings.raw("evaporation.mod16_snow_scale_mm"):
-        _tau_n = float(_settings.raw("evaporation.mod16_snow_scale_mm"))
-        _fz = f"{_mpaths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
-        if not os.path.exists(_fz):
-            raise FileNotFoundError(f"poids hors neige : NEISIM absent, {_fz} (build_neisim_targets.py)")
-        _zz = np.load(_fz)
-        # Sur le processeur : 125 Mo sur l'Outaouais, assez pour faire deborder la carte en
-        # entrainement regional (2026-10-04) ; le trainer n'en extrait que la tranche du bloc.
-        _vv = torch.tensor(np.nan_to_num(_zz["valeurs"], nan=0.0), dtype=torch.float32)
-        assert _vv.shape[0] == len(times), f"{reg}: axe de temps NEISIM {_vv.shape[0]} vs {len(times)}"
-        et_weight = torch.ones(len(times), n_nodes, dtype=torch.float32)
-        et_weight[:, torch.tensor(_zz["node_idx"], dtype=torch.long)] = torch.exp(-_vv / _tau_n)
-        print(f"[et] {reg}: terme MOD16 pondere hors neige, w = exp(-SWE NEISIM / {_tau_n:g} mm), poids moyen {float(et_weight.mean()):.2f}")
-    tws_obs = None
-    con = duckdb.connect(db_path, read_only=True)
-    if "grace_tws" in [t[0] for t in con.execute("show tables").fetchall()]:
-        g = con.execute("select date, tws_mm from grace_tws where quality_ok = true order by date").fetchdf()
-        tws = torch.full((len(times),), float("nan"), device=device)
-        ad = times.normalize()
-        for dt, val in zip(pd.to_datetime(g["date"]), g["tws_mm"].values):
-            target = pd.Timestamp(year=dt.year, month=dt.month, day=15)
-            dd = np.abs((ad - target).days.values)
-            i = int(dd.argmin())
-            if dd[i] <= 20:
-                tws[i] = float(val)
-        tws_obs = tws
-    con.close()
+    if "swe_mass" in dom.observations:
+        swe_mass_obs, swe_mass_node = dom.observations["swe_mass"].values, dom.observations["swe_mass"].nodes
+    elif lcfg.get("w_swe_mass", 0.0) > 0:
+        # ABSENCE DE DONNEE, pas erreur de cablage : on eteint le poids POUR CE TERRITOIRE plutot
+        # que de laisser le garde-fou du trainer lever, et on le dit.
+        lcfg["w_swe_mass"] = 0.0
+        print(f"[canswe] {reg}: observation absente -> w_swe_mass mis a 0 POUR CETTE REGION")
+    tws_obs = dom.observations["tws"].values if "tws" in dom.observations else None
 
     # SOUS-BASSIN (2026-10-23) : ETL_SUBBASIN=<territoire>:<station> restreint le territoire aux
     # troncons en amont de la station. Tout ce qui suit, statistiques par station, perte et

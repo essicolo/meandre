@@ -82,8 +82,10 @@ def capture_recipe() -> dict:
     except Exception:
         pass
     from meandre.utils import settings
+    from meandre.domain import manifest as _manifest
+    _m = _manifest.current()
     return {"variables": dict(sorted(variables.items())), "settings": settings.snapshot(),
-            "contexte": contexte, "code": _empreinte_code()}
+            "contexte": contexte, "code": _empreinte_code(), "domain": _m.as_dict() if _m else {}}
 
 
 def _toml_valeur(v) -> str:
@@ -141,6 +143,10 @@ def write_recipe_toml(chemin, recette: dict, fiche: dict | None = None,
             lignes += ["", "# Réglages du paquet qui s'écartent de leur défaut (meandre/utils/settings.py).", "[settings]"]
             for k, v in sorted(reglages.items()):
                 lignes.append(f'"{k}" = {_toml_valeur(v)}')
+        for k, src in sorted((recette.get("domain") or {}).items()):
+            lignes += ["", f"[domain.{k}]"]
+            for kk, vv in src.items():
+                lignes.append(f"{kk} = {_toml_valeur(vv)}")
         p.write_text("\n".join(lignes) + "\n", encoding="utf-8")
         return p
     except Exception:
@@ -199,6 +205,10 @@ def compare_recipe(sauvee: dict | None, ignorer: tuple[str, ...] = ()) -> list[s
     courant = {n: v for n, v in os.environ.items()
                if n.startswith(PREFIXES) and n not in neutres and not _est_secret(n)}
     ecarts = []
+    from meandre.domain import manifest as _manifest
+    _m = _manifest.current()
+    if _m is not None:
+        ecarts += _m.differences(sauvee.get("domain"))
     for k in sorted(set(ancien) | set(courant)):
         a, c = ancien.get(k), courant.get(k)
         if a == c:

@@ -78,6 +78,8 @@ meandre/
   routing/        # Graph, kinematic/operator routing, message passing, lakes
   training/       # Trainer, loss (incl. pinball), autopilot
   utils/          # State, metrics, quantile head, settings (réglages déclarés)
+  domain/         # contrat de domaine : vocabulaire des attributs, manifeste (empreintes), Domain validé
+  adapters/       # un adaptateur par paysage de données (physitel) ; seul endroit où une source est nommée
   hydrotel/       # clone fidèle d'Hydrotel C++ 4.3.6 (validé par UHRH contre le binaire)
   model.py        # HydroModel, orchestrateur
 .runs/quebec/     # pilote etl_run.py, banc de sous-bassin, constructeurs de données,
