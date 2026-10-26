@@ -1,0 +1,188 @@
+# Modele provincial gele pour la production (octobre 2026) : socle du 13 octobre, plus les bornes de texture sur la conductivite, la viscosite de l'eau froide, l'aire contributive saturee (b = 8) et le terme de variations journalieres. Entraine de zero sur le Quebec entier (27 834 troncons), 2001-2018 ; point de reprise best-quebec-etl-qv848-e32.pt (derniere epoque). Perte 2022-2024 de 0,886 sur le Quebec entier, KGE median par station 0,70 sur 143 stations.
+#
+# Ce fichier definit le modele : forcage, periodes, physique, perte. Restent au lancement :
+# ETL_REGION (quebec, ou une liste de territoires), ETL_EPOCHS, ETL_TAG, ETL_WARM_FROM, ETL_SEED.
+#
+#   ETL_CONFIG=.runs/quebec/config/modele-provincial-2026-10.toml ETL_REGION=quebec python .runs/quebec/etl_run.py
+#
+# Chaque cle de ce fichier est lue par le pilote : verifie par .runs/quebec/trace_launch.py le 2026-10-20.
+# Les sections [column], [routing], [compute], [quantile], [trainer], [snow], [groundwater],
+# [spatial], [evaporation] et [forcing] sont declarees dans meandre/utils/settings.py ; une
+# variable d'environnement de l'ancien nom, posee au lancement, prime sur le fichier.
+
+[period]
+# Entrainement 2001-2018 (l'annee 2000 sert de mise en regime), validation 2019-2021,
+# evaluation 2022-2024, jamais utilisee pour l'entrainement.
+train_end = "2018-12-31"
+val_start = "2019-01-01"
+val_end = "2021-12-31"
+eval_start = "2022-01-01"
+eval_end = "2024-12-31"
+
+[model]
+routing_mode = "operator-lagged"
+use_frost_rankinen = true        # gel RANKINEN (isolation neige + profil)
+column_theta_init_frac = 0.9     # theta init = 0.9·thetas (init Hydrotel validé, bat 0.3 du cache)
+compile_soil = true              # ~1.5x plus rapide qu'en mode eager
+field_hidden = 256               # neurones par couche du champ spatial ; meme taille pour un territoire et pour le Quebec entier
+spatial_melt = true
+
+[column]
+# Reglages de la colonne verticale, declares dans meandre/utils/settings.py.
+n_substeps = 64                       # sous-pas du sol par jour (stabilite du Muskingum a K court)
+z_tensor = true                       # Z2/Z3 en tenseurs sur la voie racinaire
+semi_implicit_soil = true             # schema lineairement implicite du sol : gradient borne, graines reproductibles
+penman_snow = true                    # couvert nival dans Penman (R265)
+transpiration_soil_temp_ref = 1.0     # transpiration freinee par le sol froid, echelle 1 degre (R264)
+viscosity_tref = 5.0                  # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
+saturated_area_exponent = 8.0         # ruissellement sur les aires saturees, part (theta1/thetas1)^8
+
+[routing]
+muskingum_k_hours = [4.0, 48.0, 24.0]   # temps de transfert, en heures : borne basse, borne haute, valeur initiale
+
+[compute]
+operator_block = 4096      # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
+gradient_segments = 10     # gradient recalcule par segments de 10 jours : la province tient dans 8 Go
+
+[quantile]
+# Phase probabiliste (ETL_QUANTILE=1), sans effet sur le modele deterministe.
+log_step = 0.05     # largeur de chaque niveau de quantile, dans le logarithme du debit
+log_bound = 4.0     # un quantile extreme reste entre e^-4 et e^4 fois la mediane
+
+[trainer]
+# Reglages de l'entraineur, declares dans meandre/utils/settings.py.
+state_continuous = true     # l'etat riche traverse les frontieres de bloc (R64)
+kge_continuous = true       # le KGE porte sur la sequence continue (R67)
+step_per_block = true       # un pas d'optimisation par bloc ; sans lui une epoque = un pas (R78, R288)
+lr_mult_heads = 1.0         # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
+
+[et]
+formula = "penman"   # Linacre inverse la saison de l'evapotranspiration (avril/octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit (R208)
+
+[soil]
+layers = 3
+frozen_gate_continuous = true   # porte de gel continue : la regle tout ou rien est fausse en amplitude partout (R224)
+# Epaisseurs des couches (m), non des profondeurs : Z2 et Z3 apprises par troncon entre leurs bornes.
+z2_min = 0.10
+z2_max = 1.50
+z3_min = 0.20
+z3_max = 4.00
+# Duree d'orage sous-journaliere (exces d'infiltration d'Eagleson)
+rain_hours_min = 2.0       # h (orages convectifs intenses)
+rain_hours_max = 8.0       # h (longues pluies frontales)
+
+[training]
+lr = 2e-4                  # taux de depart : trajectoires convergees, ecart entre graines divise par trois (R283)
+grad_clip = 1.0
+tbptt_steps = 365
+chunk_steps = 90           # blocs de 90 jours : a 30 jours le gradient ne voyait pas l'effet differe de la recharge sur l'etiage (R365)
+warmup_epochs = 0          # pas de montee du taux
+tws_shape_only = true      # GRACE en forme, s'il est active
+patience = 8               # arret anticipe : au-dela de 6 epoques sans progres, le gain observe tombe sous le bruit (2026-08-21)
+autopilot = true
+autopilot_grace_epochs = 8
+autopilot_beta_threshold = 0.10
+autopilot_lr_patience = 6
+autopilot_lr_factor = 0.5
+autopilot_lr_min = 1e-5
+autopilot_restart_regression = 0.05
+autopilot_restart_max = 3
+# Rappel doux des parametres vers les valeurs de la litterature, en ecart de logarithme.
+w_prior = 0.005
+
+[loss]
+# Section lue d'un bloc par le pilote ; une variable ETL_W... posee au lancement remplace le poids.
+w_nse = 0.0
+w_kge = 1.0
+w_pbias = 0.5
+w_et = 0.4           # MOD16
+et_mode = "anomaly"  # MOD16 compare centre : la saison, jamais le niveau (R24, 2026-08-21)
+w_tws = 0.0          # GRACE retire : calcule par bloc, il etait eteint a 30 jours et explosait a 90 ; corrige dans le code, non eprouve
+w_tws_clim = 0.0
+w_swe_mass = 0.0
+w_mse = 0.1
+w_log_nse = 0.0
+w_log_mse = 0.3
+w_peak = 0.0
+w_etiage = 1.0       # etiage
+w_fdc_bas = 1.0      # soutien d'etiage
+w_dq = 0.5           # variations journalieres du debit
+w_snow = 0.0         # pas de supervision de la fonte par la couverture MODIS
+w_nrmse = 0.0
+w_physics = 0.01
+
+[literature_prior]
+K_c = 1.0     # coefficient cultural initial, autour de la demande apprise
+
+[field.texture_bounds]
+enabled = true
+factor = 3.0     # conductivite bornee par la texture du sol, facteur 3 de part et d'autre
+
+[snow]
+wet_bulb_threshold = -0.8
+seasonal_melt_amplitude = 0.5
+project_threshold = false
+
+[groundwater]
+aquifer = true
+free_recession = true
+conductivity_field = true
+conductivity_modulation = true
+water_table = true
+exponent = 2.0
+specific_yield = 0.05
+conductance = 1.5e-3
+river_depth_m = 5
+reference_head_m = 2
+extinction_depth_m = 6
+extraction_fraction = 0.15
+
+[spatial]
+no_latent_codes = true
+init_from_hydrotel = false
+global_normalization = true
+
+[evaporation]
+open_water = true
+mod16_snow_scale_mm = 10.0
+
+[forcing]
+suffix = "-casr-brut"
+
+[phenology]
+enabled = true
+mode = "photo"                       # senescence par la longueur du jour ; seuil cale sur MODIS, 11,8 a 11,9 h sur les deux bassins d'essai
+params = [56.81, 11.82, 21.1, 0.9]   # emergence (degres-jours), seuil (h), largeurs ; jeu forestier de l'Outaouais
+target = "kc"
+classes = ["feuillus", "agri"]       # les coniferes gardent leur demande
+
+# -- Sol declare par couche (2026-09-30, R223 a R229) ----------------------------------------
+[[soil.process]]
+layer = 2
+kind = "lateral"
+form = "BASE_LINEAR"
+
+[[soil.process]]
+layer = 3
+kind = "lateral"
+form = "BASE_THRESH_POWER"
+tau_days = 3.0
+exponent = 2.0
+scale_mm = 5.0
+max_ratio = 2.0
+
+[[soil.process]]
+layer = 3
+kind = "percolation"
+form = "PERC_THRESH_POWER"
+tau_days = 2.0
+ceiling_mm_per_day = 2.0            # troncons sans classe de drainage ; les autres recoivent la regle de [soil.ceiling_from_drainage]
+
+[soil.ceiling_from_drainage]
+# log10(plafond en mm/j) = intercept + slope x classe de drainage (1 tres rapidement a 7 tres mal draine),
+# regle unique ajustee sur le plafond prefere par station de 83 stations et cinq territoires (R370).
+table = "{DERIVES}/auxiliaires/slc-drainage-troncons.parquet"
+intercept = 1.416
+slope = -0.32
+min_mm_per_day = 0.25
+max_mm_per_day = 4.0
