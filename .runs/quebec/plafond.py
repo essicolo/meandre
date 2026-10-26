@@ -19,7 +19,7 @@ REG = (sys.argv[1] if len(sys.argv) > 1 else "gasp").lower()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 os.environ.setdefault("JOINT_FX_SUFFIX", "-none")
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
-AD = json.load(open("reports/deploy_adapters.json"))
+AD = json.load(open(".runs/quebec/data/deploy_adapters.json"))
 r = load_region(REG, dict(cfg["loss"]), device=DEVICE)
 td = r["train_data"]; n = r["n_nodes"]
 demand = compute_demand(td.forcing, td.day_of_year, td.node_coords, r["territorial"], DEVICE) \

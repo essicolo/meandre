@@ -1,5 +1,5 @@
 """Entraînement CONJOINT multi-régions : UN NeRF + UNE colonne pour N régions.
-Design : reports/design_conjoint.md. Pilote 3 régions (slso, mont, gasp) par défaut.
+Design : historique git (reports/design_conjoint.md, retiré le 2026-10-26). Pilote 3 régions (slso, mont, gasp) par défaut.
 
   python .runs/quebec/joint.py slso mont gasp
   JOINT_EPOCHS=30 JOINT_TAG=pilote3 python .runs/quebec/joint.py slso mont gasp

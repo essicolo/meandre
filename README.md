@@ -102,7 +102,7 @@ testing on `dev`.
 Quebec scale-up (15 PHYSITEL regions): infrastructure complete (regional
 DuckDB caches, CaSR tiles, corrected forcings, training queue, 6-member
 comparator), pilot campaign on MONT/GASP/SAGU documented in
-[`reports/RAPPORT_QUEBEC.md`](reports/RAPPORT_QUEBEC.md). Key findings: the
+[`experiments/RAPPORT_QUEBEC.md`](experiments/RAPPORT_QUEBEC.md). Key findings: the
 regional calibration of Hydrotel lives in the ETP multiplier and melt
 thresholds (both now anchorable per region), freezing the soil field kills the
 model (the NeRF needs it to compensate structural divergences), and the
@@ -119,9 +119,8 @@ third-party product:
 3. Volume — annual total anchored on the regional water balance
    (observed runoff + regional ETP model).
 
-Scripts: `.runs/slso/build_casr_corrected.py` (SLSO),
-`.runs/quebec/build_forcing_region.py` (any region). The correction method is
-documented for external use in `notebooks/correction_casr_ouranos.ipynb`.
+Script: `.runs/quebec/build_forcing_region.py` (any region). Weather
+preprocessing (station kriging, CaSR correction) lives outside this repository.
 
 ## Repository layout
 
@@ -131,21 +130,19 @@ meandre/
                 Hydrotel regional calibration loaders (soil / Linacre / melt),
                 MODIS, GRACE, HYDAT/CEHQ, withdrawals
   spatial/      NeRF field network, Fourier encoding, latent codes z_n
-  temporal/     (legacy) GRU context encoder — removed from the active model
-  vertical/     HydrotelColumn (orchestrates the hydrotel_clone physics),
-                spatial melt modulation, ET modes
+  temporal/     canopy phenology
+  vertical/     HydrotelColumn (orchestrates the meandre.hydrotel physics),
+                spatial melt modulation, ET modes, water table
   routing/      RiverGraph, Muskingum-Cunge (operator mode), lakes,
                 message passing, withdrawals
   training/     Trainer, loss (incl. pinball / quantile), autopilot
-  utils/        HydroState, metrics, quantile head
-  model.py      HydroModel — top-level orchestrator
+  utils/        HydroState, metrics, quantile head, declared settings
+  hydrotel/     Faithful ports of Hydrotel C++ physics (bv3c2, snow, frost,
+                linacre, mcguinness, wetland), validated per UHRH against the binary
+  model.py      HydroModel, top-level orchestrator
 
-hydrotel_clone/ Faithful ports of Hydrotel C++ physics + validation harnesses
-                (bv3c2, snow, linacre, mcguinness, milieu_humide, ...)
-                validate_*.py compare against the C++ binary output per UHRH
-.runs/slso/     SLSO case: configs, training script (slso.py), data builders
-.runs/quebec/   Quebec scale-up: region builders, configs, fleet + eval scripts
-reports/        experiment_log.md (every run, verdicts), RAPPORT_QUEBEC.md
+.runs/quebec/   Pilot (etl_run.py), region builders, configs, eval scripts
+experiments/    Hypothesis registry, experiment log, Quebec report, experiments
 docs/           Architecture, basin DB schema
 tests/          Mirrors meandre/ structure
 ```
@@ -155,14 +152,13 @@ tests/          Mirrors meandre/ structure
 ```bash
 uv sync
 
-# SLSO training (from repo root); config chooses forcing/recipe
-python .runs/slso/slso.py .runs/slso/config/slso-casr-zn.toml
-
-# Quantile head on a frozen champion (probabilistic calibration)
-python .runs/slso/slso.py .runs/slso/config/slso-casr-zn-quantile.toml
-
-# Held-out eval only, reusing the saved checkpoint
-MEANDRE_EVAL_ONLY=1 python .runs/slso/slso.py <config.toml>
+# Single pilot: the TOML file defines the model; the launch sets the territory
+# (or a list, which forms one domain), epochs, tag and starting checkpoint.
+# Forward pass of the frozen provincial model on two territories:
+ETL_CONFIG=.runs/quebec/config/modele-provincial-2026-10.toml ETL_REGION=labi,cndc \
+  ETL_EPOCHS=0 ETL_TAG=-essai \
+  ETL_WARM_FROM=.runs/quebec/checkpoints/best-quebec-etl-qv848-e32.pt \
+  ETL_DUMP_Q=q.npz python .runs/quebec/etl_run.py
 
 # Build a Quebec region from its PHYSITEL platform + observations
 python .runs/quebec/build_regions.py GASP
@@ -194,7 +190,7 @@ an empty one is accepted).
   regional Hydrotel calibration (degre_jour_modifie.csv)
 * `[soil]` — `hydrotel_calib_dir` anchors the soil on a platform calibration.
   Warning: freezing the soil field has systematically degraded results
-  (see reports/experiment_log.md, "loi des ancrages")
+  (see experiments/experiment_log.md, "loi des ancrages")
 * `[training]` — lr, epochs, chunk_steps, tbptt, `best_metric`
   (kge_median recommended; `nll` = pinball in quantile mode), warm_start,
   freeze_* for head-only training, autopilot

@@ -97,10 +97,9 @@ Jugement des épreuves de Narval quand elles sortiront : `python .runs/quebec/in
 
 ## 6. Où lire l'histoire
 
-- `reports/registre_hypotheses.md` : l'état courant, une entrée par hypothèse avec son statut (établi, réfuté, caduc, ouvert). Les entrées du 5 et du 6 octobre vont de R305 à R316. À LIRE AVANT de citer un chiffre, à RÉVISER à chaque verdict. Ne jamais citer un numéro R à Essi : énoncer le fait.
-- `reports/experiment_log.md` : le journal chronologique.
-- `reports/etat_2026-10-04.md` : la synthèse de la fin de semaine du 2 au 4 octobre (banc, correctifs, routage).
-- `reports/chantiers_a_venir.md` : les chantiers ouverts et leur ordre.
+- `experiments/registre_hypotheses.md` : l'état courant, une entrée par hypothèse avec son statut (établi, réfuté, caduc, ouvert). Les entrées du 5 et du 6 octobre vont de R305 à R316. À LIRE AVANT de citer un chiffre, à RÉVISER à chaque verdict. Ne jamais citer un numéro R à Essi : énoncer le fait.
+- `experiments/experiment_log.md` : le journal chronologique.
+- `experiments/chantiers_a_venir.md` : les chantiers ouverts et leur ordre.
 - `CLAUDE.md` : les règles, dont « Le banc ne vaut pas le territoire ».
 - Mémoire de l'agent (`C:\Users\parse01\.claude\projects\C--Users-parse01-documents-locaux-GitHub-meandre\memory\MEMORY.md`) : préférences d'Essi et faits de projet non déductibles du code.
 

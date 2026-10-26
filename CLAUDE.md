@@ -31,7 +31,7 @@ Everything a human READS is in French: comments, docstrings, printed output, rep
 ## Key architecture decisions
 
 - **NeRF spatial params**: `meandre/spatial/field_network.py` maps (lon, lat, territorial_features) -> 43 hydrological parameters per node (count as of 2026-09-20; the docstring said 37 long after it was 42) via an MLP with Fourier positional encoding (isotropic haversine projection — raw degrees caused NeRF collapse). Constraints via sigmoid/softplus. Optional per-node additive latent codes `z_n` (`use_latent_codes`) = best deterministic recipe.
-- **Vertical column**: `meandre/vertical/hydrotel_column.py` orchestrates the FAITHFUL clones from `hydrotel_clone/` (ports of Hydrotel C++ 4.3.6, each validated per-UHRH to the decimal against the binary): snow degree-day modified -> frost Rankinen -> ETP (mcguinness | linacre regional | penman | oudin) -> BV3C2 soil (3 layers) -> wetland -> optional restituting aquifer / hillslope Nash UH.
+- **Vertical column**: `meandre/vertical/hydrotel_column.py` orchestrates the FAITHFUL clones from `meandre/hydrotel/` (ports of Hydrotel C++ 4.3.6, each validated per-UHRH to the decimal against the binary): snow degree-day modified -> frost Rankinen -> ETP (mcguinness | linacre regional | penman | oudin) -> BV3C2 soil (3 layers) -> wetland -> optional restituting aquifer / hillslope Nash UH.
 - **ANCHORS ARE TIED TO HYDROTEL'S WEATHER (measured 2026-10-02, registry R259).** The 0.739 below was obtained with the `-hyb` forcing, Hydrotel's own simple kriging of station data. On the same code, zero epochs, OUTV: 0.783 with `-hyb`, 0.592 with the CaSR `-budyko` forcing (+29 % volume, August ×2). The imposed calibration (retention curve, layer thicknesses, Linacre multiplier) compensates the biases of that kriging and must NOT be imposed on CaSR. Decision (Essi, 2026-10-02): CaSR (raw, `-casr-brut`), and meandre LEARNS soil and ET on it. Weather preprocessing is a separate task, outside meandre and outside the TOML.
 - **Regional anchors** (Quebec scale-up, historical — see the line above): `[et].mode="linacre"` + `linacre_project_dir` loads the per-UHRH optimized ETP multiplier; `[snow].melt_project_dir` loads calibrated melt rates AND thresholds. LAW OF ANCHORS, REVISED 2026-08-15 (the old form cost weeks by pointing at obsolete checkpoints): the winning configuration is the SOCLE — impose the whole Hydrotel soil calibration EXCEPT K_sat and porosities, which stay with the field, plus calibrated Linacre ETP and the project rain/snow threshold. Measured on held-out 2022-2024: OUTV 0.739 with zero training and 0.781 after 30 epochs, against 0.499 for the previously trained champion; SLNO 0.711 against 0.546; GASP 0.775 against 0.749. Freezing the retention curve alone (0.592) or nothing at all (0.563) both lose. The `-gen1` fleet (`.runs/quebec/file_generalisation.sh`) carries this recipe and its env block is the reference for any deployment: a checkpoint alone does NOT define a model.
 - **Routing**: Muskingum-Cunge; `routing_mode = "operator"` (triangular solve, ~25-30x faster) is the default for training. Lakes with learned k/beta (NeRF). Message passing along topological sort.
@@ -77,18 +77,21 @@ meandre/
   vertical/       # HydrotelColumn + ET modes + spatial melt
   routing/        # Graph, kinematic/operator routing, message passing, lakes
   training/       # Trainer, loss (incl. pinball), autopilot
-  utils/          # State, metrics, quantile head
-  model.py        # HydroModel — top-level orchestrator
-hydrotel_clone/   # Faithful C++ ports (validés par UHRH contre le binaire ; harnais retirés le 2026-10-21)
-.runs/quebec/     # pilote etl_run.py, banc de sous-bassin, constructeurs de données, config/
-experiments/      # expériences en cours, hors du paquet et du pilote
-reports/          # registre_hypotheses.md = ÉTAT COURANT, statut par hypothèse
+  utils/          # State, metrics, quantile head, settings (réglages déclarés)
+  hydrotel/       # clone fidèle d'Hydrotel C++ 4.3.6 (validé par UHRH contre le binaire)
+  model.py        # HydroModel, orchestrateur
+.runs/quebec/     # pilote etl_run.py, banc de sous-bassin, constructeurs de données,
+                  # config/, data/ (statistiques de normalisation, adaptateurs de la carte)
+experiments/      # registre_hypotheses.md = ÉTAT COURANT, statut par hypothèse
                   #   (établi / réfuté / caduc / ouvert). À LIRE AVANT de citer un
-                  #   chiffre, et à RÉVISER à chaque verdict. Le journal ci-dessous
-                  #   raconte l'histoire, le registre dit ce qui est vrai aujourd'hui.
-                  # experiment_log.md (journal chronologique), RAPPORT_QUEBEC.md
-tests/            # Mirrors meandre/ structure
+                  #   chiffre, et à RÉVISER à chaque verdict. experiment_log.md raconte
+                  #   l'histoire, le registre dit ce qui est vrai aujourd'hui.
+                  # RAPPORT_QUEBEC.md, chantiers_a_venir.md ; un dossier par expérience
+docs/             # architecture, schéma de la base
+tests/            # Mirrors meandre/ structure ; tests/data/ : séries de référence
 ```
+
+Hors du dépôt : le prétraitement météo (PyGMET, correction de CaSR) est dans `../meandre-meteo/`, les analyses et rapports dans `../meandre-analyse/`. Les sorties générées vont dans `.reports/` (ignoré) ou sous `MEANDRE_DATA`. Les dossiers `reports/`, `figs/`, `notebooks/` et `vendor/` ont été retirés le 2026-10-26 ; ne pas les recréer.
 
 ## Config
 
@@ -213,7 +216,7 @@ QUAND LA DONNÉE NE PEUT PAS IDENTIFIER, CE QUI RESTE EST UN AJUSTEMENT (Essi, 2
 
 Règle posée par Essi le 2026-09-13, après une journée où la plupart des heures de calcul ont servi à répondre à des questions mortes. Un entraînement long ne se lance qu'une fois les quatre points suivants faits. Ils coûtent des minutes ; les sauter coûte des heures.
 
-**0. Chercher le sujet dans le registre AVANT de proposer ou de lancer une épreuve.** `reports/registre_hypotheses.md` porte plus de deux cents verdicts. Le 2026-09-28, trois épreuves en une journée ont rejoué des questions déjà tranchées : la troncature de la boucle du sol (établie début septembre), le mode « bassin » de l'évapotranspiration, le routage de Muskingum déduit de la géométrie (réfuté en août et en septembre). Avant chaque épreuve : une recherche dans le registre sur le mécanisme en cause, et une phrase qui dit ce qui est déjà établi ou réfuté et ce que l'épreuve ajoute. Refaire une épreuve est légitime quand le code a changé depuis le verdict : en particulier, tout ce qui a été jugé par entraînement avant le schéma semi-implicite du sol (2026-09-28) l'a été sur un apprentissage qui marchait au hasard. La phrase dit alors ce qui a changé. Si l'épreuve n'ajoute rien et que rien n'a changé, on ne la lance pas.
+**0. Chercher le sujet dans le registre AVANT de proposer ou de lancer une épreuve.** `experiments/registre_hypotheses.md` porte plus de deux cents verdicts. Le 2026-09-28, trois épreuves en une journée ont rejoué des questions déjà tranchées : la troncature de la boucle du sol (établie début septembre), le mode « bassin » de l'évapotranspiration, le routage de Muskingum déduit de la géométrie (réfuté en août et en septembre). Avant chaque épreuve : une recherche dans le registre sur le mécanisme en cause, et une phrase qui dit ce qui est déjà établi ou réfuté et ce que l'épreuve ajoute. Refaire une épreuve est légitime quand le code a changé depuis le verdict : en particulier, tout ce qui a été jugé par entraînement avant le schéma semi-implicite du sol (2026-09-28) l'a été sur un apprentissage qui marchait au hasard. La phrase dit alors ce qui a changé. Si l'épreuve n'ajoute rien et que rien n'a changé, on ne la lance pas.
 
 **1. Vérifier la configuration réellement en vigueur, pas celle qu'on croit.** Le même jour, trois réglages différaient de ce qui était supposé : le banc de sous-bassin ne posait pas de graine dans sa fonction de simulation, si bien que deux passes identiques s'écartaient de 0,029 de KGE et qu'un effet mesuré à 0,015 n'était que du bruit ; son forçage par défaut est `-hyb` alors que la recette emploie `-budyko`, ce qui déplace le KGE de 0,14 ; et il ne normalisait pas l'écart quadratique par la variance de chaque station, alors que le pilote régional le fait, si bien qu'il minimisait une perte à 95 % d'écart quadratique quand celle de la région en compte 3 %. Graine, forçage, ancrages et composition de la perte se lisent AVANT, et se comparent à ceux du pilote.
 

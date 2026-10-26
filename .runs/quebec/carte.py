@@ -21,7 +21,7 @@ REGIONS = ["gasp", "sagu", "mont", "labi", "abit", "cnda", "cndb", "cndc", "cndd
            "outm", "outv", "slno", "slso", "vaud"]
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 cfg = tomllib.load(open(".runs/quebec/config/gasp-v4.toml", "rb"))
-AD = json.load(open("reports/deploy_adapters.json"))
+AD = json.load(open(".runs/quebec/data/deploy_adapters.json"))
 rows = []
 import joint_data
 from et_module import compute_demand

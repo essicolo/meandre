@@ -15,7 +15,7 @@ from meandre.spatial.territorial import TerritorialFeatures
 from meandre.utils import paths as _mpaths
 
 _QC_RAW = f"{_mpaths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
-_QC_STATS = "reports/territorial_stats_QC.csv"
+_QC_STATS = ".runs/quebec/data/territorial_stats_QC.csv"
 
 
 def _territorial_global(reg, fallback, device):
