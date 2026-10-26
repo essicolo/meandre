@@ -14,7 +14,7 @@ dette #12).
 import torch
 import pytest
 
-from hydrotel_clone.snow import sublimation_kuzmin
+from meandre.hydrotel.snow import sublimation_kuzmin
 
 
 def test_ordre_de_grandeur_hivernal():
@@ -70,7 +70,7 @@ def test_surface_du_manteau_plafonnee_a_zero():
 def _colonne(mode=None, n=3):
     """Colonne reelle, calquee sur tests/smoke_hydrotel_column.py (build_static_params)."""
     from meandre.vertical.hydrotel_column import HydrotelColumn, build_static_params
-    from hydrotel_clone.frost import n_intervalles
+    from meandre.hydrotel.frost import n_intervalles
     occ = dict(feuillus=0.3, ouverts=0.2, humides=0.0, urbain=0.2, routes=0.1, eau=0.2)
     psnow, psoil, petr = build_static_params(
         n, lat=46.0, slope=0.03, orientation=7, texture="sandy_loam",

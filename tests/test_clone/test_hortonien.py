@@ -10,7 +10,7 @@ Ces tests fixent le comportement du mecanisme correctif, qui doit rester OPT-IN.
 import pytest
 import torch
 
-from hydrotel_clone.bv3c2 import BV3C2Clone, SOIL_TEXTURES, EPAISSEUR, KREC_DEFAULT, CIN_DEFAULT, make_params
+from meandre.hydrotel.bv3c2 import BV3C2Clone, SOIL_TEXTURES, EPAISSEUR, KREC_DEFAULT, CIN_DEFAULT, make_params
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,7 @@ avec ETL_NAPPE_APPRIS=1 doit rendre le même KGE que la nappe posée (registre, 
 """
 import torch
 
-from hydrotel_clone.frost import n_intervalles
+from meandre.hydrotel.frost import n_intervalles
 from meandre.vertical.hydrotel_column import HydrotelColumn, build_static_params
 
 N = 3

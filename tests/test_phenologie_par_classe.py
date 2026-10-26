@@ -9,7 +9,7 @@ import os
 
 import torch
 
-from hydrotel_clone.frost import n_intervalles
+from meandre.hydrotel.frost import n_intervalles
 from meandre.vertical.hydrotel_column import HydrotelColumn, build_static_params
 
 N = 2

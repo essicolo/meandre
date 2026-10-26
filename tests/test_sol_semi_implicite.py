@@ -8,7 +8,7 @@ simulation et un jacobien journalier de rayon spectral au plus un.
 import pytest
 import torch
 
-import hydrotel_clone.bv3c2 as bv
+import meandre.hydrotel.bv3c2 as bv
 
 N = 40
 

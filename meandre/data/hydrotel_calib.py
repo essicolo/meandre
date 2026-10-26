@@ -9,7 +9,7 @@ dépendance permanente : l'objectif ultime reste de découpler méandre de
 Hydrotel/PHYSITEL (params appris depuis les features, NeRF). Voir
 [[project_meandre_reproduce_then_modernize]].
 
-Source : hydrotel_clone.hydrotel_params (lit uhrh.csv, type_sol.cla,
+Source : meandre.hydrotel.hydrotel_params (lit uhrh.csv, type_sol.cla,
 proprietehydrolique.sol, bv3c.csv, occupation). Agrégation = moyenne pondérée par
 l'aire UHRH (cohérente avec _build_territorial), par troncon dans l'ordre node_ids.
 """
@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 import torch
 
-from hydrotel_clone.hydrotel_params import load_project, uhrh_fractions
+from meandre.hydrotel.hydrotel_params import load_project, uhrh_fractions
 from meandre.data.physitel_loader import _parse_troncon
 from meandre.utils import settings
 

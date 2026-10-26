@@ -20,7 +20,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from hydrotel_clone.bv3c2 import CIN_DEFAULT, EPAISSEUR, KREC_DEFAULT, SOIL_TEXTURES, BV3C2Clone
+from meandre.hydrotel.bv3c2 import CIN_DEFAULT, EPAISSEUR, KREC_DEFAULT, SOIL_TEXTURES, BV3C2Clone
 
 N = 200
 TEXTURE = SOIL_TEXTURES["silt_loam"]

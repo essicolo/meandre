@@ -52,7 +52,7 @@ class ETModule(nn.Module):
                     "et_mode='mcguinness' requiert lat (n_nodes) et doy ; "
                     "vérifier que node_coords/day_of_year sont threadés."
                 )
-            from hydrotel_clone.mcguinness import mcguinness_etp
+            from meandre.hydrotel.mcguinness import mcguinness_etp
             jd = doy if isinstance(doy, Tensor) else torch.tensor(
                 float(doy), device=T_min.device, dtype=T_min.dtype
             )

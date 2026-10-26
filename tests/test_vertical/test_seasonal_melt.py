@@ -15,7 +15,7 @@ le binaire C++ repose dessus.
 import torch
 import pytest
 
-from hydrotel_clone.snow import DegreJourModifie, init_state
+from meandre.hydrotel.snow import DegreJourModifie, init_state
 
 
 def _params(n=4, **extra):

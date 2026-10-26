@@ -21,7 +21,7 @@ Ce que ces tests verrouillent :
 """
 import torch
 
-from hydrotel_clone.frost import Rankinen, n_intervalles
+from meandre.hydrotel.frost import Rankinen, n_intervalles
 
 
 def _profil(mod, n, tair=-15.0, neige=0.2, jours=60):

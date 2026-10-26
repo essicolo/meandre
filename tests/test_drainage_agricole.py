@@ -14,7 +14,7 @@ Ce que ces tests verrouillent, dans l'ordre d'importance :
 """
 import torch
 
-from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params
 
 
 def _etat(n=4, sat=0.9):

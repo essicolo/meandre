@@ -6,7 +6,7 @@ ou rien du clone fait tout ruisseler, la porte continue presque rien.
 """
 import torch
 
-import hydrotel_clone.bv3c2 as bv
+import meandre.hydrotel.bv3c2 as bv
 
 N = 4
 

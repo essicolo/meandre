@@ -13,8 +13,8 @@ poursuite, il est conservé.
 import pytest
 import torch
 
-from hydrotel_clone.frost import n_intervalles
-from hydrotel_clone.snow import DegreJourModifie
+from meandre.hydrotel.frost import n_intervalles
+from meandre.hydrotel.snow import DegreJourModifie
 from meandre.spatial.field_network import SpatialFieldNetwork
 from meandre.spatial.territorial import TerritorialFeatures
 from meandre.vertical.hydrotel_column import HydrotelColumn, build_static_params

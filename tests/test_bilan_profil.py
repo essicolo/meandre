@@ -14,7 +14,7 @@ trois teneurs en eau.
 import pytest
 import torch
 
-from hydrotel_clone.bv3c2 import BV3C2Clone, EPAISSEUR, make_params
+from meandre.hydrotel.bv3c2 import BV3C2Clone, EPAISSEUR, make_params
 from meandre.vertical import soil_processes as sp
 
 N = 5

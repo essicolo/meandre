@@ -108,7 +108,7 @@ def test_facteur_de_gradient_neutre_a_un_et_nul_a_zero():
     Absent du dictionnaire de paramètres, il ne doit rien changer : c'est la condition
     pour que le clone reste fidèle tant que le couplage n'est pas demandé.
     """
-    from hydrotel_clone.bv3c2 import SOIL_TEXTURES, BV3C2Clone, make_params
+    from meandre.hydrotel.bv3c2 import SOIL_TEXTURES, BV3C2Clone, make_params
 
     torch.set_default_dtype(torch.float64)
     p = make_params("silt_loam", "loam", "loam")
@@ -133,7 +133,7 @@ def test_drainage_gravitaire_ne_vide_pas_sous_la_capacite_au_champ():
     0,345, soit 472 mm d'eau gravitaire immobilisés en permanence sur 2,70 m. Cette loi les
     évacue. Absente du dictionnaire, elle ne doit rien changer au clone fidèle.
     """
-    from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+    from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params
 
     torch.set_default_dtype(torch.float64)
     p = make_params("silt_loam", "loam", "loam")
@@ -156,7 +156,7 @@ def test_ecoulement_hypodermique_profond_vide_la_couche_vers_le_troncon():
     Sans cette sortie, plafonner la percolation force la couche 3 à se resaturer, l'eau
     refusée n'ayant nulle part où aller, et le modèle revient à son défaut d'origine.
     """
-    from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+    from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params
 
     torch.set_default_dtype(torch.float64)
     p = make_params("silt_loam", "loam", "loam")
@@ -187,7 +187,7 @@ def test_hypodermique_profond_suit_sa_propre_constante_de_temps():
     l'eau gravitaire et d'une constante de temps, donc doubler celle-ci doit diviser le
     flux latéral par deux.
     """
-    from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+    from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params
 
     torch.set_default_dtype(torch.float64)
     z = lambda v: torch.full((3,), float(v), dtype=torch.float64)

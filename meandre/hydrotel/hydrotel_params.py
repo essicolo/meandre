@@ -12,7 +12,7 @@ Fichiers lus (projet DELISLE, idem SLSO) :
   simulation/<sim>/bv3c.csv       z1/z2/z3, humidité rel. init, extinction, krec, assèch, cin, recharge
                                   + classes intégrées imperméable/eau
 
-Le test de régression (python hydrotel_clone/hydrotel_params.py) reconstruit UHRH1
+Le test de régression (python meandre/hydrotel/hydrotel_params.py) reconstruit UHRH1
 et vérifie qu'il reproduit les valeurs connues de validate_chain (validé décimale vs C++).
 """
 from __future__ import annotations

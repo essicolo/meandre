@@ -1,7 +1,7 @@
 """Colonne verticale FIDÈLE Hydrotel — orchestrateur natif méandre (Phase A).
 
 Chaîne, dans l'ordre EXACT d'Hydrotel (cf BV3C2::Calcule), les modules clonés et
-validés un à un contre le C++ (hydrotel_clone/, Phase B) :
+validés un à un contre le C++ (meandre/hydrotel/, Phase B) :
 
   forçage → split pluie/neige → FONTE NEIGE (degré-jour modifié)
          → GEL RANKINEN (profil de température → profondeur de gel)
@@ -34,12 +34,12 @@ from torch import Tensor
 
 from meandre.utils import settings
 from meandre.utils.state import HydroState
-from hydrotel_clone.snow import DegreJourModifie, init_ce, init_state as snow_init_state
-from hydrotel_clone.frost import Rankinen, n_intervalles
-from hydrotel_clone.et import hydro_quebec_etp, calcule_etr
-from hydrotel_clone.mcguinness import mcguinness_etp
-from hydrotel_clone.bv3c2 import BV3C2Clone, make_params, SOIL_TEXTURES
-from hydrotel_clone.milieu_humide import init_wetland_geom, calcul_milieu_humide_isole
+from meandre.hydrotel.snow import DegreJourModifie, init_ce, init_state as snow_init_state
+from meandre.hydrotel.frost import Rankinen, n_intervalles
+from meandre.hydrotel.et import hydro_quebec_etp, calcule_etr
+from meandre.hydrotel.mcguinness import mcguinness_etp
+from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params, SOIL_TEXTURES
+from meandre.hydrotel.wetland import init_wetland_geom, calcul_milieu_humide_isole
 from meandre.vertical.aquifer import AquiferModule
 
 
@@ -654,7 +654,7 @@ class HydrotelColumn(nn.Module):
         (colonnes *_raw agrégées UHRH→troncon par le loader). Retourne None si pas de
         géométrie (wet_a_raw absent). Les nœuds sans MH sont masqués (wmask) et reçoivent
         une géométrie factice positive pour éviter log10(0)=NaN dans le gradient."""
-        from hydrotel_clone.milieu_humide import wetland_geom_vec
+        from meandre.hydrotel.wetland import wetland_geom_vec
         # même priorité que _static_params : les entrées posées par set_land_cover()
         # (chargées du projet Hydrotel) priment sur le territorial, dont AUCUN cache du
         # Québec ne porte wet_a_raw — d'où un module de milieu humide jamais instancié.
@@ -1116,7 +1116,7 @@ class HydrotelColumn(nn.Module):
         if self.et_mode == "linacre":
             # clone fidèle linacre.cpp (validé à la décimale sur MONT 4780 UHRH) ;
             # couv/albn = couvert nival + albédo du module neige interne.
-            from hydrotel_clone.linacre import linacre_etp
+            from meandre.hydrotel.linacre import linacre_etp
             assert hasattr(self, "lin_coeff"), "et_mode=linacre : appeler set_linacre_params()"
             z = torch.zeros_like(tmin_j)
             return linacre_etp(tmin_j, tmax_j, self.lin_lat, self.lin_alti,
@@ -1137,7 +1137,7 @@ class HydrotelColumn(nn.Module):
             # 27 formules d'ETP pour la modélisation pluie-débit et trouvé cette forme
             # simple optimale. Ne dépend que de T + lat + doy (compatible quebec.zarr,
             # pas besoin de Rn/vent). PE = (Re/λ)·(Ta+5)/100, gated Ta+5>0.
-            from hydrotel_clone.mcguinness import rayonnement_extraterrestre, _LAMBDA
+            from meandre.hydrotel.mcguinness import rayonnement_extraterrestre, _LAMBDA
             import torch as _t
             Re = rayonnement_extraterrestre(doy, lat)          # MJ/m²/j
             Ta = 0.5 * (tmin_j + tmax_j)
@@ -1188,7 +1188,7 @@ class HydrotelColumn(nn.Module):
         # temperature du manteau restant ne changent pas).
         subl_mm = None
         if getattr(self, "sublimation_mode", None) == "kuzmin":
-            from hydrotel_clone.snow import sublimation_kuzmin, DegreJourModifie as _DJM
+            from meandre.hydrotel.snow import sublimation_kuzmin, DegreJourModifie as _DJM
             t_air = (tmin + tmax) / 2.0
             pot_m = sublimation_kuzmin(u2, ea, t_air) / 1000.0     # m/j potentiel
             subl_tot = torch.zeros_like(pot_m)

@@ -4,7 +4,7 @@ import math
 import pytest
 import torch
 
-from hydrotel_clone.snow import degre_jour_effectif
+from meandre.hydrotel.snow import degre_jour_effectif
 
 
 def test_journee_entierement_au_dessus_du_seuil():
@@ -74,7 +74,7 @@ def test_gradient_fini_partout():
 def test_desactive_le_clone_est_rendu_a_l_identique():
     """calcule_fonte sans l'option doit donner exactement le meme resultat qu'avant :
     c'est la condition pour que l'ecart a Hydrotel reste un choix et non un accident."""
-    from hydrotel_clone.snow import calcule_fonte
+    from meandre.hydrotel.snow import calcule_fonte
     n = 40
     g = torch.Generator().manual_seed(1)
     kw = dict(pluie_m=torch.rand(n, generator=g) * 0.01,
@@ -100,7 +100,7 @@ def _cumul_fonte(jours, diurne, tmin, tmax):
     """Enchaine les pas de temps en reportant l'etat du manteau, et rend l'eau totale
     liberee. Un pas isole ne suffit pas : l'eau fondue rechauffe d'abord le manteau puis
     y est retenue, et la liberation ne commence qu'une fois celui-ci mur."""
-    from hydrotel_clone.snow import calcule_fonte
+    from meandre.hydrotel.snow import calcule_fonte
     st = torch.tensor([0.30])
     ha = torch.tensor([0.90])
     ch = torch.tensor([-2.0e6])

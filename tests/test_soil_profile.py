@@ -8,7 +8,7 @@ intact. Avec la déclaration qui décrit Hydrotel, la sortie est la MÊME au bit
 import pytest
 import torch
 
-from hydrotel_clone.bv3c2 import BV3C2Clone, make_params
+from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params
 from meandre.vertical import soil_processes as sp
 
 
