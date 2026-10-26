@@ -91,7 +91,7 @@ docs/             # architecture, schéma de la base
 tests/            # Mirrors meandre/ structure ; tests/data/ : séries de référence
 ```
 
-Hors du dépôt : le prétraitement météo (PyGMET, correction de CaSR) est dans `../meandre-meteo/`, les analyses et rapports dans `../meandre-analyse/`. Les sorties générées vont dans `.reports/` (ignoré) ou sous `MEANDRE_DATA`. Les dossiers `reports/`, `figs/`, `notebooks/` et `vendor/` ont été retirés le 2026-10-26 ; ne pas les recréer.
+Hors du dépôt : le prétraitement météo (PyGMET, correction de CaSR) est dans `../meandre-meteo/`, les analyses et rapports dans `../meandre-analyse/`. Les sorties générées vont dans `.reports/` (ignoré) ou sous `MEANDRE_DATA` ; les données locales du dépôt dans `.data/` (ignoré). Convention : un dossier à point est un espace local, jamais suivi. Les dossiers `reports/`, `figs/`, `notebooks/` et `vendor/` ont été retirés le 2026-10-26 ; ne pas les recréer.
 
 ## Config
 

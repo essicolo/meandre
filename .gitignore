@@ -67,11 +67,8 @@ Hydat_sqlite3_*.zip
 # petits fichiers texte, et ils sont la memoire des recettes : on les suit.
 !/.runs/**/*.sh
 
-# --- Shared data inputs ---
-# data/ contains large parquet/shapefile inputs. Specific files re-included below.
-/data/**/*
-!/data/**/
-!/data/station_info.csv
+# --- Données locales (parquet, HYDAT, HydroBASINS) : .data/, point = git-ignoré ---
+/.data/
 
 # --- Other modeling applications (workspace local, hors git) ---
 # Conventions : dot-préfixe = workspace local, non partagé via git.
@@ -87,6 +84,3 @@ Hydat_sqlite3_*.zip
 *.recette.toml
 
 lets-plot-images/
-
-
-.posit/

@@ -11,7 +11,7 @@ il les a absorbes dans ses parametres. Une conductivite, une recharge ou un fact
 fonte compense silencieusement une prise d'eau ou un rejet. C'est exactement ce que
 l'identifiabilite, promesse centrale du projet, doit empecher.
 
-La donnee EXISTE et couvre la province : data/io-eau-meandre.parquet, 1 082 964 lignes,
+La donnee EXISTE et couvre la province : .data/io-eau-meandre.parquet, 1 082 964 lignes,
 2001-2024 au pas mensuel, lon -79.5 a -57.1, lat 45.0 a 53.8, avec IDTRONCON deja
 apparie. Seule l'ingestion vers les bases regionales n'avait jamais ete faite.
 
@@ -45,7 +45,7 @@ if not os.path.exists(SOURCE):
     # REPLI BRUYANT (2026-09-08). Le repli silencieux sur la copie locale est ce qui a
     # permis d'ingerer un instantane perime sans s'en apercevoir (R91) ; sur la grappe,
     # ou le depot d'io-eau n'existe pas, il aurait reintroduit la donnee d'avril.
-    _repli = "data/io-eau-meandre.parquet"
+    _repli = ".data/io-eau-meandre.parquet"
     if not os.path.exists(_repli):
         raise SystemExit(f"[prelev] ARRET : ni {SOURCE} ni {_repli} n'existent. "
                          "Poser IO_EAU sur le derive d'io-eau.")
