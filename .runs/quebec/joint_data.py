@@ -56,6 +56,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     graph, territorial = dom.graph, dom.attributes
     node_coords, n_nodes, node_ids = dom.node_coords, dom.n_nodes, dom.node_ids
     forcing, times, doy = dom.forcing, dom.times, dom.day_of_year
+    # Fenetre courte (debug.simulate_end) : les tranches suivent la fin reelle des series.
+    _date_end = str(times[-1].date())
     _q = dom.observations["discharge"]
     station_node_map = {s: int(n) for s, n in zip(_q.sites, _q.nodes.tolist())}
     station_indices = list(_q.nodes.tolist())

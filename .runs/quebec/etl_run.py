@@ -86,6 +86,17 @@ cfg = tomllib.load(open(BASE_CFG, "rb"))
 _posees = _apply_recipe(cfg.get("recipe") or cfg.get("recette"))
 # Reglages declares du paquet (meandre/utils/settings.py), lus dans les sections du fichier.
 from meandre.utils import settings as _settings
+# OBSERVABLES DECLARES (etape 4, 2026-10-26) : les sections [observations.*] se traduisent en
+# poids et modes de la perte, en un seul endroit verifie, AVANT la resolution des reglages.
+from meandre import observations as _obs
+cfg["loss"], cfg["training"], _obs_autres, _obs_msg = _obs.translate(cfg.get("observations"), cfg.get("loss") or {}, cfg.get("training") or {})
+for _sec, _kv in _obs_autres.items():
+    for _k, _v in _kv.items():
+        if (cfg.get(_sec) or {}).get(_k, _v) != _v:
+            raise SystemExit(f"[observations] {_sec}.{_k} declare deux fois avec deux valeurs")
+        cfg.setdefault(_sec, {})[_k] = _v
+for _m in _obs_msg:
+    print(f"[observations] {_m}")
 _reglages_fichier = _settings.configure(cfg)
 if _reglages_fichier:
     print(f"[reglages] {len(_reglages_fichier)} reglage(s) du paquet pris dans le fichier : {', '.join(_reglages_fichier)}")
@@ -211,6 +222,9 @@ if DOMAINE:
 else:
     _cd_table = str(((cfg.get("soil") or {}).get("ceiling_from_drainage") or {}).get("table", "")).replace("{DERIVES}", _paths.DERIVED_ROOT) or None
     r = load_region(REG, lcfg, device=DEVICE, drainage_table=_cd_table)
+    _manque = _obs.missing(cfg.get("observations"), r["domain"].observations)
+    if _manque:
+        raise SystemExit("[observations] " + " ; ".join(_manque))
 td, vd = r["train_data"], r["val_data"]
 n_nodes = r["n_nodes"]
 
@@ -802,6 +816,8 @@ if not DOMAINE:
 _tb = dict((cfg.get("field") or {}).get("texture_bounds") or {})
 if os.environ.get("ETL_TEXTURE_BOUNDS"):
     _tb = {"enabled": float(os.environ["ETL_TEXTURE_BOUNDS"]) > 0, "factor": float(os.environ["ETL_TEXTURE_BOUNDS"]) or _tb.get("factor", 3.0)}
+# Sous priors par troncon, les bornes de texture restent posees : elles definissent les valeurs du
+# modele charge que l'adoption conserve ; la branche du prior prend ensuite le relais dans le champ.
 if _tb.get("enabled", False):
     from meandre.adapters.physitel.texture_bounds import texture_conductivity as _tcond, bounds_from_texture as _tbornes
     from meandre.spatial.field_network import FIELD_BOUNDS as _FB
@@ -959,6 +975,26 @@ if "ETL_WARM_FROM" in os.environ:
     # Seuils du prolongement sous la borne (spatial.extend_below) : poses au premier appel du
     # champ CHARGE, jamais sur les poids d'avant le chargement.
     model.spatial_encoder._seuils_prolongement = {}
+# PRIORS PAR TRONCON (etape 3, 2026-10-26). Centres tires du domaine (texture par couche, epaisseur
+# des depots) ; les valeurs du modele charge sont conservees exactement a l'adoption. Un point de
+# reprise deja affine sous prior porte ses centres et decalages : on les relit, sans recalculer.
+if _settings.get("spatial.priors"):
+    if DOMAINE:
+        raise SystemExit("priors par troncon : le chemin province ne passe pas encore par l'adaptateur (etape 2, reste ouvert)")
+    from meandre import priors as _priors
+    _dom = r["domain"]
+    _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m)
+    _porte = any(k.startswith("spatial_encoder._pr_o_") for k in torch.load(os.environ["ETL_WARM_FROM"], map_location="cpu")["state_dict"]) if "ETL_WARM_FROM" in os.environ else False
+    if _porte:
+        for _k, (_c, _s) in _pri.items():
+            model.spatial_encoder.set_prior(_k, _c, _s)
+        model.load(os.environ["ETL_WARM_FROM"])
+        print(f"[etl] priors par troncon relus du point de reprise ({len(_pri)} sorties)")
+    else:
+        _rap = model.spatial_encoder.adopt_priors(td.node_coords, r["territorial"].data, _pri, preserve="ETL_WARM_FROM" in os.environ)
+        print(f"[etl] priors par troncon adoptes ({len(_pri)} sorties) ; " + _priors.summary(_pri))
+        for _k, (_m, _q) in sorted(_rap.items()):
+            print(f"       {_k:16s} deviation standardisee au depart : mediane {_m:.2f}, 90e centile {_q:.2f}")
 if os.environ.get("ETL_MULT_FIXE"):
     # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
@@ -1021,6 +1057,7 @@ tconf = TrainingConfig(
     # 2026-08-26.
     tws_shape_only=os.environ.get("ETL_TWS_FORME", str(int(tcfg.get("tws_shape_only", 0)))) == "1",
     w_prior=float(tcfg.get("w_prior", 0.005)),
+    w_deviation_prior=float(os.environ.get("ETL_W_DEVIATION_PRIOR", tcfg.get("w_deviation_prior", 0.0))),
     w_latent_reg=float(tcfg.get("w_latent_reg", 1e-3)),
     # Choix du point de reprise (2026-10-01) : par la perte de debit sur la validation des que
     # l'etiage est dans la perte ; avec le KGE seul, l'etiage ne comptait pas dans le modele

@@ -83,6 +83,45 @@ def texture_conductivity(basin_db: str, n_nodes: int, raw_parquet: str | None = 
     return out
 
 
+def texture_fractions(basin_db: str, n_nodes: int, raw_parquet: str | None = None, region: str | None = None, node_ids=None) -> dict:
+    """Fractions (sable, argile) par couche et par noeud : SIIGSOL par bande de profondeur, PHYSITEL
+    en repli, NaN sans texture. Sert aux priors de la pedotransfert (etape 3, 2026-10-26)."""
+    import duckdb
+    import pandas as pd
+    if node_ids is not None:
+        con = duckdb.connect(basin_db, read_only=True)
+        try:
+            table = con.execute("select node_idx, node_id from nodes order by node_idx").fetchall()
+        finally:
+            con.close()
+        rang = {int(nid): int(ni) for ni, nid in table}
+        pos = np.array([rang[int(v)] for v in node_ids], dtype=np.int64)
+        full = texture_fractions(basin_db, len(table), raw_parquet, region)
+        return {k: (s[pos], c[pos]) for k, (s, c) in full.items()}
+    out = {couche: (np.full(n_nodes, np.nan), np.full(n_nodes, np.nan)) for couche in BANDES}
+    con = duckdb.connect(basin_db, read_only=True)
+    try:
+        tables = [t[0] for t in con.execute("show tables").fetchall()]
+        if "territorial_siigsol" in tables:
+            for couche, bandes in BANDES.items():
+                idx, parts = _parts_siigsol(con, bandes)
+                ok = np.isfinite(parts).all(axis=1) & (idx < n_nodes)
+                out[couche][0][idx[ok]] = parts[ok, 0]
+                out[couche][1][idx[ok]] = parts[ok, 2]
+    finally:
+        con.close()
+    if raw_parquet and region:
+        r = pd.read_parquet(raw_parquet)
+        r = r[r.region.str.lower() == region.lower()]
+        if len(r) == n_nodes:
+            s0, c0 = r.f_sand.to_numpy(float), r.f_clay.to_numpy(float)
+            for couche in BANDES:
+                s, c = out[couche]
+                manque = ~np.isfinite(s) & np.isfinite(s0)
+                s[manque], c[manque] = s0[manque], c0[manque]
+    return out
+
+
 def bounds_from_texture(ks: np.ndarray, factor: float, lo_default: float, hi_default: float):
     """Bornes (lo, hi) par noeud : ks / factor et ks * factor, bornes uniques la ou ks manque."""
     lo = np.where(np.isfinite(ks), ks / factor, lo_default)

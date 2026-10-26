@@ -113,6 +113,24 @@ def texture_conductivity(name: str, node_ids, n_nodes: int) -> dict:
     return _tc(_paths.data_path("quebec", f"{name}.duckdb"), n_nodes, QC_RAW, name, node_ids=node_ids)
 
 
+def texture_fractions(name: str, node_ids, n_nodes: int) -> dict:
+    """Fractions (sable, argile) par couche (SIIGSOL, PHYSITEL en repli), pour les priors."""
+    from meandre.adapters.physitel.texture_bounds import texture_fractions as _tf
+    return _tf(_paths.data_path("quebec", f"{name}.duckdb"), n_nodes, QC_RAW, name, node_ids=node_ids)
+
+
+def deposit_thickness(name: str, node_ids, manifest: Manifest | None = None) -> np.ndarray | None:
+    """Épaisseur des dépôts quaternaires (SIGEOM) par tronçon, NaN sans couverture ; None sans table."""
+    path = f"{_paths.DERIVED_ROOT}/auxiliaires/epaisseur-depots-troncons.parquet"
+    if not os.path.exists(path):
+        return None
+    if manifest is not None:
+        manifest.add("deposit_thickness", path, "SIGEOM, zones morphosédimentologiques", "layer thickness prior")
+    d = pd.read_parquet(path)
+    d = d[d.region.str.lower() == name.lower()].set_index("troncon")
+    return d.epaisseur_m.reindex(np.asarray(node_ids, dtype=int)).to_numpy(dtype=float)
+
+
 def drainage_class(name: str, node_ids, table: str) -> np.ndarray:
     """Classe de drainage des Pédo-paysages par tronçon, NaN sans couverture."""
     td = pd.read_parquet(table)
@@ -182,6 +200,14 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     times = pd.to_datetime(d["time"].values)
     d.close()
     assert str(times[0])[:10] == date_start and str(times[-1])[:10] == date_end, f"{name}: fenêtre forçage {times[0]}..{times[-1]} pour {date_start}..{date_end}"
+    # FENETRE COURTE (debug.simulate_end) : le fichier couvre toujours toute la fenetre, verifiee
+    # ci-dessus ; on n'en garde que le debut, et toutes les observations suivent la meme fin.
+    _fin = _settings.get("debug.simulate_end")
+    if _fin:
+        _k = int(np.searchsorted(times.values, np.datetime64(_fin), side="right"))
+        F, times = F[:_k], times[:_k]
+        date_end = str(times[-1].date())
+        print(f"[domaine] {name}: fenetre courte, simulation jusqu'au {date_end} ({_k} jours)")
     forcing = torch.tensor(F, dtype=torch.float32, device=device)
     n_nodes = h["n_nodes"]
 
@@ -211,6 +237,8 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
                 manifest.add("swe_neisim", fz, "NEISIM", "weight of et")
                 zz = np.load(fz)
                 vv = torch.tensor(np.nan_to_num(zz["valeurs"], nan=0.0), dtype=torch.float32)
+                if _fin:
+                    vv = vv[:len(times)]   # fenetre courte : la serie NEISIM couvre toute la fenetre
                 assert vv.shape[0] == len(times), f"{name}: axe de temps NEISIM {vv.shape[0]} vs {len(times)}"
                 # Sur le processeur : 125 Mo sur l'Outaouais ; l'entraîneur n'en extrait que la tranche du bloc.
                 weight = torch.ones(len(times), n_nodes, dtype=torch.float32)
@@ -281,6 +309,11 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     if drainage_table and os.path.exists(drainage_table):
         pieces["drainage_class"] = drainage_class(name, node_ids, drainage_table)
     pieces["groundwater_conductivity"] = groundwater_conductivity(name, n_nodes)
+    try:
+        pieces["texture_fractions"] = texture_fractions(name, node_ids, n_nodes)
+    except Exception as e:
+        print(f"[adaptateur] {name}: fractions de texture non chargees ({type(e).__name__}: {e})")
+    pieces["deposit_thickness_m"] = deposit_thickness(name, node_ids, manifest)
     domain = Domain(name=name, node_ids=node_ids, node_coords=h["node_coords"], graph=graph, attributes=territorial, attribute_columns=attribute_columns, forcing=forcing, forcing_variables=list(FORCING_VARIABLES), times=times, initial_state=h["initial_state"], withdrawals=withdrawals, observations=obs, manifest=manifest, **pieces)
     issues = domain.validate()
     if issues:

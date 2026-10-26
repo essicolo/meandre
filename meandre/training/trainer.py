@@ -43,6 +43,9 @@ class TrainingConfig:
     # 0.001-0.01 = soft pull, allows learning from data but prevents extreme drift.
     # Useful to avoid overfitting on dev period (e.g. wet/dry year bias).
     w_prior: float = 0.0
+    # Penalite des priors par troncon (etape 3, 2026-10-26) : deviation standardisee au carre,
+    # lue sur le dernier appel du champ ; 0 = eteinte.
+    w_deviation_prior: float = 0.0
 
     # Anti-collapse : plancher de variance spatiale sur les params NeRF clés.
     # Combat l'effondrement vers des params uniformes (diagnostic open-data
@@ -1737,6 +1740,11 @@ class Trainer:
                     loss_chunk = loss_chunk + self.config.w_diversity * div_loss
                     all_components["diversity"] = all_components.get("diversity", 0.0) + float(div_loss.detach()) * _part_bloc
 
+            if getattr(self.config, "w_deviation_prior", 0.0) > 0:
+                dev_loss = self.model.spatial_encoder.deviation_prior_loss()
+                loss_chunk = loss_chunk + self.config.w_deviation_prior * dev_loss
+                all_components["deviation"] = all_components.get("deviation", 0.0) + float(dev_loss.detach()) * _part_bloc
+
             if self.config.w_latent_reg > 0 and getattr(self.model.spatial_encoder, "use_latent_codes", False):
                 latent_loss = self.model.spatial_encoder.latent_reg()
                 loss_chunk = loss_chunk + self.config.w_latent_reg * latent_loss
@@ -2090,6 +2098,10 @@ class Trainer:
                     params_t, cv_target=self.config.diversity_cv_target)
                 loss = loss + self.config.w_diversity * div_loss
                 components["diversity"] = div_loss.detach()
+        if getattr(self.config, "w_deviation_prior", 0.0) > 0:
+            dev_loss = self.model.spatial_encoder.deviation_prior_loss()
+            loss = loss + self.config.w_deviation_prior * dev_loss
+            components["deviation"] = dev_loss.detach()
 
         if self.config.w_boundary > 0:
             boundary_loss = self.model.spatial_encoder.boundary_regularization(

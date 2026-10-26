@@ -19,6 +19,7 @@ from typing import ClassVar
 
 import os
 from dataclasses import fields as _dc_fields
+import numpy as np
 import torch
 
 # Bornes du temps de transfert Muskingum (heures). Défaut historique [4, 48] avec init
@@ -72,6 +73,17 @@ FIELD_BOUNDS = {
     "krec": (1e-7, 1e-4, "log"), "diff_gel": (4e-8, 2.2e-7), "fs_neige": (0.5, 6.0),
     "dT_canopee_feu": (0.0, 3.0), "dT_canopee_conif": (0.0, 3.0), "k_sub": (2e-6, 2e-3, "log"),
 }
+# PLANCHER ET PLAFOND DE SECURITE des sorties centrees sur un prior (etape 3, 2026-10-26) : la
+# loi p = centre * exp(sigma * z) n'a pas de borne ; la penalite sur z tient le parametre pres
+# de son prior, et ces limites n'arretent qu'une valeur physiquement absurde (porosite au-dela
+# de 0,75, couche de dix metres). Cles : nom de la borne, sans la couche.
+PRIOR_SAFETY = {
+    "porosity": (0.05, 0.75), "theta_fc_frac": (0.10, 0.98), "theta_wp_frac": (0.05, 0.95),
+    "K_sat_1": (1e-5, 500.0), "K_sat_2": (1e-5, 500.0), "K_sat_3": (1e-5, 500.0),
+    "Z2": (0.02, 5.0), "Z3": (0.05, 10.0),
+}
+PRIOR_KEYS = tuple(f"{f}_{l}" for f in ("porosity", "theta_fc_frac", "theta_wp_frac", "K_sat") for l in (1, 2, 3)) + ("Z2", "Z3")
+
 # Centre (valeur pour une sortie brute nulle) et pente au centre des sorties log-normales,
 # repris des anciennes lois exp(0,3 x + log centre) pour que les points de reprise existants
 # rendent la meme valeur au voisinage du centre.
@@ -563,6 +575,8 @@ class SpatialFieldNetwork(nn.Module):
             """Inverse de `borne` dans _apply_constraints : sortie brute qui rend `val`."""
             if nom in (getattr(self, "node_bounds", None) or set()):
                 return 0.0   # bornes par troncon : le brut nul rend la valeur de texture
+            if any(k == nom or k.startswith(nom + "_") for k in getattr(self, "priors", {})):
+                return 0.0   # prior par troncon : le brut nul rend le centre
             lo, hi = B[nom][0], B[nom][1]
             if len(B[nom]) > 2 and B[nom][2] == "log":
                 llo, lhi = math.log(lo), math.log(hi)
@@ -847,6 +861,71 @@ class SpatialFieldNetwork(nn.Module):
         beta = 1.0 + 1.5 * torch.sigmoid(raw[:, 1] - math.log(2.0))
         return k_lake, beta
 
+    def set_prior(self, key: str, center, sigma: float, offset=None) -> None:
+        """Pose un prior par troncon sur une sortie : centre (n_nodes,), ecart-type en logarithme,
+        et decalage de la sortie brute (n_nodes,) qui conserve les valeurs au moment de l'adoption.
+
+        Tampons PERSISTANTS : le point de reprise les porte, et un modele affine sous prior se
+        reevalue avec les memes centres et decalages qu'a l'entrainement. Un modele neuf les
+        enregistre avant de charger un point de reprise qui les contient.
+        """
+        if key not in PRIOR_KEYS:
+            raise KeyError(f"prior : sortie {key} inconnue ; attendu l'une de {PRIOR_KEYS}")
+        c = torch.as_tensor(np.asarray(center), dtype=torch.float32)
+        if not bool(torch.isfinite(c).all()) or not bool((c > 0).all()):
+            raise ValueError(f"prior de {key} : il faut un centre fini et positif partout")
+        if getattr(self, "priors", None) is None:
+            self.priors = {}
+        dev = next(self.parameters()).device
+        o = np.asarray(offset if offset is not None else np.zeros(len(c)))
+        for k, v in ((f"_pr_c_{key}", c), (f"_pr_s_{key}", torch.tensor(float(sigma))), (f"_pr_o_{key}", torch.as_tensor(o, dtype=torch.float32))):
+            if hasattr(self, k):
+                delattr(self, k)
+            self.register_buffer(k, v.clone().to(dev), persistent=True)
+        self.priors[key] = float(sigma)
+
+    def adopt_priors(self, coords: Tensor, territorial: Tensor, priors: dict, preserve: bool = True) -> dict:
+        """Pose les priors et, si `preserve`, choisit les decalages qui conservent exactement les
+        valeurs que le champ produit AUJOURD'HUI sur ce domaine : rien ne bouge au depart, et seul
+        l'optimiseur, tire par la perte et retenu par la penalite, deplace ensuite le sol.
+        Retourne, par cle, la deviation standardisee mediane et son 90e centile au depart."""
+        before = raw = None
+        if preserve:
+            with torch.no_grad():
+                before = self.forward(coords, territorial)
+                raw = self.fc_out(self._trunk(coords, territorial))
+        noms = [f.name for f in _dc_fields(SpatialParams)][:SpatialParams.N_PARAMS]
+        col = {n: i for i, n in enumerate(noms)}
+        report = {}
+        for key, (center, sigma) in priors.items():
+            offset = None
+            if preserve:
+                if key.startswith(("porosity_", "theta_fc_frac_", "theta_wp_frac_")):
+                    nom, layer = key.rsplit("_", 1)
+                    if nom == "porosity":
+                        current = getattr(before, f"porosity_{layer}")
+                    elif nom == "theta_fc_frac":
+                        current = getattr(before, f"theta_fc_{layer}") / getattr(before, f"porosity_{layer}")
+                    else:
+                        current = getattr(before, f"theta_wp_{layer}") / getattr(before, f"theta_fc_{layer}")
+                else:
+                    current = getattr(before, key)
+                c = torch.as_tensor(np.asarray(center), dtype=torch.float64, device=current.device)
+                z0 = torch.log(current.double() / c) / float(sigma)
+                # La colonne brute des fractions porte le nom de la grandeur (theta_fc_1), pas de la fraction.
+                offset = (z0 - raw[:, col[key.replace("_frac", "")]].double()).float().cpu().numpy()
+                report[key] = (float(z0.abs().median()), float(z0.abs().quantile(0.9)))
+            self.set_prior(key, center, sigma, offset)
+        return report
+
+    def deviation_prior_loss(self) -> Tensor:
+        """Penalite des priors : moyenne, sur les sorties centrees, de la deviation standardisee au
+        carre, lue sur le dernier appel du champ. Nulle quand le champ est a ses centres."""
+        z = getattr(self, "_last_z", None) or {}
+        if not z:
+            return torch.tensor(0.0, device=next(self.parameters()).device)
+        return torch.stack([(v ** 2).mean() for v in z.values()]).mean()
+
     def set_node_bounds(self, nom: str, lo: Tensor, hi: Tensor) -> None:
         """Bornes PAR TRONCON d'une sortie en log (conductivites), tirees de la pedologie.
 
@@ -924,13 +1003,29 @@ class SpatialFieldNetwork(nn.Module):
         if not hasattr(self, "_seuils_prolongement"):
             self._seuils_prolongement = {}
 
-        def borne(nom, x):
+        self._last_z = {}
+
+        def borne(nom, x, key=None):
             """Sortie bornee doucement selon la table : lineaire, ou logarithmique si marquee.
+
+            PRIOR PAR TRONCON (etape 3, 2026-10-26) : si `set_prior` a pose un centre pour cette
+            sortie (cle = nom, ou nom et couche), la valeur est centre * exp(sigma * z), avec
+            z = sortie brute + decalage ; le decalage conserve exactement les valeurs d'un modele
+            charge au moment de l'adoption, et z est la deviation standardisee que la penalite tient.
 
             BORNES PAR TRONCON (2026-10-08, R349) : si `set_node_bounds` a pose des tenseurs pour
             cette sortie, la sigmoide en log est centree sur leur moyenne geometrique (la valeur
             de texture) et bornee par eux ; une sortie brute nulle rend la valeur de texture.
             """
+            k = key or nom
+            if k in getattr(self, "priors", {}):
+                c = getattr(self, f"_pr_c_{k}").to(x.device)
+                s = float(getattr(self, f"_pr_s_{k}"))
+                off = getattr(self, f"_pr_o_{k}", None)
+                z = x if off is None else x + off.to(x.device)
+                self._last_z[k] = z
+                lo_s, hi_s = PRIOR_SAFETY[nom]
+                return torch.clamp(c * torch.exp(s * z), lo_s, hi_s)
             if nom in NB:
                 llo = torch.log(getattr(self, f"_nb_lo_{nom}")).to(x.device)
                 lhi = torch.log(getattr(self, f"_nb_hi_{nom}")).to(x.device)
@@ -956,21 +1051,21 @@ class SpatialFieldNetwork(nn.Module):
             constrained.append(borne(f"K_sat_{layer + 1}", cols[i]))
             i += 1
         porosities = []
-        for _ in range(3):
-            p = borne("porosity", cols[i])
+        for layer in range(3):
+            p = borne("porosity", cols[i], key=f"porosity_{layer + 1}")
             porosities.append(p)
             constrained.append(p)
             i += 1
         # Capacite au champ en fraction de la porosite : garantit theta_fc < porosite.
         theta_fcs = []
         for layer in range(3):
-            theta_fc = porosities[layer] * borne("theta_fc_frac", cols[i])
+            theta_fc = porosities[layer] * borne("theta_fc_frac", cols[i], key=f"theta_fc_frac_{layer + 1}")
             theta_fcs.append(theta_fc)
             constrained.append(theta_fc)
             i += 1
         # Point de fletrissement en fraction de la capacite au champ : garantit theta_wp < theta_fc.
         for layer in range(3):
-            constrained.append(theta_fcs[layer] * borne("theta_wp_frac", cols[i]))
+            constrained.append(theta_fcs[layer] * borne("theta_wp_frac", cols[i], key=f"theta_wp_frac_{layer + 1}"))
             i += 1
         # f_root : softmax, biais vers les couches superieures (50/30/20).
         f_roots_raw = torch.stack(cols[i:i+3], dim=-1)

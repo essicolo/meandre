@@ -69,6 +69,8 @@ class Domain:
     drainage_class: np.ndarray | None = None             # classe de drainage, 1 à 7, NaN si absente
     groundwater_conductivity: Tensor | None = None       # k_gw par tronçon, des récessions des jauges
     hgm_kernel: np.ndarray | None = None                 # noyau de versant (n_nodes, L), lignes sommant à 1
+    texture_fractions: dict | None = None                # par couche : (fraction de sable, fraction d'argile), NaN si absente
+    deposit_thickness_m: np.ndarray | None = None        # épaisseur des dépôts meubles, NaN si absente
 
     @property
     def n_nodes(self) -> int:
