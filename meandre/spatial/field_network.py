@@ -918,13 +918,38 @@ class SpatialFieldNetwork(nn.Module):
             self.set_prior(key, center, sigma, offset)
         return report
 
-    def deviation_prior_loss(self) -> Tensor:
-        """Penalite des priors : moyenne, sur les sorties centrees, de la deviation standardisee au
-        carre, lue sur le dernier appel du champ. Nulle quand le champ est a ses centres."""
+    def deviation_prior_loss(self, mode: str | None = None) -> Tensor:
+        """Penalite des priors, lue sur le dernier appel du champ, moyenne sur les sorties centrees.
+
+        Trois modes, le vocabulaire de MOD16 et de GRACE (2026-10-26) :
+        - "level" : deviation standardisee z au carre ; le niveau de la carte compte ;
+        - "anomaly" : z moins sa moyenne sur le domaine, au carre ; le NIVEAU d'ensemble reste libre
+          et vient des observations, seuls les contrastes entre troncons sont tires vers la carte ;
+        - "shape" : log du parametre et log du centre, chacun centre et reduit par son ecart-type sur
+          le domaine ; niveau et amplitude libres, seul le motif spatial compte.
+        `mode` absent : le reglage `priors.mode`."""
         z = getattr(self, "_last_z", None) or {}
         if not z:
             return torch.tensor(0.0, device=next(self.parameters()).device)
-        return torch.stack([(v ** 2).mean() for v in z.values()]).mean()
+        if mode is None:
+            from meandre.utils import settings as _settings
+            mode = _settings.get("priors.mode")
+        terms = []
+        for k, v in z.items():
+            if mode == "level":
+                terms.append((v ** 2).mean())
+            elif mode == "anomaly":
+                terms.append(((v - v.mean()) ** 2).mean())
+            elif mode == "shape":
+                s = float(getattr(self, f"_pr_s_{k}"))
+                lc = torch.log(getattr(self, f"_pr_c_{k}").to(v.device))
+                lp = lc + s * v
+                zp = (lp - lp.mean()) / lp.std().clamp(min=1e-6)
+                zc = (lc - lc.mean()) / lc.std().clamp(min=1e-6)
+                terms.append(((zp - zc) ** 2).mean())
+            else:
+                raise ValueError(f"priors.mode inconnu : {mode!r} ; attendu level, anomaly ou shape")
+        return torch.stack(terms).mean()
 
     def set_node_bounds(self, nom: str, lo: Tensor, hi: Tensor) -> None:
         """Bornes PAR TRONCON d'une sortie en log (conductivites), tirees de la pedologie.

@@ -77,3 +77,22 @@ def test_une_cle_inconnue_ou_un_centre_nul_sont_refuses():
         net.set_prior("C_f", np.ones(3), 0.1)
     with pytest.raises(ValueError):
         net.set_prior("Z2", np.array([0.3, 0.0, 0.3]), 0.1)
+
+
+def test_les_modes_relatifs_laissent_le_niveau_libre():
+    net = _champ()
+    coords, terr = _entrees()
+    n = len(coords)
+    centre = np.linspace(0.05, 0.5, n)
+    net.set_prior("K_sat_1", centre, 0.7)
+    raw = torch.zeros(n, net.fc_out.out_features)
+    from meandre.spatial.field_network import SpatialParams
+    noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
+    raw[:, noms.index("K_sat_1")] = 1.5   # tout le champ deux fois plus conducteur que la carte, motif identique
+    net._apply_constraints(raw)
+    assert float(net.deviation_prior_loss("level")) > 1.0
+    assert float(net.deviation_prior_loss("anomaly")) < 1e-10
+    assert float(net.deviation_prior_loss("shape")) < 1e-8
+    raw[:, noms.index("K_sat_1")] = torch.linspace(-1.0, 1.0, n)   # motif deforme
+    net._apply_constraints(raw)
+    assert float(net.deviation_prior_loss("anomaly")) > 0.1
