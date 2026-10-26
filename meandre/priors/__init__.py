@@ -20,8 +20,12 @@ import numpy as np
 
 from meandre.data.pedotransfer import saxton_rawls
 
-# Écart-type en logarithme de chaque famille de paramètres.
-SIGMAS = {"porosity": 0.10, "theta_fc_frac": 0.15, "theta_wp_frac": 0.20, "K_sat": math.log(3.0), "Z2": math.log(2.0), "Z3": math.log(2.5)}
+# Écart-type en logarithme de chaque famille : réglages déclarés ([priors] sigma_*), parce que ce
+# sont des choix de confiance dans une carte, pas des constantes. Seul celui de la conductivité est
+# mesuré (perméabilité des levés IRDA, 2026-10-26) ; les autres sont à mesurer.
+def sigmas() -> dict[str, float]:
+    from meandre.utils import settings
+    return {"porosity": settings.get("priors.sigma_porosity"), "theta_fc_frac": settings.get("priors.sigma_theta_fc_frac"), "theta_wp_frac": settings.get("priors.sigma_theta_wp_frac"), "K_sat": settings.get("priors.sigma_k_sat"), "Z2": settings.get("priors.sigma_z2"), "Z3": settings.get("priors.sigma_z3")}
 # Texture de repli : loam (sable 0,40, argile 0,20), le sol forestier tempéré de la littérature.
 LOAM = (0.40, 0.20)
 # Épaisseurs de repli, en mètres : couche 2 fine (Hydrotel pose 0,16 m au sud), couche 3 d'un mètre.
@@ -46,6 +50,7 @@ def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_t
     `deposit_thickness_m` : épaisseur des dépôts meubles, NaN où elle manque.
     Retourne {clé: (centre (n_nodes,), sigma)} pour les clés de `KEYS`.
     """
+    SIGMAS = sigmas()
     priors: dict[str, tuple[np.ndarray, float]] = {}
     for layer in LAYERS:
         sand, clay = (texture or {}).get(layer, (None, None))
