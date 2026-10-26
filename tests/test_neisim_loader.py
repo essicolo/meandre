@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from meandre.data import neisim_loader as nl
+from meandre.adapters.physitel import neisim_loader as nl
 
 
 def test_les_cellules_sont_les_plus_proches(monkeypatch):

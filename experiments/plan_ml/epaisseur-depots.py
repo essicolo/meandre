@@ -23,7 +23,7 @@ RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, RACINE)
 sys.path.insert(0, os.path.join(RACINE, ".runs", "quebec"))
 from croiser_drainage import RESOLUTION, SIGEOM, rasteriser
-from meandre.data.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 
 SORTIE = f"{_paths.DATA_ROOT}/experiments/plan_ml/epaisseur-depots-troncons.parquet"

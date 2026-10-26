@@ -109,7 +109,7 @@ def test_etr_couvre_toute_la_fraction_permeable():
 # ── CHARGEURS depuis le projet Hydrotel ─────────────────────────────────────
 @besoin_projet
 def test_seuil_pluie_neige_charge():
-    from meandre.data.hydrotel_calib import load_passage_pluie_neige
+    from meandre.adapters.physitel.hydrotel_calib import load_passage_pluie_neige
     s = load_passage_pluie_neige(str(PROJ))
     assert -10.0 < s < 5.0
     assert s != 0.0, "le seuil calibré ne doit pas retomber sur le défaut 0 °C"
@@ -117,7 +117,7 @@ def test_seuil_pluie_neige_charge():
 
 @besoin_projet
 def test_occupation_sol_charge_des_fractions_credibles():
-    from meandre.data.hydrotel_calib import load_occupation_sol
+    from meandre.adapters.physitel.hydrotel_calib import load_occupation_sol
     ids = _ids_troncons(60)
     lc = load_occupation_sol(str(PROJ), ids)
     for k, v in lc.items():
@@ -130,7 +130,7 @@ def test_occupation_sol_charge_des_fractions_credibles():
 
 @besoin_projet
 def test_milieux_humides_charges():
-    from meandre.data.hydrotel_calib import load_milieux_humides
+    from meandre.adapters.physitel.hydrotel_calib import load_milieux_humides
     mh = load_milieux_humides(str(PROJ), _ids_troncons(200))
     assert "wet_a_raw" in mh, "sans wet_a_raw le module de milieu humide reste inactif"
     wa = mh["wet_a_raw"]
@@ -160,7 +160,7 @@ def test_conversion_identifiants_troncons():
     """Trois numérotations coexistent (entier local, chaîne provinciale, rang de
     stockage) et leur confusion a produit des KGE de -0.25 le 2026-08-11 : des nombres
     faux, pas une erreur visible."""
-    from meandre.data.hydrotel_calib import id_provincial, id_local, appariement_provincial
+    from meandre.adapters.physitel.hydrotel_calib import id_provincial, id_local, appariement_provincial
     assert id_provincial("outv", 123) == "OUTV00123"
     assert id_local("OUTV00123") == ("OUTV", 123)
     assert appariement_provincial("OUTV", [2, 1, 9], ["OUTV00001", "OUTV00002"]) == [1, 0, None]
@@ -168,7 +168,7 @@ def test_conversion_identifiants_troncons():
 
 def test_appariement_vide_leve_une_erreur():
     """Un appariement vide est TOUJOURS un bug de convention, jamais un résultat."""
-    from meandre.data.hydrotel_calib import appariement_provincial
+    from meandre.adapters.physitel.hydrotel_calib import appariement_provincial
     with pytest.raises(ValueError):
         appariement_provincial("OUTV", [1, 2], ["GASP00001", "GASP00002"])
 

@@ -23,7 +23,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from croiser_drainage import CODE_VERS_GROUPE, RESOLUTION, SIGEOM, SIGEOM_GROUPE, rasteriser
-from meandre.data.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 
 SORTIE = f"{_paths.DERIVED_ROOT}/auxiliaires/depots-sigeom-troncons.parquet"

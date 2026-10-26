@@ -13,7 +13,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from meandre.data.basin_cache import BasinCache
-from meandre.data.hydrotel_calib import load_calibrated_soil
+from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil
 from meandre.utils import paths as _p
 
 DOSSIER = f"{_p.DATA_ROOT}/experiments/plan_ml"

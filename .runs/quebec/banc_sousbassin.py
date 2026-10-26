@@ -146,7 +146,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     from meandre.model import HydroModel
     from meandre.routing.withdrawals import WithdrawalData
     from meandre.utils.state import HydroState
-    from meandre.data.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
+    from meandre.adapters.physitel.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
                                              load_passage_pluie_neige)
 
     # GRAINE FIXE, comme dans `entrainer`. Elle manquait ici jusqu'au 2026-09-13, si bien
@@ -214,7 +214,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         # decouvert, donc la classe de neige la plus fondante et aucun ruissellement sur
         # l'eau libre : elle l'avertit d'ailleurs. Aucun chiffre de volume ni de
         # calendrier n'est lisible sans elle (meme lecon que R72 sur l'ETP).
-        from meandre.data.hydrotel_calib import load_occupation_sol
+        from meandre.adapters.physitel.hydrotel_calib import load_occupation_sol
         try:
             col.set_land_cover(load_occupation_sol(plat, s["node_ids"],
                                                    device=torch.device("cpu")))
@@ -225,7 +225,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         # compris, ce qui reproduit Hydrotel qui n'a pas de voie profonde (a coupler avec
         # aquifere=False). sol="sauf_ks" : tout sauf les conductivites a saturation, qui
         # restent au champ -- c'est la loi des ancrages.
-        from meandre.data.hydrotel_calib import load_calibrated_soil
+        from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil
         maj = reg.upper()
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
         z1 = float(getattr(m.vertical_column, "z1", 0.15))
@@ -403,7 +403,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     from meandre.utils.state import HydroState
     from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
     from meandre.training.loss import HydroLoss
-    from meandre.data.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
+    from meandre.adapters.physitel.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
                                              load_passage_pluie_neige,
                                              load_occupation_sol, load_calibrated_soil)
 
@@ -589,7 +589,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # couplage d'Hydrotel ; MEANDRE_BANC_PHENO_PROJET=0 garde la phenologie par defaut.
         _lc = load_occupation_sol(plat, s["node_ids"], device=dev)
         if os.environ.get("ETL_SANS_MH", "0") != "1":
-            from meandre.data.hydrotel_calib import load_milieux_humides
+            from meandre.adapters.physitel.hydrotel_calib import load_milieux_humides
             _mh = load_milieux_humides(plat, s["node_ids"], device=dev)
             if os.environ.get("ETL_MH_FIDELE", "0") == "1":
                 col.mh_conservatif = False
@@ -642,7 +642,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _wa = (_Al / _Al.sum())
             print(f"  lacs hors reseau : eau libre {float((_fd * _wa).sum()):.3f} du bassin, part drainee {float((_rdd * _wa).sum()):.2f}, c {_c:g}, temps de sejour {_Td:g} j a {_hr:g} m, beta {_bd:g}, bornes {_bornes}, appris : {', '.join(_appris) or 'aucun'}", flush=True)
         if os.environ.get("MEANDRE_BANC_PHENO_PROJET", "1") == "1":
-            from meandre.data.hydrotel_calib import load_phenologie
+            from meandre.adapters.physitel.hydrotel_calib import load_phenologie
             _ph = load_phenologie(plat)
             if _ph:
                 col.set_phenology(_ph)
@@ -750,7 +750,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # comparer (2026-09-23). Seul le terme de perte reste conditionne au poids.
     if float(w_nappe) > 0 or float(nappe_valid) > 0:
         import pandas as _pdn
-        from meandre.data.rsesq_loader import _chemin_defaut, read_rsesq
+        from meandre.adapters.physitel.rsesq_loader import _chemin_defaut, read_rsesq
 
         _cn = read_rsesq(reg, temps)
         _pos = {int(n): i for i, n in enumerate(s["idx"])}

@@ -194,13 +194,11 @@ def test_missing_state_raises(tmp_path):
         cache.load_state("2099-01-01")
 
 
-def test_from_hydrotel_not_real_dir(tmp_path):
-    """from_hydrotel raises on a non-existent directory."""
+def test_build_database_not_real_dir(tmp_path):
+    """L'ingestion PHYSITEL (adaptateur) refuse un dossier inexistant."""
+    from meandre.adapters.physitel import build_database
     with pytest.raises(Exception):
-        BasinCache.from_hydrotel(
-            project_dir=tmp_path / "nonexistent",
-            path=tmp_path / "out.duckdb",
-        )
+        build_database(project_dir=tmp_path / "nonexistent", path=tmp_path / "out.duckdb")
 
 
 def test_file_created(tmp_path):

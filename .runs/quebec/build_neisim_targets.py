@@ -20,7 +20,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from meandre.data import neisim_loader as _nl
+from meandre.adapters.physitel import neisim_loader as _nl
 from meandre.utils import paths as _paths
 
 DATE_START, DATE_END = "2000-01-01", "2024-12-31"

@@ -30,7 +30,7 @@ import duckdb
 import pandas as pd
 
 from meandre.utils import paths as _paths
-from meandre.data.cehq_loader import fetch_station, parse_cehq_text, is_reconstructed
+from meandre.adapters.physitel.cehq_loader import fetch_station, parse_cehq_text, is_reconstructed
 
 REGIONS = sys.argv[1:] or ["outv", "gasp", "sagu", "slno", "mont", "abit", "slso",
                            "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud", "otsh"]

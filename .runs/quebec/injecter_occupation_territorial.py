@@ -3,7 +3,7 @@
 Les bases construites avant le 2026-08-10 n'ont que les fractions centrées-réduites, invisibles
 pour la physique : la colonne y met toute la forêt en feuillus et ne peut pas distinguer, pour
 la phénologie, ce qui perd ses feuilles à l'équinoxe de ce qui n'en perd pas. On recalcule ici
-les mêmes fractions que le chargeur PHYSITEL (`meandre/data/physitel_loader.py`), à partir de
+les mêmes fractions que le chargeur PHYSITEL (`meandre/adapters/physitel/physitel_loader.py`), à partir de
 `occupation_sol.cla` et `troncon.trl` du projet, et on les ajoute en colonnes `_raw`, que le
 cache range dans le dictionnaire physique sans normalisation. Le nombre d'attributs du champ
 spatial ne change pas : les points de reprise se rechargent.
@@ -20,7 +20,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from meandre.data.physitel_loader import _parse_occupation_sol_cla, _parse_troncon, _parse_uhrh
+from meandre.adapters.physitel.physitel_loader import _parse_occupation_sol_cla, _parse_troncon, _parse_uhrh
 from meandre.utils import paths as _p
 
 # Classes de la grille d'occupation d'Hydrotel, dans l'ordre du fichier .cla.

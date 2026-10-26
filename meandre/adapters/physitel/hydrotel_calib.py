@@ -18,7 +18,7 @@ from pathlib import Path
 import torch
 
 from meandre.hydrotel.hydrotel_params import load_project, uhrh_fractions
-from meandre.data.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import settings
 
 
@@ -261,7 +261,7 @@ def load_occupation_sol(project_dir, node_ids, device="cpu"):
     import numpy as np
     import pandas as pd
     import torch
-    from meandre.data.physitel_loader import _parse_troncon
+    from meandre.adapters.physitel.physitel_loader import _parse_troncon
 
     proj = Path(project_dir)
     lignes = [l.split() for l in
@@ -329,7 +329,7 @@ def load_milieux_humides(project_dir, node_ids, device="cpu"):
     import numpy as np
     import pandas as pd
     import torch
-    from meandre.data.physitel_loader import _parse_troncon
+    from meandre.adapters.physitel.physitel_loader import _parse_troncon
 
     proj = Path(project_dir)
     f = proj / "simulation" / "simulation" / "milieux_humides_isoles.csv"

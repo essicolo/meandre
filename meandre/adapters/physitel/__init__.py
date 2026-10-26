@@ -32,6 +32,15 @@ LEGACY_FORCINGS = {"slso": f"{_paths.DATA_ROOT}/slso/forcing-casr-corr.nc"}
 LEGACY_DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
 
+def build_database(project_dir, path, normalise: bool = True) -> BasinCache:
+    """Lit un projet PHYSITEL/Hydrotel et écrit la base DuckDB du territoire (ingestion)."""
+    from meandre.adapters.physitel.physitel_loader import load_hydrotel
+    hydro = load_hydrotel(project_dir, normalise=normalise, device=None)
+    cache = BasinCache(path)
+    cache.write(hydro, source=str(project_dir))
+    return cache
+
+
 def database_path(name: str) -> str:
     """Base du territoire : la famille québécoise dès qu'elle existe, le banc historique sinon."""
     special = LEGACY_DBS.get(name)

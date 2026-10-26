@@ -43,7 +43,7 @@ def lire_hgm(project_dir: str, node_ids, sim_subdir: str = "simulation/simulatio
         L = max(L, len(v))
 
     # appartenance UHRH -> tronçon + aires (mêmes fichiers que hydrotel_calib)
-    from meandre.data.physitel_loader import _parse_troncon
+    from meandre.adapters.physitel.physitel_loader import _parse_troncon
     tr = _parse_troncon(proj / "physitel" / "troncon.trl")
     uh = pd.read_csv(proj / "physitel" / "uhrh.csv", sep=";", skiprows=1)
     col_id = uh.columns[0]

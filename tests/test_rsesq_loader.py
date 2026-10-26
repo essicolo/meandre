@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from meandre.data.rsesq_loader import _chemin_defaut, index_mensuel, read_rsesq
+from meandre.adapters.physitel.rsesq_loader import _chemin_defaut, index_mensuel, read_rsesq
 
 _present = os.path.exists(f"{_chemin_defaut()}/rsesq-puits.parquet")
 pytestmark = pytest.mark.skipif(not _present, reason="niveaux de nappe absents de la machine")

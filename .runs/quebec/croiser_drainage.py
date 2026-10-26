@@ -30,7 +30,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from meandre.data.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 
 PLATE = os.environ.get("IRDA_PLATEFORME", "LN24HA")

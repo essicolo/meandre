@@ -505,7 +505,7 @@ if _settings.raw("snow.seasonal_melt_amplitude") is not None:
     print(f"[etl] fonte SAISONNIERE : amplitude {_msa} "
           f"(decembre x{1-_msa:.2f}, juin x{1+_msa:.2f}, moyenne annuelle inchangee)")
 if _settings.raw("snow.project_threshold", "1") == "1":
-    from meandre.data.hydrotel_calib import load_passage_pluie_neige as _lppn
+    from meandre.adapters.physitel.hydrotel_calib import load_passage_pluie_neige as _lppn
     _pls = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _sn = _lppn(_pls)
     if _sn != 0.0:
@@ -527,7 +527,7 @@ print("[etl] pieces declarees : "
       f"schema semi-implicite={bool(getattr(getattr(_vc, 'soil', None), 'semi_implicite', False))} | "
       f"GRACE en forme={os.environ.get('ETL_TWS_FORME', str(int(tcfg.get('tws_shape_only', 0)))) == '1'}")
 if _etp_choix == "mcguinness":
-    from meandre.data.hydrotel_calib import load_mcguinness_nodes as _lmg
+    from meandre.adapters.physitel.hydrotel_calib import load_mcguinness_nodes as _lmg
     model.vertical_column.et_mode = "mcguinness"
     _cmg = _lmg(_PROJ_M, r["node_ids"], device=DEVICE)
     model.vertical_column.set_mcguinness_coeff(_cmg)
@@ -540,7 +540,7 @@ elif _etp_choix == "penman":
     model.vertical_column.etp_channel = None
     print("[etl] ETP : Penman-Monteith (formule declaree, [et].formula)")
 elif _etp_choix == "linacre":
-    from meandre.data.hydrotel_calib import load_linacre_nodes as _lln
+    from meandre.adapters.physitel.hydrotel_calib import load_linacre_nodes as _lln
     _pll = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     model.vertical_column.et_mode = "linacre"
     model.vertical_column.set_linacre_params(*_lln(_pll, r["node_ids"], device=DEVICE))
@@ -556,8 +556,8 @@ if _settings.raw("spatial.init_from_hydrotel", "0") in ("1", "courbe", "sauf_ks"
     # entièrement libre. Mesuré : le réseau reproduit le champ à 2 % près, dispersion
     # 0.741 contre 0.740 pour la cible — la capacité n'était pas le verrou, le point de
     # départ l'était (champ initial plat à 0.0017 de dispersion, K_sat 8× trop bas).
-    from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs
-    from meandre.data.hydrotel_calib import imposed_retention_curve
+    from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil as _lcs
+    from meandre.adapters.physitel.hydrotel_calib import imposed_retention_curve
     _plh = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _cs = _lcs(_plh, r["node_ids"], 0.15, device=DEVICE)
     _cib = {"K_sat_1": _cs["ks1"].float() * 24, "K_sat_2": _cs["ks2"].float() * 24,
@@ -726,7 +726,7 @@ if "ETL_MELT_DIR" in os.environ:
     # La pente par nœud vient du calage, seule source qui en porte une ; elle sert deja au
     # sol. Sans elle la loi de Manning n'a pas de gradient hydraulique.
     try:
-        from meandre.data.hydrotel_calib import load_calibrated_soil as _lcs_pente
+        from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil as _lcs_pente
 
         _csp = _lcs_pente(os.environ["ETL_MELT_DIR"], r["node_ids"], 0.15, device=DEVICE)
         td.graph.node_slope = _csp["slope"].float().clamp(min=1e-5)
@@ -738,7 +738,7 @@ if "ETL_MELT_DIR" in os.environ:
 if "ETL_MELT_DIR" in os.environ:
     # fonte RÉGIONALE calée (taux+seuils plateforme), NeRF mscale module autour.
     # A/B inférence 2026-07-25 : +0.149 KGE sur checkpoint gasp (v7 : +0.088 entraîné).
-    from meandre.data.hydrotel_calib import load_melt_nodes
+    from meandre.adapters.physitel.hydrotel_calib import load_melt_nodes
     _mp = load_melt_nodes(os.environ["ETL_MELT_DIR"], r["node_ids"], device=DEVICE)
     model.vertical_column.set_melt_params(_mp)
     print(f"[etl] fonte régionale ancrée ({os.environ['ETL_MELT_DIR'].split('/')[-1]}) | "
@@ -752,7 +752,7 @@ if "ETL_MELT_DIR" in os.environ:
 _plat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
 _pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
 try:
-    from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+    from meandre.adapters.physitel.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
                                              load_phenologie)
     if DOMAINE:
         _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
@@ -802,7 +802,7 @@ _tb = dict((cfg.get("field") or {}).get("texture_bounds") or {})
 if os.environ.get("ETL_TEXTURE_BOUNDS"):
     _tb = {"enabled": float(os.environ["ETL_TEXTURE_BOUNDS"]) > 0, "factor": float(os.environ["ETL_TEXTURE_BOUNDS"]) or _tb.get("factor", 3.0)}
 if _tb.get("enabled", False):
-    from meandre.data.texture_bounds import texture_conductivity as _tcond, bounds_from_texture as _tbornes
+    from meandre.adapters.physitel.texture_bounds import texture_conductivity as _tcond, bounds_from_texture as _tbornes
     from meandre.spatial.field_network import FIELD_BOUNDS as _FB
     # Domaine (2026-10-16) : textures lues territoire par territoire, dans l'ordre du domaine.
     _tx = {f"K_sat_{_i}": np.full(n_nodes, np.nan) for _i in (1, 2, 3)}
@@ -829,7 +829,7 @@ if _tb.get("enabled", False):
 _ct = dict((cfg.get("soil") or {}).get("ceiling_from_texture") or {})
 if float(_ct.get("ratio", 0) or 0) > 0 and getattr(model.vertical_column, "soil_profile", None) is not None:
     from dataclasses import replace as _rempl
-    from meandre.data.texture_bounds import texture_conductivity as _tcond2
+    from meandre.adapters.physitel.texture_bounds import texture_conductivity as _tcond2
     _tx2 = _tcond2(_paths.data_path("quebec", f"{REG}.duckdb"), n_nodes, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", REG)
     _ks = _tx2[f"K_sat_{int(_ct.get('layer', 3))}"]
     _sp = model.vertical_column.soil_profile
@@ -881,7 +881,7 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
 # decorrelaient d'Hydrotel (r 0.27-0.31 quotidien). En inference sur le champion :
 # +0.027 aux jauges. Ici : ACTIF PENDANT L'ENTRAINEMENT, pour que le reseau
 # n'apprenne plus a compenser l'etalement manquant.
-from meandre.data.hgm_loader import lire_hgm
+from meandre.adapters.physitel.hgm_loader import lire_hgm
 _projh = _PROJ_M
 if DOMAINE:
     _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
@@ -2334,7 +2334,7 @@ if _VEUT_NEIGE:
 # a l'aveugle. Ajoute le 2026-08-20 apres constat d'un retard d'un mois sur la crue.
 if os.environ.get("ETL_CMP_HYDROTEL"):
     import xarray as _xrh
-    from meandre.data.hydrotel_calib import appariement_provincial as _appm
+    from meandre.adapters.physitel.hydrotel_calib import appariement_provincial as _appm
     _mb = os.environ["ETL_CMP_HYDROTEL"]
     try:
         _z = _xrh.open_zarr(f"{_paths.RQH_ROOT}/"

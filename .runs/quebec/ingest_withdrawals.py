@@ -28,7 +28,7 @@ import duckdb
 import pandas as pd
 
 from meandre.data.basin_cache import BasinCache
-from meandre.data.hydrotel_calib import id_local
+from meandre.adapters.physitel.hydrotel_calib import id_local
 from meandre.utils import paths as _paths
 
 # SOURCE : le derive d'io-eau, surchargeable par IO_EAU. La copie locale `data/` etait

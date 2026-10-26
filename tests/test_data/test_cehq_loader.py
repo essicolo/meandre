@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from meandre.data.cehq_loader import (RECONSTRUCTED_FLAGS, is_reconstructed,
+from meandre.adapters.physitel.cehq_loader import (RECONSTRUCTED_FLAGS, is_reconstructed,
                                       parse_cehq_text)
 
 # Extrait fidele d'un fichier NNNNNN_Q.txt : en-tete, lexique, tableau. On garde les

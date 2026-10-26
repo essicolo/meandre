@@ -41,7 +41,7 @@ import pandas as pd
 import xarray as xr
 
 from meandre.data.basin_cache import BasinCache
-from meandre.data.hydrotel_calib import load_occupation_sol
+from meandre.adapters.physitel.hydrotel_calib import load_occupation_sol
 from meandre.utils import paths as _paths
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "sagu").lower()

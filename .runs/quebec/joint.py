@@ -149,7 +149,7 @@ print(f"[joint] modèle partagé : {sum(p.numel() for p in model.parameters()):,
 
 # ── ancrages régionaux v7 (Linacre + fonte, chargés PAR RÉGION, bascule dans set_region) ──
 if USE_ANCHORS:
-    from meandre.data.hydrotel_calib import load_linacre_nodes, load_melt_nodes
+    from meandre.adapters.physitel.hydrotel_calib import load_linacre_nodes, load_melt_nodes
     for r in regions:
         pdir = f"{PLATFORMS}/{r['name'].upper()}_LN24HA_2020"
         r["linacre"] = load_linacre_nodes(pdir, r["node_ids"], device=DEVICE)

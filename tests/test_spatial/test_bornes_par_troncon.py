@@ -3,7 +3,7 @@ et une sortie brute nulle rend la valeur de texture (moyenne geometrique des bor
 import numpy as np
 import torch
 
-from meandre.data.texture_bounds import bounds_from_texture
+from meandre.adapters.physitel.texture_bounds import bounds_from_texture
 from meandre.spatial.field_network import SpatialFieldNetwork
 
 

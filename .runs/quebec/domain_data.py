@@ -397,7 +397,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # simplement livrees par plateforme : elles se concatenent comme le reste.
     land_cover, melt_params, phenology = {}, {}, None
     try:
-        from meandre.data.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+        from meandre.adapters.physitel.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
                                                  load_melt_nodes, load_phenologie)
         from meandre.utils import paths as _mp
         lc_parts, mp_parts = [], []
@@ -457,7 +457,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # pas l'architecture. C'est l'erreur que l'occupation du sol a failli faire commettre.
     linacre, kgw = None, None
     try:
-        from meandre.data.hydrotel_calib import load_linacre_nodes
+        from meandre.adapters.physitel.hydrotel_calib import load_linacre_nodes
         from meandre.utils import paths as _mp2
         # six champs par noeud : lat, altitude, T froide, T chaude, albedo, coefficient
         # d'optimisation regional (~0.4-0.5). Ils se concatenent comme les autres.
@@ -496,7 +496,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # epochs partent d'un champ plat au K_sat huit fois trop bas.
     soil = None
     try:
-        from meandre.data.hydrotel_calib import load_calibrated_soil
+        from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil
         from meandre.utils import paths as _mp3
         cs_parts = []
         for p in parts:

@@ -183,7 +183,7 @@ def _make_simple_project(tmp: Path, n_uhrh: int = 4) -> Path:
 # Import the loader
 # ---------------------------------------------------------------------------
 
-from meandre.data.physitel_loader import (
+from meandre.adapters.physitel.physitel_loader import (
     _parse_uhrh,
     _parse_occupation_sol_cla,
     _parse_type_sol_cla,

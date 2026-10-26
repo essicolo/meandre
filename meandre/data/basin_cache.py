@@ -27,7 +27,7 @@ encoder_states  state_date, run_id, data BLOB (pickled numpy h_context)
 Typical usage
 -------------
 # One-time: build from a PHYSITEL project
-cache = BasinCache.from_hydrotel("path/to/SLSO", "data/slso.duckdb")
+cache = meandre.adapters.physitel.build_database("path/to/SLSO", "data/slso.duckdb")
 
 # Load in milliseconds (drop-in for load_hydrotel)
 hydro = BasinCache("data/slso.duckdb").load(device=device)
@@ -83,34 +83,6 @@ class BasinCache:
     # ------------------------------------------------------------------
     # Factories
     # ------------------------------------------------------------------
-
-    @classmethod
-    def from_hydrotel(
-        cls,
-        project_dir: str | Path,
-        path: str | Path,
-        normalise: bool = True,
-        device: torch.device | None = None,
-    ) -> "BasinCache":
-        """Parse a PHYSITEL/HYDROTEL project and write to DuckDB.
-
-        Parameters
-        ----------
-        project_dir :
-            Root of the HYDROTEL project (contains physitel/ and etat/).
-        path :
-            Destination DuckDB file (overwritten if it exists).
-        normalise :
-            Same flag as ``load_hydrotel``.
-        device :
-            Ignored at write time; tensors stored as CPU numpy arrays.
-        """
-        from meandre.data.physitel_loader import load_hydrotel
-
-        hydro = load_hydrotel(project_dir, normalise=normalise, device=None)
-        cache = cls(path)
-        cache.write(hydro, source=str(project_dir))
-        return cache
 
     # ------------------------------------------------------------------
     # Load static data

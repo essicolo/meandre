@@ -11,6 +11,7 @@ import numpy as np, xarray as xr
 from pathlib import Path
 from pyproj import CRS, Transformer
 from meandre.data.basin_cache import BasinCache
+from meandre.adapters.physitel import build_database
 
 # Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
 # execution hors du poste d'origine impossible. Defauts inchanges.
@@ -68,7 +69,7 @@ for reg in REGIONS:
         print(f"  cache déjà présent : {db}")
         cache = BasinCache(db)
     else:
-        cache = BasinCache.from_hydrotel(project_dir=proj, path=db)
+        cache = build_database(project_dir=proj, path=db)
         try:
             cache.import_observations(STATIONS, basin_prefix=reg)
         except Exception as e:
