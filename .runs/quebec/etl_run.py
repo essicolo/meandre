@@ -218,7 +218,8 @@ if "ETL_WET" in os.environ:
 
 if DOMAINE:
     from domain_data import load_domain
-    r = load_domain(REGS, lcfg, device=DEVICE, schema_names=TERRITOIRES)
+    _cd_table_d = str(((cfg.get("soil") or {}).get("ceiling_from_drainage") or {}).get("table", "")).replace("{DERIVES}", _paths.DERIVED_ROOT) or None
+    r = load_domain(REGS, lcfg, device=DEVICE, schema_names=TERRITOIRES, drainage_table=_cd_table_d)
 else:
     _cd_table = str(((cfg.get("soil") or {}).get("ceiling_from_drainage") or {}).get("table", "")).replace("{DERIVES}", _paths.DERIVED_ROOT) or None
     r = load_region(REG, lcfg, device=DEVICE, drainage_table=_cd_table)
@@ -663,7 +664,7 @@ if _settings.raw("groundwater.conductivity_field", "0") == "1":
     # par nœud. Le NeRF module autour ; le champ fixe le niveau local mesuré.
     import pandas as _pd
     # Le champ vient du domaine (adaptateur PHYSITEL, 2026-10-26) ; le chemin province le porte encore lui-meme.
-    _kgw_src = r.get("kgw") if DOMAINE else r["domain"].groundwater_conductivity
+    _kgw_src = r["domain"].groundwater_conductivity
     if _kgw_src is not None and len(_kgw_src) == n_nodes:
         _kv = _kgw_src.to(DEVICE).float()
         # ETL_KGW_ECHELLE : facteur sur le champ, pour allonger le temps de sejour sans
@@ -822,12 +823,7 @@ if _tb.get("enabled", False):
     from meandre.adapters.physitel.texture_bounds import texture_conductivity as _tcond, bounds_from_texture as _tbornes
     from meandre.spatial.field_network import FIELD_BOUNDS as _FB
     # Domaine (2026-10-16) : textures lues territoire par territoire, dans l'ordre du domaine.
-    _tx = {f"K_sat_{_i}": np.full(n_nodes, np.nan) for _i in (1, 2, 3)}
-    _tx["source"] = np.array(["aucune"] * n_nodes, dtype=object)
-    for _nom_t, _ids_t, _o_t, _n_t in _territoires():
-        _t1 = _tcond(_paths.data_path("quebec", f"{_nom_t}.duckdb"), _n_t, f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet", _nom_t, node_ids=_ids_t) if DOMAINE else r["domain"].texture_conductivity
-        for _k1, _v1 in _t1.items():
-            _tx[_k1][_o_t:_o_t + _n_t] = _v1
+    _tx = r["domain"].texture_conductivity
     _fac = float(_tb.get("factor", 3.0))
     for _c in [int(x) for x in _tb.get("layers", [1, 2, 3])]:
         _nm = f"K_sat_{_c}"
@@ -871,12 +867,7 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
     from dataclasses import replace as _rempl
     import pandas as _pdd
     _dr = np.full(n_nodes, np.nan)
-    if DOMAINE:
-        _td = _pdd.read_parquet(str(_cd["table"]).replace("{DERIVES}", _paths.DERIVED_ROOT))
-        for _nom, _ids, _o, _n in _territoires():
-            _tt = _td[_td.region.str.lower() == _nom.lower()].set_index("troncon")
-            _dr[_o:_o + _n] = _tt.drainage.where(_tt.couv_drainage > 0).reindex(np.asarray(_ids, dtype=int)).to_numpy(dtype=float)
-    elif r["domain"].drainage_class is not None:
+    if r["domain"].drainage_class is not None:
         _dr[:] = r["domain"].drainage_class
     _sp = model.vertical_column.soil_profile
     _procs = []
@@ -903,11 +894,13 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
 # n'apprenne plus a compenser l'etalement manquant.
 from meandre.adapters.physitel.hgm_loader import lire_hgm
 _projh = _PROJ_M
-if DOMAINE:
+if _MEMBRE == "LN24HA" and r["domain"].hgm_kernel is not None:
+    _K = r["domain"].hgm_kernel
+elif DOMAINE:
     _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
     _L = max(k.shape[1] for k in _Ks)
     _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
-elif _MEMBRE == "LN24HA" and r["domain"].hgm_kernel is not None:
+elif False:
     _K = r["domain"].hgm_kernel
 else:
     _K = lire_hgm(_projh, r["node_ids"])
@@ -924,7 +917,7 @@ from pathlib import Path as _Pl
 import numpy as _npl
 _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
 for _nom, _ids, _o, _n in _territoires():
-    if not DOMAINE and r["domain"].lake_geometry is not None:
+    if r["domain"].lake_geometry is not None:
         _lg = r["domain"].lake_geometry
         _surf[:], _c[:], _k[:] = _lg["area_km2"].numpy(), _lg["k"].numpy(), _lg["beta"].numpy()
         break
@@ -979,8 +972,6 @@ if "ETL_WARM_FROM" in os.environ:
 # des depots) ; les valeurs du modele charge sont conservees exactement a l'adoption. Un point de
 # reprise deja affine sous prior porte ses centres et decalages : on les relit, sans recalculer.
 if _settings.get("spatial.priors"):
-    if DOMAINE:
-        raise SystemExit("priors par troncon : le chemin province ne passe pas encore par l'adaptateur (etape 2, reste ouvert)")
     from meandre import priors as _priors
     _dom = r["domain"]
     _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m)

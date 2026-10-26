@@ -202,7 +202,45 @@ def _compress(dense: torch.Tensor):
     return nz.cpu(), dense[:, nz].cpu()
 
 
-def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names: list[str] | None = None):
+def _domain_pieces(parts, sizes):
+    """Pieces des domaines des territoires, restreintes a leurs troncons charges (sous-bassin
+    compris) et mises bout a bout dans l'ordre du domaine fondu (etape 2, 2026-10-26). Le pilote
+    les lit comme celles d'un territoire seul, sans relire aucun fichier."""
+    import types
+    doms = [p["domain"] for p in parts]
+    idx = [np.asarray(p["node_index"]) for p in parts]
+
+    def cat_arr(get, fill=np.nan):
+        vals = [get(d) for d in doms]
+        if all(v is None for v in vals):
+            return None
+        return np.concatenate([np.asarray(v)[i] if v is not None else np.full(sz, fill) for v, i, sz in zip(vals, idx, sizes)])
+
+    tex = None
+    if all(d.texture_conductivity is not None for d in doms):
+        tex = {k: np.concatenate([np.asarray(d.texture_conductivity[k])[i] for d, i in zip(doms, idx)]) for k in doms[0].texture_conductivity}
+    lakes = None
+    if all(d.lake_geometry is not None for d in doms):
+        lakes = {k: torch.cat([d.lake_geometry[k][torch.as_tensor(i)] for d, i in zip(doms, idx)]) for k in doms[0].lake_geometry}
+    hgm = None
+    if all(d.hgm_kernel is not None for d in doms):
+        ks = [np.asarray(d.hgm_kernel)[i] for d, i in zip(doms, idx)]
+        L = max(k.shape[1] for k in ks)
+        hgm = np.concatenate([np.pad(k, ((0, 0), (0, L - k.shape[1]))) for k in ks], axis=0)
+    kgw = None
+    if all(d.groundwater_conductivity is not None for d in doms):
+        kgw = torch.cat([d.groundwater_conductivity[torch.as_tensor(i)] for d, i in zip(doms, idx)])
+    tf = None
+    if all(d.texture_fractions is not None for d in doms):
+        tf = {c: (np.concatenate([np.asarray(d.texture_fractions[c][0])[i] for d, i in zip(doms, idx)]), np.concatenate([np.asarray(d.texture_fractions[c][1])[i] for d, i in zip(doms, idx)])) for c in doms[0].texture_fractions}
+    return types.SimpleNamespace(
+        texture_conductivity=tex, drainage_class=cat_arr(lambda d: d.drainage_class), lake_geometry=lakes,
+        hgm_kernel=hgm, groundwater_conductivity=kgw, texture_fractions=tf,
+        deposit_thickness_m=cat_arr(lambda d: d.deposit_thickness_m),
+        phenology=doms[0].phenology, observations=doms[0].observations)
+
+
+def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names: list[str] | None = None, drainage_table: str | None = None):
     """Charge les plateformes et les fond en un domaine unique.
 
     `schema_names` : territoires dont les champs physiques communs definissent le schema du
@@ -221,7 +259,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # d'autre d'une frontiere recevraient des attributs incomparables.
     _settings.override("spatial.global_normalization", "1", force=True)
 
-    parts = [load_region(n, dict(lcfg), device="cpu") for n in names]
+    parts = [load_region(n, dict(lcfg), device="cpu", drainage_table=drainage_table) for n in names]
     sizes = [p["n_nodes"] for p in parts]
     offs = np.cumsum([0] + sizes)
     n_total = int(offs[-1])
@@ -539,6 +577,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
           f"forcage {forcing.shape[0]}x{forcing.shape[1]} en RAM hote")
     return dict(n_nodes=n_total, train_data=mk(train_sl), val_data=mk(val_sl),
                 loss_fn=loss_fn, node_coords=node_coords, territorial=territorial,
+                domain=_domain_pieces(parts, sizes),
                 times=parts[0]["times"], station_ids=st_ids, slices=slices,
                 n_gauges=q_obs.shape[1], land_cover=land_cover,
                 melt_params=melt_params, phenology=phenology,
