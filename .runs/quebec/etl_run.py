@@ -991,6 +991,17 @@ if os.environ.get("ETL_MULT_FIXE"):
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
     model.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=DEVICE) for a in os.environ["ETL_MULT_FIXE"].split(",")}
     print(f"[etl] champ spatial : multiplicateurs fixes {os.environ['ETL_MULT_FIXE']}")
+if os.environ.get("MEANDRE_DUMP_CHAMPS"):
+    # CHAMPS SEULS (2026-10-27) : les sorties du champ spatial par troncon, modele charge (priors et
+    # prolongements compris), sans simuler ; quelques minutes, sur processeur au besoin.
+    import dataclasses as _dcf
+    with torch.no_grad():
+        _spf = model.spatial_encoder(td.node_coords, r["territorial"].data if hasattr(r["territorial"], "data") else td.territorial.to_tensor())
+    _chf = {f.name: getattr(_spf, f.name).detach().cpu().numpy() for f in _dcf.fields(type(_spf)) if torch.is_tensor(getattr(_spf, f.name))}
+    np.savez_compressed(os.environ["MEANDRE_DUMP_CHAMPS"], node_ids=np.asarray(r["node_ids"]), **_chf)
+    print(f"[etl] champs ecrits : {os.environ['MEANDRE_DUMP_CHAMPS']} ({len(_chf)} sorties)")
+    sys.stdout.flush()
+    os._exit(0)
 # CE QUI EST IMPRIME DOIT ETRE CE QUI TOURNE. La ligne annoncait `etp_channel=6
 # (demande apprise)` EN DUR, donc y compris sous ETL_ETP=linacre|mcguinness qui posent
 # `etp_channel = None` : tous les journaux du chantier quebecois affirmaient que la
