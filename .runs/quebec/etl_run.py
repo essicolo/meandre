@@ -1180,7 +1180,8 @@ if os.environ.get("MEANDRE_SONDE_CONFLIT") == "1":
         import pandas as _pd_g
         _tg = _pd_g.read_csv(os.environ["MEANDRE_SONDE_CONFLIT_GROUPES"], dtype={"station_id": str})
         _grp = dict(zip(_tg["station_id"], _tg["regime"]))
-    _sc.mesurer(model, td, DEVICE, sortie=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"), station_ids=r.get("station_ids"), groupes=_grp)
+    # Longueur des blocs entre lesquels l'etat est detache (MEANDRE_SONDE_CONFLIT_BLOC, 30 jours par defaut).
+    _sc.mesurer(model, td, DEVICE, bloc=int(os.environ.get("MEANDRE_SONDE_CONFLIT_BLOC", "30")), sortie=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"), station_ids=r.get("station_ids"), groupes=_grp)
     sys.stdout.flush()
     os._exit(0)
 

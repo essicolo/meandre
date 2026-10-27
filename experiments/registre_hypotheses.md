@@ -5887,3 +5887,17 @@ Percolation `PERC_THRESH_POWER` à seuil au point de flétrissement, sans plafon
 | vidange en 90 jours | 1,09 | 1,54 | 1,97 | 0,50 | 2,59 |
 
 Environ 125 mm d'eau disponible vidés en 90 jours font une recharge continue de l'ordre de 1,4 mm/j, quand le plafond de percolation gravitaire est de 0,25 à 4 mm/j ; la nappe, à constantes fixes, la rend en été. Une passe avant d'un modèle entraîné sans ce flux ne peut pas juger le mécanisme : elle en mesure l'ajout, pas l'équilibre. Par définition, le drainage sous la capacité au champ est faible ; une constante de temps de l'ordre de l'année serait la valeur physique, et ne déplacerait pas d'eau d'une saison à l'autre.
+
+## R415 — La direction du gradient sur la couche 3 dépend de l'horizon : avec des blocs de 30 ou 90 jours, crue et étiage s'accordent pour vider l'eau gravitaire de la couche 3 ; avec un bloc de 365 jours, ils s'opposent sur la couche 3 et leurs leviers principaux deviennent la fonte pour la crue et le coefficient cultural pour l'étiage (2026-10-27) — ÉTABLI localement, Montérégie, 2001, poste
+Sonde de R410 au modèle gelé, l'état détaché entre blocs comme à l'entraînement (`MEANDRE_SONDE_CONFLIT_BLOC`), recalcul par segments de 30 jours (`MEANDRE_SEGMENT_GRADIENT`). Dérivées rapportées au maximum de chaque objectif, crue / étiage :
+
+| champ | blocs de 30 jours | blocs de 90 jours | un bloc de 365 jours |
+|---|---|---|---|
+| cosinus crue/étiage | +0,95 | +0,88 | +0,37 |
+| porosité 3 | +1,00 / +1,00 | +1,00 / +1,00 | −0,15 / +0,26 |
+| capacité au champ 3 | −0,80 / −0,86 | −0,74 / −0,90 | +0,32 / −0,20 |
+| coefficient cultural | −0,03 / −0,31 | −0,05 / −0,59 | +0,31 / +1,00 |
+| facteur de fonte | | +0,14 / +0,00 | +1,00 / +0,02 |
+| temps de transfert | +0,01 / +0,17 | −0,03 / −0,01 | −0,55 / −0,46 |
+
+L'entraînement du modèle provincial détache l'état tous les 90 jours (`chunk_steps`). Il voit donc le gradient de la deuxième colonne, et non celui de la perte sur l'année : vider l'eau gravitaire de la couche 3 y paraît bon pour les deux objectifs, alors que sur l'année l'effet différé change de signe. C'est l'explication la plus simple de R413 : l'optimiseur suit l'effet immédiat et ne voit pas le coût d'été. Réserve : sur 365 jours, l'état initial du 1er janvier reste détaché de la mise en régime. Épreuve en file sur Ubuntu : affinages de la Montérégie à blocs de 365 jours, témoin et couche 3 libérée.
