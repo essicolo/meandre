@@ -96,3 +96,29 @@ def test_les_modes_relatifs_laissent_le_niveau_libre():
     raw[:, noms.index("K_sat_1")] = torch.linspace(-1.0, 1.0, n)   # motif deforme
     net._apply_constraints(raw)
     assert float(net.deviation_prior_loss("anomaly")) > 0.1
+
+
+def test_une_sortie_collee_a_sa_borne_est_liberee_sous_prior(monkeypatch):
+    """Porosite 3 collee a 0,60 : sous prior restreint a cette sortie, valeur conservee et gradient
+    plein ; les autres sorties gardent leur sigmoide (2026-10-27)."""
+    from meandre.utils import settings
+    garde = dict(settings._configured)
+    settings._configured.clear()
+    monkeypatch.setenv("MEANDRE_PRIOR_CLES", "porosity_3")
+    try:
+        net = _champ()
+        coords, terr = _entrees()
+        with torch.no_grad():
+            net.fc_out.bias[[f for f in __import__("meandre.spatial.field_network", fromlist=["SpatialParams"]).SpatialParams.__dataclass_fields__].index("porosity_3")] += 20.0
+        avant = net(coords, terr)
+        assert torch.allclose(avant.porosity_3, torch.full_like(avant.porosity_3, 0.60), atol=1e-4)
+        pri = priors.soil_priors(len(coords), None, None)
+        assert set(pri) == {"porosity_3"}
+        net.adopt_priors(coords, terr, pri, preserve=True)
+        apres = net(coords, terr)
+        assert torch.allclose(avant.porosity_3, apres.porosity_3, atol=1e-5)
+        apres.porosity_3.sum().backward()
+        assert float(net.fc_out.bias.grad.abs().max()) > 0.01
+    finally:
+        settings._configured.clear()
+        settings._configured.update(garde)

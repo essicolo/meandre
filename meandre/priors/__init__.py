@@ -69,12 +69,19 @@ def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_t
         z3[ok] = np.clip(t[ok] - Z1_M - Z2_DEFAULT_M, 0.2, 4.0)
     priors["Z2"] = (z2, SIGMAS["Z2"])
     priors["Z3"] = (z3, SIGMAS["Z3"])
+    from meandre.utils import settings
+    choisies = [k for k in (settings.get("priors.keys") or "").replace(" ", "").split(",") if k]
+    if choisies:
+        inconnues = set(choisies) - set(priors)
+        if inconnues:
+            raise KeyError(f"priors.keys : sorties inconnues {sorted(inconnues)} ; catalogue {list(KEYS)}")
+        priors = {k: priors[k] for k in choisies}
     return priors
 
 
 def summary(priors: dict[str, tuple[np.ndarray, float]]) -> str:
     parts = []
-    for k in ("porosity_1", "theta_fc_frac_1", "K_sat_1", "Z2", "Z3"):
+    for k in [k for k in ("porosity_1", "theta_fc_frac_1", "K_sat_1", "Z2", "Z3") if k in priors] or list(priors):
         c, s = priors[k]
         parts.append(f"{k} médiane {np.median(c):.3g} (sigma log {s:.2f})")
     return "priors : " + " ; ".join(parts)
