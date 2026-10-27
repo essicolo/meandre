@@ -1159,6 +1159,14 @@ print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
 # soixante-dix-neuf variables d'environnement et c'est lui qui definit le modele, si bien
 # qu'en reconstruire un a cote mesurerait autre chose. Il se termine par ailleurs sur un arret
 # brutal du processus et ne peut donc pas rendre la main.
+if os.environ.get("MEANDRE_SONDE_CONFLIT") == "1":
+    # CONFLIT CRUE CONTRE ETIAGE (2026-10-27) : derivee des erreurs de crue et d'etiage par champ.
+    from importlib.machinery import SourceFileLoader as _SFL2
+    _sc = _SFL2("sonde_conflit", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sonde_conflit.py")).load_module()
+    _sc.mesurer(model, td, DEVICE, sortie=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"))
+    sys.stdout.flush()
+    os._exit(0)
+
 if os.environ.get("MEANDRE_SENSIBILITE") == "1":
     from importlib.machinery import SourceFileLoader as _SFL
 
