@@ -1163,7 +1163,13 @@ if os.environ.get("MEANDRE_SONDE_CONFLIT") == "1":
     # CONFLIT CRUE CONTRE ETIAGE (2026-10-27) : derivee des erreurs de crue et d'etiage par champ.
     from importlib.machinery import SourceFileLoader as _SFL2
     _sc = _SFL2("sonde_conflit", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sonde_conflit.py")).load_module()
-    _sc.mesurer(model, td, DEVICE, sortie=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"))
+    # Groupes de stations facultatifs : un fichier station_id,regime (MEANDRE_SONDE_CONFLIT_GROUPES).
+    _grp = None
+    if os.environ.get("MEANDRE_SONDE_CONFLIT_GROUPES"):
+        import pandas as _pd_g
+        _tg = _pd_g.read_csv(os.environ["MEANDRE_SONDE_CONFLIT_GROUPES"], dtype={"station_id": str})
+        _grp = dict(zip(_tg["station_id"], _tg["regime"]))
+    _sc.mesurer(model, td, DEVICE, sortie=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"), station_ids=r.get("station_ids"), groupes=_grp)
     sys.stdout.flush()
     os._exit(0)
 
