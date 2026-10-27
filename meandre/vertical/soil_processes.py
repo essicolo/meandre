@@ -110,6 +110,14 @@ def perc_power_law(ctx, prm):
             * torch.clamp(ctx["theta"] / ths, min=0.0) ** prm["exponent"])
 
 
+def perc_gravity(ctx, prm):
+    """Écoulement gravitaire sous gradient unitaire : le flux vaut la conductivité de la couche à
+    sa teneur en eau, K(theta) (2026-10-27). La vidange suit ainsi le sol, sans constante de
+    temps : rapide quand la couche est humide, lente sous la capacité au champ, où K(theta)
+    s'effondre. Un plafond déclaré représente le substratum."""
+    return ctx["conductivity"] * prm.get("factor", 1.0)
+
+
 # Catalogue. La clé est le nom Raven, la valeur la fonction et les paramètres exigés.
 def drain_hooghoudt(ctx, prm):
     """Drainage souterrain agricole, formule de Hooghoudt (2026-10-04).
@@ -143,12 +151,13 @@ FORMS = {
     "PERC_LINEAR": (perc_linear, ("krec",)),
     "PERC_THRESH_POWER": (perc_thresh_power, ("tau",)),
     "PERC_POWER_LAW": (perc_power_law, ("krec", "exponent")),
+    "PERC_GRAVITY": (perc_gravity, ()),
     "DRAIN_HOOGHOUDT": (drain_hooghoudt, ("spacing_m", "depth_m", "share")),
 }
 
 FORMS_BY_KIND = {
     KIND_LATERAL: ("BASE_LINEAR", "BASE_THRESH_POWER", "DRAIN_HOOGHOUDT"),
-    KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_POWER_LAW"),
+    KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_POWER_LAW", "PERC_GRAVITY"),
 }
 
 
@@ -238,7 +247,7 @@ class SoilProcess:
         # VISCOSITE (R384) : les vidanges a constante de temps sont des ecoulements gravitaires,
         # proportionnels a la conductivite donc a l'inverse de la viscosite. Les formes qui lisent
         # deja la conductivite (BASE_LINEAR, DRAIN_HOOGHOUDT) la recoivent corrigee.
-        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "DRAIN_HOOGHOUDT"):
+        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "DRAIN_HOOGHOUDT", "PERC_GRAVITY"):
             q = q * ctx["visc"]
         f = self.params.get("frost_factor")
         if f is not None and ctx.get("frost_frac") is not None:

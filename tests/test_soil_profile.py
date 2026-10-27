@@ -162,3 +162,13 @@ def test_la_description_supporte_les_deux_types_de_plafond():
     assert "plafond" not in sans.decrire()
     for proc in (nombre, nomme, sans):
         assert isinstance(proc.decrire(), str) and proc.decrire()
+
+
+def test_la_percolation_gravitaire_vaut_la_conductivite_et_s_effondre_au_sec():
+    """PERC_GRAVITY : flux = K(theta), plafonné par le substratum (2026-10-27)."""
+    k = torch.tensor([1e-3, 1e-6])
+    ctx = {"theta": torch.tensor([0.4, 0.1]), "conductivity": k, "thickness": torch.tensor([1.0, 1.0])}
+    proc = sp.SoilProcess(layer=3, kind="percolation", form="PERC_GRAVITY")
+    assert torch.allclose(proc.flux(ctx), k)
+    plafonne = sp.SoilProcess(layer=3, kind="percolation", form="PERC_GRAVITY", ceiling=1e-4)
+    assert torch.allclose(plafonne.flux(ctx), torch.tensor([1e-4, 1e-6]))
