@@ -993,19 +993,25 @@ class SpatialFieldNetwork(nn.Module):
         _plancher = _settings.get("spatial.gradient_floor")
         _avec_plancher = set((_settings.get("spatial.gradient_floor_outputs") or "").replace(" ", "").split(",")) - {""}
         _prolonge, _seuils_donnes = {}, {}
-        for a in (_settings.get("spatial.extend_below") or "").replace(" ", "").split(","):
-            if a:
-                morceaux = a.split(":")
-                _prolonge[morceaux[0]] = float(morceaux[1])
-                if len(morceaux) > 2:
-                    _seuils_donnes[morceaux[0]] = float(morceaux[2])
+        _prolonge_haut, _seuils_haut_donnes = {}, {}
+        for reglage, cible, seuils in (("spatial.extend_below", _prolonge, _seuils_donnes), ("spatial.extend_above", _prolonge_haut, _seuils_haut_donnes)):
+            for a in (_settings.get(reglage) or "").replace(" ", "").split(","):
+                if a:
+                    morceaux = a.split(":")
+                    cible[morceaux[0]] = float(morceaux[1])
+                    if len(morceaux) > 2:
+                        seuils[morceaux[0]] = float(morceaux[2])
 
-        def sigm(nom, x):
-            if _plancher is not None and nom in _avec_plancher:
+        def _cible(table, nom, key):
+            # Une sortie se designe par sa cle (porosity_3, une seule couche) ou par sa famille (porosity).
+            return key if key in table else (nom if nom in table else None)
+
+        def sigm(nom, x, key=None):
+            if _plancher is not None and (nom in _avec_plancher or key in _avec_plancher):
                 return _SigmoidGradientFloor.apply(x, float(_plancher))
             return torch.sigmoid(x)
 
-        def bounded(x, lo, hi, nom=None):
+        def bounded(x, lo, hi, nom=None, key=None):
             """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4.
 
             PROLONGEMENT SOUS LA BORNE (2026-10-26). Abaisser une borne remappe tous les
@@ -1014,15 +1020,29 @@ class SpatialFieldNetwork(nn.Module):
             est conservee au-dessus d'un seuil de sortie brute pose au premier appel sous la plus
             basse sortie du domaine, et prolongee en dessous vers la nouvelle borne : aucun
             troncon ne bouge au depart, et seul l'optimiseur peut les faire descendre.
+
+            PROLONGEMENT AU-DESSUS (2026-10-27) : symetrique, au-dessus de la plus haute sortie
+            brute du domaine, vers une nouvelle borne haute (spatial.extend_above). Une sortie
+            collee a sa borne haute y passe sans que les valeurs de depart changent.
             """
-            v = lo + (hi - lo) * sigm(nom, x)
-            if nom in _prolonge:
-                seuil = _seuils_donnes.get(nom, self._seuils_prolongement.get(nom))
+            v = lo + (hi - lo) * sigm(nom, x, key)
+            c = _cible(_prolonge, nom, key)
+            if c is not None:
+                seuil = _seuils_donnes.get(c, self._seuils_prolongement.get(c))
                 if seuil is None:
                     seuil = float(x.detach().min()) - 0.5
-                    self._seuils_prolongement[nom] = seuil
-                    print(f"[champ] prolongement de {nom} sous {lo:g} jusqu'a {_prolonge[nom]:g} : seuil de sortie brute {seuil:.4f} (a reprendre tel quel a l'evaluation : {nom}:{_prolonge[nom]:g}:{seuil:.4f})")
-                v = v - (lo - _prolonge[nom]) * (1.0 - torch.exp(-torch.relu(seuil - x)))
+                    self._seuils_prolongement[c] = seuil
+                    print(f"[champ] prolongement de {c} sous {lo:g} jusqu'a {_prolonge[c]:g} : seuil de sortie brute {seuil:.4f} (a reprendre tel quel a l'evaluation : {c}:{_prolonge[c]:g}:{seuil:.4f})")
+                v = v - (lo - _prolonge[c]) * (1.0 - torch.exp(-torch.relu(seuil - x)))
+            c = _cible(_prolonge_haut, nom, key)
+            if c is not None:
+                cle_seuil = "haut:" + c
+                seuil = _seuils_haut_donnes.get(c, self._seuils_prolongement.get(cle_seuil))
+                if seuil is None:
+                    seuil = float(x.detach().max()) + 0.5
+                    self._seuils_prolongement[cle_seuil] = seuil
+                    print(f"[champ] prolongement de {c} au-dessus de {hi:g} jusqu'a {_prolonge_haut[c]:g} : seuil de sortie brute {seuil:.4f} (a reprendre tel quel a l'evaluation : {c}:{_prolonge_haut[c]:g}:{seuil:.4f})")
+                v = v + (_prolonge_haut[c] - hi) * (1.0 - torch.exp(-torch.relu(x - seuil)))
             return v
 
         if not hasattr(self, "_seuils_prolongement"):
@@ -1065,7 +1085,7 @@ class SpatialFieldNetwork(nn.Module):
                 b0 = math.log(u / (1.0 - u))
                 a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
                 return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x + b0))
-            return bounded(x, lo, hi, nom)
+            return bounded(x, lo, hi, nom, k)
 
         cols = [raw[:, i] for i in range(SpatialParams.N_PARAMS)]
         i = 0
