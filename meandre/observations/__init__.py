@@ -107,3 +107,29 @@ def area_ratio(station_area_km2, reach_area_km2):
     r = np.ones_like(a)
     r[ok] = b[ok] / a[ok]
     return r
+
+
+def mask_flagged(values, times, station_ids, flagged):
+    """Remplace par NaN les observations marquées (par exemple reconstituées sous la glace).
+
+    `values` (T, S) tenseur ou tableau, ligne t <-> `times[t]` ; `flagged` : {station: ensemble de
+    dates (datetime.date)}. Rend (valeurs masquées, nombre de valeurs finies retirées) (2026-10-28)."""
+    import numpy as np
+    import pandas as pd
+    import torch
+    jours = [pd.Timestamp(t).date() for t in times]
+    rang = {d: i for i, d in enumerate(jours)}
+    masque = np.zeros(tuple(values.shape), dtype=bool)
+    for j, sid in enumerate(station_ids):
+        for d in flagged.get(str(sid), ()):
+            i = rang.get(d)
+            if i is not None:
+                masque[i, j] = True
+    if isinstance(values, torch.Tensor):
+        m = torch.as_tensor(masque, device=values.device)
+        retire = int((torch.isfinite(values) & m).sum())
+        return values.masked_fill(m, float("nan")), retire
+    v = np.array(values, dtype=float, copy=True)
+    retire = int((np.isfinite(v) & masque).sum())
+    v[masque] = np.nan
+    return v, retire

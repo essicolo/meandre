@@ -50,3 +50,15 @@ def test_le_rapport_d_aires_vaut_troncon_sur_station_et_un_sans_aire():
     from meandre.observations import area_ratio
     r = area_ratio([26.8, 100.0, np.nan, 0.0], [56.6, 100.0, 50.0, 50.0])
     assert abs(r[0] - 56.6 / 26.8) < 1e-9 and r[1] == 1.0 and r[2] == 1.0 and r[3] == 1.0
+
+
+def test_les_debits_marques_deviennent_manquants():
+    import datetime as dt
+    import numpy as np
+    import torch
+    from meandre.observations import mask_flagged
+    times = np.array(["2001-01-01", "2001-01-02", "2001-01-03"], dtype="datetime64[D]")
+    v = torch.tensor([[1.0, 2.0], [3.0, float("nan")], [5.0, 6.0]])
+    m, n = mask_flagged(v, times, ["a", "b"], {"a": {dt.date(2001, 1, 2)}, "b": {dt.date(2001, 1, 2), dt.date(2001, 1, 3)}})
+    assert n == 2, "seules les valeurs finies comptent"
+    assert torch.isnan(m[1, 0]) and torch.isnan(m[2, 1]) and m[0, 0] == 1.0 and m[2, 0] == 5.0

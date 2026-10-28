@@ -114,6 +114,21 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
         station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
         for ni in station_indices:
             station_mask[ni] = True
+    # DEBITS RECONSTITUES (2026-10-28, decision d'Essi, R385) : de janvier a mars, 66 a 82 % des
+    # debits observes sont interpoles entre jaugeages ; retires, le modele n'apprend plus a les imiter.
+    if _settings_st.get("stations.exclude_reconstructed"):
+        import duckdb as _ddb_r
+        from meandre.observations import mask_flagged as _mask_flagged
+        _con_r = _ddb_r.connect(str(_paths(reg)[0]), read_only=True)
+        _fl = _con_r.execute("select station_id, date from observations where reconstructed").fetchall()
+        _con_r.close()
+        _marques = {}
+        for _sid_r, _d_r in _fl:
+            _marques.setdefault(str(_sid_r), set()).add(_d_r)
+        assert q_obs.shape[0] == len(times), f"q_obs {tuple(q_obs.shape)} et {len(times)} dates ne s'alignent pas"
+        _finies = int(torch.isfinite(q_obs).sum())
+        q_obs, _retire = _mask_flagged(q_obs, times, _sites, _marques)
+        print(f"[stations] debits reconstitues retires (stations.exclude_reconstructed) : {_retire} valeurs sur {_finies} ({100 * _retire / max(_finies, 1):.0f} %)")
     station_area_ratio = torch.ones(n_stations, dtype=torch.float32, device=device)
     if _settings_st.get("stations.area_ratio"):
         import duckdb as _ddb
