@@ -5,14 +5,14 @@ noeuds de la base, table `grace_tws` de la base DuckDB du territoire. Identifian
 par ~/.netrc ou EARTHDATA_TOKEN. Ecrit le 2026-10-08 parce que la base du Saint-Laurent
 sud-ouest n'avait ni MOD16 ni GRACE et a ete entrainee sans eux (registre R331).
 
-    python .runs/quebec/ingest_grace_region.py SLSO
+    python -m meandre.adapters.physitel.builders.ingest_grace_region SLSO
 """
 import os
 import platform
 import sys
 from pathlib import Path
 
-os.chdir(Path(__file__).resolve().parents[2])
+os.chdir(Path(__file__).resolve().parents[4])
 try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception:

@@ -14,13 +14,12 @@ pire mois, 0.753) porte sur des jours MESURÉS et reste donc entier.
 Ajoute une colonne `remark` et un booléen `reconstructed` à `observations`, sans toucher
 aux valeurs. Idempotent : relancer met à jour au lieu de dupliquer.
 
-    .venv/Scripts/python.exe .runs/quebec/ingest_cehq_flags.py [region ...]
+    python -m meandre.adapters.physitel.builders.ingest_cehq_flags [region ...]
 """
 import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:

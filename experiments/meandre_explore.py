@@ -8,7 +8,7 @@ n'apparait nulle part : un seul domaine, le Quebec meridional.
 Partage des roles :
   - la CARTE interactive (MapLibre, troncons cliquables, zones rouges, hydrogrammes au
     clic) est une instance feuillage : docs/carte/, couches par
-    .runs/quebec/build_feuillage.py ;
+    meandre/adapters/physitel/builders/build_foliage.py ;
   - ce NOTEBOOK fait l'analyse : les KGE dans l'espace, les distributions, les
     agregations statistiques, les diagnostics de calibration.
 

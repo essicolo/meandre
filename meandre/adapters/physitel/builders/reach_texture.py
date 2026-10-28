@@ -5,7 +5,7 @@ rangée de la table des sols ; la fraction de sable, de silt et d'argile de cett
 moyennée sur le tronçon, pondérée par l'aire des unités. Remplace la table du 2026-09-24,
 écrite avant la correction de l'indice qui lisait chaque classe une rangée trop haut.
 
-    .venv/Scripts/python.exe .runs/quebec/texture_physitel_troncons.py mont slso slno outv gasp sagu
+    python -m meandre.adapters.physitel.builders.reach_texture mont slso slno outv gasp sagu
 """
 import os
 import sys
@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from meandre.adapters.physitel.physitel_loader import _TEXTURE_FRACTIONS, _parse_troncon, _parse_type_sol_cla
 from meandre.utils import paths as _paths

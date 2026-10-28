@@ -18,7 +18,7 @@ Variables produites, chacune avec sa propre couverture :
 Les moyennes des classes numériques et des coordonnées ilr sont pondérées par le pourcentage
 des composantes, puis par l'aire au sein des unités hydrologiques et des tronçons.
 
-    .venv/Scripts/python.exe .runs/quebec/irda_proprietes.py outv gasp ...
+    python -m meandre.adapters.physitel.builders.irda_properties outv gasp ...
 """
 import os
 import sqlite3
@@ -28,7 +28,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths

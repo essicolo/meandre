@@ -5,7 +5,7 @@ from importlib.machinery import SourceFileLoader
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-audit = SourceFileLoader("audit_stations", os.path.join(HERE, "..", ".runs", "quebec", "audit_stations.py")).load_module()
+audit = SourceFileLoader("audit_stations", os.path.join(HERE, "..", "meandre", "adapters", "physitel", "builders", "audit_stations.py")).load_module()
 
 
 def test_coordonnees_de_la_fiche_cehq():

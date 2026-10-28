@@ -2,11 +2,11 @@
 pour UNE région Québec — phase 2 du design_modules_appris.md (banc fonte).
 Cache granules PARTAGÉ D:/meandre-data/modis10 (tuiles communes entre régions).
 WSL requis (pyhdf). Resumable par année (upsert INSERT OR REPLACE).
-  python .runs/quebec/ingest_snow_region.py GASP
+  python -m meandre.adapters.physitel.builders.ingest_snow_region GASP
 """
 import os, sys
 from pathlib import Path
-os.chdir(Path(__file__).resolve().parents[2])
+os.chdir(Path(__file__).resolve().parents[4])
 try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception: pass

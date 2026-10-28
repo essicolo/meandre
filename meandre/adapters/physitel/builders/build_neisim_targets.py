@@ -9,7 +9,7 @@ contrainte, à la condition de dire que c'est un modèle et non une mesure.
 Le fichier écrit porte la même forme que les cibles CanSWE, valeurs (T, n_sites) et nœud de
 chaque site, pour entrer dans la perte sans terme nouveau.
 
-    .venv/Scripts/python.exe .runs/quebec/build_neisim_targets.py OUTV --pas 4
+    python -m meandre.adapters.physitel.builders.build_neisim_targets OUTV --pas 4
 """
 import argparse
 import os
@@ -18,7 +18,6 @@ import sys
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from meandre.adapters.physitel import neisim_loader as _nl
 from meandre.utils import paths as _paths

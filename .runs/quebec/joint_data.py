@@ -72,7 +72,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     from meandre.observations import area_ratio as _area_ratio
     _sites = [str(x) for x in _q.sites]
     _excluded = {x for x in (_st_settings.get("stations.excluded") or "").replace(" ", "").split(",") if x}
-    # Table de rattachement (`.runs/quebec/audit_stations.py`) : troncon retenu par station d'apres
+    # Table de rattachement (`meandre/adapters/physitel/builders/audit_stations.py`) : troncon retenu par station d'apres
     # ses coordonnees et les unites hydrologiques du projet ; une station hors du territoire rejoint
     # les exclues.
     _table_path = _st_settings.get("stations.attachment_table")

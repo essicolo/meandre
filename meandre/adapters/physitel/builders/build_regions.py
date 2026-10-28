@@ -2,11 +2,11 @@
 observations (stations_concatenees.nc, préfixe par région) + calcule les tuiles CaSR
 nécessaires (transform pôle tourné, blocs de 35 indices, origine 35k+1).
 Sorties : D:/meandre-data/quebec/<reg>.duckdb + tiles_needed.txt (union pour fetch).
-  python .runs/quebec/build_regions.py [REG ...]   (défaut : les 15)
+  python -m meandre.adapters.physitel.builders.build_regions [REG ...]   (défaut : les 15)
 """
 import os, sys
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+from pathlib import Path
+os.chdir(Path(__file__).resolve().parents[4])
 import numpy as np, xarray as xr
 from pathlib import Path
 from pyproj import CRS, Transformer

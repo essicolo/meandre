@@ -1,11 +1,11 @@
 """Ingere CanSWE dans la base d'une region (ou de toutes).
 
-  python .runs/quebec/ingest_canswe.py outv
-  python .runs/quebec/ingest_canswe.py toutes
+  python -m meandre.adapters.physitel.builders.ingest_canswe outv
+  python -m meandre.adapters.physitel.builders.ingest_canswe toutes
 """
+from pathlib import Path
 import os, sys
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+os.chdir(Path(__file__).resolve().parents[4])
 import duckdb, numpy as np
 from meandre.utils import paths as _paths
 from meandre.data.basin_cache import BasinCache

@@ -3,12 +3,12 @@ Canaux : P corrigé (dé-crachinage horaire 0.3 mm/h + agrégation jour-local UT
 calage volume sur le bilan d'eau RÉGIONAL lame_obs_train + ETR 450), Tmin, Tmax,
 R_n (FAO-56 depuis FB/FI), u2, e_a. Interpolation bilinéaire en espace pôle tourné.
 Tuiles cherchées dans D:/meandre-data/casr puis .runs/slso/data/casr (legacy).
-  python .runs/quebec/build_forcing_region.py GASP [--test]
+  python -m meandre.adapters.physitel.builders.build_forcing_region GASP [--test]
 Sortie : D:/meandre-data/quebec/forcing-<reg>.nc. ENV : VOL (mm/an, sinon bilan), DRIZZLE_H.
 """
+from pathlib import Path
 import os, sys
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+os.chdir(Path(__file__).resolve().parents[4])
 import numpy as np, pandas as pd, xarray as xr, duckdb
 from pyproj import CRS, Transformer
 from meandre.data.basin_cache import BasinCache

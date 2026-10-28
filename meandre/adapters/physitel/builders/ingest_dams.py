@@ -4,11 +4,11 @@ Table `dams` : ouvrage -> nœud le plus proche (haversine) + attributs utiles
 (catégorie, utilisation, hauteur de retenue, capacité m3, sup. réservoir).
 Les ouvrages hors domaine restent filtrables par dist_km.
 
-  python .runs/quebec/ingest_dams.py
+  python -m meandre.adapters.physitel.builders.ingest_dams
 """
+from pathlib import Path
 import os, sys
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+os.chdir(Path(__file__).resolve().parents[4])
 import numpy as np
 import pandas as pd
 import duckdb

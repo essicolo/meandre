@@ -1,11 +1,11 @@
 """Ingestion ETR MOD16A2GF 8-jours pour UNE région Québec (généralise ingest_modis_et8).
 Cache granules PARTAGÉ sur D: (les régions se recouvrent en tuiles MODIS).
 Purge l'annuel A3GF avant d'importer le 8-jours. Resumable par année.
-  python .runs/quebec/ingest_et8_region.py GASP
+  python -m meandre.adapters.physitel.builders.ingest_et8_region GASP
 """
 import os, sys
 from pathlib import Path
-os.chdir(Path(__file__).resolve().parents[2])
+os.chdir(Path(__file__).resolve().parents[4])
 try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception: pass

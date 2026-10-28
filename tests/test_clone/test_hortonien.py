@@ -76,7 +76,7 @@ def test_une_pluie_etalee_sur_la_journee_restitue_le_clone():
 def test_le_constructeur_de_forcage_expose_le_canal():
     """Le mecanisme reste inerte sans canal de duree d'orage dans le forcage : la ligne
     quebecoise n'en avait pas, et c'est pourquoi il n'avait jamais servi."""
-    src = open(".runs/quebec/build_forcing_region.py", encoding="utf-8").read()
+    src = open("meandre/adapters/physitel/builders/build_forcing_region.py", encoding="utf-8").read()
     assert "QC_INTENS" in src
     assert "def load_dt_eff" in src
     assert '"DT_eff"' in src

@@ -8,13 +8,12 @@ les mêmes fractions que le chargeur PHYSITEL (`meandre/adapters/physitel/physit
 cache range dans le dictionnaire physique sans normalisation. Le nombre d'attributs du champ
 spatial ne change pas : les points de reprise se rechargent.
 
-    python .runs/quebec/injecter_occupation_territorial.py outv mont
+    python -m meandre.adapters.physitel.builders.inject_land_cover outv mont
 """
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import duckdb
 import numpy as np

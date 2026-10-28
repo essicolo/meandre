@@ -7,12 +7,11 @@ temoin ; la texture SIIGSOL a 100 m, ingeree par troncon mais jamais donnee au c
 predit a +42 %. La table est separee de `territorial` pour ne pas changer la dimension
 d'entree des points de reprise existants.
 
-    .venv/Scripts/python.exe .runs/quebec/injecter_siigsol_territorial.py mont slso slno outv gasp sagu
+    python -m meandre.adapters.physitel.builders.inject_siigsol mont slso slno outv gasp sagu
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import duckdb
 import pandas as pd

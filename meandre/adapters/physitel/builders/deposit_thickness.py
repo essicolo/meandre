@@ -7,9 +7,9 @@ calculée sur tout le Québec. Les codes sans aucune épaisseur inscrite restent
 
 Par tronçon : moyenne géométrique de l'épaisseur sur la surface cartographiée, part de la surface
 à 1 m ou moins, part à 5 m ou plus, part cartographiée avec une épaisseur. Grille de 100 m dans la
-projection du projet PHYSITEL, comme `depots_troncons.py`.
+projection du projet PHYSITEL, comme `reach_deposits.py`.
 
-    .venv/Scripts/python.exe .runs/quebec/epaisseur_depots.py mont slso outv slno
+    python -m meandre.adapters.physitel.builders.deposit_thickness mont slso outv slno
 """
 import os
 import sys
@@ -19,10 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, RACINE)
-sys.path.insert(0, os.path.join(RACINE, ".runs", "quebec"))
-from croiser_drainage import RESOLUTION, SIGEOM, rasteriser
+RACINE = str(Path(__file__).resolve().parents[4])
+from meandre.adapters.physitel.builders.drainage_maps import RESOLUTION, SIGEOM, rasteriser
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 

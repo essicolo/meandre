@@ -12,9 +12,9 @@ vidange devient l'inverse d'une quantité MESURÉE par lac, sans seuil arbitrair
 Sortie : D:/meandre-data/quebec/lacs_hydrolakes.parquet (region, node_idx, hylak_id,
 lake_area_km2, vol_total_mcm, depth_avg_m, res_time_j, dis_avg_m3s, dist_km).
 """
+from pathlib import Path
 import os, sys, glob
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+os.chdir(Path(__file__).resolve().parents[4])
 import numpy as np, pandas as pd, geopandas as gpd
 from scipy.spatial import cKDTree
 from meandre.data.basin_cache import BasinCache

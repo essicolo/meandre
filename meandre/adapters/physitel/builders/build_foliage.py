@@ -19,14 +19,13 @@ Les proprietes de modele viennent des caches nb-<reg>-avec/sans.npz produits par
 PILOTE (ETL_DUMP_REACH, dette #6 : le cache porte le runtime exact). Les troncons sans
 cache portent la geometrie seule : la carte s'enrichit a mesure que les dumps arrivent.
 
-    .venv/Scripts/python.exe .runs/quebec/build_feuillage.py
+    python -m meandre.adapters.physitel.builders.build_foliage
 """
 import glob
 import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:

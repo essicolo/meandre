@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 
-_p = os.path.join(os.path.dirname(__file__), "..", ".runs", "quebec", "croiser_drainage.py")
+_p = os.path.join(os.path.dirname(__file__), "..", "meandre", "adapters", "physitel", "builders", "drainage_maps.py")
 _spec = importlib.util.spec_from_file_location("croiser_drainage", _p)
 cd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cd)

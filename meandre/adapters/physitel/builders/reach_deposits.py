@@ -4,13 +4,13 @@ cartographiée et densité d'eskers, pour les attributs du champ spatial.
 Motif (registre R314, R315) : le modèle plafonne l'écoulement de base vers 0,60 là où
 l'observation atteint 0,70 ; le champ ne reçoit aucune information sur les dépôts meubles
 (épaisseur des dépôts nulle partout). Les familles sont celles de la clé validée par un
-géologue du Quaternaire (`croiser_drainage.py`). La part non cartographiée est gardée telle
+géologue du Quaternaire (`drainage_maps.py`). La part non cartographiée est gardée telle
 quelle : une absence de carte n'est pas un dépôt imperméable.
 
 Méthode : grille de 100 m dans la projection du projet PHYSITEL, une cellule par famille,
 sommes par unité hydrologique puis par tronçon ; eskers par longueur dans chaque unité.
 
-    python .runs/quebec/depots_troncons.py abit cnda ... vaud
+    python -m meandre.adapters.physitel.builders.reach_deposits abit cnda ... vaud
 """
 import os
 import sys
@@ -20,9 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from croiser_drainage import CODE_VERS_GROUPE, RESOLUTION, SIGEOM, SIGEOM_GROUPE, rasteriser
+from meandre.adapters.physitel.builders.drainage_maps import CODE_VERS_GROUPE, RESOLUTION, SIGEOM, SIGEOM_GROUPE, rasteriser
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 

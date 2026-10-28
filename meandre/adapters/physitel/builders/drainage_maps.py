@@ -9,14 +9,14 @@ reste VIDE : le troncon porte sa fraction couverte et la valeur n'est jamais com
 
 Echelle commune, rang de 1 a 7 : tres rapidement (excessif), rapidement, bien, moderement
 bien, imparfaitement, mal, tres mal draine. C'est l'echelle de l'IRDA
-(`irda_proprietes.DRAINAGE`), et la dizaine du code ecoforestier `cl_drai` plus un.
+(`irda_properties.DRAINAGE`), et la dizaine du code ecoforestier `cl_drai` plus un.
 
 La cle des depots du SIGEOM est celle de la collegue, cinq classes de permeabilite validees
 par un geologue du Quaternaire. Elle ne nomme pas tous les codes rencontres : les tills,
 alluvions, sediments marins et organiques a suffixe sont rattaches a leur famille dans
 `SIGEOM_EXTENSION`, a faire valider ; le roc et les codes restants restent vides.
 
-    .venv/Scripts/python.exe .runs/quebec/croiser_drainage.py mont slso slno outv gasp sagu
+    python -m meandre.adapters.physitel.builders.drainage_maps mont slso slno outv gasp sagu
 """
 import os
 import sys
@@ -27,8 +27,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
@@ -133,7 +131,7 @@ def rasteriser(gdf, colonne, transform, forme):
 
 def couche_irda(crs, emprise):
     import geopandas as gpd
-    from irda_proprietes import GPKG, proprietes_composantes, proprietes_polygones
+    from meandre.adapters.physitel.builders.irda_properties import GPKG, proprietes_composantes, proprietes_polygones
     props = proprietes_polygones(proprietes_composantes())[["Code_polygone", "drainage", "couv_drainage"]]
     geo = gpd.read_file(GPKG, layer="Couverture_pedologique", columns=["Code_polygone"], engine="pyogrio", bbox=emprise)
     poly = geo.merge(props, on="Code_polygone", how="inner").to_crs(crs)

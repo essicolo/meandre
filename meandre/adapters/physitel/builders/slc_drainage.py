@@ -12,7 +12,7 @@ pourcentage des composantes qui la portent ; la fraction couverte est portee a c
 valeur manquante n'est jamais comblee. Echelle de drainage : rang de 1 (tres rapidement) a
 7 (tres mal draine), la meme que le croisement IRDA et la carte hierarchique.
 
-    .venv/Scripts/python.exe .runs/quebec/croiser_slc.py mont slso slno outv gasp sagu
+    python -m meandre.adapters.physitel.builders.slc_drainage mont slso slno outv gasp sagu
 """
 import os
 import sys
@@ -22,7 +22,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths

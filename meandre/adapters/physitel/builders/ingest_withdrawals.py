@@ -15,14 +15,14 @@ La donnee EXISTE et couvre la province : .data/io-eau-meandre.parquet, 1 082 964
 2001-2024 au pas mensuel, lon -79.5 a -57.1, lat 45.0 a 53.8, avec IDTRONCON deja
 apparie. Seule l'ingestion vers les bases regionales n'avait jamais ete faite.
 
-  python .runs/quebec/ingest_withdrawals.py outv
-  python .runs/quebec/ingest_withdrawals.py toutes
+  python -m meandre.adapters.physitel.builders.ingest_withdrawals outv
+  python -m meandre.adapters.physitel.builders.ingest_withdrawals toutes
 """
+from pathlib import Path
 import os
 import sys
 
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.insert(0, os.getcwd())
+os.chdir(Path(__file__).resolve().parents[4])
 
 import duckdb
 import pandas as pd

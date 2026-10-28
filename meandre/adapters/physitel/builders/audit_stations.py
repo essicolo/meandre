@@ -21,7 +21,7 @@ façon systématique, sans autre réseau que celui de PHYSITEL :
 Sorties : `derives/auxiliaires/station-audit.csv` (une ligne par station) et
 `derives/auxiliaires/station-attachment.csv` (territory, station, reach_id, status), lu par le
 chargeur quand `[stations] attachment_table` le nomme.
-Usage : python .runs/quebec/audit_stations.py [territoire ...]
+Usage : python -m meandre.adapters.physitel.builders.audit_stations [territoire ...]
 """
 import os
 import re

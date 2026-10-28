@@ -18,7 +18,7 @@ La forme de la couche 3 se choisit par tronçon selon la classe de drainage. Les
 | `config/darcy-lateral.toml` | latéral de Darcy, percolation à seuil | R427, réfuté |
 | `config/drainage-class.toml` | forme par classe de drainage | R432, retenu |
 
-Les constructeurs de tables lues par la configuration restent dans `.runs/quebec` : `audit_stations.py` (rattachement des stations, R430) et `epaisseur_depots.py`.
+Les constructeurs de tables lues par la configuration sont dans l'adaptateur `meandre/adapters/physitel/builders/` : `audit_stations.py` (rattachement des stations, R430) et `deposit_thickness.py`.
 
 Le registre cite ces fichiers sous leurs premiers noms. Ils ont été renommés le 28 octobre pour suivre la règle des identifiants en anglais :
 

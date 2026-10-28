@@ -1506,7 +1506,7 @@ try:
     else:
         _cf.close()
         print("[etl] drapeaux CEHQ absents de la base "
-              "(lancer .runs/quebec/ingest_cehq_flags.py)")
+              "(lancer meandre/adapters/physitel/builders/ingest_cehq_flags.py)")
 except Exception as _efl:
     print(f"[etl] score sur jours mesures : impossible ({type(_efl).__name__}: {_efl})")
 

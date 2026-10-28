@@ -41,8 +41,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from meandre.adapters.physitel.physitel_loader import _parse_troncon
 from meandre.utils import paths as _paths
 
-import croiser_drainage as cd
-import croiser_slc as cs
+import meandre.adapters.physitel.builders.drainage_maps as cd
+import meandre.adapters.physitel.builders.slc_drainage as cs
 
 PLATE = os.environ.get("IRDA_PLATEFORME", "LN24HA")
 SORTIE = Path(f"{_paths.DATA_ROOT}/derives/reconstruction")
