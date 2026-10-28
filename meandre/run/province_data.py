@@ -395,15 +395,15 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
 
     ref = parts[0]["loss_fn"]
     _acceptes = set(_inspect.signature(HydroLoss.__init__).parameters)
-    _poids = {k: getattr(ref, k) for k in _acceptes if k.startswith("w_") and hasattr(ref, k)}
+    _weights = {k: getattr(ref, k) for k in _acceptes if k.startswith("w_") and hasattr(ref, k)}
     for p in parts[1:]:
-        _ecart = [k for k, v in _poids.items() if abs(float(getattr(p["loss_fn"], k, 0.0)) - float(v)) > 1e-12]
+        _ecart = [k for k, v in _weights.items() if abs(float(getattr(p["loss_fn"], k, 0.0)) - float(v)) > 1e-12]
         if _ecart:
             raise ValueError(f"{p['name']} : poids de perte differents du premier territoire : {_ecart}")
     if swe_mass_obs is None:
-        _poids["w_swe_mass"] = 0.0
+        _weights["w_swe_mass"] = 0.0
     loss_fn = HydroLoss(
-        **_poids, et_mode=lcfg.get("et_mode", "level"),
+        **_weights, et_mode=lcfg.get("et_mode", "level"),
         per_station=True, station_weights=None,
         station_var=torch.cat(st_var).to(device),
         peak_threshold=(torch.cat(st_peak).to(device)

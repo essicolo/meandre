@@ -855,20 +855,20 @@ class HydrotelColumn(nn.Module):
                 # fort de 30 a 40 %, pendant que le sol gele et que les berges se ferment. Le
                 # debit de reference k_b est multiplie par le facteur quand le gel atteint la
                 # couche de surface (30 cm), proportionnellement en dessous. Opt-in :
-                # `nappe_gel_facteur` absent, rien ne change.
+                # `water_table_frost_factor` absent, rien ne change.
                 # CONDUCTANCE SPATIALE (2026-10-15, R380). k_b etait une constante pour tout le
                 # Quebec : l'erreur d'etiage se partage entre stations trop hautes et trop
                 # basses dans chaque saison, et tout levier global la deplace sans la reduire.
-                # `nappe_kb_champ` = (reference en 1/j, exposant) : k_b est multiplie par
+                # `water_table_kb_field` = (reference en 1/j, exposant) : k_b est multiplie par
                 # (k_gw / reference)^exposant, k_gw etant le champ de recession par troncon
                 # (champ provincial des recessions observees, module par le reseau). La
                 # reference est fixe, pas une mediane du domaine, pour qu'un sous-domaine
                 # reproduise la province. Opt-in : absent, rien ne change.
-                _kbc = getattr(self, "nappe_kb_champ", None)
+                _kbc = getattr(self, "water_table_kb_field", None)
                 if _kbc is not None and self._static.get("k_gw") is not None:
                     _kg = self._static["k_gw"].to(pb.dtype)
                     _kb_t = _kb_t * (_kg / float(_kbc[0])) ** float(_kbc[1])
-                _frost_f = getattr(self, "nappe_gel_facteur", None)
+                _frost_f = getattr(self, "water_table_frost_factor", None)
                 if _frost_f is not None and diag.get("prof_gel_cm") is not None:
                     _w_frost = torch.clamp(diag["prof_gel_cm"] / 30.0, 0.0, 1.0).to(pb.dtype)
                     _kb_t = _kb_t * (1.0 - (1.0 - float(_frost_f)) * _w_frost)

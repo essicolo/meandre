@@ -17,10 +17,10 @@ import sys
 import random as _rnd
 import numpy as _npseed
 import torch as _tseed
-_GRAINE = int(os.environ.get("ETL_SEED", "1234"))
-_rnd.seed(_GRAINE); _npseed.random.seed(_GRAINE)
-_tseed.manual_seed(_GRAINE); _tseed.cuda.manual_seed_all(_GRAINE)
-print(f"[etl] graine = {_GRAINE}")
+_SEED = int(os.environ.get("ETL_SEED", "1234"))
+_rnd.seed(_SEED); _npseed.random.seed(_SEED)
+_tseed.manual_seed(_SEED); _tseed.cuda.manual_seed_all(_SEED)
+print(f"[etl] graine = {_SEED}")
 from dataclasses import replace as _dc_replace
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))   # racine du depot : meandre/run/pilot.py -> trois niveaux
 sys.path.insert(0, os.getcwd())
@@ -45,10 +45,10 @@ REG = os.environ.get("ETL_REGION", "gasp").lower()
 # DOMAINE (2026-10-13) : ETL_REGION accepte une liste separee par des virgules, ou `quebec` pour
 # les quatorze territoires. Les reseaux sont fondus en un seul domaine (`province_data.load_domain`)
 # et un seul champ spatial est appris pour tous ; REG devient le nom du domaine (ETL_DOMAINE_NOM).
-TERRITOIRES = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont", "outm", "outv", "sagu", "slno", "slso"]
-REGS = TERRITOIRES if REG == "quebec" else [x.strip() for x in REG.split(",") if x.strip()]
-DOMAINE = len(REGS) > 1 or os.environ.get("ETL_DOMAINE", "0") == "1"
-if DOMAINE:
+TERRITORIES = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont", "outm", "outv", "sagu", "slno", "slso"]
+REGS = TERRITORIES if REG == "quebec" else [x.strip() for x in REG.split(",") if x.strip()]
+DOMAIN = len(REGS) > 1 or os.environ.get("ETL_DOMAINE", "0") == "1"
+if DOMAIN:
     REG = os.environ.get("ETL_DOMAINE_NOM", "quebec").lower()
 N_EPOCHS = int(os.environ.get("ETL_EPOCHS", "12"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -82,23 +82,23 @@ cfg = tomllib.load(open(BASE_CFG, "rb"))
 # La recette du fichier est posee AVANT que le pilote ne lise quoi que ce soit. Ordre de
 # priorite : variable d'environnement, puis fichier, puis defaut du code.
 # [recette] : nom de la section d'avant le 2026-10-26, encore accepte.
-_posees = _apply_recipe(cfg.get("recipe") or cfg.get("recette"))
+_set_values = _apply_recipe(cfg.get("recipe") or cfg.get("recette"))
 # Reglages declares du paquet (meandre/utils/settings.py), lus dans les sections du fichier.
 from meandre.utils import settings as _settings
 # OBSERVABLES DECLARES (etape 4, 2026-10-26) : les sections [observations.*] se traduisent en
 # poids et modes de la perte, en un seul endroit verifie, AVANT la resolution des reglages.
 from meandre import observations as _obs
-cfg["loss"], cfg["training"], _obs_autres, _obs_msg = _obs.translate(cfg.get("observations"), cfg.get("loss") or {}, cfg.get("training") or {})
-for _sec, _kv in _obs_autres.items():
+cfg["loss"], cfg["training"], _other_observations, _obs_msg = _obs.translate(cfg.get("observations"), cfg.get("loss") or {}, cfg.get("training") or {})
+for _sec, _kv in _other_observations.items():
     for _k, _v in _kv.items():
         if (cfg.get(_sec) or {}).get(_k, _v) != _v:
             raise SystemExit(f"[observations] {_sec}.{_k} declare deux fois avec deux valeurs")
         cfg.setdefault(_sec, {})[_k] = _v
 for _m in _obs_msg:
     print(f"[observations] {_m}")
-_reglages_fichier = _settings.configure(cfg)
-if _reglages_fichier:
-    print(f"[reglages] {len(_reglages_fichier)} reglage(s) du paquet pris dans le fichier : {', '.join(_reglages_fichier)}")
+_file_settings = _settings.configure(cfg)
+if _file_settings:
+    print(f"[reglages] {len(_file_settings)} reglage(s) du paquet pris dans le fichier : {', '.join(_file_settings)}")
 # PÉRIODES DÉCLARÉES (2026-10-09, R355) : `[period]` fixe l'entraînement, la validation et
 # l'évaluation ; une variable d'environnement posée prime, comme pour [recette]. Motif : la
 # fenêtre 2022-2024 contient les deux pires étés des vingt-cinq ans en Montérégie ; juger une
@@ -110,9 +110,9 @@ if _per:
     if "eval_start" in _per and "ETL_HELDOUT" not in os.environ:
         os.environ["ETL_HELDOUT"] = f"{_per['eval_start']},{_per['eval_end']}"
     print(f"[etl] periodes declarees : decoupage {os.environ.get('JOINT_SPLIT', 'standard')} | evaluation {os.environ.get('ETL_HELDOUT', '2022-01-01,2024-12-31')}")
-if _posees:
-    print(f"[recette] {os.path.basename(BASE_CFG)} : {len(_posees)} reglage(s) pose(s) "
-          f"depuis le fichier : {', '.join(_posees)}")
+if _set_values:
+    print(f"[recette] {os.path.basename(BASE_CFG)} : {len(_set_values)} reglage(s) pose(s) "
+          f"depuis le fichier : {', '.join(_set_values)}")
 from meandre.training.loss import normalize_loss_section
 lcfg = normalize_loss_section(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
 if "ETL_WSNOW" in os.environ:
@@ -216,29 +216,29 @@ if "ETL_WET" in os.environ:
     lcfg["w_et"] = float(os.environ["ETL_WET"])
     print(f"[etl] w_et override = {lcfg['w_et']}")
 
-if DOMAINE:
+if DOMAIN:
     from meandre.run.province_data import load_domain
     _cd_table_d = str(((cfg.get("soil") or {}).get("ceiling_from_drainage") or {}).get("table", "")).replace("{DERIVES}", _paths.DERIVED_ROOT) or None
-    r = load_domain(REGS, lcfg, device=DEVICE, schema_names=TERRITOIRES, drainage_table=_cd_table_d)
+    r = load_domain(REGS, lcfg, device=DEVICE, schema_names=TERRITORIES, drainage_table=_cd_table_d)
 else:
     _cd_table = str(((cfg.get("soil") or {}).get("ceiling_from_drainage") or {}).get("table", "")).replace("{DERIVES}", _paths.DERIVED_ROOT) or None
     r = load_region(REG, lcfg, device=DEVICE, drainage_table=_cd_table)
-    _manque = _obs.missing(cfg.get("observations"), r["domain"].observations)
-    if _manque:
-        raise SystemExit("[observations] " + " ; ".join(_manque))
+    _missing = _obs.missing(cfg.get("observations"), r["domain"].observations)
+    if _missing:
+        raise SystemExit("[observations] " + " ; ".join(_missing))
 td, vd = r["train_data"], r["val_data"]
 n_nodes = r["n_nodes"]
 
 
-def _territoires():
+def _territories():
     """(nom, identifiants locaux des troncons, decalage, taille) de chaque territoire."""
-    if DOMAINE:
+    if DOMAIN:
         return r["parts_meta"]
     return [(REG, r["node_ids"], 0, n_nodes)]
 print(f"[etl] {REG}: {n_nodes} nœuds, {r['n_gauges']} jauges")
 
 _ETP_FORMULE = os.environ.get("ETL_ETP") or str((cfg.get("et") or {}).get("formula") or "")
-if DOMAINE:
+if DOMAIN:
     if _ETP_FORMULE != "penman":
         raise SystemExit(f"domaine : seule l'ETP de Penman est prise en charge (ETP {_ETP_FORMULE!r})")
     f7 = td.forcing
@@ -311,10 +311,10 @@ else:
 # Rappel : pour que la renaturalisation ait un sens, le modele doit avoir ete CALE
 # AVEC les prelevements. Sinon ses parametres les ont absorbes et les mettre a zero ne
 # renaturalise rien.
-_SANS_PRELEV = os.environ.get("ETL_SANS_PRELEV", "0") == "1"
+_NO_WITHDRAWALS = os.environ.get("ETL_SANS_PRELEV", "0") == "1"
 
 
-def _sans_prelev(d):
+def _no_withdrawals(d):
     """Retourne une copie de d dont les prelevements sont nuls."""
     from meandre.routing.withdrawals import WithdrawalData
     return _dc_replace(d, withdrawals=WithdrawalData.zeros_like(d.withdrawals))
@@ -330,8 +330,8 @@ def with_forcing(d):
 
 
 td, vd = with_forcing(td), with_forcing(vd)
-if _SANS_PRELEV:
-    td, vd = _sans_prelev(td), _sans_prelev(vd)
+if _NO_WITHDRAWALS:
+    td, vd = _no_withdrawals(td), _no_withdrawals(vd)
     print("[etl] PRELEVEMENTS ET REJETS MIS A ZERO (renaturalisation)")
 else:
     _wsum = float(td.withdrawals.net.abs().sum()) if hasattr(td.withdrawals, "net") else None
@@ -417,12 +417,12 @@ model.spatial_encoder.init_from_literature(lp)
 # (une seule, LN24HA) et MG = McGuinness (les cinq autres). Notre socle etait ancre sur
 # LN24HA, la seule Linacre et la MOINS BONNE des six (0.7531 contre 0.8299 pour MG24HK).
 # ETL_MEMBRE choisit la plateforme ; l'ETP suit automatiquement sa formule.
-_MEMBRE = os.environ.get("ETL_MEMBRE", "LN24HA")
+_MEMBER = os.environ.get("ETL_MEMBRE", "LN24HA")
 _PLATB = f"{_paths.PLATFORMS_ROOT}"
-_PROJ_M = f"{_PLATB}/{_MEMBRE}/{REG.upper()}_{_MEMBRE}_2020"
-if _MEMBRE != "LN24HA":
+_PROJ_M = f"{_PLATB}/{_MEMBER}/{REG.upper()}_{_MEMBER}_2020"
+if _MEMBER != "LN24HA":
     os.environ.setdefault("ETL_MELT_DIR", _PROJ_M)
-    print(f"[etl] plateforme d'ancrage : {_MEMBRE} ({_PROJ_M.split('/')[-1]})")
+    print(f"[etl] plateforme d'ancrage : {_MEMBER} ({_PROJ_M.split('/')[-1]})")
 
 if _settings.raw("groundwater.krec_prior") is not None:
     # Deplace la CIBLE d'ancrage du champ krec (banc G4-G6 : la phase GRACE se repare
@@ -437,7 +437,7 @@ if _settings.raw("groundwater.water_table", "0") == "1":
     # reservoir lineaire ne peut pas tenir ensemble les 0,93 m de battement mesures et un
     # maximum un mois apres la fonte, et que l'extraction depuis la zone saturee est le
     # seul mecanisme qui creuse l'etiage estival de la nappe.
-    def _exposant_de_nappe():
+    def _water_table_exponent():
         """Exposant de vidange : valeur posee, ou MESUREE sur les hydrogrammes du territoire.
 
         `ETL_NAPPE_EXP=mesure` declenche l'ancrage. Il a ete etabli le 2026-09-20 qu'aucune
@@ -448,16 +448,16 @@ if _settings.raw("groundwater.water_table", "0") == "1":
         fonte entrent deja par la loi des ancrages. Mesures du 2026-09-21 : 1,36 en Monteregie
         drainee, 2,06 au Saint-Laurent sud-ouest, 4,65 en Outaouais.
         """
-        brut = _settings.raw("groundwater.exponent", "2.0")
-        if brut.lower() not in ("mesure", "mesuré", "ancrage"):
-            return float(brut)
+        raw_value = _settings.raw("groundwater.exponent", "2.0")
+        if raw_value.lower() not in ("mesure", "mesuré", "ancrage"):
+            return float(raw_value)
         from meandre.data.recession_anchor import ancrage as _ancrage
 
         a = _ancrage(td.q_obs.detach().cpu().numpy())
-        etat = "" if a.fiable else " (PEU DE STATIONS, defaut de Boussinesq conserve)"
+        state_label = "" if a.fiable else " (PEU DE STATIONS, defaut de Boussinesq conserve)"
         print(f"[etl] exposant de nappe MESURE sur {a.n_stations} stations : "
               f"{a.exposant_stock:.2f} (recession b = {a.exposant_recession:.2f}, "
-              f"quartiles {a.etendue[0]:.2f} a {a.etendue[1]:.2f}){etat}")
+              f"quartiles {a.etendue[0]:.2f} a {a.etendue[1]:.2f}){state_label}")
         return a.exposant_stock if a.fiable else 2.0
 
     _np = dict(sy=float(_settings.raw("groundwater.specific_yield", 0.05)),
@@ -466,17 +466,17 @@ if _settings.raw("groundwater.water_table", "0") == "1":
                h_ref=float(_settings.raw("groundwater.reference_head_m", 4.0)),
                e_frac=float(_settings.raw("groundwater.extraction_fraction", 0.35)),
                z_ext=float(_settings.raw("groundwater.extinction_depth_m", 9.0)),
-               exponent=_exposant_de_nappe())
+               exponent=_water_table_exponent())
     model.vertical_column.enable_free_water_table(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
     if _settings.raw("groundwater.frost_factor") is not None:
         # Porte de gel sur la vidange de la nappe (R316) : facteur quand le gel atteint 30 cm.
-        model.vertical_column.nappe_gel_facteur = float(_settings.raw("groundwater.frost_factor"))
+        model.vertical_column.water_table_frost_factor = float(_settings.raw("groundwater.frost_factor"))
         print(f"[etl] porte de gel sur la nappe : facteur {_settings.raw("groundwater.frost_factor")}")
     if _settings.raw("groundwater.conductance_field") is not None:
         # Conductance de la nappe par troncon (R380) : « reference_1/j,exposant », k_b x (k_gw/reference)^exposant.
         _ref, _ex = (float(x) for x in _settings.raw("groundwater.conductance_field").split(","))
-        model.vertical_column.nappe_kb_champ = (_ref, _ex)
+        model.vertical_column.water_table_kb_field = (_ref, _ex)
         print(f"[etl] conductance de la nappe par troncon : k_b x (k_gw / {_ref:g})^{_ex:g}")
 # PROFIL DE SOL DECLARE (2026-09-20). Une section `[soil]` du TOML remplace les variables
 # d'environnement ci-dessous, qui etaient dix-sept a s'etre accumulees. Elle est COMPLETE :
@@ -548,7 +548,7 @@ if _etp_choix == "mcguinness":
     _cmg = _lmg(_PROJ_M, r["node_ids"], device=DEVICE)
     model.vertical_column.set_mcguinness_coeff(_cmg)
     model.vertical_column.etp_channel = None
-    print(f"[etl] ETP : McGuinness CALÉE de {_MEMBRE} "
+    print(f"[etl] ETP : McGuinness CALÉE de {_MEMBER} "
           f"(coefficient méd {float(_cmg.median()):.3f})" if _cmg is not None
           else "[etl] ETP : McGuinness SANS coefficient (fichier absent)")
 elif _etp_choix == "penman":
@@ -619,24 +619,24 @@ if _settings.raw("spatial.init_from_hydrotel", "0") in ("1", "courbe", "sauf_ks"
             # AVANT ce correctif, donc avec krec IMPOSÉ. On revient au comportement qui
             # tient le record, et la libération devient EXPLICITE (ETL_KREC_LIBRE=1),
             # à n'utiliser qu'avec une valeur choisie et gelée (ETL_KREC + ETL_KREC_GEL).
-            _aq_actif = _settings.raw("groundwater.free_recession", "0") == "1"
+            _aq_active = _settings.raw("groundwater.free_recession", "0") == "1"
             # Tout imposer SAUF ce qu'on veut laisser apprendre (conductivités et
             # porosités). Sert à localiser les 0.145 qui séparent le sol entièrement
             # imposé (0.7368) du champ ajusté avec la seule courbe (0.5921) : épaisseurs,
             # fractions de surface, pente et recharge sont les candidats restants.
             # La règle est dans imposed_retention_curve() pour que les diagnostics
             # appliquent EXACTEMENT la même (ils en divergeaient, cf. sa docstring).
-            _courbe = imposed_retention_curve(_cs, _aq_actif)
+            _curve = imposed_retention_curve(_cs, _aq_active)
         else:
-            _courbe = {k: v for k, v in _cs.items()
+            _curve = {k: v for k, v in _cs.items()
                        if k.startswith(("b", "psis", "omegpi", "mm", "nn"))
                        or k in ("krec", "cin", "coef_recharge")}
-        model.vertical_column.set_calibrated_soil(_courbe)
-        print(f"[etl] courbe de rétention imposée PAR NŒUD ({len(_courbe)} champs) ; "
+        model.vertical_column.set_calibrated_soil(_curve)
+        print(f"[etl] courbe de rétention imposée PAR NŒUD ({len(_curve)} champs) ; "
               f"K_sat, porosités et épaisseurs restent au champ appris")
     import math as _mh2
-    def _inv_sig(v, bornes):
-        _x = min(max((float(v) - bornes[0]) / (bornes[1] - bornes[0]), 1e-6), 1 - 1e-6)
+    def _inv_sig(v, bounds):
+        _x = min(max((float(v) - bounds[0]) / (bounds[1] - bounds[0]), 1e-6), 1 - 1e-6)
         return _mh2.log(_x / (1.0 - _x))
     _vc = model.vertical_column
     with torch.no_grad():
@@ -763,15 +763,15 @@ if "ETL_MELT_DIR" in os.environ:
 # humide : tout le Québec en classe DÉCOUVERT (la plus fondante), fse=fsi=0, et une
 # phénologie unique. Mesuré sur OUTV à intrants identiques et paramètres figés :
 # r réseau 0.526 -> 0.896, KGE aux jauges 0.482 -> 0.749.
-_plat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
-_pl = os.environ.get("ETL_MELT_DIR") or f"{_plat}/{REG.upper()}_LN24HA_2020"
+_flat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
+_pl = os.environ.get("ETL_MELT_DIR") or f"{_flat}/{REG.upper()}_LN24HA_2020"
 try:
     from meandre.adapters.physitel.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
                                              load_phenologie)
     _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
-    if DOMAINE or "ETL_MELT_DIR" in os.environ:
+    if DOMAIN or "ETL_MELT_DIR" in os.environ:
         # Province, ou plateforme d'ancrage imposee : lecture directe du projet (chemin historique).
-        _all = r["land_cover"] if DOMAINE else {**load_occupation_sol(_pl, r["node_ids"], device=DEVICE), **load_milieux_humides(_pl, r["node_ids"], device=DEVICE)}
+        _all = r["land_cover"] if DOMAIN else {**load_occupation_sol(_pl, r["node_ids"], device=DEVICE), **load_milieux_humides(_pl, r["node_ids"], device=DEVICE)}
     else:
         # Territoire seul : l'occupation vient du domaine (adaptateur PHYSITEL, 2026-10-26).
         _all = r["domain"].land_cover or {}
@@ -780,7 +780,7 @@ try:
     _lc.update(_mh)
     model.vertical_column.set_land_cover(_lc)
     # En domaine, le calendrier du premier projet : ceux des projets ne different que d'un jour.
-    _ph = r["phenology"] if DOMAINE else (load_phenologie(_pl) if "ETL_MELT_DIR" in os.environ else r["domain"].phenology)
+    _ph = r["phenology"] if DOMAIN else (load_phenologie(_pl) if "ETL_MELT_DIR" in os.environ else r["domain"].phenology)
     model.vertical_column.set_phenology(_ph or None)
     if _ph:
         print(f"[etl] phénologie du projet : {len(_ph)} classes "
@@ -805,7 +805,7 @@ except Exception as _e:
 # La pièce vit dans recette.py pour que les DIAGNOSTICS l'appliquent aussi : ils ne
 # le faisaient pas, et le champion y ressortait à 0.7591 au lieu de 0.7880.
 from meandre.run.execution_pieces import set_lake_area_from_hydrolakes
-if not DOMAINE:
+if not DOMAIN:
     set_lake_area_from_hydrolakes(model, REG, td.territorial.get_physical("area_km2_local"), n_nodes)
     _lm = model._lake_area_km2[td.graph.is_lake.bool().cpu()]
     print(f"[etl] surface de lac : med {float(_lm.median()):.2f} km2")
@@ -917,10 +917,10 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
 # n'apprenne plus a compenser l'etalement manquant.
 from meandre.adapters.physitel.hgm_loader import lire_hgm
 _projh = _PROJ_M
-if _MEMBRE == "LN24HA" and r["domain"].hgm_kernel is not None:
+if _MEMBER == "LN24HA" and r["domain"].hgm_kernel is not None:
     _K = r["domain"].hgm_kernel
-elif DOMAINE:
-    _Ks = [lire_hgm(f"{_PLATB}/{_MEMBRE}/{_nom.upper()}_{_MEMBRE}_2020", _ids) for _nom, _ids, _o, _n in _territoires()]
+elif DOMAIN:
+    _Ks = [lire_hgm(f"{_PLATB}/{_MEMBER}/{_nom.upper()}_{_MEMBER}_2020", _ids) for _nom, _ids, _o, _n in _territories()]
     _L = max(k.shape[1] for k in _Ks)
     _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
 elif False:
@@ -939,7 +939,7 @@ print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={
 from pathlib import Path as _Pl
 import numpy as _npl
 _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
-for _nom, _ids, _o, _n in _territoires():
+for _nom, _ids, _o, _n in _territories():
     if r["domain"].lake_geometry is not None:
         _lg = r["domain"].lake_geometry
         _surf[:], _c[:], _k[:] = _lg["area_km2"].numpy(), _lg["k"].numpy(), _lg["beta"].numpy()
@@ -958,8 +958,8 @@ for _nom, _ids, _o, _n in _territoires():
     for _tid, (_s2, _c2, _k2) in _dl.items():
         if _tid in _idxl:
             _surf[_idxl[_tid]], _c[_idxl[_tid]], _k[_idxl[_tid]] = _s2, _c2, _k2
-_lacb = td.graph.is_lake.bool().cpu().numpy()
-_cv = _npl.isfinite(_surf) & _lacb & (_surf > 0)
+_lake_b = td.graph.is_lake.bool().cpu().numpy()
+_cv = _npl.isfinite(_surf) & _lake_b & (_surf > 0)
 _cvt = torch.tensor(_cv, device=DEVICE)
 _ktl = torch.tensor(_npl.nan_to_num(_npl.where(_cv, _c / _npl.clip(_surf*1e6, 1, None), _npl.nan), nan=1e-4),
                     dtype=torch.float32, device=DEVICE)
@@ -970,7 +970,7 @@ def _lp_trl(*a, _o=_olp, **kw):
     return torch.where(_cvt, _ktl, kk3), torch.where(_cvt, _btl, bb3)
 model.spatial_encoder.lake_params = _lp_trl
 model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
-print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lacb.sum())} | "
+print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lake_b.sum())} | "
       f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
 if _settings.raw("evaporation.open_water", "0") == "1":
     # EVAPORATION DE L'EAU LIBRE PAR TEMPS SEC (2026-10-04, registre R285) : la colonne
@@ -1006,8 +1006,8 @@ if _settings.get("spatial.priors"):
         print(f"[etl] prior de K_sat_3 centre sur le substratum : mediane {np.median(_k3_center) * 1000:.2f} mm/j")
     _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m, k_sat_3_center_m_per_day=_k3_center)
     _start_at_center = tuple(k for k in (_settings.get("priors.start_at_center") or "").replace(" ", "").split(",") if k)
-    _porte = any(k.startswith("spatial_encoder._pr_o_") for k in torch.load(os.environ["ETL_WARM_FROM"], map_location="cpu")["state_dict"]) if "ETL_WARM_FROM" in os.environ else False
-    if _porte:
+    _gate = any(k.startswith("spatial_encoder._pr_o_") for k in torch.load(os.environ["ETL_WARM_FROM"], map_location="cpu")["state_dict"]) if "ETL_WARM_FROM" in os.environ else False
+    if _gate:
         for _k, (_c, _s) in _pri.items():
             model.spatial_encoder.set_prior(_k, _c, _s)
         model.load(os.environ["ETL_WARM_FROM"])
@@ -1126,7 +1126,7 @@ tconf = TrainingConfig(
 # On imprime le poids ET la presence de la cible, cote a cote.
 _lf = r["loss_fn"]
 print("[etl] contraintes auxiliaires effectives :")
-for _nom, _poids, _cible in (
+for _nom, _weights, _target in (
         ("MODIS ET (MOD16)", getattr(_lf, "w_et", 0.0), td.et_obs),
         ("  mode ET", getattr(_lf, "et_mode", "?"), None),
         ("MODIS couverture nivale", getattr(_lf, "w_snow", 0.0), td.swe_obs),
@@ -1135,20 +1135,20 @@ for _nom, _poids, _cible in (
         ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs),
         ("Niveaux de nappe mesures", getattr(_lf, "w_water_table", 0.0), td.water_table_obs)):
     if _nom == "  mode ET":
-        print(f"        {_nom:<26s} {_poids}")
+        print(f"        {_nom:<26s} {_weights}")
         continue
-    _etat = ("ACTIVE" if (_poids > 0 and _cible is not None)
-             else "eteinte" if _poids == 0 else "POIDS SANS CIBLE")
-    print(f"        {_nom:<26s} poids {_poids:<6g} cible "
-          f"{'presente' if _cible is not None else 'ABSENTE':<9s} -> {_etat}")
+    _state = ("ACTIVE" if (_weights > 0 and _target is not None)
+             else "eteinte" if _weights == 0 else "POIDS SANS CIBLE")
+    print(f"        {_nom:<26s} poids {_weights:<6g} cible "
+          f"{'presente' if _target is not None else 'ABSENTE':<9s} -> {_state}")
 
 if os.environ.get("ETL_QUANTILE", "0") == "1":
     # GEL DU SOCLE : tout sauf la tete quantile. La mediane reste exactement le Q_sim
     # du point de reprise charge par ETL_WARM_FROM ; seule l'enveloppe s'apprend.
-    _libres = 0
+    _free = 0
     for _nom, _p in model.named_parameters():
         if "quantile_head" in _nom:
-            _p.requires_grad = True; _libres += _p.numel()
+            _p.requires_grad = True; _free += _p.numel()
         else:
             _p.requires_grad = False
     r["loss_fn"].w_quantile = 1.0
@@ -1170,7 +1170,7 @@ if os.environ.get("ETL_QUANTILE", "0") == "1":
     tconf.eta_min_factor = 1.0
     tconf.warmup_epochs = 0
     print("[etl] phase quantile : taux d'apprentissage constant, sans montee progressive")
-    print(f"[etl] PHASE QUANTILE : socle gele, {_libres:,} parametres libres "
+    print(f"[etl] PHASE QUANTILE : socle gele, {_free:,} parametres libres "
           f"(tete K=6), best_metric nll, pertes de debit a zero")
 
 # DIAGNOSTICS A RETENIR POUR LE GRADIENT. Un diagnostic rattache au graphe coute la memoire
@@ -1181,7 +1181,7 @@ if os.environ.get("ETL_QUANTILE", "0") == "1":
 # le diagnostic du souterrain n'etait pas retenu, et le terme des puits tournait sans
 # gradient. La garde du trainer l'a signale ; la source de verite doit etre la meme des deux
 # cotes (2026-09-22).
-def _poids(nom):
+def _weights(nom):
     # L'objet de perte prime DES LORS qu'il porte l'attribut, y compris a zero : le pilote
     # peut eteindre un terme que la configuration allumait, et un repli sur la configuration
     # le rallumerait en douce.
@@ -1189,15 +1189,15 @@ def _poids(nom):
     return float(v if v is not None else lcfg.get(nom, 0.0) or 0.0)
 
 
-_besoins = {"etr": _poids("w_et"),
-            "swe": _poids("w_snow") or _poids("w_swe_mass"),
-            "s_gw": _poids("w_water_table") or _poids("w_tws"),
-            "profondeur_nappe_m": _poids("w_water_table"),
-            "theta1": _poids("w_tws"), "theta2": _poids("w_tws"),
-            "theta3": _poids("w_tws")}
-_garde = sorted(k for k, v in _besoins.items() if float(v or 0.0) > 0.0)
-_settings.override("diagnostics.retained", ",".join(_garde), force=True)
-print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
+_needs = {"etr": _weights("w_et"),
+            "swe": _weights("w_snow") or _weights("w_swe_mass"),
+            "s_gw": _weights("w_water_table") or _weights("w_tws"),
+            "profondeur_nappe_m": _weights("w_water_table"),
+            "theta1": _weights("w_tws"), "theta2": _weights("w_tws"),
+            "theta3": _weights("w_tws")}
+_guard = sorted(k for k, v in _needs.items() if float(v or 0.0) > 0.0)
+_settings.override("diagnostics.retained", ",".join(_guard), force=True)
+print(f"[etl] diagnostics retenus pour le gradient : {_guard or 'aucun'}")
 
 # BANC DE SENSIBILITE. Le pilote appelle le banc plutot que l'inverse : il lit
 # soixante-dix-neuf variables d'environnement et c'est lui qui definit le modele, si bien
@@ -1222,8 +1222,8 @@ if os.environ.get("MEANDRE_SONDE_CONFLIT") == "1":
 if os.environ.get("MEANDRE_SENSIBILITE") == "1":
     from importlib.machinery import SourceFileLoader as _SFL
 
-    _banc = _SFL("sensibilite", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "probes", "sensitivity.py")).load_module()
-    _banc.mesurer(model, td, r["times"], DEVICE,
+    _bench = _SFL("sensibilite", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "probes", "sensitivity.py")).load_module()
+    _bench.mesurer(model, td, r["times"], DEVICE,
                   jours=int(os.environ.get("MEANDRE_SENSIBILITE_JOURS", "365")),
                   sortie=os.environ.get("MEANDRE_SENSIBILITE_SORTIE"))
     sys.stdout.flush()
@@ -1256,7 +1256,7 @@ if os.environ.get("MEANDRE_SONDE_DOMAINE"):
         _kl, _bl = model.spatial_encoder.lake_params(td.node_coords, td.territorial.to_tensor())
     _sd["k_lake"], _sd["beta_lake"] = _np(_kl), _np(_bl)
     _sd["k_gw"] = _np(_sp0.k_gw)
-    _sd["territoires"] = np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territoires()])
+    _sd["territoires"] = np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territories()])
     np.savez(os.environ["MEANDRE_SONDE_DOMAINE"], **_sd)
     print(f"[sonde-domaine] {len(_sd)} grandeurs ecrites dans {os.environ['MEANDRE_SONDE_DOMAINE']}")
     sys.stdout.flush()
@@ -1272,18 +1272,18 @@ if os.environ.get("MEANDRE_CHAMP_EXPORT"):
     _ex = {"brut": model.spatial_encoder.last_raw.float().cpu().numpy(),
            "coords": td.node_coords.float().cpu().numpy(),
            "territorial": td.territorial.to_tensor().float().cpu().numpy(),
-           "territoires": np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territoires()])}
-    for _n, _ids, _o, _t in _territoires():
+           "territoires": np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territories()])}
+    for _n, _ids, _o, _t in _territories():
         _ex[f"ids_{_n}"] = np.asarray(_ids)
     np.savez(os.environ["MEANDRE_CHAMP_EXPORT"], **_ex)
     print(f"[champ] sortie brute {_ex['brut'].shape} ecrite dans {os.environ['MEANDRE_CHAMP_EXPORT']}")
     sys.stdout.flush()
     os._exit(0)
 if os.environ.get("MEANDRE_SONDE_CONFLIT"):
-    model.spatial_encoder.capture_brut = True
+    model.spatial_encoder.capture_raw = True
 if os.environ.get("MEANDRE_CHAMP_IMPOSE"):
-    model.spatial_encoder.brut_impose = torch.from_numpy(np.load(os.environ["MEANDRE_CHAMP_IMPOSE"])).to(DEVICE)
-    print(f"[champ] sortie brute IMPOSEE depuis {os.environ['MEANDRE_CHAMP_IMPOSE']} {tuple(model.spatial_encoder.brut_impose.shape)}")
+    model.spatial_encoder.raw_imposed = torch.from_numpy(np.load(os.environ["MEANDRE_CHAMP_IMPOSE"])).to(DEVICE)
+    print(f"[champ] sortie brute IMPOSEE depuis {os.environ['MEANDRE_CHAMP_IMPOSE']} {tuple(model.spatial_encoder.raw_imposed.shape)}")
 
 tr = Trainer(model=model, loss_fn=r["loss_fn"], train_data=td, val_data=vd,
              config=tconf, run_name=f"{REG}-etl", checkpoint_path=CKPT)
@@ -1311,19 +1311,19 @@ model.eval()
 # releves CanSWE. La comparaison vit ICI, dans le pilote, et non dans un script annexe :
 # les diagnostics qui vivaient a cote ont fini par mesurer un autre modele que le
 # champion (fevrier annonce a 0.688 alors qu'il vaut 0.896).
-_VEUT_NEIGE = os.environ.get("ETL_CMP_NEIGE", "0") == "1"
+_WANTS_DIAGNOSTICS = os.environ.get("ETL_CMP_NEIGE", "0") == "1"
 # Le cache de carte a besoin des memes diagnostics pour la recharge et l'ETR
 # (2026-09-06 : la premiere serie de caches est sortie sans eux, faute de cette ligne).
 # ETL_DUMP_REACH_DIAG=0 les retire : sur le Quebec entier et 25 ans, les diagnostics
 # journaliers de 27 834 troncons depassent 29 Go de memoire vive (2026-10-19). Le cache
 # garde alors debits, parametres et prelevements, sans les flux verticaux.
-_VEUT_NEIGE = _VEUT_NEIGE or (bool(os.environ.get("ETL_DUMP_REACH"))
+_WANTS_DIAGNOSTICS = _WANTS_DIAGNOSTICS or (bool(os.environ.get("ETL_DUMP_REACH"))
                               and os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "1")
 # ETL_DUMP_STATIONS demande les diagnostics pour lui aussi (2026-10-23) : le chemin rapide
 # ne se lit pas dans le debit, il se lit dans la part de surface et la part laterale.
-_VEUT_NEIGE = _VEUT_NEIGE or bool(os.environ.get("ETL_DUMP_STATIONS"))
+_WANTS_DIAGNOSTICS = _WANTS_DIAGNOSTICS or bool(os.environ.get("ETL_DUMP_STATIONS"))
 with torch.no_grad():
-    if _VEUT_NEIGE:
+    if _WANTS_DIAGNOSTICS:
         Q, _, _DIAG = model.simulate(
             forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
             graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
@@ -1359,40 +1359,40 @@ print(f"\n[etl] HELD-OUT {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG}: n={len
 # perte, mêmes termes de débit et mêmes poids que la validation, jamais sur le KGE.
 from meandre.training import loss as _lmod
 _lf = r["loss_fn"]
-_termes_ho = {"kge": (_lf.w_kge, _lmod.differentiable_kge_loss), "pbias": (_lf.w_pbias, _lmod.differentiable_pbias_loss),
+_terms_ho = {"kge": (_lf.w_kge, _lmod.differentiable_kge_loss), "pbias": (_lf.w_pbias, _lmod.differentiable_pbias_loss),
               "log_mse": (getattr(_lf, "w_log_mse", 0.0), _lmod.differentiable_log_mse_loss),
               "etiage": (getattr(_lf, "w_low_flow", 0.0), _lmod.differentiable_low_flow_loss),
               "fdc_bas": (getattr(_lf, "w_fdc_low", 0.0), _lmod.differentiable_fdc_low_loss)}
-_som_ho = {k: [] for k, (w, _) in _termes_ho.items() if w > 0}
-_noeud_ho = []
-_st_noeuds = td.station_idx.cpu().numpy()
+_sum_ho = {k: [] for k, (w, _) in _terms_ho.items() if w > 0}
+_node_ho = []
+_st_nodes = td.station_idx.cpu().numpy()
 for s in range(Qs.shape[1]):
     v = ~torch.isnan(qo_test[:, s]) & ~torch.isnan(Qs[:, s])
     if v.sum() < 60: continue
-    _noeud_ho.append(int(_st_noeuds[s]))
-    for k in _som_ho:
-        w, f = _termes_ho[k]
-        _som_ho[k].append(w * float(f(qo_test[v, s].float(), Qs[v, s].float())))
-_tot_ho = sum(np.mean(x) for x in _som_ho.values())
+    _node_ho.append(int(_st_nodes[s]))
+    for k in _sum_ho:
+        w, f = _terms_ho[k]
+        _sum_ho[k].append(w * float(f(qo_test[v, s].float(), Qs[v, s].float())))
+_tot_ho = sum(np.mean(x) for x in _sum_ho.values())
 print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG} (termes de debit ponderes, moyenne des stations) : total {_tot_ho:.4f} | "
-      + " | ".join(f"{k} {np.mean(x):.4f}" for k, x in _som_ho.items()))
+      + " | ".join(f"{k} {np.mean(x):.4f}" for k, x in _sum_ho.items()))
 # En mode domaine, la meme perte par territoire, sur ses seules stations, pour la comparer
 # aux modeles territoriaux.
-if DOMAINE:
-    _noeud_ho = np.array(_noeud_ho)
-    for _nom, _, _o, _n in _territoires():
-        _m = (_noeud_ho >= _o) & (_noeud_ho < _o + _n)
+if DOMAIN:
+    _node_ho = np.array(_node_ho)
+    for _nom, _, _o, _n in _territories():
+        _m = (_node_ho >= _o) & (_node_ho < _o + _n)
         if not _m.any():
             print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_nom} : aucune station evaluable")
             continue
-        _parts = {k: float(np.mean(np.array(x)[_m])) for k, x in _som_ho.items()}
+        _parts = {k: float(np.mean(np.array(x)[_m])) for k, x in _sum_ho.items()}
         print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_nom} ({int(_m.sum())} stations) : total {sum(_parts.values()):.4f} | "
               + " | ".join(f"{k} {v:.4f}" for k, v in _parts.items()))
 # PAR ANNÉE DE LA FENÊTRE (2026-10-09, R355) : KGE médian des stations et rapport simulé sur
 # observé de juillet-août, année par année, pour qu'un verdict ne repose pas sur un été.
 import pandas as _pdho
 _idx_ho = _pdho.DatetimeIndex(np.asarray(times)[np.asarray(sl)])
-_ann, _mois_ho = _idx_ho.year.to_numpy(), _idx_ho.month.to_numpy()
+_ann, _month_ho = _idx_ho.year.to_numpy(), _idx_ho.month.to_numpy()
 _lig = []
 for _a in sorted(set(_ann)):
     _ka, _ea = [], []
@@ -1401,7 +1401,7 @@ for _a in sorted(set(_ann)):
         _m = torch.tensor(_ann == _a) & _ok
         if _m.sum() >= 120:
             _ka.append(float(kge_fn(qo_test[_m, s], Qs[_m, s])))
-        _me = torch.tensor((_ann == _a) & np.isin(_mois_ho, (7, 8))) & _ok
+        _me = torch.tensor((_ann == _a) & np.isin(_month_ho, (7, 8))) & _ok
         if _me.sum() >= 40 and float(qo_test[_me, s].mean()) > 0:
             _ea.append(float(Qs[_me, s].mean() / qo_test[_me, s].mean()))
     if _ka:
@@ -1419,8 +1419,8 @@ print(f"[etl] PAR ANNEE {REG} (mediane des stations ; ete = juillet-aout sim/obs
 # simulee depasse le double de l'observee ou si une suite plate depasse 30 jours.
 import pandas as _pd
 _tsl = _pd.DatetimeIndex(np.asarray(times)[np.asarray(sl)])
-_mois, _an = _tsl.month.to_numpy(), _tsl.year.to_numpy()
-_f_plat, _f_plat_o, _f_ete, _f_ete_o, _f_suite, _f_pic, _f_q99 = [], [], [], [], [], [], []
+_month, _an = _tsl.month.to_numpy(), _tsl.year.to_numpy()
+_f_flat, _f_flat_o, _f_summer, _f_summer_o, _f_next, _f_peak, _f_q99 = [], [], [], [], [], [], []
 for s in range(Qs.shape[1]):
     _o = qo_test[:, s].numpy().astype(float)
     _s = Qs[:, s].numpy().astype(float)
@@ -1430,30 +1430,30 @@ for s in range(Qs.shape[1]):
     _ps = np.abs(np.diff(_s)) / np.maximum(_s[:-1], 1e-9) < 0.01
     _po = np.abs(np.diff(_o)) / np.maximum(_o[:-1], 1e-9) < 0.01
     _mm = _m[:-1] & _m[1:]
-    _ete = np.isin(_mois[:-1], (6, 7, 8, 9)) & _mm
-    _f_plat.append(_ps[_mm].mean()); _f_plat_o.append(_po[_mm].mean())
+    _ete = np.isin(_month[:-1], (6, 7, 8, 9)) & _mm
+    _f_flat.append(_ps[_mm].mean()); _f_flat_o.append(_po[_mm].mean())
     if _ete.any():
-        _f_ete.append(_ps[_ete].mean()); _f_ete_o.append(_po[_ete].mean())
+        _f_summer.append(_ps[_ete].mean()); _f_summer_o.append(_po[_ete].mean())
     _n = _mx = 0
     for _c in _ps[_mm]:
         _n = _n + 1 if _c else 0
         _mx = max(_mx, _n)
-    _f_suite.append(_mx)
-    _pics = [np.nanmax(_s[_m & (_an == a)]) / np.nanmax(_o[_m & (_an == a)])
+    _f_next.append(_mx)
+    _peaks = [np.nanmax(_s[_m & (_an == a)]) / np.nanmax(_o[_m & (_an == a)])
              for a in np.unique(_an[_m]) if (_m & (_an == a)).sum() > 300 and np.nanmax(_o[_m & (_an == a)]) > 0]
-    if _pics:
-        _f_pic.append(np.median(_pics))
+    if _peaks:
+        _f_peak.append(np.median(_peaks))
     _f_q99.append(np.nanquantile(_s[_m], 0.99) / max(np.nanquantile(_o[_m], 0.99), 1e-9))
-if _f_plat:
-    _plat, _plat_o = 100 * np.median(_f_plat), 100 * np.median(_f_plat_o)
-    _ete_s = 100 * np.median(_f_ete) if _f_ete else float("nan")
-    _ete_o = 100 * np.median(_f_ete_o) if _f_ete_o else float("nan")
-    _suite = int(np.median(_f_suite))
-    _refus = (_plat > 2 * max(_plat_o, 1.0)) or (_suite > 30)
-    print(f"[etl] FORME {REG} (tenu de cote, mediane des stations) : plat {_plat:.1f} % (obs {_plat_o:.1f} %) "
-          f"| ete {_ete_s:.1f} % (obs {_ete_o:.1f} %) | plus longue suite plate {_suite} j "
-          f"| pointes sim/obs {np.median(_f_pic) if _f_pic else float('nan'):.2f} | q99 sim/obs {np.median(_f_q99):.2f}")
-    print(f"[etl] VERDICT DE FORME {REG} : {'FORME REFUSEE (plateaux)' if _refus else 'forme acceptable'} "
+if _f_flat:
+    _flat, _flat_o = 100 * np.median(_f_flat), 100 * np.median(_f_flat_o)
+    _summer_s = 100 * np.median(_f_summer) if _f_summer else float("nan")
+    _summer_o = 100 * np.median(_f_summer_o) if _f_summer_o else float("nan")
+    _rest = int(np.median(_f_next))
+    _refused = (_flat > 2 * max(_flat_o, 1.0)) or (_rest > 30)
+    print(f"[etl] FORME {REG} (tenu de cote, mediane des stations) : plat {_flat:.1f} % (obs {_flat_o:.1f} %) "
+          f"| ete {_summer_s:.1f} % (obs {_summer_o:.1f} %) | plus longue suite plate {_rest} j "
+          f"| pointes sim/obs {np.median(_f_peak) if _f_peak else float('nan'):.2f} | q99 sim/obs {np.median(_f_q99):.2f}")
+    print(f"[etl] VERDICT DE FORME {REG} : {'FORME REFUSEE (plateaux)' if _refused else 'forme acceptable'} "
           f"| regle : platitude simulee > 2 x observee ou suite plate > 30 j")
 
 # SCORE SUR LES JOURS REELLEMENT MESURES (R19, 2026-08-21).
@@ -1480,10 +1480,10 @@ try:
             _fl["station_id"] = _fl.station_id.astype(str)
             _piv = _fl.pivot_table(index="date", columns="station_id",
                                    values="reconstructed", aggfunc="first")
-            _jours = _pdm.DatetimeIndex(
+            _days = _pdm.DatetimeIndex(
                 times[np.flatnonzero(sl)[0]:np.flatnonzero(sl)[-1] + 1]).normalize()
             _piv.index = _pdm.DatetimeIndex(_piv.index).normalize()
-            _rec = _piv.reindex(index=_jours, columns=_sids).to_numpy()
+            _rec = _piv.reindex(index=_days, columns=_sids).to_numpy()
             _mes = (_rec == False)   # noqa: E712 -- NaN (pas de drapeau) exclu aussi
             _ks2, _ksh = [], []
             for _s in range(Qs.shape[1]):
@@ -1556,24 +1556,24 @@ if os.environ.get("ETL_DUMP_STATIONS"):
         # L'indice doit etre sur le processeur : la tranche est deja rapatriee par .cpu().
         _ist = torch.as_tensor(td.station_idx, dtype=torch.long).cpu()
         _i0, _i1 = int(np.flatnonzero(sl)[0]), int(np.flatnonzero(sl)[-1]) + 1
-        _sorties = {}
+        _outputs = {}
         # Moyennes de BASSIN (2026-10-24) : un état ou un flux au seul tronçon exutoire ne dit pas
         # ce que produit le bassin. Poids : aire locale des tronçons en amont de chaque station.
         _src, _dst = td.graph.edge_index[0].cpu().numpy(), td.graph.edge_index[1].cpu().numpy()
         _par = {}
         for _a, _b in zip(_src, _dst):
             _par.setdefault(int(_b), []).append(int(_a))
-        _aire = td.territorial.get_physical("area_km2_local").float().cpu().numpy()
+        _area = td.territorial.get_physical("area_km2_local").float().cpu().numpy()
         _W = np.zeros((len(td.station_idx), n_nodes), dtype=np.float32)
         for _k, _n0 in enumerate(torch.as_tensor(td.station_idx).cpu().tolist()):
-            _vus, _pile = {int(_n0)}, [int(_n0)]
-            while _pile:
-                for _p in _par.get(_pile.pop(), []):
+            _vus, _stack = {int(_n0)}, [int(_n0)]
+            while _stack:
+                for _p in _par.get(_stack.pop(), []):
                     if _p not in _vus:
                         _vus.add(_p)
-                        _pile.append(_p)
+                        _stack.append(_p)
             _ix = np.fromiter(_vus, int)
-            _W[_k, _ix] = _aire[_ix] / _aire[_ix].sum()
+            _W[_k, _ix] = _area[_ix] / _area[_ix].sum()
         _Wt = torch.from_numpy(_W.T)
         for _att in ("theta1", "theta2", "prod_surf", "prod_hypo", "prod_base",
                      "lateral_mm", "swe", "recharge", "s_gw", "etr", "prof_gel_cm", "snowmelt"):
@@ -1582,13 +1582,13 @@ if os.environ.get("ETL_DUMP_STATIONS"):
                 print(f"[etl] diagnostics aux stations : {_att} absent")
                 continue
             _vv = _v[_i0:_i1].detach().cpu().float()
-            _sorties[_att] = _vv[:, _ist].numpy().astype(np.float32)
-            _sorties[f"basin_{_att}"] = (_vv @ _Wt).numpy().astype(np.float32)
+            _outputs[_att] = _vv[:, _ist].numpy().astype(np.float32)
+            _outputs[f"basin_{_att}"] = (_vv @ _Wt).numpy().astype(np.float32)
         np.savez_compressed(os.environ["ETL_DUMP_STATIONS"],
                             station_ids=np.array(r.get("station_ids", []), dtype=object),
                             dates=np.array([str(times[i])[:10] for i in range(_i0, _i1)]),
-                            **_sorties)
-        print(f"[etl] diagnostics journaliers aux stations ({len(_sorties)} grandeurs) : "
+                            **_outputs)
+        print(f"[etl] diagnostics journaliers aux stations ({len(_outputs)} grandeurs) : "
               f"{os.environ['ETL_DUMP_STATIONS']}")
 
 # ETL_DUMP_REACH=<chemin.npz> : cache PAR TRONCON pour le notebook marimo (demande
@@ -1601,10 +1601,10 @@ if os.environ.get("ETL_DUMP_STATIONS"):
 if os.environ.get("ETL_DUMP_REACH"):
     with torch.no_grad():
         _Qr = Q.cpu().numpy()                                   # (T, n_noeuds)
-        _moisR = _pdm.DatetimeIndex(times).month.to_numpy()
-        _qm = np.stack([_Qr[_moisR == m].mean(axis=0) for m in range(1, 13)])
+        _month_R = _pdm.DatetimeIndex(times).month.to_numpy()
+        _qm = np.stack([_Qr[_month_R == m].mean(axis=0) for m in range(1, 13)])
         _sp_d = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
-        _champs = {f"param_{k}": getattr(_sp_d, k).detach().cpu().numpy()
+        _field_names = {f"param_{k}": getattr(_sp_d, k).detach().cpu().numpy()
                    for k in _sp_d.__dataclass_fields__
                    if torch.is_tensor(getattr(_sp_d, k))
                    and getattr(_sp_d, k).shape[:1] == (n_nodes,)}
@@ -1633,21 +1633,21 @@ if os.environ.get("ETL_DUMP_REACH"):
         # mois donne depasse-t-il l'ecart-type des memes mois calendaires sur la
         # periode ? ~4 Mo par region en float32.
         _tt_d = _pdm.DatetimeIndex(times)
-        _cle_mois = _tt_d.year * 12 + _tt_d.month
-        _mois_u = _np_d = __import__('numpy').unique(_cle_mois)
+        _month_key = _tt_d.year * 12 + _tt_d.month
+        _month_u = _np_d = __import__('numpy').unique(_month_key)
         _qms = __import__('numpy').stack(
-            [_Qr[_cle_mois == m].mean(axis=0) for m in _mois_u])
+            [_Qr[_month_key == m].mean(axis=0) for m in _month_u])
     # FLUX VERTICAUX PAR TRONCON (demande d'Essi, 2026-09-06) : la carte doit pouvoir
     # colorer la recharge de la nappe et l'evapotranspiration reelle, pas seulement le
     # debit. Moyennes sur la periode simulee, converties en millimetres par an.
     _flux = {}
     _dg_r = globals().get("_DIAG")
-    _mois_r = _pdm.DatetimeIndex(times).month.to_numpy()
+    _month_r = _pdm.DatetimeIndex(times).month.to_numpy()
     # SERIE MENSUELLE de chaque grandeur, et non seulement sa climatologie (2026-09-17). La
     # climatologie perd l'interannuel : impossible d'y lire une annee seche, un classement
     # d'annees ou une anomalie, ce qu'une comparaison aux nappes mesurees demande. Le
     # journalier couterait 105 Mo par variable et par region, la serie mensuelle 3,5 Mo.
-    for _att, _nom, _cumul in (("recharge", "recharge", True), ("etr", "etr", True),
+    for _att, _nom, _cumulative in (("recharge", "recharge", True), ("etr", "etr", True),
                                ("swe", "swe", False), ("q_baseflow", "debit_base", True),
                                ("s_gw", "stock_nappe", False), ("wet_vol", "stock_mh", False),
                                # PROFONDEUR D'EAU : l'observable de l'altimetrie satellitaire.
@@ -1662,7 +1662,7 @@ if os.environ.get("ETL_DUMP_REACH"):
         # Moyenne annuelle : un flux en millimetres par jour devient des millimetres par
         # an ; un STOCK comme l'equivalent en eau de la neige reste en millimetres, et
         # c'est son maximum annuel qui a un sens, pas sa moyenne.
-        if _cumul:
+        if _cumulative:
             _flux[f"{_nom}_annuel"] = (_a.mean(axis=0) * 365.25).astype(np.float32)
         else:
             _ans = _pdm.DatetimeIndex(times).year.to_numpy()
@@ -1670,10 +1670,10 @@ if os.environ.get("ETL_DUMP_REACH"):
                 [_a[_ans == _y].max(axis=0) for _y in np.unique(_ans)]).mean(axis=0).astype(np.float32)
         # Cycle saisonnier par noeud : douze valeurs, la climatologie mensuelle.
         _flux[f"{_nom}_mensuel"] = np.stack(
-            [_a[_mois_r == _m].mean(axis=0) for _m in range(1, 13)]).astype(np.float32)
+            [_a[_month_r == _m].mean(axis=0) for _m in range(1, 13)]).astype(np.float32)
         # Serie mensuelle, un point par mois de la simulation : porte l'interannuel.
         _flux[f"{_nom}_mois_serie"] = np.stack(
-            [_a[_cle_mois == _m].mean(axis=0) for _m in _mois_u]).astype(np.float32)
+            [_a[_month_key == _m].mean(axis=0) for _m in _month_u]).astype(np.float32)
     # ETL_DUMP_NAPPE=<chemin.npz> : stock souterrain, recharge et debit de base JOURNALIERS
     # aux noeuds portant un puits du reseau de suivi. La mesure du reseau est une profondeur
     # sous le repere du tubage : seules les VARIATIONS se comparent, jamais l'absolu.
@@ -1704,7 +1704,7 @@ if os.environ.get("ETL_DUMP_REACH"):
     # temps oblige a tout refaire des qu'une question demande l'interannuel ou le calendrier,
     # ce qui est arrive le jour meme avec les nappes mesurees. Environ 105 Mo par variable et
     # par region en float32. Le cache principal, lui, reste leger pour la carte et le rapport.
-    _jour = {}
+    _daily = {}
     for _att, _nom in (("recharge", "recharge"), ("etr", "etr"), ("swe", "swe"),
                        ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
                        ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
@@ -1719,14 +1719,14 @@ if os.environ.get("ETL_DUMP_REACH"):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue
-        _jour[_nom] = _v.detach().cpu().numpy().astype(np.float32)
+        _daily[_nom] = _v.detach().cpu().numpy().astype(np.float32)
     # Sans diagnostics (ETL_DUMP_REACH_DIAG=0), le debit journalier seul reste ecrit : la carte en a besoin.
-    if _jour or os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "0":
+    if _daily or os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "0":
         _fj = os.environ["ETL_DUMP_REACH"]
         _fj = _fj[:-4] + "-journalier.npz" if _fj.endswith(".npz") else _fj + "-journalier.npz"
         np.savez_compressed(_fj, dates=np.array([str(_t)[:10] for _t in times]),
-                            q=_Qr.astype(np.float32), **_jour)
-        print(f"[etl] series journalieres sauvees ({len(_jour) + 1} grandeurs) : {_fj} "
+                            q=_Qr.astype(np.float32), **_daily)
+        print(f"[etl] series journalieres sauvees ({len(_daily) + 1} grandeurs) : {_fj} "
               f"({os.path.getsize(_fj) / 1e6:.0f} Mo)")
 
     np.savez_compressed(os.environ["ETL_DUMP_REACH"],
@@ -1734,7 +1734,7 @@ if os.environ.get("ETL_DUMP_REACH"):
                         q_mensuel=_qm.astype(np.float32),
                         q_annuel=_Qr.mean(axis=0).astype(np.float32),
                         q_mois_serie=_qms.astype(np.float32),
-                        mois_serie=_mois_u.astype(np.int32),
+                        mois_serie=_month_u.astype(np.int32),
                         coords=td.node_coords.cpu().numpy(),
                         # Appariement station-troncon : il existait a l'execution mais
                         # n'etait enregistre nulle part, ce qui interdisait de confronter
@@ -1749,9 +1749,9 @@ if os.environ.get("ETL_DUMP_REACH"):
                         prelev_net_abs=_wnet.astype(np.float32),
                         prelev_net_moyen=_wmoy.astype(np.float32),
                         prelev_gw_moyen=_wgw.astype(np.float32),
-                        **{k: v.astype(np.float32) for k, v in _champs.items()})
+                        **{k: v.astype(np.float32) for k, v in _field_names.items()})
     print(f"[etl] cache par troncon sauve : {os.environ['ETL_DUMP_REACH']} "
-          f"({len(_champs)} champs de parametres)")
+          f"({len(_field_names)} champs de parametres)")
 
     # PASSE NATURALISEE, avec les MEMES POIDS (ETL_DUMP_NATUREL=1).
     #
@@ -1771,7 +1771,7 @@ if os.environ.get("ETL_DUMP_REACH"):
     # les prelevements y sont nuls par construction.
     if os.environ.get("ETL_DUMP_NATUREL", "0") == "1":
         _base = os.environ["ETL_DUMP_REACH"]
-        _sortie_nat = _base[:-4] + "-sans.npz" if _base.endswith(".npz") else _base + "-sans.npz"
+        _natural_output = _base[:-4] + "-sans.npz" if _base.endswith(".npz") else _base + "-sans.npz"
         from meandre.routing.withdrawals import WithdrawalData as _WD
         with torch.no_grad():
             _Qn, _ = model.simulate(
@@ -1780,13 +1780,13 @@ if os.environ.get("ETL_DUMP_REACH"):
                 withdrawals=(td.withdrawals.empty_like() if hasattr(td.withdrawals, "empty_like")
                              else _WD.zeros_like(td.withdrawals)), day_of_year=td.day_of_year)
         _Qn = _Qn.cpu().numpy()
-        _qmn = np.stack([_Qn[_moisR == m].mean(axis=0) for m in range(1, 13)])
-        _qmsn = np.stack([_Qn[_cle_mois == m].mean(axis=0) for m in _mois_u])
-        np.savez_compressed(_sortie_nat,
+        _qmn = np.stack([_Qn[_month_R == m].mean(axis=0) for m in range(1, 13)])
+        _qmsn = np.stack([_Qn[_month_key == m].mean(axis=0) for m in _month_u])
+        np.savez_compressed(_natural_output,
                             q_mensuel=_qmn.astype(np.float32),
                             q_annuel=_Qn.mean(axis=0).astype(np.float32),
                             q_mois_serie=_qmsn.astype(np.float32),
-                            mois_serie=_mois_u.astype(np.int32),
+                            mois_serie=_month_u.astype(np.int32),
                             coords=td.node_coords.cpu().numpy(),
                         # Appariement station-troncon : il existait a l'execution mais
                         # n'etait enregistre nulle part, ce qui interdisait de confronter
@@ -1803,16 +1803,16 @@ if os.environ.get("ETL_DUMP_REACH"):
                             prelev_gw_moyen=np.zeros(n_nodes, dtype=np.float32))
         # Debit naturalise journalier : les hydrogrammes de la carte superposent les deux
         # series, et l'influence en etiage se calcule sur des debits journaliers.
-        _fjn = _sortie_nat[:-4] + "-journalier.npz"
+        _fjn = _natural_output[:-4] + "-journalier.npz"
         np.savez_compressed(_fjn, dates=np.array([str(_t)[:10] for _t in times]),
                             q=_Qn.astype(np.float32))
         print(f"[etl] debit naturalise journalier sauve : {_fjn}")
         _eff = 100.0 * (_Qr.mean(axis=0) - _Qn.mean(axis=0)) / np.clip(_Qn.mean(axis=0), 1e-6, None)
-        _gros = _Qn.mean(axis=0) > 1.0
-        print(f"[etl] cache naturalise sauve : {_sortie_nat}")
-        print(f"[etl] effet des prelevements : {int((_eff[_gros] > 1).sum())} tronçons en "
-              f"hausse de plus de 1 %, {int((_eff[_gros] < -1).sum())} en baisse, sur "
-              f"{int(_gros.sum())} à plus de 1 m³/s")
+        _large = _Qn.mean(axis=0) > 1.0
+        print(f"[etl] cache naturalise sauve : {_natural_output}")
+        print(f"[etl] effet des prelevements : {int((_eff[_large] > 1).sum())} tronçons en "
+              f"hausse de plus de 1 %, {int((_eff[_large] < -1).sum())} en baisse, sur "
+              f"{int(_large.sum())} à plus de 1 m³/s")
 
 # BIAIS MENSUEL dans le protocole de REFERENCE. Le score seul ne dit pas OU le modele
 # se trompe, et les rapports mensuels vivaient jusqu'ici dans des scripts de diagnostic
@@ -1835,7 +1835,7 @@ for _m in range(1, 13):
 # ecrite AVANT la mesure : erreur < 0.1 % de la precipitation = ferme (bruit numerique),
 # > 1 % = fuite reelle, entre les deux = suspect. Dette #42 du registre.
 if os.environ.get("ETL_BILAN", "0") == "1":
-    if not _VEUT_NEIGE:
+    if not _WANTS_DIAGNOSTICS:
         print("[etl] bilan : ETL_BILAN=1 exige ETL_CMP_NEIGE=1 (diagnostics requis)")
     else:
         _st = model.vertical_column._static["soil"]
@@ -1851,13 +1851,13 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         # bilan lisait une fuite de 1.97 % correlee a 0.48 avec la fraction de MH.
         _mh_st = (_DIAG.wet_vol.cpu().numpy() if _DIAG.wet_vol is not None else 0.0)
         _mh_ev = (_DIAG.etr_mh.cpu().numpy() if _DIAG.etr_mh is not None else None)
-        _stock = (_DIAG.swe.cpu().numpy()
+        _storage = (_DIAG.swe.cpu().numpy()
                   + 1000.0 * (_DIAG.theta1.cpu().numpy() * _z1
                               + _DIAG.theta2.cpu().numpy() * _z2
                               + _DIAG.theta3.cpu().numpy() * _z3)
                   + _DIAG.canopy.cpu().numpy() + _mh_st
                   + _DIAG.s_gw.cpu().numpy())
-        _dS = _stock[-1] - _stock[0]
+        _dS = _storage[-1] - _storage[0]
         _ent = _P_tot.sum(axis=0)
         _evmh = (_mh_ev.sum(axis=0) if _mh_ev is not None else np.zeros_like(_etr[0]))
         # sublimation (opt-in) : sortie atmospherique au meme titre que l'ETR
@@ -1880,19 +1880,19 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         # mm par mois et par an. Pose pour la Monteregie : l'ete simule a moitie vide avec un
         # volume annuel juste, il faut savoir quel reservoir retient l'eau de juillet (R329).
         import pandas as _pdb2
-        _moisB = _pdb2.DatetimeIndex(times).month.to_numpy()
+        _month_B = _pdb2.DatetimeIndex(times).month.to_numpy()
         _anB = _pdb2.DatetimeIndex(times).year.to_numpy()
         _swe_b = _DIAG.swe.cpu().numpy()
-        _sol_b = 1000.0 * (_DIAG.theta1.cpu().numpy() * _z1 + _DIAG.theta2.cpu().numpy() * _z2 + _DIAG.theta3.cpu().numpy() * _z3)
+        _soil_b = 1000.0 * (_DIAG.theta1.cpu().numpy() * _z1 + _DIAG.theta2.cpu().numpy() * _z2 + _DIAG.theta3.cpu().numpy() * _z3)
         _gw_b = _DIAG.s_gw.cpu().numpy()
-        def _dmois(x):
+        def _dmonth(x):
             d = np.diff(x, axis=0, prepend=x[0:1])
             return d
-        _dsw, _dso, _dgw = _dmois(_swe_b), _dmois(_sol_b), _dmois(_gw_b)
+        _dsw, _dso, _dgw = _dmonth(_swe_b), _dmonth(_soil_b), _dmonth(_gw_b)
         print("[etl] BILAN MENSUEL de la colonne, moyenne du domaine, mm par mois (moyenne des annees) :")
         print("        mois   pluie    ETR   prod.   dNeige   dSol  dNappe")
         for _m in range(1, 13):
-            _sel = _moisB == _m
+            _sel = _month_B == _m
             _na = len(np.unique(_anB[_sel]))
             if _na == 0:
                 continue
@@ -1905,13 +1905,13 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         if all(e is not None for e in _e123):
             _e123 = [e.cpu().numpy() for e in _e123]
             _th = [_DIAG.theta1.cpu().numpy(), _DIAG.theta2.cpu().numpy(), _DIAG.theta3.cpu().numpy()]
-            def _stv(k, defaut=None):
+            def _stv(k, default=None):
                 v = _st.get(k)
-                return _mmv(v) if v is not None else defaut
+                return _mmv(v) if v is not None else default
             print("[etl] ETR PAR COUCHE (mm/mois) et teneur relative (theta/porosite ; (theta-pf)/(cc-pf)), juin a septembre :")
             print("        mois  ETR1  ETR2  ETR3 | th1/por th2/por th3/por | dispo1 dispo2 dispo3")
             for _m in (5, 6, 7, 8, 9):
-                _sel = _moisB == _m
+                _sel = _month_B == _m
                 _na = len(np.unique(_anB[_sel]))
                 if _na == 0:
                     continue
@@ -1934,7 +1934,7 @@ if os.environ.get("ETL_BILAN", "0") == "1":
             print("[etl] DEMANDE ET PRODUCTION PAR MOIS (mm/mois, moyenne du domaine) :")
             print("        mois    ETP    ETR  ETR/ETP | surf  hypo  base")
             for _m in range(1, 13):
-                _sel = _moisB == _m
+                _sel = _month_B == _m
                 _na = len(np.unique(_anB[_sel]))
                 if _na == 0:
                     continue
@@ -1984,15 +1984,15 @@ if os.environ.get("ETL_BILAN", "0") == "1":
 # noeuds -- une question de FORME, sans echelle, donc lisible malgre R19 (de decembre a
 # mars la cible observee est une interpolation a la main, pas une mesure).
 if os.environ.get("ETL_STOCKS", "0") == "1":
-    if not _VEUT_NEIGE:
+    if not _WANTS_DIAGNOSTICS:
         print("[etl] stocks : ETL_STOCKS=1 exige ETL_CMP_NEIGE=1 (diagnostics requis)")
     else:
         _sts = model.vertical_column._static["soil"]
         def _np1(x):
             return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
         _sz1, _sz2, _sz3 = _np1(_sts["z1"]), _np1(_sts["z2"]), _np1(_sts["z3"])
-        _mois_tot = _pdm.DatetimeIndex(times).month.to_numpy()
-        _stocks = {
+        _month_tot = _pdm.DatetimeIndex(times).month.to_numpy()
+        _storages = {
             "manteau": _DIAG.swe.cpu().numpy(),
             "canopee": _DIAG.canopy.cpu().numpy(),
             "sol L1": 1000.0 * _DIAG.theta1.cpu().numpy() * _sz1,
@@ -2002,7 +2002,7 @@ if os.environ.get("ETL_STOCKS", "0") == "1":
                               if _DIAG.wet_vol is not None else None),
             "nappe": _DIAG.s_gw.cpu().numpy(),
         }
-        _stocks = {k: v for k, v in _stocks.items() if v is not None}
+        _storages = {k: v for k, v in _storages.items() if v is not None}
         _flux = {
             "precipitation": f7[:, :, 0].cpu().numpy(),
             "apport au sol": _DIAG.snowmelt.cpu().numpy(),   # MAL NOMME : apport total
@@ -2023,12 +2023,12 @@ if os.environ.get("ETL_STOCKS", "0") == "1":
                 _flux[_nom] = _v.cpu().numpy()
         if _DIAG.etr_mh is not None:
             _flux["evap. milieu humide"] = _DIAG.etr_mh.cpu().numpy()
-        _n = len(_mois_tot)
+        _n = len(_month_tot)
         print("\n[etl] STOCKS, niveau moyen par mois (mm sur le bassin, moyenne des noeuds) :")
         print("        " + f"{'stock':>16s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
         _cyc = {}
-        for _nom, _v in _stocks.items():
-            _c = np.array([np.nanmean(_v[:_n][_mois_tot == _m]) for _m in range(1, 13)])
+        for _nom, _v in _storages.items():
+            _c = np.array([np.nanmean(_v[:_n][_month_tot == _m]) for _m in range(1, 13)])
             _cyc[_nom] = _c
             print("        " + f"{_nom:>16s}" + "".join(f"{_x:7.0f}" for _x in _c))
         _tot = np.sum(list(_cyc.values()), axis=0)
@@ -2036,8 +2036,8 @@ if os.environ.get("ETL_STOCKS", "0") == "1":
         print("\n[etl] FLUX, lame moyenne par mois (mm/mois, moyenne des noeuds) :")
         print("        " + f"{'flux':>16s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
         for _nom, _v in _flux.items():
-            _c = np.array([np.nansum(_v[:_n][_mois_tot == _m])
-                           / max((_mois_tot == _m).sum(), 1) * 30.4
+            _c = np.array([np.nansum(_v[:_n][_month_tot == _m])
+                           / max((_month_tot == _m).sum(), 1) * 30.4
                            / max(_v.shape[1], 1) for _m in range(1, 13)])
             print("        " + f"{_nom:>16s}" + "".join(f"{_x:7.1f}" for _x in _c))
         print("\n[etl] VARIATION decembre -> avril, par stock (mm ; negatif = le")
@@ -2063,13 +2063,13 @@ if os.environ.get("ETL_STOCKS", "0") == "1":
 # du biais est systematique / (dispersion / sqrt(n_annees)). Un auxiliaire dont le biais
 # est significatif mais dont la perte est deja satisfaite est une contrainte gaspillee.
 if os.environ.get("ETL_AUX", "0") == "1":
-    if not _VEUT_NEIGE:
+    if not _WANTS_DIAGNOSTICS:
         print("[etl] aux : ETL_AUX=1 exige ETL_CMP_NEIGE=1 (diagnostics requis)")
     else:
         _idx = _pdm.DatetimeIndex(times)
-        _an_t, _mo_t = _idx.year.to_numpy(), _idx.month.to_numpy()
+        _year_t, _mo_t = _idx.year.to_numpy(), _idx.month.to_numpy()
 
-        def _audit(nom, sim, obs, unite, poids, sigma_perte, note=""):
+        def _audit(nom, sim, obs, unit, weight, sigma_loss, note=""):
             """sim, obs : (T,) moyenne-bassin alignees sur `times`, NaN admis."""
             _v = np.isfinite(sim) & np.isfinite(obs)
             if _v.sum() < 200:
@@ -2078,20 +2078,20 @@ if os.environ.get("ETL_AUX", "0") == "1":
             # climatologie mensuelle du residu = partie SYSTEMATIQUE
             _sys = np.array([np.nanmean(_r[_mo_t == _m]) for _m in range(1, 13)])
             # dispersion interannuelle autour de cette climatologie = BRUIT
-            _moy_am, _nan = [], []
+            _mean_am, _nan = [], []
             for _m in range(1, 13):
-                _va = [np.nanmean(_r[(_mo_t == _m) & (_an_t == _a)])
-                       for _a in np.unique(_an_t)]
+                _va = [np.nanmean(_r[(_mo_t == _m) & (_year_t == _a)])
+                       for _a in np.unique(_year_t)]
                 _va = np.array([x for x in _va if np.isfinite(x)])
-                _moy_am.append(_va.std() if len(_va) > 2 else np.nan)
+                _mean_am.append(_va.std() if len(_va) > 2 else np.nan)
                 _nan.append(len(_va))
-            _disp, _nann = np.array(_moy_am), np.array(_nan, float)
+            _disp, _nann = np.array(_mean_am), np.array(_nan, float)
             _rms_sys = float(np.sqrt(np.nanmean(_sys ** 2)))
             _rms_tot = float(np.sqrt(np.nanmean(_r ** 2)))
             _sig_clim = _disp / np.sqrt(np.clip(_nann, 1, None))
             _z = np.abs(_sys) / np.clip(_sig_clim, 1e-9, None)
-            print(f"\n  ── {nom} ({unite}) | poids actif {poids}"
-                  + (f" | sigma de la perte {sigma_perte}" if sigma_perte else " | MSE brute, sans sigma")
+            print(f"\n  ── {nom} ({unit}) | poids actif {weight}"
+                  + (f" | sigma de la perte {sigma_loss}" if sigma_loss else " | MSE brute, sans sigma")
                   + (f"\n     {note}" if note else ""))
             print("       mois " + "".join(f"{_m:>7d}" for _m in range(1, 13)))
             print("     biais  " + "".join(f"{_x:7.2f}" for _x in _sys))
@@ -2100,8 +2100,8 @@ if os.environ.get("ETL_AUX", "0") == "1":
                   f"({100*_rms_sys/max(_rms_tot,1e-9):.0f} %) | reste = bruit")
             print(f"     biais saisonnier a {np.nanmax(_z):.1f} ecarts-types au pire mois "
                   f"(mois {int(np.nanargmax(_z))+1})")
-            if sigma_perte:
-                _lu = _rms_tot / float(sigma_perte)
+            if sigma_loss:
+                _lu = _rms_tot / float(sigma_loss)
                 print(f"     LA PERTE LIT : {_lu:.2f} ecart-type"
                       + ("  -> DEJA SATISFAITE, ne pousse plus" if _lu < 1.5 else ""))
 
@@ -2152,19 +2152,19 @@ if os.environ.get("ETL_AUX", "0") == "1":
         # MOYENNE-BASSIN QUI IGNORE LES MANQUANTS. `.mean(dim=1)` propage : MODIS a des
         # trous PAR NOEUD, donc un seul noeud absent suffit a rendre NaN la moyenne du
         # jour entier, et l'audit lisait 0 pas valide sur 9000.
-        def _moy_bassin(x):
+        def _basin_mean(x):
             a = x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
             return np.nanmean(np.where(np.isfinite(a), a, np.nan), axis=1)
 
-        def _cale(serie_t0):
+        def _calibrated(series_t0):
             """place une serie qui demarre a t0 sur l'axe complet `times`."""
             out = np.full(len(times), np.nan)
-            out[t0:t0 + len(serie_t0)] = serie_t0
+            out[t0:t0 + len(series_t0)] = series_t0
             return out
 
         _eo = getattr(td, "et_obs", None)
         if _eo is not None:
-            _audit("MODIS ET (MOD16)", _moy_bassin(_DIAG.etr), _cale(_moy_bassin(_eo)),
+            _audit("MODIS ET (MOD16)", _basin_mean(_DIAG.etr), _calibrated(_basin_mean(_eo)),
                    "mm/j", lcfg.get("w_et", 0.0), None,
                    "w_et=0 dans la recette du champion : contrainte DEBRANCHEE")
         else:
@@ -2186,10 +2186,10 @@ if os.environ.get("ETL_AUX", "0") == "1":
                 print(f"\n  MODIS neige : relecture impossible ({type(_es_).__name__}: {_es_})")
                 _so = None
         if _so is not None:
-            _ss = _moy_bassin(1.0 - torch.exp(-_DIAG.swe / 15.0))
-            _sb = _moy_bassin(_so)
+            _ss = _basin_mean(1.0 - torch.exp(-_DIAG.swe / 15.0))
+            _sb = _basin_mean(_so)
             _audit("MODIS couverture nivale", _ss,
-                   _sb if len(_sb) == len(_ss) else _cale(_sb),
+                   _sb if len(_sb) == len(_ss) else _calibrated(_sb),
                    "fraction 0-1", lcfg.get("w_snow", 0.0), None,
                    "JAMAIS ACTIVE : with_forcing perd swe_obs, donc _need_snow est faux")
         else:
@@ -2249,7 +2249,7 @@ print("[etl] simule/observe par mois : " + " ".join(
 # Un score agrege ne dit pas OU l'on perd. Ajoute le 2026-08-20 : le biais mensuel a
 # montre que nous et Hydrotel nous trompons en sens OPPOSES tout en etant separes de
 # 0.042, donc l'ecart n'est pas dans le volume mensuel mais ailleurs.
-def _composantes(_o, _s):
+def _components(_o, _s):
     _r, _b, _g = [], [], []
     for _k in range(_s.shape[1]):
         _v = np.isfinite(_o[:, _k]) & np.isfinite(_s[:, _k])
@@ -2260,7 +2260,7 @@ def _composantes(_o, _s):
         _b.append(_ss.mean() / _oo.mean())
         _g.append((_ss.std() / _ss.mean()) / (_oo.std() / _oo.mean()))
     return np.median(_r), np.median(_b), np.median(_g)
-_cr, _cb, _cg = _composantes(_qo_np, _qs_np)
+_cr, _cb, _cg = _components(_qo_np, _qs_np)
 print(f"[etl] composantes medianes : r={_cr:.4f} beta={_cb:.4f} gamma={_cg:.4f}")
 
 # ── NEIGE MESUREE : le manteau simule contre les releves CanSWE ──────────────
@@ -2270,7 +2270,7 @@ print(f"[etl] composantes medianes : r={_cr:.4f} beta={_cb:.4f} gamma={_cg:.4f}"
 # CanSWE est une MESURE : aucune circularite. Contrainte de TENDANCE et de TIMING,
 # jamais de NIVEAU (un site est souvent en clairiere, le troncon porte sa foret).
 # Sans le manteau parmi les diagnostics gardes (`diagnostics.kept`), la comparaison est sautee.
-if _VEUT_NEIGE and _DIAG.swe is not None:
+if _WANTS_DIAGNOSTICS and _DIAG.swe is not None:
     from meandre.data.basin_cache import BasinCache as _BC
     from meandre.run.territory_data import _paths as _jp
     _db = _jp(REG)[0]
@@ -2313,10 +2313,10 @@ if _VEUT_NEIGE and _DIAG.swe is not None:
             _jm = _pdm.DatetimeIndex(_hiv["date"]).dayofyear
             _vm = _hiv.groupby(_jm)["swe_mm"].mean()
             _vs = _hiv.groupby(_jm)["sim"].mean()
-            def _fin(serie):
-                _apres = serie[serie.index >= serie.idxmax()]
-                _sous = _apres[_apres < 10.0]
-                return int(_sous.index[0]) if len(_sous) else -1
+            def _fin(series):
+                _after = series[series.index >= series.idxmax()]
+                _below = _after[_after < 10.0]
+                return int(_below.index[0]) if len(_below) else -1
             _dm, _ds = _fin(_vm), _fin(_vs)
             print(f"{_an:6d} {_pm:8.0f} {_ps:8.0f} {_ps/max(_pm,1e-9):6.2f} "
                   f"{_dm:12d} {_ds:12d} {_ds-_dm if _dm>0 and _ds>0 else 0:+6d}")
@@ -2355,7 +2355,7 @@ if _VEUT_NEIGE and _DIAG.swe is not None:
         # normale (25.2 % contre 22.9 %), mais le manteau simule n'accumule que 59 % du
         # mesure. On cumule donc, sur LES MEMES intervalles, la neige que la regle
         # produit au noeud du site (2026-08-20).
-        _neige_reg = 0.0
+        _snow_reg = 0.0
         _sr = 3.0                                  # marge : jours de l'intervalle
         for _sid, _g in _m.sort_values("date").groupby("swe_station_id"):
             _dt = _pdm.DatetimeIndex(_g["date"]); _nd0 = int(_g["node_idx"].iloc[0])
@@ -2374,10 +2374,10 @@ if _VEUT_NEIGE and _DIAG.swe is not None:
                 _r = np.clip((_tx - _sseuil) / (_tx - _tn + 1e-6), 0.0, 1.0)
                 _r = np.where(_tx < _sseuil, 0.0, _r)
                 _r = np.where(_tn >= _sseuil, 1.0, _r)
-                _neige_reg += float(np.nansum(_pp * (1.0 - _r)))
+                _snow_reg += float(np.nansum(_pp * (1.0 - _r)))
         if _nint:
             print(f"[etl] neige tombee selon la regle sur ces memes intervalles : "
-                  f"{_neige_reg:.0f} mm")
+                  f"{_snow_reg:.0f} mm")
 
         if _nint:
             print(f"[etl] neige, pertes dec-fev sur {_nint} intervalles APPARIES "
@@ -2419,10 +2419,10 @@ if _VEUT_NEIGE and _DIAG.swe is not None:
             print(f"[etl] neige : fraction forestiere indisponible ({type(_e).__name__}: {_e})")
         if _ff is not None:
             _m["f_foret"] = _ff[_m["node_idx"].values]
-            _hiver = _m[_pdm.DatetimeIndex(_m["date"]).month.isin([1, 2, 3])]
-            _q = _pdm.qcut(_hiver["f_foret"], 4, duplicates="drop")
+            _winter = _m[_pdm.DatetimeIndex(_m["date"]).month.isin([1, 2, 3])]
+            _q = _pdm.qcut(_winter["f_foret"], 4, duplicates="drop")
             print(f"{'fraction forestiere':>22s} {'n':>6s} {'sim/mes':>8s}")
-            for _b, _g in _hiver.groupby(_q, observed=True):
+            for _b, _g in _winter.groupby(_q, observed=True):
                 print(f"{str(_b):>22s} {len(_g):6d} "
                       f"{_g.sim.sum()/max(_g.swe_mm.sum(), 1e-9):8.2f}")
             print("[etl] lecture : ratio qui DECROIT avec la foret = interception "
@@ -2460,7 +2460,7 @@ if os.environ.get("ETL_CMP_HYDROTEL"):
         print(f"[etl] Hydrotel {_mb} : KGE median {np.median(_kh):.4f}")
         print(f"[etl] Hydrotel {_mb} par mois : " + " ".join(
             f"{_m:02d}={_rr:.3f}" for _m, _rr in zip(range(1, 13), _raph)))
-        _hr, _hb, _hg = _composantes(_qo_np[:_nT], _qh[:_nT])
+        _hr, _hb, _hg = _components(_qo_np[:_nT], _qh[:_nT])
         print(f"[etl] Hydrotel {_mb} composantes : r={_hr:.4f} beta={_hb:.4f} gamma={_hg:.4f}")
         print(f"[etl] ecart NOUS-EUX composantes : r={_cr - _hr:+.4f} beta={_cb - _hb:+.4f} gamma={_cg - _hg:+.4f}")
         print("[etl] ecart NOUS-EUX par mois  : " + " ".join(

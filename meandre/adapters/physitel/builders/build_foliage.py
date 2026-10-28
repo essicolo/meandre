@@ -54,7 +54,7 @@ PARAMS_CARTE = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus p
 N_ROUGES = 150   # zones rouges provinciales (pas par region)
 
 
-def _plat(x):
+def _flat(x):
     """Part de jours ou le debit varie de moins de 1 % : la platitude, en pourcentage."""
     if len(x) < 3:
         return float("nan")
@@ -211,8 +211,8 @@ def main():
                                    # une mesure de PERFORMANCE, a ne pas confondre avec le
                                    # signal sur bruit anthropique du reseau (2026-09-06).
                                    "obs_sur_residu": round(float(o.std() / max((o - si).std(), 1e-9)), 2),
-                                   "plat_sim_pct": round(_plat(si), 1),
-                                   "plat_obs_pct": round(_plat(o), 1),
+                                   "plat_sim_pct": round(_flat(si), 1),
+                                   "plat_obs_pct": round(_flat(o), 1),
                                    "dates": [str(x) for x in dates[v]],
                                    "q_obs": [round(float(x), 3) for x in o],
                                    "q_sim": [round(float(x), 3) for x in si],

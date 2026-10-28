@@ -667,14 +667,14 @@ class SpatialFieldNetwork(nn.Module):
             _col[:, self._k_musk_row] = _rh(territorial.to(raw.dtype)).squeeze(-1)
             raw = raw + _col
 
-        # DIAGNOSTIC (2026-10-14) : `brut_impose` remplace la sortie brute par un champ fourni,
+        # DIAGNOSTIC (2026-10-14) : `raw_imposed` remplace la sortie brute par un champ fourni,
         # par exemple celui de modeles territoriaux, pour juger un champ sans son reseau ;
         # `dernier_brut` garde la derniere sortie brute pour l'exporter.
-        _bi = getattr(self, "brut_impose", None)
+        _bi = getattr(self, "raw_imposed", None)
         if _bi is not None:
             raw = _bi.to(device=raw.device, dtype=raw.dtype)
         self.last_raw = raw.detach()
-        if getattr(self, "capture_brut", False) and raw.requires_grad:
+        if getattr(self, "capture_raw", False) and raw.requires_grad:
             # Sonde des conflits (2026-10-14) : garde la sortie brute et son gradient.
             # Toutes les sorties du bloc sont gardees : le champ est appele par la simulation
             # puis par l'ancrage sur la litterature, et seule la somme fait le gradient du bloc.

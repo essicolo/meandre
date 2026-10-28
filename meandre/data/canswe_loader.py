@@ -145,10 +145,10 @@ def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = N
     if si.size == 0:
         return sites, pd.DataFrame()
 
-    def _plat(a):
+    def _flat(a):
         return _as_text(a[si, ti])
 
-    ok = np.isin(_plat(dfl), list(_DATA_FLAGS_OK)) & np.isin(_plat(qfl), list(_QC_FLAGS_OK))
+    ok = np.isin(_flat(dfl), list(_DATA_FLAGS_OK)) & np.isin(_flat(qfl), list(_QC_FLAGS_OK))
     mesures = pd.DataFrame({
         "swe_station_id": ids[si],
         "date": t[per][ti],

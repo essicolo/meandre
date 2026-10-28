@@ -309,11 +309,11 @@ def forme(temps, q, o, garde=None):
     q95 = np.nanquantile(q[m], 0.95) / max(np.nanquantile(o[m], 0.95), 1e-9)
     q99 = np.nanquantile(q[m], 0.99) / max(np.nanquantile(o[m], 0.99), 1e-9)
     # 2. platitude
-    def _plat(x):
+    def _flat(x):
         r = np.abs(np.diff(x)) / np.maximum(x[:-1], 1e-9)
         return r < 0.01
     mm = m[:-1] & m[1:]
-    ps, po = _plat(q), _plat(o)
+    ps, po = _flat(q), _flat(o)
     hiv = np.isin(mois[:-1], (12, 1, 2, 3)) & mm
     ete = np.isin(mois[:-1], (6, 7, 8, 9)) & mm
     n_ = mx = 0
@@ -689,7 +689,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
             col.enable_free_water_table(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exponent=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), coupling=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), learned=os.environ.get("ETL_NAPPE_APPRIS") == "1")
             if "ETL_NAPPE_GEL" in os.environ:
-                col.nappe_gel_facteur = float(os.environ["ETL_NAPPE_GEL"])
+                col.water_table_frost_factor = float(os.environ["ETL_NAPPE_GEL"])
                 print(f"  porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}", flush=True)
         return m
 
@@ -909,7 +909,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         _a = terr.get_physical("area_km2_local").to(dev).float()
         _w = _a / _a.sum()
         _aire_m2 = float(s["aire"]) * 1e6 if s.get("aire") else float(_a.sum()) * 1e6
-        _mois = pd.DatetimeIndex(temps).month
+        _month = pd.DatetimeIndex(temps).month
         _ok_t = pd.DatetimeIndex(temps).year >= 2011
         if os.environ.get("MEANDRE_BANC_ETP_FORMES") == "1":
             # FORME SAISONNIÈRE DE L'ETP (2026-09-28) : chaque formule de la colonne calculée
@@ -938,7 +938,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 MODs = torch.where(_vo.any(dim=1), MODs, torch.full_like(MODs, float("nan"))).cpu().numpy()
             else:
                 MODs = np.full(len(temps), np.nan)
-            dfe = pd.DataFrame({"mois": _mois, "MOD16": MODs, **res})[_ok_t].groupby("mois").mean()
+            dfe = pd.DataFrame({"mois": _month, "MOD16": MODs, **res})[_ok_t].groupby("mois").mean()
             print("  ETP mensuelle par formule, mm/j, moyennes du bassin, contre MOD16 (evapotranspiration REELLE) :", flush=True)
             print(dfe.round(2).to_string(), flush=True)
             print("  rapport avril / octobre : " + ", ".join(f"{c} {dfe.loc[4, c] / dfe.loc[10, c]:.2f}" for c in dfe.columns), flush=True)
@@ -1096,7 +1096,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _tnt = getattr(_d, "temps_non_traite", None)
             if _tnt is not None:
                 _comp["non_traite"] = _moy(_tnt)
-            df = pd.DataFrame({"mois": _mois, "P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS, **_comp})[_ok_t]
+            df = pd.DataFrame({"mois": _month, "P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS, **_comp})[_ok_t]
             if os.environ.get("MEANDRE_BANC_SERIES"):
                 # Series journalieres moyennees sur le bassin, en mm/j, pour l'analyse hors banc.
                 pd.DataFrame({"P": P, "ET": ET, "MOD16": MOD, "Qobs": QO, "Qsim": QS, **_comp}, index=pd.DatetimeIndex(temps)).to_parquet(os.environ["MEANDRE_BANC_SERIES"])
@@ -1122,7 +1122,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 if _v is not None:
                     _stk[_nom] = _moy(_v)
             if _stk:
-                _ds = pd.DataFrame({"mois": _mois, **_stk})[_ok_t]
+                _ds = pd.DataFrame({"mois": _month, **_stk})[_ok_t]
                 _ann = pd.DatetimeIndex(temps)[_ok_t].year
                 _clim = _ds.groupby("mois").mean()
                 _clim = _clim - _clim.mean()
