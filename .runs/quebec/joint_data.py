@@ -74,6 +74,33 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     from meandre.observations import area_ratio as _area_ratio
     _sites = [str(x) for x in _q.sites]
     _exclues = {x for x in (_settings_st.get("stations.excluded") or "").replace(" ", "").split(",") if x}
+    # TABLE DE RATTACHEMENT (2026-10-28, `.runs/quebec/audit_stations.py`) : troncon retenu par
+    # station d'apres ses coordonnees CEHQ et les unites hydrologiques du projet ; une station
+    # « hors territoire » n'a pas de troncon dans ce domaine et rejoint les exclues.
+    _table = _settings_st.get("stations.attachment_table")
+    if _table:
+        import pandas as _pd_st
+        from meandre.utils import paths as _mpaths
+        _t = _pd_st.read_csv(_table.replace("{DERIVES}", _mpaths.DERIVED_ROOT), dtype={"station": str})
+        _t = _t[_t["territoire"].str.lower() == reg]
+        _idx_par_ident = {int(i_): k_ for k_, i_ in enumerate(np.asarray(node_ids).tolist())}
+        _changes = []
+        for _, _l in _t.iterrows():
+            if _l["station"] not in _sites:
+                continue
+            if _l["statut"] == "hors territoire":
+                _exclues.add(_l["station"])
+            elif _l["statut"] == "change" and np.isfinite(_l["troncon_retenu"]):
+                j_ = _sites.index(_l["station"])
+                nouveau = _idx_par_ident[int(_l["troncon_retenu"])]
+                _changes.append(f"{_l['station']} {int(node_ids[station_indices[j_]])}->{int(_l['troncon_retenu'])}")
+                station_indices[j_] = nouveau
+                station_node_map[_l["station"]] = nouveau
+        station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
+        for ni in station_indices:
+            station_mask[ni] = True
+        if _changes:
+            print(f"[stations] rattachement change par la table ({len(_changes)}) : {', '.join(_changes)}")
     if _exclues:
         _garde = [j for j, sid in enumerate(_sites) if sid not in _exclues]
         _retirees = [sid for sid in _sites if sid in _exclues]
@@ -91,10 +118,12 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     if _settings_st.get("stations.area_ratio"):
         import duckdb as _ddb
         _con = _ddb.connect(str(_paths(reg)[0]), read_only=True)
-        _aires = {str(r_[0]): (r_[1], r_[2]) for r_ in _con.execute("select s.station_id, s.drainage_area_km2, t.area_km2_physical from stations s join territorial t using (node_idx)").fetchall()}
+        # Aire de la station, et aire du troncon EFFECTIF (apres la table de rattachement).
+        _a_station = {str(r_[0]): r_[1] for r_ in _con.execute("select station_id, drainage_area_km2 from stations").fetchall()}
+        _a_noeud = {int(r_[0]): r_[1] for r_ in _con.execute("select node_idx, area_km2_physical from territorial").fetchall()}
         _con.close()
-        _a_st = np.array([_aires.get(sid, (np.nan, np.nan))[0] for sid in _sites], dtype=float)
-        _a_tr = np.array([_aires.get(sid, (np.nan, np.nan))[1] for sid in _sites], dtype=float)
+        _a_st = np.array([_a_station.get(sid, np.nan) for sid in _sites], dtype=float)
+        _a_tr = np.array([_a_noeud.get(int(ni), np.nan) for ni in station_indices], dtype=float)
         _r = _area_ratio(_a_st, _a_tr)
         station_area_ratio = torch.as_tensor(_r, dtype=torch.float32, device=device)
         q_obs = q_obs * station_area_ratio
