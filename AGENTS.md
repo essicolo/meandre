@@ -28,7 +28,7 @@ Journaux dans `~/meandre-data/carte-essai/`. Les chaînes 1, 4 et 5 sont finies 
 
 Chaque territoire : seize époques avec la recette `experiments/archive/config/socle-2026-10-04.toml`, forçage `JOINT_FX_SUFFIX=-casr-brut`, un point de reprise par époque (`MEANDRE_SAUVER_EPOQUES=1`), puis une passe avant sur la dernière époque avec `ETL_DUMP_REACH` et `ETL_DUMP_NATUREL=1`, qui écrit `<reg>-q-journalier.npz` et `<reg>-sans-journalier.npz` dans `~/meandre-data/carte-essai/`. Le jugement se fait toujours sur la DERNIÈRE époque, jamais sur celle retenue par la validation (registre R282, R294).
 
-Résultats sur 2022-2024, dernière époque, code corrigé, recette du socle (`indicateurs_stations.py`) :
+Résultats sur 2022-2024, dernière époque, code corrigé, recette du socle (`station-indicators.py`) :
 
 | territoire | stations | KGE médian | volume sim/obs | minimum annuel sur 7 jours sim/obs |
 | --- | --- | --- | --- | --- |
@@ -54,7 +54,7 @@ Suite de tests : 541 tests passent (7 octobre). Huit échecs qui n'apparaissaien
 
 LE DÉFAUT DE LA MONTÉRÉGIE ÉTAIT LA FENÊTRE D'ÉVALUATION (registre R355 à R359). Hors 2022-2024 la Montérégie se comporte comme l'Outaouais (volume 1,06 à 1,11, été médian 0,99 sur 25 ans) ; 2022-2024 contient les deux pires étés des 25 ans (orages de juillet 2023 et d'août 2024, que CaSR sous-estime). Réseau, cartes physiques, évapotranspiration (SSEBop et MOD16 concordent) et bilan annuel des bassins sont sains. Ne plus chercher de défaut de colonne propre à la Montérégie.
 
-Fait le 9 octobre : périodes déclarées dans le TOML (`[period]`) et KGE par année dans l'évaluation ; la recette `socle-2026-10-08.toml` évalue sur 2019-2024 (entraînement 2000-2015, validation 2016-2018) et porte les bornes de conductivité SIIGSOL (`ETL_TEXTURE_BOUNDS=0` pour le témoin). Téléchargés : SSEBop v6.1 mensuel 2012-2026 (`D:/meandre-data/ssebop/v61`), humidité du sol C3S mensuelle 2005-2024 (`D:/meandre-data/esa_cci_sm/mensuel`). Outils : `audit_reseau.py`, `fermeture_bassins.py`, `et_sources_comparees.py`, `stations_contrastees.py`, `saisons_stations.py`.
+Fait le 9 octobre : périodes déclarées dans le TOML (`[period]`) et KGE par année dans l'évaluation ; la recette `socle-2026-10-08.toml` évalue sur 2019-2024 (entraînement 2000-2015, validation 2016-2018) et porte les bornes de conductivité SIIGSOL (`ETL_TEXTURE_BOUNDS=0` pour le témoin). Téléchargés : SSEBop v6.1 mensuel 2012-2026 (`D:/meandre-data/ssebop/v61`), humidité du sol C3S mensuelle 2005-2024 (`D:/meandre-data/esa_cci_sm/mensuel`). Outils : `network-audit.py`, `basin-closure.py`, `et-sources-compared.py`, `contrasted-stations.py`, `station-seasons.py`.
 
 Prochain pas, à décider avec Essi : la ronde de remodélisation sur la recette du 8 octobre (nouveaux prélèvements, évaluation 2019-2024), témoin contre bornes de texture, avec ou sans amplitude saisonnière de fonte (R356), deux graines, GPU d'Ubuntu et du poste. Défauts réels communs à traiter ensuite : volume en excès de 6 à 17 %, erreur interannuelle d'été là où il n'y a pas de lacs.
 
@@ -70,10 +70,10 @@ Deux défauts majeurs trouvés et corrigés dans l'entraîneur, tous deux pouss�
 Outils ajoutés :
 
 - `meandre/training/trainer.py` : sonde par terme `MEANDRE_SONDE_TERMES=K_c,...` (gradient de chaque terme pondéré par rapport à un facteur par tronçon, cumulé sur une époque à `ETL_LR=0`), `MEANDRE_SONDE_TERMES_SEULS`, `MEANDRE_SONDE_TERMES_SORTIE`.
-- `experiments/seasonal-diagnostics/trajectoire_champ.py` : une sortie du champ (K_c, etc.) moyennée sur le bassin amont de stations, pour une liste de points de reprise, sans simuler.
+- `experiments/seasonal-diagnostics/field-trajectory.py` : une sortie du champ (K_c, etc.) moyennée sur le bassin amont de stations, pour une liste de points de reprise, sans simuler.
 - `meandre/adapters/physitel/builders/reach_deposits.py` : dépôts quaternaires du SIGEOM par tronçon, quinze territoires, résultat `D:/meandre-data/derives/auxiliaires/depots-sigeom-troncons.parquet` (copié sur Ubuntu) ; branché au champ par `ETL_ATTRIBUTS_DEPOTS=1` dans `meandre/run/territory_data.py` (`_ajoute_depots`, six colonnes). Le module d'évapotranspiration appris du pilote ne lit que ses attributs d'origine (`_COLS_ETB` dans `meandre/run/pilot.py`).
 - `meandre/run/pilot.py` : `ETL_SOIL_TOML` (profil de sol dans un fichier à part), tête du temps de transfert créée AVANT le départ à chaud (R306), export du débit naturalisé journalier avec `ETL_DUMP_NATUREL=1`.
-- `experiments/network-audit/carte_reconstruction.py` : construit les deux cartes (sites io-eau depuis `../io-eau/data/derived/io-eau-meandre.parquet`, tronçons PHYSITEL en lignes, lacs en polygones, zarr des débits à trois séries : modélisé, naturalisé, écart).
+- `experiments/network-audit/reconstruction-map.py` : construit les deux cartes (sites io-eau depuis `../io-eau/data/derived/io-eau-meandre.parquet`, tronçons PHYSITEL en lignes, lacs en polygones, zarr des débits à trois séries : modélisé, naturalisé, écart).
 - `.runs/alliance/province.sbatch` (lot provincial, non utilisé finalement), `epreuves.sbatch` (douze tâches : témoin, dépôts, dépôts et tête sur l'Outaouais ; témoin, dépôts, dépôts, drainage et tête sur la Montérégie ; deux graines), `manifeste_province.sh` (liste Globus).
 - feuillage (`index.html`, branche `cartes-meandre`) : `color_by`, `size_by`, `width_by`, `fill_opacity` avec échelle sous la tuile de couche ; séries nommées par couche (`layer`) avec légende ; `labels` dans les sections de propriétés ; axe log optionnel (`options.ylog`, non employé) ; clic sur la ligne la plus proche à une confluence ; barre latérale qui défile ; fonds Esri gris clair et OpenStreetMap humanitaire, Positron et Dark Matter retirés ; une couche colorée par attribut garde son dégradé à l'édition.
 
@@ -91,9 +91,9 @@ Mécanismes ajoutés, tous opt-in, testés en passe avant seulement :
 - porte de gel par processus de sol déclaré, clé `frost_factor` dans un `[[soil.process]]` (`meandre/vertical/soil_processes.py`, `hydrotel_clone/bv3c2.py`), test `tests/test_declared_frost_gate.py` ; pas encore éprouvée ;
 - sublimation de Kuzmin au banc, `ETL_SUBLIM=1` (existait au pilote depuis le 22 août, R36) : sous CaSR brut elle ramène le manteau du nord sur NEISIM et retire la moitié de l'excès de volume (R320).
 
-Diagnostics : le manteau du modèle régional dépasse NEISIM de 16 à 36 % et fond en mai (R319, qui corrige la lecture de R316 au sud) ; CaSR brut est 1,3 à 1,44 fois les stations en hiver sur l'Outaouais et 0,69 à 0,86 fois les stations en été en Montérégie (R321, `experiments/seasonal-diagnostics/pluie_casr_vs_stations.py` avec `JOINT_FX_SUFFIX=-casr-brut MEANDRE_PLUIE_MARGE=1.0 MEANDRE_PLUIE_ANNEES=2011,2024`). La correction du forçage par territoire et par saison est une décision d'Essi, hors de meandre.
+Diagnostics : le manteau du modèle régional dépasse NEISIM de 16 à 36 % et fond en mai (R319, qui corrige la lecture de R316 au sud) ; CaSR brut est 1,3 à 1,44 fois les stations en hiver sur l'Outaouais et 0,69 à 0,86 fois les stations en été en Montérégie (R321, `experiments/seasonal-diagnostics/casr-rain-vs-stations.py` avec `JOINT_FX_SUFFIX=-casr-brut MEANDRE_PLUIE_MARGE=1.0 MEANDRE_PLUIE_ANNEES=2011,2024`). La correction du forçage par territoire et par saison est une décision d'Essi, hors de meandre.
 
-Jugement des épreuves de Narval quand elles sortiront : `python experiments/seasonal-diagnostics/indicateurs_stations.py <q-*.npz>` sur les fichiers de `~/scratch/meandre/epreuves/`, rapatriés sur le poste.
+Jugement des épreuves de Narval quand elles sortiront : `python experiments/seasonal-diagnostics/station-indicators.py <q-*.npz>` sur les fichiers de `~/scratch/meandre/epreuves/`, rapatriés sur le poste.
 
 ## 6. Où lire l'histoire
 

@@ -41,10 +41,10 @@ export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 export JOINT_FX_SUFFIX=-budyko
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-# La liste des sous-bassins est produite une fois par `banc_sousbassin.py liste` et
+# La liste des sous-bassins est produite une fois par `subbasin_bench.py liste` et
 # deposee dans $PROJET/meandre/donnees/quebec/sousbassins.txt : "region station" par ligne.
 LISTE=$D/sousbassins.txt
-[ -f "$LISTE" ] || { echo "ARRET : $LISTE absent (produire avec banc_sousbassin.py liste)" >&2; exit 3; }
+[ -f "$LISTE" ] || { echo "ARRET : $LISTE absent (produire avec subbasin_bench.py liste)" >&2; exit 3; }
 read -r REG STA < <(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "$LISTE")
 [ -n "${STA:-}" ] || { echo "ARRET : pas de ligne $((SLURM_ARRAY_TASK_ID + 1)) dans $LISTE" >&2; exit 3; }
 exec > "$JOURNAUX/$REG-$STA.log" 2>&1
@@ -53,4 +53,4 @@ cp "$D/${REG}.duckdb" "$LOCAL/quebec/"
 cp "$D/forcing-${REG}-budyko.nc" "$LOCAL/quebec/"
 cp "$D"/*.parquet "$LOCAL/quebec/" 2>/dev/null || true
 
-python -u .runs/quebec/banc_sousbassin.py "$REG" "$STA" --entrainer ${EPOQUES:-5} --device cpu --tag="-$STA"
+python -u .runs/quebec/subbasin_bench.py "$REG" "$STA" --entrainer ${EPOQUES:-5} --device cpu --tag="-$STA"
