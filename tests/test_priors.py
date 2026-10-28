@@ -122,3 +122,38 @@ def test_une_sortie_collee_a_sa_borne_est_liberee_sous_prior(monkeypatch):
     finally:
         settings._configured.clear()
         settings._configured.update(garde)
+
+
+def test_depart_au_centre_et_mode_niveau_par_cle(monkeypatch):
+    """`start_at_center` pose la valeur du prior exactement ; `priors.level_keys` juge cette clé
+    en niveau même quand le mode global est anomalie (2026-10-27)."""
+    from meandre.utils import settings
+    garde = dict(settings._configured)
+    settings._configured.clear()
+    try:
+        net = _champ()
+        coords, terr = _entrees()
+        n = len(coords)
+        centre = np.linspace(0.001, 0.002, n)
+        pri = priors.soil_priors(n, None, None, k_sat_3_center_m_per_day=centre)
+        assert np.allclose(pri["K_sat_3"][0], centre)
+        pri = {"K_sat_3": pri["K_sat_3"], "K_sat_1": pri["K_sat_1"]}
+        avant = net(coords, terr)
+        net.adopt_priors(coords, terr, pri, preserve=True, start_at_center=("K_sat_3",))
+        apres = net(coords, terr)
+        assert np.allclose(apres.K_sat_3.detach().numpy(), centre, rtol=1e-4), "K_sat_3 part au centre"
+        assert torch.allclose(avant.K_sat_1, apres.K_sat_1, rtol=1e-5), "K_sat_1 conserve"
+        # tout le champ K_sat_3 deux fois le centre : rien en anomalie, une penalite en niveau
+        raw = torch.zeros(n, net.fc_out.out_features)
+        from meandre.spatial.field_network import SpatialParams
+        noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
+        net._pr_o_K_sat_3.zero_()
+        net._pr_o_K_sat_1.zero_()
+        raw[:, noms.index("K_sat_3")] = float(np.log(2.0) / pri["K_sat_3"][1])
+        net._apply_constraints(raw)
+        assert float(net.deviation_prior_loss("anomaly")) < 1e-10
+        monkeypatch.setenv("MEANDRE_PRIOR_CLES_NIVEAU", "K_sat_3")
+        assert float(net.deviation_prior_loss("anomaly")) > 0.05
+    finally:
+        settings._configured.clear()
+        settings._configured.update(garde)

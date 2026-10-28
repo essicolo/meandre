@@ -987,7 +987,15 @@ if "ETL_WARM_FROM" in os.environ:
 if _settings.get("spatial.priors"):
     from meandre import priors as _priors
     _dom = r["domain"]
-    _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m)
+    _k3c = None
+    if _settings.get("priors.k_sat_3_center") == "substratum":
+        # Centre de K_sat_3 : conductivite du substratum par troncon (classe de drainage), en m/j.
+        if globals().get("_pl_sub") is None:
+            raise ValueError("priors.k_sat_3_center = substratum demande [soil.ceiling_from_drainage] et un processus de percolation a plafond")
+        _k3c = np.asarray(_pl_sub, dtype=float) * 24.0
+        print(f"[etl] prior de K_sat_3 centre sur le substratum : mediane {np.median(_k3c) * 1000:.2f} mm/j")
+    _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m, k_sat_3_center_m_per_day=_k3c)
+    _depart_centre = tuple(k for k in (_settings.get("priors.start_at_center") or "").replace(" ", "").split(",") if k)
     _porte = any(k.startswith("spatial_encoder._pr_o_") for k in torch.load(os.environ["ETL_WARM_FROM"], map_location="cpu")["state_dict"]) if "ETL_WARM_FROM" in os.environ else False
     if _porte:
         for _k, (_c, _s) in _pri.items():
@@ -995,7 +1003,9 @@ if _settings.get("spatial.priors"):
         model.load(os.environ["ETL_WARM_FROM"])
         print(f"[etl] priors par troncon relus du point de reprise ({len(_pri)} sorties)")
     else:
-        _rap = model.spatial_encoder.adopt_priors(td.node_coords, r["territorial"].data, _pri, preserve="ETL_WARM_FROM" in os.environ)
+        _rap = model.spatial_encoder.adopt_priors(td.node_coords, r["territorial"].data, _pri, preserve="ETL_WARM_FROM" in os.environ, start_at_center=_depart_centre)
+        if _depart_centre:
+            print(f"[etl] priors : depart au centre pour {', '.join(_depart_centre)}")
         print(f"[etl] priors par troncon adoptes ({len(_pri)} sorties) ; " + _priors.summary(_pri))
         for _k, (_m, _q) in sorted(_rap.items()):
             print(f"       {_k:16s} deviation standardisee au depart : mediane {_m:.2f}, 90e centile {_q:.2f}")

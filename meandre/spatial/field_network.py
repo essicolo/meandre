@@ -884,7 +884,7 @@ class SpatialFieldNetwork(nn.Module):
             self.register_buffer(k, v.clone().to(dev), persistent=True)
         self.priors[key] = float(sigma)
 
-    def adopt_priors(self, coords: Tensor, territorial: Tensor, priors: dict, preserve: bool = True) -> dict:
+    def adopt_priors(self, coords: Tensor, territorial: Tensor, priors: dict, preserve: bool = True, start_at_center: tuple = ()) -> dict:
         """Pose les priors et, si `preserve`, choisit les decalages qui conservent exactement les
         valeurs que le champ produit AUJOURD'HUI sur ce domaine : rien ne bouge au depart, et seul
         l'optimiseur, tire par la perte et retenu par la penalite, deplace ensuite le sol.
@@ -899,7 +899,16 @@ class SpatialFieldNetwork(nn.Module):
         report = {}
         for key, (center, sigma) in priors.items():
             offset = None
-            if preserve:
+            if key in start_at_center:
+                # Depart AU CENTRE : le decalage annule la sortie brute, z vaut zero et la valeur
+                # est celle du prior ; sert quand le centre est une grandeur que le modele charge
+                # n'a jamais vue (2026-10-27).
+                if raw is None:
+                    with torch.no_grad():
+                        raw = self.fc_out(self._trunk(coords, territorial))
+                offset = (-raw[:, col[key.replace("_frac", "")]]).float().cpu().numpy()
+                report[key] = (0.0, 0.0)
+            elif preserve:
                 if key.startswith(("porosity_", "theta_fc_frac_", "theta_wp_frac_")):
                     nom, layer = key.rsplit("_", 1)
                     if nom == "porosity":
@@ -934,13 +943,16 @@ class SpatialFieldNetwork(nn.Module):
         if mode is None:
             from meandre.utils import settings as _settings
             mode = _settings.get("priors.mode")
+        from meandre.utils import settings as _settings
+        level_keys = set((_settings.get("priors.level_keys") or "").replace(" ", "").split(",")) - {""}
         terms = []
         for k, v in z.items():
-            if mode == "level":
+            mode_k = "level" if k in level_keys else mode
+            if mode_k == "level":
                 terms.append((v ** 2).mean())
-            elif mode == "anomaly":
+            elif mode_k == "anomaly":
                 terms.append(((v - v.mean()) ** 2).mean())
-            elif mode == "shape":
+            elif mode_k == "shape":
                 s = float(getattr(self, f"_pr_s_{k}"))
                 lc = torch.log(getattr(self, f"_pr_c_{k}").to(v.device))
                 lp = lc + s * v

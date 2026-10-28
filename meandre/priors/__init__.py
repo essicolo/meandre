@@ -43,11 +43,14 @@ def _fill(values: np.ndarray | None, n: int, default: float) -> np.ndarray:
     return out
 
 
-def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_thickness_m: np.ndarray | None = None) -> dict[str, tuple[np.ndarray, float]]:
+def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_thickness_m: np.ndarray | None = None, k_sat_3_center_m_per_day: np.ndarray | None = None) -> dict[str, tuple[np.ndarray, float]]:
     """Centres et écarts par tronçon.
 
     `texture` : par couche, (fraction de sable, fraction d'argile), NaN où la texture manque.
     `deposit_thickness_m` : épaisseur des dépôts meubles, NaN où elle manque.
+    `k_sat_3_center_m_per_day` : centre de la conductivité de la couche 3 tiré du dépôt (par
+    exemple la conductivité du substratum de la classe de drainage), en m/j ; NaN où il manque,
+    la texture s'applique alors (2026-10-27).
     Retourne {clé: (centre (n_nodes,), sigma)} pour les clés de `KEYS`.
     """
     SIGMAS = sigmas()
@@ -61,6 +64,10 @@ def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_t
         priors[f"theta_fc_frac_{layer}"] = (np.asarray(sr["theta_fc"] / sr["theta_s"], float), SIGMAS["theta_fc_frac"])
         priors[f"theta_wp_frac_{layer}"] = (np.asarray(sr["theta_wp"] / sr["theta_fc"], float), SIGMAS["theta_wp_frac"])
         priors[f"K_sat_{layer}"] = (np.asarray(sr["k_sat"], float), SIGMAS["K_sat"])
+    if k_sat_3_center_m_per_day is not None:
+        c3, s3 = priors["K_sat_3"]
+        k = np.asarray(k_sat_3_center_m_per_day, dtype=float)
+        priors["K_sat_3"] = (np.where(np.isfinite(k), k, c3), s3)
     z2 = np.full(n_nodes, Z2_DEFAULT_M)
     z3 = np.full(n_nodes, Z3_DEFAULT_M)
     if deposit_thickness_m is not None:
