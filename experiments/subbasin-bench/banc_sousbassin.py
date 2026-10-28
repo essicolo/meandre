@@ -1521,7 +1521,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if os.environ.get("MEANDRE_CHAMP_GELE"):
             # Apres chargement, le gel par poids nuls ne tient plus : on fige les CARTES
             # chargees, capturees au premier appel du champ.
-            m.spatial_encoder.figer_au_prochain_appel = {x for x in os.environ["MEANDRE_CHAMP_GELE"].split(",") if x}
+            m.spatial_encoder.freeze_on_next_call = {x for x in os.environ["MEANDRE_CHAMP_GELE"].split(",") if x}
             print(f"  champ spatial : cartes chargees figees {os.environ['MEANDRE_CHAMP_GELE']}", flush=True)
     elif quantile:
         raise SystemExit("phase quantile sans --charger : une enveloppe autour d'un modele "

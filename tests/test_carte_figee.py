@@ -17,9 +17,9 @@ def _sp(valeur):
 def test_carte_capturee_puis_substituee():
     net = SpatialFieldNetwork.__new__(SpatialFieldNetwork)
     torch.nn.Module.__init__(net)
-    net.figer_au_prochain_appel = {"K_sat_1"}
-    premier = net._applique_multiplicateurs(_sp(0.2))
-    second = net._applique_multiplicateurs(_sp(0.7))
+    net.freeze_on_next_call = {"K_sat_1"}
+    premier = net._apply_multipliers(_sp(0.2))
+    second = net._apply_multipliers(_sp(0.7))
     assert torch.allclose(premier.K_sat_1, torch.full((5,), 0.2))
     assert torch.allclose(second.K_sat_1, torch.full((5,), 0.2))
     assert torch.allclose(second.K_sat_2, torch.full((5,), 0.7))
@@ -28,8 +28,8 @@ def test_carte_capturee_puis_substituee():
 def test_multiplicateur_applique_apres_le_gel():
     net = SpatialFieldNetwork.__new__(SpatialFieldNetwork)
     torch.nn.Module.__init__(net)
-    net.figer_au_prochain_appel = {"K_sat_1"}
+    net.freeze_on_next_call = {"K_sat_1"}
     net.multipliers = {"K_sat_1": torch.tensor(0.3)}
-    net._applique_multiplicateurs(_sp(0.2))
-    sortie = net._applique_multiplicateurs(_sp(0.9))
+    net._apply_multipliers(_sp(0.2))
+    sortie = net._apply_multipliers(_sp(0.9))
     assert torch.allclose(sortie.K_sat_1, torch.full((5,), 0.06))

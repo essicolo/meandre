@@ -990,7 +990,7 @@ if "ETL_WARM_FROM" in os.environ:
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
     # Seuils du prolongement sous la borne (spatial.extend_below) : poses au premier appel du
     # champ CHARGE, jamais sur les poids d'avant le chargement.
-    model.spatial_encoder._seuils_prolongement = {}
+    model.spatial_encoder._extension_thresholds = {}
 # PRIORS PAR TRONCON (etape 3, 2026-10-26). Centres tires du domaine (texture par couche, epaisseur
 # des depots) ; les valeurs du modele charge sont conservees exactement a l'adoption. Un point de
 # reprise deja affine sous prior porte ses centres et decalages : on les relit, sans recalculer.
@@ -1269,7 +1269,7 @@ if os.environ.get("MEANDRE_SONDE_DOMAINE"):
 if os.environ.get("MEANDRE_CHAMP_EXPORT"):
     with torch.no_grad():
         model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
-    _ex = {"brut": model.spatial_encoder.dernier_brut.float().cpu().numpy(),
+    _ex = {"brut": model.spatial_encoder.last_raw.float().cpu().numpy(),
            "coords": td.node_coords.float().cpu().numpy(),
            "territorial": td.territorial.to_tensor().float().cpu().numpy(),
            "territoires": np.array([f"{n}:{o}:{t}" for n, _i2, o, t in _territoires()])}

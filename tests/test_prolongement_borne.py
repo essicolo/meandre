@@ -56,7 +56,7 @@ def test_prolongement_conserve_les_valeurs_de_depart(monkeypatch):
     depart = [-9.0, -4.0, 0.0, 3.0]
     _, v0 = _sortie(net, "Z3", depart)
     _avec(monkeypatch, MEANDRE_PROLONGE_SOUS="Z3:0.20")
-    net._seuils_prolongement = {}
+    net._extension_thresholds = {}
     _, v = _sortie(net, "Z3", depart)
     assert torch.allclose(v, v0)
     # Sous le seuil (plus basse sortie de depart moins 0,5), la valeur descend vers 0,20 m.
@@ -67,7 +67,7 @@ def test_prolongement_conserve_les_valeurs_de_depart(monkeypatch):
 def test_seuil_donne_explicitement(monkeypatch):
     net = _champ()
     _avec(monkeypatch, MEANDRE_PROLONGE_SOUS="Z2:0.10:-5.0")
-    net._seuils_prolongement = {}
+    net._extension_thresholds = {}
     _, v = _sortie(net, "Z2", [-4.0, -60.0])
     assert float(v[0]) > 0.30 and abs(float(v[1]) - 0.10) < 1e-4
 
@@ -87,7 +87,7 @@ def test_prolongement_au_dessus_d_une_seule_couche(monkeypatch):
     depart = [0.0, 4.0, 9.0]
     _, f0, _ = _fraction_fc3(net, depart)
     _avec(monkeypatch, MEANDRE_PROLONGE_SUR="theta_fc_frac_3:0.98")
-    net._seuils_prolongement = {}
+    net._extension_thresholds = {}
     _, f, _ = _fraction_fc3(net, depart)
     assert torch.allclose(f, f0, atol=1e-6)
     _, haut, _ = _fraction_fc3(net, [12.0, 60.0])

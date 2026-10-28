@@ -102,14 +102,14 @@ def field_bounds_from_toml(cfg):
     if not cfg:
         return out
     soil = cfg.get("soil") or {}
-    for nom, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
+    for field_name, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
         if a in soil or b in soil:
-            lo0, hi0 = FIELD_BOUNDS[nom][:2]
-            out[nom] = (float(soil.get(a, lo0)), float(soil.get(b, hi0)))
-    for nom, v in ((cfg.get("field") or {}).get("bounds") or {}).items():
-        if nom not in FIELD_BOUNDS:
-            raise KeyError(f"[field.bounds] : sortie inconnue {nom}, attendu {sorted(FIELD_BOUNDS)}")
-        out[nom] = (float(v[0]), float(v[1]))
+            lo0, hi0 = FIELD_BOUNDS[field_name][:2]
+            out[field_name] = (float(soil.get(a, lo0)), float(soil.get(b, hi0)))
+    for field_name, v in ((cfg.get("field") or {}).get("bounds") or {}).items():
+        if field_name not in FIELD_BOUNDS:
+            raise KeyError(f"[field.bounds] : sortie inconnue {field_name}, attendu {sorted(FIELD_BOUNDS)}")
+        out[field_name] = (float(v[0]), float(v[1]))
     return out
 
 
@@ -293,16 +293,16 @@ class _SigmoidGradientFloor(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, x, plancher):
+    def forward(ctx, x, floor):
         s = torch.sigmoid(x)
         ctx.save_for_backward(s)
-        ctx.plancher = plancher
+        ctx.floor = floor
         return s
 
     @staticmethod
     def backward(ctx, g):
         (s,) = ctx.saved_tensors
-        return g * torch.clamp(s * (1.0 - s), min=ctx.plancher), None
+        return g * torch.clamp(s * (1.0 - s), min=ctx.floor), None
 
 
 class SpatialFieldNetwork(nn.Module):
@@ -382,12 +382,12 @@ class SpatialFieldNetwork(nn.Module):
         self.soil_bounds = defaults
         # Table des bornes en vigueur : defauts, puis soil_bounds historiques, puis field_bounds.
         self.bounds = {k: tuple(v) for k, v in FIELD_BOUNDS.items()}
-        for nom, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
-            self.bounds[nom] = (float(defaults[a]), float(defaults[b])) + tuple(FIELD_BOUNDS[nom][2:])
-        for nom, v in (field_bounds or {}).items():
-            if nom not in FIELD_BOUNDS:
-                raise KeyError(f"borne pour une sortie inconnue : {nom}")
-            self.bounds[nom] = (float(v[0]), float(v[1])) + tuple(FIELD_BOUNDS[nom][2:])
+        for field_name, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
+            self.bounds[field_name] = (float(defaults[a]), float(defaults[b])) + tuple(FIELD_BOUNDS[field_name][2:])
+        for field_name, v in (field_bounds or {}).items():
+            if field_name not in FIELD_BOUNDS:
+                raise KeyError(f"borne pour une sortie inconnue : {field_name}")
+            self.bounds[field_name] = (float(v[0]), float(v[1])) + tuple(FIELD_BOUNDS[field_name][2:])
 
         if param_mode == "static":
             self.static_params = nn.Parameter(torch.randn(SpatialParams.N_PARAMS) * 0.1)
@@ -571,16 +571,16 @@ class SpatialFieldNetwork(nn.Module):
 
         B = self.bounds
 
-        def inv_borne(nom, val):
+        def inv_bound(field_name, val):
             """Inverse de `borne` dans _apply_constraints : sortie brute qui rend `val`."""
-            if nom in (getattr(self, "node_bounds", None) or set()):
+            if field_name in (getattr(self, "node_bounds", None) or set()):
                 return 0.0   # bornes par troncon : le brut nul rend la valeur de texture
-            if any(k == nom or k.startswith(nom + "_") for k in getattr(self, "priors", {})):
+            if any(k == field_name or k.startswith(field_name + "_") for k in getattr(self, "priors", {})):
                 return 0.0   # prior par troncon : le brut nul rend le centre
-            lo, hi = B[nom][0], B[nom][1]
-            if len(B[nom]) > 2 and B[nom][2] == "log":
+            lo, hi = B[field_name][0], B[field_name][1]
+            if len(B[field_name]) > 2 and B[field_name][2] == "log":
                 llo, lhi = math.log(lo), math.log(hi)
-                c = min(max(math.log(_LOG_CENTERS[nom]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
+                c = min(max(math.log(_LOG_CENTERS[field_name]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
                 u = (c - llo) / (lhi - llo)
                 b0 = math.log(u / (1.0 - u))
                 a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
@@ -592,23 +592,23 @@ class SpatialFieldNetwork(nn.Module):
         raw = torch.zeros(SpatialParams.N_PARAMS)
         i = 0
         for layer in range(3):
-            raw[i] = inv_borne(f"K_sat_{layer + 1}", d[f"K_sat_{layer + 1}"]); i += 1
+            raw[i] = inv_bound(f"K_sat_{layer + 1}", d[f"K_sat_{layer + 1}"]); i += 1
         for layer in range(3):
-            raw[i] = inv_borne("porosity", d[f"porosity_{layer + 1}"]); i += 1
+            raw[i] = inv_bound("porosity", d[f"porosity_{layer + 1}"]); i += 1
         for layer in range(3):
-            raw[i] = inv_borne("theta_fc_frac", d[f"theta_fc_{layer + 1}"] / d[f"porosity_{layer + 1}"]); i += 1
+            raw[i] = inv_bound("theta_fc_frac", d[f"theta_fc_{layer + 1}"] / d[f"porosity_{layer + 1}"]); i += 1
         for layer in range(3):
-            raw[i] = inv_borne("theta_wp_frac", d[f"theta_wp_{layer + 1}"] / d[f"theta_fc_{layer + 1}"]); i += 1
+            raw[i] = inv_bound("theta_wp_frac", d[f"theta_wp_{layer + 1}"] / d[f"theta_fc_{layer + 1}"]); i += 1
         # f_root : le biais [1.0, 0.5, -0.5] donne deja ~[50, 30, 20] ; brut nul.
         for _ in range(3):
             raw[i] = 0.0; i += 1
-        for nom in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
+        for field_name in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
                     "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
-            raw[i] = inv_borne(nom, d[nom]); i += 1
+            raw[i] = inv_bound(field_name, d[field_name]); i += 1
         raw[i] = inv_bounded(d["K_musk_hours"], _kmusk()[0], _kmusk()[1]); i += 1
-        for nom in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
+        for field_name in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
                     "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
-            raw[i] = inv_borne(nom, d[nom]); i += 1
+            raw[i] = inv_bound(field_name, d[field_name]); i += 1
 
         return raw
 
@@ -648,12 +648,12 @@ class SpatialFieldNetwork(nn.Module):
             # fixee au centre du domaine, si bien qu'elles ne varient plus qu'avec les attributs
             # du troncon. Mesure ce que la geographie apporte a un parametre (R303).
             from dataclasses import fields as _fds
-            _noms = [f.name for f in _fds(SpatialParams)]
+            _field_names = [f.name for f in _fds(SpatialParams)]
             _c0 = coords.mean(dim=0, keepdim=True).expand_as(coords)
             _raw0 = self.fc_out(self._trunk(_c0, territorial))
             _col = torch.zeros(raw.shape[1], dtype=torch.bool, device=raw.device)
             for _n in _sp:
-                _col[_noms.index(_n)] = True
+                _col[_field_names.index(_n)] = True
             raw = torch.where(_col.unsqueeze(0), _raw0, raw)
 
         _rh = getattr(self, "routing_head", None)
@@ -673,7 +673,7 @@ class SpatialFieldNetwork(nn.Module):
         _bi = getattr(self, "brut_impose", None)
         if _bi is not None:
             raw = _bi.to(device=raw.device, dtype=raw.dtype)
-        self.dernier_brut = raw.detach()
+        self.last_raw = raw.detach()
         if getattr(self, "capture_brut", False) and raw.requires_grad:
             # Sonde des conflits (2026-10-14) : garde la sortie brute et son gradient.
             # Toutes les sorties du bloc sont gardees : le champ est appele par la simulation
@@ -722,7 +722,7 @@ class SpatialFieldNetwork(nn.Module):
     # dependance qu'on vient de retirer.
     _LON0 = -72.0
     _LAT0 = 52.0
-    _RAYON_KM = 1200.0
+    _RADIUS_KM = 1200.0
 
     def _project_coords(self, coords: Tensor) -> Tensor:
         """Projette (lon, lat) en degres vers des coordonnees ISOTROPES, repere FIXE.
@@ -737,7 +737,7 @@ class SpatialFieldNetwork(nn.Module):
         lon, lat = coords[:, 0], coords[:, 1]
         x = (lon - self._LON0) * math.cos(math.radians(self._LAT0)) * 111.32
         y = (lat - self._LAT0) * 110.574
-        return torch.stack([x / self._RAYON_KM, y / self._RAYON_KM], dim=-1)
+        return torch.stack([x / self._RADIUS_KM, y / self._RADIUS_KM], dim=-1)
 
     def _trunk(self, coords: Tensor, territorial: Tensor) -> Tensor:
         """Tronc NeRF partagé (fc1 → skip → fc2) → features cachées h."""
@@ -765,8 +765,8 @@ class SpatialFieldNetwork(nn.Module):
         A = _t.clamp(_t.as_tensor(area_lac_km2, dtype=_t.float32), min=1e-3)
         self._lake_k_anchor = k0 * _t.clamp((a_ref_km2 / A) ** alpha, max=1.0)
 
-    def set_routing_anchor(self, length_km, slope_frac=None, celerite_ms: float = 1.0,
-                           pente_ref=None, k_min_h: float = 0.05,
+    def set_routing_anchor(self, length_km, slope_frac=None, celerity_ms: float = 1.0,
+                           slope_ref=None, k_min_h: float = 0.05,
                            k_max_h: float = 48.0):
         """Ancre le temps de transfert Muskingum sur la GEOMETRIE du troncon.
 
@@ -816,17 +816,17 @@ class SpatialFieldNetwork(nn.Module):
             return
         import torch as _t
         L0 = _t.as_tensor(length_km, dtype=_t.float32)
-        libre = ~_t.isfinite(L0)
+        free = ~_t.isfinite(L0)
         L = _t.clamp(_t.nan_to_num(L0, nan=1.0), min=0.05) * 1000.0
         if slope_frac is None:
-            v = _t.full_like(L, float(celerite_ms))
+            v = _t.full_like(L, float(celerity_ms))
         else:
             S = _t.clamp(_t.as_tensor(slope_frac, dtype=_t.float32), min=1e-5)
-            ref = float(pente_ref) if pente_ref is not None else float(S[~libre].median())
-            v = celerite_ms * _t.sqrt(S / max(ref, 1e-5))
+            ref = float(slope_ref) if slope_ref is not None else float(S[~free].median())
+            v = celerity_ms * _t.sqrt(S / max(ref, 1e-5))
         c = (5.0 / 3.0) * _t.clamp(v, min=0.05)
         anc = _t.clamp(L / c / 3600.0, min=k_min_h, max=k_max_h)
-        self._k_musk_anchor = _t.where(libre, _t.full_like(anc, float("nan")), anc)
+        self._k_musk_anchor = _t.where(free, _t.full_like(anc, float("nan")), anc)
 
     def lake_params(self, coords: Tensor, territorial: Tensor) -> tuple[Tensor, Tensor]:
         """Paramètres de lac par nœud (k_lake, beta), bornés physiquement.
@@ -894,9 +894,9 @@ class SpatialFieldNetwork(nn.Module):
             with torch.no_grad():
                 before = self.forward(coords, territorial)
                 raw = self.fc_out(self._trunk(coords, territorial))
-        noms = [f.name for f in _dc_fields(SpatialParams)][:SpatialParams.N_PARAMS]
-        col = {n: i for i, n in enumerate(noms)}
-        report = {}
+        field_names = [f.name for f in _dc_fields(SpatialParams)][:SpatialParams.N_PARAMS]
+        col = {n: i for i, n in enumerate(field_names)}
+        carryover = {}
         for key, (center, sigma) in priors.items():
             offset = None
             if key in start_at_center:
@@ -907,13 +907,13 @@ class SpatialFieldNetwork(nn.Module):
                     with torch.no_grad():
                         raw = self.fc_out(self._trunk(coords, territorial))
                 offset = (-raw[:, col[key.replace("_frac", "")]]).float().cpu().numpy()
-                report[key] = (0.0, 0.0)
+                carryover[key] = (0.0, 0.0)
             elif preserve:
                 if key.startswith(("porosity_", "theta_fc_frac_", "theta_wp_frac_")):
-                    nom, layer = key.rsplit("_", 1)
-                    if nom == "porosity":
+                    field_name, layer = key.rsplit("_", 1)
+                    if field_name == "porosity":
                         current = getattr(before, f"porosity_{layer}")
-                    elif nom == "theta_fc_frac":
+                    elif field_name == "theta_fc_frac":
                         current = getattr(before, f"theta_fc_{layer}") / getattr(before, f"porosity_{layer}")
                     else:
                         current = getattr(before, f"theta_wp_{layer}") / getattr(before, f"theta_fc_{layer}")
@@ -923,9 +923,9 @@ class SpatialFieldNetwork(nn.Module):
                 z0 = torch.log(current.double() / c) / float(sigma)
                 # La colonne brute des fractions porte le nom de la grandeur (theta_fc_1), pas de la fraction.
                 offset = (z0 - raw[:, col[key.replace("_frac", "")]].double()).float().cpu().numpy()
-                report[key] = (float(z0.abs().median()), float(z0.abs().quantile(0.9)))
+                carryover[key] = (float(z0.abs().median()), float(z0.abs().quantile(0.9)))
             self.set_prior(key, center, sigma, offset)
-        return report
+        return carryover
 
     def deviation_prior_loss(self, mode: str | None = None) -> Tensor:
         """Penalite des priors, lue sur le dernier appel du champ, moyenne sur les sorties centrees.
@@ -963,7 +963,7 @@ class SpatialFieldNetwork(nn.Module):
                 raise ValueError(f"priors.mode inconnu : {mode!r} ; attendu level, anomaly ou shape")
         return torch.stack(terms).mean()
 
-    def set_node_bounds(self, nom: str, lo: Tensor, hi: Tensor) -> None:
+    def set_node_bounds(self, field_name: str, lo: Tensor, hi: Tensor) -> None:
         """Bornes PAR TRONCON d'une sortie en log (conductivites), tirees de la pedologie.
 
         Les bornes uniques (0,0003 a 55 m/j) laissaient le champ apprendre les conductivites a
@@ -971,20 +971,20 @@ class SpatialFieldNetwork(nn.Module):
         le till sableux de l'Outaouais (R349). `lo` et `hi` sont des tenseurs (n_nodes,) en
         unites de la sortie ; la valeur de texture est leur moyenne geometrique.
         """
-        if nom not in FIELD_BOUNDS or len(FIELD_BOUNDS[nom]) < 3 or FIELD_BOUNDS[nom][2] != "log":
-            raise KeyError(f"bornes par troncon : sortie {nom} inconnue ou non logarithmique")
+        if field_name not in FIELD_BOUNDS or len(FIELD_BOUNDS[field_name]) < 3 or FIELD_BOUNDS[field_name][2] != "log":
+            raise KeyError(f"bornes par troncon : sortie {field_name} inconnue ou non logarithmique")
         lo = torch.as_tensor(lo, dtype=torch.float32); hi = torch.as_tensor(hi, dtype=torch.float32)
         if not bool((hi > lo).all()) or not bool((lo > 0).all()):
-            raise ValueError(f"bornes par troncon de {nom} : il faut 0 < lo < hi partout")
+            raise ValueError(f"bornes par troncon de {field_name} : il faut 0 < lo < hi partout")
         if getattr(self, "node_bounds", None) is None:
             self.node_bounds = set()
         dev = next(self.parameters()).device
         # Tampons non persistants : relus par leur nom a chaque appel, pour suivre `.to(device)`.
-        for k, v in ((f"_nb_lo_{nom}", lo), (f"_nb_hi_{nom}", hi)):
+        for k, v in ((f"_nb_lo_{field_name}", lo), (f"_nb_hi_{field_name}", hi)):
             if hasattr(self, k):
                 delattr(self, k)
             self.register_buffer(k, v.clone().to(dev), persistent=False)
-        self.node_bounds.add(nom)
+        self.node_bounds.add(field_name)
 
     def _apply_constraints(self, raw: Tensor) -> SpatialParams:
         """Map raw network outputs to physically plausible ranges.
@@ -1002,28 +1002,28 @@ class SpatialFieldNetwork(nn.Module):
 
         NB = getattr(self, "node_bounds", None) or set()
         from meandre.utils import settings as _settings
-        _plancher = _settings.get("spatial.gradient_floor")
-        _avec_plancher = set((_settings.get("spatial.gradient_floor_outputs") or "").replace(" ", "").split(",")) - {""}
-        _prolonge, _seuils_donnes = {}, {}
-        _prolonge_haut, _seuils_haut_donnes = {}, {}
-        for reglage, cible, seuils in (("spatial.extend_below", _prolonge, _seuils_donnes), ("spatial.extend_above", _prolonge_haut, _seuils_haut_donnes)):
-            for a in (_settings.get(reglage) or "").replace(" ", "").split(","):
+        _floor = _settings.get("spatial.gradient_floor")
+        _with_floor = set((_settings.get("spatial.gradient_floor_outputs") or "").replace(" ", "").split(",")) - {""}
+        _extended, _given_thresholds = {}, {}
+        _extended_high, _given_high_thresholds = {}, {}
+        for setting, target, thresholds in (("spatial.extend_below", _extended, _given_thresholds), ("spatial.extend_above", _extended_high, _given_high_thresholds)):
+            for a in (_settings.get(setting) or "").replace(" ", "").split(","):
                 if a:
-                    morceaux = a.split(":")
-                    cible[morceaux[0]] = float(morceaux[1])
-                    if len(morceaux) > 2:
-                        seuils[morceaux[0]] = float(morceaux[2])
+                    pieces = a.split(":")
+                    target[pieces[0]] = float(pieces[1])
+                    if len(pieces) > 2:
+                        thresholds[pieces[0]] = float(pieces[2])
 
-        def _cible(table, nom, key):
+        def _target(table, field_name, key):
             # Une sortie se designe par sa cle (porosity_3, une seule couche) ou par sa famille (porosity).
-            return key if key in table else (nom if nom in table else None)
+            return key if key in table else (field_name if field_name in table else None)
 
-        def sigm(nom, x, key=None):
-            if _plancher is not None and (nom in _avec_plancher or key in _avec_plancher):
-                return _SigmoidGradientFloor.apply(x, float(_plancher))
+        def sigm(field_name, x, key=None):
+            if _floor is not None and (field_name in _with_floor or key in _with_floor):
+                return _SigmoidGradientFloor.apply(x, float(_floor))
             return torch.sigmoid(x)
 
-        def bounded(x, lo, hi, nom=None, key=None):
+        def bounded(x, lo, hi, field_name=None, key=None):
             """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4.
 
             PROLONGEMENT SOUS LA BORNE (2026-10-26). Abaisser une borne remappe tous les
@@ -1037,32 +1037,32 @@ class SpatialFieldNetwork(nn.Module):
             brute du domaine, vers une nouvelle borne haute (spatial.extend_above). Une sortie
             collee a sa borne haute y passe sans que les valeurs de depart changent.
             """
-            v = lo + (hi - lo) * sigm(nom, x, key)
-            c = _cible(_prolonge, nom, key)
+            v = lo + (hi - lo) * sigm(field_name, x, key)
+            c = _target(_extended, field_name, key)
             if c is not None:
-                seuil = _seuils_donnes.get(c, self._seuils_prolongement.get(c))
-                if seuil is None:
-                    seuil = float(x.detach().min()) - 0.5
-                    self._seuils_prolongement[c] = seuil
-                    print(f"[champ] prolongement de {c} sous {lo:g} jusqu'a {_prolonge[c]:g} : seuil de sortie brute {seuil:.4f} (a reprendre tel quel a l'evaluation : {c}:{_prolonge[c]:g}:{seuil:.4f})")
-                v = v - (lo - _prolonge[c]) * (1.0 - torch.exp(-torch.relu(seuil - x)))
-            c = _cible(_prolonge_haut, nom, key)
+                threshold = _given_thresholds.get(c, self._extension_thresholds.get(c))
+                if threshold is None:
+                    threshold = float(x.detach().min()) - 0.5
+                    self._extension_thresholds[c] = threshold
+                    print(f"[champ] prolongement de {c} sous {lo:g} jusqu'a {_extended[c]:g} : seuil de sortie brute {threshold:.4f} (a reprendre tel quel a l'evaluation : {c}:{_extended[c]:g}:{threshold:.4f})")
+                v = v - (lo - _extended[c]) * (1.0 - torch.exp(-torch.relu(threshold - x)))
+            c = _target(_extended_high, field_name, key)
             if c is not None:
-                cle_seuil = "haut:" + c
-                seuil = _seuils_haut_donnes.get(c, self._seuils_prolongement.get(cle_seuil))
-                if seuil is None:
-                    seuil = float(x.detach().max()) + 0.5
-                    self._seuils_prolongement[cle_seuil] = seuil
-                    print(f"[champ] prolongement de {c} au-dessus de {hi:g} jusqu'a {_prolonge_haut[c]:g} : seuil de sortie brute {seuil:.4f} (a reprendre tel quel a l'evaluation : {c}:{_prolonge_haut[c]:g}:{seuil:.4f})")
-                v = v + (_prolonge_haut[c] - hi) * (1.0 - torch.exp(-torch.relu(x - seuil)))
+                threshold_key = "haut:" + c
+                threshold = _given_high_thresholds.get(c, self._extension_thresholds.get(threshold_key))
+                if threshold is None:
+                    threshold = float(x.detach().max()) + 0.5
+                    self._extension_thresholds[threshold_key] = threshold
+                    print(f"[champ] prolongement de {c} au-dessus de {hi:g} jusqu'a {_extended_high[c]:g} : seuil de sortie brute {threshold:.4f} (a reprendre tel quel a l'evaluation : {c}:{_extended_high[c]:g}:{threshold:.4f})")
+                v = v + (_extended_high[c] - hi) * (1.0 - torch.exp(-torch.relu(x - threshold)))
             return v
 
-        if not hasattr(self, "_seuils_prolongement"):
-            self._seuils_prolongement = {}
+        if not hasattr(self, "_extension_thresholds"):
+            self._extension_thresholds = {}
 
         self._last_z = {}
 
-        def borne(nom, x, key=None):
+        def bound(field_name, x, key=None):
             """Sortie bornee doucement selon la table : lineaire, ou logarithmique si marquee.
 
             PRIOR PAR TRONCON (etape 3, 2026-10-26) : si `set_prior` a pose un centre pour cette
@@ -1074,30 +1074,30 @@ class SpatialFieldNetwork(nn.Module):
             cette sortie, la sigmoide en log est centree sur leur moyenne geometrique (la valeur
             de texture) et bornee par eux ; une sortie brute nulle rend la valeur de texture.
             """
-            k = key or nom
+            k = key or field_name
             if k in getattr(self, "priors", {}):
                 c = getattr(self, f"_pr_c_{k}").to(x.device)
                 s = float(getattr(self, f"_pr_s_{k}"))
                 off = getattr(self, f"_pr_o_{k}", None)
                 z = x if off is None else x + off.to(x.device)
                 self._last_z[k] = z
-                lo_s, hi_s = PRIOR_SAFETY[nom]
+                lo_s, hi_s = PRIOR_SAFETY[field_name]
                 return torch.clamp(c * torch.exp(s * z), lo_s, hi_s)
-            if nom in NB:
-                llo = torch.log(getattr(self, f"_nb_lo_{nom}")).to(x.device)
-                lhi = torch.log(getattr(self, f"_nb_hi_{nom}")).to(x.device)
+            if field_name in NB:
+                llo = torch.log(getattr(self, f"_nb_lo_{field_name}")).to(x.device)
+                lhi = torch.log(getattr(self, f"_nb_hi_{field_name}")).to(x.device)
                 a = _LOG_SLOPE / ((lhi - llo) * 0.25)
                 return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x))
-            lo, hi = B[nom][0], B[nom][1]
-            if len(B[nom]) > 2 and B[nom][2] == "log":
+            lo, hi = B[field_name][0], B[field_name][1]
+            if len(B[field_name]) > 2 and B[field_name][2] == "log":
                 # Sigmoide en log : centre et pente au centre de l'ancienne loi exp(0,3 x + log c).
                 llo, lhi = math.log(lo), math.log(hi)
-                c = min(max(math.log(_LOG_CENTERS[nom]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
+                c = min(max(math.log(_LOG_CENTERS[field_name]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
                 u = (c - llo) / (lhi - llo)
                 b0 = math.log(u / (1.0 - u))
                 a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
                 return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x + b0))
-            return bounded(x, lo, hi, nom, k)
+            return bounded(x, lo, hi, field_name, k)
 
         cols = [raw[:, i] for i in range(SpatialParams.N_PARAMS)]
         i = 0
@@ -1105,24 +1105,24 @@ class SpatialFieldNetwork(nn.Module):
         constrained = []
         # K_sat (m/j) : log-normal, centres 0,5 / 0,1 / 0,02 m/j decroissant avec la profondeur.
         for layer in range(3):
-            constrained.append(borne(f"K_sat_{layer + 1}", cols[i]))
+            constrained.append(bound(f"K_sat_{layer + 1}", cols[i]))
             i += 1
         porosities = []
         for layer in range(3):
-            p = borne("porosity", cols[i], key=f"porosity_{layer + 1}")
+            p = bound("porosity", cols[i], key=f"porosity_{layer + 1}")
             porosities.append(p)
             constrained.append(p)
             i += 1
         # Capacite au champ en fraction de la porosite : garantit theta_fc < porosite.
         theta_fcs = []
         for layer in range(3):
-            theta_fc = porosities[layer] * borne("theta_fc_frac", cols[i], key=f"theta_fc_frac_{layer + 1}")
+            theta_fc = porosities[layer] * bound("theta_fc_frac", cols[i], key=f"theta_fc_frac_{layer + 1}")
             theta_fcs.append(theta_fc)
             constrained.append(theta_fc)
             i += 1
         # Point de fletrissement en fraction de la capacite au champ : garantit theta_wp < theta_fc.
         for layer in range(3):
-            constrained.append(theta_fcs[layer] * borne("theta_wp_frac", cols[i], key=f"theta_wp_frac_{layer + 1}"))
+            constrained.append(theta_fcs[layer] * bound("theta_wp_frac", cols[i], key=f"theta_wp_frac_{layer + 1}"))
             i += 1
         # f_root : softmax, biais vers les couches superieures (50/30/20).
         f_roots_raw = torch.stack(cols[i:i+3], dim=-1)
@@ -1130,9 +1130,9 @@ class SpatialFieldNetwork(nn.Module):
         f_roots = torch.softmax(f_roots_raw, dim=-1)
         constrained.extend([f_roots[:, j] for j in range(3)])
         i += 3
-        for nom in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
+        for field_name in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
                     "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
-            constrained.append(borne(nom, cols[i])); i += 1
+            constrained.append(bound(field_name, cols[i])); i += 1
         # K_musk_hours : bornes de MEANDRE_KMUSK, ou ancre geometrique modulee (set_routing_anchor).
         _kanc = getattr(self, "_k_musk_anchor", None)
         if _kanc is None:
@@ -1145,14 +1145,14 @@ class SpatialFieldNetwork(nn.Module):
             # Un noeud a ancre NaN, un lac notamment, garde le parametre borne libre.
             constrained.append(torch.where(torch.isfinite(_a), _anc,
                                            bounded(cols[i], _kmusk()[0], _kmusk()[1]))); i += 1
-        for nom in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
+        for field_name in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
                     "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
-            constrained.append(borne(nom, cols[i])); i += 1
+            constrained.append(bound(field_name, cols[i])); i += 1
 
         sp = SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
-        return self._applique_multiplicateurs(sp)
+        return self._apply_multipliers(sp)
 
-    def _applique_multiplicateurs(self, sp: SpatialParams) -> SpatialParams:
+    def _apply_multipliers(self, sp: SpatialParams) -> SpatialParams:
         """Multiplie chaque champ par son facteur, quand `multiplicateurs` est posé.
 
         Sert à mesurer la SENSIBILITÉ des observables aux paramètres : un facteur par champ,
@@ -1166,27 +1166,27 @@ class SpatialFieldNetwork(nn.Module):
         # fc_out, ce qui ne gele la sortie qu'en depart a froid ; apres un chargement, la ligne
         # garde ses poids appris et la sortie suit les couches cachees. Ici la carte en vigueur
         # au premier appel est capturee, puis substituee a chaque appel suivant.
-        attente = getattr(self, "figer_au_prochain_appel", None)
-        if attente:
-            self.valeurs_figees = {n: getattr(sp, n).detach().clone() for n in attente}
-            self.figer_au_prochain_appel = None
-        figees = getattr(self, "valeurs_figees", None)
-        if figees:
-            for nom, val in figees.items():
-                if getattr(sp, nom).shape != val.shape:
-                    raise ValueError(f"carte figee de '{nom}' de forme {tuple(val.shape)}, appel de forme {tuple(getattr(sp, nom).shape)}")
-            sp = _remplace(sp, **figees)
+        pending = getattr(self, "freeze_on_next_call", None)
+        if pending:
+            self.frozen_values = {n: getattr(sp, n).detach().clone() for n in pending}
+            self.freeze_on_next_call = None
+        frozen = getattr(self, "frozen_values", None)
+        if frozen:
+            for field_name, val in frozen.items():
+                if getattr(sp, field_name).shape != val.shape:
+                    raise ValueError(f"carte figee de '{field_name}' de forme {tuple(val.shape)}, appel de forme {tuple(getattr(sp, field_name).shape)}")
+            sp = _remplace(sp, **frozen)
         m = getattr(self, "multipliers", None)
         if not m:
             return sp
 
-        modifs = {}
-        for nom, facteur in m.items():
-            champ = getattr(sp, nom, None)
+        changes = {}
+        for field_name, factor in m.items():
+            champ = getattr(sp, field_name, None)
             if champ is None:
-                raise AttributeError(f"multiplicateur pose sur '{nom}', absent du champ spatial")
-            modifs[nom] = champ * facteur
-        return _remplace(sp, **modifs)
+                raise AttributeError(f"multiplicateur pose sur '{field_name}', absent du champ spatial")
+            changes[field_name] = champ * factor
+        return _remplace(sp, **changes)
 
 
     # ── Recharge : poser ou geler le champ ────────────────────────────────────
@@ -1196,7 +1196,7 @@ class SpatialFieldNetwork(nn.Module):
     # recharge vers autre chose.
     _IDX_KREC = [f.name for f in _dc_fields(SpatialParams)].index("krec")
 
-    def set_uniform_krec(self, valeur: float) -> None:
+    def set_uniform_krec(self, value: float) -> None:
         """Force la recharge a une valeur UNIFORME (m/h) sur tous les noeuds.
 
         Mode DEGRADE, a n'utiliser que pour les bancs : il annule la variation
@@ -1207,7 +1207,7 @@ class SpatialFieldNetwork(nn.Module):
         i = self._IDX_KREC
         with torch.no_grad():
             self.fc_out.weight[i].zero_()
-            self.fc_out.bias[i] = (_m.log(valeur) - _m.log(KREC_REF)) / 0.3
+            self.fc_out.bias[i] = (_m.log(value) - _m.log(KREC_REF)) / 0.3
 
     def freeze_krec(self) -> None:
         """Exclut la recharge de l'apprentissage, sans geler le reste du champ.
@@ -1220,15 +1220,15 @@ class SpatialFieldNetwork(nn.Module):
         """
         i = self._IDX_KREC
 
-        def _coupe(g):
+        def _cut(g):
             g = g.clone()
             g[i] = 0.0
             return g
 
-        self.fc_out.weight.register_hook(_coupe)
-        self.fc_out.bias.register_hook(_coupe)
+        self.fc_out.weight.register_hook(_cut)
+        self.fc_out.bias.register_hook(_cut)
 
-    def freeze_outputs(self, noms) -> None:
+    def freeze_outputs(self, field_names) -> None:
         """Gèle des sorties NOMMÉES du champ à une valeur uniforme, celle de leur biais.
 
         Généralise `freeze_krec` (2026-09-28) : les poids de ces lignes de fc_out sont mis à
@@ -1237,19 +1237,19 @@ class SpatialFieldNetwork(nn.Module):
         reproductibilité, par exemple le routage de Muskingum qu'une seule station
         d'exutoire ne peut pas séparer entre retard et atténuation.
         """
-        tous = [f.name for f in _dc_fields(SpatialParams)]
-        idx = [tous.index(n) for n in noms]
+        all_items = [f.name for f in _dc_fields(SpatialParams)]
+        idx = [all_items.index(n) for n in field_names]
         with torch.no_grad():
             for i in idx:
                 self.fc_out.weight[i].zero_()
 
-        def _coupe(g):
+        def _cut(g):
             g = g.clone()
             g[idx] = 0.0
             return g
 
-        self.fc_out.weight.register_hook(_coupe)
-        self.fc_out.bias.register_hook(_coupe)
+        self.fc_out.weight.register_hook(_cut)
+        self.fc_out.bias.register_hook(_cut)
 
     def boundary_regularization(
         self,
@@ -1434,9 +1434,9 @@ class SpatialFieldNetwork(nn.Module):
         return loss / max(n, 1)
 
 
-    def fit_to_field(self, node_coords, territorial_data, cibles: dict,
+    def fit_to_field(self, node_coords, territorial_data, target_list: dict,
                           n_iter: int = 3000, lr: float = 3e-3, log_keys=("K_sat_1", "K_sat_2",
-                          "K_sat_3", "k_gw"), verbeux: bool = True):
+                          "K_sat_3", "k_gw"), verbose: bool = True):
         """Ajuste le champ par RÉGRESSION sur des valeurs cibles PAR NŒUD.
 
         Proposition d'Essi (2026-08-13) : « pourquoi ne pas démarrer le NeRF sur le champ
@@ -1456,42 +1456,42 @@ class SpatialFieldNetwork(nn.Module):
         grandeur) ; les autres en linéaire.
         """
         import torch as _t
-        cibles = {k: _t.as_tensor(v, dtype=_t.float32).to(node_coords.device).detach()
-                  for k, v in cibles.items()}
+        target_list = {k: _t.as_tensor(v, dtype=_t.float32).to(node_coords.device).detach()
+                  for k, v in target_list.items()}
         opt = _t.optim.Adam(self.parameters(), lr=lr)
         n0 = None
         for it in range(n_iter):
             opt.zero_grad()
             sp = self(node_coords, territorial_data)
-            perte = 0.0
-            for k, cible in cibles.items():
+            loss_value = 0.0
+            for k, target in target_list.items():
                 pred = getattr(sp, k)
                 if k in log_keys:
-                    perte = perte + ((_t.log(pred.clamp(min=1e-9))
-                                      - _t.log(cible.clamp(min=1e-9))) ** 2).mean()
+                    loss_value = loss_value + ((_t.log(pred.clamp(min=1e-9))
+                                      - _t.log(target.clamp(min=1e-9))) ** 2).mean()
                 else:
-                    ech = cible.abs().mean().clamp(min=1e-6)
-                    perte = perte + (((pred - cible) / ech) ** 2).mean()
-            perte.backward()
+                    ech = target.abs().mean().clamp(min=1e-6)
+                    loss_value = loss_value + (((pred - target) / ech) ** 2).mean()
+            loss_value.backward()
             opt.step()
             if n0 is None:
-                n0 = float(perte)
-            if verbeux and (it % max(n_iter // 4, 1) == 0 or it == n_iter - 1):
-                print(f"    [ajust] iter {it:5d} | perte {float(perte):.5f}")
-        if verbeux:
+                n0 = float(loss_value)
+            if verbose and (it % max(n_iter // 4, 1) == 0 or it == n_iter - 1):
+                print(f"    [ajust] iter {it:5d} | perte {float(loss_value):.5f}")
+        if verbose:
             with _t.no_grad():
                 sp = self(node_coords, territorial_data)
-            print(f"    [ajust] perte {n0:.5f} -> {float(perte):.5f}")
-            for k, cible in cibles.items():
+            print(f"    [ajust] perte {n0:.5f} -> {float(loss_value):.5f}")
+            for k, target in target_list.items():
                 p = getattr(sp, k).detach()
                 cv_p = float(p.std() / p.abs().mean().clamp(min=1e-12))
-                cv_c = float(cible.std() / cible.abs().mean().clamp(min=1e-12))
+                cv_c = float(target.std() / target.abs().mean().clamp(min=1e-12))
                 print(f"    [ajust] {k:14s} médiane {float(p.median()):.4f} "
-                      f"(cible {float(cible.median()):.4f}) | dispersion {cv_p:.3f} "
+                      f"(cible {float(target.median()):.4f}) | dispersion {cv_p:.3f} "
                       f"(cible {cv_c:.3f})")
         return self
 
 
 # Alias de compatibilite (nettoyage 2026-08-24, convention anglaise pour le code).
 # L'identifiant francais reste appelable ; les scripts .runs historiques y tiennent.
-SpatialFieldNetwork.ajuster_sur_champ = SpatialFieldNetwork.fit_to_field
+SpatialFieldNetwork.adjust_on_field = SpatialFieldNetwork.fit_to_field

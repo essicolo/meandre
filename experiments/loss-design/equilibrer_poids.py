@@ -87,7 +87,7 @@ def sensibilites():
     return t.pivot_table(index="defaut", columns="terme", values="sensibilite", aggfunc="median")
 
 
-def equilibrer(S, plancher=0.15, plafond=1.0):
+def equilibrer(S, floor=0.15, plafond=1.0):
     """Poids positifs rendant le vecteur des détections le plus uniforme, en log.
 
     Un PLANCHER est indispensable et la première version l'avait oublié. Sans lui, la
@@ -102,7 +102,7 @@ def equilibrer(S, plancher=0.15, plafond=1.0):
     A = np.clip(S.to_numpy(), 0.0, None)
 
     def cout(u):
-        w = plancher + (plafond - plancher) / (1.0 + np.exp(-u))
+        w = floor + (plafond - floor) / (1.0 + np.exp(-u))
         d = np.clip(A @ w, 1e-12, None)
         return float(np.std(np.log(d)))
 
@@ -113,7 +113,7 @@ def equilibrer(S, plancher=0.15, plafond=1.0):
                      options={"maxiter": 4000, "fatol": 1e-10, "xatol": 1e-8})
         if r.fun < val:
             meilleur, val = r.x, r.fun
-    w = plancher + (plafond - plancher) / (1.0 + np.exp(-meilleur))
+    w = floor + (plafond - floor) / (1.0 + np.exp(-meilleur))
     return w / w.max()
 
 
