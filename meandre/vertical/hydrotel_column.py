@@ -101,6 +101,8 @@ class HydrotelColumn(nn.Module):
         super().__init__()
         _n_sub = settings.get("column.n_substeps")
         soil_n_substep = int(_n_sub if _n_sub is not None else soil_n_substep)
+        # Profondeur racinaire multipliée par un réglage déclaré ; le banc peut encore l'écraser.
+        self.root_depth_scale = float(settings.get("column.root_depth_scale") or 1.0)
         self.et_mode = str(et_mode)
         # Fonte SPATIALE : module les facteurs de fonte par classe avec le C_f du
         # NeRF (borné [0.5, 8], cible littérature 4.5 -> échelle neutre 1.0). Le
