@@ -1730,6 +1730,7 @@ if os.environ.get("ETL_DUMP_REACH"):
                         # n'etait enregistre nulle part, ce qui interdisait de confronter
                         # une signature mesuree par station a un attribut de troncon.
                         station_idx=td.station_idx.cpu().numpy().astype(np.int32),
+                        station_area_ratio=(td.station_area_ratio.cpu().numpy() if getattr(td, 'station_area_ratio', None) is not None else np.ones(len(td.station_idx), dtype=np.float32)),
                         # Topologie du reseau : sans elle on ne peut pas moyenner un
                         # attribut de troncon sur le BASSIN AMONT d'une station, or une
                         # signature de station integre tout son amont. Comparer une
@@ -1781,6 +1782,7 @@ if os.environ.get("ETL_DUMP_REACH"):
                         # n'etait enregistre nulle part, ce qui interdisait de confronter
                         # une signature mesuree par station a un attribut de troncon.
                         station_idx=td.station_idx.cpu().numpy().astype(np.int32),
+                        station_area_ratio=(td.station_area_ratio.cpu().numpy() if getattr(td, 'station_area_ratio', None) is not None else np.ones(len(td.station_idx), dtype=np.float32)),
                         # Topologie du reseau : sans elle on ne peut pas moyenner un
                         # attribut de troncon sur le BASSIN AMONT d'une station, or une
                         # signature de station integre tout son amont. Comparer une

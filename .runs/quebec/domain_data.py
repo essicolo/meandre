@@ -321,11 +321,13 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     node_coords = torch.cat([p["node_coords"] for p in parts]).to(device)
 
     # ── stations : indices decales, colonnes concatenees ────────────────────
-    st_idx, q_cols, st_ids, st_var, st_peak = [], [], [], [], []
+    st_idx, q_cols, st_ids, st_var, st_peak, ratio_cols = [], [], [], [], [], []
     for p, o in zip(parts, offs[:-1]):
         td = p["train_data"]
         st_idx.append(td.station_idx + int(o))
         q_cols.append(p["train_data"].q_obs)
+        _sar = getattr(p["train_data"], "station_area_ratio", None)
+        ratio_cols.append(_sar if _sar is not None else torch.ones(p["train_data"].q_obs.shape[1]))
         st_ids += [f"{p['name']}:{s}" for s in p["station_ids"]]
         st_var.append(p["loss_fn"].station_var)
         pk = getattr(p["loss_fn"], "peak_threshold", None)
@@ -333,6 +335,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
                        else torch.full((p["n_gauges"],), float("inf")))
     station_idx = torch.cat(st_idx).to(device)
     q_obs = torch.cat(q_cols, dim=1).to(device)
+    station_area_ratio = torch.cat([r_.to(device).float() for r_ in ratio_cols])
     station_mask = torch.zeros(n_total, dtype=torch.bool, device=device)
     station_mask[station_idx] = True
 
@@ -414,7 +417,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
 
     def mk(sl_):
         return TrainingData(
-            forcing=forcing, q_obs=q_obs[sl_.start:], station_mask=station_mask,
+            forcing=forcing, q_obs=q_obs[sl_.start:], station_mask=station_mask, station_area_ratio=station_area_ratio,
             station_idx=station_idx, graph=graph, node_coords=node_coords,
             territorial=territorial, withdrawals=withdrawals, day_of_year=day_of_year,
             train_slice=sl_, val_slice=sl_,

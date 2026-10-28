@@ -66,6 +66,41 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     for ni in station_indices:
         station_mask[ni] = True
     q_obs = _q.values
+    # STATIONS EXCLUES ET RAPPORT D'AIRES (2026-10-28, R429). Une station hors du reseau modelise
+    # n'a pas de troncon : on la retire. Pour les autres, l'observe est rapporte a l'aire du
+    # troncon qui porte la station, a debit specifique uniforme ; 9 stations sur 178 sont a plus
+    # d'un facteur 1,5 de leur troncon, et 062002 (26,8 km2 sur un troncon de 56,6) sortait a -1,27 de KGE.
+    from meandre.utils import settings as _settings_st
+    from meandre.observations import area_ratio as _area_ratio
+    _sites = [str(x) for x in _q.sites]
+    _exclues = {x for x in (_settings_st.get("stations.excluded") or "").replace(" ", "").split(",") if x}
+    if _exclues:
+        _garde = [j for j, sid in enumerate(_sites) if sid not in _exclues]
+        _retirees = [sid for sid in _sites if sid in _exclues]
+        if _retirees:
+            print(f"[stations] {len(_retirees)} station(s) exclue(s) par stations.excluded : {', '.join(_retirees)}")
+        q_obs = q_obs[:, torch.as_tensor(_garde, dtype=torch.long, device=q_obs.device)]
+        _sites = [_sites[j] for j in _garde]
+        station_indices = [station_indices[j] for j in _garde]
+        station_node_map = {s_: n_ for s_, n_ in station_node_map.items() if s_ not in _exclues}
+        n_stations = len(station_indices)
+        station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
+        for ni in station_indices:
+            station_mask[ni] = True
+    station_area_ratio = torch.ones(n_stations, dtype=torch.float32, device=device)
+    if _settings_st.get("stations.area_ratio"):
+        import duckdb as _ddb
+        _con = _ddb.connect(str(_paths(reg)[0]), read_only=True)
+        _aires = {str(r_[0]): (r_[1], r_[2]) for r_ in _con.execute("select s.station_id, s.drainage_area_km2, t.area_km2_physical from stations s join territorial t using (node_idx)").fetchall()}
+        _con.close()
+        _a_st = np.array([_aires.get(sid, (np.nan, np.nan))[0] for sid in _sites], dtype=float)
+        _a_tr = np.array([_aires.get(sid, (np.nan, np.nan))[1] for sid in _sites], dtype=float)
+        _r = _area_ratio(_a_st, _a_tr)
+        station_area_ratio = torch.as_tensor(_r, dtype=torch.float32, device=device)
+        q_obs = q_obs * station_area_ratio
+        _loin = [(sid, a_, b_, r_) for sid, a_, b_, r_ in zip(_sites, _a_st, _a_tr, _r) if abs(r_ - 1) > 0.01]
+        print(f"[stations] observe rapporte a l'aire du troncon (stations.area_ratio) : {len(_loin)}/{n_stations} station(s) a plus de 1 % ; "
+              + "; ".join(f"{sid} {a_:.1f}->{b_:.1f} km2 x{r_:.3f}" for sid, a_, b_, r_ in sorted(_loin, key=lambda t: -abs(np.log(t[3])))[:8]))
     withdrawals = dom.withdrawals
     et_obs = dom.observations["et"].values if "et" in dom.observations else None
     et_weight = dom.observations["et"].weight if "et" in dom.observations else None
@@ -99,6 +134,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
         forcing = forcing[:, keep_t]
         cols = [j for j, ni in enumerate(station_indices) if ni in rank]
         q_obs = q_obs[:, torch.as_tensor(cols, dtype=torch.long, device=q_obs.device)]
+        station_area_ratio = station_area_ratio[torch.as_tensor(cols, dtype=torch.long, device=device)]
         station_indices = [rank[station_indices[j]] for j in cols]
         station_node_map = {s: rank[ni] for s, ni in station_node_map.items() if ni in rank}
         n_stations = len(station_indices)
@@ -187,6 +223,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
             forcing=forcing, q_obs=q_obs[sl_.start:],
             station_mask=station_mask,
             station_idx=torch.tensor(station_indices, device=device, dtype=torch.long),
+            station_area_ratio=station_area_ratio,
             graph=graph, node_coords=node_coords, territorial=territorial,
             withdrawals=withdrawals, day_of_year=doy,
             train_slice=sl_, val_slice=sl_,

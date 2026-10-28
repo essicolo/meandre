@@ -233,6 +233,8 @@ class TrainingData:
     # because MODIS revisit is irregular).
     et_obs: Tensor | None = None    # MODIS MOD16A2 ETR (mm/jour, 8-day agrégé en daily)
     swe_obs: Tensor | None = None   # SWE de MODIS NDSI ou SNODAS (mm)
+    # Rapport aire du troncon / aire de la station applique a q_obs (1 sans stations.area_ratio).
+    station_area_ratio: Tensor | None = None
     tws_obs: Tensor | None = None   # GRACE TWS anomalie (mm), valeur mensuelle au 15, NaN ailleurs
     # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03), aligne sur l'axe du FORCAGE (index 0 =
     # forcing[0], mise en regime comprise), forme (T, n_nodes), sans dimension, de 0 a 1.

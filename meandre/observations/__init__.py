@@ -94,3 +94,16 @@ def missing(declared: dict | None, observations: dict) -> list[str]:
         if o and float(sec.get("weight", 0.0)) > 0 and o.domain_key not in observations:
             out.append(f"{name} : poids {float(sec['weight']):g} mais le domaine ne porte pas d'observation « {o.domain_key} »")
     return out
+
+
+def area_ratio(station_area_km2, reach_area_km2):
+    """Facteur qui rapporte le débit observé d'une station à l'aire du tronçon qui la porte,
+    à débit spécifique uniforme : aire du tronçon / aire de la station. Vaut 1 quand une aire
+    manque ou est nulle (2026-10-28)."""
+    import numpy as np
+    a = np.asarray(station_area_km2, dtype=float)
+    b = np.asarray(reach_area_km2, dtype=float)
+    ok = np.isfinite(a) & np.isfinite(b) & (a > 0) & (b > 0)
+    r = np.ones_like(a)
+    r[ok] = b[ok] / a[ok]
+    return r

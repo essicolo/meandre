@@ -43,3 +43,10 @@ def test_la_declaration_reproduit_le_modele_gele():
     assert loss == cfg["loss"]
     assert training == cfg["training"]
     assert others["evaporation"]["mod16_snow_scale_mm"] == cfg["evaporation"]["mod16_snow_scale_mm"]
+
+
+def test_le_rapport_d_aires_vaut_troncon_sur_station_et_un_sans_aire():
+    import numpy as np
+    from meandre.observations import area_ratio
+    r = area_ratio([26.8, 100.0, np.nan, 0.0], [56.6, 100.0, 50.0, 50.0])
+    assert abs(r[0] - 56.6 / 26.8) < 1e-9 and r[1] == 1.0 and r[2] == 1.0 and r[3] == 1.0
