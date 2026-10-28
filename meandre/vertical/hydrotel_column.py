@@ -1228,11 +1228,11 @@ class HydrotelColumn(nn.Module):
         # McGuinness et donne au NeRF un levier direct sur le volume (β).
         # K_c=1.0 par défaut si non fourni (chemins set_static hand-built).
         # K_c SAISONNIER (2026-09-28) : quand le modele porte le modulateur phenologique, il
-        # pose chaque jour `_kc_dynamique`, K_c du champ module par les degres-jours cumules.
+        # pose chaque jour `_kc_dynamic`, K_c du champ module par les degres-jours cumules.
         # Motif : sur la Chateauguay le modele manque d'evapotranspiration l'ete et en a trop
         # a l'automne ; un coefficient constant dans l'annee ne peut corriger l'un sans
         # aggraver l'autre (registre, R202).
-        _kc = getattr(self, "_kc_dynamique", None)
+        _kc = getattr(self, "_kc_dynamic", None)
         _kc = _kc if _kc is not None else pe.get("K_c", 1.0)
         if etp_ext is not None:
             # module ET appris : demande en mm/j × K_c NeRF (correction de biais par nœud —
@@ -1280,20 +1280,20 @@ class HydrotelColumn(nn.Module):
         # fait que repartir entre evaporation du sol et transpiration (2026-09-29).
         _kc_base = pe.get("K_c", None)
         _sans_forme = None
-        if _cl_pheno is not None and getattr(self, "_kc_dynamique", None) is not None and _kc_base is not None:
-            _sans_forme = etp * (_kc_base / torch.clamp(self._kc_dynamique, min=1e-6))
+        if _cl_pheno is not None and getattr(self, "_kc_dynamic", None) is not None and _kc_base is not None:
+            _sans_forme = etp * (_kc_base / torch.clamp(self._kc_dynamic, min=1e-6))
         for (pct, jbp_t, leaf_t, root_t), _nom in zip(pheno, _noms):
             _etp_cl = _sans_forme if (_sans_forme is not None and _nom not in _cl_pheno) else etp
-            _kc_agri = getattr(self, "_kc_dynamique_agri", None)
+            _kc_agri = getattr(self, "_kc_dynamic_agri", None)
             if _nom == "agri" and _kc_agri is not None and _cl_pheno is not None and "agri" in _cl_pheno:
                 # Classe agricole à calendrier propre : la demande `etp` porte la forme commune ;
                 # on la remplace par celle des cultures (2026-10-24).
-                _etp_cl = etp * (_kc_agri / torch.clamp(self._kc_dynamique, min=1e-6))
+                _etp_cl = etp * (_kc_agri / torch.clamp(self._kc_dynamic, min=1e-6))
             etp_classes.append(_etp_cl * pct / 1000.0)
             # `root_depth_scale` (defaut 1,0, pose par le pilote) multiplie la profondeur
             # racinaire de toutes les classes : epreuve de l'extraction profonde (R216).
             roots.append((_interp1d(d, jbp_t, root_t) * float(getattr(self, "root_depth_scale", 1.0))).expand_as(P))
-            _lf = getattr(self, "_lai_forme", None)
+            _lf = getattr(self, "_lai_shape", None)
             if _lf is not None and _cl_pheno is not None and _nom not in _cl_pheno:
                 # Classe qui ne perd pas ses feuilles (coniferes, milieux humides, ouverts) :
                 # calendrier du projet, la forme pilotee par la meteo ne s'y applique pas.

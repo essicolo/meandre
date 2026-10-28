@@ -12,7 +12,7 @@ import torch
 
 from meandre.model import HydroModel
 
-PROFONDEUR = HydroModel._profondeur_deau
+PROFONDEUR = HydroModel._water_depth
 
 
 class _Graphe:

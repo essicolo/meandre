@@ -26,7 +26,7 @@ def _etr(forme, classes):
         os.environ["MEANDRE_PHENOLOGIE_CLASSES"] = classes
     else:
         os.environ.pop("MEANDRE_PHENOLOGIE_CLASSES", None)
-    col._kc_dynamique = torch.full((N,), forme) if forme is not None else None
+    col._kc_dynamic = torch.full((N,), forme) if forme is not None else None
     T = lambda x: torch.full((N,), float(x))
     _, _, diag = col(T(0.0), T(15.0), T(28.0), T(20.0), T(2.0), T(1.5), 200.0, st)
     os.environ.pop("MEANDRE_PHENOLOGIE_CLASSES", None)

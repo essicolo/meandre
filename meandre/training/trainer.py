@@ -1038,7 +1038,7 @@ class Trainer:
                     node_coords=data.node_coords, territorial=data.territorial,
                     withdrawals=data.withdrawals.slice(_t, _u),
                     day_of_year=data.day_of_year[_t:_u], return_diagnostics=True,
-                    poursuivre_etat=True,
+                    continue_state=True,
                 )
                 _s = _r[1]
                 _e = _r[2].etr.to(device).float()
@@ -1150,7 +1150,7 @@ class Trainer:
         if _amorce:
             _col = getattr(self.model, "vertical_column", None)
             _aux0 = getattr(_col, "_aux", None)
-            _lac0 = getattr(self.model, "_lake_storage_fin", None)
+            _lac0 = getattr(self.model, "_lake_storage_end", None)
             with torch.no_grad():
                 _Qp, _ = self.model.simulate(
                     forcing=data.forcing[data.train_slice],
@@ -1158,7 +1158,7 @@ class Trainer:
                     graph=data.graph, node_coords=data.node_coords,
                     territorial=data.territorial, withdrawals=data.withdrawals.slice(data.train_slice.start, data.train_slice.stop),
                     day_of_year=data.day_of_year[data.train_slice],
-                    poursuivre_etat=(_etat_continu and _spinup_a_tourne),
+                    continue_state=(_etat_continu and _spinup_a_tourne),
                 )
             _T = data.train_slice.stop - data.train_slice.start
             _pre_s = _Qp[:, data.station_mask].detach()
@@ -1169,7 +1169,7 @@ class Trainer:
             if _col is not None and _aux0 is not None:
                 _col._aux = _aux0
             if _lac0 is not None:
-                self.model._lake_storage_fin = _lac0
+                self.model._lake_storage_end = _lac0
 
         while t_start < data.train_slice.stop:
             _len = chunk + _first_offset if n_chunks == 0 else chunk
@@ -1224,7 +1224,7 @@ class Trainer:
                     # tourner : sans cela le manteau spinne etait jete au passage, le
                     # premier hiver de chaque epoque etait faux et le premier bloc
                     # rendait des gradients NaN en janvier (2026-09-04).
-                    poursuivre_etat=(_etat_continu and (n_chunks > 0 or _spinup_a_tourne)),
+                    continue_state=(_etat_continu and (n_chunks > 0 or _spinup_a_tourne)),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out
@@ -1273,7 +1273,7 @@ class Trainer:
                                   f"son diagnostic « {_cle} » est DETACHE du graphe. Le terme "
                                   f"gardera sa valeur dans le journal et ne produira aucun "
                                   f"gradient. Verifier MEANDRE_DIAG_CPU et "
-                                  f"HydroModel.DIAGNOSTICS_DERIVES.", flush=True)
+                                  f"HydroModel.DIAGNOSTICS_WITH_GRADIENT.", flush=True)
 
                 et_sim_chunk = et_obs_chunk = None
                 if _need_et:
@@ -2235,7 +2235,7 @@ class Trainer:
                         withdrawals=data.withdrawals.slice(data.val_slice.start, data.val_slice.stop),
                         day_of_year=data.day_of_year[data.val_slice],
                         tbptt_steps=self.config.tbptt_steps,
-                        poursuivre_etat=_etat_continu_val,
+                        continue_state=_etat_continu_val,
                     )
                 else:
                     # Slow path: no cached state (e.g. before first train epoch).
@@ -2248,7 +2248,7 @@ class Trainer:
                     Q_full, _ = self.model.simulate(
                         forcing=data.forcing[full_slice],
                         initial_state=initial_state,
-                        poursuivre_etat=(_etat_continu_val and spinup_end > 0),
+                        continue_state=(_etat_continu_val and spinup_end > 0),
                         graph=data.graph,
                         node_coords=data.node_coords,
                         territorial=data.territorial,

@@ -17,17 +17,17 @@ import torch
 from meandre.model import HydroModel
 
 
-def _liste_diagnostics(sur_processeur: bool, monkeypatch):
+def _diagnostic_list_factory(sur_processeur: bool, monkeypatch):
     """Construit la liste d'accumulation telle que le modèle la construit."""
     monkeypatch.setenv("MEANDRE_DIAG_CPU", "1" if sur_processeur else "0")
-    return HydroModel._liste_diagnostics()
+    return HydroModel._diagnostic_list_factory()
 
 
 DERIVEES = ("etr", "swe", "theta1", "theta2", "theta3", "s_gw", "profondeur_nappe_m")
 
 
 def test_les_diagnostics_derives_gardent_leur_gradient(monkeypatch):
-    fabrique = _liste_diagnostics(True, monkeypatch)
+    fabrique = _diagnostic_list_factory(True, monkeypatch)
     for nom in DERIVEES:
         source = torch.ones(3, requires_grad=True)
         acc = fabrique(nom)
@@ -40,7 +40,7 @@ def test_les_diagnostics_derives_gardent_leur_gradient(monkeypatch):
 
 def test_un_diagnostic_non_derive_est_bien_detache(monkeypatch):
     """Le reste doit rester détaché, sans quoi la mémoire de la carte n'est pas économisée."""
-    fabrique = _liste_diagnostics(True, monkeypatch)
+    fabrique = _diagnostic_list_factory(True, monkeypatch)
     source = torch.ones(3, requires_grad=True)
     acc = fabrique("canopy")
     acc.append(source * 2.0)
@@ -48,7 +48,7 @@ def test_un_diagnostic_non_derive_est_bien_detache(monkeypatch):
 
 
 def test_sans_la_variable_rien_nest_detache(monkeypatch):
-    fabrique = _liste_diagnostics(False, monkeypatch)
+    fabrique = _diagnostic_list_factory(False, monkeypatch)
     source = torch.ones(3, requires_grad=True)
     for nom in ("canopy", "etr"):
         acc = fabrique(nom)

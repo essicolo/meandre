@@ -74,7 +74,7 @@ def drop_obsolete_init_kwargs(kw: dict) -> dict:
 
 
 
-def _copie_attribut(v):
+def _copy_attribute(v):
     """Copie superficielle d'un attribut de module : l'etat interne de la colonne et les
     conteneurs sont modifies en place d'un pas a l'autre, les tenseurs ne le sont pas."""
     import copy
@@ -106,11 +106,11 @@ class HydroModel(nn.Module):
     # réseau de puits, et gravimétrie GRACE qui somme le sol, le manteau et le souterrain.
     # Ceux-là ne peuvent pas être détachés, sous peine d'un terme qui garde sa valeur, s'affiche
     # dans le journal et ne produit aucun gradient. Les autres le sont, c'est tout l'intérêt.
-    DIAGNOSTICS_DERIVES = frozenset({"etr", "swe", "theta1", "theta2", "theta3", "s_gw",
+    DIAGNOSTICS_WITH_GRADIENT = frozenset({"etr", "swe", "theta1", "theta2", "theta3", "s_gw",
                                      "profondeur_nappe_m", "profondeur_nappe"})
 
     @staticmethod
-    def _liste_diagnostics():
+    def _diagnostic_list_factory():
         """Fabrique la liste d'accumulation d'un diagnostic, selon `MEANDRE_DIAG_CPU`.
 
         Sur le processeur, une série journalière pèse environ 105 Mo sur une région de 2 900
@@ -127,11 +127,11 @@ class HydroModel(nn.Module):
         # l'audit de fermeture du bilan, lui, n'est plus lisible au dix-millieme.
         _dt_cpu = torch.float16 if settings.get("diagnostics.half_precision") else None
 
-        class _ListeProcesseur(list):
+        class CpuList(list):
             def append(self, t):
                 super().append(t.detach().to("cpu", dtype=_dt_cpu or t.dtype) if torch.is_tensor(t) else t)
 
-        class _ListeProcesseurDerivable(list):
+        class CpuGradientList(list):
             # On ne deplace PAS : un tenseur qui garde son graphe maintient de toute facon
             # les activations sur la carte, si bien que la copie sur le processeur ne libere
             # rien et place l'indice et l'indexe sur deux appareils differents.
@@ -145,7 +145,7 @@ class HydroModel(nn.Module):
                     super().append(t)
 
         if not settings.get("diagnostics.cpu"):
-            return lambda nom: list()
+            return lambda field_name: list()
         # NE RETENIR QUE CE QUI SERT (2026-09-21). Garder le graphe d'un diagnostic coute la
         # memoire que `MEANDRE_DIAG_CPU` economise : avec toutes les contraintes actives, la
         # recette provinciale ne tenait plus dans huit gigaoctets. `MEANDRE_DIAG_DERIVES`
@@ -153,11 +153,11 @@ class HydroModel(nn.Module):
         # depuis les poids reellement non nuls. Sans elle, tous sont retenus, ce qui reste le
         # comportement sur : un terme actif dont le diagnostic serait detache ne produirait
         # aucun gradient, defaut qui a coute deux jours.
-        _demande = settings.get("diagnostics.retained")
-        _derives = (frozenset(x.strip() for x in _demande.split(",") if x.strip())
-                    if _demande is not None else HydroModel.DIAGNOSTICS_DERIVES)
-        return lambda nom: (_ListeProcesseurDerivable()
-                            if nom in _derives else _ListeProcesseur())
+        requested = settings.get("diagnostics.retained")
+        with_gradient = (frozenset(x.strip() for x in requested.split(",") if x.strip())
+                    if requested is not None else HydroModel.DIAGNOSTICS_WITH_GRADIENT)
+        return lambda field_name: (CpuGradientList()
+                            if field_name in with_gradient else CpuList())
 
     def __init__(
         self,
@@ -318,27 +318,27 @@ class HydroModel(nn.Module):
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
 
-    _CLES_MODULE = frozenset(nn.Module().__dict__)
+    _MODULE_KEYS = frozenset(nn.Module().__dict__)
 
-    def _instantane_attributs(self) -> list:
+    def _snapshot_attributes(self) -> list:
         """Photographie les attributs simples de tous les sous-modules (hors parametres et
         sous-modules), pour rejouer un segment a l'identique pendant la retropropagation."""
         photo = []
         for m in self.modules():
-            d = {k: _copie_attribut(v) for k, v in m.__dict__.items() if k not in self._CLES_MODULE}
+            d = {k: _copy_attribute(v) for k, v in m.__dict__.items() if k not in self._MODULE_KEYS}
             photo.append((m, d))
         return photo
 
-    def _restaurer_attributs(self, photo: list) -> None:
+    def _restore_attributes(self, photo: list) -> None:
         for m, d in photo:
-            for k in [k for k in m.__dict__ if k not in self._CLES_MODULE and k not in d]:
+            for k in [k for k in m.__dict__ if k not in self._MODULE_KEYS and k not in d]:
                 del m.__dict__[k]
             for k, v in d.items():
                 # Copie : la colonne modifie son etat interne en place, la photo doit rester intacte.
-                m.__dict__[k] = _copie_attribut(v)
+                m.__dict__[k] = _copy_attribute(v)
 
     @staticmethod
-    def _copier_report(c: dict) -> dict:
+    def _copy_carryover(c: dict) -> dict:
         """Copie superficielle du report d'un segment, pour que le recalcul reparte du meme."""
         return dict(c)
 
@@ -354,7 +354,7 @@ class HydroModel(nn.Module):
         dam_data: DamData | None = None,
         tbptt_steps: int = 0,
         return_diagnostics: bool = False,
-        poursuivre_etat: bool = False,
+        continue_state: bool = False,
     ) -> tuple[Tensor, HydroState] | tuple[Tensor, HydroState, SimDiagnostics]:
         """Full forward pass: scan over timesteps.
 
@@ -402,12 +402,12 @@ class HydroModel(nn.Module):
             # Cale la theta initiale sur l'init Hydrotel validé (0.9·thetas) au lieu
             # de la valeur du cache (0.3, trop sèche → gros réservoir à remplir avant
             # de produire = déficit de volume). frac=0 garde la theta du cache.
-            # poursuivre_etat : la simulation continue celle de l'appel precedent (bloc
+            # continue_state : la simulation continue celle de l'appel precedent (bloc
             # suivant d'un entrainement decoupe). On ne REINITIALISE alors pas theta a
             # 0.9 de la porosite, sans quoi l'humidite du sol accumulee sur le bloc
             # precedent est perdue tous les 45 jours en meme temps que le manteau.
             frac = getattr(self, "column_theta_init_frac", 0.9)
-            if frac > 0.0 and not poursuivre_etat:
+            if frac > 0.0 and not continue_state:
                 import dataclasses
                 state = dataclasses.replace(
                     state,
@@ -416,7 +416,7 @@ class HydroModel(nn.Module):
                     theta3=frac * spatial_params.porosity_3)
             self.vertical_column.setup_simulate(
                 spatial_params, territorial, node_coords, state,
-                poursuivre=poursuivre_etat)
+                poursuivre=continue_state)
         # Constante de transfert de Muskingum, en secondes. Ses BORNES sont le levier
         # (MEANDRE_KMUSK="min,max,init", cf field_network) : le troncon median mesure 2.9
         # a 3.5 km, parcouru en une heure a 1 m/s, alors que la borne inferieure par
@@ -442,7 +442,7 @@ class HydroModel(nn.Module):
         # File de convolution de l'hydrogramme geomorphologique (None si inactif)
         hgm_queue = None
         # Stock des lacs hors reseau (mm sur l'aire locale du noeud), None si inactif.
-        lac_diffus_S = None
+        diffuse_lake_S = None
         ow_S = None
         # Surface d'eau libre des lacs (km2, par noeud) si elle a ete posee par
         # set_lake_area(). Sinon le routage retombe sur l'aire de drainage, qui est le
@@ -461,14 +461,14 @@ class HydroModel(nn.Module):
         # les 8 Go d'une carte portable, et la simulation meurt au moment de les empiler
         # (mesuré sur le Saint-Laurent sud-ouest, 2026-09-17). Les diagnostics ne sont
         # jamais dérivés : les déplacer ne change aucun résultat.
-        _Liste = self._liste_diagnostics()
+        make_list = self._diagnostic_list_factory()
         # DIAGNOSTICS GARDES (`diagnostics.kept`, 2026-10-28). Chaque diagnostic journalier du
         # Quebec entier sur 25 ans pese environ 1 Go ; la trentaine depasse les 29 Go d'Ubuntu.
         # Une analyse qui lit trois flux n'en garde que trois ; les autres valent None.
         _kept = settings.get("diagnostics.kept")
         kept_diagnostics = (frozenset(x.strip() for x in _kept.split(",") if x.strip()) if _kept else None)
         diag_lists: dict[str, list[Tensor]] = (
-            {k: _Liste(k) for k in ("etp", "etr", "snowmelt", "lateral_mm",
+            {k: make_list(k) for k in ("etp", "etr", "snowmelt", "lateral_mm",
                              "q_lateral", "q_upstream", "recharge",
                              "q_baseflow", "T_water", "swe",
                              "theta1", "theta2", "theta3",
@@ -489,13 +489,13 @@ class HydroModel(nn.Module):
         # Lake storage state (m3); only allocated when lake nodes exist.
         # Comme l'etat interne de la colonne, il ne tient pas dans HydroState et repartait
         # donc de ZERO a chaque appel, soit tous les 45 jours a l'entrainement : un lac
-        # n'avait jamais le temps de se remplir. Avec poursuivre_etat il est repris du
+        # n'avait jamais le temps de se remplir. Avec continue_state il est repris du
         # dernier appel, detache (le stockage l'est deja pas a pas dans le routage).
         has_lakes = bool(graph.is_lake.any())
-        _lac_prec = getattr(self, "_lake_storage_fin", None)
-        if (has_lakes and poursuivre_etat and _lac_prec is not None
-                and _lac_prec.shape[0] == self.n_nodes):
-            lake_storage: Tensor | None = _lac_prec.detach().to(forcing.device)
+        previous_lake_storage = getattr(self, "_lake_storage_end", None)
+        if (has_lakes and continue_state and previous_lake_storage is not None
+                and previous_lake_storage.shape[0] == self.n_nodes):
+            lake_storage: Tensor | None = previous_lake_storage.detach().to(forcing.device)
         else:
             lake_storage = (
                 torch.zeros(self.n_nodes, device=forcing.device) if has_lakes else None
@@ -524,18 +524,18 @@ class HydroModel(nn.Module):
         do_temp = self.temperature is not None
 
         # Report d'un pas au suivant : tout ce que la boucle fait vivre d'un jour a l'autre.
-        report = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "lac_diffus_S": lac_diffus_S}
+        carryover = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "lac_diffus_S": diffuse_lake_S}
 
-        def _pas(t: int, c: dict) -> dict:
+        def run_step(t: int, c: dict) -> dict:
             """Un jour de simulation ; lit et met a jour le report `c`, rend les sorties du jour."""
-            state, Q_out_prev, lake_storage, hgm_queue, ow_S, lac_diffus_S = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["lac_diffus_S"])
-            sortie: dict[str, Tensor] = {}
+            state, Q_out_prev, lake_storage, hgm_queue, ow_S, diffuse_lake_S = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["lac_diffus_S"])
+            step: dict[str, Tensor] = {}
             # Truncated BPTT: detach state and Q_out at chunk boundaries
             if tbptt_steps > 0 and t > 0 and t % tbptt_steps == 0:
                 state = state.detach()
                 Q_out_prev = Q_out_prev.detach()
-                if lac_diffus_S is not None:
-                    lac_diffus_S = lac_diffus_S.detach()
+                if diffuse_lake_S is not None:
+                    diffuse_lake_S = diffuse_lake_S.detach()
                 if ow_S is not None:
                     ow_S = ow_S.detach()
                 if getattr(self, "column_mode", "meandre") == "hydrotel":
@@ -578,11 +578,11 @@ class HydroModel(nn.Module):
                     if (self.phenology_target or settings.get("phenology.target")) == "lai":
                         # La phénologie module l'INDICE FOLIAIRE, donc la seule transpiration :
                         # l'évaporation du sol nu reste entière hors saison (2026-09-28).
-                        self.vertical_column._lai_forme = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
+                        self.vertical_column._lai_shape = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
                     else:
-                        self.vertical_column._kc_dynamique = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
+                        self.vertical_column._kc_dynamic = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
                         _cal_agri = getattr(self, "phenology_calendar_agri", None)
-                        self.vertical_column._kc_dynamique_agri = (self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1], calendar=_cal_agri) if _cal_agri is not None else None)
+                        self.vertical_column._kc_dynamic_agri = (self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1], calendar=_cal_agri) if _cal_agri is not None else None)
                 vc_out = self.vertical_column.column_step(
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,
@@ -640,7 +640,7 @@ class HydroModel(nn.Module):
                 _f = _fow.to(lateral_inflow.device)
                 if ow_S is None:
                     _lp = getattr(self, "_ow_S_last", None)
-                    ow_S = _lp.to(lateral_inflow.device) if (poursuivre_etat and _lp is not None and _lp.shape == lateral_inflow.shape) else torch.zeros_like(lateral_inflow)
+                    ow_S = _lp.to(lateral_inflow.device) if (continue_state and _lp is not None and _lp.shape == lateral_inflow.shape) else torch.zeros_like(lateral_inflow)
                 _in = _vdw.get("ruiss_eau_mm", torch.zeros_like(lateral_inflow)) * _owr["part"].to(lateral_inflow.device)
                 _in = torch.minimum(_in, torch.clamp(lateral_inflow, min=0.0))
                 lateral_inflow = lateral_inflow - _in
@@ -674,23 +674,23 @@ class HydroModel(nn.Module):
                 _f = _ld["f"].to(lateral_inflow.device)
                 _kc = self.distributed_lakes_values()
                 _rd = 1.0 - torch.exp(-_kc["c"] * _f)
-                if lac_diffus_S is None:
-                    # repris du dernier appel comme le stock des lacs routes (poursuivre_etat)
-                    _lp = getattr(self, "_lac_diffus_last", None)
-                    if poursuivre_etat and _lp is not None and _lp.shape == lateral_inflow.shape:
-                        lac_diffus_S = _lp.to(lateral_inflow.device)
+                if diffuse_lake_S is None:
+                    # repris du dernier appel comme le stock des lacs routes (continue_state)
+                    _lp = getattr(self, "_diffuse_lake_last", None)
+                    if continue_state and _lp is not None and _lp.shape == lateral_inflow.shape:
+                        diffuse_lake_S = _lp.to(lateral_inflow.device)
                     else:
-                        lac_diffus_S = torch.zeros_like(lateral_inflow)
+                        diffuse_lake_S = torch.zeros_like(lateral_inflow)
                 _in = _rd * lateral_inflow
-                _h = torch.clamp(lac_diffus_S, min=0.0) / torch.clamp(_f, min=1e-6) * 1e-3
+                _h = torch.clamp(diffuse_lake_S, min=0.0) / torch.clamp(_f, min=1e-6) * 1e-3
                 _q = _f * _kc["k"] * torch.pow(_h + 1e-9, _ld["beta"]) * 1e3
-                _q = torch.minimum(_q, lac_diffus_S + _in)
+                _q = torch.minimum(_q, diffuse_lake_S + _in)
                 _vd0 = getattr(vc_out, "diag", None) or {}
                 _E = (torch.clamp(_vd0["etp"] - _vd0["apport"], min=0.0) * _f) if ("etp" in _vd0 and "apport" in _vd0) else torch.zeros_like(_q)
-                _E = torch.minimum(_E, lac_diffus_S + _in - _q)
-                lac_diffus_S = torch.clamp(lac_diffus_S + _in - _q - _E, min=0.0)
+                _E = torch.minimum(_E, diffuse_lake_S + _in - _q)
+                diffuse_lake_S = torch.clamp(diffuse_lake_S + _in - _q - _E, min=0.0)
                 lateral_inflow = (1.0 - _rd) * lateral_inflow + _q
-                self._lac_diffus_last = lac_diffus_S.detach()
+                self._diffuse_lake_last = diffuse_lake_S.detach()
 
             # 4. Temperature lateral heat load
             H_lateral = None
@@ -739,25 +739,25 @@ class HydroModel(nn.Module):
             )
 
             Q_out_prev = Q_out
-            sortie["Q"] = Q_out
+            step["Q"] = Q_out
             if do_temp and T_water_t is not None:
-                sortie["T_water_route"] = T_water_t
+                step["T_water_route"] = T_water_t
 
             # Collect diagnostics
             if return_diagnostics:
-                sortie["etp"] = vc_out.diag["etp"]
-                sortie["etr"] = vc_out.diag["etr"]
-                sortie["snowmelt"] = vc_out.diag["snowmelt"]
+                step["etp"] = vc_out.diag["etp"]
+                step["etr"] = vc_out.diag["etr"]
+                step["snowmelt"] = vc_out.diag["snowmelt"]
                 for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm", "prof_gel_cm", "temps_non_traite",
                            "profondeur_nappe_m", "etr_nappe"):
                     if _k in vc_out.diag:
-                        sortie[_k] = vc_out.diag[_k]
+                        step[_k] = vc_out.diag[_k]
                 for _k in ("prod_surf", "prod_hypo", "prod_base", "etr1", "etr2", "etr3"):
                     if _k in vc_out.diag:
-                        sortie[_k] = vc_out.diag[_k]
-                sortie["lateral_mm"] = vc_out.diag["lateral_mm"]
-                sortie["recharge"] = vc_out.recharge
-                sortie["q_baseflow"] = vc_out.Q_baseflow
+                        step[_k] = vc_out.diag[_k]
+                step["lateral_mm"] = vc_out.diag["lateral_mm"]
+                step["recharge"] = vc_out.recharge
+                step["q_baseflow"] = vc_out.Q_baseflow
                 conv_area = area_km2_local if area_km2_local is not None else area_km2
                 q_lat_m3s = (
                     lateral_inflow * 1e-3 * conv_area * 1e6 / 86400.0
@@ -769,30 +769,30 @@ class HydroModel(nn.Module):
                         0, graph.edge_index[1],
                         Q_out[graph.edge_index[0]],
                     )
-                sortie["q_lateral"] = q_lat_m3s
-                sortie["q_upstream"] = q_up
-                sortie["swe"] = state.swe
-                sortie["theta1"] = state.theta1
-                sortie["theta2"] = state.theta2
-                sortie["theta3"] = state.theta3
-                sortie["s_gw"] = state.S_gw
-                sortie["canopy"] = state.canopy_storage
-                sortie["wetland"] = state.wetland_storage
-                sortie["T_water"] = (
+                step["q_lateral"] = q_lat_m3s
+                step["q_upstream"] = q_up
+                step["swe"] = state.swe
+                step["theta1"] = state.theta1
+                step["theta2"] = state.theta2
+                step["theta3"] = state.theta3
+                step["s_gw"] = state.S_gw
+                step["canopy"] = state.canopy_storage
+                step["wetland"] = state.wetland_storage
+                step["T_water"] = (
                     T_water_t if T_water_t is not None
                     else torch.full((self.n_nodes,), float('nan'), device=forcing.device)
                 )
-            c.update(state=state, Q_out_prev=Q_out_prev, lake_storage=lake_storage, hgm_queue=hgm_queue, ow_S=ow_S, lac_diffus_S=lac_diffus_S)
-            return sortie
+            c.update(state=state, Q_out_prev=Q_out_prev, lake_storage=lake_storage, hgm_queue=hgm_queue, ow_S=ow_S, diffuse_lake_S=diffuse_lake_S)
+            return step
 
-        def _ranger(sortie: dict) -> None:
-            Q_all.append(sortie.pop("Q"))
-            _tw = sortie.pop("T_water_route", None)
+        def store_step(step: dict) -> None:
+            Q_all.append(step.pop("Q"))
+            _tw = step.pop("T_water_route", None)
             if _tw is not None:
                 T_water_all.append(_tw)
-            for _cle, _v in sortie.items():
-                if kept_diagnostics is None or _cle in kept_diagnostics:
-                    diag_lists[_cle].append(_v)
+            for key, _v in step.items():
+                if kept_diagnostics is None or key in kept_diagnostics:
+                    diag_lists[key].append(_v)
 
         # ── Main simulation loop (interleaved vertical + routing) ──────
         # RECALCUL PAR SEGMENTS (MEANDRE_SEGMENT_GRADIENT, en jours ; 0 = inactif). Seuls les
@@ -803,39 +803,39 @@ class HydroModel(nn.Module):
         _seg = int(settings.get("compute.gradient_segments"))
         if _seg > 0 and torch.is_grad_enabled() and n_timesteps > _seg:
             from torch.utils.checkpoint import checkpoint
-            instantanes: dict[int, list] = {}
+            snapshots: dict[int, list] = {}
 
             def _segment(k: int, t0: int, t1: int, c: dict):
                 # Au recalcul, les attributs des modules (etat interne de la colonne, stock des
                 # lacs, operateur de routage) valent ceux de la FIN de la simulation : on remet
                 # ceux du debut du segment, puis on rend ceux de la fin.
                 courant = None
-                if k in instantanes:
-                    courant = self._instantane_attributs()
-                    self._restaurer_attributs(instantanes[k])
+                if k in snapshots:
+                    courant = self._snapshot_attributes()
+                    self._restore_attributes(snapshots[k])
                 else:
-                    instantanes[k] = self._instantane_attributs()
+                    snapshots[k] = self._snapshot_attributes()
                 try:
-                    c = self._copier_report(c)
-                    sorties = [_pas(t, c) for t in range(t0, t1)]
-                    empile = {cle: torch.stack([x[cle] for x in sorties]) for cle in sorties[0]}
+                    c = self._copy_carryover(c)
+                    steps = [run_step(t, c) for t in range(t0, t1)]
+                    stacked = {key: torch.stack([x[key] for x in steps]) for key in steps[0]}
                 finally:
                     if courant is not None:
-                        self._restaurer_attributs(courant)
-                return empile, c
+                        self._restore_attributes(courant)
+                return stacked, c
 
             for k, t0 in enumerate(range(0, n_timesteps, _seg)):
                 t1 = min(t0 + _seg, n_timesteps)
-                empile, report = checkpoint(_segment, k, t0, t1, report, use_reentrant=False)
+                stacked, carryover = checkpoint(_segment, k, t0, t1, carryover, use_reentrant=False)
                 for _i in range(t1 - t0):
-                    _ranger({cle: v[_i] for cle, v in empile.items()})
+                    store_step({key: v[_i] for key, v in stacked.items()})
         else:
             for t in range(n_timesteps):
-                _ranger(_pas(t, report))
-        state, lake_storage = report["state"], report["lake_storage"]
+                store_step(run_step(t, carryover))
+        state, lake_storage = carryover["state"], carryover["lake_storage"]
 
-        # Stockage des lacs en fin d'appel, pour le bloc suivant (poursuivre_etat).
-        self._lake_storage_fin = (
+        # Stockage des lacs en fin d'appel, pour le bloc suivant (continue_state).
+        self._lake_storage_end = (
             lake_storage.detach() if lake_storage is not None else None
         )
 
@@ -893,12 +893,12 @@ class HydroModel(nn.Module):
             canopy=stack_diagnostic("canopy"),
             wetland=stack_diagnostic("wetland"),
             T_water=stack_diagnostic("T_water"),
-            profondeur_eau_m=self._profondeur_deau(Q_sim, graph, spatial_params),
+            profondeur_eau_m=self._water_depth(Q_sim, graph, spatial_params),
         )
         return Q_sim, state, diagnostics
 
     @staticmethod
-    def _profondeur_deau(Q, graph, sp):
+    def _water_depth(Q, graph, sp):
         """Profondeur d'eau par tronçon, en mètres, quand la largeur est connue.
 
         Manning en section large, où le rayon hydraulique se confond avec la profondeur :
@@ -913,15 +913,15 @@ class HydroModel(nn.Module):
         Retourne None faute de largeur : la géométrie du lit n'existe pas dans toutes les
         bases, et une profondeur inventée serait pire qu'une absence.
         """
-        largeur = getattr(graph, "reach_width_m", None)
+        width = getattr(graph, "reach_width_m", None)
         manning = getattr(sp, "manning_n", None) if sp is not None else None
-        if largeur is None or manning is None:
+        if width is None or manning is None:
             return None
-        pente = getattr(graph, "node_slope", None)
-        if pente is None:
+        slope = getattr(graph, "node_slope", None)
+        if slope is None:
             return None
-        w = largeur.to(Q.device).clamp(min=1.0)
-        s_ = pente.to(Q.device).clamp(min=1e-5)
+        w = width.to(Q.device).clamp(min=1.0)
+        s_ = slope.to(Q.device).clamp(min=1e-5)
         return (Q.clamp(min=1e-4) * manning.to(Q.device) / (w * s_.sqrt())) ** 0.6
 
     # ---- Uncertainty regularisation ----
@@ -935,7 +935,7 @@ class HydroModel(nn.Module):
         # d'entraînement et n'étaient pas sauvegardés — cinq évaluations faussées en
         # quatre jours (0.6051 mesuré 0.4449, 0.781 mesuré 0.735...). load() compare
         # désormais la fiche à l'état du modèle et avertit sur chaque écart.
-        fiche = {
+        record = {
             "et_mode": getattr(self.vertical_column, "et_mode", None),
             "etp_channel": getattr(self.vertical_column, "etp_channel", None),
             "t_neige_seuil": float(getattr(self.vertical_column, "t_neige_seuil", 0.0)),
@@ -955,7 +955,7 @@ class HydroModel(nn.Module):
         recipe = capture_recipe()
         torch.save({
             "state_dict": self.state_dict(),
-            "fiche_execution": fiche,
+            "fiche_execution": record,
             "recipe": recipe,
             "init_kwargs": {
                 "n_nodes": self.n_nodes,
@@ -1011,7 +1011,7 @@ class HydroModel(nn.Module):
         }, path)
         # Document accompagnant, lisible sans torch : meme contenu en TOML a cote du
         # point de reprise. Un echec d'ecriture n'est jamais fatal.
-        write_recipe_toml(path, recipe, fiche,
+        write_recipe_toml(path, recipe, record,
                             {"n_nodes": self.n_nodes, "n_forcing": self.n_forcing,
                              "column_mode": getattr(self, "column_mode", None),
                              "routing_mode": getattr(self.routing, "routing_mode", None)})
@@ -1052,14 +1052,14 @@ class HydroModel(nn.Module):
             self._distributed_lakes = None
             return
         import math
-        for nom, v in (("c", c), ("T", T)):
-            lo, hi = (math.log(float(x)) for x in bounds[nom])
+        for field_name, v in (("c", c), ("T", T)):
+            lo, hi = (math.log(float(x)) for x in bounds[field_name])
             fr = min(max((math.log(float(v)) - lo) / (hi - lo), 1e-4), 1 - 1e-4)
             t = torch.tensor(math.log(fr / (1 - fr)), device=f.device)
-            if nom in learn:
-                setattr(self, f"lakes_learn_{nom}", nn.Parameter(t))
+            if field_name in learn:
+                setattr(self, f"lakes_learn_{field_name}", nn.Parameter(t))
             else:
-                self.register_buffer(f"lakes_fixed_{nom}", t, persistent=False)
+                self.register_buffer(f"lakes_fixed_{field_name}", t, persistent=False)
         self._distributed_lakes = dict(f=f, beta=float(beta), h_ref=float(h_ref), bounds={k2: tuple(float(x) for x in v2) for k2, v2 in bounds.items()}, learn=tuple(learn))
 
     def distributed_lakes_values(self) -> dict:
@@ -1067,12 +1067,12 @@ class HydroModel(nn.Module):
         import math
         ld = self._distributed_lakes
         out = {}
-        for nom in ("c", "T"):
-            t = getattr(self, f"lakes_learn_{nom}", None)
+        for field_name in ("c", "T"):
+            t = getattr(self, f"lakes_learn_{field_name}", None)
             if t is None:
-                t = getattr(self, f"lakes_fixed_{nom}")
-            lo, hi = (math.log(x) for x in ld["bounds"][nom])
-            out[nom] = torch.exp(lo + (hi - lo) * torch.sigmoid(t))
+                t = getattr(self, f"lakes_fixed_{field_name}")
+            lo, hi = (math.log(x) for x in ld["bounds"][field_name])
+            out[field_name] = torch.exp(lo + (hi - lo) * torch.sigmoid(t))
         out["k"] = 1.0 / (out["T"] * ld["h_ref"] ** (ld["beta"] - 1.0))
         return out
 
@@ -1120,14 +1120,14 @@ class HydroModel(nn.Module):
         _rec = (checkpoint.get("recipe") or checkpoint.get("recette")) if isinstance(checkpoint, dict) else None
         if _rec:
             from meandre.utils.recipe import compare_recipe
-            _ecarts = compare_recipe(_rec)
-            if _ecarts:
-                print(f"[load] AVERTISSEMENT recette : {len(_ecarts)} ecart(s) entre "
+            gaps = compare_recipe(_rec)
+            if gaps:
+                print(f"[load] AVERTISSEMENT recette : {len(gaps)} ecart(s) entre "
                       f"l'environnement de l'entrainement et celui d'aujourd'hui")
-                for _e in _ecarts[:12]:
+                for _e in gaps[:12]:
                     print(f"       {_e}")
-                if len(_ecarts) > 12:
-                    print(f"       ... et {len(_ecarts) - 12} autre(s)")
+                if len(gaps) > 12:
+                    print(f"       ... et {len(gaps) - 12} autre(s)")
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             sd = checkpoint["state_dict"]
             # Backward compatibility: pad fc_out if old checkpoint had fewer params.
@@ -1160,15 +1160,15 @@ class HydroModel(nn.Module):
                     # On nomme desormais les sorties concernees.
                     try:
                         from meandre.spatial.field_network import SpatialParams as _SP
-                        _noms = [f for f in _SP.__dataclass_fields__][:_SP.N_PARAMS]
-                        _combles = _noms[old_n:new_n]
+                        names = [f for f in _SP.__dataclass_fields__][:_SP.N_PARAMS]
+                        filled = names[old_n:new_n]
                     except Exception:
-                        _combles = [f"sortie {i}" for i in range(old_n, new_n)]
+                        filled = [f"sortie {i}" for i in range(old_n, new_n)]
                     print(f"[load] AVERTISSEMENT : le point de reprise porte {old_n} "
                           f"sorties de champ pour {new_n} attendues. Les {new_n - old_n} "
                           f"manquantes sont remplies de ZEROS, donc figees au MILIEU de "
                           f"leurs bornes et identiques sur tous les troncons : "
-                          f"{', '.join(_combles)}. Ces parametres ne sont pas appris.")
+                          f"{', '.join(filled)}. Ces parametres ne sont pas appris.")
 
             # Backward compatibility: pad fc1/fc2 if territorial features grew.
             # Use small Kaiming-scaled init (not zeros) so new features have
