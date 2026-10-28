@@ -788,7 +788,7 @@ class HydrotelColumn(nn.Module):
         etp_ext = enriched[:, self.etp_channel] if getattr(self, "etp_channel", None) is not None else None
         # Facteur de gradient pour le drainage profond, lu sur la nappe de la veille.
         self._l3_gradient = None
-        if self._water_table is not None and self._water_table.get("couplage", 0.0) > 0.0:
+        if self._water_table is not None and self._water_table.get("coupling", 0.0) > 0.0:
             _p = self._water_table
             _z_previous_day = _p["z_riv"] - state.S_gw / (1000.0 * _p["sy"])
             # Profondeur de la base du sol, sous laquelle la nappe doit se tenir pour que
@@ -796,7 +796,7 @@ class HydrotelColumn(nn.Module):
             # laquelle le facteur passe de 0 a 1 : c'est la frange capillaire effective.
             _soil = self._static["soil"]
             _z_soil = _soil["z1"] + _soil["z2"] + _soil["z3"]
-            self._l3_gradient = torch.clamp((_z_previous_day - _z_soil) / _p["couplage"], 0.0, 1.0)
+            self._l3_gradient = torch.clamp((_z_previous_day - _z_soil) / _p["coupling"], 0.0, 1.0)
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
                                      doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours,
                                      etp_ext=etp_ext)
@@ -1170,7 +1170,7 @@ class HydrotelColumn(nn.Module):
         julien (scalaire ou n_nodes). Retourne (prod_totale_mm, new_state, diag)."""
         assert self._static is not None, "appeler set_static() avant forward()"
         ps, pso, pe = self._static["snow"], self._static["soil"], self._static["etr"]
-        _pg = self._static.get("gel") or {}
+        _pg = self._static.get("frost_state") or {}
         tmin_j = tmin if tmin_j is None else tmin_j
         tmax_j = tmax if tmax_j is None else tmax_j
         doy_t = (doy.to(P.dtype) if torch.is_tensor(doy)
