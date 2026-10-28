@@ -893,6 +893,17 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
                 raise ValueError("conductivity = \"substratum\" demande un processus de percolation a plafond declare, dont la regle de drainage fournit la conductivite")
             _pr = _rempl(_pr, params={**_pr.params, "conductivity": torch.tensor(_pl_sub, dtype=torch.get_default_dtype(), device=DEVICE)})
             print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : conductivite du substratum par troncon (classe de drainage), mediane {np.median(_pl_sub) * 24000:.2f} mm/j")
+        # FORME PAR CLASSE DE DRAINAGE (2026-10-28, R432) : `drainage_select = "poor"` garde le
+        # processus sur les troncons dont la classe depasse `drainage_threshold` (4,5 par defaut :
+        # classes 5 a 7, imparfaitement a tres mal draine), `"good"` sur les autres et sur les
+        # troncons sans classe ; la part (`share`) vaut 1 ou 0 par troncon.
+        _sel = _pr.params.get("drainage_select")
+        if _sel is not None:
+            _seuil_cl = float(_pr.params.get("drainage_threshold", 4.5))
+            _mal = np.isfinite(_dr) & (_dr > _seuil_cl)
+            _part = _mal if _sel == "poor" else ~_mal
+            _pr = _rempl(_pr, params={**_pr.params, "share": torch.tensor(_part.astype(np.float32), device=DEVICE)})
+            print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : drainage_select={_sel}, actif sur {int(_part.sum())}/{n_nodes} troncons (classe {'>' if _sel == 'poor' else '<='} {_seuil_cl:g})")
         _procs2.append(_pr)
     model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs2))
 # ASSEMBLAGE (promu par défaut le 2026-08-09) : Hydrotel étale la production au VERSANT
