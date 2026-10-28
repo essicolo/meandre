@@ -462,6 +462,11 @@ class HydroModel(nn.Module):
         # (mesuré sur le Saint-Laurent sud-ouest, 2026-09-17). Les diagnostics ne sont
         # jamais dérivés : les déplacer ne change aucun résultat.
         _Liste = self._liste_diagnostics()
+        # DIAGNOSTICS GARDES (`diagnostics.kept`, 2026-10-28). Chaque diagnostic journalier du
+        # Quebec entier sur 25 ans pese environ 1 Go ; la trentaine depasse les 29 Go d'Ubuntu.
+        # Une analyse qui lit trois flux n'en garde que trois ; les autres valent None.
+        _kept = settings.get("diagnostics.kept")
+        kept_diagnostics = (frozenset(x.strip() for x in _kept.split(",") if x.strip()) if _kept else None)
         diag_lists: dict[str, list[Tensor]] = (
             {k: _Liste(k) for k in ("etp", "etr", "snowmelt", "lateral_mm",
                              "q_lateral", "q_upstream", "recharge",
@@ -786,7 +791,8 @@ class HydroModel(nn.Module):
             if _tw is not None:
                 T_water_all.append(_tw)
             for _cle, _v in sortie.items():
-                diag_lists[_cle].append(_v)
+                if kept_diagnostics is None or _cle in kept_diagnostics:
+                    diag_lists[_cle].append(_v)
 
         # ── Main simulation loop (interleaved vertical + routing) ──────
         # RECALCUL PAR SEGMENTS (MEANDRE_SEGMENT_GRADIENT, en jours ; 0 = inactif). Seuls les
@@ -850,48 +856,43 @@ class HydroModel(nn.Module):
             return Q_sim, state
 
         # `pop` libere chaque liste des qu'elle est empilee : sans lui, listes et piles
-        # coexistent et la memoire des diagnostics double au dernier moment.
+        # coexistent et la memoire des diagnostics double au dernier moment. Une liste vide
+        # (diagnostic absent de la colonne, ou ecarte par `diagnostics.kept`) donne None.
+        def stack_diagnostic(name):
+            values = diag_lists.pop(name, None)
+            return torch.stack(values, dim=0) if values else None
+
         diagnostics = SimDiagnostics(
-            etp=torch.stack(diag_lists.pop("etp"), dim=0),
-            etr=torch.stack(diag_lists.pop("etr"), dim=0),
-            snowmelt=torch.stack(diag_lists.pop("snowmelt"), dim=0),
-            lateral_mm=torch.stack(diag_lists.pop("lateral_mm"), dim=0),
-            etr_mh=(torch.stack(diag_lists.pop("etr_mh_mm"), dim=0)
-                    if diag_lists.get("etr_mh_mm") else None),
-            wet_vol=(torch.stack(diag_lists.pop("wet_vol_mm"), dim=0)
-                     if diag_lists.get("wet_vol_mm") else None),
-            sublimation=(torch.stack(diag_lists.pop("subl_mm"), dim=0)
-                         if diag_lists.get("subl_mm") else None),
-            prof_gel_cm=(torch.stack(diag_lists.pop("prof_gel_cm"), dim=0)
-                         if diag_lists.get("prof_gel_cm") else None),
-            prod_surf=(torch.stack(diag_lists.pop("prod_surf"), dim=0)
-                       if diag_lists["prod_surf"] else None),
-            prod_hypo=(torch.stack(diag_lists.pop("prod_hypo"), dim=0)
-                       if diag_lists["prod_hypo"] else None),
-            prod_base=(torch.stack(diag_lists.pop("prod_base"), dim=0)
-                       if diag_lists["prod_base"] else None),
+            etp=stack_diagnostic("etp"),
+            etr=stack_diagnostic("etr"),
+            snowmelt=stack_diagnostic("snowmelt"),
+            lateral_mm=stack_diagnostic("lateral_mm"),
+            etr_mh=stack_diagnostic("etr_mh_mm"),
+            wet_vol=stack_diagnostic("wet_vol_mm"),
+            sublimation=stack_diagnostic("subl_mm"),
+            prof_gel_cm=stack_diagnostic("prof_gel_cm"),
+            prod_surf=stack_diagnostic("prod_surf"),
+            prod_hypo=stack_diagnostic("prod_hypo"),
+            prod_base=stack_diagnostic("prod_base"),
             # ETR par couche (2026-10-02) : d'ou l'evapotranspiration prend son eau.
-            etr1=(torch.stack(diag_lists.pop("etr1"), dim=0) if diag_lists.get("etr1") else None),
-            etr2=(torch.stack(diag_lists.pop("etr2"), dim=0) if diag_lists.get("etr2") else None),
-            etr3=(torch.stack(diag_lists.pop("etr3"), dim=0) if diag_lists.get("etr3") else None),
-            temps_non_traite=(torch.stack(diag_lists.pop("temps_non_traite"), dim=0)
-                              if diag_lists.get("temps_non_traite") else None),
-            profondeur_nappe=(torch.stack(diag_lists.pop("profondeur_nappe_m"), dim=0)
-                              if diag_lists.get("profondeur_nappe_m") else None),
-            etr_nappe=(torch.stack(diag_lists.pop("etr_nappe"), dim=0)
-                       if diag_lists.get("etr_nappe") else None),
-            q_lateral=torch.stack(diag_lists.pop("q_lateral"), dim=0),
-            q_upstream=torch.stack(diag_lists.pop("q_upstream"), dim=0),
-            recharge=torch.stack(diag_lists.pop("recharge"), dim=0),
-            q_baseflow=torch.stack(diag_lists.pop("q_baseflow"), dim=0),
-            swe=torch.stack(diag_lists.pop("swe"), dim=0),
-            theta1=torch.stack(diag_lists.pop("theta1"), dim=0),
-            theta2=torch.stack(diag_lists.pop("theta2"), dim=0),
-            theta3=torch.stack(diag_lists.pop("theta3"), dim=0),
-            s_gw=torch.stack(diag_lists.pop("s_gw"), dim=0),
-            canopy=torch.stack(diag_lists.pop("canopy"), dim=0),
-            wetland=torch.stack(diag_lists.pop("wetland"), dim=0),
-            T_water=torch.stack(diag_lists["T_water"], dim=0),
+            etr1=stack_diagnostic("etr1"),
+            etr2=stack_diagnostic("etr2"),
+            etr3=stack_diagnostic("etr3"),
+            temps_non_traite=stack_diagnostic("temps_non_traite"),
+            profondeur_nappe=stack_diagnostic("profondeur_nappe_m"),
+            etr_nappe=stack_diagnostic("etr_nappe"),
+            q_lateral=stack_diagnostic("q_lateral"),
+            q_upstream=stack_diagnostic("q_upstream"),
+            recharge=stack_diagnostic("recharge"),
+            q_baseflow=stack_diagnostic("q_baseflow"),
+            swe=stack_diagnostic("swe"),
+            theta1=stack_diagnostic("theta1"),
+            theta2=stack_diagnostic("theta2"),
+            theta3=stack_diagnostic("theta3"),
+            s_gw=stack_diagnostic("s_gw"),
+            canopy=stack_diagnostic("canopy"),
+            wetland=stack_diagnostic("wetland"),
+            T_water=stack_diagnostic("T_water"),
             profondeur_eau_m=self._profondeur_deau(Q_sim, graph, spatial_params),
         )
         return Q_sim, state, diagnostics

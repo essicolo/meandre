@@ -2268,7 +2268,8 @@ print(f"[etl] composantes medianes : r={_cr:.4f} beta={_cb:.4f} gamma={_cg:.4f}"
 # la BONNE MASSE ? Le debit ne peut pas repondre, il est deja la variable ajustee.
 # CanSWE est une MESURE : aucune circularite. Contrainte de TENDANCE et de TIMING,
 # jamais de NIVEAU (un site est souvent en clairiere, le troncon porte sa foret).
-if _VEUT_NEIGE:
+# Sans le manteau parmi les diagnostics gardes (`diagnostics.kept`), la comparaison est sautee.
+if _VEUT_NEIGE and _DIAG.swe is not None:
     from meandre.data.basin_cache import BasinCache as _BC
     from meandre.run.territory_data import _paths as _jp
     _db = _jp(REG)[0]

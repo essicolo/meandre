@@ -59,6 +59,7 @@ SCHEMA: dict[str, Setting] = {
     # -- Diagnostics de sortie --------------------------------------------------------------
     "diagnostics.cpu": Setting("MEANDRE_DIAG_CPU", bool, False, "Diagnostics journaliers gardés sur le processeur plutôt que sur la carte graphique."),
     "diagnostics.half_precision": Setting("MEANDRE_DIAG_F16", bool, False, "Diagnostics non dérivés gardés en demi-précision sur le processeur."),
+    "diagnostics.kept": Setting("MEANDRE_DIAG_KEEP", str, None, "Diagnostics journaliers collectés pendant la simulation, séparés par des virgules (noms internes de la colonne : etr, recharge, q_baseflow...) ; absent, tous. Les autres valent None, ce qui fait tenir une passe provinciale avec diagnostics en mémoire."),
     "diagnostics.retained": Setting("MEANDRE_DIAG_DERIVES", str, None, "Diagnostics gardés avec leur graphe, séparés par des virgules ; absent, tous ceux qu'un terme peut dériver."),
     # -- Données -----------------------------------------------------------------------------
     "data.withdrawals_table": Setting("MEANDRE_WITHDRAWALS_TABLE", str, "withdrawals", "Table des prélèvements lue dans la base de chaque territoire."),
