@@ -93,8 +93,8 @@ def test_il_entre_dans_la_somme_ponderee():
                 w_log_mse=0.0, w_dq=0.0, w_fdc_low=0.0, w_dq_log=0.0, w_peak=0.0,
                 per_station=True)
     mk = torch.ones(1, dtype=torch.bool)
-    sans = HydroLoss(**base)(q_obs=q, q_sim=sim, station_mask=mk)
+    without = HydroLoss(**base)(q_obs=q, q_sim=sim, station_mask=mk)
     avec = HydroLoss(**{**base, "w_recession": 1.0})(q_obs=q, q_sim=sim, station_mask=mk)
-    sans = sans[0] if isinstance(sans, tuple) else sans
+    without = without[0] if isinstance(without, tuple) else without
     avec = avec[0] if isinstance(avec, tuple) else avec
-    assert float(avec) > float(sans)
+    assert float(avec) > float(without)

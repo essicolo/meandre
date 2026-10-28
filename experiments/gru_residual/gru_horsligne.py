@@ -64,14 +64,14 @@ def tenseurs(D, cols, stations, temps):
     return X, Y, QS, QM
 
 
-def perte(m, x, y, qs, qm, masque):
+def perte(m, x, y, qs, qm, mask):
     h = m(x)
     if m.step_output == "additive":
         pred = h
     else:
         pred = qs * 0.3 * torch.tanh(h) / qm[:, None]
     e = (pred - y) ** 2
-    return e[masque].mean(), pred
+    return e[mask].mean(), pred
 
 
 def entrainer(Xtr, Ytr, QStr, QMtr, idx_app, idx_arret, step_output, graine, epoques=400):

@@ -30,11 +30,11 @@ from meandre.training.loss import HydroLoss
 
 REGS = ["outv", "gasp", "sagu", "mont", "slno", "slso", "abit", "cndb", "cndc"]
 DOS = "D:/meandre-data/quebec/flotte"
-SORTIE = ".reports/quebec/caches/banc-perte.csv"
+OUTPUT = ".reports/quebec/caches/banc-perte.csv"
 HIVER = (12, 1, 2, 3)
 
 
-def deformations(q, mois):
+def deformations(q, months):
     """Les series a comparer a la verite. q est l'observation, sans lacune."""
     d = {"vérité": q.copy()}
     for f in (7, 30, 90):
@@ -43,7 +43,7 @@ def deformations(q, mois):
         d[f"lissage {f} j"] = s
     # Gel d'hiver : chaque bloc hivernal devient une recession exponentielle perdant 17 %.
     g = q.copy()
-    hiv = np.isin(mois, HIVER)
+    hiv = np.isin(months, HIVER)
     i = 0
     while i < len(g):
         if not hiv[i]:
@@ -112,7 +112,7 @@ def main():
     for reg in REGS:
         z = np.load(f"{DOS}/q-{reg}-A-v4.npz", allow_pickle=True)
         dts = pd.to_datetime([str(v)[:10] for v in z["dates"]])
-        mois = dts.month.to_numpy()
+        months = dts.month.to_numpy()
         for j in range(z["q_obs"].shape[1]):
             q = z["q_obs"][:, j].astype(float)
             if not np.isfinite(q).all() or (q <= 0).any():
@@ -125,7 +125,7 @@ def main():
                 cand[f"retard puis lissage {f} j"] = np.convolve(
                     np.pad(tard, (f, f), mode="edge"), k, mode="same")[f:-f]
             g = tard.copy()
-            hiv = np.isin(mois, HIVER)
+            hiv = np.isin(months, HIVER)
             i = 0
             while i < len(g):
                 if not hiv[i]:
@@ -169,7 +169,7 @@ def main():
                 v.update(region=reg, station=j, candidat=nom)
                 lignes.append(v)
     d = pd.DataFrame(lignes)
-    d.to_csv(SORTIE, index=False)
+    d.to_csv(OUTPUT, index=False)
     cols = list(POIDS) + ["total recette"]
     ref = d[d.candidat == "net, en retard d'un jour"].set_index(["region", "station"])[cols]
     n = len(ref)
@@ -188,7 +188,7 @@ def main():
         g2 = g.set_index(["region", "station"])["total recette"]
         print(f"  {nom:28s} {100 * float((g2 < ref['total recette']).mean()):5.0f} %")
     print()
-    print(f"{SORTIE} ecrit")
+    print(f"{OUTPUT} ecrit")
 
 
 if __name__ == "__main__":

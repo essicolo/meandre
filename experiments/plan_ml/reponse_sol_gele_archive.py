@@ -54,7 +54,7 @@ def territoire(reg):
     obs = con.execute("select station_id, date, discharge, reconstructed from observations where discharge is not null").df()
     con.close()
     _amont = amont(edges, len(terr))
-    aire = terr["area_km2_local"].to_numpy()
+    area_value = terr["area_km2_local"].to_numpy()
     ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-budyko.nc")
     F = ds["forcing"]
     temps = pd.DatetimeIndex(ds.time.values)
@@ -65,7 +65,7 @@ def territoire(reg):
         if len(o) < 2000:
             continue
         up = _amont(int(s.node_idx))
-        w = aire[up]; w = w / w.sum() if w.sum() > 0 else np.ones(len(up)) / len(up)
+        w = area_value[up]; w = w / w.sum() if w.sum() > 0 else np.ones(len(up)) / len(up)
         f = F.isel(node=up).values
         p = pd.Series((f[:, :, 0] * w[None, :]).sum(axis=1), index=temps)
         tm = pd.Series((0.5 * (f[:, :, 1] + f[:, :, 2]) * w[None, :]).sum(axis=1), index=temps)

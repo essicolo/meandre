@@ -36,7 +36,7 @@ _BASE = "https://www.cehq.gouv.qc.ca/depot/historique_donnees/fichier"
 RECONSTRUCTED_FLAGS = ("E", "R")
 
 
-def parse_cehq_text(texte: str):
+def parse_cehq_text(text_value: str):
     """Analyse un fichier `NNNNNN_Q.txt` du CEHQ.
 
     Retourne un DataFrame ``(station_id, date, discharge, remark)``. Les jours sans
@@ -46,17 +46,17 @@ def parse_cehq_text(texte: str):
     import numpy as np
     import pandas as pd
 
-    lignes = texte.splitlines()
-    debut = None
-    for i, l in enumerate(lignes):
+    lines = text_value.splitlines()
+    start = None
+    for i, l in enumerate(lines):
         if l.strip().startswith("Station") and "Date" in l and "Remarque" in l:
-            debut = i + 1
+            start = i + 1
             break
-    if debut is None:
+    if start is None:
         raise ValueError("en-tete de tableau introuvable : format CEHQ inattendu")
 
     sid, dates, val, rem = [], [], [], []
-    for l in lignes[debut:]:
+    for l in lines[start:]:
         if not l.strip():
             continue
         m = l.split()

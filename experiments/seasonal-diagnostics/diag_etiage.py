@@ -19,7 +19,7 @@ SAISONS = {"hiver (dec-mars)": (12, 1, 2, 3), "printemps (avr-mai)": (4, 5),
 def diagnostic(chemin: str) -> None:
     z = np.load(chemin, allow_pickle=True)
     qs, qo = z["q_sim"].astype(float), z["q_obs"].astype(float)
-    mois = pd.DatetimeIndex(z["dates"]).month.to_numpy()
+    months = pd.DatetimeIndex(z["dates"]).month.to_numpy()
     lignes = []
     for s in range(qo.shape[1]):
         ok = np.isfinite(qo[:, s]) & np.isfinite(qs[:, s])
@@ -30,7 +30,7 @@ def diagnostic(chemin: str) -> None:
         e = np.log(np.clip(qs[:, s], 0, None) + EPS) - np.log(qo[:, s] + EPS)
         lig = {"station": str(z["station_ids"][s]), "terme": np.abs(e[bas]).mean(), "biais_log": e[bas].mean()}
         for nom, m in SAISONS.items():
-            sel = bas & np.isin(mois, m)
+            sel = bas & np.isin(months, m)
             lig[nom] = (sel.sum() / bas.sum(), np.median(e[sel]) if sel.sum() >= 5 else np.nan)
         lignes.append(lig)
     print(f"== {chemin} : {len(lignes)} stations")

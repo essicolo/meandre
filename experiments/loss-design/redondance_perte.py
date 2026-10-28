@@ -60,13 +60,13 @@ def matrice():
         if not os.path.exists(f):
             continue
         z = np.load(f, allow_pickle=True)
-        mois = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
+        months = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
         for j in range(z["q_obs"].shape[1]):
             q = z["q_obs"][:, j].astype(float)
             if not np.isfinite(q).all() or (q <= 0).any():
                 continue
             var, q75 = float(q.var()), float(np.quantile(q, 0.75))
-            for nom, s in _bp.deformations(q, mois).items():
+            for nom, s in _bp.deformations(q, months).items():
                 t = _bp.termes(q, s, var, q75)
                 lignes.append({"region": reg, "station": j, "deformation": nom,
                                **t, **facteurs_kge(q, s)})

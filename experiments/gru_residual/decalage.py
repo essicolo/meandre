@@ -67,7 +67,7 @@ def main():
             idx = amont(d["graph"], noeuds[code])
             serie, total = lacs_en_serie(d["graph"], idx, noeuds[code])
             p = fx[st]["P"].reindex(q.index)
-            lignes.append(dict(station=st, region=reg, aire=aires.get(code), n_troncons=len(idx),
+            lignes.append(dict(station=st, region=reg, area_value=aires.get(code), n_troncons=len(idx),
                                lacs_serie=serie, lacs_total=total,
                                delai_obs=delai(p, q["q_obs"][st]), delai_sim=delai(p, q["q_sim"][st]),
                                decalage=ev.loc[st, "decalage"], kge=ev.loc[st, "kge"], kge_decale=ev.loc[st, "kge_decale"]))

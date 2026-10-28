@@ -60,10 +60,10 @@ def _apport_marginal(sources, axe, _rec=24):
     """
     blocs = {}
     plein = np.ones(len(axe), dtype=bool)
-    for nom, mat, masque in sources:
+    for nom, mat, mask in sources:
         # Toutes les sources sur le MEME axe mensuel : une source saisonniere est mise a
         # l'absence hors de sa saison plutot que raccourcie, sinon les blocs ne s'empilent pas.
-        mm = _inf._mensualise(np.where(masque[:, None], mat, np.nan), axe, plein)
+        mm = _inf._mensualise(np.where(mask[:, None], mat, np.nan), axe, plein)
         # On ne garde qu'un nombre borne de colonnes par source : au-dela, une source tres
         # redondante gonflerait la matrice sans rien ajouter, et le calcul deviendrait lourd.
         n95, _part, _c = _inf._effective_rank(mm, recouvrement_min=_rec)
@@ -176,8 +176,8 @@ def main():
     print(f"{reg} : {_n_mois} mois, recouvrement minimal {_rec} mois\n")
     print(f"{'source':<26s} {'series':>8s} {'95 %':>7s} {'participation':>14s} "
           f"{'reproductible':>14s} {'hasard':>8s}")
-    for nom, mat, masque in sources:
-        mm = _inf._mensualise(mat, axe, masque)
+    for nom, mat, mask in sources:
+        mm = _inf._mensualise(mat, axe, mask)
         n95, part, cols = _inf._effective_rank(mm, recouvrement_min=_rec)
         rep, pp = _inf._reproductibilite(mm, recouvrement_min=max(3, _rec // 2))
         # TEMOIN NUL, sans lequel le chiffre n'a pas d'echelle. Du bruit independant de meme

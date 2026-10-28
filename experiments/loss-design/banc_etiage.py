@@ -45,10 +45,10 @@ TERMES = [("KGE", "w_kge"), ("biais de volume", "w_pbias"), ("écart quadratique
           ("vitesse de vidange", "w_recession")]
 
 
-def deformations(q, mois):
+def deformations(q, months):
     """Ce qu'un prélèvement, une récession et un soutien font à un hydrogramme."""
     d = {}
-    ete = np.isin(mois, ETIAGE)
+    ete = np.isin(months, ETIAGE)
     for pct in (1, 2, 5, 10):
         s = q.copy()
         s[ete] = np.maximum(s[ete] - pct / 100.0 * q.mean(), 0.01 * q.mean())
@@ -97,7 +97,7 @@ def main():
         if not os.path.exists(f):
             continue
         z = np.load(f, allow_pickle=True)
-        mois = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
+        months = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
         for j in range(z["q_obs"].shape[1]):
             q = z["q_obs"][:, j].astype(float)
             if not np.isfinite(q).all() or (q <= 0).any():
@@ -109,7 +109,7 @@ def main():
             ref = q * (1.0 + 0.02 * rng.standard_normal(len(q)))
             for nom_t, cle in TERMES:
                 n0 = note(cle, q, ref, var, q75)
-                for nom_d, s in deformations(ref, mois).items():
+                for nom_d, s in deformations(ref, months).items():
                     lignes.append({"terme": nom_t, "deformation": nom_d,
                                    "sensibilite": (note(cle, q, s, var, q75) - n0)
                                                   / max(abs(n0), 1e-12)})

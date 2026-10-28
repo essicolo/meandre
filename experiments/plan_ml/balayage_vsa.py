@@ -74,7 +74,7 @@ def _nom_b(b):
     return f"{b:g}"
 
 
-def charger(dumps, b, regions, fx, aire):
+def charger(dumps, b, regions, fx, area_value):
     """Tous les orages d'une valeur de b, territoires réunis."""
     blocs = []
     for reg in regions:
@@ -86,13 +86,13 @@ def charger(dumps, b, regions, fx, aire):
         idx = pd.DatetimeIndex(z["dates"])
         for j, sid in enumerate(z["station_ids"]):
             st = f"{reg}:{sid}"
-            if st not in fx.columns.get_level_values(0) or st not in aire.index:
+            if st not in fx.columns.get_level_values(0) or st not in area_value.index:
                 continue
             o = pd.Series(z["q_obs"][:, j], index=idx)
             s = pd.Series(z["q_sim"][:, j], index=idx)
-            if o.notna().sum() < 365 or aire.loc[st] <= 0:
+            if o.notna().sum() < 365 or area_value.loc[st] <= 0:
                 continue
-            conv = 86.4 / float(aire.loc[st])
+            conv = 86.4 / float(area_value.loc[st])
             p = fx[st]["P"].reindex(idx)
             e = evenements(p, o * conv, s * conv)
             if len(e) < 5:
@@ -151,10 +151,10 @@ def main():
     a = p.parse_args()
     fx = pd.read_parquet(f"{REF}/forcage_bassin.parquet")
     at = pd.read_parquet(f"{REF}/attributs.parquet")
-    aire = at["aire_km2"]
+    area_value = at["aire_km2"]
     tout = []
     for b in a.b:
-        E = charger(a.dumps, b, a.regions, fx, aire)
+        E = charger(a.dumps, b, a.regions, fx, area_value)
         rapport(E, b)
         if len(E):
             E["b"] = b

@@ -19,8 +19,8 @@ def test_gradient_fini_avec_observations_manquantes():
     torch.manual_seed(0)
     T, N, S = 60, 4, 2
     q_sim = torch.rand(T, N, requires_grad=True)
-    masque = torch.zeros(N, dtype=torch.bool)
-    masque[:S] = True
+    mask = torch.zeros(N, dtype=torch.bool)
+    mask[:S] = True
     q_obs = torch.rand(T, S) + 0.5
     q_obs[10:20, 0] = float("nan")          # une lacune, cas courant en hiver
     q_obs[:, 1] = float("nan")              # une station entierement absente
@@ -30,7 +30,7 @@ def test_gradient_fini_avec_observations_manquantes():
                        ("log_mse", dict(w_mse=0.0, w_pbias=0.0, w_log_mse=1.0))):
         if q_sim.grad is not None:
             q_sim.grad = None
-        perte, _ = _perte(poids)(q_obs=q_obs, q_sim=q_sim, station_mask=masque)
+        perte, _ = _perte(poids)(q_obs=q_obs, q_sim=q_sim, station_mask=mask)
         assert torch.isfinite(perte), f"{nom} : perte non finie"
         perte.backward()
         assert torch.isfinite(q_sim.grad).all(), f"{nom} : gradient non fini"
@@ -43,13 +43,13 @@ def test_valeur_identique_a_la_moyenne_sans_lacune():
     T, S = 40, 1
     q_sim = torch.rand(T, S)
     q_obs = torch.rand(T, S) + 0.5
-    masque = torch.ones(S, dtype=torch.bool)
+    mask = torch.ones(S, dtype=torch.bool)
     p_plein, _ = _perte(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
-        q_obs=q_obs, q_sim=q_sim, station_mask=masque)
+        q_obs=q_obs, q_sim=q_sim, station_mask=mask)
     q_trou = q_obs.clone()
     q_trou[5:15] = float("nan")
     p_trou, _ = _perte(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
-        q_obs=q_trou, q_sim=q_sim, station_mask=masque)
+        q_obs=q_trou, q_sim=q_sim, station_mask=mask)
     ref = ((q_obs - q_sim) ** 2)
     garde = torch.ones(T, dtype=torch.bool); garde[5:15] = False
     assert torch.allclose(p_plein, ref.mean(), atol=1e-5)

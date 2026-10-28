@@ -36,11 +36,11 @@ REGIONS = sys.argv[1:] or ["outv", "gasp", "sagu", "slno", "mont", "abit", "slso
 
 
 def ingest(region: str) -> None:
-    chemin = _paths.data_path("quebec", f"{region}.duckdb")
-    if not os.path.exists(chemin):
+    file_path = _paths.data_path("quebec", f"{region}.duckdb")
+    if not os.path.exists(file_path):
         print(f"[{region}] base absente, ignoree")
         return
-    con = duckdb.connect(chemin)
+    con = duckdb.connect(file_path)
     stations = con.execute("SELECT DISTINCT station_id FROM observations ORDER BY 1") \
                   .df().station_id.tolist()
 
@@ -77,13 +77,13 @@ def ingest(region: str) -> None:
     n_tot, n_rec = con.execute(
         "SELECT count(*), count(*) FILTER (WHERE reconstructed) FROM observations "
         "WHERE discharge IS NOT NULL AND reconstructed IS NOT NULL").fetchone()
-    n_sans = con.execute(
+    n_without = con.execute(
         "SELECT count(*) FROM observations WHERE discharge IS NOT NULL "
         "AND reconstructed IS NULL").fetchone()[0]
     con.close()
     print(f"[{region}] {len(morceaux)}/{len(stations)} stations | {n_tot} valeurs "
           f"appariees dont {100*n_rec/max(n_tot,1):.1f} % reconstruites | "
-          f"{n_sans} sans drapeau"
+          f"{n_without} sans drapeau"
           + (f" | echecs : {', '.join(echecs)}" if echecs else ""))
 
 

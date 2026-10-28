@@ -26,7 +26,7 @@ def aires_modele(reg):
     from collections import defaultdict
     con = duckdb.connect(f"D:/meandre-data/quebec/{reg}.duckdb", read_only=True)
     st = con.sql("select station_id, node_idx from stations").fetchall()
-    aire = con.sql("select area_km2_local from territorial order by node_idx").fetchnumpy()["area_km2_local"]
+    area_value = con.sql("select area_km2_local from territorial order by node_idx").fetchnumpy()["area_km2_local"]
     ed = con.sql("select src, dst from edges").df()
     con.close()
     par = defaultdict(list)
@@ -40,7 +40,7 @@ def aires_modele(reg):
                 if p not in vus:
                     vus.add(p)
                     pile.append(p)
-        out[f"{reg}:{sid}"] = float(aire[np.fromiter(vus, int)].sum())
+        out[f"{reg}:{sid}"] = float(area_value[np.fromiter(vus, int)].sum())
     return out
 
 

@@ -33,7 +33,7 @@ REF = f"{_p.DATA_ROOT}/experiments/gru_residual"
 GRANDEURS = ("prod_surf", "prod_hypo", "prod_base", "lateral_mm", "theta1", "theta2")
 
 
-def un_territoire(f, qf, reg, fx, aire):
+def un_territoire(f, qf, reg, fx, area_value):
     """Orages d'un territoire, avec les productions, l'état du sol de la veille et le débit."""
     z = np.load(f, allow_pickle=True)
     idx = pd.DatetimeIndex(z["dates"])
@@ -43,12 +43,12 @@ def un_territoire(f, qf, reg, fx, aire):
     blocs = []
     for j, sid in enumerate(z["station_ids"]):
         st = f"{reg}:{sid}"
-        if st not in fx.columns.get_level_values(0) or st not in aire.index or aire.loc[st] <= 0:
+        if st not in fx.columns.get_level_values(0) or st not in area_value.index or area_value.loc[st] <= 0:
             continue
         p = fx[st]["P"].reindex(idx)
         if p.notna().sum() < 300:
             continue
-        conv = 86.4 / float(aire.loc[st])
+        conv = 86.4 / float(area_value.loc[st])
         qs = None
         if zq is not None and sid in set(zq["station_ids"].tolist()):
             jq = int(np.flatnonzero(zq["station_ids"] == sid)[0])
@@ -103,7 +103,7 @@ def main():
     a = p.parse_args()
     fx = pd.read_parquet(f"{REF}/forcage_bassin.parquet")
     at = pd.read_parquet(f"{REF}/attributs.parquet")
-    aire = at["aire_km2"]
+    area_value = at["aire_km2"]
     tous = []
     for reg in a.regions:
         f = a.dumps.format(reg=reg)
@@ -111,7 +111,7 @@ def main():
             print(f"  (absent : {f})")
             continue
         qf = a.qdumps.format(reg=reg) if a.qdumps else None
-        E = un_territoire(f, qf, reg, fx, aire)
+        E = un_territoire(f, qf, reg, fx, area_value)
         rapport(E, reg)
         tous.append(E)
     if tous:

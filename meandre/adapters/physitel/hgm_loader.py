@@ -20,17 +20,17 @@ import numpy as np
 import pandas as pd
 
 
-def lire_hgm(project_dir: str, node_ids, sim_subdir: str = "simulation/simulation"):
+def read_hgm(project_dir: str, node_ids, sim_subdir: str = "simulation/simulation"):
     proj = Path(project_dir)
     fics = sorted((proj / "hgm").glob("*.hgm"))
     if not fics:
         raise FileNotFoundError(f"aucun .hgm dans {proj / 'hgm'}")
-    lignes = [l.strip() for l in fics[0].read_text(encoding="latin-1").splitlines()]
+    lines = [l.strip() for l in fics[0].read_text(encoding="latin-1").splitlines()]
     # section DISTRI : après la ligne d'en-tête "UHRH;DISTRI 1;..."
-    i0 = next(i for i, l in enumerate(lignes) if l.startswith("UHRH;DISTRI"))
+    i0 = next(i for i, l in enumerate(lines) if l.startswith("UHRH;DISTRI"))
     distri = {}
     L = 0
-    for l in lignes[i0 + 1:]:
+    for l in lines[i0 + 1:]:
         if not l or ";" not in l:
             continue
         t = l.split(";")
@@ -43,12 +43,12 @@ def lire_hgm(project_dir: str, node_ids, sim_subdir: str = "simulation/simulatio
         L = max(L, len(v))
 
     # appartenance UHRH -> tronçon + aires (mêmes fichiers que hydrotel_calib)
-    from meandre.adapters.physitel.physitel_loader import _parse_troncon
-    tr = _parse_troncon(proj / "physitel" / "troncon.trl")
+    from meandre.adapters.physitel.physitel_loader import _parse_reach
+    tr = _parse_reach(proj / "physitel" / "troncon.trl")
     uh = pd.read_csv(proj / "physitel" / "uhrh.csv", sep=";", skiprows=1)
     col_id = uh.columns[0]
-    col_aire = next((c for c in uh.columns if "aire" in c.lower() or "area" in c.lower()), None)
-    aires = dict(zip(uh[col_id].astype(int), uh[col_aire].astype(float))) if col_aire else {}
+    col_area = next((c for c in uh.columns if "aire" in c.lower() or "area" in c.lower()), None)
+    areas = dict(zip(uh[col_id].astype(int), uh[col_area].astype(float))) if col_area else {}
 
     par_id = {t["id"]: t for t in tr}
     n = len(node_ids)
@@ -62,7 +62,7 @@ def lire_hgm(project_dir: str, node_ids, sim_subdir: str = "simulation/simulatio
                 d = distri.get(abs(int(uid)))
                 if d is None or d.sum() <= 0:
                     continue
-                w = aires.get(abs(int(uid)), 1.0)
+                w = areas.get(abs(int(uid)), 1.0)
                 acc[:len(d)] += w * (d / d.sum())
                 wtot += w
         if wtot > 0:

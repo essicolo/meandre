@@ -27,11 +27,11 @@ def main(reg, prefixe, tags):
         txt = open(f"{DOSSIER}/{prefixe}-{reg}-{tag}.log", encoding="utf-8", errors="replace").read()
         kge = re.search(rf"HELD-OUT [0-9-]+ {reg}: n=\d+ \| médian ([0-9.]+)", txt)
         pt = re.search(rf"PERTE [0-9-]+ {reg} .*?: total ([0-9.]+).*?etiage ([0-9.]+)", txt)
-        mois = re.search(r"simule/observe par mois : (.*)", txt)
+        months = re.search(r"simule/observe par mois : (.*)", txt)
         z = np.load(f"{DOSSIER}/q-{prefixe}-{reg}-{tag}.npz", allow_pickle=True)
         t = pd.DatetimeIndex(z["dates"])
         dec = np.array([es.decomposition(pd.Series(z["q_sim"][:, k], index=t), pd.Series(z["q_obs"][:, k], index=t)) for k in range(z["q_sim"].shape[1])])
-        lignes.append(dict(variante=tag, perte=float(pt.group(1)) if pt else np.nan, etiage=float(pt.group(2)) if pt else np.nan, kge=float(kge.group(1)) if kge else np.nan, ete_base=np.nanmedian(dec[:, 0]), ete_evenements=np.nanmedian(dec[:, 1]), ete_moyenne=np.nanmedian(dec[:, 2]), mois=mois.group(1).strip() if mois else ""))
+        lignes.append(dict(variante=tag, perte=float(pt.group(1)) if pt else np.nan, etiage=float(pt.group(2)) if pt else np.nan, kge=float(kge.group(1)) if kge else np.nan, ete_base=np.nanmedian(dec[:, 0]), ete_evenements=np.nanmedian(dec[:, 1]), ete_moyenne=np.nanmedian(dec[:, 2]), months=months.group(1).strip() if months else ""))
     L = pd.DataFrame(lignes).set_index("variante")
     L.to_csv(f"{DOSSIER}/passes-{prefixe}-{reg}.csv")
     with pd.option_context("display.max_colwidth", 200, "display.width", 250):

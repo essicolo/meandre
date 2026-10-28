@@ -28,9 +28,9 @@ def _serie():
 def test_etiage_trop_haut_coute_avec_le_terme_d_etiage():
     q = _serie()
     haut = torch.where(q < 1.5, q * 1.4, q)
-    sans = _faux_trainer()
+    without = _faux_trainer()
     avec = _faux_trainer(w_low_flow=1.0)
-    assert avec._validation_discharge_loss(q, haut) > sans._validation_discharge_loss(q, haut)
+    assert avec._validation_discharge_loss(q, haut) > without._validation_discharge_loss(q, haut)
     assert avec._validation_discharge_loss(q, q) < 1e-3
 
 

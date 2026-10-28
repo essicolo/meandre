@@ -40,8 +40,8 @@ CANDIDATS = [("calendrier", "w_r"), ("volume", "w_beta"), ("amplitude", "w_gamma
 # Défauts de référence. La sévérité de chacun est choisie pour qu'un hydrologue les juge
 # comparables : ce jugement est le SEUL ingrédient subjectif de la méthode, et il est ici
 # explicite au lieu d'être caché dans des poids.
-def defauts(q, mois):
-    ete = np.isin(mois, (7, 8, 9))
+def defauts(q, months):
+    ete = np.isin(months, (7, 8, 9))
     d = {}
     s = q.copy()
     s[ete] = np.maximum(s[ete] - 0.05 * q.mean(), 0.01 * q.mean())
@@ -71,13 +71,13 @@ def sensibilites():
         if not os.path.exists(f):
             continue
         z = np.load(f, allow_pickle=True)
-        mois = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
+        months = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
         for j in range(z["q_obs"].shape[1]):
             q = z["q_obs"][:, j].astype(float)
             if not np.isfinite(q).all() or (q <= 0).any():
                 continue
             var, q75 = float(q.var()), float(np.quantile(q, 0.75))
-            jeu = defauts(q, mois)
+            jeu = defauts(q, months)
             for nom_t, cle in CANDIDATS:
                 n0 = _be.note(cle, q, q, var, q75)
                 for nom_d, s in jeu.items():

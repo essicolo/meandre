@@ -181,12 +181,12 @@ def principale():
         if te.sum() < 100:
             continue
         tr = ~te
-        valeurs = []
+        value_list = []
         for nom in FORMES:
             x = ajuste(nom, cellules(frost_state[tr], neige[tr], rel[tr]))
-            valeurs.append(erreur(nom, x, cellules(frost_state[te], neige[te], rel[te]))[0])
+            value_list.append(erreur(nom, x, cellules(frost_state[te], neige[te], rel[te]))[0])
         print(f"  {reg:5s} {int(te.sum()):4d} pluies | " +
-              " ".join(f"{nom.split()[0][:9]} {v:.2f}" for nom, v in zip(FORMES, valeurs)))
+              " ".join(f"{nom.split()[0][:9]} {v:.2f}" for nom, v in zip(FORMES, value_list)))
 
     # Ce que la meilleure forme prédit par territoire, sous gel 20 à 100.
     nom = min(FORMES, key=lambda n: erreur(n, ajustes[n], tab)[0])

@@ -156,11 +156,11 @@ def test_la_description_supporte_les_deux_types_de_plafond():
                             params={"tau": 48.0}, ceiling=1.25e-4)
     nomme = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
                            params={"tau": 48.0}, ceiling="k_sub")
-    sans = sp.SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR")
+    without = sp.SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR")
     assert "1.250e-04" in nombre.decrire()
     assert "k_sub" in nomme.decrire() and "champ spatial" in nomme.decrire()
-    assert "plafond" not in sans.decrire()
-    for proc in (nombre, nomme, sans):
+    assert "plafond" not in without.decrire()
+    for proc in (nombre, nomme, without):
         assert isinstance(proc.decrire(), str) and proc.decrire()
 
 
@@ -183,5 +183,5 @@ def test_la_conductivite_declaree_reechelonne_la_courbe_k_theta():
     assert torch.allclose(perc.flux(ctx), torch.tensor([2e-7, 4e-5]))
     lat = sp.SoilProcess(layer=3, kind="lateral", form="BASE_LINEAR", params={"conductivity": sub})
     assert torch.allclose(lat.flux(ctx), torch.tensor([2e-8, 4e-6]))
-    sans = sp.SoilProcess(layer=3, kind="lateral", form="BASE_LINEAR")
-    assert torch.allclose(sans.flux(ctx), torch.tensor([1e-5, 1e-3]))
+    without = sp.SoilProcess(layer=3, kind="lateral", form="BASE_LINEAR")
+    assert torch.allclose(without.flux(ctx), torch.tensor([1e-5, 1e-3]))

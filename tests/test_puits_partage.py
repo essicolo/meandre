@@ -9,16 +9,16 @@ ne se compare.
 import pytest
 
 
-def partager(puits, part):
+def partager(wells, part):
     """Reproduit la règle du pilote : ordre stable, pas de tirage."""
     garde = []
-    if 0.0 < part < 1.0 and len(puits) >= 4:
-        rang = sorted(range(len(puits)), key=lambda i: str(puits[i]))
-        n_val = max(1, int(round(part * len(puits))))
-        garde = sorted(rang[::max(len(puits) // n_val, 1)][:n_val])
-    entraine = [i for i in range(len(puits)) if i not in set(garde)]
+    if 0.0 < part < 1.0 and len(wells) >= 4:
+        rang = sorted(range(len(wells)), key=lambda i: str(wells[i]))
+        n_val = max(1, int(round(part * len(wells))))
+        garde = sorted(rang[::max(len(wells) // n_val, 1)][:n_val])
+    entraine = [i for i in range(len(wells)) if i not in set(garde)]
     if not entraine:
-        entraine, garde = list(range(len(puits))), []
+        entraine, garde = list(range(len(wells))), []
     return entraine, garde
 
 

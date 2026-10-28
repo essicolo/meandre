@@ -13,10 +13,10 @@ def _ctx(agri):
 
 
 def test_flux_proportionnel_a_la_fraction_agricole():
-    sans = SoilProcess(layer=2, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 24.0})
+    without = SoilProcess(layer=2, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 24.0})
     avec = SoilProcess(layer=2, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 24.0, "cover": "agri", "share": 0.5})
     agri = torch.tensor([0.0, 0.4, 1.0])
-    q0, q1 = sans.flux(_ctx(agri)), avec.flux(_ctx(agri))
+    q0, q1 = without.flux(_ctx(agri)), avec.flux(_ctx(agri))
     assert torch.allclose(q1, q0 * agri * 0.5)
 
 

@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
 IRDA = f"{_paths.DATA_ROOT}/irda"
@@ -42,7 +42,7 @@ REGIONS = ["outv", "gasp", "sagu", "mont", "slno", "slso", "abit", "cnda", "cndb
 _SABLEUSE = [(70, 0), (100, 0), (85, 15)]
 _LOAMEUSE = [(0, 0), (70, 0), (85, 15), (65, 35), (0, 35)]
 _ARGILEUSE = [(0, 35), (65, 35), (0, 100)]
-FAMILLES = {
+FAMILIES = {
     "Sableuse": _SABLEUSE,
     "Squelettique-sableuse": _SABLEUSE,
     "Loameuse-grossière": [(15, 0), (70, 0), (85, 15), (82, 18), (15, 18)],
@@ -59,14 +59,14 @@ FAMILLES = {
 DRAINAGE = {"Très rapidement drainé": 1, "Rapidement drainé": 2, "Bien drainé": 3, "Modérément bien drainé": 4, "Imparfaitement drainé": 5, "Mal drainé": 6, "Très mal drainé": 7}
 # Classes de perméabilité de Wischmeier et Smith (1978), bornes en mm/h ; classes extrêmes fermées à 500 et 0,5.
 PERMEABILITE = {1: (152, 500), 2: (51, 152), 3: (15, 51), 4: (5, 15), 5: (1.5, 5), 6: (0.5, 1.5)}
-GROUPE = {"A": 1.0, "B": 2.0, "C": 3.0, "C/D": 3.5, "D": 4.0}
+GROUP = {"A": 1.0, "B": 2.0, "C": 3.0, "C/D": 3.5, "D": 4.0}
 VARIABLES = ["ilr_1", "ilr_2", "drainage", "log_permeabilite", "structure", "groupe_hydro", "lithique", "organique"]
 
 
-def centre_de_gravite(sommets):
+def centroid(vertices):
     """Centre de gravité d'un polygone du triangle, rendu en (sable, limon, argile) %."""
-    x = np.array([p[0] for p in sommets], dtype=float)
-    y = np.array([p[1] for p in sommets], dtype=float)
+    x = np.array([p[0] for p in vertices], dtype=float)
+    y = np.array([p[1] for p in vertices], dtype=float)
     x1, y1 = np.roll(x, -1), np.roll(y, -1)
     c = x * y1 - x1 * y
     a = c.sum() / 2
@@ -75,29 +75,29 @@ def centre_de_gravite(sommets):
     return sable, 100 - sable - argile, argile
 
 
-def proprietes_composantes():
+def component_properties():
     import nuee
     cx = sqlite3.connect(GPKG)
     pp = pd.read_sql("select Composante, Sorte, Classe_drainage, Granulo_1, Profondeur_sol from Proprietes_pedologiques", cx)
     bd = pd.read_sql("select Composante, Sable, Limon, Argile, Permeabilite, Code_structure, Groupe_hydrologique from BDHP_2026", cx)
     cx.close()
     d = pp.merge(bd, on="Composante", how="left")
-    centres = {k: centre_de_gravite(v) for k, v in FAMILLES.items()}
+    centers = {k: centroid(v) for k, v in FAMILIES.items()}
     tex = d[["Sable", "Limon", "Argile"]].to_numpy(dtype=float, copy=True)
-    sans = ~np.isfinite(tex).all(axis=1)
-    for i in np.flatnonzero(sans):
+    without = ~np.isfinite(tex).all(axis=1)
+    for i in np.flatnonzero(without):
         g = d.Granulo_1.iat[i]
-        if g in centres:
-            tex[i] = centres[g]
+        if g in centers:
+            tex[i] = centers[g]
     ok = np.isfinite(tex).all(axis=1) & (d.Sorte == "Minéral").to_numpy()
     coords = np.full((len(d), 2), np.nan)
     coords[ok] = nuee.ilr(nuee.multiplicative_replacement(nuee.closure(tex[ok])))
     d["ilr_1"], d["ilr_2"] = coords[:, 0], coords[:, 1]
-    d["texture_source"] = np.where(~ok, None, np.where(sans, "centre de classe", "BDHP"))
+    d["texture_source"] = np.where(~ok, None, np.where(without, "centre de classe", "BDHP"))
     d["drainage"] = d.Classe_drainage.map(DRAINAGE)
     d["log_permeabilite"] = d.Permeabilite.map({k: 0.5 * (np.log10(a) + np.log10(b)) for k, (a, b) in PERMEABILITE.items()})
     d["structure"] = d.Code_structure.astype(float)
-    d["groupe_hydro"] = d.Groupe_hydrologique.map(GROUPE)
+    d["groupe_hydro"] = d.Groupe_hydrologique.map(GROUP)
     mineral = d.Sorte.isin(["Minéral", "Organique"])
     d["lithique"] = np.where(mineral, d.Profondeur_sol.isin(["Lithique mince", "Lithique très mince"]).astype(float), np.nan)
     d["organique"] = np.where(mineral, (d.Sorte == "Organique").astype(float), np.nan)
@@ -109,8 +109,8 @@ def proprietes_polygones(comp):
     pps = pd.read_sql("select Code_polygone, Composante, Pourcentage from Couverture_pps", cx)
     cx.close()
     d = pps.merge(comp[["Composante"] + VARIABLES], on="Composante", how="left")
-    lignes = {"Code_polygone": d.Code_polygone.unique()}
-    step_output = pd.DataFrame(lignes).set_index("Code_polygone")
+    lines = {"Code_polygone": d.Code_polygone.unique()}
+    step_output = pd.DataFrame(lines).set_index("Code_polygone")
     for v in VARIABLES:
         m = d[v].notna()
         w = d.Pourcentage.where(m, 0.0)
@@ -121,7 +121,7 @@ def proprietes_polygones(comp):
     return step_output.reset_index()
 
 
-def une_region(reg, poly):
+def build_territory(reg, poly):
     import geopandas as gpd
     proj = f"{_paths.PLATFORMS_ROOT}/{PLATE}/{reg.upper()}_{PLATE}_2020"
     uh = gpd.read_file(f"{proj}/physitel/uhrh.shp")
@@ -131,17 +131,17 @@ def une_region(reg, poly):
     ir = poly.to_crs(uh.crs)
     ir = ir[ir.intersects(uh.union_all().envelope)]
     inter = gpd.overlay(uh, ir, how="intersection", keep_geom_type=True)
-    inter["aire"] = inter.geometry.area
+    inter["area_value"] = inter.geometry.area
     # Une unité hydrologique peut compter plusieurs polygones : son aire est leur somme.
-    a_uhrh = uh.assign(aire=uh.geometry.area).groupby("uhrh").aire.sum()
+    a_uhrh = uh.assign(area_value=uh.geometry.area).groupby("uhrh").area_value.sum()
     par_uhrh = pd.DataFrame(index=a_uhrh.index)
     for v in VARIABLES:
-        poids = inter.aire * inter[f"couv_{v}"].fillna(0.0)
+        poids = inter.area_value * inter[f"couv_{v}"].fillna(0.0)
         par_uhrh[f"num_{v}"] = (inter[v].fillna(0.0) * poids).groupby(inter.uhrh).sum()
         par_uhrh[f"den_{v}"] = poids.groupby(inter.uhrh).sum()
     par_uhrh = par_uhrh.fillna(0.0)
     out = []
-    for t in _parse_troncon(Path(f"{proj}/physitel/troncon.trl")):
+    for t in _parse_reach(Path(f"{proj}/physitel/troncon.trl")):
         uids = [u for u in t["uhrh_ids"] if u in a_uhrh.index]
         if not uids:
             continue
@@ -159,14 +159,14 @@ def une_region(reg, poly):
 
 def main(regions):
     import geopandas as gpd
-    comp = proprietes_composantes()
+    comp = component_properties()
     print(f"{len(comp)} composantes | texture BDHP {int((comp.texture_source == 'BDHP').sum())}, centre de classe {int((comp.texture_source == 'centre de classe').sum())}, sans texture {int(comp.texture_source.isna().sum())}", flush=True)
     props = proprietes_polygones(comp)
     geo = gpd.read_file(GPKG, layer="Couverture_pedologique", columns=["Code_polygone"], engine="pyogrio")
     poly = geo.merge(props, on="Code_polygone", how="inner")
     poly = poly[poly[[f"couv_{v}" for v in VARIABLES]].sum(axis=1) > 0]
     print(f"{len(poly)} polygones porteurs d'au moins une propriété", flush=True)
-    tout = [une_region(r, poly) for r in regions]
+    tout = [build_territory(r, poly) for r in regions]
     d = pd.concat(tout, ignore_index=True)
     f = f"{IRDA}/irda-proprietes-troncons.parquet"
     d.to_parquet(f, index=False)
@@ -178,10 +178,10 @@ if __name__ == "__main__":
     sys.exit(main([a.lower() for a in sys.argv[1:]] or REGIONS))
 
 
-RETENUES = ["ilr_1", "ilr_2", "drainage", "log_permeabilite", "lithique", "organique"]
+RESERVOIRS = ["ilr_1", "ilr_2", "drainage", "log_permeabilite", "lithique", "organique"]
 
 
-def colonnes_noeuds(reg, node_ids):
+def columns_nodes(reg, node_ids):
     """Colonnes IRDA pour l'entrée du champ, dans l'ordre des nœuds.
 
     Chaque propriété est centrée et réduite sur les tronçons couverts à plus de moitié de la
@@ -189,12 +189,12 @@ def colonnes_noeuds(reg, node_ids):
     neutre 0. La dernière colonne est la couverture du drainage, qui sert de masque.
     """
     t = pd.read_parquet(f"{IRDA}/irda-proprietes-troncons.parquet")
-    x = np.zeros((len(node_ids), len(RETENUES) + 1), dtype=np.float32)
+    x = np.zeros((len(node_ids), len(RESERVOIRS) + 1), dtype=np.float32)
     m = t[t.region == reg].set_index("troncon").reindex([int(i) for i in node_ids])
-    for j, v in enumerate(RETENUES):
+    for j, v in enumerate(RESERVOIRS):
         ref = t.loc[(t[f"couv_{v}"] >= 0.5) & t[v].notna(), v]
         couv = m[f"couv_{v}"].fillna(0.0).clip(0.0, 1.0).to_numpy()
         z = ((m[v] - ref.mean()) / ref.std()).fillna(0.0).to_numpy()
         x[:, j] = z * couv
     x[:, -1] = m["couv_drainage"].fillna(0.0).clip(0.0, 1.0).to_numpy()
-    return x, [f"irda_{v}" for v in RETENUES] + ["irda_couverture"]
+    return x, [f"irda_{v}" for v in RESERVOIRS] + ["irda_couverture"]

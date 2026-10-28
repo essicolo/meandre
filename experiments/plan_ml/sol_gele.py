@@ -79,7 +79,7 @@ def territoire(reg):
     if "reconstructed" not in obs:
         obs["reconstructed"] = False
     _amont = amont(edges, len(terr))
-    aire = terr["area_km2_local"].to_numpy()
+    area_value = terr["area_km2_local"].to_numpy()
     ds = xr.open_dataset(f"{_p.DATA_ROOT}/quebec/forcing-{reg}-casr-brut.nc")
     F = ds["forcing"]
     temps = pd.DatetimeIndex(ds.time.values)
@@ -90,7 +90,7 @@ def territoire(reg):
         if len(o) < 2000:
             continue
         up = _amont(int(s.node_idx))
-        w = aire[up]
+        w = area_value[up]
         w = w / w.sum() if w.sum() > 0 else np.ones(len(up)) / len(up)
         f = F.isel(node=up).values
         p = pd.Series((f[:, :, 0] * w[None, :]).sum(axis=1), index=temps)

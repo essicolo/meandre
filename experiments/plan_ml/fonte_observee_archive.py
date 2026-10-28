@@ -41,7 +41,7 @@ import pandas as pd
 import xarray as xr
 
 from meandre.data.basin_cache import BasinCache
-from meandre.adapters.physitel.hydrotel_calib import load_occupation_sol
+from meandre.adapters.physitel.hydrotel_calib import load_land_cover
 from meandre.utils import paths as _paths
 
 REG = (sys.argv[1] if len(sys.argv) > 1 else "sagu").lower()
@@ -85,7 +85,7 @@ tmoy = (tmin + tmax) / 2.0
 # jeter, sinon on biaiserait la cible vers le haut.
 y = np.clip(-m.dswe.to_numpy(), 0.0, None)
 
-occ = load_occupation_sol(f"{_paths.PLATFORMS_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020",
+occ = load_land_cover(f"{_paths.PLATFORMS_ROOT}/LN24HA/{REG.upper()}_LN24HA_2020",
                           h["node_ids"], device="cpu")
 def att(k):
     v = occ.get(k)

@@ -28,7 +28,7 @@ import pandas as pd
 
 
 @dataclass
-class CiblesNappe:
+class WellTargets:
     """Niveaux mensuels appariés, prêts pour le terme de perte.
 
     puits : (W,) identifiants.
@@ -38,72 +38,72 @@ class CiblesNappe:
     mois : (M,) premier jour de chaque mois couvert, en datetime64.
     distance_km : (W,) distance du puits au centre du tronçon apparié.
     """
-    puits: np.ndarray
+    wells: np.ndarray
     node_idx: np.ndarray
-    niveau: np.ndarray
-    masque: np.ndarray
-    mois: np.ndarray
+    level: np.ndarray
+    mask: np.ndarray
+    months: np.ndarray
     distance_km: np.ndarray
 
     @property
-    def n_puits(self) -> int:
-        return len(self.puits)
+    def n_wells(self) -> int:
+        return len(self.wells)
 
-def _chemin_defaut() -> str:
-    racine = os.environ.get("MEANDRE_DERIVES")
-    if not racine:
+def _path_default() -> str:
+    root = os.environ.get("MEANDRE_DERIVES")
+    if not root:
         from meandre.utils import paths as _paths
 
-        racine = _paths.DERIVED_ROOT
-    return f"{racine}/auxiliaires"
+        root = _paths.DERIVED_ROOT
+    return f"{root}/auxiliaires"
 
 
-def read_rsesq(region: str, times, chemin: str | None = None, libres_seulement: bool = True,
-               sans_influence: bool = True, distance_max_km: float = 10.0,
-               mois_minimum: int = 24) -> CiblesNappe:
+def read_rsesq(region: str, times, file_path: str | None = None, unconfined_only: bool = True,
+               uninfluenced: bool = True, distance_max_km: float = 10.0,
+               min_months: int = 24) -> WellTargets:
     """Cibles de nappe pour un domaine, agrégées au mois sur la période de `times`.
 
     times : index de dates journalières de la simulation. La grille mensuelle de sortie
     couvre exactement les mois qu'il contient, si bien que la perte peut indexer sans
     réalignement.
     """
-    base = chemin or _chemin_defaut()
-    puits = pd.read_parquet(f"{base}/rsesq-puits.parquet")
-    puits = puits[puits.region.str.lower() == region.lower()]
-    if libres_seulement:
-        puits = puits[puits.confinement == "Libre"]
-    if sans_influence:
-        puits = puits[puits.influence != "Oui"]
-    puits = puits[puits.distance_km <= distance_max_km]
+    base = file_path or _path_default()
+    wells = pd.read_parquet(f"{base}/rsesq-puits.parquet")
+    wells = wells[wells.region.str.lower() == region.lower()]
+    if unconfined_only:
+        wells = wells[wells.confinement == "Libre"]
+    if uninfluenced:
+        wells = wells[wells.influence != "Oui"]
+    wells = wells[wells.distance_km <= distance_max_km]
 
-    niveaux = pd.read_parquet(f"{base}/rsesq-niveaux-journaliers.parquet",
+    levels = pd.read_parquet(f"{base}/rsesq-niveaux-journaliers.parquet",
                               columns=["puits", "date", "niveau_m"])
-    niveaux = niveaux[niveaux.puits.isin(puits.puits)]
-    niveaux = niveaux.assign(mois=pd.to_datetime(niveaux.date).values.astype("datetime64[M]"))
-    table = niveaux.groupby(["mois", "puits"]).niveau_m.mean().unstack()
+    levels = levels[levels.puits.isin(wells.puits)]
+    levels = levels.assign(months=pd.to_datetime(levels.date).values.astype("datetime64[M]"))
+    table = levels.groupby(["months", "puits"]).niveau_m.mean().unstack()
 
-    mois = pd.to_datetime(times).values.astype("datetime64[M]")
-    grille = np.unique(mois)
-    table = table.reindex(index=pd.DatetimeIndex(grille))
+    months = pd.to_datetime(times).values.astype("datetime64[M]")
+    grid = np.unique(months)
+    table = table.reindex(index=pd.DatetimeIndex(grid))
 
     # Un puits trop court ne porte aucune information de forme : on l'écarte ici plutôt que
     # de laisser le terme de perte le découvrir à chaque pas.
-    assez = table.notna().sum(axis=0) >= mois_minimum
+    assez = table.notna().sum(axis=0) >= min_months
     table = table.loc[:, assez[assez].index]
-    ordre = [p for p in puits.puits if p in table.columns]
-    table = table[ordre]
-    meta = puits.set_index("puits").loc[ordre]
+    order = [p for p in wells.puits if p in table.columns]
+    table = table[order]
+    meta = wells.set_index("puits").loc[order]
 
-    return CiblesNappe(puits=np.asarray(ordre, dtype=object),
+    return WellTargets(wells=np.asarray(order, dtype=object),
                        node_idx=meta.node_idx.to_numpy(dtype=np.int64),
-                       niveau=table.to_numpy(dtype=np.float32),
-                       masque=table.notna().to_numpy(),
-                       mois=grille,
+                       level=table.to_numpy(dtype=np.float32),
+                       mask=table.notna().to_numpy(),
+                       months=grid,
                        distance_km=meta.distance_km.to_numpy(dtype=np.float32))
 
 
-def index_mensuel(times) -> np.ndarray:
+def index_monthly(times) -> np.ndarray:
     """Indice du mois de chaque pas journalier dans la grille mensuelle de `read_rsesq`."""
-    mois = pd.to_datetime(times).values.astype("datetime64[M]")
-    grille = np.unique(mois)
-    return np.searchsorted(grille, mois)
+    months = pd.to_datetime(times).values.astype("datetime64[M]")
+    grid = np.unique(months)
+    return np.searchsorted(grid, months)

@@ -31,12 +31,12 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
 PLATE = os.environ.get("IRDA_PLATEFORME", "LN24HA")
 SIH = f"{_paths.DATA_ROOT}/sources/hydrogeologie-sih"
-SORTIE = f"{_paths.DATA_ROOT}/derives/auxiliaires"
+OUTPUT = f"{_paths.DATA_ROOT}/derives/auxiliaires"
 ROC = ("roc", "granit", "gneiss", "schiste", "shale", "calcaire", "gres", "sedimentaire", "marbre", "dolomi", "basalt", "quartzite", "ardoise", "anorthosite", "gabbro", "volcan", "conglom", "metamorph", "igne", "serpentin", "diorite", "syenite", "argilite", "socle")
 FIN = ("argile", "silt", "glaise")
 GROSSIER = ("sable", "gravier", "bloc", "cailloux", "galet")
@@ -67,7 +67,7 @@ def puits_sih() -> pd.DataFrame:
     """Une ligne par puits : position, profondeur du roc ou borne, parts des dépôts."""
     import geopandas as gpd
 
-    gpkg = Path(SORTIE) / "cache" / "Puits_SIH.gpkg"
+    gpkg = Path(OUTPUT) / "cache" / "Puits_SIH.gpkg"
     if not gpkg.exists():
         gpkg.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(f"{SIH}/Puits_SIH.gpkg.zip") as z:
@@ -95,7 +95,7 @@ def puits_sih() -> pd.DataFrame:
     return w
 
 
-def une_region(reg, puits, puits_min):
+def build_territory(reg, wells, puits_min):
     import geopandas as gpd
 
     proj = f"{_paths.PLATFORMS_ROOT}/{PLATE}/{reg.upper()}_{PLATE}_2020"
@@ -103,8 +103,8 @@ def une_region(reg, puits, puits_min):
     col = "ident" if "ident" in uh.columns else uh.columns[0]
     uh = uh.rename(columns={col: "uhrh"})[["uhrh", "geometry"]]
     uh["uhrh"] = uh.uhrh.astype(int)
-    a_uhrh = uh.assign(aire=uh.geometry.area).groupby("uhrh").aire.sum()
-    pts = gpd.GeoDataFrame(puits, geometry=gpd.points_from_xy(puits.LONGITUDE, puits.LATITUDE), crs="EPSG:4326").to_crs(uh.crs)
+    a_uhrh = uh.assign(area_value=uh.geometry.area).groupby("uhrh").area_value.sum()
+    pts = gpd.GeoDataFrame(wells, geometry=gpd.points_from_xy(wells.LONGITUDE, wells.LATITUDE), crs="EPSG:4326").to_crs(uh.crs)
     xmin, ymin, xmax, ymax = uh.total_bounds
     pts = pts.cx[xmin:xmax, ymin:ymax]
     j = gpd.sjoin(pts, uh, predicate="within", how="inner")
@@ -112,7 +112,7 @@ def une_region(reg, puits, puits_min):
     j["part_non_atteint"] = (~j.atteint).astype(float)
     par_uhrh = {u: g for u, g in j.groupby("uhrh")}
     out = []
-    for t in _parse_troncon(Path(f"{proj}/physitel/troncon.trl")):
+    for t in _parse_reach(Path(f"{proj}/physitel/troncon.trl")):
         uids = [u for u in t["uhrh_ids"] if u in a_uhrh.index]
         if not uids:
             continue
@@ -134,9 +134,9 @@ def main():
     ap.add_argument("regions", nargs="*", default=["mont"])
     ap.add_argument("--puits-min", type=int, default=3)
     a = ap.parse_args()
-    puits = puits_sih()
-    d = pd.concat([une_region(r.lower(), puits, a.puits_min) for r in a.regions], ignore_index=True)
-    f = f"{SORTIE}/sih-troncons.parquet"
+    wells = puits_sih()
+    d = pd.concat([build_territory(r.lower(), wells, a.puits_min) for r in a.regions], ignore_index=True)
+    f = f"{OUTPUT}/sih-troncons.parquet"
     if os.path.exists(f):
         ancien = pd.read_parquet(f)
         d = pd.concat([ancien[~ancien.region.isin(d.region.unique())], d], ignore_index=True)

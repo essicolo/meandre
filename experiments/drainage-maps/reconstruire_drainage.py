@@ -38,14 +38,14 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
 import meandre.adapters.physitel.builders.drainage_maps as cd
 import meandre.adapters.physitel.builders.slc_drainage as cs
 
 PLATE = os.environ.get("IRDA_PLATEFORME", "LN24HA")
-SORTIE = Path(f"{_paths.DATA_ROOT}/derives/reconstruction")
+OUTPUT = Path(f"{_paths.DATA_ROOT}/derives/reconstruction")
 SIIGSOL = f"{_paths.DATA_ROOT}/sources/siigsol"
 NPDB = f"{_paths.DATA_ROOT}/sources/npdb"
 RESOLUTION = float(os.environ.get("DRAINAGE_RESOLUTION_M", "100"))
@@ -94,7 +94,7 @@ def raster_twi(crs, emprise_4326, transform, shape_value):
     index = gpd.read_file("zip://" + f"{TWI}/index-feuillets-shp.zip" + "!URL_twi.shp")
     zone = gpd.GeoSeries([box(*emprise_4326)], crs=4326).to_crs(index.crs).iloc[0]
     feuillets = index[index.intersects(zone)]
-    cache = SORTIE / "cache-twi"
+    cache = OUTPUT / "cache-twi"
     cache.mkdir(parents=True, exist_ok=True)
 
     def un_feuillet(ligne):
@@ -134,7 +134,7 @@ def raster_twi(crs, emprise_4326, transform, shape_value):
 def completer_twi(reg):
     """Ajoute l'humidite topographique a une grille deja enregistree."""
     from rasterio.transform import Affine
-    f = SORTIE / f"grille-{reg}.npz"
+    f = OUTPUT / f"grille-{reg}.npz"
     z = dict(np.load(f, allow_pickle=True))
     t = Affine.from_gdal(*z["transform"])
     shape_value = z["ids"].shape
@@ -151,7 +151,7 @@ def raster_slc(crs, emprise_4326, transform, shape_value):
     import geopandas as gpd
     poly = gpd.read_file(f"{cs.SLC}/ca_all_slc_v3r2.shp", bbox=emprise_4326)
     cmp = gpd.read_file(f"{cs.SLC}/ca_all_slc_v3r2_cmp.dbf")
-    sols = cs.proprietes_des_sols()
+    sols = cs.soil_properties()
     cm = cmp[cmp.POLY_ID.isin(poly.POLY_ID)].join(sols[["drainage"]], on="SOIL_ID")
     w = cm.PERCENT.where(cm.drainage.notna(), 0.0).astype(float)
     val = (cm.drainage.fillna(0.0) * w).groupby(cm.POLY_ID).sum() / w.groupby(cm.POLY_ID).sum().replace(0, np.nan)
@@ -193,12 +193,12 @@ def grille(reg):
     shape_value = (nlig, ncol)
     ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value, transform=transform, fill=0, dtype=np.int32)
     couches = {"ids": ids}
-    couches["irda"] = cd.rasteriser(cd.couche_irda(crs, emprise_4326), "drainage", transform, shape_value)
+    couches["irda"] = cd.rasteriser(cd.irda_layer(crs, emprise_4326), "drainage", transform, shape_value)
     couches["slc"] = raster_slc(crs, emprise_4326, transform, shape_value)
-    eco = cd.rasters_ecoforestier(crs, emprise_4326, cd.feuillets_de(emprise_4326), transform, shape_value, colonnes=("drainage", "depot", "famille", "mince"))
+    eco = cd.ecoforest_rasters(crs, emprise_4326, cd.sheets_of(emprise_4326), transform, shape_value, colonnes=("drainage", "depot", "famille", "mince"))
     for k in ("drainage", "depot", "famille", "mince"):
         couches[f"eco_{k}"] = eco[k]
-    sig = cd.couche_sigeom(crs, emprise_4326)
+    sig = cd.sigeom_layer(crs, emprise_4326)
     couches["sigeom_rang"] = cd.rasteriser(sig, "drainage", transform, shape_value)
     for nom in ("sable", "limon", "argile", "corg"):
         couches[nom] = raster_siigsol(nom, crs, transform, shape_value)
@@ -208,8 +208,8 @@ def grille(reg):
     pe = pe[pe.geometry.within(gpd.GeoSeries([uh.union_all()], crs=crs).iloc[0])]
     rows = ((y1 - pe.geometry.y) // RESOLUTION).astype(int).to_numpy()
     cols = ((pe.geometry.x - x0) // RESOLUTION).astype(int).to_numpy()
-    SORTIE.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(SORTIE / f"grille-{reg}.npz", transform=np.array(transform.to_gdal()), crs=str(crs), pedon_lig=rows, pedon_col=cols, pedon_rang=pe.drainage.to_numpy(), pedon_id=pe.PEDON_ID.to_numpy(), **couches)
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(OUTPUT / f"grille-{reg}.npz", transform=np.array(transform.to_gdal()), crs=str(crs), pedon_lig=rows, pedon_col=cols, pedon_rang=pe.drainage.to_numpy(), pedon_id=pe.PEDON_ID.to_numpy(), **couches)
     dans = ids > 0
     print(f"{reg}: grille {nlig} x {ncol}, {int(dans.sum())} cellules | couverture des cellules : " + ", ".join(f"{k} {np.isfinite(v[dans]).mean():.2f}" for k, v in couches.items() if k != "ids") + f" | {len(pe)} pedons | {time.time() - t0:.0f} s", flush=True)
 
@@ -218,7 +218,7 @@ def charger(regions):
     """Table cellule par cellule, echantillonnee, avec territoire, cibles et covariables."""
     tables = []
     for reg in regions:
-        f = SORTIE / f"grille-{reg}.npz"
+        f = OUTPUT / f"grille-{reg}.npz"
         if not f.exists():
             continue
         z = np.load(f, allow_pickle=True)
@@ -268,7 +268,7 @@ def ajuster(regions):
     # Epreuve 3 : les pedons, cellule par cellule.
     lignes = []
     for reg in regions:
-        f = SORTIE / f"grille-{reg}.npz"
+        f = OUTPUT / f"grille-{reg}.npz"
         if not f.exists():
             continue
         # Chaque acces a une cle d'un npz decompresse la grille entiere : on charge une fois.
@@ -283,21 +283,21 @@ def ajuster(regions):
     if len(pe):
         pred = m.predict(pe[COVARIABLES].to_numpy(dtype=float))
         hors = pe.irda.isna()
-        for nom, masque in (("tous", np.ones(len(pe), dtype=bool)), ("hors IRDA, donc foret", hors.to_numpy())):
-            if masque.sum() >= 5:
+        for nom, mask in (("tous", np.ones(len(pe), dtype=bool)), ("hors IRDA, donc foret", hors.to_numpy())):
+            if mask.sum() >= 5:
                 from scipy.stats import spearmanr
-                print(f"Pedons {nom}, {int(masque.sum())} : erreur {np.abs(pred[masque] - pe.rang[masque]).mean():.2f} contre temoin {np.abs(y.mean() - pe.rang[masque]).mean():.2f}, Spearman {spearmanr(pred[masque], pe.rang[masque]).statistic:.2f}")
-    joblib.dump(m, SORTIE / "modele-drainage.joblib")
-    print(f"\nmodele enregistre : {SORTIE / 'modele-drainage.joblib'}")
+                print(f"Pedons {nom}, {int(mask.sum())} : erreur {np.abs(pred[mask] - pe.rang[mask]).mean():.2f} contre temoin {np.abs(y.mean() - pe.rang[mask]).mean():.2f}, Spearman {spearmanr(pred[mask], pe.rang[mask]).statistic:.2f}")
+    joblib.dump(m, OUTPUT / "modele-drainage.joblib")
+    print(f"\nmodele enregistre : {OUTPUT / 'modele-drainage.joblib'}")
 
 
 def troncons(regions):
     """Predit la classe partout, puis agrege par unite hydrologique et par troncon."""
     import joblib
-    m = joblib.load(SORTIE / "modele-drainage.joblib")
+    m = joblib.load(OUTPUT / "modele-drainage.joblib")
     out = []
     for reg in regions:
-        f = SORTIE / f"grille-{reg}.npz"
+        f = OUTPUT / f"grille-{reg}.npz"
         if not f.exists():
             continue
         z = np.load(f, allow_pickle=True)
@@ -317,7 +317,7 @@ def troncons(regions):
         den = np.bincount(ids[dans][fini], minlength=len(n_uhrh))
         ter = np.bincount(ids[dans][np.isfinite(terrain)], minlength=len(n_uhrh))
         proj = f"{_paths.PLATFORMS_ROOT}/{PLATE}/{reg.upper()}_{PLATE}_2020"
-        for t in _parse_troncon(Path(f"{proj}/physitel/troncon.trl")):
+        for t in _parse_reach(Path(f"{proj}/physitel/troncon.trl")):
             uids = [u for u in t["uhrh_ids"] if u < len(n_uhrh) and n_uhrh[u] > 0]
             if not uids:
                 continue

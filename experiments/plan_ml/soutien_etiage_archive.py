@@ -69,7 +69,7 @@ def stations_du_territoire(reg):
     con.close()
     edges = [(e[0], e[1]) for e in edges]
     _amont = amont(edges, len(terr))
-    aire = terr["area_km2_local"].to_numpy()
+    area_value = terr["area_km2_local"].to_numpy()
     lignes = []
     for _, s in st.iterrows():
         o = obs[obs.station_id == s.station_id]
@@ -88,7 +88,7 @@ def stations_du_territoire(reg):
         if len(soutiens) < 5:
             continue
         up = _amont(int(s.node_idx))
-        w = aire[up]; w = w / w.sum() if w.sum() > 0 else np.ones(len(up)) / len(up)
+        w = area_value[up]; w = w / w.sum() if w.sum() > 0 else np.ones(len(up)) / len(up)
         ligne = {"territoire": reg, "station": s.station_id, "aire_km2": float(s.drainage_area_km2), "annees": len(soutiens), "soutien": float(np.median(soutiens)), "b_ete": exposant_ete(q.values, q.index)}
         for a in ATTRIBUTS:
             if a in terr.columns:

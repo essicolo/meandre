@@ -90,13 +90,13 @@ def _write_troncon(path: Path, reaches: list[dict]) -> None:
             # la racine carree du premier champ donne 660 a 810 m, la dimension d'un
             # petit lac. Pas de noeuds de parcours ici, pour rester minimal.
             upstream = r.get("upstream_node", r["id"])
-            aire = r.get("lake_area_m2", 500_000.0)
+            area_value = r.get("lake_area_m2", 500_000.0)
             prof = r.get("lake_depth_m", 3.5)
             k = r.get("lake_rating_k", 8.0)
             beta = r.get("lake_rating_beta", 1.5)
             lines.append(
                 f"    {r['id']} {rtype} {upstream} 0 "
-                f"{aire} {prof} {k} {beta} {n_uhrh} {uhrh_str} {ds}\n"
+                f"{area_value} {prof} {k} {beta} {n_uhrh} {uhrh_str} {ds}\n"
             )
     path.write_text("".join(lines), encoding="latin-1")
 
@@ -185,9 +185,9 @@ def _make_simple_project(tmp: Path, n_uhrh: int = 4) -> Path:
 
 from meandre.adapters.physitel.physitel_loader import (
     _parse_uhrh,
-    _parse_occupation_sol_cla,
-    _parse_type_sol_cla,
-    _parse_troncon,
+    _parse_land_cover_cla,
+    _parse_soil_type_cla,
+    _parse_reach,
     load_hydrotel,
 )
 
@@ -227,7 +227,7 @@ class TestParseOccupationSol:
         ]
         uhrh = {1: {}, 2: {}}
         _write_occupation_sol_cla(tmp_path / "occupation_sol.cla", lc_rows)
-        lc = _parse_occupation_sol_cla(tmp_path / "occupation_sol.cla", uhrh)
+        lc = _parse_land_cover_cla(tmp_path / "occupation_sol.cla", uhrh)
 
         assert len(lc) == 2
         assert lc[1].shape == (9,)
@@ -237,7 +237,7 @@ class TestParseOccupationSol:
         counts = [0, 100, 50, 200, 150, 100, 30, 40, 30]
         lc_rows = [{"id": 1, "counts": counts}]
         _write_occupation_sol_cla(tmp_path / "occupation_sol.cla", lc_rows)
-        lc = _parse_occupation_sol_cla(tmp_path / "occupation_sol.cla", {})
+        lc = _parse_land_cover_cla(tmp_path / "occupation_sol.cla", {})
         assert lc[1].sum() == pytest.approx(sum(counts))
 
 
@@ -245,7 +245,7 @@ class TestParseTypeSol:
     def test_returns_class_per_uhrh(self, tmp_path):
         soil_rows = [{"id": 1, "cls": 4}, {"id": 2, "cls": 8}]
         _write_type_sol_cla(tmp_path / "type_sol.cla", soil_rows)
-        soil = _parse_type_sol_cla(tmp_path / "type_sol.cla", {})
+        soil = _parse_soil_type_cla(tmp_path / "type_sol.cla", {})
 
         assert soil[1] == 4
         assert soil[2] == 8
@@ -262,7 +262,7 @@ class TestParseTroncon:
              "uhrh_ids": [3], "downstream_id": 2},
         ]
         _write_troncon(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_troncon(tmp_path / "troncon.trl")
+        troncons = _parse_reach(tmp_path / "troncon.trl")
 
         assert len(troncons) == 2
         assert troncons[0]["id"] == 1
@@ -285,7 +285,7 @@ class TestParseTroncon:
              "uhrh_ids": [1, 2, 3], "downstream_id": 1},  # outlet (self)
         ]
         _write_troncon(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_troncon(tmp_path / "troncon.trl")
+        troncons = _parse_reach(tmp_path / "troncon.trl")
 
         assert troncons[0]["type"] == 2
         assert troncons[0]["lake_area_m2"] == pytest.approx(640_000.0)
@@ -305,7 +305,7 @@ class TestParseTroncon:
              "uhrh_ids": [2], "downstream_id": 2},
         ]
         _write_troncon(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_troncon(tmp_path / "troncon.trl")
+        troncons = _parse_reach(tmp_path / "troncon.trl")
 
         lac = next(t for t in troncons if t["type"] == 2)
         assert lac["length_m"] == pytest.approx(3000.0)  # racine de 9 km2
@@ -319,7 +319,7 @@ class TestParseTroncon:
             for i in range(1, 6)
         ]
         _write_troncon(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_troncon(tmp_path / "troncon.trl")
+        troncons = _parse_reach(tmp_path / "troncon.trl")
         assert len(troncons) == 5
 
 

@@ -122,9 +122,9 @@ def test_active_la_fonte_hivernale_apparait():
     depasse le seuil et dont la moyenne ne le depasse pas. Le clone ne libere rien, la
     version diurne finit par murir le manteau et liberer de l'eau."""
     tmin, tmax = torch.tensor([-8.0]), torch.tensor([6.0])
-    sans = _cumul_fonte(60, False, tmin, tmax)
+    without = _cumul_fonte(60, False, tmin, tmax)
     avec = _cumul_fonte(60, True, tmin, tmax)
-    assert sans == 0.0
+    assert without == 0.0
     assert avec > 0.0
 
 

@@ -59,14 +59,14 @@ def main(territoires):
         m16["mois"] = pd.to_datetime(m16.date).dt.month
         print(f"\n{reg} : {len(lon)} noeuds ({int(groupes['agricoles'].sum())} agricoles, {int(groupes['forestiers'].sum())} forestiers), mm/mois, 2013-2024")
         print("  " + "groupe      source   " + " ".join(f"{m:5d}" for m in range(4, 11)) + "   avr-oct")
-        for g, masque in groupes.items():
-            if masque.sum() == 0:
+        for g, mask in groupes.items():
+            if mask.sum() == 0:
                 continue
             ligne_s, ligne_m = [], []
             for m in range(4, 11):
-                vs = [np.nanmean(v[masque]) for t, v in s.items() if t.month == m and 2013 <= t.year <= 2024]
+                vs = [np.nanmean(v[mask]) for t, v in s.items() if t.month == m and 2013 <= t.year <= 2024]
                 ligne_s.append(np.nanmean(vs) if vs else np.nan)
-                sel = m16[(m16.mois == m) & m16.node_idx.isin(np.where(masque)[0])]
+                sel = m16[(m16.mois == m) & m16.node_idx.isin(np.where(mask)[0])]
                 ligne_m.append(sel.etr_mm_day.mean() * 30.4 if len(sel) else np.nan)
             print(f"  {g:10s}  SSEBop   " + " ".join(f"{x:5.0f}" for x in ligne_s) + f"   {np.nansum(ligne_s):6.0f}")
             print(f"  {'':10s}  MOD16    " + " ".join(f"{x:5.0f}" for x in ligne_m) + f"   {np.nansum(ligne_m):6.0f}")

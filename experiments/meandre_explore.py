@@ -92,22 +92,22 @@ def _(RESULTS, glob, mo, np, os, pd):
             for m in range(1, 13):
                 k = v & (dates.month == m)
                 if k.sum() > 10:
-                    lignes_mois.append(dict(station=str(sid), mois=m,
+                    lignes_mois.append(dict(station=str(sid), months=m,
                                             rapport=float(qs[k].sum() / max(qo[k].sum(), 1e-9))))
     for fa in sorted(glob.glob(f"{RESULTS}/nb-*-avec.npz")):
         src = os.path.basename(fa).split("-")[1]
         avec = np.load(fa, allow_pickle=True)
         fs = fa.replace("-avec", "-sans")
-        sans = np.load(fs, allow_pickle=True) if os.path.exists(fs) else None
+        without = np.load(fs, allow_pickle=True) if os.path.exists(fs) else None
         d = pd.DataFrame({"lon": avec["coords"][:, 0], "lat": avec["coords"][:, 1],
                           "q_annuel": avec["q_annuel"],
                           "prelev_abs": avec["prelev_net_abs"]})
         for k in avec.files:
             if k.startswith("param_"):
                 d[k[6:]] = avec[k]
-        if sans is not None:
-            d["effet_prelev_pct"] = 100.0 * (avec["q_annuel"] - sans["q_annuel"]) / \
-                np.clip(sans["q_annuel"], 1e-6, None)
+        if without is not None:
+            d["effet_prelev_pct"] = 100.0 * (avec["q_annuel"] - without["q_annuel"]) / \
+                np.clip(without["q_annuel"], 1e-6, None)
         troncons.append(d)
     stations = pd.DataFrame(lignes_st)
     mensuel = pd.DataFrame(lignes_mois)

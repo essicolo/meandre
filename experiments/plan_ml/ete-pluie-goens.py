@@ -47,7 +47,7 @@ def poids_bassins(stations, lon_g, lat_g):
         ix = np.abs(lon_g[None, :] - nodes.lon.to_numpy()[:, None]).argmin(1)
         iy = np.abs(lat_g[None, :] - nodes.lat.to_numpy()[:, None]).argmin(1)
         cell = ix * len(lat_g) + iy
-        aire = nodes.area_km2_local.to_numpy()
+        area_value = nodes.area_km2_local.to_numpy()
         for k, code in liste:
             seen, pile = {st[code]}, [st[code]]
             while pile:
@@ -56,7 +56,7 @@ def poids_bassins(stations, lon_g, lat_g):
                         seen.add(p)
                         pile.append(p)
             idx = np.fromiter(seen, int)
-            np.add.at(W[k], cell[idx], aire[idx] / aire[idx].sum())
+            np.add.at(W[k], cell[idx], area_value[idx] / area_value[idx].sum())
     return W
 
 
@@ -68,9 +68,9 @@ def main():
     W = poids_bassins(stations, lon_g, lat_g)
     cellules = np.flatnonzero(W.sum(0) > 0)
     Wc = W[:, cellules]
-    mois = pd.period_range("2019-01", "2024-12", freq="M")
+    months = pd.period_range("2019-01", "2024-12", freq="M")
     goens = {}
-    for m in mois:
+    for m in months:
         bloc = d.pr.sel(time=slice(str(m.start_time), str(m.end_time))).values  # (lon, lat, t)
         g = bloc.reshape(-1, bloc.shape[-1])[cellules]                          # (cellules, t)
         goens[m] = Wc @ np.nan_to_num(g.sum(1))                                   # mm du mois, par station

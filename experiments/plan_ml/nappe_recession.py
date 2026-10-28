@@ -42,7 +42,7 @@ REF = f"{_p.DATA_ROOT}/experiments/gru_residual"
 MOIS_EXCLUS = {12, 1, 2, 3, 4, 5}
 
 
-def points_station(reg, code, aire):
+def points_station(reg, code, area_value):
     con = duckdb.connect(f"{_p.DATA_ROOT}/quebec/{reg}.duckdb", read_only=True)
     cols = {c[0] for c in con.execute("describe observations").fetchall()}
     sel = "date, discharge" + (", reconstructed" if "reconstructed" in cols else "")
@@ -69,7 +69,7 @@ def points_station(reg, code, aire):
     if garde.sum() < 100:
         return None
     # mm/j : m3/s * 86.4 / km2
-    f = 86.4 / aire
+    f = 86.4 / area_value
     x = np.log(qm[garde] * f)
     y = np.log(dqdt[garde] * f)
     annee = q.index.year.to_numpy()[garde]

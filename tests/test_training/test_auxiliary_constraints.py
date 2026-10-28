@@ -107,10 +107,10 @@ def _sites(n=3, dist=(1.0, 2.0, 3.0), delev=(10.0, 20.0, 30.0)):
                          "dist_km": list(dist), "elev_diff_m": list(delev)})
 
 
-def _mesures(dates, sites, valeurs):
+def _mesures(dates, sites, value_list):
     import pandas as pd
     return pd.DataFrame({"swe_station_id": sites, "date": pd.to_datetime(dates),
-                         "swe_mm": valeurs})
+                         "swe_mm": value_list})
 
 
 def test_build_swe_targets_place_les_releves_au_bon_jour():
@@ -231,9 +231,9 @@ def test_passage_direct_muet_tant_que_le_biais_est_nul():
 def test_bucketize_du_jour_julien_vers_le_mois():
     """Les bornes du trainer doivent rendre 0 pour janvier et 11 pour decembre."""
     bornes = torch.tensor([31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335])
-    for doy, mois in [(1, 0), (31, 0), (32, 1), (60, 1), (61, 2), (121, 3),
+    for doy, months in [(1, 0), (31, 0), (32, 1), (60, 1), (61, 2), (121, 3),
                       (182, 5), (335, 10), (336, 11), (365, 11), (366, 11)]:
-        assert int(torch.bucketize(torch.tensor(doy), bornes)) == mois, f"jour {doy}"
+        assert int(torch.bucketize(torch.tensor(doy), bornes)) == months, f"jour {doy}"
 
 
 # ── krec dans le champ : ancrage de la moyenne, variation spatiale libre ─────

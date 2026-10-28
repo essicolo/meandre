@@ -25,14 +25,14 @@ from meandre.utils import paths as _paths
 DATE_START, DATE_END = "2000-01-01", "2024-12-31"
 
 
-def noeuds_du_territoire(reg):
+def territory_nodes(reg):
     """Coordonnées des nœuds, dans l'ordre de node_idx."""
     import duckdb
 
-    chemin = f"{_paths.DATA_ROOT}/quebec/{reg.lower()}.duckdb"
-    if not os.path.exists(chemin):
-        raise SystemExit(f"base absente : {chemin}")
-    con = duckdb.connect(chemin, read_only=True)
+    file_path = f"{_paths.DATA_ROOT}/quebec/{reg.lower()}.duckdb"
+    if not os.path.exists(file_path):
+        raise SystemExit(f"base absente : {file_path}")
+    con = duckdb.connect(file_path, read_only=True)
     df = con.execute("SELECT node_id, lon, lat FROM nodes ORDER BY node_idx").df()
     con.close()
     return df
@@ -45,7 +45,7 @@ def main():
                    help="ne garder qu'un nœud sur N ; les nœuds voisins partagent la cellule")
     a = p.parse_args()
 
-    if not _nl.fichier_present():
+    if not _nl.file_present():
         raise SystemExit(f"fichier NEISIM absent : {_nl.DEFAULT_FILE}")
     times = pd.date_range(DATE_START, DATE_END, freq="D")
 
@@ -55,39 +55,39 @@ def main():
     plans = {}
     toutes = []
     for reg in [r.lower() for r in a.regions]:
-        df = noeuds_du_territoire(reg)
-        garde = np.arange(0, len(df), a.pas)
-        cellules, rang, _lo, _la, temps_n = _nl.cellules_des_noeuds(df["lon"].to_numpy()[garde],
-                                                                   df["lat"].to_numpy()[garde])
-        plans[reg] = (garde, cellules, rang, len(df))
-        toutes.append(cellules)
-        print(f"{reg} : {len(df)} nœuds, {len(garde)} retenus, {len(cellules)} cellules de grille")
+        df = territory_nodes(reg)
+        kept = np.arange(0, len(df), a.pas)
+        cells, rank, _lo, _la, time_n = _nl.node_cells(df["lon"].to_numpy()[kept],
+                                                                   df["lat"].to_numpy()[kept])
+        plans[reg] = (kept, cells, rank, len(df))
+        toutes.append(cells)
+        print(f"{reg} : {len(df)} nœuds, {len(kept)} retenus, {len(cells)} cellules de grille")
     union, retour = np.unique(np.concatenate(toutes), axis=0, return_inverse=True)
     print(f"{len(union)} cellules distinctes en tout", flush=True)
 
-    series = _nl.lire_cellules(union)
-    _lo, _la, temps_n = _nl._grille(_nl.DEFAULT_FILE)
+    series = _nl.read_cells(union)
+    _lo, _la, time_n = _nl._grid(_nl.DEFAULT_FILE)
     axe = pd.DatetimeIndex(times).normalize()
-    pos = pd.Series(np.arange(len(temps_n)), index=temps_n)
+    pos = pd.Series(np.arange(len(time_n)), index=time_n)
     pos = pos[~pos.index.duplicated()]
     ou = pos.reindex(axe).to_numpy()
     vu = np.isfinite(ou)
 
-    debut = 0
-    for reg, (garde, cellules, rang, n_total) in plans.items():
-        dans_union = np.ravel(retour)[debut:debut + len(cellules)]
-        debut += len(cellules)
-        valeurs = np.full((len(axe), len(garde)), np.nan, dtype="float32")
+    start = 0
+    for reg, (kept, cells, rank, n_total) in plans.items():
+        in_union = np.ravel(retour)[start:start + len(cells)]
+        start += len(cells)
+        value_list = np.full((len(axe), len(kept)), np.nan, dtype="float32")
         if vu.any():
-            valeurs[vu] = series[:, ou[vu].astype(int)].T[:, dans_union[rang]]
-        hiver = np.isin(times.month, (11, 12, 1, 2, 3, 4, 5))
+            value_list[vu] = series[:, ou[vu].astype(int)].T[:, in_union[rank]]
+        winter = np.isin(times.month, (11, 12, 1, 2, 3, 4, 5))
         print("")
-        print(f"{reg} : {100 * np.isfinite(valeurs).mean():.1f} % de valeurs renseignées")
-        print(f"  équivalent en eau moyen de novembre à mai : {np.nanmean(valeurs[hiver]):.0f} mm")
-        print(f"  maximum médian par nœud : {np.nanmedian(np.nanmax(valeurs, axis=0)):.0f} mm")
+        print(f"{reg} : {100 * np.isfinite(value_list).mean():.1f} % de valeurs renseignées")
+        print(f"  équivalent en eau moyen de novembre à mai : {np.nanmean(value_list[winter]):.0f} mm")
+        print(f"  maximum médian par nœud : {np.nanmedian(np.nanmax(value_list, axis=0)):.0f} mm")
         step_output = f"{_paths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
         os.makedirs(os.path.dirname(step_output), exist_ok=True)
-        np.savez_compressed(step_output, valeurs=valeurs, node_idx=garde.astype("int64"),
+        np.savez_compressed(step_output, value_list=value_list, node_idx=kept.astype("int64"),
                             n_nodes=n_total, times=times.to_numpy().astype("datetime64[D]"))
         print(f"  écrit : {step_output} ({os.path.getsize(step_output) / 1e6:.1f} Mo)")
     return 0

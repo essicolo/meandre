@@ -36,9 +36,9 @@ TERMES = _be.TERMES
 
 # Deformations elementaires, chacune ne touchant QU'UNE dimension de l'erreur, pour que
 # l'ordre mesure la forme du terme et non un melange.
-def deformations(q, mois, e):
+def deformations(q, months, e):
     """Trois erreurs d'amplitude relative e, sur le volume, l'amplitude et l'etiage."""
-    ete = np.isin(mois, (7, 8, 9))
+    ete = np.isin(months, (7, 8, 9))
     volume = q * (1.0 + e)
     amplitude = q.mean() + (q - q.mean()) * (1.0 - e)
     etiage = q.copy()
@@ -57,14 +57,14 @@ def main():
         if not os.path.exists(f):
             continue
         z = np.load(f, allow_pickle=True)
-        mois = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
+        months = pd.to_datetime([str(v)[:10] for v in z["dates"]]).month.to_numpy()
         for j in range(z["q_obs"].shape[1]):
             q = z["q_obs"][:, j].astype(float)
             if not np.isfinite(q).all() or (q <= 0).any():
                 continue
             var, q75 = float(q.var()), float(np.quantile(q, 0.75))
-            d1 = deformations(q, mois, petit)
-            d2 = deformations(q, mois, grand)
+            d1 = deformations(q, months, petit)
+            d2 = deformations(q, months, grand)
             for nom_t, cle in TERMES:
                 n0 = _be.note(cle, q, q, var, q75)
                 for nom_d in d1:

@@ -118,12 +118,12 @@ def test_facteur_de_gradient_neutre_a_un_et_nul_a_zero():
     t = z(0.9 * SOIL_TEXTURES["silt_loam"]["thetas"])
     cl = BV3C2Clone(n_substep=16)
     args = (t, t, t, z(10.0), z(0.5), z(0.0), z(0.0))
-    sans = float(cl(*args, p)[2][0])
+    without = float(cl(*args, p)[2][0])
     avec_un = float(cl(*args, {**p, "l3_gradient": z(1.0)})[2][0])
     avec_zero = float(cl(*args, {**p, "l3_gradient": z(0.0)})[2][0])
-    assert avec_un == pytest.approx(sans, rel=1e-12)
+    assert avec_un == pytest.approx(without, rel=1e-12)
     assert avec_zero == 0.0
-    assert sans > 0.0
+    assert without > 0.0
 
 
 def test_drainage_gravitaire_ne_vide_pas_sous_la_capacite_au_champ():
@@ -167,14 +167,14 @@ def test_ecoulement_hypodermique_profond_vide_la_couche_vers_le_troncon():
     # Teneur en eau SOUS la porosité de la couche (0,434 pour le loam), sans quoi la
     # cascade de saturation refoule l'excès avant que le latéral n'agisse.
     args = (z(0.30), z(0.30), z(0.42), z(0.0), z(0.0), z(0.0), z(0.0))
-    sans = cl(*args, p)
+    without = cl(*args, p)
     avec = cl(*args, {**p, "l3_lateral": z(1.0)})
     # L'hypodermique augmente, et la couche 3 se vide davantage.
-    assert float(avec[1][0]) > float(sans[1][0])
-    assert float(avec[4][2][0]) < float(sans[4][2][0])
+    assert float(avec[1][0]) > float(without[1][0])
+    assert float(avec[4][2][0]) < float(without[4][2][0])
     # Sans la clé, rien ne change.
     temoin = cl(*args, {**p})
-    assert float(temoin[1][0]) == pytest.approx(float(sans[1][0]), rel=1e-12)
+    assert float(temoin[1][0]) == pytest.approx(float(without[1][0]), rel=1e-12)
 
 
 def test_hypodermique_profond_suit_sa_propre_constante_de_temps():
@@ -197,8 +197,8 @@ def test_hypodermique_profond_suit_sa_propre_constante_de_temps():
          for k, v in p.items()}
     p = {**p, "thetacc3": z(0.25)}
     args = (z(0.20), z(0.20), z(0.40), z(0.0), z(0.0), z(0.0), z(0.0))
-    sans = float(cl(*args, p)[1][0])
-    court = float(cl(*args, {**p, "l3_tau_lat": 120.0})[1][0]) - sans
-    long = float(cl(*args, {**p, "l3_tau_lat": 240.0})[1][0]) - sans
+    without = float(cl(*args, p)[1][0])
+    court = float(cl(*args, {**p, "l3_tau_lat": 120.0})[1][0]) - without
+    long = float(cl(*args, {**p, "l3_tau_lat": 240.0})[1][0]) - without
     assert court > 0.0
     assert court == pytest.approx(2.0 * long, rel=0.1)

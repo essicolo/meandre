@@ -14,13 +14,13 @@ import numpy as np
 
 from meandre.data.pedotransfer import saxton_rawls
 
-BANDES = {1: ("0_5cm", "5_15cm", "15_30cm"), 2: ("30_60cm", "60_100cm"), 3: ("100_200cm",)}
+BANDS = {1: ("0_5cm", "5_15cm", "15_30cm"), 2: ("30_60cm", "60_100cm"), 3: ("100_200cm",)}
 
 
-def _parts_siigsol(con, bandes):
+def _parts_siigsol(con, bands):
     """Parts (sable, limon, argile) par noeud, moyenne des coordonnees ilr des bandes, NaN si absent."""
     import nuee
-    cols = [f"texture_ilr_{i}_{b}" for b in bandes for i in (1, 2)]
+    cols = [f"texture_ilr_{i}_{b}" for b in bands for i in (1, 2)]
     df = con.execute(f"select node_idx, {', '.join(cols)} from territorial_siigsol order by node_idx").fetchdf()
     z1 = df[[c for c in cols if "_ilr_1_" in c]].mean(axis=1).to_numpy()
     z2 = df[[c for c in cols if "_ilr_2_" in c]].mean(axis=1).to_numpy()
@@ -52,8 +52,8 @@ def texture_conductivity(basin_db: str, n_nodes: int, raw_parquet: str | None = 
             table = con.execute("select node_idx, node_id from nodes order by node_idx").fetchall()
         finally:
             con.close()
-        rang = {int(nid): int(ni) for ni, nid in table}
-        pos = np.array([rang[int(v)] for v in node_ids], dtype=np.int64)
+        rank = {int(nid): int(ni) for ni, nid in table}
+        pos = np.array([rank[int(v)] for v in node_ids], dtype=np.int64)
         full = texture_conductivity(basin_db, len(table), raw_parquet, region)
         return {k: v[pos] for k, v in full.items()}
     out = {f"K_sat_{i}": np.full(n_nodes, np.nan) for i in (1, 2, 3)}
@@ -62,11 +62,11 @@ def texture_conductivity(basin_db: str, n_nodes: int, raw_parquet: str | None = 
     try:
         tables = [t[0] for t in con.execute("show tables").fetchall()]
         if "territorial_siigsol" in tables:
-            for couche, bandes in BANDES.items():
-                idx, parts = _parts_siigsol(con, bandes)
+            for layer, bands in BANDS.items():
+                idx, parts = _parts_siigsol(con, bands)
                 ok = np.isfinite(parts).all(axis=1) & (idx < n_nodes)
                 ks = np.asarray(saxton_rawls(parts[ok, 0], parts[ok, 2])["k_sat"])
-                out[f"K_sat_{couche}"][idx[ok]] = ks
+                out[f"K_sat_{layer}"][idx[ok]] = ks
                 source[idx[ok]] = "siigsol"
     finally:
         con.close()
@@ -75,9 +75,9 @@ def texture_conductivity(basin_db: str, n_nodes: int, raw_parquet: str | None = 
         r = r[r.region.str.lower() == region.lower()]
         if len(r) == n_nodes:
             ks = np.asarray(saxton_rawls(r.f_sand.to_numpy(float), r.f_clay.to_numpy(float))["k_sat"])
-            for couche in (1, 2, 3):
-                manque = ~np.isfinite(out[f"K_sat_{couche}"]) & np.isfinite(ks)
-                out[f"K_sat_{couche}"][manque] = ks[manque]
+            for layer in (1, 2, 3):
+                missing = ~np.isfinite(out[f"K_sat_{layer}"]) & np.isfinite(ks)
+                out[f"K_sat_{layer}"][missing] = ks[missing]
             source[(source == "aucune") & np.isfinite(ks)] = "physitel"
     out["source"] = source
     return out
@@ -94,20 +94,20 @@ def texture_fractions(basin_db: str, n_nodes: int, raw_parquet: str | None = Non
             table = con.execute("select node_idx, node_id from nodes order by node_idx").fetchall()
         finally:
             con.close()
-        rang = {int(nid): int(ni) for ni, nid in table}
-        pos = np.array([rang[int(v)] for v in node_ids], dtype=np.int64)
+        rank = {int(nid): int(ni) for ni, nid in table}
+        pos = np.array([rank[int(v)] for v in node_ids], dtype=np.int64)
         full = texture_fractions(basin_db, len(table), raw_parquet, region)
         return {k: (s[pos], c[pos]) for k, (s, c) in full.items()}
-    out = {couche: (np.full(n_nodes, np.nan), np.full(n_nodes, np.nan)) for couche in BANDES}
+    out = {layer: (np.full(n_nodes, np.nan), np.full(n_nodes, np.nan)) for layer in BANDS}
     con = duckdb.connect(basin_db, read_only=True)
     try:
         tables = [t[0] for t in con.execute("show tables").fetchall()]
         if "territorial_siigsol" in tables:
-            for couche, bandes in BANDES.items():
-                idx, parts = _parts_siigsol(con, bandes)
+            for layer, bands in BANDS.items():
+                idx, parts = _parts_siigsol(con, bands)
                 ok = np.isfinite(parts).all(axis=1) & (idx < n_nodes)
-                out[couche][0][idx[ok]] = parts[ok, 0]
-                out[couche][1][idx[ok]] = parts[ok, 2]
+                out[layer][0][idx[ok]] = parts[ok, 0]
+                out[layer][1][idx[ok]] = parts[ok, 2]
     finally:
         con.close()
     if raw_parquet and region:
@@ -115,10 +115,10 @@ def texture_fractions(basin_db: str, n_nodes: int, raw_parquet: str | None = Non
         r = r[r.region.str.lower() == region.lower()]
         if len(r) == n_nodes:
             s0, c0 = r.f_sand.to_numpy(float), r.f_clay.to_numpy(float)
-            for couche in BANDES:
-                s, c = out[couche]
-                manque = ~np.isfinite(s) & np.isfinite(s0)
-                s[manque], c[manque] = s0[manque], c0[manque]
+            for layer in BANDS:
+                s, c = out[layer]
+                missing = ~np.isfinite(s) & np.isfinite(s0)
+                s[missing], c[missing] = s0[missing], c0[missing]
     return out
 
 

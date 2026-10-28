@@ -37,9 +37,9 @@ def test_observation_absente_du_domaine():
 def test_la_declaration_reproduit_le_modele_gele():
     cfg = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
     declared = {"et": {"weight": cfg["loss"]["w_et"], "mode": cfg["loss"]["et_mode"], "snow_scale_mm": cfg["evaporation"]["mod16_snow_scale_mm"]}, "tws": {"weight": cfg["loss"]["w_tws"], "mode": "shape" if cfg["training"]["tws_shape_only"] else "level"}, "swe_mass": {"weight": cfg["loss"]["w_swe_mass"]}, "snow": {"weight": cfg["loss"]["w_snow"]}}
-    sans = {k: v for k, v in cfg["loss"].items() if k not in ("w_et", "et_mode", "w_tws", "w_swe_mass", "w_snow")}
+    without = {k: v for k, v in cfg["loss"].items() if k not in ("w_et", "et_mode", "w_tws", "w_swe_mass", "w_snow")}
     tr = {k: v for k, v in cfg["training"].items() if k != "tws_shape_only"}
-    loss, training, others, _ = obs.translate(declared, sans, tr)
+    loss, training, others, _ = obs.translate(declared, without, tr)
     assert loss == cfg["loss"]
     assert training == cfg["training"]
     assert others["evaporation"]["mod16_snow_scale_mm"] == cfg["evaporation"]["mod16_snow_scale_mm"]

@@ -29,7 +29,7 @@ def main():
         con = duckdb.connect(f"{DATA}/quebec/{reg}.duckdb", read_only=True)
         st = con.sql("select station_id, node_idx, drainage_area_km2 from stations").df()
         edges = con.sql("select src, dst from edges").df()
-        aire = con.sql("select area_km2_local from territorial order by node_idx").fetchnumpy()["area_km2_local"]
+        area_value = con.sql("select area_km2_local from territorial order by node_idx").fetchnumpy()["area_km2_local"]
         con.close()
         par = defaultdict(list)
         for a, b in zip(edges.src, edges.dst):
@@ -44,7 +44,7 @@ def main():
                     if p not in vus:
                         vus.add(p)
                         pile.append(p)
-            a_mod = float(aire[np.fromiter(vus, int)].sum())
+            a_mod = float(area_value[np.fromiter(vus, int)].sum())
             lignes.append(dict(station=sid, territoire=reg, aire_station=r.drainage_area_km2, aire_modele=a_mod, rapport_aire=a_mod / r.drainage_area_km2 if r.drainage_area_km2 else np.nan, volume=vol[sid], volume_ete=vol_ete[sid], troncons=len(vus)))
     L = pd.DataFrame(lignes).dropna()
     L.to_csv(f"{DATA}/experiments/plan_ml/aires-stations.csv", index=False)

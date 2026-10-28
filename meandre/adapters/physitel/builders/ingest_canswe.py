@@ -23,7 +23,7 @@ if __name__ == "__main__":
             print(f"[canswe] {reg}: base absente, ignore")
             continue
         con = duckdb.connect(db, read_only=True)
-        noeuds = con.execute("SELECT node_idx, lat, lon FROM nodes ORDER BY node_idx").df()
+        nodes = con.execute("SELECT node_idx, lat, lon FROM nodes ORDER BY node_idx").df()
         con.close()
         # ALTITUDE PHYSIQUE, en metres. La colonne mean_elevation_m de la table territorial
         # est NORMALISEE (elle vaut -2 a +3 sur OUTV) : s'en servir telle quelle donnait un
@@ -35,19 +35,19 @@ if __name__ == "__main__":
             import pandas as pd
             rw = pd.read_parquet(f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet")
             rw = rw[rw.region == reg]
-            if len(rw) == len(noeuds):
+            if len(rw) == len(nodes):
                 elev_n = rw["mean_elevation_m"].values
             else:
-                print(f"[canswe] {reg}: altitudes brutes ignorees ({len(rw)} vs {len(noeuds)} noeuds)")
+                print(f"[canswe] {reg}: altitudes brutes ignorees ({len(rw)} vs {len(nodes)} noeuds)")
         except Exception as e:
             print(f"[canswe] {reg}: altitudes brutes indisponibles ({type(e).__name__})")
 
-        sites, mesures = read_canswe(noeuds["lat"].values, noeuds["lon"].values, elev_n)
+        sites, measurements = read_canswe(nodes["lat"].values, nodes["lon"].values, elev_n)
         if sites.empty:
             print(f"[canswe] {reg}: aucun site dans l'emprise")
             continue
-        n = BasinCache(db).import_canswe(sites, mesures)
-        ok = int(mesures["quality_ok"].sum()) if len(mesures) else 0
+        n = BasinCache(db).import_canswe(sites, measurements)
+        ok = int(measurements["quality_ok"].sum()) if len(measurements) else 0
         print(f"[canswe] {reg}: {len(sites)} sites | {n:,} mesures dont {ok:,} de qualite "
               f"| dist mediane {float(sites.dist_km.median()):.1f} km "
               f"| ecart d'altitude median {float(np.nanmedian(sites.elev_diff_m)):+.0f} m")

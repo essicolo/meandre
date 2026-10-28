@@ -46,19 +46,19 @@ if __name__ == "__main__":
         # REPLI BRUYANT (2026-09-08). Le repli silencieux sur la copie locale est ce qui a
         # permis d'ingerer un instantane perime sans s'en apercevoir (R91) ; sur la grappe,
         # ou le depot d'io-eau n'existe pas, il aurait reintroduit la donnee d'avril.
-        _repli = ".data/io-eau-meandre.parquet"
-        if not os.path.exists(_repli):
-            raise SystemExit(f"[prelev] ARRET : ni {SOURCE} ni {_repli} n'existent. "
+        _fallback = ".data/io-eau-meandre.parquet"
+        if not os.path.exists(_fallback):
+            raise SystemExit(f"[prelev] ARRET : ni {SOURCE} ni {_fallback} n'existent. "
                              "Poser IO_EAU sur le derive d'io-eau.")
         import pandas as _pd
-        _fin = _pd.read_parquet(_repli, columns=["date"]).date.max()
-        print(f"[prelev] ATTENTION : source io-eau absente, repli sur {_repli}, "
-              f"dont la donnee s'arrete au {str(_fin)[:10]}. Verifier que c'est voulu.")
-        SOURCE = _repli
+        _end = _pd.read_parquet(_fallback, columns=["date"]).date.max()
+        print(f"[prelev] ATTENTION : source io-eau absente, repli sur {_fallback}, "
+              f"dont la donnee s'arrete au {str(_end)[:10]}. Verifier que c'est voulu.")
+        SOURCE = _fallback
     REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
                "outm", "outv", "sagu", "slno", "slso", "vaud"]
 
-    cible = (REGIONS if (len(sys.argv) > 1 and sys.argv[1].lower() == "toutes")
+    target = (REGIONS if (len(sys.argv) > 1 and sys.argv[1].lower() == "toutes")
              else [(sys.argv[1] if len(sys.argv) > 1 else "outv").lower()])
 
     df = pd.read_parquet(SOURCE)
@@ -66,13 +66,13 @@ if __name__ == "__main__":
     print(f"[prelev] source : {len(df):,} lignes, {df.site_id.nunique():,} sites, "
           f"{df.date.min().date()} -> {df.date.max().date()}")
 
-    for reg in cible:
+    for reg in target:
         db = _paths.data_path("quebec", f"{reg}.duckdb")
         if not os.path.exists(db):
             print(f"[prelev] {reg}: base absente")
             continue
         con = duckdb.connect(db, read_only=True)
-        noeuds = con.execute("SELECT node_idx, node_id FROM nodes ORDER BY node_idx").df()
+        nodes = con.execute("SELECT node_idx, node_id FROM nodes ORDER BY node_idx").df()
         con.close()
         # APPARIEMENT EXACT par l'identifiant de troncon, PAS par coordonnees. Le fichier
         # porte IDTRONCON au format provincial ("OUTV03387") et la base porte l'entier
@@ -85,7 +85,7 @@ if __name__ == "__main__":
             print(f"[prelev] {reg}: aucun point porte cet identifiant de region")
             continue
         sel["troncon"] = sel.IDTRONCON.map(lambda x: id_local(x)[1])
-        corr = dict(zip(noeuds.node_id.astype(int), noeuds.node_idx.astype(int)))
+        corr = dict(zip(nodes.node_id.astype(int), nodes.node_idx.astype(int)))
         sel["node_idx"] = sel["troncon"].map(corr)
         perdus = int(sel.node_idx.isna().sum())
         sel = sel.dropna(subset=["node_idx"])

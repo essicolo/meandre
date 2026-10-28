@@ -438,14 +438,14 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # simplement livrees par plateforme : elles se concatenent comme le reste.
     land_cover, melt_params, phenology = {}, {}, None
     try:
-        from meandre.adapters.physitel.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+        from meandre.adapters.physitel.hydrotel_calib import (load_land_cover, load_wetlands,
                                                  load_melt_nodes, load_phenologie)
         from meandre.utils import paths as _mp
         lc_parts, mp_parts = [], []
         for p in parts:
             pl = f"{_mp.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
-            d = load_occupation_sol(pl, p["node_ids"], device="cpu")
-            d.update(load_milieux_humides(pl, p["node_ids"], device="cpu"))
+            d = load_land_cover(pl, p["node_ids"], device="cpu")
+            d.update(load_wetlands(pl, p["node_ids"], device="cpu"))
             lc_parts.append(d)
             mp_parts.append(load_melt_nodes(pl, p["node_ids"], device="cpu"))
             if phenology is None:

@@ -43,7 +43,7 @@ DUMPS = os.environ.get("MEANDRE_CARTE_DUMPS", f"{_paths.DATA_ROOT}/carte-essai")
 _DEPOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 IO_EAU = os.environ.get("MEANDRE_IO_EAU", os.path.join(os.path.dirname(_DEPOT), "io-eau", "data", "derived"))
 FEUILLAGE = os.environ.get("MEANDRE_FEUILLAGE", os.path.join(os.path.dirname(_DEPOT), "feuillage"))
-SORTIE = os.path.join(FEUILLAGE, "data", "meandre")
+OUTPUT = os.path.join(FEUILLAGE, "data", "meandre")
 # Le magasin porte l'heure de sa construction dans son nom : les fichiers de ses morceaux sont
 # nommés par position (c/0/<indice>/0), et l'indice d'un tronçon change à chaque territoire
 # ajouté. Un navigateur qui garde en cache un morceau d'une construction précédente affichait
@@ -179,11 +179,11 @@ def polygones_lacs(reg):
 
 
 def main():
-    os.makedirs(SORTIE, exist_ok=True)
+    os.makedirs(OUTPUT, exist_ok=True)
     d_io = io_eau_dir()
 
     feats_sites = sites_ponctuels(d_io)
-    with open(os.path.join(SORTIE, "prelevements-rejets.geojson"), "w", encoding="utf-8") as f:
+    with open(os.path.join(OUTPUT, "prelevements-rejets.geojson"), "w", encoding="utf-8") as f:
         json.dump({"type": "FeatureCollection", "features": feats_sites}, f, ensure_ascii=False, separators=(",", ":"))
     print(f"prelevements_rejets.geojson : {len(feats_sites)} sites")
 
@@ -229,10 +229,10 @@ def main():
         print(f"  {t['reg']} : {len(t['ids']) - n_sans_geom} tronçons"
               + (f", {n_sans_geom} sans géométrie" if n_sans_geom else ""))
 
-    with open(os.path.join(SORTIE, "reconstruction-troncons.geojson"), "w", encoding="utf-8") as f:
+    with open(os.path.join(OUTPUT, "reconstruction-troncons.geojson"), "w", encoding="utf-8") as f:
         json.dump({"type": "FeatureCollection", "features": feats_tr}, f, ensure_ascii=False, separators=(",", ":"))
     print(f"troncons.geojson : {len(feats_tr)} tronçons, "
-          f"{os.path.getsize(os.path.join(SORTIE, 'reconstruction-troncons.geojson')) / 1e6:.1f} Mo")
+          f"{os.path.getsize(os.path.join(OUTPUT, 'reconstruction-troncons.geojson')) / 1e6:.1f} Mo")
 
     # Un chunk par tronçon et les deux séries ensemble : un clic lit un seul fichier.
     n, T = len(series), len(dates)
@@ -241,9 +241,9 @@ def main():
         arr[0, k], arr[1, k], arr[2, k] = qa, qb, qa - qb
     import glob as _glob
     import shutil as _shutil
-    for ancien in _glob.glob(os.path.join(SORTIE, "debits*.zarr")):
+    for ancien in _glob.glob(os.path.join(OUTPUT, "debits*.zarr")):
         _shutil.rmtree(ancien, ignore_errors=True)
-    root = zarr.open_group(os.path.join(SORTIE, STORE_NAME), mode="w")
+    root = zarr.open_group(os.path.join(OUTPUT, STORE_NAME), mode="w")
     root.create_array("debit", data=arr, chunks=(3, 1, T), dimension_names=["serie", "zidx", "time"])
     root.create_array("serie", data=np.array([0, 1, 2], dtype=np.int32), dimension_names=["serie"])
     root.create_array("zidx", data=np.arange(n, dtype=np.int32), dimension_names=["zidx"])

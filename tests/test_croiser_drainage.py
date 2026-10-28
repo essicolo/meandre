@@ -11,7 +11,7 @@ _spec.loader.exec_module(cd)
 
 
 def test_rang_ecoforestier_dizaine_plus_un():
-    r = cd.rang_ecoforestier(np.array([0, 10, 16, 34, 60, 71, np.nan], dtype=float))
+    r = cd.ecoforest_rank(np.array([0, 10, 16, 34, 60, 71, np.nan], dtype=float))
     assert np.allclose(r[[0, 1, 3, 4]], [1, 2, 4, 7])
     # Complexe, hors echelle et absent restent vides.
     assert np.isnan(r[[2, 5, 6]]).all()
@@ -29,12 +29,12 @@ def test_hierarchiser_premiere_source_qui_repond():
 
 def test_cle_sigeom_couvre_les_depots_principaux():
     for code in ("Tm", "T", "O", "L", "Gx", "MGa", "At", "Cg"):
-        assert code in cd.CODE_VERS_GROUPE
-    assert "R" not in cd.CODE_VERS_GROUPE
+        assert code in cd.CODE_TO_GROUP
+    assert "R" not in cd.CODE_TO_GROUP
 
 
 def test_rang_depot_ecoforestier_famille_et_prefixes():
-    r = cd.rang_depot_ecoforestier(["1A", "1AY", "M1A", "R1A", "2AE", "3D", "5A", "5S", "7E", "8E", "R", "RC", "AN", None])
+    r = cd.ecoforest_deposit_rank(["1A", "1AY", "M1A", "R1A", "2AE", "3D", "5A", "5S", "7E", "8E", "R", "RC", "AN", None])
     assert np.allclose(r[:4], 4.0)
     assert np.allclose(r[4:10], [1.0, 1.0, 7.0, 2.5, 7.0, 1.0])
     assert np.isnan(r[10:]).all()

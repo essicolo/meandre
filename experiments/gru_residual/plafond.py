@@ -267,8 +267,8 @@ def main():
                 continue
             for nom_m, fab in M.items():
                 yhat = fn(D, cols, fab)
-                masque = np.isfinite(yhat)
-                r, L = evaluer(D[masque], yhat[masque])
+                mask = np.isfinite(yhat)
+                r, L = evaluer(D[mask], yhat[mask])
                 r.update(validation=nom_v, predicteurs=nom_g, modele=nom_m)
                 res.append(r)
                 par_station[(nom_v, nom_g, nom_m)] = L

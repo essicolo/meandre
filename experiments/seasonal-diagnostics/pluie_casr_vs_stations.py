@@ -64,8 +64,8 @@ def main(paires):
             df = pd.DataFrame({"st": p_st, "cs": p_cs}).dropna()
             m = df.groupby([df.index.year, df.index.month]).agg(st=("st", "sum"), cs=("cs", "sum"), n=("st", "size"))
             m = m[m.n >= 25]
-            for (an, mois), row in m.iterrows():
-                couples.append({"station": r.id, "annee": an, "mois": mois, "st": row.st, "cs": row.cs})
+            for (an, months), row in m.iterrows():
+                couples.append({"station": r.id, "annee": an, "mois": months, "st": row.st, "cs": row.cs})
             n_st += 1
         ds.close()
         t = pd.DataFrame(couples)

@@ -19,29 +19,29 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-RACINE = str(Path(__file__).resolve().parents[4])
+ROOT = str(Path(__file__).resolve().parents[4])
 from meandre.adapters.physitel.builders.drainage_maps import RESOLUTION, SIGEOM, rasteriser
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
-SORTIE = f"{_paths.DERIVED_ROOT}/auxiliaires/epaisseur-depots-troncons.parquet"
-COUCHE = "F10E15_ZONE_MORPH_SEDIM"
+OUTPUT = f"{_paths.DERIVED_ROOT}/auxiliaires/epaisseur-depots-troncons.parquet"
+LAYER = "F10E15_ZONE_MORPH_SEDIM"
 
 
-def epaisseur_par_code():
+def thickness_by_code():
     import pyogrio
-    d = pyogrio.read_dataframe(SIGEOM, layer=COUCHE, read_geometry=False, columns=["CODE_DEPOT_MORP_SEDM", "VAL_EPAIS_MINIM", "VAL_EPAIS_MAXIM"])
-    d["e"] = epaisseur_inscrite(d)
+    d = pyogrio.read_dataframe(SIGEOM, layer=LAYER, read_geometry=False, columns=["CODE_DEPOT_MORP_SEDM", "VAL_EPAIS_MINIM", "VAL_EPAIS_MAXIM"])
+    d["e"] = recorded_thickness(d)
     return d.groupby(d.CODE_DEPOT_MORP_SEDM.fillna(""))["e"].median()
 
 
-def epaisseur_inscrite(d):
+def recorded_thickness(d):
     lo = d.VAL_EPAIS_MINIM.where(d.VAL_EPAIS_MINIM > 0)
     hi = d.VAL_EPAIS_MAXIM.where(d.VAL_EPAIS_MAXIM > 0)
     return pd.concat([lo, hi], axis=1).mean(axis=1)
 
 
-def une_region(reg, par_code):
+def build_territory(reg, par_code):
     import geopandas as gpd
     from rasterio import features
     from rasterio.transform import from_origin
@@ -55,8 +55,8 @@ def une_region(reg, par_code):
     shape_value = (int(np.ceil((y1 - y0) / RESOLUTION)), int(np.ceil((x1 - x0) / RESOLUTION)))
     transform = from_origin(x0, y1, RESOLUTION, RESOLUTION)
     ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value, transform=transform, fill=0, dtype=np.int32)
-    z = gpd.read_file(SIGEOM, layer=COUCHE, columns=["CODE_DEPOT_MORP_SEDM", "VAL_EPAIS_MINIM", "VAL_EPAIS_MAXIM"], engine="pyogrio", bbox=tuple(uh.to_crs(4326).total_bounds)).to_crs(uh.crs)
-    e = epaisseur_inscrite(z)
+    z = gpd.read_file(SIGEOM, layer=LAYER, columns=["CODE_DEPOT_MORP_SEDM", "VAL_EPAIS_MINIM", "VAL_EPAIS_MAXIM"], engine="pyogrio", bbox=tuple(uh.to_crs(4326).total_bounds)).to_crs(uh.crs)
+    e = recorded_thickness(z)
     z["e"] = e.fillna(z.CODE_DEPOT_MORP_SEDM.fillna("").map(par_code))
     z["loge"] = np.log(z.e.clip(lower=0.1))
     z["mince"] = (z.e <= 1.0).astype(float).where(z.e.notna())
@@ -71,7 +71,7 @@ def une_region(reg, par_code):
         par[f"s_{c}"] = np.bincount(ids[ok], weights=r[ok], minlength=len(n))
     par = par[par.n > 0]
     out = []
-    for t in _parse_troncon(proj / "troncon.trl"):
+    for t in _parse_reach(proj / "troncon.trl"):
         u = [x for x in t["uhrh_ids"] if x in par.index]
         if not u:
             continue
@@ -84,13 +84,13 @@ def une_region(reg, par_code):
 
 
 def main(regions):
-    par_code = epaisseur_par_code()
-    old = pd.read_parquet(SORTIE) if os.path.exists(SORTIE) else None
-    d = pd.concat([une_region(r, par_code) for r in regions], ignore_index=True)
+    par_code = thickness_by_code()
+    old = pd.read_parquet(OUTPUT) if os.path.exists(OUTPUT) else None
+    d = pd.concat([build_territory(r, par_code) for r in regions], ignore_index=True)
     if old is not None:
         d = pd.concat([old[~old.region.isin(regions)], d], ignore_index=True)
-    d.to_parquet(SORTIE, index=False)
-    print(f"-> {SORTIE} ({len(d)} tronçons)")
+    d.to_parquet(OUTPUT, index=False)
+    print(f"-> {OUTPUT} ({len(d)} tronçons)")
 
 
 if __name__ == "__main__":

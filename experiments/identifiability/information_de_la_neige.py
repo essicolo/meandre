@@ -47,9 +47,9 @@ def _mensualise(x, times, hiver):
     cle = times.year.to_numpy() * 100 + times.month.to_numpy()
     cle = cle[hiver]
     x = x[hiver]
-    mois = np.unique(cle)
-    out = np.full((len(mois), x.shape[1]), np.nan)
-    for i, m in enumerate(mois):
+    months = np.unique(cle)
+    out = np.full((len(months), x.shape[1]), np.nan)
+    for i, m in enumerate(months):
         bloc = x[cle == m]
         with np.errstate(invalid="ignore"):
             n = np.isfinite(bloc).sum(axis=0)

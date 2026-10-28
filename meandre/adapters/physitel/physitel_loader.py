@@ -92,7 +92,7 @@ _TEXTURE_FRACTIONS: list[tuple[float, float, float]] = [
 # Public API
 # ---------------------------------------------------------------------------
 
-def _parse_milieux_humides_isoles(project_dir: Path) -> dict:
+def _parse_isolated_wetlands(project_dir: Path) -> dict:
     """Milieux humides isolés Hydrotel, PAR UHRH, depuis le projet.
 
     Respecte le flag `MILIEUX HUMIDES ISOLES` de simulation.csv : si 0/absent,
@@ -130,9 +130,9 @@ def _parse_milieux_humides_isoles(project_dir: Path) -> dict:
                             wetdnor=v[4], wetdmax=v[5], ksat_bs=v[6], c_ev=v[7],
                             c_prod=v[8], wet_vol_init=0.0)
     # volume initial depuis le dernier etat bilan_vertical (col 4 = MH WETVOL)
-    etats = sorted(project_dir.glob("etat*/bilan_vertical_*.csv"))
-    if etats:
-        for ln in etats[-1].read_text(encoding="latin-1").splitlines():
+    states = sorted(project_dir.glob("etat*/bilan_vertical_*.csv"))
+    if states:
+        for ln in states[-1].read_text(encoding="latin-1").splitlines():
             c = ln.split(";")
             if len(c) >= 5 and c[0].strip().isdigit():
                 uid = int(c[0])
@@ -173,37 +173,37 @@ def load_hydrotel(
     """
     root = Path(project_dir)
     physi = root / "physitel"
-    etat_dir = root / "etat"
+    state_dir = root / "etat"
 
     # ---- 1. UHRH attributes -----------------------------------------------
     uhrh = _parse_uhrh(physi / "uhrh.csv")
 
     # ---- 2. Land cover pixel counts per UHRH --------------------------------
-    lc_pixels = _parse_occupation_sol_cla(physi / "occupation_sol.cla", uhrh)
+    lc_pixels = _parse_land_cover_cla(physi / "occupation_sol.cla", uhrh)
 
     # ---- 3. Soil texture class per UHRH ------------------------------------
-    soil_class = _parse_type_sol_cla(physi / "type_sol.cla", uhrh)
+    soil_class = _parse_soil_type_cla(physi / "type_sol.cla", uhrh)
 
     # ---- 4. Troncon topology -------------------------------------------------
-    troncons = _parse_troncon(physi / "troncon.trl")
+    reaches = _parse_reach(physi / "troncon.trl")
 
     # ---- 5. Build graph ------------------------------------------------------
-    graph, node_ids, troncon_idx = _build_graph(
-        troncons, velocity_m_s=velocity_m_s, device=device
+    graph, node_ids, reach_idx = _build_graph(
+        reaches, velocity_m_s=velocity_m_s, device=device
     )
 
     # ---- 5b. Milieux humides isolés (par UHRH, si flag Hydrotel actif) -------
-    wetlands = _parse_milieux_humides_isoles(root)
+    wetlands = _parse_isolated_wetlands(root)
 
     # ---- 6. Territorial indicators ------------------------------------------
     territorial, node_coords = _build_territorial(
-        troncons, troncon_idx, node_ids, uhrh, lc_pixels, soil_class,
+        reaches, reach_idx, node_ids, uhrh, lc_pixels, soil_class,
         graph, normalise=normalise, device=device, wetlands=wetlands,
     )
 
     # ---- 7. HydroState from latest etat/ snapshot ---------------------------
     initial_state = _build_initial_state(
-        etat_dir, troncons, troncon_idx, node_ids, uhrh, device=device
+        state_dir, reaches, reach_idx, node_ids, uhrh, device=device
     )
 
     n_nodes = len(node_ids)
@@ -258,7 +258,7 @@ def _parse_uhrh(path: Path) -> dict:
     return uhrh
 
 
-def _parse_occupation_sol_cla(path: Path, uhrh: dict) -> dict[int, np.ndarray]:
+def _parse_land_cover_cla(path: Path, uhrh: dict) -> dict[int, np.ndarray]:
     """Parse occupation_sol.cla.  Returns {uhrh_id: pixel_counts (n_classes,)}."""
     lines = path.read_text(encoding="latin-1").splitlines()
     # Line 0: '1' (n attributes per UHRH)
@@ -277,7 +277,7 @@ def _parse_occupation_sol_cla(path: Path, uhrh: dict) -> dict[int, np.ndarray]:
     return data
 
 
-def _parse_type_sol_cla(path: Path, uhrh: dict) -> dict[int, int]:
+def _parse_soil_type_cla(path: Path, uhrh: dict) -> dict[int, int]:
     """Parse type_sol.cla.  Returns {uhrh_id: 0-based soil class index (row of the .sol table)}."""
     lines = path.read_text(encoding="latin-1").splitlines()
     # Line 0: '1' (single class per UHRH)
@@ -292,7 +292,7 @@ def _parse_type_sol_cla(path: Path, uhrh: dict) -> dict[int, int]:
     return data
 
 
-def _parse_troncon(path: Path) -> list[dict]:
+def _parse_reach(path: Path) -> list[dict]:
     """Parse troncon.trl.  Returns list of reach dicts in file order.
 
     Reach dict keys:
@@ -310,7 +310,7 @@ def _parse_troncon(path: Path) -> list[dict]:
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
     # Skip header: line 0 = '2', line 1 = '3362', line 2 = 'TRONCONS'
-    troncons: list[dict] = []
+    reaches: list[dict] = []
     for line in lines[3:]:
         tokens = line.split()
         reach_id = int(tokens[0])
@@ -389,9 +389,9 @@ def _parse_troncon(path: Path) -> list[dict]:
                 "lake_rating_k": lake_rating_k,
                 "lake_rating_beta": lake_rating_beta,
             })
-        troncons.append(enregistrement)
+        reaches.append(enregistrement)
 
-    return troncons
+    return reaches
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +478,7 @@ def _break_cycles(
 
 
 def _build_graph(
-    troncons: list[dict],
+    reaches: list[dict],
     velocity_m_s: float,
     device: torch.device | None,
 ) -> tuple[RiverGraph, list[int], dict[int, int]]:
@@ -503,8 +503,8 @@ def _build_graph(
     troncon_idx : dict[int, int]  — troncon_id → node index
     """
     # Node index: troncon IDs → 0-based indices (sorted for reproducibility)
-    all_ids = sorted(t["id"] for t in troncons)
-    troncon_idx: dict[int, int] = {tid: i for i, tid in enumerate(all_ids)}
+    all_ids = sorted(t["id"] for t in reaches)
+    reach_idx: dict[int, int] = {tid: i for i, tid in enumerate(all_ids)}
     n_nodes = len(all_ids)
 
     # Junction connectivity in HYDROTEL troncon.trl:
@@ -514,10 +514,10 @@ def _build_graph(
     # (A's downstream point is B's upstream point → water flows A → B)
 
     # Build to_junct → troncon lookup (rivers only; lakes have to_junct=-1)
-    _widths: dict[int, float] = {x["id"]: x.get("width_m", 0.0) for x in troncons}
-    _types: dict[int, int] = {x["id"]: x.get("type", 1) for x in troncons}
+    _widths: dict[int, float] = {x["id"]: x.get("width_m", 0.0) for x in reaches}
+    _types: dict[int, int] = {x["id"]: x.get("type", 1) for x in reaches}
     to_junct_to_tid: dict[int, list[tuple[int, float]]] = collections.defaultdict(list)
-    for t in troncons:
+    for t in reaches:
         if t["type"] == 1 and t.get("to_junct", -1) >= 0:
             to_junct_to_tid[t["to_junct"]].append((t["id"], t.get("width_m", 0.0)))
 
@@ -532,7 +532,7 @@ def _build_graph(
     # domain boundary).  They are terminal within the basin and must NOT use
     # the ds_reach fallback, which would create spurious long-distance edges.
     lake_outlet_juncts: set[int] = set()
-    for t in troncons:
+    for t in reaches:
         if t["type"] == 2:
             for oj in t.get("lake_outlets", []):
                 lake_inlet_junctions[oj] = t["id"]
@@ -544,12 +544,12 @@ def _build_graph(
     meters_per_day = velocity_m_s * 86_400.0
 
     def _add_edge(src_tid: int, dst_tid: int, length_m: float) -> None:
-        src_list.append(troncon_idx[src_tid])
-        dst_list.append(troncon_idx[dst_tid])
+        src_list.append(reach_idx[src_tid])
+        dst_list.append(reach_idx[dst_tid])
         lengths.append(length_m)
         taus.append(max(1, round(length_m / meters_per_day)))
 
-    for t in troncons:
+    for t in reaches:
         tid = t["id"]
 
         if t["type"] == 2:
@@ -563,7 +563,7 @@ def _build_graph(
             else:
                 # Fallback: ds_reach (rare — only when junction numbering is broken)
                 ds = t["downstream_id"]
-                if ds != tid and ds != 0 and ds in troncon_idx:
+                if ds != tid and ds != 0 and ds in reach_idx:
                     _add_edge(tid, ds, t["length_m"])
             continue
 
@@ -600,11 +600,11 @@ def _build_graph(
             # La comparaison n'a de sens qu'entre deux RIVIERES : une riviere qui se jette
             # dans un lac est le cas normal, et le lac n'a pas de largeur de chenal.
             _ws, _wd = t.get("width_m", 0.0), _widths.get(t["downstream_id"], 0.0)
-            _aval_riviere = _types.get(t["downstream_id"]) == 1
-            if _aval_riviere and _ws > 0 and _wd > 0 and _wd < 0.3 * _ws:
+            _downstream_river = _types.get(t["downstream_id"]) == 1
+            if _downstream_river and _ws > 0 and _wd > 0 and _wd < 0.3 * _ws:
                 continue
             ds = t["downstream_id"]
-            if ds != tid and ds != 0 and ds in troncon_idx:
+            if ds != tid and ds != 0 and ds in reach_idx:
                 _add_edge(tid, ds, t["length_m"])
 
     if src_list:
@@ -637,9 +637,9 @@ def _build_graph(
 
     # is_lake flag
     is_lake = torch.zeros(n_nodes, dtype=torch.bool)
-    for t in troncons:
+    for t in reaches:
         if t["type"] == 2:
-            is_lake[troncon_idx[t["id"]]] = True
+            is_lake[reach_idx[t["id"]]] = True
 
     graph = RiverGraph(
         edge_index=edge_index.to(device) if device else edge_index,
@@ -648,7 +648,7 @@ def _build_graph(
         is_lake=is_lake.to(device) if device else is_lake,
         travel_time_days=travel_time_days.to(device) if device else travel_time_days,
     )
-    return graph, all_ids, troncon_idx
+    return graph, all_ids, reach_idx
 
 
 def _topological_sort(edge_index: Tensor, n_nodes: int) -> Tensor:
@@ -685,8 +685,8 @@ def _topological_sort(edge_index: Tensor, n_nodes: int) -> Tensor:
 # ---------------------------------------------------------------------------
 
 def _build_territorial(
-    troncons: list[dict],
-    troncon_idx: dict[int, int],
+    reaches: list[dict],
+    reach_idx: dict[int, int],
     node_ids: list[int],
     uhrh: dict,
     lc_pixels: dict[int, np.ndarray],
@@ -718,7 +718,7 @@ def _build_territorial(
     # Split conifères/feuillus et sol nu : le clone a besoin des classes SÉPARÉES pour
     # la neige (les 3 couverts d'Hydrotel n'ont ni le même taux de fonte ni le même
     # stock) et pour la phénologie de l'ETR.
-    lc_conif = np.zeros(n_nodes)
+    lc_conifer = np.zeros(n_nodes)
     lc_decid = np.zeros(n_nodes)
     lc_bare = np.zeros(n_nodes)
 
@@ -735,10 +735,10 @@ def _build_territorial(
     wet_frac_t = np.zeros(n_nodes); wetdnor_t = np.zeros(n_nodes); wetdmax_t = np.zeros(n_nodes)
     wet_ksat_t = np.zeros(n_nodes); wet_cev_t = np.zeros(n_nodes); wet_cprod_t = np.zeros(n_nodes)
 
-    troncon_map: dict[int, dict] = {t["id"]: t for t in troncons}
+    reach_map: dict[int, dict] = {t["id"]: t for t in reaches}
 
-    for t in troncons:
-        ni = troncon_idx[t["id"]]
+    for t in reaches:
+        ni = reach_idx[t["id"]]
         uids = t["uhrh_ids"]
         if not uids:
             continue
@@ -785,7 +785,7 @@ def _build_territorial(
             lc_wetland[ni] = (lc_total[7] + lc_total[8]) / non_nodata
             lc_water[ni] = lc_total[1] / non_nodata
             lc_decid[ni] = lc_total[3] / non_nodata
-            lc_conif[ni] = lc_total[5] / non_nodata
+            lc_conifer[ni] = lc_total[5] / non_nodata
             lc_bare[ni] = lc_total[2] / non_nodata
 
         lake_frac[ni] = 1.0 if t["type"] == 2 else lc_water[ni]
@@ -840,7 +840,7 @@ def _build_territorial(
     strahler = _compute_strahler(graph, n_nodes)
 
     # Distance to outlet (km): sum of upstream lengths to outlet
-    dist_km = _compute_dist_to_outlet(graph, n_nodes, troncons, troncon_idx)
+    dist_km = _compute_dist_to_outlet(graph, n_nodes, reaches, reach_idx)
 
     # z-score normalisation
     def _t(arr: np.ndarray) -> Tensor:
@@ -873,7 +873,7 @@ def _build_territorial(
         # jusqu'ici : la colonne recevait 0 % de forêt et 0 % d'eau sur tout le Québec.
         # On écrit désormais les fractions BRUTES à côté, sans normalisation.
         "f_forest_raw": _t_noscale(lc_forest),
-        "f_forest_conifer_raw": _t_noscale(lc_conif),
+        "f_forest_conifer_raw": _t_noscale(lc_conifer),
         "f_forest_deciduous_raw": _t_noscale(lc_decid),
         "f_agriculture_raw": _t_noscale(lc_agri),
         "f_urban_raw": _t_noscale(lc_urban),
@@ -974,14 +974,14 @@ def _compute_strahler(graph: RiverGraph, n_nodes: int) -> np.ndarray:
 def _compute_dist_to_outlet(
     graph: RiverGraph,
     n_nodes: int,
-    troncons: list[dict],
-    troncon_idx: dict[int, int],
+    reaches: list[dict],
+    reach_idx: dict[int, int],
 ) -> np.ndarray:
     """Downstream path length to the outlet (km) per node."""
     # Build length lookup: node -> downstream length (m)
     length_to_ds: dict[int, float] = {}
-    for t in troncons:
-        ni = troncon_idx[t["id"]]
+    for t in reaches:
+        ni = reach_idx[t["id"]]
         length_to_ds[ni] = t["length_m"]
 
     downstream: dict[int, int] = {}
@@ -1007,9 +1007,9 @@ def _compute_dist_to_outlet(
 # ---------------------------------------------------------------------------
 
 def _build_initial_state(
-    etat_dir: Path,
-    troncons: list[dict],
-    troncon_idx: dict[int, int],
+    state_dir: Path,
+    reaches: list[dict],
+    reach_idx: dict[int, int],
     node_ids: list[int],
     uhrh: dict,
     device: torch.device | None,
@@ -1020,12 +1020,12 @@ def _build_initial_state(
     n_nodes = len(node_ids)
 
     # Find latest bilan_vertical and fonte_neige files
-    bv_files = sorted(etat_dir.glob("bilan_vertical_*.csv"))
-    fn_files = sorted(etat_dir.glob("fonte_neige_*.csv"))
+    bv_files = sorted(state_dir.glob("bilan_vertical_*.csv"))
+    fn_files = sorted(state_dir.glob("fonte_neige_*.csv"))
 
     if not bv_files:
         warnings.warn(
-            f"No bilan_vertical_*.csv found in {etat_dir}.  "
+            f"No bilan_vertical_*.csv found in {state_dir}.  "
             "Using default warm start (theta=0.3).",
             stacklevel=3,
         )
@@ -1076,8 +1076,8 @@ def _build_initial_state(
     theta3 = np.zeros(n_nodes)
     swe = np.zeros(n_nodes)
 
-    for t in troncons:
-        ni = troncon_idx[t["id"]]
+    for t in reaches:
+        ni = reach_idx[t["id"]]
         uids = t["uhrh_ids"]
         if not uids:
             theta1[ni], theta2[ni], theta3[ni] = 0.3, 0.25, 0.2

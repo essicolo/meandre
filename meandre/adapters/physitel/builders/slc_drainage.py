@@ -23,27 +23,27 @@ import numpy as np
 import pandas as pd
 
 
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
 PLATE = os.environ.get("IRDA_PLATEFORME", "LN24HA")
 SLC = f"{_paths.DATA_ROOT}/sources/slc"
-SORTIE = f"{_paths.DATA_ROOT}/derives/auxiliaires"
+OUTPUT = f"{_paths.DATA_ROOT}/derives/auxiliaires"
 DRAINAGE = {"VR": 1.0, "R": 2.0, "W": 3.0, "MW": 4.0, "I": 5.0, "P": 6.0, "VP": 7.0}
 VARIABLES = ["drainage", "log_ksat", "kp33", "kp1500", "densite", "nappe_cm", "restriction_cm"]
 
 
-def proprietes_des_sols():
+def soil_properties():
     import geopandas as gpd
-    nom = gpd.read_file(f"{SLC}/soil_name_canada_v2r20231107.dbf")
-    couche = gpd.read_file(f"{SLC}/soil_layer_canada_v2r20231108.dbf")
-    s = pd.DataFrame({"SOIL_ID": nom.SOIL_ID})
-    s["drainage"] = nom.DRAINAGE.map(DRAINAGE)
-    s["nappe_cm"] = pd.to_numeric(nom.WATERTBL, errors="coerce").where(lambda v: v >= 0)
-    s["restriction_cm"] = pd.to_numeric(nom.ROOTRESTRI, errors="coerce").where(lambda v: v >= 0)
+    field_name = gpd.read_file(f"{SLC}/soil_name_canada_v2r20231107.dbf")
+    layer = gpd.read_file(f"{SLC}/soil_layer_canada_v2r20231108.dbf")
+    s = pd.DataFrame({"SOIL_ID": field_name.SOIL_ID})
+    s["drainage"] = field_name.DRAINAGE.map(DRAINAGE)
+    s["nappe_cm"] = pd.to_numeric(field_name.WATERTBL, errors="coerce").where(lambda v: v >= 0)
+    s["restriction_cm"] = pd.to_numeric(field_name.ROOTRESTRI, errors="coerce").where(lambda v: v >= 0)
     # Couches minerales du premier metre, ponderees par leur epaisseur ; les valeurs
     # negatives sont des codes d'absence dans ces tables.
-    c = couche.copy()
+    c = layer.copy()
     for k in ("UDEPTH", "LDEPTH", "KSAT", "KP33", "KP1500", "BD"):
         c[k] = pd.to_numeric(c[k], errors="coerce")
     c = c[(c.UDEPTH >= 0) & (c.LDEPTH > c.UDEPTH)]
@@ -61,7 +61,7 @@ def proprietes_des_sols():
     return s.set_index("SOIL_ID")
 
 
-def une_region(reg, poly, cmp, sols):
+def build_territory(reg, poly, cmp, soils):
     import geopandas as gpd
     proj = f"{_paths.PLATFORMS_ROOT}/{PLATE}/{reg.upper()}_{PLATE}_2020"
     uh = gpd.read_file(f"{proj}/physitel/uhrh.shp")
@@ -71,11 +71,11 @@ def une_region(reg, poly, cmp, sols):
     p = poly.to_crs(uh.crs)
     p = p[p.intersects(uh.union_all().envelope)][["POLY_ID", "geometry"]]
     inter = gpd.overlay(uh, p, how="intersection", keep_geom_type=True)
-    inter["aire"] = inter.geometry.area
-    a_uhrh = uh.assign(aire=uh.geometry.area).groupby("uhrh").aire.sum()
+    inter["area_value"] = inter.geometry.area
+    a_uhrh = uh.assign(area_value=uh.geometry.area).groupby("uhrh").area_value.sum()
     # Valeur par polygone : moyenne des composantes ponderee par leur pourcentage, et part
     # du pourcentage qui porte la variable.
-    cm = cmp[cmp.POLY_ID.isin(p.POLY_ID)].join(sols, on="SOIL_ID")
+    cm = cmp[cmp.POLY_ID.isin(p.POLY_ID)].join(soils, on="SOIL_ID")
     par_poly = {}
     for v in VARIABLES:
         w = cm.PERCENT.where(cm[v].notna(), 0.0).astype(float)
@@ -87,12 +87,12 @@ def une_region(reg, poly, cmp, sols):
     inter = inter.join(par_poly, on="POLY_ID")
     par_uhrh = pd.DataFrame(index=a_uhrh.index)
     for v in VARIABLES:
-        poids = inter.aire * inter[f"part_{v}"].fillna(0.0)
+        poids = inter.area_value * inter[f"part_{v}"].fillna(0.0)
         par_uhrh[f"num_{v}"] = (inter[f"val_{v}"].fillna(0.0) * poids).groupby(inter.uhrh).sum()
         par_uhrh[f"den_{v}"] = poids.groupby(inter.uhrh).sum()
     par_uhrh = par_uhrh.fillna(0.0)
     out = []
-    for t in _parse_troncon(Path(f"{proj}/physitel/troncon.trl")):
+    for t in _parse_reach(Path(f"{proj}/physitel/troncon.trl")):
         uids = [u for u in t["uhrh_ids"] if u in a_uhrh.index]
         if not uids:
             continue
@@ -112,17 +112,17 @@ def main(regions):
     import geopandas as gpd
     poly = gpd.read_file(f"{SLC}/ca_all_slc_v3r2.shp")
     cmp = gpd.read_file(f"{SLC}/ca_all_slc_v3r2_cmp.dbf")
-    sols = proprietes_des_sols()
-    print(f"{len(poly)} polygones, {len(cmp)} composantes, {len(sols)} sols nommes, drainage connu pour {int(sols.drainage.notna().sum())}", flush=True)
-    d = pd.concat([une_region(r, poly, cmp, sols) for r in regions], ignore_index=True)
-    f = f"{SORTIE}/slc-troncons.parquet"
+    soils = soil_properties()
+    print(f"{len(poly)} polygones, {len(cmp)} composantes, {len(soils)} sols nommes, drainage connu pour {int(soils.drainage.notna().sum())}", flush=True)
+    d = pd.concat([build_territory(r, poly, cmp, soils) for r in regions], ignore_index=True)
+    f = f"{OUTPUT}/slc-troncons.parquet"
     if os.path.exists(f):
-        ancien = pd.read_parquet(f)
-        d = pd.concat([ancien[~ancien.region.isin(d.region.unique())], d], ignore_index=True)
+        old = pd.read_parquet(f)
+        d = pd.concat([old[~old.region.isin(d.region.unique())], d], ignore_index=True)
     d.to_parquet(f, index=False)
     print(f"\n{f} : {len(d)} tronçons, {len(d.columns)} colonnes", flush=True)
     # Table lue par [soil.ceiling_from_drainage] : la classe de drainage seule.
-    d[["region", "troncon", "aire_m2", "drainage", "couv_drainage"]].to_parquet(f"{SORTIE}/slc-drainage-troncons.parquet", index=False)
+    d[["region", "troncon", "aire_m2", "drainage", "couv_drainage"]].to_parquet(f"{OUTPUT}/slc-drainage-troncons.parquet", index=False)
     return 0
 
 

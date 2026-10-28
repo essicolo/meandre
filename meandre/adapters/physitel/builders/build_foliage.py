@@ -45,12 +45,12 @@ BRAS = os.environ.get("MEANDRE_BRAS", "A-v2lr1e-4")
 # sur ce dossier (clone local servi par http.server, ou depot de publication dedie
 # type meandre-carte sur GitHub Pages). Une copie de l'app dans le depot du modele
 # etait le meme travers que le vendoring de PyGMET.
-SORTIE = f"{_paths.DATA_ROOT}/quebec/carte"
+OUTPUT = f"{_paths.DATA_ROOT}/quebec/carte"
 # L'Outaouais moyen MANQUAIT de cette liste depuis le 2026-08-24 : ses 2379 troncons
 # n'ont jamais paru sur la carte, alors que ses caches existent (2026-09-06).
 REGIONS = ["outv", "gasp", "mont", "sagu", "slno", "abit", "slso", "outm",
            "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud"]
-PARAMS_CARTE = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus parlants
+MAP_PARAMS = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus parlants
 N_ROUGES = 150   # zones rouges provinciales (pas par region)
 
 
@@ -61,7 +61,7 @@ def _flat(x):
     return 100.0 * float((np.abs(np.diff(x)) / np.maximum(x[:-1], 1e-9) < 0.01).mean())
 
 
-def charge_region(reg):
+def load_territory(reg):
     db = ".runs/slso/data/slso.duckdb" if reg == "slso" else _paths.data_path("quebec", f"{reg}.duckdb")
     if not os.path.exists(db):
         return None
@@ -72,12 +72,12 @@ def charge_region(reg):
         stations = con.execute("SELECT station_id, node_idx FROM stations").df()
     finally:
         con.close()
-    avec = sans = None
+    avec = without = None
     fa, fs = f"{RESULTS}/nb-{reg}-avec.npz", f"{RESULTS}/nb-{reg}-sans.npz"
     if os.path.exists(fa):
         avec = np.load(fa, allow_pickle=True)
     if os.path.exists(fs):
-        sans = np.load(fs, allow_pickle=True)
+        without = np.load(fs, allow_pickle=True)
     # SERIES AUX STATIONS (2026-09-06). Les flottes provinciales deposent leurs propres
     # series sous D:/meandre-data/quebec/flotte/q-<region>-<bras>.npz, au meme format que
     # l'ancien cache nb-<region>-q.npz. MEANDRE_BRAS choisit le bras ; a defaut on retombe
@@ -88,25 +88,25 @@ def charge_region(reg):
             qd, qd_src = np.load(_f, allow_pickle=True), _s
             break
     return dict(reg=reg, nodes=nodes, edges=edges, stations=stations,
-                avec=avec, sans=sans, qd=qd, qd_src=qd_src)
+                avec=avec, without=without, qd=qd, qd_src=qd_src)
 
 
 def main():
-    os.makedirs(SORTIE, exist_ok=True)
+    os.makedirs(OUTPUT, exist_ok=True)
     feats_reseau, feats_rouges, feats_stations = [], [], []
     rouges_pool = []
 
     for reg in REGIONS:
-        d = charge_region(reg)
+        d = load_territory(reg)
         if d is None:
             continue
         nd = d["nodes"]
         lon = nd.lon.to_numpy(); lat = nd.lat.to_numpy()
         n = len(nd)
-        avec, sans = d["avec"], d["sans"]
+        avec, without = d["avec"], d["without"]
         props_n = {}
         if avec is not None:
-            for p in PARAMS_CARTE:
+            for p in MAP_PARAMS:
                 k = f"param_{p}"
                 if k in avec.files:
                     v = avec[k]
@@ -118,9 +118,9 @@ def main():
                 if _c in avec.files:
                     props_n[_n] = avec[_c]
             props_n["prelev_abs"] = avec["prelev_net_abs"]
-            if sans is not None:
-                qs = np.clip(sans["q_annuel"], 1e-6, None)
-                props_n["effet_prelev_pct"] = 100.0 * (avec["q_annuel"] - sans["q_annuel"]) / qs
+            if without is not None:
+                qs = np.clip(without["q_annuel"], 1e-6, None)
+                props_n["effet_prelev_pct"] = 100.0 * (avec["q_annuel"] - without["q_annuel"]) / qs
                 # FRACTION DU DEBIT PRELEVEE, corrigee le 2026-09-06. L'ancienne formule
                 # divisait une somme de debits sur T pas de temps par un volume annuel :
                 # les deux grandeurs n'avaient pas la meme dimension et le resultat
@@ -129,7 +129,7 @@ def main():
                 # debit NATURALISE du meme troncon. Sans dimension, en pourcentage.
                 _npas = max(len(avec["mois_serie"]) * 30.44, 1.0) if "mois_serie" in avec.files else 1.0
                 props_n["prelev_rel_pct"] = 100.0 * (avec["prelev_net_abs"] / _npas) / np.clip(
-                    sans["q_annuel"], 1e-6, None)
+                    without["q_annuel"], 1e-6, None)
                 # SIGNAL SUR BRUIT (definition d'Essi, 2026-09-06) : l'importance des
                 # prelevements et rejets sur la VARIANCE du signal. Le signal est la
                 # perturbation anthropique, debit avec moins debit renaturalise ; le bruit
@@ -137,8 +137,8 @@ def main():
                 # calcules sur la serie mensuelle de chaque troncon. Sans dimension,
                 # exprime en pourcentage : au-dela de 100 %, la perturbation depasse en
                 # amplitude la variabilite naturelle et devient detectable partout.
-                if "q_mois_serie" in avec.files and "q_mois_serie" in sans.files:
-                    _a, _s = avec["q_mois_serie"], sans["q_mois_serie"]
+                if "q_mois_serie" in avec.files and "q_mois_serie" in without.files:
+                    _a, _s = avec["q_mois_serie"], without["q_mois_serie"]
                     if _a.shape == _s.shape:
                         _pert = (_a - _s).std(axis=0)
                         _nat = np.clip(_s.std(axis=0), 1e-9, None)
@@ -170,20 +170,20 @@ def main():
                                              [round(float(lon[t]), 5), round(float(lat[t]), 5)]]},
                 "properties": pr})
 
-        if avec is not None and sans is not None:
+        if avec is not None and without is not None:
             rel = props_n.get("prelev_rel_pct")
             if rel is not None:
                 for i in np.argsort(np.nan_to_num(rel))[::-1][:N_ROUGES]:
                     rouges_pool.append((float(rel[i]), reg, int(i),
                                         float(lon[i]), float(lat[i]),
-                                        avec["q_mensuel"][:, i], sans["q_mensuel"][:, i],
+                                        avec["q_mensuel"][:, i], without["q_mensuel"][:, i],
                                         float(props_n["effet_prelev_pct"][i])))
 
         if d["qd"] is not None:
             qd = d["qd"]
             sids = list(qd["station_ids"])
             dates = np.array(qd["dates"])
-            mois = np.array([int(x[5:7]) for x in dates])
+            months = np.array([int(x[5:7]) for x in dates])
             for j, sid in enumerate(sids):
                 ni = int(d["stations"].set_index("station_id").node_idx.get(str(sid), -1))
                 if ni < 0 or ni >= n:
@@ -197,8 +197,8 @@ def main():
                 beta = float(si.mean() / o.mean())
                 gamma = float((si.std() / si.mean()) / (o.std() / o.mean()))
                 kge = 1 - float(np.sqrt((r - 1) ** 2 + (beta - 1) ** 2 + (gamma - 1) ** 2))
-                cyc_o = [round(float(np.nanmean(qo[mois == m])), 2) for m in range(1, 13)]
-                cyc_s = [round(float(np.nanmean(qs_[mois == m])), 2) for m in range(1, 13)]
+                cyc_o = [round(float(np.nanmean(qo[months == m])), 2) for m in range(1, 13)]
+                cyc_s = [round(float(np.nanmean(qs_[months == m])), 2) for m in range(1, 13)]
                 feats_stations.append({
                     "type": "Feature",
                     "geometry": {"type": "Point",
@@ -233,13 +233,13 @@ def main():
                            "q_mensuel_avec": [round(float(x), 3) for x in qm_a],
                            "q_mensuel_renature": [round(float(x), 3) for x in qm_s]}})
 
-    for nom, feats in (("reseau", feats_reseau), ("zones_rouges", feats_rouges),
+    for field_name, feats in (("reseau", feats_reseau), ("zones_rouges", feats_rouges),
                        ("stations", feats_stations)):
-        p = os.path.join(SORTIE, f"{nom}.geojson")
+        p = os.path.join(OUTPUT, f"{field_name}.geojson")
         with open(p, "w", encoding="utf-8") as f:
             json.dump({"type": "FeatureCollection", "features": feats}, f,
                       separators=(",", ":"))
-        print(f"{nom}.geojson : {len(feats)} entites, {os.path.getsize(p)/1e6:.1f} Mo")
+        print(f"{field_name}.geojson : {len(feats)} entites, {os.path.getsize(p)/1e6:.1f} Mo")
 
     config = {
         "view": {"name": "meandre 1.0 — Québec",
@@ -270,9 +270,9 @@ def main():
             {"name": "Platitude simulée aux stations (%)", "url": "stations.geojson",
              "visible": False, "color_by": "plat_sim_pct", "popup_template": "station"},
         ] + [
-            {"name": f"Champ appris : {_nom}", "url": "reseau.geojson", "visible": False,
-             "color_by": _cle, "popup_template": "troncon"}
-            for _cle, _nom in (("K_sat_1", "conductivité de surface (m/j)"),
+            {"name": f"Champ appris : {_name}", "url": "reseau.geojson", "visible": False,
+             "color_by": _key, "popup_template": "troncon"}
+            for _key, _name in (("K_sat_1", "conductivité de surface (m/j)"),
                                ("krec", "drainage profond, log10 (m/h)"),
                                ("k_gw", "récession de nappe, log10 (1/j)"),
                                ("C_f", "facteur de fonte (mm/°C/j)"),
@@ -335,9 +335,9 @@ def main():
                                          "xlabel": "Mois", "ylabel": "m³/s"}}]},
         },
     }
-    with open(os.path.join(SORTIE, "config.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(OUTPUT, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-    print(f"config.json ecrit dans {SORTIE}.")
+    print(f"config.json ecrit dans {OUTPUT}.")
     print("Instance : servir ce dossier et pointer l'index.html d'un clone de "
           "feuillage dessus (?config=.../config.json), ou publier le dossier dans "
           "un depot meandre-carte a cote de l'app.")

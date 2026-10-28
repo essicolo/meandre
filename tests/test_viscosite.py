@@ -14,9 +14,9 @@ def _ctx(visc=None):
 
 def test_vidange_a_constante_de_temps_suit_la_viscosite():
     p = SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER", params={"tau": 48.0})
-    sans = p.flux(_ctx())
+    without = p.flux(_ctx())
     avec = p.flux(_ctx(0.6))
-    assert torch.allclose(avec, 0.6 * sans)
+    assert torch.allclose(avec, 0.6 * without)
 
 
 def test_base_linear_ne_double_pas_la_correction():

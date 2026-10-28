@@ -12,10 +12,10 @@ def _ctx(frost):
 
 
 def test_porte_de_gel_proportionnelle():
-    sans = SoilProcess(layer=3, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 72.0})
+    without = SoilProcess(layer=3, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 72.0})
     avec = SoilProcess(layer=3, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 72.0, "frost_factor": 0.3})
     frost = torch.tensor([0.0, 0.5, 1.0, 1.0])
-    q0, q1 = sans.flux(_ctx(frost)), avec.flux(_ctx(frost))
+    q0, q1 = without.flux(_ctx(frost)), avec.flux(_ctx(frost))
     assert torch.allclose(q1[0], q0[0])
     assert torch.allclose(q1[1], q0[1] * 0.65)
     assert torch.allclose(q1[2], q0[2] * 0.3)

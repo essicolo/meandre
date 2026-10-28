@@ -100,10 +100,10 @@ def project_dir(name: str, member: str = "LN24HA") -> str:
 
 def land_cover(name: str, node_ids, device, project: str | None = None) -> tuple[dict, dict | None]:
     """Occupation brute par classe et géométrie des milieux humides isolés, et phénologie du projet."""
-    from meandre.adapters.physitel.hydrotel_calib import load_milieux_humides, load_occupation_sol, load_phenologie
+    from meandre.adapters.physitel.hydrotel_calib import load_wetlands, load_land_cover, load_phenologie
     pl = project or project_dir(name)
-    lc = load_occupation_sol(pl, node_ids, device=device)
-    lc.update(load_milieux_humides(pl, node_ids, device=device))
+    lc = load_land_cover(pl, node_ids, device=device)
+    lc.update(load_wetlands(pl, node_ids, device=device))
     return lc, load_phenologie(pl)
 
 
@@ -202,9 +202,9 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     assert str(times[0])[:10] == date_start and str(times[-1])[:10] == date_end, f"{name}: fenêtre forçage {times[0]}..{times[-1]} pour {date_start}..{date_end}"
     # FENETRE COURTE (debug.simulate_end) : le fichier couvre toujours toute la fenetre, verifiee
     # ci-dessus ; on n'en garde que le debut, et toutes les observations suivent la meme fin.
-    _fin = _settings.get("debug.simulate_end")
-    if _fin:
-        _k = int(np.searchsorted(times.values, np.datetime64(_fin), side="right"))
+    _end = _settings.get("debug.simulate_end")
+    if _end:
+        _k = int(np.searchsorted(times.values, np.datetime64(_end), side="right"))
         F, times = F[:_k], times[:_k]
         date_end = str(times[-1].date())
         print(f"[domaine] {name}: fenetre courte, simulation jusqu'au {date_end} ({_k} jours)")
@@ -237,7 +237,7 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
                 manifest.add("swe_neisim", fz, "NEISIM", "weight of et")
                 zz = np.load(fz)
                 vv = torch.tensor(np.nan_to_num(zz["valeurs"], nan=0.0), dtype=torch.float32)
-                if _fin:
+                if _end:
                     vv = vv[:len(times)]   # fenetre courte : la serie NEISIM couvre toute la fenetre
                 assert vv.shape[0] == len(times), f"{name}: axe de temps NEISIM {vv.shape[0]} vs {len(times)}"
                 # Sur le processeur : 125 Mo sur l'Outaouais ; l'entraîneur n'en extrait que la tranche du bloc.
@@ -251,8 +251,8 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
             obs["snow"] = Observation("snow", sn, "node", origin="MOD10")
     if "swe_mass" in wanted and cache.has_canswe():
         from meandre.data.canswe_loader import build_swe_targets
-        mes, sit = cache.load_canswe(date_start, date_end)
-        values, nodes, kept = build_swe_targets(mes, sit, times)
+        measured, sit = cache.load_canswe(date_start, date_end)
+        values, nodes, kept = build_swe_targets(measured, sit, times)
         if values is None:
             print(f"[canswe] {name}: aucun site ne passe les filtres de representativite -> observation swe_mass omise")
         else:
@@ -296,9 +296,9 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
         # et un arrondi plus tot change le debit au dixieme de millieme.
         pieces["lake_geometry"] = {"area_km2": torch.tensor(s, dtype=torch.float64), "k": torch.tensor(c, dtype=torch.float64), "beta": torch.tensor(k, dtype=torch.float64)}
         if os.path.isdir(f"{project_dir(name)}/hgm"):
-            from meandre.adapters.physitel.hgm_loader import lire_hgm
+            from meandre.adapters.physitel.hgm_loader import read_hgm
             try:
-                pieces["hgm_kernel"] = lire_hgm(project_dir(name), node_ids)
+                pieces["hgm_kernel"] = read_hgm(project_dir(name), node_ids)
                 manifest.add("hgm", f"{project_dir(name)}/hgm", "Hydrotel", "hillslope kernel")
             except Exception as e:
                 print(f"[adaptateur] {name}: noyau de versant non charge ({type(e).__name__}: {e})")

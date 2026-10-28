@@ -15,27 +15,27 @@ from pathlib import Path
 import pandas as pd
 
 
-from meandre.adapters.physitel.physitel_loader import _TEXTURE_FRACTIONS, _parse_troncon, _parse_type_sol_cla
+from meandre.adapters.physitel.physitel_loader import _TEXTURE_FRACTIONS, _parse_reach, _parse_soil_type_cla
 from meandre.utils import paths as _paths
 
 PLATE = os.environ.get("IRDA_PLATEFORME", "LN24HA")
-SORTIE = f"{_paths.DATA_ROOT}/derives/auxiliaires/physitel-texture-troncons.parquet"
+OUTPUT = f"{_paths.DATA_ROOT}/derives/auxiliaires/physitel-texture-troncons.parquet"
 
 
-def une_region(reg):
+def build_territory(reg):
     import geopandas as gpd
 
     proj = Path(f"{_paths.PLATFORMS_ROOT}/{PLATE}/{reg.upper()}_{PLATE}_2020/physitel")
     uh = gpd.read_file(proj / "uhrh.shp")
     col = "ident" if "ident" in uh.columns else uh.columns[0]
-    aire = uh.assign(aire=uh.geometry.area).groupby(uh[col].astype(int)).aire.sum()
-    classe = _parse_type_sol_cla(proj / "type_sol.cla", {})
+    area_value = uh.assign(area_value=uh.geometry.area).groupby(uh[col].astype(int)).area_value.sum()
+    classe = _parse_soil_type_cla(proj / "type_sol.cla", {})
     out = []
-    for t in _parse_troncon(proj / "troncon.trl"):
-        uids = [u for u in t["uhrh_ids"] if u in aire.index]
+    for t in _parse_reach(proj / "troncon.trl"):
+        uids = [u for u in t["uhrh_ids"] if u in area_value.index]
         if not uids:
             continue
-        a = aire.loc[uids]
+        a = area_value.loc[uids]
         f = [_TEXTURE_FRACTIONS[max(0, min(classe.get(u, 0), len(_TEXTURE_FRACTIONS) - 1))] for u in uids]
         f = pd.DataFrame(f, index=uids, columns=["f_sand", "f_silt", "f_clay"]).mul(a, axis=0).sum() / a.sum()
         out.append({"region": reg, "troncon": int(t["id"]), "aire_m2": float(a.sum()), **f.to_dict()})
@@ -45,13 +45,13 @@ def une_region(reg):
 
 
 def main(regions):
-    d = pd.concat([une_region(r) for r in regions], ignore_index=True)
-    if os.path.exists(SORTIE):
-        ancien = pd.read_parquet(SORTIE)
-        ancien = ancien[~ancien.region.isin(d.region.unique())]
-        d = pd.concat([ancien[[c for c in d.columns if c in ancien.columns]], d], ignore_index=True)
-    d.to_parquet(SORTIE, index=False)
-    print(f"{SORTIE} : {len(d)} tronçons", flush=True)
+    d = pd.concat([build_territory(r) for r in regions], ignore_index=True)
+    if os.path.exists(OUTPUT):
+        old = pd.read_parquet(OUTPUT)
+        old = old[~old.region.isin(d.region.unique())]
+        d = pd.concat([old[[c for c in d.columns if c in old.columns]], d], ignore_index=True)
+    d.to_parquet(OUTPUT, index=False)
+    print(f"{OUTPUT} : {len(d)} tronçons", flush=True)
     return 0
 
 

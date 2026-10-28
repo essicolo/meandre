@@ -17,8 +17,8 @@ import sys
 import time
 from pathlib import Path
 
-RACINE = Path(__file__).resolve().parents[2]
-DOSSIER = RACINE / ".reports" / "quebec"
+ROOT = Path(__file__).resolve().parents[2]
+DOSSIER = ROOT / ".reports" / "quebec"
 CIBLES = {"presentation": ("presentation.qmd", "revealjs"),
           "rapport": ("rapport_provincial.qmd", "html")}
 

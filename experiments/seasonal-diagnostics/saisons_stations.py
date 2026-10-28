@@ -17,10 +17,10 @@ SAISONS = {"dec-mar": (12, 1, 2, 3), "avr-mai": (4, 5), "jun-aou": (6, 7, 8), "s
 def rapports(f):
     d = np.load(f, allow_pickle=True)
     dates = pd.to_datetime(d["dates"])
-    mois = dates.month
+    months = dates.month
     out = {}
     for nom, ms in SAISONS.items():
-        sel = np.isin(mois, ms)
+        sel = np.isin(months, ms)
         r = []
         for k in range(d["q_sim"].shape[1]):
             o, s = d["q_obs"][sel, k], d["q_sim"][sel, k]

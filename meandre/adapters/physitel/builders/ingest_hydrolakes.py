@@ -46,8 +46,8 @@ if __name__ == "__main__":
             print(f"[{reg}] {type(e).__name__}"); continue
         nc = h["node_coords"].numpy()
         lat_col = 0 if 40 < float(np.nanmean(nc[:, 0])) < 62 else 1
-        lac = h["graph"].is_lake.bool().numpy()
-        idx = np.flatnonzero(lac)
+        lake = h["graph"].is_lake.bool().numpy()
+        idx = np.flatnonzero(lake)
         if not len(idx):
             continue
         P = proj(nc[idx, 1-lat_col], nc[idx, lat_col])

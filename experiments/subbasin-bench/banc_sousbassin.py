@@ -66,7 +66,7 @@ def extraire(reg, station):
     con.close()
     if ligne is None:
         raise SystemExit(f"{reg}: station {station} inconnue")
-    n_exut, aire = int(ligne[0]), float(ligne[1] or 0.0)
+    n_exut, area_value = int(ligne[0]), float(ligne[1] or 0.0)
 
     idx = _amont(g, n_exut)
     rang = {int(v): k for k, v in enumerate(idx)}
@@ -98,7 +98,7 @@ def extraire(reg, station):
     return dict(graph=sous, territorial=sous_terr,
                 node_coords=d["node_coords"][torch.tensor(idx)],
                 node_ids=[d["node_ids"][i] for i in idx],
-                idx=idx, exutoire=rang[n_exut], aire=aire, base=base)
+                idx=idx, exutoire=rang[n_exut], area_value=area_value, base=base)
 
 
 def lister(regions, n_min=25, n_max=130, jours_min=3000):
@@ -118,13 +118,13 @@ def lister(regions, n_min=25, n_max=130, jours_min=3000):
         ob = dict(con.execute("select station_id, count(*) from observations "
                               "where discharge is not null group by station_id").fetchall())
         con.close()
-        for sid, nidx, aire in st:
+        for sid, nidx, area_value in st:
             k = len(_amont(d["graph"], int(nidx)))
             nj = ob.get(sid, 0)
             if n_min <= k <= n_max and nj >= jours_min:
-                out.append((k, reg, str(sid), aire or 0.0, nj))
-    for k, reg, sid, aire, nj in sorted(out):
-        print(f"{reg:7s} {sid:9s} {k:9d} {aire:10.0f} {nj:10d}")
+                out.append((k, reg, str(sid), area_value or 0.0, nj))
+    for k, reg, sid, area_value, nj in sorted(out):
+        print(f"{reg:7s} {sid:9s} {k:9d} {area_value:10.0f} {nj:10d}")
     print(f"\n{len(out)} sous-bassins de {n_min} a {n_max} troncons avec au moins "
           f"{jours_min} jours d'observations")
 
@@ -147,7 +147,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     from meandre.routing.withdrawals import WithdrawalData
     from meandre.utils.state import HydroState
     from meandre.adapters.physitel.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
-                                             load_passage_pluie_neige)
+                                             load_rain_snow_transition)
 
     # GRAINE FIXE, comme dans `entrainer`. Elle manquait ici jusqu'au 2026-09-13, si bien
     # que deux passes de la meme configuration differaient d'autant qu'un traitement : le
@@ -207,16 +207,16 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
                                                 device=torch.device("cpu")))
         except Exception as e:
             print(f"  [ancrage] fonte non chargee : {type(e).__name__}")
-        sn = load_passage_pluie_neige(plat)
+        sn = load_rain_snow_transition(plat)
         if sn:
             col.t_neige_seuil = sn
         # OCCUPATION DU SOL. Sans elle la colonne traite tout le territoire en sol nu
         # decouvert, donc la classe de neige la plus fondante et aucun ruissellement sur
         # l'eau libre : elle l'avertit d'ailleurs. Aucun chiffre de volume ni de
         # calendrier n'est lisible sans elle (meme lecon que R72 sur l'ETP).
-        from meandre.adapters.physitel.hydrotel_calib import load_occupation_sol
+        from meandre.adapters.physitel.hydrotel_calib import load_land_cover
         try:
-            col.set_land_cover(load_occupation_sol(plat, s["node_ids"],
+            col.set_land_cover(load_land_cover(plat, s["node_ids"],
                                                    device=torch.device("cpu")))
         except Exception as e:
             print(f"  [ancrage] occupation non chargee : {type(e).__name__} {e}")
@@ -298,7 +298,7 @@ def shape_value(temps, q, o, garde=None):
     if garde is None:
         garde = np.ones(len(temps), bool)
     an = temps.year.to_numpy()
-    mois = temps.month.to_numpy()
+    months = temps.month.to_numpy()
     m = garde & np.isfinite(q) & np.isfinite(o)
     # 1. rabotage
     pics = []
@@ -314,8 +314,8 @@ def shape_value(temps, q, o, garde=None):
         return r < 0.01
     mm = m[:-1] & m[1:]
     ps, po = _flat(q), _flat(o)
-    hiv = np.isin(mois[:-1], (12, 1, 2, 3)) & mm
-    ete = np.isin(mois[:-1], (6, 7, 8, 9)) & mm
+    hiv = np.isin(months[:-1], (12, 1, 2, 3)) & mm
+    ete = np.isin(months[:-1], (6, 7, 8, 9)) & mm
     n_ = mx = 0
     for c in ps[mm]:
         n_ = n_ + 1 if c else 0
@@ -404,8 +404,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
     from meandre.training.loss import HydroLoss
     from meandre.adapters.physitel.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
-                                             load_passage_pluie_neige,
-                                             load_occupation_sol, load_calibrated_soil)
+                                             load_rain_snow_transition,
+                                             load_land_cover, load_calibrated_soil)
 
     os.environ["MEANDRE_KGE_CONTINU"] = "1" if kge_continu else "0"
     os.environ["MEANDRE_ETAT_CONTINU"] = "1" if etat_continu else "0"
@@ -569,7 +569,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         col.etp_channel = None
         col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"], device=dev))
         col.set_melt_params(load_melt_nodes(plat, s["node_ids"], device=dev))
-        sn = load_passage_pluie_neige(plat)
+        sn = load_rain_snow_transition(plat)
         if sn:
             col.t_neige_seuil = sn
         # PARTAGE PLUIE-NEIGE ET FONTE SAISONNIERE DU PILOTE (2026-10-01). Le banc gardait le
@@ -587,10 +587,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # posait que l'occupation, si bien que le reservoir de milieu humide n'existait pas.
         # Memes cles que le pilote : ETL_SANS_MH=1 l'eteint, ETL_MH_FIDELE=1 restitue le
         # couplage d'Hydrotel ; MEANDRE_BANC_PHENO_PROJET=0 garde la phenologie par defaut.
-        _lc = load_occupation_sol(plat, s["node_ids"], device=dev)
+        _lc = load_land_cover(plat, s["node_ids"], device=dev)
         if os.environ.get("ETL_SANS_MH", "0") != "1":
-            from meandre.adapters.physitel.hydrotel_calib import load_milieux_humides
-            _mh = load_milieux_humides(plat, s["node_ids"], device=dev)
+            from meandre.adapters.physitel.hydrotel_calib import load_wetlands
+            _mh = load_wetlands(plat, s["node_ids"], device=dev)
             if os.environ.get("ETL_MH_FIDELE", "0") == "1":
                 col.mh_conservatif = False
             # EPREUVE DE SENSIBILITE (2026-10-02) : un projet sans fichier de milieux humides
@@ -750,14 +750,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # comparer (2026-09-23). Seul le terme de perte reste conditionne au poids.
     if float(w_water_table) > 0 or float(nappe_valid) > 0:
         import pandas as _pdn
-        from meandre.adapters.physitel.rsesq_loader import _chemin_defaut, read_rsesq
+        from meandre.adapters.physitel.rsesq_loader import _path_default, read_rsesq
 
         _cn = read_rsesq(reg, temps)
         _pos = {int(n): i for i, n in enumerate(s["idx"])}
         _dans = [j for j, n in enumerate(_cn.node_idx) if int(n) in _pos]
         if _dans:
-            _pu = [str(_cn.puits[j]) for j in _dans]
-            _niv = _pdn.read_parquet(f"{_chemin_defaut()}/rsesq-niveaux-journaliers.parquet",
+            _pu = [str(_cn.wells[j]) for j in _dans]
+            _niv = _pdn.read_parquet(f"{_path_default()}/rsesq-niveaux-journaliers.parquet",
                                      columns=["puits", "date", "niveau_m"])
             _niv = _niv[_niv.puits.isin(_pu)]
             _tab = (_niv.pivot_table(index="date", columns="puits", values="niveau_m",

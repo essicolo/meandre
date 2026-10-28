@@ -74,7 +74,7 @@ def test_conservation_de_la_masse():
     drain = dict(drain_spacing=torch.full((n,), 15.0),
                  drain_depth=torch.full((n,), 1.0),
                  drain_frac=torch.full((n,), 1.0))
-    sans = _pas(p, t, None, apport=0.0)
+    without = _pas(p, t, None, apport=0.0)
     avec = _pas(p, t, drain, apport=0.0)
     # eau restante dans le profil (mm), les deux cas
     def stock(r):
@@ -86,8 +86,8 @@ def test_conservation_de_la_masse():
     # tion ferait apparaitre une fuite de dix pour cent qui n'existe pas. C'est aussi
     # ce qui fixe le sens de `drain_frac` : une fraction de la surface de SOL, pas du
     # troncon.
-    perdu = (stock(sans) - stock(avec)) * p["fsa"]
-    gagne = (avec[0] + avec[1] + avec[2]) - (sans[0] + sans[1] + sans[2])
+    perdu = (stock(without) - stock(avec)) * p["fsa"]
+    gagne = (avec[0] + avec[1] + avec[2]) - (without[0] + without[1] + without[2])
     assert torch.allclose(perdu, gagne, atol=1e-3), (perdu, gagne)
 
 

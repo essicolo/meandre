@@ -14,8 +14,8 @@ import tomllib
 
 from meandre.training.loss import HydroLoss, normalize_loss_section
 
-RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PILOTE = os.path.join(RACINE, "meandre", "run", "territory_data.py")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PILOTE = os.path.join(ROOT, "meandre", "run", "territory_data.py")
 # Poses ailleurs que dans l'appel de construction, par le pilote ou la phase quantile.
 HORS_APPEL = {"w_water_table", "w_quantile"}
 
@@ -33,7 +33,7 @@ def test_les_poids_des_configurations_sont_tous_poses():
     poses = _poids_de_lappel()
     acceptes = set(inspect.signature(HydroLoss.__init__).parameters)
     manquants = {}
-    for f in glob.glob(os.path.join(RACINE, ".runs", "quebec", "*.toml")) + glob.glob(os.path.join(RACINE, "experiments", "**", "config", "*.toml"), recursive=True):
+    for f in glob.glob(os.path.join(ROOT, ".runs", "quebec", "*.toml")) + glob.glob(os.path.join(ROOT, "experiments", "**", "config", "*.toml"), recursive=True):
         section = normalize_loss_section(tomllib.load(open(f, "rb")).get("loss", {}))
         for cle, valeur in section.items():
             if not cle.startswith("w_") or cle not in acceptes or cle in HORS_APPEL:

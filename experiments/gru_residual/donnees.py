@@ -29,7 +29,7 @@ from meandre.data.basin_cache import BasinCache
 from meandre.utils import paths as _p
 
 MODELE = f"{_p.DATA_ROOT}/quebec/modele-provincial-2026-10"
-SORTIE = f"{_p.DATA_ROOT}/experiments/gru_residual"
+OUTPUT = f"{_p.DATA_ROOT}/experiments/gru_residual"
 
 
 def amont(graph, depart):
@@ -50,7 +50,7 @@ def amont(graph, depart):
 
 
 def main():
-    os.makedirs(SORTIE, exist_ok=True)
+    os.makedirs(OUTPUT, exist_ok=True)
     z = np.load(f"{MODELE}/q-quebec-proba.npz", allow_pickle=True)
     ids = [str(s) for s in z["station_ids"]]
     rz = np.load(f"{MODELE}/reach-quebec-gele.npz", allow_pickle=True)
@@ -92,10 +92,10 @@ def main():
     dates = pd.DatetimeIndex(z["dates"])
     q = pd.concat({"q_sim": pd.DataFrame(z["q_sim"], index=dates, columns=ids),
                    "q_obs": pd.DataFrame(z["q_obs"], index=dates, columns=ids)}, axis=1)
-    q.to_parquet(f"{SORTIE}/debits.parquet")
-    pd.concat(forcage, axis=1).to_parquet(f"{SORTIE}/forcage_bassin.parquet")
-    pd.DataFrame(attributs).set_index("station").to_parquet(f"{SORTIE}/attributs.parquet")
-    print(f"écrit dans {SORTIE}")
+    q.to_parquet(f"{OUTPUT}/debits.parquet")
+    pd.concat(forcage, axis=1).to_parquet(f"{OUTPUT}/forcage_bassin.parquet")
+    pd.DataFrame(attributs).set_index("station").to_parquet(f"{OUTPUT}/attributs.parquet")
+    print(f"écrit dans {OUTPUT}")
 
 
 if __name__ == "__main__":

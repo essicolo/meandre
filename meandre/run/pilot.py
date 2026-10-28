@@ -521,7 +521,7 @@ if _settings.raw("snow.seasonal_melt_amplitude") is not None:
     print(f"[etl] fonte SAISONNIERE : amplitude {_msa} "
           f"(decembre x{1-_msa:.2f}, juin x{1+_msa:.2f}, moyenne annuelle inchangee)")
 if _settings.raw("snow.project_threshold", "1") == "1":
-    from meandre.adapters.physitel.hydrotel_calib import load_passage_pluie_neige as _lppn
+    from meandre.adapters.physitel.hydrotel_calib import load_rain_snow_transition as _lppn
     _pls = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     _sn = _lppn(_pls)
     if _sn != 0.0:
@@ -766,12 +766,12 @@ if "ETL_MELT_DIR" in os.environ:
 _flat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
 _pl = os.environ.get("ETL_MELT_DIR") or f"{_flat}/{REG.upper()}_LN24HA_2020"
 try:
-    from meandre.adapters.physitel.hydrotel_calib import (load_occupation_sol, load_milieux_humides,
+    from meandre.adapters.physitel.hydrotel_calib import (load_land_cover, load_wetlands,
                                              load_phenologie)
     _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
     if DOMAIN or "ETL_MELT_DIR" in os.environ:
         # Province, ou plateforme d'ancrage imposee : lecture directe du projet (chemin historique).
-        _all = r["land_cover"] if DOMAIN else {**load_occupation_sol(_pl, r["node_ids"], device=DEVICE), **load_milieux_humides(_pl, r["node_ids"], device=DEVICE)}
+        _all = r["land_cover"] if DOMAIN else {**load_land_cover(_pl, r["node_ids"], device=DEVICE), **load_wetlands(_pl, r["node_ids"], device=DEVICE)}
     else:
         # Territoire seul : l'occupation vient du domaine (adaptateur PHYSITEL, 2026-10-26).
         _all = r["domain"].land_cover or {}
@@ -915,18 +915,18 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
 # decorrelaient d'Hydrotel (r 0.27-0.31 quotidien). En inference sur le champion :
 # +0.027 aux jauges. Ici : ACTIF PENDANT L'ENTRAINEMENT, pour que le reseau
 # n'apprenne plus a compenser l'etalement manquant.
-from meandre.adapters.physitel.hgm_loader import lire_hgm
+from meandre.adapters.physitel.hgm_loader import read_hgm
 _projh = _PROJ_M
 if _MEMBER == "LN24HA" and r["domain"].hgm_kernel is not None:
     _K = r["domain"].hgm_kernel
 elif DOMAIN:
-    _Ks = [lire_hgm(f"{_PLATB}/{_MEMBER}/{_nom.upper()}_{_MEMBER}_2020", _ids) for _nom, _ids, _o, _n in _territories()]
+    _Ks = [read_hgm(f"{_PLATB}/{_MEMBER}/{_nom.upper()}_{_MEMBER}_2020", _ids) for _nom, _ids, _o, _n in _territories()]
     _L = max(k.shape[1] for k in _Ks)
     _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
 elif False:
     _K = r["domain"].hgm_kernel
 else:
-    _K = lire_hgm(_projh, r["node_ids"])
+    _K = read_hgm(_projh, r["node_ids"])
 model.set_hgm_kernel(torch.tensor(_K, device=DEVICE))
 import numpy as _nph
 print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={_K.shape[1]}")
@@ -2434,7 +2434,7 @@ if _WANTS_DIAGNOSTICS and _DIAG.swe is not None:
 # a l'aveugle. Ajoute le 2026-08-20 apres constat d'un retard d'un mois sur la crue.
 if os.environ.get("ETL_CMP_HYDROTEL"):
     import xarray as _xrh
-    from meandre.adapters.physitel.hydrotel_calib import appariement_provincial as _appm
+    from meandre.adapters.physitel.hydrotel_calib import provincial_matching as _appm
     _mb = os.environ["ETL_CMP_HYDROTEL"]
     try:
         _z = _xrh.open_zarr(f"{_paths.RQH_ROOT}/"

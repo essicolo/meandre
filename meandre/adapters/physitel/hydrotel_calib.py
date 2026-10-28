@@ -18,7 +18,7 @@ from pathlib import Path
 import torch
 
 from meandre.hydrotel.hydrotel_params import load_project, uhrh_fractions
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import settings
 
 
@@ -46,8 +46,8 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
     donne z1/z2/z3 d'Hydrotel ; on utilise z2_h+z3_h et z1_fixed pour cohérence
     avec la colonne (z1 fixe, z2/z3 = profondeurs Hydrotel)."""
     proj = load_project(str(project_dir), sim_subdir)
-    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
-    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    reaches = _parse_reach(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in reaches}
     uhrh, sol, tex, bv = proj["uhrh"], proj["sol"], proj["texture"], proj["bv3c"]
 
     def up(u):
@@ -129,12 +129,12 @@ def imposed_retention_curve(cs: dict, use_aquifer: bool) -> dict:
     # textures qui l'indexe sont ajustees pour le debit : les imposer remplacerait notre
     # ajustement par le leur, sans rien gagner en physique. `MEANDRE_THETA_CC_CALAGE=1` les
     # impose pour qui veut comparer.
-    exclus_prefixes = ("ks", "thetas")
+    excluded_prefixes = ("ks", "thetas")
     if not settings.get("data.field_capacity_from_calibration"):
-        exclus_prefixes = exclus_prefixes + ("thetacc", "thetapf")
-    exclus_cles = ("krec", "coef_recharge") if use_aquifer else ()
+        excluded_prefixes = excluded_prefixes + ("thetacc", "thetapf")
+    excluded_keys = ("krec", "coef_recharge") if use_aquifer else ()
     return {k: v for k, v in cs.items()
-            if not k.startswith(exclus_prefixes) and k not in exclus_cles}
+            if not k.startswith(excluded_prefixes) and k not in excluded_keys}
 
 
 def load_linacre_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
@@ -145,8 +145,8 @@ def load_linacre_nodes(project_dir, node_ids, sim_subdir="simulation/simulation"
     from pathlib import Path
     dtype = dtype or torch.get_default_dtype()
     proj = load_project(str(project_dir), sim_subdir)
-    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
-    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    reaches = _parse_reach(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in reaches}
     uhrh = proj["uhrh"]
     lin = {}
     for ln in open(f"{project_dir}/{sim_subdir}/linacre.csv", encoding="latin-1").read().splitlines():
@@ -185,8 +185,8 @@ def load_melt_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
     from pathlib import Path
     dtype = dtype or torch.get_default_dtype()
     proj = load_project(str(project_dir), sim_subdir)
-    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
-    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    reaches = _parse_reach(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in reaches}
     uhrh = proj["uhrh"]
     dj = {}
     for ln in open(f"{project_dir}/{sim_subdir}/degre_jour_modifie.csv", encoding="latin-1").read().splitlines():
@@ -213,7 +213,7 @@ def load_melt_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
     return {k: torch.tensor(cols[k], dtype=dtype, device=device) for k in names}
 
 
-def load_passage_pluie_neige(project_dir, defaut: float = 0.0) -> float:
+def load_rain_snow_transition(project_dir, default: float = 0.0) -> float:
     """Seuil de PARTITION PLUIE/NEIGE calibré du projet Hydrotel (thiessen.csv,
     colonne PASSAGE PLUIE NEIGE, °C). Uniforme par région dans les projets du Québec
     (OUTV/SAGU/SLNO -2.2168, GASP -3.0672).
@@ -228,18 +228,18 @@ def load_passage_pluie_neige(project_dir, defaut: float = 0.0) -> float:
     from pathlib import Path
     p = Path(project_dir) / "simulation" / "simulation" / "thiessen.csv"
     if not p.exists():
-        return defaut
+        return default
     import pandas as _pd
     import numpy as _np
     d = _pd.read_csv(p, sep=";", skiprows=4)
     d.columns = [c.strip() for c in d.columns]
     col = [c for c in d.columns if "PASSAGE" in c.upper()]
     if not col:
-        return defaut
+        return default
     return float(_np.median(d[col[0]].values))
 
 
-def load_occupation_sol(project_dir, node_ids, device="cpu"):
+def load_land_cover(project_dir, node_ids, device="cpu"):
     """OCCUPATION DU SOL brute de PHYSITEL (physitel/occupation_sol.cla), agrégée par
     tronçon au prorata des aires d'UHRH, en FRACTIONS (somme = 1).
 
@@ -261,21 +261,21 @@ def load_occupation_sol(project_dir, node_ids, device="cpu"):
     import numpy as np
     import pandas as pd
     import torch
-    from meandre.adapters.physitel.physitel_loader import _parse_troncon
+    from meandre.adapters.physitel.physitel_loader import _parse_reach
 
     proj = Path(project_dir)
-    lignes = [l.split() for l in
+    lines = [l.split() for l in
               (proj / "physitel" / "occupation_sol.cla").read_text(encoding="latin-1").splitlines()
               if l.strip()]
-    noms = [x.strip('"') for x in lignes[2][1:]]
-    ids = np.array([int(r[0]) for r in lignes[3:]])
-    A = np.array([[float(x) for x in r[1:]] for r in lignes[3:]], dtype=np.float64)
+    name_list = [x.strip('"') for x in lines[2][1:]]
+    ids = np.array([int(r[0]) for r in lines[3:]])
+    A = np.array([[float(x) for x in r[1:]] for r in lines[3:]], dtype=np.float64)
     tot = np.clip(A.sum(axis=1, keepdims=True), 1e-9, None)
     frac = A / tot                                   # fraction de pixels par UHRH
     par_uhrh = {int(i): frac[k] for k, i in enumerate(ids)}
 
     def col(motifs):
-        return [k for k, nm in enumerate(noms) if any(m in nm.lower() for m in motifs)]
+        return [k for k, nm in enumerate(name_list) if any(m in nm.lower() for m in motifs)]
     idx = {
         "f_water_raw": col(["eau"]),
         "f_urban_raw": col(["impermeable"]),
@@ -285,10 +285,10 @@ def load_occupation_sol(project_dir, node_ids, device="cpu"):
         "f_agriculture_raw": col(["agricole"]),
         "f_bare_raw": col(["sol_nu"]),
     }
-    tr = {t["id"]: t for t in _parse_troncon(proj / "physitel" / "troncon.trl")}
+    tr = {t["id"]: t for t in _parse_reach(proj / "physitel" / "troncon.trl")}
     uh = pd.read_csv(proj / "physitel" / "uhrh.csv", sep=";", skiprows=1)
-    col_aire = next((c for c in uh.columns if "superficie" in c.lower() or "aire" in c.lower()), None)
-    aires = dict(zip(uh[uh.columns[0]].astype(int), uh[col_aire].astype(float)))
+    col_area = next((c for c in uh.columns if "superficie" in c.lower() or "aire" in c.lower()), None)
+    areas = dict(zip(uh[uh.columns[0]].astype(int), uh[col_area].astype(float)))
 
     n = len(node_ids)
     out = {k: np.zeros(n, dtype=np.float32) for k in idx}
@@ -296,12 +296,12 @@ def load_occupation_sol(project_dir, node_ids, device="cpu"):
         t = tr.get(int(nid))
         if t is None:
             continue
-        acc = np.zeros(len(noms)); wtot = 0.0
+        acc = np.zeros(len(name_list)); wtot = 0.0
         for uid in t["uhrh_ids"]:
             f = par_uhrh.get(abs(int(uid)))
             if f is None:
                 continue
-            w = aires.get(abs(int(uid)), 1.0)
+            w = areas.get(abs(int(uid)), 1.0)
             acc += w * f; wtot += w
         if wtot <= 0:
             continue
@@ -314,7 +314,7 @@ def load_occupation_sol(project_dir, node_ids, device="cpu"):
     return res
 
 
-def load_milieux_humides(project_dir, node_ids, device="cpu"):
+def load_wetlands(project_dir, node_ids, device="cpu"):
     """MILIEUX HUMIDES ISOLÉS du projet Hydrotel
     (simulation/simulation/milieux_humides_isoles.csv), agrégés par tronçon.
 
@@ -329,7 +329,7 @@ def load_milieux_humides(project_dir, node_ids, device="cpu"):
     import numpy as np
     import pandas as pd
     import torch
-    from meandre.adapters.physitel.physitel_loader import _parse_troncon
+    from meandre.adapters.physitel.physitel_loader import _parse_reach
 
     proj = Path(project_dir)
     f = proj / "simulation" / "simulation" / "milieux_humides_isoles.csv"
@@ -348,7 +348,7 @@ def load_milieux_humides(project_dir, node_ids, device="cpu"):
     if "wet_a" not in par:
         return {}
 
-    tr = {t["id"]: t for t in _parse_troncon(proj / "physitel" / "troncon.trl")}
+    tr = {t["id"]: t for t in _parse_reach(proj / "physitel" / "troncon.trl")}
     n = len(node_ids)
     out = {k: np.zeros(n, dtype=np.float32) for k in par}
     for j, nid in enumerate(node_ids):
@@ -387,20 +387,20 @@ def load_phenologie(project_dir):
     from pathlib import Path
     proj = Path(project_dir) / "physio"
 
-    def lire(f):
+    def read_file(f):
         li = [l for l in (proj / f).read_text(encoding="latin-1").splitlines() if l.strip()]
-        noms = li[3].split()[1:]
+        name_list = li[3].split()[1:]
         day_count, vals = [], []
         for l in li[4:]:
             t = l.split()
             if not t[0].lstrip("-").isdigit():
                 continue
             day_count.append(int(t[0])); vals.append([float(x) for x in t[1:]])
-        return noms, day_count, vals
+        return name_list, day_count, vals
 
     try:
-        nf, jf, vf = lire("ind_fol.def")
-        nr, jr, vr = lire("pro_rac.def")
+        nf, jf, vf = read_file("ind_fol.def")
+        nr, jr, vr = read_file("pro_rac.def")
     except (FileNotFoundError, IndexError):
         return {}
     # Les deux fichiers n'ont PAS la même grille de jours (OUTV : 1/158/188/299/365 pour
@@ -409,8 +409,8 @@ def load_phenologie(project_dir):
     import numpy as _np
     day_count = sorted(set(jf) | set(jr))
 
-    def col(noms, motifs):
-        return [k for k, nm in enumerate(noms) if any(m in nm.lower() for m in motifs)]
+    def col(name_list, motifs):
+        return [k for k, nm in enumerate(name_list) if any(m in nm.lower() for m in motifs)]
 
     corresp = {"feuillus": ["feuillu"], "conifers": ["conifere"],
                "agri": ["agricole"], "humides": ["tourbiere", "milieu_humide"],
@@ -441,9 +441,9 @@ def load_phenologie(project_dir):
 #   3. RANG              : position dans le tableau provincial (`troncon_idx`, 0..28034).
 #                          N'a AUCUN sens hydrologique, c'est un indice de stockage.
 
-def id_provincial(region: str, troncon_local: int) -> str:
+def id_provincial(region: str, local_reach: int) -> str:
     """Entier local -> chaîne provinciale ("OUTV", 123) -> "OUTV00123"."""
-    return f"{region.upper()}{int(troncon_local):05d}"
+    return f"{region.upper()}{int(local_reach):05d}"
 
 
 def id_local(id_prov: str) -> tuple[str, int]:
@@ -452,7 +452,7 @@ def id_local(id_prov: str) -> tuple[str, int]:
     return s[:4].upper(), int(s[4:])
 
 
-def appariement_provincial(region: str, troncons_locaux, ids_provinciaux):
+def provincial_matching(region: str, local_reaches, ids_provinciaux):
     """Rangs, dans un tableau provincial, des tronçons locaux demandés.
 
     `ids_provinciaux` : la coordonnée `troncon_id` du stockage (chaînes "REG#####").
@@ -461,13 +461,13 @@ def appariement_provincial(region: str, troncons_locaux, ids_provinciaux):
     un résultat, et le laisser passer produit des scores absurdes silencieux.
     """
     pos = {str(t): k for k, t in enumerate(ids_provinciaux)}
-    rangs = [pos.get(id_provincial(region, t)) for t in troncons_locaux]
-    if all(r is None for r in rangs):
+    ranks = [pos.get(id_provincial(region, t)) for t in local_reaches]
+    if all(r is None for r in ranks):
         raise ValueError(
             f"aucun tronçon apparié pour {region.upper()} : les identifiants fournis "
             f"ressemblent à {str(ids_provinciaux[0])!r}, on cherchait "
-            f"{id_provincial(region, troncons_locaux[0])!r}")
-    return rangs
+            f"{id_provincial(region, local_reaches[0])!r}")
+    return ranks
 
 
 def load_mcguinness_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
@@ -486,8 +486,8 @@ def load_mcguinness_nodes(project_dir, node_ids, sim_subdir="simulation/simulati
     import numpy as np
     import torch as _t
     proj = load_project(str(project_dir), sim_subdir)
-    troncons = _parse_troncon(Path(project_dir) / "physitel" / "troncon.trl")
-    t2u = {t["id"]: t["uhrh_ids"] for t in troncons}
+    reaches = _parse_reach(Path(project_dir) / "physitel" / "troncon.trl")
+    t2u = {t["id"]: t["uhrh_ids"] for t in reaches}
     uhrh = proj["uhrh"]
     f = Path(project_dir) / sim_subdir / "etp-mc-guiness.csv"
     if not f.exists():

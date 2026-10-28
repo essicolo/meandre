@@ -42,7 +42,7 @@ def amont(db):
     c.close()
 
     res = {}
-    for sid, nd, aire in stations:
+    for sid, nd, area_value in stations:
         vus, file = {nd}, deque([nd])
         while file:
             x = file.popleft()
@@ -51,7 +51,7 @@ def amont(db):
                     vus.add(e)
                     file.append(e)
         q, d0, d1 = obs.get(sid, (None, None, None))
-        res[sid] = (nd, aire, q, d0, d1, vus)
+        res[sid] = (nd, area_value, q, d0, d1, vus)
     return res
 
 
@@ -77,7 +77,7 @@ def main():
         sous = par_troncon.filter(pl.col("IDTRONCON").str.starts_with(region))
         stock = {int(r["IDTRONCON"][4:]) - 1: (r["hm3"], r["nom"], r["annee"])
                  for r in sous.iter_rows(named=True)}
-        for sid, (nd, aire, q_moy, d0, d1, vus) in amont(db).items():
+        for sid, (nd, area_value, q_moy, d0, d1, vus) in amont(db).items():
             # la retenue doit avoir existe pendant l'essentiel de la periode
             # observee : on exige une mise en eau avant le debut du suivi
             an_debut = d0.year if d0 is not None else 1900
@@ -85,7 +85,7 @@ def main():
                       if k in vus and (v[2] is None or v[2] <= an_debut)]
             hm3 = sum(v[0] for _, v in dedans)
             lignes.append({
-                "station_id": sid, "region": region, "aire_km2": aire,
+                "station_id": sid, "region": region, "aire_km2": area_value,
                 "obs_debut": str(d0), "obs_fin": str(d1),
                 "Q_moy_obs_m3s": round(q_moy, 2) if q_moy else None,
                 "n_retenues_amont": len(dedans),

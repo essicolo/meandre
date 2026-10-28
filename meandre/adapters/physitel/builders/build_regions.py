@@ -17,10 +17,10 @@ if __name__ == "__main__":
     # Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
     # execution hors du poste d'origine impossible. Defauts inchanges.
     import os as _osp
-    _PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+    _PLATFORMS_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
     _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 
-    PLATEFORMES = Path(f"{_PLAT_ROOT}/LN24HA")
+    PLATEFORMES = Path(f"{_PLATFORMS_ROOT}/LN24HA")
     # Le fichier des observations a suivi la chaine RQH sur le disque de donnees ; a l'ancien
     # emplacement, la reconstruction d'une region produisait une base SANS AUCUNE STATION,
     # en silence, et la region devenait inevaluable (2026-09-02).
@@ -40,9 +40,9 @@ if __name__ == "__main__":
     # L'ancien emplacement (.runs/slso/data/casr) a disparu quand les tuiles ont ete
     # regroupees sous MEANDRE_DATA ; la reconstruction d'une region echouait au chargement
     # du script, avant meme de lire le reseau (2026-09-01).
-    _TUILE = "CaSR_v3.2_A_TT_1.5m_rlon526-560_rlat351-385_2000-2003.nc"
-    _ref_chemins = [f"{_DATA_ROOT}/casr/{_TUILE}", f".runs/slso/data/casr/{_TUILE}"]
-    _ref = xr.open_dataset(next(c for c in _ref_chemins if _osp.path.exists(c)))
+    _TILE = "CaSR_v3.2_A_TT_1.5m_rlon526-560_rlat351-385_2000-2003.nc"
+    _ref_paths = [f"{_DATA_ROOT}/casr/{_TILE}", f".runs/slso/data/casr/{_TILE}"]
+    _ref = xr.open_dataset(next(c for c in _ref_paths if _osp.path.exists(c)))
     _g = _ref["rotated_pole"].attrs
     rlon_vals = _ref.rlon.values; rlat_vals = _ref.rlat.values; _ref.close()
     # pas et origine : index i (1-based) -> valeur ; tuile rlon526-560 = indices 526..560

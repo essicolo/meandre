@@ -20,15 +20,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from meandre.adapters.physitel.builders.drainage_maps import CODE_VERS_GROUPE, RESOLUTION, SIGEOM, SIGEOM_GROUPE, rasteriser
-from meandre.adapters.physitel.physitel_loader import _parse_troncon
+from meandre.adapters.physitel.builders.drainage_maps import CODE_TO_GROUP, RESOLUTION, SIGEOM, SIGEOM_GROUP, rasteriser
+from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
-SORTIE = f"{_paths.DERIVED_ROOT}/auxiliaires/depots-sigeom-troncons.parquet"
-FAMILLES = list(SIGEOM_GROUPE) + ["roc"]
+OUTPUT = f"{_paths.DERIVED_ROOT}/auxiliaires/depots-sigeom-troncons.parquet"
+FAMILIES = list(SIGEOM_GROUP) + ["roc"]
 
 
-def une_region(reg):
+def build_territory(reg):
     import geopandas as gpd
     from rasterio import features
     from rasterio.transform import from_origin
@@ -48,7 +48,7 @@ def une_region(reg):
     z = gpd.read_file(SIGEOM, layer="F10E15_ZONE_MORPH_SEDIM", columns=["CODE_DEPOT_MORP_SEDM"],
                       engine="pyogrio", bbox=emprise).to_crs(crs)
     code = z.CODE_DEPOT_MORP_SEDM.fillna("")
-    z["groupe"] = code.map(CODE_VERS_GROUPE)
+    z["groupe"] = code.map(CODE_TO_GROUP)
     z.loc[code.str.startswith("R"), "groupe"] = "roc"
     z["carte"] = 1.0
     dans = ids > 0
@@ -56,7 +56,7 @@ def une_region(reg):
     par = pd.DataFrame({"n": n})
     carte = rasteriser(z, "carte", transform, shape_value)
     par["carte"] = np.bincount(ids[dans & np.isfinite(carte)], minlength=len(n))
-    for f in FAMILLES:
+    for f in FAMILIES:
         z[f"est_{f}"] = np.where(z.groupe == f, 1.0, np.nan)
         r = rasteriser(z, f"est_{f}", transform, shape_value)
         par[f] = np.bincount(ids[dans & np.isfinite(r)], minlength=len(n))
@@ -69,16 +69,16 @@ def une_region(reg):
         par.loc[par.index.intersection(lon.index), "esker_km"] = lon.reindex(par.index).fillna(0.0)
     par = par[par.n > 0]
     out = []
-    for t in _parse_troncon(proj / "troncon.trl"):
+    for t in _parse_reach(proj / "troncon.trl"):
         u = [x for x in t["uhrh_ids"] if x in par.index]
         if not u:
             continue
         s = par.loc[u].sum()
-        aire_km2 = float(s.n) * RESOLUTION ** 2 / 1e6
-        row = {"region": reg, "troncon": int(t["id"]), "aire_km2": aire_km2,
+        area_km2 = float(s.n) * RESOLUTION ** 2 / 1e6
+        row = {"region": reg, "troncon": int(t["id"]), "aire_km2": area_km2,
                "depot_non_carto": 1.0 - float(s.carte / s.n),
-               "esker_km_100km2": 100.0 * float(s.esker_km) / max(aire_km2, 1e-6)}
-        for f in FAMILLES:
+               "esker_km_100km2": 100.0 * float(s.esker_km) / max(area_km2, 1e-6)}
+        for f in FAMILIES:
             row[f"depot_{f}"] = float(s[f] / s.n)
         out.append(row)
     d = pd.DataFrame(out)
@@ -89,13 +89,13 @@ def une_region(reg):
 
 
 def main(regions):
-    old = pd.read_parquet(SORTIE) if os.path.exists(SORTIE) else None
-    parts = [une_region(r) for r in regions]
+    old = pd.read_parquet(OUTPUT) if os.path.exists(OUTPUT) else None
+    parts = [build_territory(r) for r in regions]
     d = pd.concat(parts, ignore_index=True)
     if old is not None:
         d = pd.concat([old[~old.region.isin(regions)], d], ignore_index=True)
-    d.to_parquet(SORTIE, index=False)
-    print(f"-> {SORTIE} ({len(d)} tronçons, {d.region.nunique()} territoires)")
+    d.to_parquet(OUTPUT, index=False)
+    print(f"-> {OUTPUT} ({len(d)} tronçons, {d.region.nunique()} territoires)")
 
 
 if __name__ == "__main__":

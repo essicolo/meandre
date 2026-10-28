@@ -47,8 +47,8 @@ def descendre(db):
                 trouve = memo[cur]
                 break
             if cur in st and cur != n:
-                sid, aire = st[cur]
-                trouve = (sid, 0, aire)
+                sid, area_value = st[cur]
+                trouve = (sid, 0, area_value)
                 break
             chemin.append(cur)
             suivant = aval.get(cur)
@@ -62,8 +62,8 @@ def descendre(db):
         return memo.get(n, trouve)
 
     # un nœud qui PORTE une station est evidemment contraint : distance 0
-    for nd, (sid, aire) in st.items():
-        memo[nd] = (sid, 0, aire)
+    for nd, (sid, area_value) in st.items():
+        memo[nd] = (sid, 0, area_value)
     for nd in range(n_nodes):
         if nd not in memo:
             resoudre(nd)
@@ -86,9 +86,9 @@ def main():
         n_st_total += n_st
         sous = cand.filter(pl.col("region") == region)
         for r in sous.iter_rows(named=True):
-            sid, dist, aire = memo.get(r["node_idx"], (None, None, None))
+            sid, dist, area_value = memo.get(r["node_idx"], (None, None, None))
             lignes.append({**r, "station_aval": sid, "troncons_jusqu_station": dist,
-                           "aire_station_km2": aire})
+                           "aire_station_km2": area_value})
         print(f"  {region}: {sous.height:3d} candidats, {n_st:2d} stations")
 
     out = pl.DataFrame(lignes).drop("region", "node_idx")

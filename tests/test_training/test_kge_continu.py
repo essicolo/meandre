@@ -32,27 +32,27 @@ def _series(T=80, S=2, graine=0):
 def test_l_historique_change_la_statistique():
     """Sans historique la perte ne voit que le bloc ; avec, elle voit toute la série."""
     obs, sim = _series()
-    masque = torch.ones(2, dtype=torch.bool)
+    mask = torch.ones(2, dtype=torch.bool)
     perte = _perte()
     coupe = 40
 
-    sans, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=masque)
-    avec, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=masque,
+    without, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask)
+    avec, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask,
                     q_obs_hist=obs[:coupe], q_sim_hist=sim[:coupe])
 
-    assert not torch.isclose(sans, avec, atol=1e-6), \
+    assert not torch.isclose(without, avec, atol=1e-6), \
         "l'historique doit changer la statistique de sequence"
 
 
 def test_deux_blocs_avec_historique_egalent_la_sequence_entiere():
     """Le second bloc, muni de son historique, retrouve la perte de la serie complete."""
     obs, sim = _series()
-    masque = torch.ones(2, dtype=torch.bool)
+    mask = torch.ones(2, dtype=torch.bool)
     perte = _perte()
     coupe = 40
 
-    entiere, _ = perte(q_obs=obs, q_sim=sim, station_mask=masque)
-    par_blocs, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=masque,
+    entiere, _ = perte(q_obs=obs, q_sim=sim, station_mask=mask)
+    par_blocs, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask,
                          q_obs_hist=obs[:coupe], q_sim_hist=sim[:coupe])
 
     assert torch.isclose(entiere, par_blocs, atol=1e-5)
@@ -61,12 +61,12 @@ def test_deux_blocs_avec_historique_egalent_la_sequence_entiere():
 def test_le_gradient_ne_remonte_que_par_le_bloc_courant():
     """L'historique est detache : les blocs passes ont ete simules avec d'autres poids."""
     obs, sim = _series()
-    masque = torch.ones(2, dtype=torch.bool)
+    mask = torch.ones(2, dtype=torch.bool)
     coupe = 40
     hist = sim[:coupe].clone().requires_grad_(True)
     courant = sim[coupe:].clone().requires_grad_(True)
 
-    perte, _ = _perte()(q_obs=obs[coupe:], q_sim=courant, station_mask=masque,
+    perte, _ = _perte()(q_obs=obs[coupe:], q_sim=courant, station_mask=mask,
                         q_obs_hist=obs[:coupe], q_sim_hist=hist)
     perte.backward()
 
@@ -78,7 +78,7 @@ def test_la_perte_reste_un_kge_sur_une_station():
     """Controle de coherence : sur une station unique et sans historique, la perte
     par station vaut bien 1 moins le KGE."""
     obs, sim = _series(S=1)
-    masque = torch.ones(1, dtype=torch.bool)
-    perte, _ = _perte()(q_obs=obs, q_sim=sim, station_mask=masque)
+    mask = torch.ones(1, dtype=torch.bool)
+    perte, _ = _perte()(q_obs=obs, q_sim=sim, station_mask=mask)
     attendu = differentiable_kge_loss(obs[:, 0], sim[:, 0])
     assert torch.isclose(perte, attendu, atol=1e-5)

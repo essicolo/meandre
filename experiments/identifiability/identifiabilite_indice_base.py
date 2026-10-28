@@ -159,15 +159,15 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
         cc = f"{src}__couv_{nom}"
         if not nom.startswith("couv_") and cc in cols:
             couples[c] = cc
-    aire = None
+    area_value = None
     for src in sources:
         f_src = f"{DERIVES}/{src}-troncons.parquet"
         if os.path.exists(f_src):
             t = pd.read_parquet(f_src)
             t = t[t.region.str.lower() == region.lower()].set_index("troncon")
             for ca in ("aire_m2", "area_m2"):
-                if ca in t.columns and aire is None:
-                    aire = t[ca]
+                if ca in t.columns and area_value is None:
+                    area_value = t[ca]
     lignes = []
     for n in noeuds:
         # Le tronçon est indexé à partir de 1, le nœud à partir de 0.
@@ -175,7 +175,7 @@ def attributs_de_station(region: str, cache: str, colonnes, amont: bool = True,
         sous = table.reindex(bassin).fillna(0.0)
         ligne = sous.mean()
         if couples:
-            a = aire.reindex(bassin).fillna(0.0).to_numpy() if aire is not None else np.ones(len(bassin))
+            a = area_value.reindex(bassin).fillna(0.0).to_numpy() if area_value is not None else np.ones(len(bassin))
             for c, cc in couples.items():
                 w = sous[cc].to_numpy() * a
                 v = geo[c].reindex(bassin).to_numpy(dtype=float)

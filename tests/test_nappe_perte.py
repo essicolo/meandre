@@ -10,9 +10,9 @@ import torch
 from meandre.training.loss import water_table_anomaly_loss
 
 
-def _series(graine=0, mois=120, puits=8):
+def _series(graine=0, months=120, wells=8):
     g = torch.Generator().manual_seed(graine)
-    return torch.randn(mois, puits, generator=g, dtype=torch.float64)
+    return torch.randn(months, wells, generator=g, dtype=torch.float64)
 
 
 def test_valeurs_aux_trois_correlations():
@@ -33,7 +33,7 @@ def test_insensible_a_l_echelle_et_au_decalage():
 
 def test_puits_trop_court_ecarte():
     """Moins de 24 mois observés : le puits ne compte pas, et zéro puits donne zéro."""
-    z = _series(mois=120, puits=2)
+    z = _series(months=120, wells=2)
     m = torch.zeros_like(z, dtype=torch.bool)
     m[:10] = True
     assert float(water_table_anomaly_loss(z, -z, mask=m)) == 0.0
@@ -87,6 +87,6 @@ def test_terme_borne_meme_si_la_simulation_est_plate():
 
 def test_valeur_neutre_pour_un_puits_sans_variance():
     """Un puits que la simulation ne distingue pas reçoit la valeur neutre, soit 2."""
-    obs = _series(puits=1)
+    obs = _series(wells=1)
     plate = torch.full_like(obs, 1.5)
     assert abs(float(water_table_anomaly_loss(plate, obs)) - 2.0) < 1e-6
