@@ -188,5 +188,4 @@ min_mm_per_day = 0.25
 max_mm_per_day = 4.0
 
 [stations]
-area_ratio = true                   # observe rapporte a l'aire du troncon qui porte la station (R429)
-excluded = "062002"                 # hors du reseau modelise, accrochee par Hydrotel au troncon voisin SAGU01101 (R429)
+area_ratio = true                   # observe rapporte a l'aire du troncon qui porte la station (R429) ; 062002 est en amont de SAGU01101 et se corrige ainsi
