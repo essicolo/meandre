@@ -26,7 +26,7 @@ besoin_projet = pytest.mark.skipif(not PROJ.exists(), reason="projet Hydrotel ab
 # ── CONSERVATION ────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("k_h", [4.0, 24.0, 48.0])
 @pytest.mark.parametrize("n_sub", [1, 2, 4])
-def test_muskingum_conserve_la_masse(k_h, n_sub):
+def test_muskingum_conserves_mass(k_h, n_sub):
     """L'apport latéral est un DÉBIT ENTRANT : le volume sorti doit égaler le volume
     injecté, quel que soit K. Avant correctif : 0.50 à K=4 h (eau détruite) et 1.85 à
     K=48 h (eau fabriquée), donc un K appris pouvait créer ou détruire de l'eau."""
@@ -44,7 +44,7 @@ def test_muskingum_conserve_la_masse(k_h, n_sub):
     assert total == pytest.approx(10.0, rel=1e-3), f"masse rendue {total / 10.0:.4f}"
 
 
-def test_rolling_mean_apparie_les_composites():
+def test_rolling_mean_matches_composites():
     """L'ETR simulée doit être moyennée sur la même fenêtre que le composite MOD16
     (8 jours). Avant correctif on comparait une moyenne de 8 jours à un seul jour."""
     x = torch.arange(20.0).reshape(20, 1).repeat(1, 3)
@@ -57,18 +57,18 @@ def test_rolling_mean_apparie_les_composites():
 
 
 # ── OCCUPATION DU SOL : elle doit ATTEINDRE la physique ─────────────────────
-def _colonne_avec_occupation(n=6, **fractions):
+def _column_with_land_cover(n=6, **fractions):
     col = HydrotelColumn()
     if fractions:
         col.set_land_cover({k: torch.full((n,), v) for k, v in fractions.items()})
     return col
 
 
-def test_occupation_prime_sur_le_territorial():
+def test_land_cover_overrides_territorial():
     """set_land_cover doit primer sur le territorial (dont les colonnes du Québec sont
     centrées-réduites et dont les `_raw` n'existent pas)."""
     n = 6
-    col = _colonne_avec_occupation(
+    col = _column_with_land_cover(
         n, f_forest_raw=0.70, f_forest_conifer_raw=0.30, f_forest_deciduous_raw=0.40,
         f_water_raw=0.09, f_urban_raw=0.02, f_wetland_raw=0.05, f_agriculture_raw=0.12)
     lc = col._land_cover
@@ -80,7 +80,7 @@ def test_occupation_prime_sur_le_territorial():
     assert terr.get_physical("wet_a_raw") is None
 
 
-def test_fractions_de_surface_coherentes():
+def test_consistent_surface_fractions():
     """fse + fsi + fsa = 1 exactement, et fse/fsi non nuls quand l'occupation est
     fournie (avant correctif : fse = fsi = 0 partout, donc aucune pluie-sur-lac ni
     ruissellement imperméable)."""
@@ -92,7 +92,7 @@ def test_fractions_de_surface_coherentes():
     assert fse + fsi + fsa == pytest.approx(1.0)
 
 
-def test_etr_couvre_toute_la_fraction_permeable():
+def test_etr_covers_whole_permeable_fraction():
     """Les classes de végétation de l'ETR doivent couvrir TOUTE la fraction perméable.
     Avant correctif seules forêt et milieu humide en recevaient une : l'agriculture et
     le sol nu ne transpiraient pas du tout, soit ~20 % du territoire."""
@@ -108,7 +108,7 @@ def test_etr_couvre_toute_la_fraction_permeable():
 
 # ── CHARGEURS depuis le projet Hydrotel ─────────────────────────────────────
 @besoin_projet
-def test_seuil_pluie_neige_charge():
+def test_rain_snow_threshold_loaded():
     from meandre.adapters.physitel.hydrotel_calib import load_rain_snow_transition
     s = load_rain_snow_transition(str(PROJ))
     assert -10.0 < s < 5.0
@@ -116,9 +116,9 @@ def test_seuil_pluie_neige_charge():
 
 
 @besoin_projet
-def test_occupation_sol_charge_des_fractions_credibles():
+def test_land_cover_loads_credible_fractions():
     from meandre.adapters.physitel.hydrotel_calib import load_land_cover
-    ids = _ids_troncons(60)
+    ids = _reach_ids(60)
     lc = load_land_cover(str(PROJ), ids)
     for k, v in lc.items():
         assert torch.all(v >= -1e-6) and torch.all(v <= 1.0 + 1e-6), f"{k} hors [0, 1]"
@@ -129,9 +129,9 @@ def test_occupation_sol_charge_des_fractions_credibles():
 
 
 @besoin_projet
-def test_milieux_humides_charges():
+def test_wetlands_loaded():
     from meandre.adapters.physitel.hydrotel_calib import load_wetlands
-    mh = load_wetlands(str(PROJ), _ids_troncons(200))
+    mh = load_wetlands(str(PROJ), _reach_ids(200))
     assert "wet_a_raw" in mh, "sans wet_a_raw le module de milieu humide reste inactif"
     wa = mh["wet_a_raw"]
     assert float((wa > 0).sum()) > 0, "aucun tronçon porteur de milieu humide"
@@ -139,7 +139,7 @@ def test_milieux_humides_charges():
     assert torch.all(mh["frac_raw"][wa > 0] > 0)
 
 
-def _ids_troncons(n):
+def _reach_ids(n):
     """Premiers identifiants de tronçons du projet (1-indexés dans troncon.trl)."""
     lignes = [l.split() for l in
               (PROJ / "physitel" / "troncon.trl").read_text(encoding="latin-1").splitlines()[3:]
@@ -148,7 +148,7 @@ def _ids_troncons(n):
 
 
 # ── BORNES ──────────────────────────────────────────────────────────────────
-def test_bornes_kmusk_par_defaut():
+def test_default_kmusk_bounds():
     """Les bornes du temps de transfert restent celles d'origine tant que
     MEANDRE_KMUSK n'est pas posé (les checkpoints existants en dépendent)."""
     from meandre.spatial import field_network as fn
@@ -156,7 +156,7 @@ def test_bornes_kmusk_par_defaut():
 
 
 # ── IDENTITÉ DES TRONÇONS ───────────────────────────────────────────────────
-def test_conversion_identifiants_troncons():
+def test_reach_id_conversion():
     """Trois numérotations coexistent (entier local, chaîne provinciale, rang de
     stockage) et leur confusion a produit des KGE de -0.25 le 2026-08-11 : des nombres
     faux, pas une erreur visible."""
@@ -166,14 +166,14 @@ def test_conversion_identifiants_troncons():
     assert provincial_matching("OUTV", [2, 1, 9], ["OUTV00001", "OUTV00002"]) == [1, 0, None]
 
 
-def test_appariement_vide_leve_une_erreur():
+def test_empty_matching_raises():
     """Un appariement vide est TOUJOURS un bug de convention, jamais un résultat."""
     from meandre.adapters.physitel.hydrotel_calib import provincial_matching
     with pytest.raises(ValueError):
         provincial_matching("OUTV", [1, 2], ["GASP00001", "GASP00002"])
 
 
-def test_garde_fou_occupation_nulle(capsys):
+def test_zero_land_cover_guard(capsys):
     """La colonne doit DIRE ce qu'elle reçoit, et avertir si l'occupation est nulle.
     Sans ce message, méandre a simulé le Québec avec 0 % de forêt pendant des mois."""
     import torch as _t

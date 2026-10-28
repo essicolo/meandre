@@ -26,36 +26,36 @@ PUITS = ["04300001", "04020001", "04630001", "04300011", "04020002", "04020005",
          "04060003", "04010003"]
 
 
-def test_le_partage_est_stable():
+def test_split_is_stable():
     assert partager(PUITS, 0.5) == partager(PUITS, 0.5)
     assert partager(list(reversed(PUITS)), 0.5)[1] == partager(list(reversed(PUITS)), 0.5)[1]
 
 
-def test_les_deux_parts_sont_disjointes_et_completes():
+def test_both_shares_are_disjoint_and_complete():
     e, g = partager(PUITS, 0.5)
     assert set(e) & set(g) == set()
     assert sorted(e + g) == list(range(len(PUITS)))
 
 
-def test_la_part_demandee_est_respectee():
+def test_requested_share_is_respected():
     _e, g = partager(PUITS, 0.5)
     assert len(g) == 4
     _e, g = partager(PUITS, 0.25)
     assert len(g) == 2
 
 
-def test_aucun_puits_tenu_de_cote_si_la_part_est_nulle():
+def test_no_well_held_out_when_share_is_zero():
     e, g = partager(PUITS, 0.0)
     assert g == [] and len(e) == len(PUITS)
 
 
-def test_un_territoire_pauvre_garde_tout_pour_la_perte():
+def test_poor_territory_keeps_everything_for_the_loss():
     """Sous quatre puits, tenir la moitié de côté ne laisserait presque rien."""
     e, g = partager(["a", "b", "c"], 0.5)
     assert g == [] and len(e) == 3
 
 
-def test_la_part_tenue_de_cote_ne_depend_pas_de_lordre_dentree():
+def test_held_out_share_independent_of_input_order():
     """Deux exécutions qui lisent les puits dans un ordre différent tiennent les mêmes."""
     _e1, g1 = partager(PUITS, 0.5)
     autre = sorted(PUITS)

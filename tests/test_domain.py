@@ -33,30 +33,30 @@ def _domain(edge_index=((0, 1), (2, 2)), columns=None, forcing_shape=None, obs=N
     return Domain(name="test", node_ids=[1, 2, 3], node_coords=torch.zeros(n, 2), graph=_graph(edge_index), attributes=attrs, attribute_columns=list(cols), forcing=forcing, forcing_variables=["P", "T"], times=times, initial_state=None, withdrawals=None, observations=obs or {}, manifest=Manifest("test"))
 
 
-def test_un_domaine_sain_est_accepte():
+def test_sound_domain_is_accepted():
     assert _domain().validate() == []
 
 
-def test_le_reseau_doit_etre_une_foret():
+def test_network_must_be_a_forest():
     d = _domain(edge_index=((0, 0), (1, 2)))   # le tronçon 0 a deux avals
     assert any("forêt" in m for m in d.validate())
 
 
-def test_attribut_obligatoire_absent_et_colonne_inconnue():
+def test_missing_required_attribute_and_unknown_column():
     cols = [c for c in REQUIRED if c != "f_forest"] + ["couleur"]
     issues = check_columns(cols)
     assert any("f_forest" in m for m in issues) and any("couleur" in m for m in issues)
     assert check_columns(REQUIRED + ["f_forest_deciduous_raw", "territorial_siigsol__argile"]) == []
 
 
-def test_forcage_et_observation_incoherents():
+def test_inconsistent_forcing_and_observation():
     d = _domain(forcing_shape=(4, 3, 2))
     assert any("forçage" in m for m in d.validate())
     o = Observation("discharge", torch.zeros(5, 1), "site", ["s1"], torch.tensor([7]))
     assert any("tronçon inexistant" in m for m in _domain(obs={"discharge": o}).validate())
 
 
-def test_le_manifeste_detecte_un_fichier_change(tmp_path):
+def test_manifest_detects_changed_file(tmp_path):
     f = tmp_path / "a.bin"
     f.write_bytes(b"x" * 1000)
     m = Manifest("t")
@@ -70,7 +70,7 @@ def test_le_manifeste_detecte_un_fichier_change(tmp_path):
     assert fingerprint(f) != saved["attributes"]["fingerprint"]
 
 
-def test_la_recette_porte_le_manifeste(tmp_path, monkeypatch):
+def test_recipe_carries_the_manifest(tmp_path, monkeypatch):
     from meandre.utils.recipe import capture_recipe, compare_recipe, write_recipe_toml
     f = tmp_path / "forcing.nc"
     f.write_bytes(b"f" * 10)

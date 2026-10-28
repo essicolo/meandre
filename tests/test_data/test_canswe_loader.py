@@ -5,7 +5,7 @@ import pytest
 from meandre.data.canswe_loader import _haversine_km, _as_text
 
 
-def test_as_text_decode_les_octets():
+def test_as_text_decodes_bytes():
     """Les drapeaux CanSWE sont stockes en OCTETS (|S1). Un str() naif rend "b''" au
     lieu de "", et tout filtre de qualite rejette alors 100 % des mesures : c'est
     arrive le 2026-08-20, 45 037 mesures ecartees en silence sur OUTV."""
@@ -13,12 +13,12 @@ def test_as_text_decode_les_octets():
     assert list(_as_text(a)) == ["", "R", "M"]
 
 
-def test_as_text_tolere_as_text_et_none():
+def test_as_text_tolerates_text_and_none():
     a = np.array(["A", None, " B "], dtype=object)
     assert list(_as_text(a)) == ["A", "", "B"]
 
 
-def test_as_text_preserve_la_forme():
+def test_as_text_preserves_shape():
     a = np.array([[b"", b"R"], [b"M", b""]], dtype="S1")
     assert _as_text(a).shape == (2, 2)
 
@@ -29,7 +29,7 @@ def test_haversine_distance_connue():
     assert 225.0 < float(d[0]) < 240.0
 
 
-def test_haversine_nulle_sur_le_meme_point():
+def test_haversine_zero_on_same_point():
     d = _haversine_km(46.0, -74.0, np.array([46.0]), np.array([-74.0]))
     assert float(d[0]) == pytest.approx(0.0, abs=1e-9)
 

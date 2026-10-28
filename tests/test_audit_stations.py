@@ -8,7 +8,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 audit = SourceFileLoader("audit_stations", os.path.join(HERE, "..", "meandre", "adapters", "physitel", "builders", "audit_stations.py")).load_module()
 
 
-def test_coordonnees_de_la_fiche_cehq():
+def test_cehq_record_coordinates():
     header = ("Station:        062002         Rouge - en amont du ponceau sur la route 169\n"
             "Bassin versant: 26.8 km²       Régime: Non influencé\n"
             "Coordonnées:    (NAD83) 48° 48' 14\" // -72° 29' 31\"\n")
@@ -18,12 +18,12 @@ def test_coordonnees_de_la_fiche_cehq():
     assert area == 26.8 and regime == "Non influencé"
 
 
-def test_fiche_sans_coordonnees():
+def test_record_without_coordinates():
     lon, lat, area, _ = audit.parse_header("Bassin versant: 1051 km²\nCoordonnées:    (NAD83)           //          \n")
     assert np.isnan(lon) and np.isnan(lat) and area == 1051.0
 
 
-def test_lecture_de_troncon_trl(tmp_path):
+def test_read_troncon_trl(tmp_path):
     """Une rivière (unités 48 49 50) se jette dans un lac (noeud amont 3) ; le lac porte ses unités."""
     (tmp_path / "physitel").mkdir()
     (tmp_path / "physitel" / "troncon.trl").write_text(

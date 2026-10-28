@@ -24,7 +24,7 @@ import torch
 from meandre.hydrotel.frost import Rankinen, n_intervalles
 
 
-def _profil(mod, n, tair=-15.0, neige=0.2, day_count=60):
+def _profile(mod, n, tair=-15.0, neige=0.2, day_count=60):
     """Fait descendre un front de gel sur `jours` a temperature constante."""
     tmin = torch.full((n,), tair - 3.0)
     tmax = torch.full((n,), tair + 3.0)
@@ -36,14 +36,14 @@ def _profil(mod, n, tair=-15.0, neige=0.2, day_count=60):
 
 
 def _descendre(mod, n, day_count=60, **kw):
-    tmin, tmax, hs, p, z, _ = _profil(mod, n)
+    tmin, tmax, hs, p, z, _ = _profile(mod, n)
     frost_state = None
     for _ in range(day_count):
         p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **kw)
     return frost_state
 
 
-def test_sans_champs_le_clone_est_identique():
+def test_without_fields_clone_is_identical():
     """Regle de tout processus opt-in du projet : le defaut reste le clone fidele."""
     mod = Rankinen()
     a = _descendre(mod, 3)
@@ -51,7 +51,7 @@ def test_sans_champs_le_clone_est_identique():
     assert torch.equal(a, b)
 
 
-def test_deux_sols_differents_gelent_differemment():
+def test_two_different_soils_freeze_differently():
     """Le point de la correction : avec des scalaires uniformes, tous les troncons
     gelaient pareil, ce qui rendait le gel aveugle a la texture et a l'humidite."""
     mod = Rankinen()
@@ -60,7 +60,7 @@ def test_deux_sols_differents_gelent_differemment():
     assert float(frost_state.max() - frost_state.min()) > 1.0, frost_state
 
 
-def test_sens_physique_des_proprietes():
+def test_physical_direction_of_properties():
     """Un parametre qui bouge dans le mauvais sens serait pire qu'un scalaire fige :
     il donnerait au champ un levier qui compense au lieu de representer."""
     mod = Rankinen()
@@ -73,20 +73,20 @@ def test_sens_physique_des_proprietes():
     assert float(g[1]) < float(g[0]), g
 
 
-def test_gradient_traverse_les_deux():
+def test_gradient_crosses_both():
     """Un parametre dont le gradient ne passe pas n'est pas identifiable, et c'est
     l'identifiabilite qui est la promesse du projet."""
     mod = Rankinen()
     for nom, val in (("alpha", 1.6e-7), ("fs", 2.35)):
         x = torch.full((2,), val, requires_grad=True)
-        tmin, tmax, hs, p, z, _ = _profil(mod, 2)
+        tmin, tmax, hs, p, z, _ = _profile(mod, 2)
         for _ in range(20):
             p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **{nom: x})
         frost_state.sum().backward()
         assert x.grad is not None and float(x.grad.abs().sum()) > 0.0, nom
 
 
-def test_les_bornes_respectent_la_stabilite_du_schema():
+def test_bounds_respect_scheme_stability():
     """La borne haute de la diffusivite est fixee par la NUMERIQUE, pas par la physique.
 
     Rankinen est un schema EXPLICITE : son taux de relaxation vaut dt*alpha/(2z)^2, donc

@@ -24,13 +24,13 @@ def test_n_params_coherent():
     assert noms[-1] == "k_sub", "la derniere sortie ajoutee doit rester en queue"
 
 
-def test_index_krec_suit_le_champ():
+def test_krec_index_follows_the_field():
     import dataclasses
     noms = [f.name for f in dataclasses.fields(SpatialParams)]
     assert noms[SpatialFieldNetwork._IDX_KREC] == "krec"
 
 
-def test_retards_non_negatifs_et_ordre_garanti():
+def test_nonnegative_lags_and_guaranteed_order():
     """Sur des sorties brutes extremes, l'ordre des trois seuils tient."""
     torch.manual_seed(0)
     net = SpatialFieldNetwork(n_territorial=4)
@@ -47,7 +47,7 @@ def test_retards_non_negatifs_et_ordre_garanti():
     assert torch.all(se_f >= se_d)
 
 
-def test_init_litterature_pose_les_retards():
+def test_literature_init_sets_the_lags():
     """Le vecteur brut de litterature doit RENDRE 1.0 apres contrainte.
 
     Piege deja paye une fois (2026-08-27) : passer des zeros a _apply_constraints ne
@@ -63,7 +63,7 @@ def test_init_litterature_pose_les_retards():
     assert torch.allclose(sp.T_melt, torch.full((8,), -0.5), atol=0.01)
 
 
-def test_depart_a_chaud_conserve_les_champs_appris(tmp_path):
+def test_warm_start_keeps_learned_fields(tmp_path):
     """Elargir N_PARAMS ne doit PAS jeter les sorties deja apprises.
 
     Ce test appelle le VRAI chemin de chargement, HydroModel.load. Sa premiere version

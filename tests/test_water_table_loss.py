@@ -15,14 +15,14 @@ def _series(graine=0, months=120, wells=8):
     return torch.randn(months, wells, generator=g, dtype=torch.float64)
 
 
-def test_valeurs_aux_trois_correlations():
+def test_values_at_three_correlations():
     z = _series()
     assert float(water_table_anomaly_loss(z, z)) < 1e-10
     assert abs(float(water_table_anomaly_loss(z, -z)) - 4.0) < 0.2
     assert abs(float(water_table_anomaly_loss(z, _series(1))) - 2.0) < 0.2
 
 
-def test_insensible_a_l_echelle_et_au_decalage():
+def test_insensitive_to_scale_and_shift():
     """Multiplier une série par un facteur ou la décaler ne change pas la perte."""
     z = _series()
     o = _series(2)
@@ -31,7 +31,7 @@ def test_insensible_a_l_echelle_et_au_decalage():
     assert abs(float(water_table_anomaly_loss(z, o * 0.1 - 5.0)) - base) < 1e-9
 
 
-def test_puits_trop_court_ecarte():
+def test_too_short_well_dropped():
     """Moins de 24 mois observés : le puits ne compte pas, et zéro puits donne zéro."""
     z = _series(months=120, wells=2)
     m = torch.zeros_like(z, dtype=torch.bool)
@@ -41,12 +41,12 @@ def test_puits_trop_court_ecarte():
     assert float(water_table_anomaly_loss(z, -z, mask=m)) > 1.0
 
 
-def test_vide_rend_zero():
+def test_empty_returns_zero():
     v = torch.zeros(0, 0)
     assert float(water_table_anomaly_loss(v, v)) == 0.0
 
 
-def test_garde_fou_porosite_nul_dans_la_plage():
+def test_porosity_guard_zero_within_range():
     """Le garde-fou ne coûte rien tant que la porosité impliquée est physique."""
     z = _series()
     amp_s = torch.full((z.shape[1],), 2.0, dtype=torch.float64)
@@ -60,14 +60,14 @@ def test_garde_fou_porosite_nul_dans_la_plage():
     assert dehors > base + 0.1
 
 
-def test_gradient_remonte_vers_la_simulation():
+def test_gradient_flows_back_to_simulation():
     z = _series().requires_grad_(True)
     water_table_anomaly_loss(z, _series(4)).backward()
     assert torch.isfinite(z.grad).all()
     assert float(z.grad.abs().sum()) > 0.0
 
 
-def test_terme_borne_meme_si_la_simulation_est_plate():
+def test_term_bounded_even_for_flat_simulation():
     """Une simulation sans variance ne doit pas faire exploser le terme.
 
     Mesure du 2026-09-19 : en réduisant chaque série par son écart-type, le terme atteignait
@@ -85,7 +85,7 @@ def test_terme_borne_meme_si_la_simulation_est_plate():
     assert float(water_table_anomaly_loss(-obs, obs)) <= 4.0
 
 
-def test_valeur_neutre_pour_un_puits_sans_variance():
+def test_neutral_value_for_well_without_variance():
     """Un puits que la simulation ne distingue pas reçoit la valeur neutre, soit 2."""
     obs = _series(wells=1)
     plate = torch.full_like(obs, 1.5)

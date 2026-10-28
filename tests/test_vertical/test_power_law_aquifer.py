@@ -22,7 +22,7 @@ def _recession(module, S0=200.0, day_count=120, **params):
     return torch.tensor(qs)
 
 
-def test_b_egal_1_reproduit_le_lineaire():
+def test_b_equal_1_reproduces_linear():
     """A b=1 la loi puissance EST un lineaire de k = q_ref/S_REF : la nouveaute doit
     contenir l'ancien comme cas particulier, sinon les deux ne sont pas comparables."""
     k = 0.03
@@ -34,7 +34,7 @@ def test_b_egal_1_reproduit_le_lineaire():
     assert torch.allclose(q_lin[:60], q_pow[:60], rtol=0.02)
 
 
-def test_deux_constantes_de_temps():
+def test_two_time_constants():
     """LE motif d'existence : la recession se raidit puis s'etire.
 
     On mesure k_apparent = -dln(Q)/dt au debut (stock plein) et a la fin (stock bas).
@@ -55,7 +55,7 @@ def test_deux_constantes_de_temps():
     assert abs(k1_debut - k1_fin) / k1_debut < 0.05, "lineaire : UNE constante"
 
 
-def test_conservation_stricte():
+def test_strict_conservation():
     """Sur chaque pas : S_new = S + recharge - Q. C'est la fermeture du bilan ; si elle
     casse, ETL_BILAN lira une fuite dans la nappe."""
     m = PowerLawAquifer()
@@ -67,14 +67,14 @@ def test_conservation_stricte():
         S = S2
 
 
-def test_stock_nul_ne_produit_rien_et_ne_devient_pas_negatif():
+def test_zero_storage_produces_nothing_and_stays_nonnegative():
     m = PowerLawAquifer()
     Q, S = m(torch.zeros(1), torch.zeros(1),
              q_ref=torch.tensor([4.0]), b=torch.tensor([2.0]))
     assert float(Q) == 0.0 and float(S) == 0.0
 
 
-def test_pompage_assecha_sans_negatif():
+def test_pumping_dries_without_negative():
     """Prelevement souterrain superieur au stock : la nappe se vide, point."""
     m = PowerLawAquifer()
     Q, S = m(torch.zeros(1), torch.tensor([2.0]),
@@ -83,7 +83,7 @@ def test_pompage_assecha_sans_negatif():
     assert float(S) >= 0.0 and float(Q) >= 0.0
 
 
-def test_differentiable_vers_les_deux_parametres():
+def test_differentiable_with_respect_to_both_parameters():
     """b et q_ref doivent recevoir du gradient : c'est le NeRF qui les apprendra."""
     q_ref = torch.tensor([2.0], requires_grad=True)
     b = torch.tensor([1.8], requires_grad=True)
@@ -113,7 +113,7 @@ def test_residences_mesurees_atteignables():
 
 # ── Drainage non lineaire de L3 dans bv3c2 (R37) : la vanne, pas la nappe ────
 
-def _sol_un_pas(l3_exp=None, t3=0.40, ths3=0.42, krec=2e-5):
+def _soil_one_step(l3_exp=None, t3=0.40, ths3=0.42, krec=2e-5):
     """Un pas du clone sol, isole sur q3 : verifie la formule sans tout le sous-pas."""
     z3 = torch.tensor([2.65])
     t3_t, ths3_t, krec_t = torch.tensor([t3]), torch.tensor([ths3]), torch.tensor([krec])
@@ -122,21 +122,21 @@ def _sol_un_pas(l3_exp=None, t3=0.40, ths3=0.42, krec=2e-5):
     return krec_t * z3 * ths3_t * torch.clamp(t3_t / ths3_t, min=0.0) ** l3_exp
 
 
-def test_exposant_1_egale_le_lineaire_fidele():
-    assert torch.allclose(_sol_un_pas(l3_exp=1.0), _sol_un_pas(l3_exp=None))
+def test_exponent_1_equals_faithful_linear():
+    assert torch.allclose(_soil_one_step(l3_exp=1.0), _soil_one_step(l3_exp=None))
 
 
-def test_meme_plafond_a_saturation():
+def test_same_ceiling_at_saturation():
     """A theta3 = thetas3, la variante draine EXACTEMENT comme le lineaire : la
     non-linearite ne change pas la capacite maximale, elle change QUAND on l'a."""
     for n in (2.0, 8.0, 16.0):
-        assert torch.allclose(_sol_un_pas(l3_exp=n, t3=0.42), _sol_un_pas(t3=0.42))
+        assert torch.allclose(_soil_one_step(l3_exp=n, t3=0.42), _soil_one_step(t3=0.42))
 
 
-def test_coupure_sous_saturation():
+def test_cutoff_below_saturation():
     """A 90 % de saturation, n=8 doit couper le drainage a moins de la moitie du
     lineaire : c'est la respiration -- vider vite quand c'est plein, retenir sinon."""
-    lin = float(_sol_un_pas(t3=0.378))
-    n8 = float(_sol_un_pas(l3_exp=8.0, t3=0.378))
+    lin = float(_soil_one_step(t3=0.378))
+    n8 = float(_soil_one_step(l3_exp=8.0, t3=0.378))
     assert n8 < 0.5 * lin
     assert n8 > 0.0

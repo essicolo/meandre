@@ -17,33 +17,33 @@ pytestmark = pytest.mark.skipif(not _present, reason="niveaux de nappe absents d
 TIMES = pd.date_range("2000-01-01", "2024-12-31", freq="D")
 
 
-def test_grille_mensuelle_couvre_exactement_la_periode():
+def test_monthly_grid_covers_exactly_the_period():
     c = read_rsesq("outv", TIMES)
     assert len(c.months) == 300
     assert c.level.shape == (300, c.n_wells)
     assert c.mask.shape == c.level.shape
 
 
-def test_le_filtre_de_recevabilite_retire_des_puits():
+def test_admissibility_filter_removes_wells():
     """Les puits captifs et influencés doivent disparaître, donc le compte doit baisser."""
     tout = read_rsesq("outv", TIMES, unconfined_only=False, uninfluenced=False)
     libres = read_rsesq("outv", TIMES)
     assert libres.n_wells < tout.n_wells
 
 
-def test_aucun_puits_sous_le_minimum_de_mois():
+def test_no_well_below_minimum_months():
     c = read_rsesq("slso", TIMES, min_months=60)
     assert (c.mask.sum(axis=0) >= 60).all()
 
 
-def test_les_noeuds_apparies_sont_des_indices_valides():
+def test_matched_nodes_are_valid_indices():
     c = read_rsesq("gasp", TIMES)
     assert c.node_idx.dtype == np.int64
     assert (c.node_idx >= 0).all()
     assert len(c.node_idx) == c.n_wells
 
 
-def test_index_mensuel_est_croissant_et_complet():
+def test_monthly_index_is_increasing_and_complete():
     idx = index_monthly(TIMES)
     assert idx[0] == 0
     assert idx[-1] == 299

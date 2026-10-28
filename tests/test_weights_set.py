@@ -20,7 +20,7 @@ PILOTE = os.path.join(ROOT, "meandre", "run", "territory_data.py")
 HORS_APPEL = {"w_water_table", "w_quantile"}
 
 
-def _poids_de_lappel():
+def _weights_of_the_call():
     """Noms des poids passés à HydroLoss dans le chargeur de territoire."""
     arbre = ast.parse(io.open(PILOTE, encoding="utf-8").read())
     for n in ast.walk(arbre):
@@ -29,8 +29,8 @@ def _poids_de_lappel():
     raise AssertionError("aucun appel a HydroLoss dans " + PILOTE)
 
 
-def test_les_poids_des_configurations_sont_tous_poses():
-    poses = _poids_de_lappel()
+def test_configuration_weights_are_all_set():
+    poses = _weights_of_the_call()
     acceptes = set(inspect.signature(HydroLoss.__init__).parameters)
     manquants = {}
     for f in glob.glob(os.path.join(ROOT, ".runs", "quebec", "*.toml")) + glob.glob(os.path.join(ROOT, "experiments", "**", "config", "*.toml"), recursive=True):
@@ -43,13 +43,13 @@ def test_les_poids_des_configurations_sont_tous_poses():
     assert not manquants, f"poids lus dans une configuration et jamais poses : {manquants}"
 
 
-def test_les_termes_du_kge_decompose_sont_poses():
-    poses = _poids_de_lappel()
+def test_decomposed_kge_terms_are_set():
+    poses = _weights_of_the_call()
     for cle in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession", "w_flat"):
         assert cle in poses, f"{cle} n'atteint pas l'objet de perte"
 
 
-def test_le_seuil_de_pics_suit_les_deux_termes():
+def test_peak_threshold_follows_both_terms():
     """Le seuil doit être construit pour le terme en rapport comme pour celui en carré."""
     source = io.open(PILOTE, encoding="utf-8").read()
     debut = source.index("peak_threshold=")

@@ -7,14 +7,14 @@ from meandre.adapters.physitel.texture_bounds import bounds_from_texture
 from meandre.spatial.field_network import SpatialFieldNetwork
 
 
-def _champ(n):
+def _field(n):
     return SpatialFieldNetwork(n_nodes=n, n_territorial=4, use_latent_codes=False)
 
 
-def test_sortie_entre_les_bornes_de_chaque_noeud():
+def test_output_within_each_node_bounds():
     torch.manual_seed(0)
     n = 6
-    f = _champ(n)
+    f = _field(n)
     ks = np.array([0.1, 0.5, 2.0, np.nan, 1.0, 0.05])
     lo, hi = bounds_from_texture(ks, 3.0, 3.355e-4, 54.6)
     f.set_node_bounds("K_sat_1", torch.tensor(lo), torch.tensor(hi))
@@ -27,9 +27,9 @@ def test_sortie_entre_les_bornes_de_chaque_noeud():
     assert lo[3] == np.float32(3.355e-4) and hi[3] == np.float32(54.6)
 
 
-def test_brut_nul_rend_la_texture():
+def test_zero_raw_returns_texture():
     n = 3
-    f = _champ(n)
+    f = _field(n)
     ks = np.array([0.1, 0.5, 2.0])
     lo, hi = bounds_from_texture(ks, 3.0, 3.355e-4, 54.6)
     f.set_node_bounds("K_sat_2", torch.tensor(lo), torch.tensor(hi))

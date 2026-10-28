@@ -12,25 +12,25 @@ import torch
 from meandre.spatial.field_network import FIELD_BOUNDS, SpatialFieldNetwork, SpatialParams, field_bounds_from_toml
 
 
-def _champ(**kw):
+def _field(**kw):
     return SpatialFieldNetwork(n_territorial=4, n_coord_freqs=2, hidden=16, **kw)
 
 
-def _sortie(net, nom, brut):
+def _output(net, nom, brut):
     raw = torch.zeros(len(brut), SpatialParams.N_PARAMS)
     noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
     raw[:, noms.index(nom)] = torch.tensor(brut)
     return getattr(net._apply_constraints(raw), nom)
 
 
-def test_centre_conserve_pour_les_sorties_log():
-    net = _champ()
-    assert math.isclose(float(_sortie(net, "K_sat_2", [0.0])[0]), 0.1, rel_tol=1e-4)
-    assert math.isclose(float(_sortie(net, "K_sat_1", [0.0])[0]), 0.5, rel_tol=1e-4)
+def test_center_kept_for_log_outputs():
+    net = _field()
+    assert math.isclose(float(_output(net, "K_sat_2", [0.0])[0]), 0.1, rel_tol=1e-4)
+    assert math.isclose(float(_output(net, "K_sat_1", [0.0])[0]), 0.5, rel_tol=1e-4)
 
 
-def test_gradient_non_nul_pres_du_plancher():
-    net = _champ()
+def test_nonzero_gradient_near_floor():
+    net = _field()
     raw = torch.zeros(1, SpatialParams.N_PARAMS)
     noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
     raw[0, noms.index("K_sat_2")] = -40.0
@@ -42,22 +42,22 @@ def test_gradient_non_nul_pres_du_plancher():
     assert float(raw.grad[0, noms.index("K_sat_2")]) > 0.0
 
 
-def test_bornes_du_toml():
+def test_bounds_from_toml():
     cfg = {"field": {"bounds": {"K_sat_2": [1e-3, 10.0], "C_f": [1.0, 6.0]}}, "soil": {"z2_min": 0.4}}
     fb = field_bounds_from_toml(cfg)
-    net = _champ(field_bounds=fb)
-    assert float(_sortie(net, "K_sat_2", [-50.0])[0]) >= 1e-3 * 0.999
-    assert float(_sortie(net, "C_f", [50.0])[0]) <= 6.0 + 1e-6
-    assert float(_sortie(net, "Z2", [-50.0])[0]) >= 0.4 - 1e-6
+    net = _field(field_bounds=fb)
+    assert float(_output(net, "K_sat_2", [-50.0])[0]) >= 1e-3 * 0.999
+    assert float(_output(net, "C_f", [50.0])[0]) <= 6.0 + 1e-6
+    assert float(_output(net, "Z2", [-50.0])[0]) >= 0.4 - 1e-6
 
 
-def test_sortie_inconnue_refusee():
+def test_unknown_output_refused():
     with pytest.raises(KeyError):
         field_bounds_from_toml({"field": {"bounds": {"pas_une_sortie": [0, 1]}}})
 
 
-def test_initialisation_inverse_la_loi():
-    net = _champ()
+def test_initialization_inverts_the_law():
+    net = _field()
     raw = net._literature_raw_vector().unsqueeze(0)
     sp = net._apply_constraints(raw)
     assert math.isclose(float(sp.K_sat_1[0]), net._prior_targets["K_sat_1"], rel_tol=1e-3)

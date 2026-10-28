@@ -12,7 +12,7 @@ import torch
 from meandre.training.loss import HydroLoss
 
 
-def _perte(station_var, echelle):
+def _loss(station_var, echelle):
     """Une station, dix ans de debits, l'erreur valant un dixieme du signal."""
     torch.manual_seed(0)
     n = 3650
@@ -27,15 +27,15 @@ def _perte(station_var, echelle):
     return float(out[0] if isinstance(out, tuple) else out)
 
 
-def test_sans_normalisation_le_terme_croit_avec_le_carre_du_debit():
+def test_without_normalization_term_grows_with_squared_discharge():
     """Deux bassins identiques a l'echelle pres donnent des pertes dans un rapport cent,
     ce qui est la source du desequilibre."""
-    petit = _perte(None, 1.0)
-    grand = _perte(None, 10.0)
+    petit = _loss(None, 1.0)
+    grand = _loss(None, 10.0)
     assert grand / petit > 50
 
 
-def test_avec_normalisation_l_echelle_disparait():
+def test_normalization_removes_scale():
     """Normalisee par la variance observee, la meme erreur relative donne la meme perte,
     que le bassin fasse un metre cube par seconde ou cent."""
     torch.manual_seed(0)
@@ -53,7 +53,7 @@ def test_avec_normalisation_l_echelle_disparait():
         assert abs(val - ref) / ref < 0.05, f"echelle {ech} : {val:.4f} contre {ref:.4f}"
 
 
-def test_le_terme_normalise_est_d_ordre_un():
+def test_normalized_term_is_order_one():
     """Une erreur de dix pour cent doit donner une perte lisible a cote des autres termes,
     pas une centaine."""
     torch.manual_seed(0)
@@ -67,7 +67,7 @@ def test_le_terme_normalise_est_d_ordre_un():
     assert 0.001 < val < 10.0, val
 
 
-def test_le_banc_de_sousbassin_normalise():
+def test_subbasin_bench_normalizes():
     """Garde-fou : le banc doit passer station_var a sa perte. Il ne le faisait pas
     jusqu'au 2026-09-13 et minimisait donc autre chose que la region qu'il represente."""
     src = open("experiments/subbasin-bench/banc_sousbassin.py", encoding="utf-8").read()
@@ -77,7 +77,7 @@ def test_le_banc_de_sousbassin_normalise():
     assert src.count("station_var=_svar") == 2, "les deux branches doivent normaliser"
 
 
-def test_le_banc_expose_les_deux_termes_de_la_recette():
+def test_bench_exposes_both_recipe_terms():
     """Le banc doit pouvoir reproduire la perte du pilote regional, faute de quoi il ne
     peut pas reproduire ses defauts. Deux termes y manquaient jusqu'au 2026-09-13 :
     l'ecart quadratique sur le logarithme des debits, que la recette pose a 0,3 et qui

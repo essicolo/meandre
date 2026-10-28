@@ -34,7 +34,7 @@ Station        Date                Debit (m3/s)   Remarque
 """
 
 
-def test_parse_lit_valeurs_et_remarques():
+def test_parse_reads_values_and_remarks():
     d = parse_cehq_text(_FICHIER)
     assert len(d) == 7, "les lignes SANS debit sont conservees : une lacune est une information"
     assert list(d.station_id.unique()) == ["040830"]
@@ -44,7 +44,7 @@ def test_parse_lit_valeurs_et_remarques():
     assert d.remark.iloc[3] == "", "et ne doit pas inventer de remarque"
 
 
-def test_parse_ne_confond_pas_remarque_et_debit():
+def test_parse_does_not_confuse_remark_and_discharge():
     """Piege du format : quand le debit manque, le 3e champ EST la remarque.
 
     Sans ce cas, une remarque se retrouverait lue comme une valeur de debit (ou ferait
@@ -65,11 +65,11 @@ def test_parse_ne_confond_pas_remarque_et_debit():
     ("", False),
     ("P", False),       # provisoire, mais mesuree
 ])
-def test_regle_de_reconstruction(remarque, attendu):
+def test_reconstruction_rule(remarque, attendu):
     assert is_reconstructed(remarque) is attendu
 
 
-def test_p_etoile_nest_pas_une_reconstruction():
+def test_p_star_is_not_a_reconstruction():
     """`P*` signifie provisoire ET NON ESTIMEE : l'etoile inverse le sens.
 
     Le `E` de `P*` ne doit pas etre lu comme le code `E`, et plus generalement aucune
@@ -79,11 +79,11 @@ def test_p_etoile_nest_pas_une_reconstruction():
     assert is_reconstructed("MC") is False, "le C de MC n'est pas un code a lui seul"
 
 
-def test_regle_robuste_aux_entrees_vides():
+def test_rule_robust_to_empty_inputs():
     for x in (None, float("nan"), 0, ""):
         assert is_reconstructed(x) is False
 
 
-def test_les_deux_codes_sont_bien_ceux_documentes():
+def test_both_codes_are_the_documented_ones():
     """Garde-fou : elargir cette liste change TOUS les chiffres de R19."""
     assert RECONSTRUCTED_FLAGS == ("E", "R")

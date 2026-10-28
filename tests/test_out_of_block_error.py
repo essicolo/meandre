@@ -33,7 +33,7 @@ def _jeu(n_par_bloc=30, graine=0, decalage=5.0):
     return np.vstack(X), np.concatenate(y), np.concatenate(blocs)
 
 
-def test_bloc_evalue_ne_melange_pas_les_deux_sens():
+def test_evaluated_block_does_not_mix_directions():
     X, y, blocs = _jeu()
     deux = np.where(blocs == 2, 2, 0)
     melange, _ = _m.erreur_hors_bloc(X, y, deux)
@@ -41,26 +41,26 @@ def test_bloc_evalue_ne_melange_pas_les_deux_sens():
     assert seul > melange, "le bloc 2 est le plus dur : l'isoler doit donner une erreur plus grande"
 
 
-def test_temoin_est_la_moyenne_du_reste():
+def test_control_is_mean_of_the_rest():
     X, y, blocs = _jeu()
     _, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=2)
     attendu = np.abs(y[blocs == 2] - y[blocs != 2].mean()).mean()
     assert temoin == pytest.approx(attendu, rel=1e-9)
 
 
-def test_covariables_informatives_battent_le_temoin():
+def test_informative_covariates_beat_the_control():
     X, y, blocs = _jeu()
     err, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=0)
     assert err < temoin
 
 
-def test_bloc_absent_rend_des_valeurs_manquantes():
+def test_missing_block_returns_missing_values():
     X, y, blocs = _jeu()
     err, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=99)
     assert np.isnan(err) and np.isnan(temoin)
 
 
-def test_part_expliquee_seffondre_sur_un_bloc_sans_dispersion():
+def test_explained_share_collapses_on_block_without_dispersion():
     """La raison pour laquelle l'outil ne rend plus la part de variance par défaut."""
     X, y, blocs = _jeu(decalage=0.0)
     err, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=2)

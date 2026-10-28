@@ -52,7 +52,7 @@ def test_gradients_flow():
     assert coords.grad is not None
 
 
-def test_sortie_rembourree_vaut_le_milieu_des_bornes():
+def test_padded_output_is_bounds_midpoint():
     """Une ligne NULLE de fc_out rend le milieu des bornes, pas la valeur de litterature.
 
     C'est le mecanisme qui a fige cinq parametres dans les modeles retenus (mesure du
@@ -75,7 +75,7 @@ def test_sortie_rembourree_vaut_le_milieu_des_bornes():
     assert float(v.median()) == pytest.approx(1.5, abs=1e-4)
 
 
-def test_bornes_de_muskingum_configurables(monkeypatch):
+def test_muskingum_bounds_configurable(monkeypatch):
     """MEANDRE_KMUSK deplace les bornes du temps de transfert.
 
     Le troncon median mesure 2.9 a 3.5 km, parcouru en une heure a 1 m/s, alors que la

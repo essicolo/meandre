@@ -12,42 +12,42 @@ import torch
 from meandre.training.loss import HydroLoss
 
 
-def _perte(mode):
+def _loss(mode):
     return HydroLoss(w_kge=0.0, w_mse=0.0, w_et=1.0, et_mode=mode, per_station=False)
 
 
-def test_un_mode_inconnu_est_refuse():
+def test_unknown_mode_refused():
     with pytest.raises(ValueError, match="et_mode inconnu"):
-        _perte("mediane")
+        _loss("mediane")
 
 
-def test_les_trois_modes_sont_acceptes():
+def test_three_modes_are_accepted():
     for m in ("level", "anomaly", "bassin"):
-        assert _perte(m).et_mode == m
+        assert _loss(m).et_mode == m
 
 
-def test_le_mode_bassin_ignore_la_repartition_entre_nœuds():
+def test_basin_mode_ignores_split_between_nodes():
     """Deux champs de même moyenne par pas de temps doivent coûter la même chose."""
     obs = torch.tensor([[1.0, 3.0], [2.0, 2.0]])
     egal = torch.tensor([[2.0, 2.0], [2.0, 2.0]])
     inverse = torch.tensor([[3.0, 1.0], [2.0, 2.0]])
-    p = _perte("bassin")
+    p = _loss("bassin")
     a = _cout(p, obs, egal)
     b = _cout(p, obs, inverse)
     assert a == pytest.approx(b), "le mode bassin ne doit voir que la moyenne"
 
 
-def test_le_mode_niveau_voit_la_repartition():
+def test_level_mode_sees_the_split():
     obs = torch.tensor([[1.0, 3.0], [2.0, 2.0]])
     egal = torch.tensor([[2.0, 2.0], [2.0, 2.0]])
-    p = _perte("level")
+    p = _loss("level")
     assert _cout(p, obs, egal) > 0.0
 
 
-def test_un_nœud_sans_observation_ne_tire_pas_la_moyenne():
+def test_node_without_observation_does_not_pull_the_mean():
     obs = torch.tensor([[1.0, float("nan")], [2.0, 2.0]])
     sim = torch.tensor([[1.0, 99.0], [2.0, 2.0]])
-    assert _cout(_perte("bassin"), obs, sim) == pytest.approx(0.0)
+    assert _cout(_loss("bassin"), obs, sim) == pytest.approx(0.0)
 
 
 def _cout(p, obs, sim):

@@ -30,26 +30,26 @@ class _Perte:
             setattr(self, k, v)
 
 
-def test_un_poids_pose_apres_coup_est_vu():
+def test_weight_set_afterwards_is_seen():
     """Le cas exact qui a echoue : w_nappe absent de la configuration."""
     assert "s_gw" in besoins(_Perte(w_water_table=1.0), {})
     assert "profondeur_nappe_m" in besoins(_Perte(w_water_table=1.0), {})
 
 
-def test_un_poids_de_la_configuration_seule_est_vu():
+def test_configuration_only_weight_is_seen():
     assert "etr" in besoins(_Perte(), {"w_et": 0.4})
 
 
-def test_lobjet_de_perte_prime_sur_la_configuration():
+def test_loss_object_overrides_configuration():
     """Le pilote peut éteindre un terme que la configuration allumait."""
     assert besoins(_Perte(w_et=0.0), {"w_et": 0.4}) == [], (
         "un repli sur la configuration rallumerait le terme en douce")
 
 
-def test_rien_ne_sort_quand_tout_est_eteint():
+def test_nothing_out_when_all_off():
     assert besoins(_Perte(), {}) == []
 
 
-def test_la_gravimetrie_entraine_les_teneurs_en_eau():
+def test_gravimetry_trains_water_contents():
     g = besoins(_Perte(w_tws=0.2), {})
     assert "theta1" in g and "s_gw" in g

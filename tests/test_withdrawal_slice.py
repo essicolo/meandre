@@ -22,7 +22,7 @@ def test_tranche_alignee():
     assert float(t.gw_withdrawal(2)[0]) == -6.0
 
 
-def test_entraineur_ne_passe_jamais_la_serie_complete():
+def test_trainer_never_passes_the_full_series():
     src = Path("meandre/training/trainer.py").read_text(encoding="utf-8")
     appels = re.findall(r"withdrawals=data\.withdrawals[^\n]*", src)
     assert appels, "aucun appel trouvé"

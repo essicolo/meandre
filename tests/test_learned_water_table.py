@@ -12,7 +12,7 @@ N = 3
 OCC = dict(feuillus=0.6, conifers=0.3, ouverts=0.1, humides=0.0, urbain=0.0, routes=0.0, eau=0.0, mixtes=0.0)
 
 
-def _colonne(apprise):
+def _column(apprise):
     torch.set_default_dtype(torch.float64)
     psnow, psoil, petr = build_static_params(N, lat=45.3, slope=0.02, orientation=7, texture="loam", z=(0.2, 0.4, 1.0), land_cover_table=OCC)
     col = HydrotelColumn(et_mode="mcguinness", use_frost=False, use_aquifer=True)
@@ -21,7 +21,7 @@ def _colonne(apprise):
     return col
 
 
-def _vidange(col, apprise, day_count=30):
+def _drainage(col, apprise, day_count=30):
     p = col._water_table
     if apprise:
         kb = torch.exp(col.nappe_log_kb)
@@ -38,17 +38,17 @@ def _vidange(col, apprise, day_count=30):
     return q_tot
 
 
-def test_identique_a_l_initialisation():
-    a = _vidange(_colonne(False), False).detach()
-    b = _vidange(_colonne(True), True).detach()
+def test_identical_at_initialization():
+    a = _drainage(_column(False), False).detach()
+    b = _drainage(_column(True), True).detach()
     assert torch.allclose(a, b, rtol=1e-10, atol=1e-12)
 
 
-def test_valeurs_et_gradients():
-    col = _colonne(True)
+def test_values_and_gradients():
+    col = _column(True)
     v = col.water_table_values()
     assert abs(v["k_b"] - 1.5e-3) < 1e-12 and abs(v["e_frac"] - 0.15) < 1e-12 and abs(v["exposant"] - 2.0) < 1e-12
-    _vidange(col, True).sum().backward()
+    _drainage(col, True).sum().backward()
     for nom in ("nappe_log_kb", "nappe_logit_efrac", "nappe_log_exp1"):
         g = getattr(col, nom).grad
         assert g is not None and torch.isfinite(g) and float(g) != 0.0, nom

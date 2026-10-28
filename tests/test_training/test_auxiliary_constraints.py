@@ -20,13 +20,13 @@ import torch
 from meandre.training.loss import HydroLoss, tws_anomaly_loss
 
 
-def test_hydroloss_accepte_w_tws_clim():
+def test_hydroloss_accepts_w_tws_clim():
     """Le poids existe et vaut zero par defaut (opt-in, pas de changement furtif)."""
     assert HydroLoss().w_tws_clim == 0.0
     assert HydroLoss(w_tws_clim=0.05).w_tws_clim == 0.05
 
 
-def _donnees(n_pas=400, avec_swe=True, avec_tws=True, avec_et=True):
+def _data(n_pas=400, avec_swe=True, avec_tws=True, avec_et=True):
     from meandre.training.trainer import TrainingData
     from unittest.mock import MagicMock
     return TrainingData(
@@ -47,7 +47,7 @@ def _donnees(n_pas=400, avec_swe=True, avec_tws=True, avec_et=True):
     ({"w_tws": 0.2}, "avec_tws"),
     ({"w_et": 1.0}, "avec_et"),
 ])
-def test_poids_actif_sans_cible_leve(poids, absent):
+def test_active_weight_without_target_raises(poids, absent):
     """LE COEUR DE LA DETTE #14 : un objectif demande mais absent doit CRIER.
 
     Sans ce garde-fou, le trainer sautait le terme en silence et rendait un score
@@ -56,17 +56,17 @@ def test_poids_actif_sans_cible_leve(poids, absent):
     from meandre.training.trainer import Trainer
     with pytest.raises(ValueError, match="sans sa cible"):
         Trainer(model=torch.nn.Linear(1, 1), loss_fn=HydroLoss(**poids),
-                train_data=_donnees(**{absent: False}))
+                train_data=_data(**{absent: False}))
 
 
-def test_poids_nul_sans_cible_passe():
+def test_zero_weight_without_target_passes():
     """Le garde-fou ne doit pas gener la configuration normale (rien demande)."""
     from meandre.training.trainer import Trainer
     Trainer(model=torch.nn.Linear(1, 1), loss_fn=HydroLoss(),
-            train_data=_donnees(avec_swe=False, avec_tws=False, avec_et=False))
+            train_data=_data(avec_swe=False, avec_tws=False, avec_et=False))
 
 
-def test_terme_mensuel_aveugle_au_biais_saisonnier():
+def test_monthly_term_blind_to_seasonal_bias():
     """R23 chiffre : un biais systematique de 26 mm se lit comme ~1 ecart-type.
 
     C'est la mesure qui justifie le terme climatologique. Le residu du champion
@@ -82,7 +82,7 @@ def test_terme_mensuel_aveugle_au_biais_saisonnier():
     assert lu_clim > 20 * lu_mensuel, "a l'incertitude de la climatologie, elle pousse"
 
 
-def test_biais_saisonnier_survit_au_centrage():
+def test_seasonal_bias_survives_centering():
     """Un biais de MOYENNE NULLE sur l'annee est invisible au centrage long terme.
 
     C'est exactement la forme du residu mesure (+44 mars, -47 mai) : il ne deplace
@@ -107,18 +107,18 @@ def _sites(n=3, dist=(1.0, 2.0, 3.0), delev=(10.0, 20.0, 30.0)):
                          "dist_km": list(dist), "elev_diff_m": list(delev)})
 
 
-def _mesures(dates, sites, value_list):
+def _measurements(dates, sites, value_list):
     import pandas as pd
     return pd.DataFrame({"swe_station_id": sites, "date": pd.to_datetime(dates),
                          "swe_mm": value_list})
 
 
-def test_build_swe_targets_place_les_releves_au_bon_jour():
+def test_build_swe_targets_places_surveys_on_the_right_day():
     import pandas as pd
     from meandre.data.canswe_loader import build_swe_targets
     t = pd.date_range("2020-01-01", "2020-01-10", freq="D")
     v, node, gardes = build_swe_targets(
-        _mesures(["2020-01-03", "2020-01-07"], ["S0", "S2"], [120.0, 80.0]),
+        _measurements(["2020-01-03", "2020-01-07"], ["S0", "S2"], [120.0, 80.0]),
         _sites(), t)
     assert v.shape == (10, 3) and len(gardes) == 3
     assert float(v[2, 0]) == 120.0 and float(v[6, 2]) == 80.0
@@ -126,7 +126,7 @@ def test_build_swe_targets_place_les_releves_au_bon_jour():
     assert node.tolist() == [0, 1, 2]
 
 
-def test_build_swe_targets_ecarte_les_sites_non_representatifs():
+def test_build_swe_targets_drops_unrepresentative_sites():
     """Les filtres BORNENT la representativite ponctuelle au lieu de la corriger.
 
     Corriger demanderait un parametre par site, ce qui detruirait l'identifiabilite
@@ -136,7 +136,7 @@ def test_build_swe_targets_ecarte_les_sites_non_representatifs():
     import pandas as pd
     from meandre.data.canswe_loader import build_swe_targets
     t = pd.date_range("2020-01-01", "2020-01-05", freq="D")
-    m = _mesures(["2020-01-02"] * 3, ["S0", "S1", "S2"], [100.0, 100.0, 100.0])
+    m = _measurements(["2020-01-02"] * 3, ["S0", "S1", "S2"], [100.0, 100.0, 100.0])
     v, node, gardes = build_swe_targets(
         m, _sites(dist=(1.0, 99.0, 2.0), delev=(10.0, 10.0, 999.0)), t,
         max_dist_km=15.0, max_elev_diff_m=150.0)
@@ -144,25 +144,25 @@ def test_build_swe_targets_ecarte_les_sites_non_representatifs():
     assert v.shape == (5, 1)
 
 
-def test_build_swe_targets_rend_none_si_rien_ne_passe():
+def test_build_swe_targets_returns_none_when_nothing_passes():
     import pandas as pd
     from meandre.data.canswe_loader import build_swe_targets
     t = pd.date_range("2020-01-01", "2020-01-05", freq="D")
     v, node, gardes = build_swe_targets(
-        _mesures(["2020-01-02"], ["S0"], [100.0]),
+        _measurements(["2020-01-02"], ["S0"], [100.0]),
         _sites(n=1, dist=(99.0,), delev=(10.0,)), t)
     assert v is None and node is None and gardes is None
 
 
-def test_poids_masse_sans_cible_leve():
+def test_mass_weight_without_target_raises():
     """Meme garde-fou que pour les autres auxiliaires (dette #14)."""
     from meandre.training.trainer import Trainer
     with pytest.raises(ValueError, match="sans sa cible"):
         Trainer(model=torch.nn.Linear(1, 1), loss_fn=HydroLoss(w_swe_mass=0.3),
-                train_data=_donnees())
+                train_data=_data())
 
 
-def test_masse_et_couverture_sont_des_cibles_DISTINCTES():
+def test_mass_and_coverage_are_DISTINCT_targets():
     """Le coeur de R24 : la couverture SATURE, la masse non.
 
     SCF = 1-exp(-SWE/15) vaut deja 0.96 a 50 mm et 0.9997 a 121 mm : entre un manteau
@@ -178,7 +178,7 @@ def test_masse_et_couverture_sont_des_cibles_DISTINCTES():
 
 # ── Terme climatologique GRACE : mecanique du passage direct (R23) ───────────
 
-def _passage_direct(res, biais, sigma=5.4):
+def _direct_pass(res, biais, sigma=5.4):
     """Reproduit le calcul du trainer : valeur = biais accumule, gradient = residu.
 
     `res` porte le graphe, `biais` est detache. La valeur penalisee doit etre le biais
@@ -188,7 +188,7 @@ def _passage_direct(res, biais, sigma=5.4):
     return (st.pow(2) / (sigma ** 2)).mean()
 
 
-def test_passage_direct_penalise_le_biais_pas_le_residu_courant():
+def test_direct_pass_penalizes_bias_not_current_residual():
     """La VALEUR ne doit dependre que du biais accumule.
 
     Sinon le terme redeviendrait un terme mensuel deguise, et on retomberait dans le
@@ -197,38 +197,38 @@ def test_passage_direct_penalise_le_biais_pas_le_residu_courant():
     biais = torch.full((4,), 20.0)
     for valeur_residu in (0.0, 20.0, -50.0):
         res = torch.full((4,), valeur_residu, requires_grad=True)
-        L = _passage_direct(res, biais).detach()
+        L = _direct_pass(res, biais).detach()
         assert abs(float(L) - (20.0 / 5.4) ** 2) < 1e-4
 
 
-def test_passage_direct_pousse_dans_le_BON_SENS():
+def test_direct_pass_pushes_in_the_RIGHT_DIRECTION():
     """Un biais POSITIF (modele trop haut) doit faire DESCENDRE le residu.
 
     Le signe est la seule chose qui ne pardonne pas : inverse, la contrainte
     aggraverait exactement l'ecart qu'elle est censee fermer.
     """
     res = torch.zeros(4, requires_grad=True)
-    _passage_direct(res, torch.full((4,), 20.0)).backward()
+    _direct_pass(res, torch.full((4,), 20.0)).backward()
     assert (res.grad > 0).all(), "gradient positif => la descente diminue le residu"
 
     res2 = torch.zeros(4, requires_grad=True)
-    _passage_direct(res2, torch.full((4,), -20.0)).backward()
+    _direct_pass(res2, torch.full((4,), -20.0)).backward()
     assert (res2.grad < 0).all(), "biais negatif => la descente augmente le residu"
 
 
-def test_passage_direct_muet_tant_que_le_biais_est_nul():
+def test_direct_pass_silent_while_bias_is_zero():
     """Au premier troncon le biais accumule vaut zero : aucun gradient ne doit sortir.
 
     C'est voulu -- la moyenne mobile doit d'abord se remplir. Un gradient non nul ici
     signifierait qu'on pousse sur du bruit de troncon.
     """
     res = torch.randn(6, requires_grad=True)
-    L = _passage_direct(res, torch.zeros(6))
+    L = _direct_pass(res, torch.zeros(6))
     L.backward()
     assert float(L) == 0.0 and torch.allclose(res.grad, torch.zeros(6))
 
 
-def test_bucketize_du_jour_julien_vers_le_mois():
+def test_bucketize_julian_day_to_month():
     """Les bornes du trainer doivent rendre 0 pour janvier et 11 pour decembre."""
     bornes = torch.tensor([31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335])
     for doy, months in [(1, 0), (31, 0), (32, 1), (60, 1), (61, 2), (121, 3),
@@ -238,23 +238,23 @@ def test_bucketize_du_jour_julien_vers_le_mois():
 
 # ── krec dans le champ : ancrage de la moyenne, variation spatiale libre ─────
 
-def _champ(n=64):
+def _field(n=64):
     from meandre.spatial.field_network import SpatialFieldNetwork
     return SpatialFieldNetwork(n_territorial=4)
 
 
-def test_prior_krec_est_opt_in():
+def test_prior_krec_is_opt_in():
     """Quand krec est IMPOSE par le calage, la sortie du champ n'est pas utilisee.
 
     L'ancrer alors tirerait un parametre mort et changerait la perte sans changer la
     physique -- ce qui casserait la comparabilite entre deux runs qui ne different que
     par le calage. Le drapeau n'est leve que quand krec est reellement libre.
     """
-    net = _champ()
+    net = _field()
     assert getattr(net, "prior_on_krec", False) is False
 
 
-def test_prior_krec_ancre_la_MOYENNE_et_pas_chaque_noeud():
+def test_prior_krec_anchors_the_MEAN_not_each_node():
     """Le coeur de la remarque d'Essi : krec est une propriete du sous-sol.
 
     La forme (log(p).mean() - log(c))^2 ne penalise QUE l'ecart de la moyenne
@@ -272,7 +272,7 @@ def test_prior_krec_ancre_la_MOYENNE_et_pas_chaque_noeud():
     assert abs(float(terme(disperse))) < 1e-6, "la dispersion ne doit RIEN couter"
 
 
-def test_prior_krec_rappelle_un_champ_effondre():
+def test_prior_krec_restores_collapsed_field():
     """Un krec ecrase a la valeur du calage Hydrotel doit etre penalise fortement.
 
     1.3e-7 contre une cible de 2e-5, c'est un facteur 154 : le terme doit etre grand
@@ -286,13 +286,13 @@ def test_prior_krec_rappelle_un_champ_effondre():
     assert terme > 20.0, f"terme trop faible pour contrer le debit : {terme}"
 
 
-def test_krec_reste_dans_ses_bornes_physiques():
+def test_krec_stays_within_physical_bounds():
     """La transformation log-normale borne krec a [1e-7, 1e-4] m/h.
 
     En dessous, la couche profonde ne draine plus du tout (0.0036 mm/j a 1.3e-7) ;
     au-dessus, la nappe fournit la quasi-totalite du debit et le score s'effondre.
     """
-    net = _champ()
+    net = _field()
     brut = torch.linspace(-50.0, 50.0, 200)
     from meandre.spatial.field_network import KREC_REF
     import math

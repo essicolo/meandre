@@ -37,7 +37,7 @@ def _write_uhrh(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(lines), encoding="latin-1")
 
 
-def _write_occupation_sol_cla(path: Path, rows: list[dict]) -> None:
+def _write_land_cover_cla(path: Path, rows: list[dict]) -> None:
     """Write occupation_sol.cla with 9 land cover classes."""
     lines = [
         "1\n",
@@ -51,7 +51,7 @@ def _write_occupation_sol_cla(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(lines), encoding="latin-1")
 
 
-def _write_type_sol_cla(path: Path, rows: list[dict]) -> None:
+def _write_soil_type_cla(path: Path, rows: list[dict]) -> None:
     """Write type_sol.cla with one soil class per UHRH."""
     lines = ["1\n"]
     for r in rows:
@@ -59,7 +59,7 @@ def _write_type_sol_cla(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(lines), encoding="latin-1")
 
 
-def _write_troncon(path: Path, reaches: list[dict]) -> None:
+def _write_reach(path: Path, reaches: list[dict]) -> None:
     """Write a minimal troncon.trl."""
     lines = [
         "2\n",
@@ -101,7 +101,7 @@ def _write_troncon(path: Path, reaches: list[dict]) -> None:
     path.write_text("".join(lines), encoding="latin-1")
 
 
-def _write_bilan_vertical(path: Path, rows: list[dict]) -> None:
+def _write_vertical_balance(path: Path, rows: list[dict]) -> None:
     lines = [
         "ETATS BILAN VERTICAL;BV3C( 4.1.5.0014 )\n",
         "DATE_HEURE;2023-08-01 00:00\n",
@@ -114,7 +114,7 @@ def _write_bilan_vertical(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(lines), encoding="latin-1")
 
 
-def _write_fonte_neige(path: Path, rows: list[dict]) -> None:
+def _write_snowmelt(path: Path, rows: list[dict]) -> None:
     lines = [
         "ETATS FONTE NEIGE;DEGRE JOUR MODIFIE( 4.1.5.0014 )\n",
         "DATE_HEURE;2023-08-01 00:00\n",
@@ -149,10 +149,10 @@ def _make_simple_project(tmp: Path, n_uhrh: int = 4) -> Path:
     _write_uhrh(physi / "uhrh.csv", uhrh_rows)
 
     lc_rows = [{"id": i + 1} for i in range(n_uhrh)]
-    _write_occupation_sol_cla(physi / "occupation_sol.cla", lc_rows)
+    _write_land_cover_cla(physi / "occupation_sol.cla", lc_rows)
 
     soil_rows = [{"id": i + 1, "cls": 4} for i in range(n_uhrh)]  # loam
-    _write_type_sol_cla(physi / "type_sol.cla", soil_rows)
+    _write_soil_type_cla(physi / "type_sol.cla", soil_rows)
 
     # 2 river troncons: troncon 1 (UHRHs 1,2) → troncon 2 (UHRHs 3,4) → outlet
     reaches = [
@@ -167,14 +167,14 @@ def _make_simple_project(tmp: Path, n_uhrh: int = 4) -> Path:
             "uhrh_ids": [3, 4], "downstream_id": 2,  # self → outlet
         },
     ]
-    _write_troncon(physi / "troncon.trl", reaches)
+    _write_reach(physi / "troncon.trl", reaches)
 
     bv_rows = [{"id": i + 1, "t1": 0.35, "t2": 0.30, "t3": 0.25}
                for i in range(n_uhrh)]
-    _write_bilan_vertical(etat / "bilan_vertical_2023080100.csv", bv_rows)
+    _write_vertical_balance(etat / "bilan_vertical_2023080100.csv", bv_rows)
 
     fn_rows = [{"id": i + 1, "swe": 0.0} for i in range(n_uhrh)]
-    _write_fonte_neige(etat / "fonte_neige_2023080100.csv", fn_rows)
+    _write_snowmelt(etat / "fonte_neige_2023080100.csv", fn_rows)
 
     return tmp
 
@@ -226,7 +226,7 @@ class TestParseOccupationSol:
             {"id": 2, "counts": [0, 0, 10, 500, 200, 300, 0, 0, 0]},
         ]
         uhrh = {1: {}, 2: {}}
-        _write_occupation_sol_cla(tmp_path / "occupation_sol.cla", lc_rows)
+        _write_land_cover_cla(tmp_path / "occupation_sol.cla", lc_rows)
         lc = _parse_land_cover_cla(tmp_path / "occupation_sol.cla", uhrh)
 
         assert len(lc) == 2
@@ -236,7 +236,7 @@ class TestParseOccupationSol:
     def test_pixel_total(self, tmp_path):
         counts = [0, 100, 50, 200, 150, 100, 30, 40, 30]
         lc_rows = [{"id": 1, "counts": counts}]
-        _write_occupation_sol_cla(tmp_path / "occupation_sol.cla", lc_rows)
+        _write_land_cover_cla(tmp_path / "occupation_sol.cla", lc_rows)
         lc = _parse_land_cover_cla(tmp_path / "occupation_sol.cla", {})
         assert lc[1].sum() == pytest.approx(sum(counts))
 
@@ -244,7 +244,7 @@ class TestParseOccupationSol:
 class TestParseTypeSol:
     def test_returns_class_per_uhrh(self, tmp_path):
         soil_rows = [{"id": 1, "cls": 4}, {"id": 2, "cls": 8}]
-        _write_type_sol_cla(tmp_path / "type_sol.cla", soil_rows)
+        _write_soil_type_cla(tmp_path / "type_sol.cla", soil_rows)
         soil = _parse_soil_type_cla(tmp_path / "type_sol.cla", {})
 
         assert soil[1] == 4
@@ -261,7 +261,7 @@ class TestParseTroncon:
              "length_m": 2000.0, "width_m": 6.0, "slope": 0.02,
              "uhrh_ids": [3], "downstream_id": 2},
         ]
-        _write_troncon(tmp_path / "troncon.trl", reaches)
+        _write_reach(tmp_path / "troncon.trl", reaches)
         troncons = _parse_reach(tmp_path / "troncon.trl")
 
         assert len(troncons) == 2
@@ -284,7 +284,7 @@ class TestParseTroncon:
              "lake_rating_k": 8.0, "lake_rating_beta": 1.5,
              "uhrh_ids": [1, 2, 3], "downstream_id": 1},  # outlet (self)
         ]
-        _write_troncon(tmp_path / "troncon.trl", reaches)
+        _write_reach(tmp_path / "troncon.trl", reaches)
         troncons = _parse_reach(tmp_path / "troncon.trl")
 
         assert troncons[0]["type"] == 2
@@ -304,7 +304,7 @@ class TestParseTroncon:
              "length_m": 5000.0, "width_m": 20.0, "slope": 0.01,
              "uhrh_ids": [2], "downstream_id": 2},
         ]
-        _write_troncon(tmp_path / "troncon.trl", reaches)
+        _write_reach(tmp_path / "troncon.trl", reaches)
         troncons = _parse_reach(tmp_path / "troncon.trl")
 
         lac = next(t for t in troncons if t["type"] == 2)
@@ -318,7 +318,7 @@ class TestParseTroncon:
              "uhrh_ids": [i], "downstream_id": i + 1 if i < 5 else i}
             for i in range(1, 6)
         ]
-        _write_troncon(tmp_path / "troncon.trl", reaches)
+        _write_reach(tmp_path / "troncon.trl", reaches)
         troncons = _parse_reach(tmp_path / "troncon.trl")
         assert len(troncons) == 5
 
@@ -419,9 +419,9 @@ class TestLoadHydrotel:
 
         uhrh_rows = [{"id": i + 1, "area": 1.0} for i in range(3)]
         _write_uhrh(physi / "uhrh.csv", uhrh_rows)
-        _write_occupation_sol_cla(physi / "occupation_sol.cla",
+        _write_land_cover_cla(physi / "occupation_sol.cla",
                                   [{"id": i + 1} for i in range(3)])
-        _write_type_sol_cla(physi / "type_sol.cla",
+        _write_soil_type_cla(physi / "type_sol.cla",
                             [{"id": i + 1, "cls": 4} for i in range(3)])
 
         # Troncon 1 = river, troncon 2 = lake (outlet)
@@ -433,10 +433,10 @@ class TestLoadHydrotel:
              "length_m": 10000.0, "width_m": 500.0, "slope": 0.001,
              "uhrh_ids": [2, 3], "downstream_id": 2},  # self → outlet
         ]
-        _write_troncon(physi / "troncon.trl", reaches)
-        _write_bilan_vertical(etat / "bilan_vertical_2023080100.csv",
+        _write_reach(physi / "troncon.trl", reaches)
+        _write_vertical_balance(etat / "bilan_vertical_2023080100.csv",
                               [{"id": i + 1} for i in range(3)])
-        _write_fonte_neige(etat / "fonte_neige_2023080100.csv",
+        _write_snowmelt(etat / "fonte_neige_2023080100.csv",
                            [{"id": i + 1} for i in range(3)])
 
         result = load_hydrotel(tmp_path, normalized=False)
@@ -459,7 +459,7 @@ class TestLoadHydrotel:
         idx = t.columns.index("drainage_area_km2")
         assert t.data[dst, idx] > t.data[src, idx]
 
-    def test_no_crash_without_etat(self, tmp_path):
+    def test_no_crash_without_state_folder(self, tmp_path):
         """Loader issues a warning and falls back to default warm start."""
         physi = tmp_path / "physitel"
         etat = tmp_path / "etat"
@@ -467,12 +467,12 @@ class TestLoadHydrotel:
 
         uhrh_rows = [{"id": 1, "area": 1.0}]
         _write_uhrh(physi / "uhrh.csv", uhrh_rows)
-        _write_occupation_sol_cla(physi / "occupation_sol.cla", [{"id": 1}])
-        _write_type_sol_cla(physi / "type_sol.cla", [{"id": 1, "cls": 4}])
+        _write_land_cover_cla(physi / "occupation_sol.cla", [{"id": 1}])
+        _write_soil_type_cla(physi / "type_sol.cla", [{"id": 1, "cls": 4}])
         reaches = [{"id": 1, "type": 1, "upstream_node": 1, "downstream_node": 2,
                     "length_m": 1000.0, "width_m": 5.0, "slope": 0.04,
                     "uhrh_ids": [1], "downstream_id": 1}]
-        _write_troncon(physi / "troncon.trl", reaches)
+        _write_reach(physi / "troncon.trl", reaches)
         # No etat files
 
         with pytest.warns(UserWarning, match="bilan_vertical"):

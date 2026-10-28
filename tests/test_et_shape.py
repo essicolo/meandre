@@ -11,7 +11,7 @@ import torch
 from meandre.training.trainer import Trainer
 
 
-def _centre(mode, sim, obs):
+def _center(mode, sim, obs):
     t = object.__new__(Trainer)
     t.loss_fn = SimpleNamespace(et_mode=mode)
     t._et_sim_base = sim.mean(dim=0)
@@ -21,21 +21,21 @@ def _centre(mode, sim, obs):
     return zs, zo
 
 
-def test_forme_aveugle_au_facteur():
+def test_shape_blind_to_factor():
     torch.manual_seed(0)
     day_count = torch.arange(730, dtype=torch.float32)
     cycle = 1.5 + torch.sin(2 * torch.pi * day_count / 365.25)
     sim = cycle[:, None] * torch.tensor([0.8, 1.0, 1.2]) + 0.05 * torch.randn(730, 3)
     obs = cycle[:, None].repeat(1, 3) + 0.05 * torch.randn(730, 3)
-    zs1, zo1 = _centre("forme", sim, obs)
-    zs2, zo2 = _centre("forme", 0.6 * sim, obs)
+    zs1, zo1 = _center("forme", sim, obs)
+    zs2, zo2 = _center("forme", 0.6 * sim, obs)
     assert torch.allclose(zs1, zs2, atol=1e-5)
     assert torch.allclose(zo1, zo2)
 
 
-def test_centre_voit_le_facteur():
+def test_centered_mode_sees_the_factor():
     day_count = torch.arange(730, dtype=torch.float32)
     sim = (1.5 + torch.sin(2 * torch.pi * day_count / 365.25))[:, None].repeat(1, 2)
-    zs1, _ = _centre("anomaly", sim, sim.clone())
-    zs2, _ = _centre("anomaly", 0.6 * sim, sim.clone())
+    zs1, _ = _center("anomaly", sim, sim.clone())
+    zs2, _ = _center("anomaly", 0.6 * sim, sim.clone())
     assert not torch.allclose(zs1, zs2)

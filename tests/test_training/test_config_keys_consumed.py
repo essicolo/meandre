@@ -53,7 +53,7 @@ def _consumed_keys() -> set:
 
 
 @pytest.mark.parametrize("config", CONFIGS, ids=lambda p: p.stem)
-def test_toute_cle_training_est_consommee_ou_declaree(config):
+def test_every_training_key_consumed_or_declared(config):
     toml_keys = set(tomllib.loads(config.read_text(encoding="utf-8"))["training"].keys())
     silencieuses = toml_keys - _consumed_keys() - set(IGNOREES_SCIEMMENT)
     assert not silencieuses, (
@@ -62,19 +62,19 @@ def test_toute_cle_training_est_consommee_ou_declaree(config):
         f"dans IGNOREES_SCIEMMENT avec leur raison.")
 
 
-def test_patience_est_reellement_consommee():
+def test_patience_is_really_consumed():
     """Verrou nominal de la dette #16 : la cle qui a coute l'arret anticipe."""
     assert "patience" in _consumed_keys()
 
 
-def test_grad_clip_est_lu_sous_son_vrai_nom():
+def test_grad_clip_read_under_its_real_name():
     """Verrou du second bug attrape par ce balayage : la cle lue sous un autre nom."""
     src = PILOTE.read_text(encoding="utf-8")
     assert 'tcfg.get("grad_clip"' in src
     assert 'tcfg.get("clip_grad_norm"' not in src
 
 
-def test_la_liste_d_exceptions_ne_couvre_pas_des_cles_consommees():
+def test_exception_list_does_not_cover_consumed_keys():
     """Une cle a la fois consommee ET declaree ignoree est un mensonge de registre."""
     doubles = set(IGNOREES_SCIEMMENT) & _consumed_keys()
     assert not doubles, f"retirees de IGNOREES_SCIEMMENT : {sorted(doubles)}"

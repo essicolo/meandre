@@ -14,7 +14,7 @@ def _sp(valeur):
     return SpatialParams.from_tensor(torch.full((5, len(noms)), float(valeur)))
 
 
-def test_carte_capturee_puis_substituee():
+def test_map_captured_then_substituted():
     net = SpatialFieldNetwork.__new__(SpatialFieldNetwork)
     torch.nn.Module.__init__(net)
     net.freeze_on_next_call = {"K_sat_1"}
@@ -25,7 +25,7 @@ def test_carte_capturee_puis_substituee():
     assert torch.allclose(second.K_sat_2, torch.full((5,), 0.7))
 
 
-def test_multiplicateur_applique_apres_le_gel():
+def test_multiplier_applied_after_freezing():
     net = SpatialFieldNetwork.__new__(SpatialFieldNetwork)
     torch.nn.Module.__init__(net)
     net.freeze_on_next_call = {"K_sat_1"}

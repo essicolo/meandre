@@ -23,7 +23,7 @@ def _double():
         torch.set_default_dtype(ancien)
 
 
-def _colonne():
+def _column():
     p = make_params("silt_loam", "silt_loam", "silt_loam", slope=0.05, fsa=1.0, fse=0.0,
                     fsi=0.0, krec=KREC_DEFAULT, cin=CIN_DEFAULT, coef_recharge=0.0)
     z1, z2, z3 = EPAISSEUR
@@ -35,8 +35,8 @@ def _colonne():
     return BV3C2Clone(), p
 
 
-def _rapide(pluie_mm, orage, theta_rel=0.7):
-    cl, p = _colonne()
+def _fast(pluie_mm, orage, theta_rel=0.7):
+    cl, p = _column()
     tex = SOIL_TEXTURES["silt_loam"]
     t = tex["thetapf"] + theta_rel * (tex["thetas"] - tex["thetapf"])
     th = [torch.full((1,), float(t)) for _ in range(3)]
@@ -46,34 +46,34 @@ def _rapide(pluie_mm, orage, theta_rel=0.7):
     return 100.0 * (float(out[0].item()) + float(out[1].item())) / pluie_mm
 
 
-def test_sans_duree_d_orage_la_colonne_ne_produit_presque_rien():
+def test_without_storm_duration_column_produces_almost_nothing():
     """Le clone fidele, au pas journalier, est sous un pour cent : c'est le defaut."""
     for pluie in (20.0, 40.0, 80.0):
-        assert _rapide(pluie, None) < 1.0, pluie
+        assert _fast(pluie, None) < 1.0, pluie
 
 
-def test_une_averse_courte_produit_un_ecoulement_rapide():
+def test_short_storm_produces_quick_flow():
     """Deux heures d'orage font passer la colonne dans la plage physique et au-dela."""
-    assert _rapide(20.0, 2.0) > 10.0
-    assert _rapide(40.0, 2.0) > 10.0
+    assert _fast(20.0, 2.0) > 10.0
+    assert _fast(40.0, 2.0) > 10.0
 
 
-def test_l_effet_croit_quand_l_averse_se_concentre():
+def test_effect_grows_when_the_storm_concentrates():
     """Plus l'averse est courte, plus elle ruisselle : la monotonie est la propriete qui
     justifie de tirer la duree de la donnee horaire plutot que d'une constante."""
-    vals = [_rapide(40.0, h) for h in (24.0, 12.0, 6.0, 3.0, 2.0)]
+    vals = [_fast(40.0, h) for h in (24.0, 12.0, 6.0, 3.0, 2.0)]
     assert all(b >= a - 1e-9 for a, b in zip(vals, vals[1:])), vals
     assert vals[-1] > vals[0] + 10.0
 
 
-def test_une_pluie_etalee_sur_la_journee_restitue_le_clone():
+def test_rain_spread_over_day_restores_clone():
     """Vingt-quatre heures d'orage doivent rendre le comportement du pas journalier, sans
     quoi le mecanisme modifierait les pluies frontales qu'il ne vise pas."""
     for pluie in (20.0, 40.0):
-        assert abs(_rapide(pluie, 24.0) - _rapide(pluie, None)) < 1.0, pluie
+        assert abs(_fast(pluie, 24.0) - _fast(pluie, None)) < 1.0, pluie
 
 
-def test_le_constructeur_de_forcage_expose_le_canal():
+def test_forcing_builder_exposes_the_channel():
     """Le mecanisme reste inerte sans canal de duree d'orage dans le forcage : la ligne
     quebecoise n'en avait pas, et c'est pourquoi il n'avait jamais servi."""
     src = open("meandre/adapters/physitel/builders/build_forcing_region.py", encoding="utf-8").read()

@@ -13,7 +13,7 @@ def _trainer_factice():
     return tr
 
 
-def test_reference_est_la_moyenne_de_l_epoque():
+def test_reference_is_epoch_mean():
     tr = _trainer_factice()
     day_count = torch.arange(730, dtype=torch.float32)
     et = (1.0 + math.sqrt(2.0) * torch.sin(2 * math.pi * day_count / 365.0)).clamp(min=0.0).unsqueeze(1)
@@ -26,7 +26,7 @@ def test_reference_est_la_moyenne_de_l_epoque():
     assert abs(float(tr._et_sim_base) - attendu) < 0.05
 
 
-def test_premier_bloc_d_hiver_ne_fixe_plus_la_reference():
+def test_first_winter_block_no_longer_sets_reference():
     tr = _trainer_factice()
     hiver = torch.full((45, 1), 0.05)
     ete = torch.full((45, 1), 3.0)
@@ -37,7 +37,7 @@ def test_premier_bloc_d_hiver_ne_fixe_plus_la_reference():
     assert abs(float(tr._et_sim_base) - 1.525) < 1e-4
 
 
-def test_poids_hors_neige_exclut_l_hiver_des_moyennes():
+def test_snow_free_weight_excludes_winter_from_means():
     tr = _trainer_factice()
     hiver = torch.full((45, 1), 0.05)
     ete = torch.full((45, 1), 3.0)

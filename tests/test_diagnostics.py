@@ -108,7 +108,7 @@ def test_etp_positive():
     assert (diag.etp >= 0).all(), "ETP has negative values"
 
 
-def test_etr_le_etp():
+def test_etr_at_most_etp():
     """Actual ET cannot exceed potential ET."""
     _, _, diag = _run(return_diagnostics=True)
     assert (diag.etr <= diag.etp + 1e-4).all(), "ETR > ETP"

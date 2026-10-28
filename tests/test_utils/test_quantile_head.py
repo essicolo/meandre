@@ -27,7 +27,7 @@ from meandre.utils.quantile_head import QuantileHead
 TAUS = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
 
 
-def _tete(graine=0, n_spatial=8):
+def _head(graine=0, n_spatial=8):
     torch.manual_seed(graine)
     return QuantileHead(n_spatial_params=n_spatial, taus=TAUS)
 
@@ -43,34 +43,34 @@ def _quantiles(h, n_noeuds=6, n_pas=200, echelle=20.0, graine=1):
 def test_quantiles_strictement_positifs():
     """DEFAUT 1 : un debit predit ne peut pas etre negatif."""
     for g in range(5):
-        Q, q = _quantiles(_tete(g), graine=g)
+        Q, q = _quantiles(_head(g), graine=g)
         assert (q > 0).all(), f"quantile negatif ou nul (graine {g}), min {q.min():.3e}"
 
 
 def test_quantiles_monotones():
     """Les niveaux ne doivent jamais se croiser."""
     for g in range(5):
-        _, q = _quantiles(_tete(g), graine=g)
+        _, q = _quantiles(_head(g), graine=g)
         assert (q.diff(dim=-1) > 0).all(), f"quantiles croises (graine {g})"
 
 
-def test_enveloppe_plausible_a_l_initialisation():
+def test_envelope_plausible_at_initialization():
     """DEFAUT 2 : l'enveloppe de depart doit etre du bon ordre de grandeur.
 
     Bornes volontairement larges : on n'attend pas une calibration a l'initialisation,
     seulement qu'un hydrologue puisse regarder la figure sans sursauter.
     """
     for g in range(5):
-        Q, q = _quantiles(_tete(g), graine=g)
+        Q, q = _quantiles(_head(g), graine=g)
         r = q / Q.unsqueeze(-1)
         r05, r95 = r[..., 0].median().item(), r[..., -1].median().item()
         assert 0.05 < r05 < 0.98, f"cinquieme centile a {r05:.3e} fois la mediane (graine {g})"
         assert 1.02 < r95 < 20.0, f"quatre-vingt-quinzieme centile a {r95:.3e} fois la mediane (graine {g})"
 
 
-def test_enveloppe_bornee_meme_sur_des_sorties_extremes():
+def test_envelope_bounded_even_for_extreme_outputs():
     """Aucune entree ne doit pouvoir faire exploser l'enveloppe."""
-    h = _tete()
+    h = _head()
     with torch.no_grad():
         for p in h.net.parameters():
             p.mul_(50.0)
@@ -82,9 +82,9 @@ def test_enveloppe_bornee_meme_sur_des_sorties_extremes():
     assert r.max().item() < 100.0, f"enveloppe explosive : rapport maximal {r.max().item():.3e}"
 
 
-def test_enveloppe_proportionnelle_au_debit():
+def test_envelope_proportional_to_discharge():
     """La largeur suit le debit : c'est ce que veut dire multiplicatif."""
-    h = _tete()
+    h = _head()
     torch.manual_seed(3)
     sp = torch.randn(4, 8)
     for facteur in (1.0, 10.0, 100.0):
@@ -99,9 +99,9 @@ def test_enveloppe_proportionnelle_au_debit():
                 "le rapport quantile/mediane change d'ordre de grandeur avec le debit"
 
 
-def test_forme_additive_restituee_par_la_variable():
+def test_additive_form_restored_by_variable():
     """Le temoin de l'ancienne forme reste disponible pour comparaison."""
-    h = _tete()
+    h = _head()
     Q = torch.rand(20, 3) * 5 + 0.5
     sp = torch.randn(3, 8)
     os.environ["MEANDRE_QUANTILE_ADDITIF"] = "1"
@@ -116,9 +116,9 @@ def test_forme_additive_restituee_par_la_variable():
     assert (off_add.diff(dim=-1) > 0).all(), "forme additive non monotone"
 
 
-def test_gradient_fini():
+def test_finite_gradient():
     """La perte doit pouvoir remonter dans la tete."""
-    h = _tete()
+    h = _head()
     Q = torch.rand(40, 3) * 8 + 0.2
     sp = torch.randn(3, 8, requires_grad=True)
     q = Q.unsqueeze(-1) + h(sp, Q)
@@ -127,7 +127,7 @@ def test_gradient_fini():
     assert torch.isfinite(g).all(), "gradient non fini dans la tete"
 
 
-def test_la_tete_apprend_la_bonne_largeur():
+def test_head_learns_the_right_width():
     """La tete doit RETROUVER les quantiles d'une log-normale dont on connait la verite.
 
     Ce test manquait, et son absence a coute une file complete : la parametrisation etait
@@ -137,7 +137,7 @@ def test_la_tete_apprend_la_bonne_largeur():
     annonce a 0,50.
     """
     torch.manual_seed(0)
-    h = _tete()
+    h = _head()
     sp = torch.randn(4, 8)
     Q = torch.rand(4000, 4) * 20 + 1.0
     sigma = 0.6
@@ -163,7 +163,7 @@ def test_la_tete_apprend_la_bonne_largeur():
     assert abs(cov50 - 0.50) < 0.05, f"couverture a 50 % apprise : {cov50:.3f}"
 
 
-def test_enveloppe_aux_stations_seulement():
+def test_envelope_at_stations_only():
     """La tete est independante par troncon : l'evaluer sur les seules stations rend la meme
     enveloppe que l'evaluer partout puis extraire les stations. La validation et l'export du
     pilote en dependent pour tenir dans 8 Go sur tout le Quebec."""
@@ -180,7 +180,7 @@ def test_enveloppe_aux_stations_seulement():
     assert torch.allclose(head(params, q)[:, mask], head(params[mask], q[:, mask]))
 
 
-def test_echelle_et_borne_lues_de_la_configuration(monkeypatch):
+def test_scale_and_bound_read_from_configuration(monkeypatch):
     """L'echelle et la borne de l'enveloppe logarithmique viennent de la configuration :
     les valeurs par defaut redonnent la tete du modele livre, et la borne limite bien le
     rapport entre un quantile extreme et la mediane."""

@@ -35,13 +35,13 @@ def _hydrogramme(part_rapide, n=3000, graine=0):
     return torch.tensor(q, dtype=torch.float32)
 
 
-def test_la_verite_vaut_zero():
+def test_truth_is_zero():
     q = _hydrogramme(0.5)
     assert float(differentiable_recession_loss(q, q)) == pytest.approx(0.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("part", [0.0, 0.25, 0.75, 1.0])
-def test_le_terme_voit_la_partition_entre_les_deux_chemins_lents(part):
+def test_term_sees_partition_between_both_slow_paths(part):
     """Ce que l'indice d'écoulement de base d'Eckhardt ne voit pas."""
     verite = _hydrogramme(0.5)
     autre = _hydrogramme(part)
@@ -49,14 +49,14 @@ def test_le_terme_voit_la_partition_entre_les_deux_chemins_lents(part):
         f"part {part} : le terme ne distingue pas cette partition de la verite")
 
 
-def test_la_reponse_croit_avec_l_ecart_de_partition():
+def test_response_grows_with_partition_gap():
     verite = _hydrogramme(0.5)
     proche = float(differentiable_recession_loss(verite, _hydrogramme(0.6)))
     loin = float(differentiable_recession_loss(verite, _hydrogramme(1.0)))
     assert loin > proche
 
 
-def test_le_terme_repond_au_PREMIER_ordre():
+def test_term_responds_at_FIRST_order():
     """Un carré répondrait au second ordre et serait aveugle aux petits écarts."""
     verite = _hydrogramme(0.5)
     a = float(differentiable_recession_loss(verite, _hydrogramme(0.55)))
@@ -64,7 +64,7 @@ def test_le_terme_repond_au_PREMIER_ordre():
     assert b / max(a, 1e-9) == pytest.approx(2.0, rel=0.35)
 
 
-def test_le_masque_vient_de_l_observation():
+def test_mask_comes_from_observation():
     """Un modèle plat ne doit pas pouvoir déplacer ses propres jours de décrue."""
     verite = _hydrogramme(0.5)
     plat = torch.full_like(verite, float(verite.mean()))
@@ -73,7 +73,7 @@ def test_le_masque_vient_de_l_observation():
     assert float(differentiable_recession_loss(verite, plat)) > 0.05
 
 
-def test_le_terme_est_derivable():
+def test_term_is_differentiable():
     verite = _hydrogramme(0.5)
     sim = _hydrogramme(0.8).clone().requires_grad_(True)
     perte = differentiable_recession_loss(verite, sim)
@@ -82,11 +82,11 @@ def test_le_terme_est_derivable():
     assert float(sim.grad.abs().sum()) > 0.0
 
 
-def test_le_poids_est_nul_par_defaut():
+def test_weight_is_zero_by_default():
     assert HydroLoss(per_station=True).w_recession == 0.0
 
 
-def test_il_entre_dans_la_somme_ponderee():
+def test_enters_the_weighted_sum():
     q = _hydrogramme(0.5).unsqueeze(1)
     sim = _hydrogramme(1.0).unsqueeze(1)
     base = dict(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_nse=0.0, w_nrmse=0.0, w_log_nse=0.0,

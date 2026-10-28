@@ -31,7 +31,7 @@ def _params(n=4, **extra):
     return p
 
 
-def _hiver_puis_fonte(p, n=4, day_count=range(330, 366)):
+def _winter_then_melt(p, n=4, day_count=range(330, 366)):
     """Accumule 60 mm puis rechauffe : retourne (apport total, stock final)."""
     s = init_state(n, dtype=torch.float64)
     tmin, tmax = torch.full((n,), -12.0, dtype=torch.float64), torch.full((n,), -4.0, dtype=torch.float64)
@@ -52,33 +52,33 @@ def _hiver_puis_fonte(p, n=4, day_count=range(330, 366)):
     return apports, s["couvert_nival_mm"]
 
 
-def test_sans_amplitude_le_clone_est_identique_au_bit_pres():
+def test_without_amplitude_clone_is_bit_identical():
     """LE contrat : l'ajout du mecanisme ne doit RIEN changer tant qu'il n'est pas
     demande. La validation per-UHRH contre le binaire C++ repose la-dessus."""
-    a0, st0 = _hiver_puis_fonte(_params())
-    a1, st1 = _hiver_puis_fonte(_params(melt_seasonal_amp=None))
+    a0, st0 = _winter_then_melt(_params())
+    a1, st1 = _winter_then_melt(_params(melt_seasonal_amp=None))
     assert torch.equal(a0, a1) and torch.equal(st0, st1)
 
 
-def test_amplitude_zero_egale_absence():
+def test_zero_amplitude_equals_absence():
     """amp=0.0 doit reproduire le clone fidele (sinus multiplie par zero)."""
-    a0, st0 = _hiver_puis_fonte(_params())
-    a1, st1 = _hiver_puis_fonte(_params(melt_seasonal_amp=0.0))
+    a0, st0 = _winter_then_melt(_params())
+    a1, st1 = _winter_then_melt(_params(melt_seasonal_amp=0.0))
     assert torch.allclose(a0, a1) and torch.allclose(st0, st1)
 
 
-def test_en_decembre_l_amplitude_RETIENT_la_neige():
+def test_in_december_amplitude_RETAINS_snow():
     """Le but mesurable : moins de fonte en decembre => plus de stock au sol.
 
     C'est la cible CanSWE (11=0.66, 12=0.55 a remonter vers 1.0), pas un effet de bord :
     si ce test casse, la modulation ne sert plus a rien meme si elle est jolie.
     """
-    _, st_plat = _hiver_puis_fonte(_params())
-    _, st_mod = _hiver_puis_fonte(_params(melt_seasonal_amp=0.5))
+    _, st_plat = _winter_then_melt(_params())
+    _, st_mod = _winter_then_melt(_params(melt_seasonal_amp=0.5))
     assert (st_mod > st_plat).all(), "en decembre le facteur vaut ~0.5x : le stock doit monter"
 
 
-def test_en_juin_l_amplitude_ACCELERE_la_fonte():
+def test_in_june_amplitude_ACCELERATES_melt():
     """Symetrie du sinus : maximum au solstice d'ete. Verifie sur un manteau pose en
     juin, ou le facteur vaut ~1.5x a amp=0.5."""
     p_plat, p_mod = _params(), _params(melt_seasonal_amp=0.5)
@@ -98,7 +98,7 @@ def test_en_juin_l_amplitude_ACCELERE_la_fonte():
     assert (fontes["mod"] > fontes["plat"]).all()
 
 
-def test_moyenne_annuelle_du_facteur_vaut_un():
+def test_annual_mean_factor_is_one():
     """La modulation redistribue la fonte dans l'annee sans changer le taux MOYEN :
     le calage regional ancre (taux med 7.2/8.5/10.1 sur OUTV) reste le taux moyen."""
     j = torch.arange(1, 366, dtype=torch.float64)
@@ -122,14 +122,14 @@ def _split(col_attrs, P=10.0, tmin=-1.0, tmax=2.0, ea=None, n=4):
     return col._split_precip(t(P), t(tmin), t(tmax), ea=ea_t)
 
 
-def test_sans_mode_le_partage_air_est_identique():
+def test_without_mode_air_split_is_identical():
     """Fidelite par defaut : sans split_mode, ea est ignore et rien ne change."""
     p0, n0 = _split({"seuil": 0.0})
     p1, n1 = _split({"seuil": 0.0}, ea=0.4)
     assert torch.equal(p0, p1) and torch.equal(n0, n1)
 
 
-def test_air_sec_fait_plus_de_neige():
+def test_dry_air_makes_more_snow():
     """Le coeur de la physique : a meme temperature, l'air sec refroidit le flocon
     par evaporation et le fait survivre plus chaud. HR 50 % doit donner plus de
     neige que HR ~100 %."""
@@ -142,7 +142,7 @@ def test_air_sec_fait_plus_de_neige():
     assert float(n_sec[0]) > float(n_hum[0])
 
 
-def test_air_sature_retombe_sur_le_seuil_air():
+def test_saturated_air_falls_back_to_air_threshold():
     """A saturation Twb = T : le mode bulbe humide doit se comporter comme un seuil
     AIR de meme valeur (a la precision de Stull pres). C'est la limite qui rend les
     deux modes comparables."""

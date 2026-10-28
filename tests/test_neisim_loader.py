@@ -12,7 +12,7 @@ import pytest
 from meandre.adapters.physitel import neisim_loader as nl
 
 
-def test_les_cellules_sont_les_plus_proches(monkeypatch):
+def test_cells_are_the_nearest(monkeypatch):
     lon = np.array([-80.0, -79.0, -78.0])
     lat = np.array([45.0, 46.0])
     temps = pd.to_datetime(["2000-01-01 05:00", "2000-01-02 05:00"])
@@ -24,7 +24,7 @@ def test_les_cellules_sont_les_plus_proches(monkeypatch):
     assert lon[proche[0]] == -80.0 and lat[proche[1]] == 45.0
 
 
-def test_lhorodatage_a_cinq_heures_sintersecte_avec_minuit():
+def test_five_am_timestamp_intersects_midnight():
     """Sans normalisation à la date, aucun jour ne se recoupe."""
     a = pd.to_datetime(["2001-03-01 05:00", "2001-03-02 05:00"])
     b = pd.to_datetime(["2001-03-01 00:00", "2001-03-02 00:00"])
@@ -32,7 +32,7 @@ def test_lhorodatage_a_cinq_heures_sintersecte_avec_minuit():
     assert len(a.normalize().intersection(b.normalize())) == 2
 
 
-def test_les_jours_hors_periode_restent_absents(monkeypatch):
+def test_days_outside_period_stay_missing(monkeypatch):
     lon, lat = np.array([-75.0]), np.array([46.0])
     temps = pd.to_datetime(["2001-01-02", "2001-01-03"])
     monkeypatch.setattr(nl, "_grid", lambda f: (lon, lat, temps))

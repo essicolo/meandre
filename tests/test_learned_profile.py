@@ -11,33 +11,33 @@ from meandre.vertical import soil_processes as sp
 from meandre.vertical.hydrotel_column import HydrotelColumn
 
 
-def _profil():
+def _profile():
     return sp.from_toml({"layers": 3, "process": [
         {"layer": 3, "kind": "lateral", "form": "BASE_THRESH_POWER", "tau_days": 3.0, "learn": ["tau_days"]},
         {"layer": 3, "kind": "percolation", "form": "PERC_THRESH_POWER", "tau_days": 2.0, "ceiling_mm_per_day": 2.0, "learn": ["ceiling_mm_per_day"]},
     ]})
 
 
-def test_lecture_toml():
-    prof = _profil()
+def test_read_toml():
+    prof = _profile()
     assert prof.processes[0].learn == ("tau",)
     assert prof.processes[1].learn == ("ceiling",)
 
 
-def test_scalaires_crees_et_valeurs_de_depart():
+def test_scalars_created_with_starting_values():
     col = HydrotelColumn.__new__(HydrotelColumn)
     torch.nn.Module.__init__(col)
-    noms = col.declare_soil_profile(_profil())
+    noms = col.declare_soil_profile(_profile())
     assert noms == ["soil_learn_0_tau", "soil_learn_1_ceiling"]
     vals = col.soil_learned_values()
     assert math.isclose(vals["soil_learn_0_tau"][0], 3.0, rel_tol=1e-6)
     assert math.isclose(vals["soil_learn_1_ceiling"][0], 2.0, rel_tol=1e-6)
 
 
-def test_gradient_traverse_le_flux():
+def test_gradient_crosses_the_flux():
     col = HydrotelColumn.__new__(HydrotelColumn)
     torch.nn.Module.__init__(col)
-    col.declare_soil_profile(_profil())
+    col.declare_soil_profile(_profile())
     champ = {n: torch.exp(getattr(col, n)) for n in col._soil_learn_names}
     prof = col.soil_profile.resolved(champ)
     ctx = {"theta": torch.tensor([0.35]), "theta_fc": torch.tensor([0.20]), "thickness": torch.tensor([2.65])}

@@ -11,11 +11,11 @@ import torch
 from meandre.training.loss import HydroLoss
 
 
-def _perte(w):
+def _loss(w):
     return HydroLoss(per_station=True, w_kge=0.0, w_nse=0.0, w_nrmse=0.0, w_log_nse=0.0, **w)
 
 
-def test_gradient_fini_avec_observations_manquantes():
+def test_finite_gradient_with_missing_observations():
     torch.manual_seed(0)
     T, N, S = 60, 4, 2
     q_sim = torch.rand(T, N, requires_grad=True)
@@ -30,13 +30,13 @@ def test_gradient_fini_avec_observations_manquantes():
                        ("log_mse", dict(w_mse=0.0, w_pbias=0.0, w_log_mse=1.0))):
         if q_sim.grad is not None:
             q_sim.grad = None
-        perte, _ = _perte(poids)(q_obs=q_obs, q_sim=q_sim, station_mask=mask)
+        perte, _ = _loss(poids)(q_obs=q_obs, q_sim=q_sim, station_mask=mask)
         assert torch.isfinite(perte), f"{nom} : perte non finie"
         perte.backward()
         assert torch.isfinite(q_sim.grad).all(), f"{nom} : gradient non fini"
 
 
-def test_valeur_identique_a_la_moyenne_sans_lacune():
+def test_value_equals_mean_without_gaps():
     """Le masque multiplicatif doit rendre la MEME valeur que la moyenne sur les jours
     observes : le correctif ne change pas ce qui est mesure, seulement le gradient."""
     torch.manual_seed(1)
@@ -44,11 +44,11 @@ def test_valeur_identique_a_la_moyenne_sans_lacune():
     q_sim = torch.rand(T, S)
     q_obs = torch.rand(T, S) + 0.5
     mask = torch.ones(S, dtype=torch.bool)
-    p_plein, _ = _perte(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
+    p_plein, _ = _loss(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
         q_obs=q_obs, q_sim=q_sim, station_mask=mask)
     q_trou = q_obs.clone()
     q_trou[5:15] = float("nan")
-    p_trou, _ = _perte(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
+    p_trou, _ = _loss(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
         q_obs=q_trou, q_sim=q_sim, station_mask=mask)
     ref = ((q_obs - q_sim) ** 2)
     garde = torch.ones(T, dtype=torch.bool); garde[5:15] = False

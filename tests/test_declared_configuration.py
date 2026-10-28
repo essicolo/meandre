@@ -13,7 +13,7 @@ import torch
 from meandre.temporal.phenology_modulator import PhenologyModulator
 
 
-def test_le_modulateur_prend_ses_parametres_en_arguments():
+def test_modulator_takes_parameters_as_arguments():
     os.environ.pop("MEANDRE_PHENOLOGIE_MODE", None)
     os.environ.pop("MEANDRE_PHENOLOGIE_PARAMS", None)
     m = PhenologyModulator(mode="photo", params=[56.81, 11.82, 21.1, 0.9])
@@ -25,7 +25,7 @@ def test_le_modulateur_prend_ses_parametres_en_arguments():
     assert (m._s1_cal, m._s2_cal) == (21.1, 0.9)
 
 
-def test_sans_argument_l_environnement_garde_son_role():
+def test_without_argument_environment_keeps_its_role():
     os.environ["MEANDRE_PHENOLOGIE_MODE"] = "photo"
     os.environ["MEANDRE_PHENOLOGIE_PARAMS"] = "207.94,11.91,88.4,0.99"
     try:
@@ -36,7 +36,7 @@ def test_sans_argument_l_environnement_garde_son_role():
         os.environ.pop("MEANDRE_PHENOLOGIE_PARAMS", None)
 
 
-def test_la_configuration_candidate_declare_les_trois_pieces():
+def test_candidate_configuration_declares_the_three_pieces():
     with open("experiments/archive/config/configuration-nuit-2026-09-30.toml", "rb") as f:
         cfg = tomllib.load(f)
     assert cfg["et"]["formula"] == "penman"

@@ -16,7 +16,7 @@ import pytest
 import torch
 
 
-def _vidange(n, pas=200000, fraction=0.002, s0=100.0, sous_pas=20):
+def _drainage(n, pas=200000, fraction=0.002, s0=100.0, sous_pas=20):
     """Récession libre d'un réservoir Q = c·S^n, sans recharge.
 
     Le coefficient est NORMALISÉ pour que le débit initial vaille la même fraction du stock
@@ -38,7 +38,7 @@ def _vidange(n, pas=200000, fraction=0.002, s0=100.0, sous_pas=20):
     return np.array(q)
 
 
-def _exposant(q, bas=0.05, haut=0.95):
+def _exponent(q, bas=0.05, haut=0.95):
     """Pente de log(−dQ/dt) contre log(Q), sur la partie centrale de la récession."""
     qm = 0.5 * (q[1:] + q[:-1])
     dq = -np.diff(q)
@@ -51,11 +51,11 @@ def _exposant(q, bas=0.05, haut=0.95):
 
 @pytest.mark.parametrize("n,attendu", [(1.0, 1.0), (2.0, 1.5), (3.0, 5.0 / 3.0),
                                        (2.9, 2.0 - 1.0 / 2.9)])
-def test_la_relation_entre_exposant_de_stock_et_exposant_de_recession(n, attendu):
-    assert _exposant(_vidange(n)) == pytest.approx(attendu, abs=0.03)
+def test_relation_between_storage_and_recession_exponents(n, attendu):
+    assert _exponent(_drainage(n)) == pytest.approx(attendu, abs=0.03)
 
 
-def test_la_nappe_du_depot_suit_la_loi_de_boussinesq():
+def test_deposit_water_table_follows_boussinesq_law():
     """La pièce réellement utilisée, et non une réécriture, doit donner b proche de 1,5."""
     from meandre.vertical.water_table import WaterTable
 
@@ -75,16 +75,16 @@ def test_la_nappe_du_depot_suit_la_loi_de_boussinesq():
             break
         q.append(v)
     assert len(q) > 200, "la recession s'arrete trop tot pour ajuster un exposant"
-    b = _exposant(np.array(q))
+    b = _exponent(np.array(q))
     assert b == pytest.approx(1.5, abs=0.25), (
         f"la nappe rend b = {b:.2f} ; la loi en carre de la charge annonce 1,5")
 
 
-def test_l_exposant_observe_demande_un_stock_plus_non_lineaire_que_le_carre():
+def test_observed_exponent_requires_storage_more_nonlinear_than_square():
     """1,65 mesuré sur 94 stations correspond à n proche de 2,9, non à n = 2."""
     b_observe = 1.65
     n = 1.0 / (2.0 - b_observe)
     assert n == pytest.approx(2.86, abs=0.05)
-    assert _exposant(_vidange(n)) == pytest.approx(b_observe, abs=0.03)
+    assert _exponent(_drainage(n)) == pytest.approx(b_observe, abs=0.03)
     # La loi en carre, elle, reste sous la valeur observee.
-    assert _exposant(_vidange(2.0)) < b_observe
+    assert _exponent(_drainage(2.0)) < b_observe

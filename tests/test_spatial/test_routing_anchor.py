@@ -15,7 +15,7 @@ import torch
 from meandre.spatial.field_network import SpatialFieldNetwork
 
 
-def _champ(n=64):
+def _field(n=64):
     torch.manual_seed(0)
     f = SpatialFieldNetwork(n_territorial=16, n_nodes=n)
     f.eval()
@@ -27,9 +27,9 @@ def _entrees(n=64):
     return torch.randn(n, 2) * 2 + torch.tensor([-72.0, 50.0]), torch.randn(n, 16)
 
 
-def test_sans_ancre_le_comportement_est_inchange():
+def test_without_anchor_behavior_is_unchanged():
     """Condition pour que l'ancrage soit un choix : sans lui, rien ne bouge."""
-    f, (c, t) = _champ(), _entrees()
+    f, (c, t) = _field(), _entrees()
     with torch.no_grad():
         a = f(c, t).K_musk_hours.clone()
     f.set_routing_anchor(None)
@@ -44,40 +44,40 @@ def _identiques(n=2):
     return (torch.tensor([[-72.0, 50.0]]).repeat(n, 1), torch.zeros(n, 16))
 
 
-def test_l_ancre_impose_le_temps_de_parcours_geometrique():
+def test_anchor_imposes_geometric_travel_time():
     """Un troncon deux fois plus long doit prendre deux fois plus de temps."""
-    f, (c, t) = _champ(2), _identiques(2)
+    f, (c, t) = _field(2), _identiques(2)
     f.set_routing_anchor(torch.tensor([5.0, 10.0]))
     with torch.no_grad():
         k = f(c, t).K_musk_hours
     assert float(k[1] / k[0]) == pytest.approx(2.0, rel=1e-4)
 
 
-def test_la_pente_accelere_l_ecoulement():
+def test_slope_speeds_up_flow():
     """Selon Manning, la vitesse suit la racine de la pente : quatre fois plus de pente
     donne deux fois moins de temps de parcours."""
-    f, (c, t) = _champ(2), _identiques(2)
+    f, (c, t) = _field(2), _identiques(2)
     f.set_routing_anchor(torch.tensor([7.0, 7.0]), slope_frac=torch.tensor([0.005, 0.020]))
     with torch.no_grad():
         k = f(c, t).K_musk_hours
     assert float(k[0] / k[1]) == pytest.approx(2.0, rel=1e-3)
 
 
-def test_l_ancre_donne_un_temps_physique_sur_un_troncon_median():
+def test_anchor_gives_physical_time_on_median_reach():
     """7,1 km a un metre par seconde : environ 1,2 h avec la celerite cinematique (ce
     chiffre est celui d'une arete quelconque ; le troncon de RIVIERE median mesure 5,7 km),
     soit vingt fois moins que l'initialisation constante de 24 h."""
-    f, (c, t) = _champ(1), _entrees(1)
+    f, (c, t) = _field(1), _entrees(1)
     f.set_routing_anchor(torch.tensor([7.1]))
     with torch.no_grad():
         k = float(f(c, t).K_musk_hours[0])
     assert 0.3 < k < 6.0, k
 
 
-def test_le_reseau_module_autour_de_l_ancre_sans_la_quitter():
+def test_network_modulates_around_anchor_without_leaving_it():
     """La modulation est bornee : elle ne peut pas rendre un temps aberrant, quel que
     soit ce que le reseau apprend."""
-    f, (c, t) = _champ(), _entrees()
+    f, (c, t) = _field(), _entrees()
     L = torch.full((64,), 7.1)
     f.set_routing_anchor(L)
     with torch.no_grad():
@@ -91,9 +91,9 @@ def test_le_reseau_module_autour_de_l_ancre_sans_la_quitter():
             assert torch.all(k >= torch.clamp(anc * np.e ** -1.5, min=0.05) - 1e-4)
 
 
-def test_l_ancre_varie_d_un_troncon_a_l_autre():
+def test_anchor_varies_between_reaches():
     """Le defaut corrige : un parametre constant sur toute la region."""
-    f, (c, t) = _champ(), _entrees()
+    f, (c, t) = _field(), _entrees()
     torch.manual_seed(2)
     L = torch.rand(64) * 20 + 0.5
     f.set_routing_anchor(L)
@@ -102,9 +102,9 @@ def test_l_ancre_varie_d_un_troncon_a_l_autre():
     assert float(k.std() / k.mean()) > 0.3, float(k.std() / k.mean())
 
 
-def test_le_gradient_passe_par_la_modulation():
+def test_gradient_flows_through_modulation():
     """Le reseau doit pouvoir corriger l'ancre, sinon elle est une contrainte figee."""
-    f, (c, t) = _champ(8), _entrees(8)
+    f, (c, t) = _field(8), _entrees(8)
     f.set_routing_anchor(torch.full((8,), 7.1))
     f(c, t).K_musk_hours.sum().backward()
     assert f.fc_out.weight.grad is not None
@@ -112,11 +112,11 @@ def test_le_gradient_passe_par_la_modulation():
     assert float(f.fc_out.weight.grad.abs().sum()) > 0
 
 
-def test_un_noeud_nan_garde_le_parametre_borne_libre():
+def test_nan_node_keeps_parameter_bound_free():
     """Les lacs sortent de l'ancrage : leur colonne de longueur porte un perimetre de rive,
     461 km en mediane contre 5,7 km pour un troncon de riviere sur le Saguenay, et leur
     attenuation est portee par le module de lac."""
-    f, (c, t) = _champ(4), _entrees(4)
+    f, (c, t) = _field(4), _entrees(4)
     with torch.no_grad():
         libre = f(c, t).K_musk_hours.clone()
     L = torch.tensor([5.0, float("nan"), 5.0, float("nan")])
@@ -129,12 +129,12 @@ def test_un_noeud_nan_garde_le_parametre_borne_libre():
     assert torch.isfinite(k).all()
 
 
-def test_la_pente_de_reference_vaut_la_mediane_des_pentes_fournies():
+def test_reference_slope_is_median_of_given_slopes():
     """La pente disponible est celle du VERSANT, mediane 6,3 pour cent sur le Saguenay. Une
     reference fixe a 0,5 pour cent donnait une celerite mediane de six metres par seconde et
     collait 198 troncons a la borne basse."""
     n = 64
-    f, (c, t) = _champ(n), _entrees(n)
+    f, (c, t) = _field(n), _entrees(n)
     torch.manual_seed(3)
     S = torch.rand(n) * 0.10 + 0.02
     f.set_routing_anchor(torch.full((n,), 5.0), slope_frac=S)
@@ -145,8 +145,8 @@ def test_la_pente_de_reference_vaut_la_mediane_des_pentes_fournies():
     assert int((anc <= 0.0501).sum()) == 0
 
 
-def test_le_gradient_passe_aussi_quand_une_part_des_noeuds_est_libre():
-    f, (c, t) = _champ(8), _entrees(8)
+def test_gradient_flows_when_some_nodes_are_free():
+    f, (c, t) = _field(8), _entrees(8)
     L = torch.full((8,), 7.1)
     L[::2] = float("nan")
     f.set_routing_anchor(L)

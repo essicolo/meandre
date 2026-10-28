@@ -19,7 +19,7 @@ import torch
 from meandre.spatial.field_network import KSUB_REF, SpatialFieldNetwork, SpatialParams
 
 
-def _reseau(prior=True, poids=0.3):
+def _network(prior=True, poids=0.3):
     torch.manual_seed(0)
     net = SpatialFieldNetwork(n_territorial=4)
     net.prior_on_k_sub = prior
@@ -38,23 +38,23 @@ def _params(net, k_sub):
     return SpatialParams(**field_names)
 
 
-def test_sans_le_drapeau_rien_ne_change():
-    net_sans, net_avec = _reseau(prior=False), _reseau(prior=True)
+def test_without_flag_nothing_changes():
+    net_sans, net_avec = _network(prior=False), _network(prior=True)
     k = torch.full((32,), KSUB_REF)
     a = float(net_sans.physical_prior_loss(_params(net_sans, k)))
     b = float(net_avec.physical_prior_loss(_params(net_avec, k)))
     assert b == pytest.approx(a, abs=1e-6), "a la reference, le prior ne doit rien couter"
 
 
-def test_la_moyenne_est_ancree():
-    net = _reseau()
+def test_mean_is_anchored():
+    net = _network()
     ref = float(net.physical_prior_loss(_params(net, torch.full((32,), KSUB_REF))))
     for facteur in (0.1, 10.0):
         loin = float(net.physical_prior_loss(_params(net, torch.full((32,), KSUB_REF * facteur))))
         assert loin > ref + 0.05, f"un plafond {facteur} fois la reference doit couter"
 
 
-def test_la_dispersion_spatiale_NE_coute_PAS():
+def test_spatial_dispersion_costs_NOTHING():
     """Le point qui a failli casser le champ, et que la revue du 2026-07-01 avait déjà tranché.
 
     Pénaliser la variance spatiale est structurellement anti-NeRF : `((p - c)**2).mean()` se
@@ -62,7 +62,7 @@ def test_la_dispersion_spatiale_NE_coute_PAS():
     collapse de k_gw, f_vert, vg_n et frost_alpha. Une première version de ce prior ajoutait
     ce terme ; il est retiré, et ce test interdit son retour.
     """
-    net = _reseau()
+    net = _network()
     n = 64
     uniforme = torch.full((n,), KSUB_REF)
     # Meme moyenne EN LOG, mais dispersee d'un facteur trois de part et d'autre.
@@ -73,8 +73,8 @@ def test_la_dispersion_spatiale_NE_coute_PAS():
         "la variation spatiale doit rester GRATUITE : seule la moyenne est ancree")
 
 
-def test_le_prior_reste_derivable():
-    net = _reseau()
+def test_prior_stays_differentiable():
+    net = _network()
     k = (torch.full((16,), KSUB_REF) * torch.linspace(0.5, 2.0, 16)).requires_grad_(True)
     perte = net.physical_prior_loss(_params(net, k))
     perte.backward()

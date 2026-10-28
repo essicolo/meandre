@@ -76,7 +76,7 @@ def test_solution_convergee_stable(saturation):
         assert abs(x - y) < 0.01, f"non convergé à 512 sous-pas : {a} contre {b}"
 
 
-def test_plafond_production_surestime_le_ruissellement():
+def test_production_ceiling_overestimates_runoff():
     """Le plafond employé fabrique un ruissellement que la solution convergée n'a pas.
 
     Valeurs figées du 2026-09-18. Un écart à ces chiffres signale que le défaut a bougé,

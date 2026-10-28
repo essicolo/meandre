@@ -12,7 +12,7 @@ def _ctx(agri):
             "theta_wp": torch.full((n,), 0.12), "agri_frac": agri}
 
 
-def test_flux_proportionnel_a_la_fraction_agricole():
+def test_flux_proportional_to_agricultural_fraction():
     without = SoilProcess(layer=2, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 24.0})
     avec = SoilProcess(layer=2, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 24.0, "cover": "agri", "share": 0.5})
     agri = torch.tensor([0.0, 0.4, 1.0])
@@ -20,7 +20,7 @@ def test_flux_proportionnel_a_la_fraction_agricole():
     assert torch.allclose(q1, q0 * agri * 0.5)
 
 
-def test_occupation_inconnue_refusee():
+def test_unknown_land_cover_refused():
     p = SoilProcess(layer=2, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 24.0, "cover": "urbain"})
     with pytest.raises(KeyError):
         p.flux(_ctx(torch.ones(3)))

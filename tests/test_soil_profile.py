@@ -21,40 +21,40 @@ def _entrees(n=4, device="cpu"):
     return p, theta, apport, etp
 
 
-def _passe(p, theta, apport, etp, n_substep=32):
+def _run_pass(p, theta, apport, etp, n_substep=32):
     col = BV3C2Clone(n_substep=n_substep)
     zero = torch.zeros_like(apport)
     return col.forward(theta[0], theta[1], theta[2], apport, etp, zero, zero, p)
 
 
-def test_le_profil_hydrotel_reproduit_le_clone_au_bit_pres():
+def test_hydrotel_profile_reproduces_clone_bit_for_bit():
     p, theta, apport, etp = _entrees()
-    avant = _passe(dict(p), theta, apport, etp)
+    avant = _run_pass(dict(p), theta, apport, etp)
     p2 = dict(p)
     p2["soil_profile"] = sp.hydrotel_profile(krec=p["krec"])
-    apres = _passe(p2, theta, apport, etp)
+    apres = _run_pass(p2, theta, apport, etp)
     for a, b, nom in zip(avant[:4], apres[:4], ("surface", "hypodermique", "base", "recharge")):
         assert torch.equal(a, b), f"{nom} : la declaration ne reproduit pas le clone"
 
 
-def test_sans_declaration_rien_ne_change():
+def test_without_declaration_nothing_changes():
     """Le champ absent laisse le chemin d'origine, ce qui protege les harnais de validation."""
     p, theta, apport, etp = _entrees()
-    un = _passe(dict(p), theta, apport, etp)
-    deux = _passe({**p, "soil_profile": None}, theta, apport, etp)
+    un = _run_pass(dict(p), theta, apport, etp)
+    deux = _run_pass({**p, "soil_profile": None}, theta, apport, etp)
     assert all(torch.equal(a, b) for a, b in zip(un[:4], deux[:4]))
 
 
-def test_une_couche_sans_processus_declare_ne_produit_aucun_flux():
+def test_layer_without_declared_process_produces_no_flux():
     """Semantique de Raven : la declaration est complete, elle ne complete pas l'existant."""
     p, theta, apport, etp = _entrees()
     vide = sp.SoilProfile(layers=3, processes=())
-    step_output = _passe({**p, "soil_profile": vide}, theta, apport, etp)
+    step_output = _run_pass({**p, "soil_profile": vide}, theta, apport, etp)
     assert torch.all(step_output[1] == 0.0), "aucun lateral declare : l'hypodermique doit etre nul"
     assert torch.all(step_output[2] == 0.0), "aucune percolation declaree : la base doit etre nulle"
 
 
-def test_la_sortie_laterale_profonde_est_bien_une_forme_du_catalogue():
+def test_deep_lateral_output_is_a_catalogue_form():
     """La loi ecrite a la main le 2026-09-19 est BASE_THRESH_POWER d'exposant un."""
     ctx = {"theta": torch.tensor([0.40]), "theta_fc": torch.tensor([0.30]),
            "thickness": torch.tensor([2.70]), "porosity": torch.tensor([0.50]),
@@ -64,7 +64,7 @@ def test_la_sortie_laterale_profonde_est_bien_une_forme_du_catalogue():
     assert torch.allclose(a_la_main, du_catalogue)
 
 
-def test_le_plafond_borne_le_flux():
+def test_ceiling_bounds_the_flux():
     ctx = {"theta": torch.tensor([0.49]), "theta_fc": torch.tensor([0.30]),
            "thickness": torch.tensor([2.70]), "porosity": torch.tensor([0.50]),
            "conductivity": torch.tensor([1e-3]), "sin_slope": torch.tensor([0.04])}
@@ -76,7 +76,7 @@ def test_le_plafond_borne_le_flux():
     assert float(libre.flux(ctx)) > 1e-6
 
 
-def test_la_lecture_du_toml_convertit_les_unites():
+def test_toml_reading_converts_units():
     profil = sp.from_toml({"layers": 3, "process": [
         {"layer": 3, "kind": "percolation", "form": "PERC_THRESH_POWER",
          "tau_days": 2.0, "ceiling_mm_per_day": 24.0}]})
@@ -85,7 +85,7 @@ def test_la_lecture_du_toml_convertit_les_unites():
     assert proc.ceiling == pytest.approx(1e-3), "24 mm/j font 1e-3 m/h"
 
 
-def test_une_forme_inconnue_ou_mal_placee_est_refusee():
+def test_unknown_or_misplaced_form_refused():
     with pytest.raises(ValueError, match="catalogue"):
         sp.SoilProcess(layer=1, kind="lateral", form="BASE_INVENTEE")
     with pytest.raises(ValueError, match="ne convient pas"):
@@ -97,7 +97,7 @@ def test_une_forme_inconnue_ou_mal_placee_est_refusee():
                                                            form="BASE_LINEAR"),))
 
 
-def test_un_plafond_peut_venir_du_champ_spatial():
+def test_ceiling_can_come_from_spatial_field():
     """Une valeur symbolique est remplacée par le tenseur du champ, par tronçon.
 
     C'est le mécanisme qui rend le plafond de percolation spatial. La texture du sol le
@@ -122,7 +122,7 @@ def test_un_plafond_peut_venir_du_champ_spatial():
     assert torch.allclose(q, par_troncon), "chaque troncon doit etre borne par SON plafond"
 
 
-def test_un_nom_inconnu_du_champ_est_refuse():
+def test_unknown_field_name_refused():
     profil = sp.from_toml({"layers": 3, "process": [
         {"layer": 3, "kind": "percolation", "form": "PERC_THRESH_POWER",
          "tau_days": 2.0, "ceiling_mm_per_day": "parametre_inexistant"}]})
@@ -130,7 +130,7 @@ def test_un_nom_inconnu_du_champ_est_refuse():
         profil.resolved({"k_sub": torch.tensor([1e-4])})
 
 
-def test_une_section_soil_sans_processus_ne_declare_aucun_profil():
+def test_soil_section_without_process_declares_no_profile():
     """Piège évité de justesse : `[soil]` existe déjà pour `hydrotel_calib_dir`.
 
     Rendre un profil dès que la section est présente aurait donné un profil VIDE, c'est-à-dire
@@ -146,7 +146,7 @@ def test_une_section_soil_sans_processus_ne_declare_aucun_profil():
     assert avec is not None and len(avec.processes) == 1
 
 
-def test_la_description_supporte_les_deux_types_de_plafond():
+def test_description_supports_both_ceiling_types():
     """Le formatage vit dans le module et non dans le pilote, qu'aucun test ne couvre.
 
     Une première version imprimait le plafond avec un format numérique, ce qui plante dès
@@ -164,7 +164,7 @@ def test_la_description_supporte_les_deux_types_de_plafond():
         assert isinstance(proc.describe(), str) and proc.describe()
 
 
-def test_la_percolation_gravitaire_vaut_la_conductivite_et_s_effondre_au_sec():
+def test_gravity_percolation_equals_conductivity_and_collapses_when_dry():
     """PERC_GRAVITY : flux = K(theta), plafonné par le substratum (2026-10-27)."""
     k = torch.tensor([1e-3, 1e-6])
     ctx = {"theta": torch.tensor([0.4, 0.1]), "conductivity": k, "thickness": torch.tensor([1.0, 1.0])}
@@ -174,7 +174,7 @@ def test_la_percolation_gravitaire_vaut_la_conductivite_et_s_effondre_au_sec():
     assert torch.allclose(plafonne.flux(ctx), torch.tensor([1e-4, 1e-6]))
 
 
-def test_la_conductivite_declaree_reechelonne_la_courbe_k_theta():
+def test_declared_conductivity_rescales_k_theta_curve():
     """`conductivity` declaree : K(theta) est rapportee a la saturation puis multipliee par la valeur
     declaree ; la forme en theta reste celle du sol (2026-10-27)."""
     ctx = {"theta": torch.tensor([0.3, 0.4]), "conductivity": torch.tensor([1e-4, 1e-2]), "k_sat": torch.tensor([1e-2, 1e-2]), "sin_slope": torch.tensor([0.1, 0.1]), "thickness": torch.tensor([1.0, 1.0])}

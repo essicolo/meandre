@@ -6,18 +6,18 @@ import torch
 from meandre.training.loss import HydroLoss, differentiable_flat_days_loss
 
 
-def _serie(n=400):
+def _series(n=400):
     t = torch.arange(n, dtype=torch.float64)
     return 10.0 + 3.0 * torch.sin(2 * math.pi * t / 365.0) + 1.5 * torch.sin(t * 0.9) ** 2
 
 
-def test_nul_sur_la_verite():
-    q = _serie()
+def test_zero_on_truth():
+    q = _series()
     assert float(differentiable_flat_days_loss(q, q)) == 0.0
 
 
-def test_punit_un_plateau_et_garde_un_gradient():
-    q = _serie()
+def test_penalizes_plateau_and_keeps_gradient():
+    q = _series()
     plat = torch.full_like(q, float(q.mean())).requires_grad_(True)
     perte = differentiable_flat_days_loss(q, plat * (1.0 + 1e-4 * torch.arange(len(q))))
     assert float(perte) > 0.5
@@ -25,8 +25,8 @@ def test_punit_un_plateau_et_garde_un_gradient():
     assert plat.grad is not None and torch.isfinite(plat.grad).all()
 
 
-def test_branche_sur_la_perte():
-    q = _serie().reshape(-1, 1).float()
+def test_wired_into_the_loss():
+    q = _series().reshape(-1, 1).float()
     sim = q.mean().expand_as(q).clone()
     mk = torch.ones(1, dtype=torch.bool)
     base = dict(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_log_mse=0.0, w_peak=0.0, per_station=True)
@@ -38,8 +38,8 @@ def test_branche_sur_la_perte():
     assert t(avec) > t(without)
 
 
-def test_hors_des_mois_cibles_le_terme_est_nul():
-    q = _serie().reshape(-1, 1).float()
+def test_term_is_zero_outside_target_months():
+    q = _series().reshape(-1, 1).float()
     sim = q.mean().expand_as(q).clone()
     mk = torch.ones(1, dtype=torch.bool)
     base = dict(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_log_mse=0.0, w_peak=0.0, per_station=True)

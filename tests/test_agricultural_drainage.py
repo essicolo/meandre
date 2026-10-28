@@ -17,7 +17,7 @@ import torch
 from meandre.hydrotel.bv3c2 import BV3C2Clone, make_params
 
 
-def _etat(n=4, sat=0.9):
+def _state(n=4, sat=0.9):
     """make_params rend des scalaires broadcastables ; on les etale sur n noeuds pour
     que le drain, qui est un champ par noeud, ait des voisins a comparer."""
     p = {k: (v.expand(n).clone() if torch.is_tensor(v) and v.ndim == 0 else v)
@@ -26,7 +26,7 @@ def _etat(n=4, sat=0.9):
     return p, t
 
 
-def _pas(p, t, drain=None, apport=5.0):
+def _step(p, t, drain=None, apport=5.0):
     mod = BV3C2Clone(n_substep=24, static=False)
     q = dict(p)
     if drain:
@@ -37,45 +37,45 @@ def _pas(p, t, drain=None, apport=5.0):
                torch.zeros(n), torch.zeros(n), q)
 
 
-def test_absence_de_drain_ne_change_rien():
+def test_no_drain_changes_nothing():
     """Sans les cles du drain, le resultat doit etre IDENTIQUE au bit pres. C'est la
     regle de tout processus opt-in du projet : le defaut reste le clone fidele."""
-    p, t = _etat()
-    a = _pas(p, t)
-    b = _pas(p, t)
+    p, t = _state()
+    a = _step(p, t)
+    b = _step(p, t)
     for x, y in zip(a[:4], b[:4]):
         assert torch.equal(x, y)
 
 
-def test_seuil_le_drain_ne_coule_pas_sous_son_plan():
+def test_threshold_drain_does_not_flow_below_its_level():
     """Un drain pose a 1 m ne peut rien evacuer si la zone saturee ne l'atteint pas.
     Sans ce seuil, on aurait un simple reservoir lineaire de plus, pas un drain."""
-    p, _ = _etat()
+    p, _ = _state()
     n = p["z1"].shape[0]
     drain = dict(drain_spacing=torch.full((n,), 15.0),
                  drain_depth=torch.full((n,), 1.0),
                  drain_frac=torch.full((n,), 1.0))
     # couche 2 presque vide : la nappe est bien sous le plan des drains
     sec = tuple(p[f"thetas{i}"] * f for i, f in ((1, 0.3), (2, 0.05), (3, 0.3)))
-    _, _, _, _, _, diag = _pas(p, sec, drain, apport=0.0)
+    _, _, _, _, _, diag = _step(p, sec, drain, apport=0.0)
     assert float(diag["drain_mm"].max()) < 1e-9
 
     # couche 2 saturee : le drain doit couler
     plein = tuple(p[f"thetas{i}"] * f for i, f in ((1, 0.9), (2, 1.0), (3, 0.9)))
-    _, _, _, _, _, d2 = _pas(p, plein, drain, apport=0.0)
+    _, _, _, _, _, d2 = _step(p, plein, drain, apport=0.0)
     assert float(d2["drain_mm"].min()) > 0.0
 
 
-def test_conservation_de_la_masse():
+def test_mass_conservation():
     """Ce que le drain retire a la couche 2 doit se retrouver dans la production, a la
     precision numerique. Un chemin qui fuit serait pire que pas de chemin du tout."""
-    p, t = _etat(sat=1.0)
+    p, t = _state(sat=1.0)
     n = p["z1"].shape[0]
     drain = dict(drain_spacing=torch.full((n,), 15.0),
                  drain_depth=torch.full((n,), 1.0),
                  drain_frac=torch.full((n,), 1.0))
-    without = _pas(p, t, None, apport=0.0)
-    avec = _pas(p, t, drain, apport=0.0)
+    without = _step(p, t, None, apport=0.0)
+    avec = _step(p, t, drain, apport=0.0)
     # eau restante dans le profil (mm), les deux cas
     def stock(r):
         (a, b, c) = r[4]
@@ -91,29 +91,29 @@ def test_conservation_de_la_masse():
     assert torch.allclose(perdu, gagne, atol=1e-3), (perdu, gagne)
 
 
-def test_sens_de_reponse_espacement_et_fraction():
+def test_response_direction_spacing_and_fraction():
     """Hooghoudt : le flux varie en 1/L^2 et proportionnellement a la surface drainee.
     Un drain plus serre evacue plus, une parcelle moins drainee evacue moins."""
-    p, t = _etat(sat=1.0)
+    p, t = _state(sat=1.0)
     n = p["z1"].shape[0]
     base = dict(drain_depth=torch.full((n,), 1.0), drain_frac=torch.full((n,), 1.0))
-    serre = _pas(p, t, dict(base, drain_spacing=torch.full((n,), 10.0)), apport=0.0)
-    large = _pas(p, t, dict(base, drain_spacing=torch.full((n,), 30.0)), apport=0.0)
+    serre = _step(p, t, dict(base, drain_spacing=torch.full((n,), 10.0)), apport=0.0)
+    large = _step(p, t, dict(base, drain_spacing=torch.full((n,), 30.0)), apport=0.0)
     assert float(serre[5]["drain_mm"].mean()) > float(large[5]["drain_mm"].mean())
 
-    moitie = _pas(p, t, dict(drain_depth=torch.full((n,), 1.0),
+    moitie = _step(p, t, dict(drain_depth=torch.full((n,), 1.0),
                              drain_spacing=torch.full((n,), 10.0),
                              drain_frac=torch.full((n,), 0.5)), apport=0.0)
     assert float(moitie[5]["drain_mm"].mean()) < float(serre[5]["drain_mm"].mean())
 
 
-def test_gradient_traverse_les_parametres_du_drain():
+def test_gradient_crosses_drain_parameters():
     """Le projet vit de la differentiabilite : un processus dont le gradient ne passe
     pas est un processus qu'on ne peut pas identifier."""
-    p, t = _etat(sat=1.0)
+    p, t = _state(sat=1.0)
     n = p["z1"].shape[0]
     L = torch.full((n,), 15.0, requires_grad=True)
-    r = _pas(p, t, dict(drain_spacing=L, drain_depth=torch.full((n,), 1.0),
+    r = _step(p, t, dict(drain_spacing=L, drain_depth=torch.full((n,), 1.0),
                         drain_frac=torch.full((n,), 1.0)), apport=0.0)
     r[1].sum().backward()
     assert L.grad is not None and float(L.grad.abs().sum()) > 0.0

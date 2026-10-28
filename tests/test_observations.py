@@ -11,7 +11,7 @@ from meandre import observations as obs
 CONFIG = Path(__file__).resolve().parents[1] / "experiments/archive/config/modele-provincial-2026-10.toml"
 
 
-def test_traduction_vers_la_perte():
+def test_translation_to_the_loss():
     loss, training, others, msg = obs.translate({"et": {"weight": 0.4, "mode": "anomaly", "snow_scale_mm": 10.0}, "tws": {"weight": 0.0, "mode": "shape"}}, {"w_kge": 1.0}, {})
     assert loss["w_et"] == 0.4 and loss["et_mode"] == "anomaly" and loss["w_tws"] == 0.0 and loss["w_kge"] == 1.0
     assert training["tws_shape_only"] is True
@@ -19,7 +19,7 @@ def test_traduction_vers_la_perte():
     assert len(msg) == 2
 
 
-def test_ce_que_personne_ne_lirait_est_refuse():
+def test_unread_keys_are_refused():
     with pytest.raises(ValueError, match="inconnu"):
         obs.translate({"pluie": {"weight": 1.0}}, {}, {})
     with pytest.raises(ValueError, match="clé"):
@@ -30,11 +30,11 @@ def test_ce_que_personne_ne_lirait_est_refuse():
         obs.translate({"et": {"weight": 0.4}}, {"w_et": 0.2}, {})
 
 
-def test_observation_absente_du_domaine():
+def test_observation_missing_from_domain():
     assert obs.missing({"swe_mass": {"weight": 0.3}, "et": {"weight": 0.4}}, {"et": object()}) == ["swe_mass : poids 0.3 mais le domaine ne porte pas d'observation « swe_mass »"]
 
 
-def test_la_declaration_reproduit_le_modele_gele():
+def test_declaration_reproduces_the_frozen_model():
     cfg = tomllib.loads(CONFIG.read_text(encoding="utf-8"))
     declared = {"et": {"weight": cfg["loss"]["w_et"], "mode": cfg["loss"]["et_mode"], "snow_scale_mm": cfg["evaporation"]["mod16_snow_scale_mm"]}, "tws": {"weight": cfg["loss"]["w_tws"], "mode": "shape" if cfg["training"]["tws_shape_only"] else "level"}, "swe_mass": {"weight": cfg["loss"]["w_swe_mass"]}, "snow": {"weight": cfg["loss"]["w_snow"]}}
     without = {k: v for k, v in cfg["loss"].items() if k not in ("w_et", "et_mode", "w_tws", "w_swe_mass", "w_snow")}
@@ -45,14 +45,14 @@ def test_la_declaration_reproduit_le_modele_gele():
     assert others["evaporation"]["mod16_snow_scale_mm"] == cfg["evaporation"]["mod16_snow_scale_mm"]
 
 
-def test_le_rapport_d_aires_vaut_troncon_sur_station_et_un_sans_aire():
+def test_area_ratio_is_reach_over_station_and_one_without_area():
     import numpy as np
     from meandre.observations import area_ratio
     r = area_ratio([26.8, 100.0, np.nan, 0.0], [56.6, 100.0, 50.0, 50.0])
     assert abs(r[0] - 56.6 / 26.8) < 1e-9 and r[1] == 1.0 and r[2] == 1.0 and r[3] == 1.0
 
 
-def test_les_debits_marques_deviennent_manquants():
+def test_flagged_discharges_become_missing():
     import datetime as dt
     import numpy as np
     import torch

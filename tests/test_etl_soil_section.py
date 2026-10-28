@@ -16,7 +16,7 @@ import pytest
 from meandre.vertical import soil_processes as sp
 
 
-def _sections_reelles():
+def _real_sections():
     for f in sorted(glob.glob(".runs/quebec/*.toml") + glob.glob(".runs/slso/config/*.toml") + glob.glob("experiments/**/config/*.toml", recursive=True)):
         with open(f, "rb") as fh:
             try:
@@ -27,10 +27,10 @@ def _sections_reelles():
             yield f, cfg["soil"]
 
 
-def test_les_configurations_du_depot_ne_plantent_pas():
+def test_repository_configurations_do_not_crash():
     """Chaque section `[soil]` réelle donne soit None, soit un profil utilisable."""
     vues = 0
-    for f, section in _sections_reelles():
+    for f, section in _real_sections():
         vues += 1
         profil = sp.from_toml(section)
         if profil is None:
@@ -40,13 +40,13 @@ def test_les_configurations_du_depot_ne_plantent_pas():
     assert vues > 0, "aucune configuration ne porte de section [soil] : le test ne verifie rien"
 
 
-def test_au_moins_une_configuration_declare_un_profil():
+def test_at_least_one_configuration_declares_a_profile():
     """Sans cela, le chemin declaratif ne serait exerce par aucune configuration."""
-    declarants = [f for f, s in _sections_reelles() if sp.from_toml(s) is not None]
+    declarants = [f for f, s in _real_sections() if sp.from_toml(s) is not None]
     assert declarants, "aucune configuration ne declare de processus de sol"
 
 
-def test_le_motif_du_pilote_est_celui_du_profil_et_non_de_la_section():
+def test_pilot_pattern_follows_profile_not_section():
     """Le test qui plantait : `if section` au lieu de `if profil is not None`."""
     section_sans_processus = {"z1": 0.1, "z2_min": 0.3, "hydrotel_calib_dir": "/x"}
     assert bool(section_sans_processus) is True, "la section est vraie, d'ou le piege"

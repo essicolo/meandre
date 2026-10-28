@@ -12,13 +12,13 @@ def _ctx(visc=None):
     return c
 
 
-def test_vidange_a_constante_de_temps_suit_la_viscosite():
+def test_time_constant_drainage_follows_viscosity():
     p = SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER", params={"tau": 48.0})
     without = p.flux(_ctx())
     avec = p.flux(_ctx(0.6))
     assert torch.allclose(avec, 0.6 * without)
 
 
-def test_base_linear_ne_double_pas_la_correction():
+def test_base_linear_does_not_double_the_correction():
     p = SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR")
     assert torch.allclose(p.flux(_ctx(0.6)), p.flux(_ctx()))

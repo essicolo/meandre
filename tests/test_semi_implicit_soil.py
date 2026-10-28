@@ -21,7 +21,7 @@ def _params(texture):
     return p
 
 
-def _jour(t, p, semi):
+def _day(t, p, semi):
     bv._SEMI_IMPLICITE = semi
     m = bv.BV3C2Clone(n_substep=16)
     out = m(t[0], t[1], t[2], torch.full((N,), 5.0), torch.full((N,), 2.0), torch.zeros(N), torch.zeros(N), p)
@@ -29,7 +29,7 @@ def _jour(t, p, semi):
 
 
 @pytest.mark.parametrize("texture", ["clay", "loam", "sand"])
-def test_precision_au_moins_celle_du_schema_explicite(texture):
+def test_accuracy_at_least_explicit_scheme(texture):
     """Sur trente jours, l'ecart moyen a une reference a 1024 sous-pas ne doit pas depasser
     celui du schema explicite au meme nombre de sous-pas (mesure : egal sur loam et argile,
     0,016 contre 0,025 sur sable a 16 sous-pas)."""
@@ -52,11 +52,11 @@ def test_precision_au_moins_celle_du_schema_explicite(texture):
 
 
 @pytest.mark.parametrize("texture", ["clay", "loam"])
-def test_jacobien_journalier_contractant(texture):
+def test_daily_jacobian_is_contracting(texture):
     p = _params(texture)
     ths = float(p["thetas1"][0])
     t = [(torch.linspace(0.6, 0.999, N) * ths).requires_grad_(True) for _ in range(3)]
-    out = _jour(t, p, True)
+    out = _day(t, p, True)
     J = torch.zeros(N, 3, 3)
     for i in range(3):
         g = torch.autograd.grad(out[i].sum(), t, retain_graph=True, allow_unused=True)

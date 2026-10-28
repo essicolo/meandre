@@ -7,7 +7,7 @@ import torch
 from meandre.hydrotel.snow import degre_jour_effectif
 
 
-def test_journee_entierement_au_dessus_du_seuil():
+def test_day_entirely_above_threshold():
     """Quand le minimum depasse deja le seuil, l'integrale vaut la moyenne moins le
     seuil : le cycle diurne ne change rien, la partie positive couvre la journee."""
     tmin = torch.tensor([5.0, 10.0])
@@ -16,14 +16,14 @@ def test_journee_entierement_au_dessus_du_seuil():
     assert torch.allclose(dj, torch.tensor([10.0, 11.0]), atol=1e-4)
 
 
-def test_journee_entierement_sous_le_seuil():
+def test_day_entirely_below_threshold():
     tmin = torch.tensor([-20.0, -5.0])
     tmax = torch.tensor([-10.0, -0.1])
     dj = degre_jour_effectif(tmin, tmax, 0.0)
     assert torch.all(dj == 0.0)
 
 
-def test_seuil_a_la_moyenne_donne_la_valeur_analytique():
+def test_threshold_at_mean_gives_analytic_value():
     """Seuil exactement a la moyenne : la moitie du cycle est positive et l'integrale
     de la partie positive d'une sinusoide d'amplitude B vaut B / pi."""
     tmin, tmax = torch.tensor([-10.0]), torch.tensor([10.0])
@@ -31,7 +31,7 @@ def test_seuil_a_la_moyenne_donne_la_valeur_analytique():
     assert dj.item() == pytest.approx(10.0 / math.pi, rel=1e-3)
 
 
-def test_le_redoux_efface_par_la_moyenne_est_retrouve():
+def test_thaw_hidden_by_mean_is_recovered():
     """Le cas qui motive le correctif : maximum au-dessus du seuil, moyenne en dessous.
     Le clone rend zero, la version diurne rend une fonte strictement positive."""
     tmin, tmax = torch.tensor([-8.0]), torch.tensor([6.0])
@@ -41,7 +41,7 @@ def test_le_redoux_efface_par_la_moyenne_est_retrouve():
     assert dj.item() > 0.3
 
 
-def test_toujours_superieur_ou_egal_au_degre_jour_sur_la_moyenne():
+def test_always_at_least_degree_day_on_mean():
     """L'integrale de la partie positive majore la partie positive de la moyenne, par
     convexite. Un correctif qui ferait FONDRE MOINS serait un bogue."""
     g = torch.Generator().manual_seed(0)
@@ -52,7 +52,7 @@ def test_toujours_superieur_ou_egal_au_degre_jour_sur_la_moyenne():
     assert torch.all(dj >= ref - 1e-4)
 
 
-def test_croissance_avec_l_amplitude_diurne():
+def test_grows_with_diurnal_amplitude():
     """A moyenne fixee sous le seuil, elargir l'amplitude diurne augmente la fonte."""
     tmoy = torch.full((5,), -2.0)
     demi = torch.tensor([1.0, 3.0, 6.0, 9.0, 12.0])
@@ -60,7 +60,7 @@ def test_croissance_avec_l_amplitude_diurne():
     assert torch.all(torch.diff(dj) > 0)
 
 
-def test_gradient_fini_partout():
+def test_finite_gradient_everywhere():
     """Le seuil traverse le cycle : la derivee de l'arc cosinus diverge aux bornes et
     doit rester bornee par le calage de l'argument."""
     for lo, hi in [(-10.0, 10.0), (0.0, 0.0), (-1e-7, 1e-7), (0.5, 0.5), (-30.0, -20.0)]:
@@ -71,7 +71,7 @@ def test_gradient_fini_partout():
         assert torch.isfinite(tmax.grad).all()
 
 
-def test_desactive_le_clone_est_rendu_a_l_identique():
+def test_disabled_returns_clone_unchanged():
     """calcule_fonte sans l'option doit donner exactement le meme resultat qu'avant :
     c'est la condition pour que l'ecart a Hydrotel reste un choix et non un accident."""
     from meandre.hydrotel.snow import calcule_fonte
@@ -96,7 +96,7 @@ def test_desactive_le_clone_est_rendu_a_l_identique():
         assert torch.equal(x, y)
 
 
-def _cumul_fonte(day_count, diurne, tmin, tmax):
+def _cumulative_melt(day_count, diurne, tmin, tmax):
     """Enchaine les pas de temps en reportant l'etat du manteau, et rend l'eau totale
     liberee. Un pas isole ne suffit pas : l'eau fondue rechauffe d'abord le manteau puis
     y est retenue, et la liberation ne commence qu'une fois celui-ci mur."""
@@ -117,19 +117,19 @@ def _cumul_fonte(day_count, diurne, tmin, tmax):
     return total
 
 
-def test_active_la_fonte_hivernale_apparait():
+def test_enabled_winter_melt_appears():
     """Le cas qui motive le correctif, sur une saison entiere : des jours dont le maximum
     depasse le seuil et dont la moyenne ne le depasse pas. Le clone ne libere rien, la
     version diurne finit par murir le manteau et liberer de l'eau."""
     tmin, tmax = torch.tensor([-8.0]), torch.tensor([6.0])
-    without = _cumul_fonte(60, False, tmin, tmax)
-    avec = _cumul_fonte(60, True, tmin, tmax)
+    without = _cumulative_melt(60, False, tmin, tmax)
+    avec = _cumulative_melt(60, True, tmin, tmax)
     assert without == 0.0
     assert avec > 0.0
 
 
-def test_un_hiver_franchement_froid_ne_fond_pas_davantage():
+def test_cold_winter_does_not_melt_more():
     """Garde-fou : sous un froid ou meme le maximum reste sous le seuil, l'option ne doit
     rien liberer non plus, sinon elle fabriquerait de l'eau."""
     tmin, tmax = torch.tensor([-25.0]), torch.tensor([-12.0])
-    assert _cumul_fonte(60, True, tmin, tmax) == 0.0
+    assert _cumulative_melt(60, True, tmin, tmax) == 0.0

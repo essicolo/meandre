@@ -48,7 +48,7 @@ def _simuler(p, n_substep=64, theta=(0.32, 0.34, 0.40)):
     return entree, sorties, stock1 - float(stock0.mean())
 
 
-def _ecart_relatif(p, **kw):
+def _relative_gap(p, **kw):
     entree, sorties, delta = _simuler(p, **kw)
     return abs(entree - sorties - delta) / max(entree, 1e-9)
 
@@ -74,27 +74,27 @@ PROFILS = {
 }
 
 
-def test_le_chemin_historique_ferme():
+def test_historical_path_closes():
     """Référence : sans déclaration, la colonne ferme à la précision numérique."""
-    assert _ecart_relatif(_params()) < 1e-4
+    assert _relative_gap(_params()) < 1e-4
 
 
 @pytest.mark.parametrize("nom", list(PROFILS))
-def test_chaque_profil_declare_ferme(nom):
+def test_each_declared_profile_closes(nom):
     p = _params()
     p["soil_profile"] = PROFILS[nom](p)
-    assert _ecart_relatif(p) < 1e-4, f"{nom} : le bilan ne ferme pas"
+    assert _relative_gap(p) < 1e-4, f"{nom} : le bilan ne ferme pas"
 
 
-def test_un_profil_vide_ne_perd_pas_d_eau_non_plus():
+def test_empty_profile_loses_no_water_either():
     """Aucun flux déclaré : toute la pluie doit rester en stock ou partir en surface."""
     p = _params()
     p["soil_profile"] = sp.SoilProfile(layers=3, processes=())
-    assert _ecart_relatif(p) < 1e-4
+    assert _relative_gap(p) < 1e-4
 
 
 @pytest.mark.parametrize("n_substep", [16, 64])
-def test_la_fermeture_tient_meme_sous_le_plafond_de_sous_pas(n_substep):
+def test_closure_holds_even_under_substep_cap(n_substep):
     """Sous le plafond, le chemin de l'eau est faux mais la MASSE reste conservée.
 
     C'est la propriété qui rend la troncature invisible sur un bilan et visible seulement sur
@@ -102,4 +102,4 @@ def test_la_fermeture_tient_meme_sous_le_plafond_de_sous_pas(n_substep):
     """
     p = _params()
     p["soil_profile"] = PROFILS["pile à seuil"](p)
-    assert _ecart_relatif(p, n_substep=n_substep, theta=(0.40, 0.42, 0.47)) < 1e-4
+    assert _relative_gap(p, n_substep=n_substep, theta=(0.40, 0.42, 0.47)) < 1e-4

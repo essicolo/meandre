@@ -34,7 +34,7 @@ def _double_precision():
         torch.set_default_dtype(ancien)
 
 
-def _colonne():
+def _column():
     occ = dict(feuillus=102 / 1754, ouverts=118 / 1754, humides=24 / 1754,
                urbain=1111 / 1754, routes=280 / 1754, eau=119 / 1754)
     psnow, psoil, petr = build_static_params(
@@ -45,12 +45,12 @@ def _colonne():
     return col
 
 
-def _swe_total(snow):
+def _total_swe(snow):
     """Équivalent en eau total (mm) : les stocks des trois classes sont en mètres."""
     return sum(float(snow[c][0].mean()) * 1000.0 for c in DegreJourModifie.CLASSES)
 
 
-def _hiver(col, st, day_count=45):
+def _winter(col, st, day_count=45):
     """Accumule un manteau : neige tous les jours par froid franc."""
     t = lambda x: torch.full((N,), float(x))
     for i in range(day_count):
@@ -59,7 +59,7 @@ def _hiver(col, st, day_count=45):
     return st
 
 
-def _champ(col):
+def _field(col):
     reseau = SpatialFieldNetwork(n_territorial=17)
     coords = torch.tensor([[-74.0, 45.3 + 0.01 * i] for i in range(N)],
                           dtype=torch.float64)
@@ -69,31 +69,31 @@ def _champ(col):
     return reseau(coords, terr.to_tensor()), terr, coords
 
 
-def test_sans_poursuite_l_etat_est_refabrique():
+def test_without_continuation_state_is_rebuilt():
     """Comportement historique, conservé : une simulation qui démarre repart à neuf."""
-    col = _colonne()
-    st = _hiver(col, col.init_state(N, theta_init=(0.36, 0.36, 0.36)))
-    assert _swe_total(st.snow) > 50.0, "45 jours de neige froide doivent bâtir un manteau"
+    col = _column()
+    st = _winter(col, col.init_state(N, theta_init=(0.36, 0.36, 0.36)))
+    assert _total_swe(st.snow) > 50.0, "45 jours de neige froide doivent bâtir un manteau"
     col._aux = st
-    sp, terr, coords = _champ(col)
+    sp, terr, coords = _field(col)
 
     col.setup_simulate(sp, terr, coords, st)
 
-    assert _swe_total(col._aux.snow) == 0.0
+    assert _total_swe(col._aux.snow) == 0.0
 
 
-def test_avec_poursuite_le_manteau_et_le_gel_survivent():
+def test_continuation_keeps_snowpack_and_frost():
     """Le bloc suivant d'un entraînement découpé doit hériter de l'hiver précédent."""
-    col = _colonne()
-    st = _hiver(col, col.init_state(N, theta_init=(0.36, 0.36, 0.36)))
-    swe_avant = _swe_total(st.snow)
+    col = _column()
+    st = _winter(col, col.init_state(N, theta_init=(0.36, 0.36, 0.36)))
+    swe_avant = _total_swe(st.snow)
     gel_avant = float(st.frost_profile.abs().mean())
     col._aux = st
-    sp, terr, coords = _champ(col)
+    sp, terr, coords = _field(col)
 
     col.setup_simulate(sp, terr, coords, st, continue_state=True)
 
-    assert _swe_total(col._aux.snow) == swe_avant
+    assert _total_swe(col._aux.snow) == swe_avant
     assert float(col._aux.frost_profile.abs().mean()) == gel_avant
     # L'état conservé est DÉTACHÉ : la troncature du gradient entre blocs doit tenir,
     # sans quoi le graphe d'autograd croîtrait sur toute la séquence.

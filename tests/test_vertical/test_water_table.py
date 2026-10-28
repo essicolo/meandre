@@ -29,7 +29,7 @@ def _module(exponent=1.0, n_substep=8):
     return WaterTable(n_substep=n_substep, exponent=exponent)
 
 
-def test_equilibre_analytique_cas_lineaire():
+def test_linear_case_analytic_equilibrium():
     """Sous recharge constante, K_b (h / h_ref) = R fixe la profondeur d'équilibre."""
     torch.set_default_dtype(torch.float64)
     m = _module()
@@ -41,7 +41,7 @@ def test_equilibre_analytique_cas_lineaire():
     assert float(z[0]) == pytest.approx(z_eq, rel=1e-6)
 
 
-def test_bilan_ferme_sur_un_pas():
+def test_balance_closes_over_one_step():
     """Le stock perdu par la nappe vaut exactement ce qui en sort, moins ce qui y entre."""
     torch.set_default_dtype(torch.float64)
     m = _module(exponent=2.0, n_substep=32)
@@ -53,7 +53,7 @@ def test_bilan_ferme_sur_un_pas():
     assert variation == pytest.approx(r - float(q[0]) - float(e[0]), rel=1e-9, abs=1e-12)
 
 
-def test_extraction_nulle_sous_la_profondeur_d_extinction():
+def test_zero_extraction_below_extinction_depth():
     """Une nappe plus profonde que z_ext ne peut rien céder à l'atmosphère."""
     torch.set_default_dtype(torch.float64)
     m = _module(exponent=2.0)
@@ -66,7 +66,7 @@ def test_extraction_nulle_sous_la_profondeur_d_extinction():
     assert float(e_dans[0]) > 0.0
 
 
-def test_convergence_du_sous_pas():
+def test_substep_convergence():
     """Le résultat ne doit pas dépendre du nombre de sous-pas au pas journalier."""
     torch.set_default_dtype(torch.float64)
     r = 8.0e-4
@@ -81,7 +81,7 @@ def test_convergence_du_sous_pas():
     assert max(finals) - min(finals) < 0.01
 
 
-def test_amplitude_et_retard_du_cas_lineaire_suivent_la_theorie():
+def test_linear_case_amplitude_and_lag_follow_theory():
     """Sous recharge sinusoïdale, le réservoir linéaire doit suivre sa fonction de transfert.
 
     C'est cette borne que la loi non linéaire doit franchir : elle lie amplitude et retard
@@ -102,7 +102,7 @@ def test_amplitude_et_retard_du_cas_lineaire_suivent_la_theorie():
     assert retard_lent > retard
 
 
-def test_facteur_de_gradient_neutre_a_un_et_nul_a_zero():
+def test_gradient_factor_neutral_at_one_and_zero_at_zero():
     """Le couplage nappe-colonne éteint le drainage profond quand la nappe affleure.
 
     Absent du dictionnaire de paramètres, il ne doit rien changer : c'est la condition
@@ -126,7 +126,7 @@ def test_facteur_de_gradient_neutre_a_un_et_nul_a_zero():
     assert without > 0.0
 
 
-def test_drainage_gravitaire_ne_vide_pas_sous_la_capacite_au_champ():
+def test_gravity_drainage_stops_at_field_capacity():
     """L'eau au-dessus de la capacité au champ s'écoule, celle en dessous reste.
 
     Mesure du 2026-09-19 : la couche 3 se tient à 0,52 alors que sa capacité au champ vaut
@@ -150,7 +150,7 @@ def test_drainage_gravitaire_ne_vide_pas_sous_la_capacite_au_champ():
     assert tres_sec == 0.0
 
 
-def test_ecoulement_hypodermique_profond_vide_la_couche_vers_le_troncon():
+def test_deep_interflow_drains_layer_to_reach():
     """L'eau perchée sur le substratum repart latéralement au lieu de resaturer la couche.
 
     Sans cette sortie, plafonner la percolation force la couche 3 à se resaturer, l'eau
@@ -177,7 +177,7 @@ def test_ecoulement_hypodermique_profond_vide_la_couche_vers_le_troncon():
     assert float(temoin[1][0]) == pytest.approx(float(without[1][0]), rel=1e-12)
 
 
-def test_hypodermique_profond_suit_sa_propre_constante_de_temps():
+def test_deep_interflow_follows_its_own_time_constant():
     """La forme retenue vide l'eau gravitaire latéralement avec sa propre constante.
 
     La forme initiale, proportionnelle à la conductivité de Campbell, donnait 0,75

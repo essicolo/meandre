@@ -10,7 +10,7 @@ import torch
 
 
 @pytest.fixture(autouse=True)
-def _dtype_par_defaut_rendu():
+def _default_dtype_returned():
     ancien = torch.get_default_dtype()
     try:
         yield

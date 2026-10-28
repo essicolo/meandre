@@ -17,7 +17,7 @@ import pytest
 from meandre.hydrotel.snow import sublimation_kuzmin
 
 
-def test_ordre_de_grandeur_hivernal():
+def test_winter_order_of_magnitude():
     """Un hiver boreal type doit sublimer 15-40 mm, pas 3 ni 300.
 
     Conditions moyennes : -10 degres, vent 3 m/s, humidite relative 70 % (e_a = 0.7 x
@@ -31,7 +31,7 @@ def test_ordre_de_grandeur_hivernal():
     assert 10.0 < hiver < 60.0, f"hiver simule {hiver:.0f} mm, hors de la plage boreale"
 
 
-def test_air_sature_ne_sublime_pas():
+def test_saturated_air_does_not_sublimate():
     """Deficit de vapeur nul => sublimation nulle. Le clamp interdit la CONDENSATION
     (deficit negatif) : Kuzmin ne modelise pas le givre, on ne cree pas d'eau."""
     t = torch.tensor([-5.0])
@@ -40,14 +40,14 @@ def test_air_sature_ne_sublime_pas():
     assert float(sublimation_kuzmin(torch.tensor([4.0]), es_kpa * 1.5, t)) == 0.0
 
 
-def test_le_vent_augmente_la_sublimation():
+def test_wind_increases_sublimation():
     t = torch.tensor([-8.0]); ea = torch.tensor([0.2])
     e1 = sublimation_kuzmin(torch.tensor([1.0]), ea, t)
     e5 = sublimation_kuzmin(torch.tensor([5.0]), ea, t)
     assert float(e5) > float(e1) > 0.0
 
 
-def test_saturation_sur_glace_pas_sur_eau():
+def test_saturation_over_ice_not_water():
     """A -20 degres, la saturation sur GLACE est ~20 % sous la courbe eau liquide.
     Utiliser la courbe eau surestimerait la sublimation d'autant. Constantes glace
     de Magnus-Tetens : 21.87 / 265.5."""
@@ -56,7 +56,7 @@ def test_saturation_sur_glace_pas_sur_eau():
     assert float(es_glace) < float(es_eau) * 0.90
 
 
-def test_surface_du_manteau_plafonnee_a_zero():
+def test_snowpack_surface_capped_at_zero():
     """Par temps doux la surface du manteau reste a 0 degre : la sublimation ne doit
     pas exploser avec la temperature de l'air."""
     ea = torch.tensor([0.4]); u = torch.tensor([3.0])
@@ -67,7 +67,7 @@ def test_surface_du_manteau_plafonnee_a_zero():
 
 # ── Integration dans la colonne : fidelite par defaut et conservation ────────
 
-def _colonne(mode=None, n=3):
+def _column(mode=None, n=3):
     """Colonne reelle, calquee sur tests/smoke_hydrotel_column.py (build_static_params)."""
     from meandre.vertical.hydrotel_column import HydrotelColumn, build_static_params
     from meandre.hydrotel.frost import n_intervalles
@@ -82,7 +82,7 @@ def _colonne(mode=None, n=3):
     return col
 
 
-def _hiver(col, n=3):
+def _winter(col, n=3):
     """Trois jours de neige puis un jour sec, froid et vente."""
     st = col.init_state(n, theta_init=(0.3, 0.3, 0.3))
     t = lambda v: torch.full((n,), float(v))
@@ -97,22 +97,22 @@ def _hiver(col, n=3):
     return diag, subl
 
 
-def test_sans_mode_le_clone_est_identique():
-    d0, _ = _hiver(_colonne())
-    d1, _ = _hiver(_colonne(mode=None))
+def test_without_mode_clone_is_identical():
+    d0, _ = _winter(_column())
+    d1, _ = _winter(_column(mode=None))
     assert torch.equal(d0["couvert_nival_mm"], d1["couvert_nival_mm"])
     assert "subl_mm" not in d0
 
 
-def test_kuzmin_retire_du_stock_et_le_declare():
+def test_kuzmin_removes_from_storage_and_reports_it():
     """La masse sublimee doit (1) sortir du manteau et (2) etre declaree au diagnostic.
 
     L'egalite stock_sans - stock_avec == cumul_sublime est la CONSERVATION elle-meme :
     si elle casse, l'audit ETL_BILAN lit une fuite, exactement comme pour le milieu
     humide avant le 2026-08-20 (dette #12).
     """
-    d_sans, _ = _hiver(_colonne())
-    d_avec, subl = _hiver(_colonne(mode="kuzmin"))
+    d_sans, _ = _winter(_column())
+    d_avec, subl = _winter(_column(mode="kuzmin"))
     assert (subl > 0).all(), "hiver froid, sec et vente : Kuzmin doit sublimer"
     ecart = d_sans["couvert_nival_mm"] - d_avec["couvert_nival_mm"]
     assert torch.allclose(ecart, subl, atol=1e-6), (

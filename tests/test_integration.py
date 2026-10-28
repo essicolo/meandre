@@ -234,7 +234,7 @@ def test_naturalized_flow_equals_or_less_than_anthropic():
         "Naturalized flow is less than anthropic (withdrawals should reduce flow)"
 
 
-def test_ancien_point_de_reprise_se_relit(tmp_path):
+def test_old_checkpoint_reloads(tmp_path):
     """Un point de reprise écrit avant le retrait des branches anciennes (2026-10-23) porte
     leurs clés d'init et les poids des têtes de bruit : il doit se reconstruire et se charger."""
     model = HydroModel(n_nodes=N_NODES, n_forcing=N_FORCING)

@@ -8,7 +8,7 @@ from meandre import priors
 from meandre.spatial.field_network import SpatialFieldNetwork
 
 
-def _champ(n_terr=4):
+def _field(n_terr=4):
     torch.manual_seed(0)
     net = SpatialFieldNetwork(n_territorial=n_terr, n_coord_freqs=2, hidden=16)
     net.init_from_literature()
@@ -21,7 +21,7 @@ def _entrees(n=12, n_terr=4):
     return coords, torch.randn(n, n_terr, generator=g)
 
 
-def test_les_centres_sont_physiques_et_le_repli_est_un_loam():
+def test_centers_are_physical_and_fallback_is_loam():
     n = 5
     sable = np.array([0.8, 0.1, np.nan, 0.4, 0.3])
     argile = np.array([0.05, 0.5, np.nan, 0.2, 0.3])
@@ -36,8 +36,8 @@ def test_les_centres_sont_physiques_et_le_repli_est_un_loam():
     assert set(p) == set(priors.KEYS)
 
 
-def test_le_brut_nul_rend_le_centre_et_la_penalite_est_nulle():
-    net = _champ()
+def test_zero_raw_returns_center_and_zero_penalty():
+    net = _field()
     coords, terr = _entrees()
     n = len(coords)
     centre = np.linspace(0.35, 0.55, n)
@@ -52,8 +52,8 @@ def test_le_brut_nul_rend_le_centre_et_la_penalite_est_nulle():
     assert bool((sp.theta_fc_1 < sp.porosity_1).all())
 
 
-def test_l_adoption_conserve_les_valeurs_et_compte_la_deviation():
-    net = _champ()
+def test_adoption_keeps_values_and_counts_deviation():
+    net = _field()
     coords, terr = _entrees()
     avant = net(coords, terr)
     n = len(coords)
@@ -70,17 +70,17 @@ def test_l_adoption_conserve_les_valeurs_et_compte_la_deviation():
     assert "_pr_o_Z3" in sd and "_pr_c_porosity_2" in sd and "_pr_s_K_sat_1" in sd
 
 
-def test_une_cle_inconnue_ou_un_centre_nul_sont_refuses():
+def test_unknown_key_or_zero_center_refused():
     import pytest
-    net = _champ()
+    net = _field()
     with pytest.raises(KeyError):
         net.set_prior("C_f", np.ones(3), 0.1)
     with pytest.raises(ValueError):
         net.set_prior("Z2", np.array([0.3, 0.0, 0.3]), 0.1)
 
 
-def test_les_modes_relatifs_laissent_le_niveau_libre():
-    net = _champ()
+def test_relative_modes_leave_level_free():
+    net = _field()
     coords, terr = _entrees()
     n = len(coords)
     centre = np.linspace(0.05, 0.5, n)
@@ -98,7 +98,7 @@ def test_les_modes_relatifs_laissent_le_niveau_libre():
     assert float(net.deviation_prior_loss("anomaly")) > 0.1
 
 
-def test_une_sortie_collee_a_sa_borne_est_liberee_sous_prior(monkeypatch):
+def test_output_stuck_at_bound_is_freed_under_prior(monkeypatch):
     """Porosite 3 collee a 0,60 : sous prior restreint a cette sortie, valeur conservee et gradient
     plein ; les autres sorties gardent leur sigmoide (2026-10-27)."""
     from meandre.utils import settings
@@ -106,7 +106,7 @@ def test_une_sortie_collee_a_sa_borne_est_liberee_sous_prior(monkeypatch):
     settings._configured.clear()
     monkeypatch.setenv("MEANDRE_PRIOR_CLES", "porosity_3")
     try:
-        net = _champ()
+        net = _field()
         coords, terr = _entrees()
         with torch.no_grad():
             net.fc_out.bias[[f for f in __import__("meandre.spatial.field_network", fromlist=["SpatialParams"]).SpatialParams.__dataclass_fields__].index("porosity_3")] += 20.0
@@ -124,14 +124,14 @@ def test_une_sortie_collee_a_sa_borne_est_liberee_sous_prior(monkeypatch):
         settings._configured.update(garde)
 
 
-def test_depart_au_centre_et_mode_niveau_par_cle(monkeypatch):
+def test_start_at_center_and_level_mode_per_key(monkeypatch):
     """`start_at_center` pose la valeur du prior exactement ; `priors.level_keys` juge cette clé
     en niveau même quand le mode global est anomalie (2026-10-27)."""
     from meandre.utils import settings
     garde = dict(settings._configured)
     settings._configured.clear()
     try:
-        net = _champ()
+        net = _field()
         coords, terr = _entrees()
         n = len(coords)
         centre = np.linspace(0.001, 0.002, n)

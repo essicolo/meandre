@@ -16,7 +16,7 @@ from meandre.utils.recipe import (
 )
 
 
-def test_capture_les_variables_du_projet(monkeypatch):
+def test_captures_project_variables(monkeypatch):
     monkeypatch.setenv("ETL_SEUIL_TWB", "-0.8")
     monkeypatch.setenv("MEANDRE_KMUSK", "4,48,24")
     monkeypatch.setenv("SANS_RAPPORT", "ignore")
@@ -28,7 +28,7 @@ def test_capture_les_variables_du_projet(monkeypatch):
     assert "SANS_RAPPORT" not in r["variables"]
 
 
-def test_ne_capture_jamais_un_secret(monkeypatch):
+def test_never_captures_a_secret(monkeypatch):
     """La recette est faite pour être lue et partagée."""
     monkeypatch.setenv("MEANDRE_TOKEN", "tres-secret")
     monkeypatch.setenv("ETL_API_KEY", "aussi-secret")
@@ -38,7 +38,7 @@ def test_ne_capture_jamais_un_secret(monkeypatch):
     assert not any("secret" in str(v) for v in r["variables"].values())
 
 
-def test_le_toml_ecrit_se_relit(tmp_path, monkeypatch):
+def test_written_toml_reloads(tmp_path, monkeypatch):
     monkeypatch.setenv("ETL_REGION", "gasp")
     monkeypatch.setenv("ETL_MELT_SAISON", "0.5")
     cible = tmp_path / "modele.pt"
@@ -56,7 +56,7 @@ def test_le_toml_ecrit_se_relit(tmp_path, monkeypatch):
     assert lu["construction"]["n_nodes"] == 42
 
 
-def test_l_ecart_de_recette_est_signale(monkeypatch):
+def test_recipe_difference_is_reported(monkeypatch):
     monkeypatch.setenv("ETL_SEUIL_TWB", "-0.8")
     sauvee = capture_recipe()
     monkeypatch.setenv("ETL_SEUIL_TWB", "0.0")
@@ -66,7 +66,7 @@ def test_l_ecart_de_recette_est_signale(monkeypatch):
     assert any("ETL_SEUIL_TWB" in e for e in ecarts)
 
 
-def test_un_chemin_de_deploiement_ne_compte_pas_pour_un_ecart(monkeypatch):
+def test_deployment_path_is_not_a_difference(monkeypatch):
     """Les racines de données changent d'une machine à l'autre sans changer la physique."""
     monkeypatch.setenv("MEANDRE_DATA", "D:/meandre-data")
     sauvee = capture_recipe()
@@ -75,7 +75,7 @@ def test_un_chemin_de_deploiement_ne_compte_pas_pour_un_ecart(monkeypatch):
     assert compare_recipe(sauvee) == []
 
 
-def test_le_point_de_reprise_porte_sa_recette(tmp_path, monkeypatch):
+def test_checkpoint_carries_its_recipe(tmp_path, monkeypatch):
     """Bout en bout : sauvegarde, TOML voisin, et relecture par torch."""
     from meandre.model import HydroModel
 
@@ -94,7 +94,7 @@ def test_le_point_de_reprise_porte_sa_recette(tmp_path, monkeypatch):
     assert isinstance(ck["recipe"]["contexte"].get("torch"), str)
 
 
-def test_la_recette_du_fichier_ne_prime_jamais_sur_l_environnement(monkeypatch):
+def test_file_recipe_never_overrides_environment(monkeypatch):
     """Un script de grappe qui pose son bloc de variables doit se comporter comme avant."""
     from meandre.utils.recipe import apply_recipe
 
@@ -109,7 +109,7 @@ def test_la_recette_du_fichier_ne_prime_jamais_sur_l_environnement(monkeypatch):
     assert posees == ["ETL_MELT_SAISON"]
 
 
-def test_un_booleen_devient_un_drapeau_lisible(monkeypatch):
+def test_boolean_becomes_readable_flag(monkeypatch):
     from meandre.utils.recipe import apply_recipe
     import os
 
@@ -122,7 +122,7 @@ def test_un_booleen_devient_un_drapeau_lisible(monkeypatch):
     assert os.environ["ETL_WSNOW"] == "0"
 
 
-def test_une_cle_sans_prefixe_du_projet_est_refusee():
+def test_key_without_project_prefix_refused():
     """Une cle que personne ne lira doit echouer bruyamment, pas dormir dans un fichier."""
     from meandre.utils.recipe import apply_recipe
 
@@ -130,7 +130,7 @@ def test_une_cle_sans_prefixe_du_projet_est_refusee():
         apply_recipe({"SEUIL_TWB": -0.8})
 
 
-def test_le_fichier_de_socle_est_lisible_et_applicable(monkeypatch):
+def test_socle_file_is_readable_and_applicable(monkeypatch):
     """Le socle livre encode la loi des ancrages et doit s'appliquer sans erreur."""
     import os
     from pathlib import Path

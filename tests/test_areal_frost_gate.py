@@ -11,7 +11,7 @@ import meandre.hydrotel.bv3c2 as bv
 N = 4
 
 
-def _ruissellement(porte, gel_cm, neige_mm=0.0):
+def _runoff(porte, gel_cm, neige_mm=0.0):
     bv._SEMI_IMPLICITE = False
     p = bv.make_params("loam", "loam", "loam")
     for k in list(p):
@@ -25,23 +25,23 @@ def _ruissellement(porte, gel_cm, neige_mm=0.0):
     return float(out[0][0])
 
 
-def test_moitie_gelee_ruisselle_la_moitie():
-    r = _ruissellement("surfacique", "moitie")
-    base = _ruissellement("surfacique", 0.0)
+def test_half_frozen_runs_off_half():
+    r = _runoff("surfacique", "moitie")
+    base = _runoff("surfacique", 0.0)
     assert 2.0 < r - base < 3.0
 
 
-def test_encadree_par_les_deux_autres_regles():
-    r_b = _ruissellement("binaire", "moitie")
-    r_c = _ruissellement("continue", "moitie")
-    r_s = _ruissellement("surfacique", "moitie")
+def test_bracketed_by_the_two_other_rules():
+    r_b = _runoff("binaire", "moitie")
+    r_c = _runoff("continue", "moitie")
+    r_s = _runoff("surfacique", "moitie")
     assert r_c < r_s < r_b
 
 
-def test_sous_la_neige_le_sol_reste_permeable():
-    sans_gel = _ruissellement("surfacique", 0.0, neige_mm=50.0)
-    assert abs(_ruissellement("surfacique", "moitie", neige_mm=50.0) - sans_gel) < 1e-9
+def test_soil_stays_permeable_under_snow():
+    sans_gel = _runoff("surfacique", 0.0, neige_mm=50.0)
+    assert abs(_runoff("surfacique", "moitie", neige_mm=50.0) - sans_gel) < 1e-9
 
 
-def test_sans_gel_identique_a_la_regle_d_origine():
-    assert abs(_ruissellement("surfacique", 0.0) - _ruissellement("binaire", 0.0)) < 1e-9
+def test_without_frost_identical_to_original_rule():
+    assert abs(_runoff("surfacique", 0.0) - _runoff("binaire", 0.0)) < 1e-9

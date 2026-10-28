@@ -17,7 +17,7 @@ import torch
 from meandre.training.loss import HydroLoss, differentiable_kge_loss
 
 
-def _perte():
+def _loss():
     return HydroLoss(w_nse=0.0, w_pbias=0.0, w_kge=1.0, w_mse=0.0, w_nrmse=0.0,
                      w_log_nse=0.0, per_station=True)
 
@@ -29,11 +29,11 @@ def _series(T=80, S=2, graine=0):
     return obs, sim
 
 
-def test_l_historique_change_la_statistique():
+def test_history_changes_the_statistic():
     """Sans historique la perte ne voit que le bloc ; avec, elle voit toute la série."""
     obs, sim = _series()
     mask = torch.ones(2, dtype=torch.bool)
-    perte = _perte()
+    perte = _loss()
     coupe = 40
 
     without, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask)
@@ -44,11 +44,11 @@ def test_l_historique_change_la_statistique():
         "l'historique doit changer la statistique de sequence"
 
 
-def test_deux_blocs_avec_historique_egalent_la_sequence_entiere():
+def test_two_blocks_with_history_equal_whole_sequence():
     """Le second bloc, muni de son historique, retrouve la perte de la serie complete."""
     obs, sim = _series()
     mask = torch.ones(2, dtype=torch.bool)
-    perte = _perte()
+    perte = _loss()
     coupe = 40
 
     entiere, _ = perte(q_obs=obs, q_sim=sim, station_mask=mask)
@@ -58,7 +58,7 @@ def test_deux_blocs_avec_historique_egalent_la_sequence_entiere():
     assert torch.isclose(entiere, par_blocs, atol=1e-5)
 
 
-def test_le_gradient_ne_remonte_que_par_le_bloc_courant():
+def test_gradient_flows_only_through_current_block():
     """L'historique est detache : les blocs passes ont ete simules avec d'autres poids."""
     obs, sim = _series()
     mask = torch.ones(2, dtype=torch.bool)
@@ -66,7 +66,7 @@ def test_le_gradient_ne_remonte_que_par_le_bloc_courant():
     hist = sim[:coupe].clone().requires_grad_(True)
     courant = sim[coupe:].clone().requires_grad_(True)
 
-    perte, _ = _perte()(q_obs=obs[coupe:], q_sim=courant, station_mask=mask,
+    perte, _ = _loss()(q_obs=obs[coupe:], q_sim=courant, station_mask=mask,
                         q_obs_hist=obs[:coupe], q_sim_hist=hist)
     perte.backward()
 
@@ -74,11 +74,11 @@ def test_le_gradient_ne_remonte_que_par_le_bloc_courant():
     assert hist.grad is None or float(hist.grad.abs().sum()) == 0.0
 
 
-def test_la_perte_reste_un_kge_sur_une_station():
+def test_loss_remains_a_kge_on_one_station():
     """Controle de coherence : sur une station unique et sans historique, la perte
     par station vaut bien 1 moins le KGE."""
     obs, sim = _series(S=1)
     mask = torch.ones(1, dtype=torch.bool)
-    perte, _ = _perte()(q_obs=obs, q_sim=sim, station_mask=mask)
+    perte, _ = _loss()(q_obs=obs, q_sim=sim, station_mask=mask)
     attendu = differentiable_kge_loss(obs[:, 0], sim[:, 0])
     assert torch.isclose(perte, attendu, atol=1e-5)

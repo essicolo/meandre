@@ -11,7 +11,7 @@ def _ctx(frost):
             "theta_wp": torch.full((n,), 0.12), "frost_frac": frost}
 
 
-def test_porte_de_gel_proportionnelle():
+def test_proportional_frost_gate():
     without = SoilProcess(layer=3, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 72.0})
     avec = SoilProcess(layer=3, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 72.0, "frost_factor": 0.3})
     frost = torch.tensor([0.0, 0.5, 1.0, 1.0])
@@ -21,7 +21,7 @@ def test_porte_de_gel_proportionnelle():
     assert torch.allclose(q1[2], q0[2] * 0.3)
 
 
-def test_sans_cle_rien_ne_change():
+def test_without_key_nothing_changes():
     p = SoilProcess(layer=3, kind="lateral", form="BASE_THRESH_POWER", params={"tau": 72.0})
     c = _ctx(torch.ones(4))
     assert torch.allclose(p.flux(c), p.flux({**c, "frost_frac": None}))

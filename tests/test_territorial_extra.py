@@ -17,14 +17,14 @@ def _base(tmp_path, avec_extra):
     return f
 
 
-def test_sans_variable_rien_ne_change(tmp_path, monkeypatch):
+def test_without_variable_nothing_changes(tmp_path, monkeypatch):
     monkeypatch.delenv("MEANDRE_TERRITORIAL_EXTRA", raising=False)
     con = duckdb.connect(str(_base(tmp_path, True)), read_only=True)
     t = BasinCache._load_territorial(BasinCache.__new__(BasinCache), con, "cpu")
     assert t.columns == ["f_forest"]
 
 
-def test_table_jointe_normalisee_et_manquant_a_zero(tmp_path, monkeypatch):
+def test_joined_table_normalized_and_missing_as_zero(tmp_path, monkeypatch):
     monkeypatch.setenv("MEANDRE_TERRITORIAL_EXTRA", "territorial_siigsol")
     con = duckdb.connect(str(_base(tmp_path, True)), read_only=True)
     t = BasinCache._load_territorial(BasinCache.__new__(BasinCache), con, "cpu")
@@ -34,7 +34,7 @@ def test_table_jointe_normalisee_et_manquant_a_zero(tmp_path, monkeypatch):
     assert np.allclose(v, [-1.0, 0.0, 1.0])
 
 
-def test_table_absente_refusee(tmp_path, monkeypatch):
+def test_missing_table_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("MEANDRE_TERRITORIAL_EXTRA", "territorial_siigsol")
     con = duckdb.connect(str(_base(tmp_path, False)), read_only=True)
     with pytest.raises(KeyError):

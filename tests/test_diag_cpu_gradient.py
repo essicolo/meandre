@@ -26,7 +26,7 @@ def _diagnostic_list_factory(sur_processeur: bool, monkeypatch):
 DERIVEES = ("etr", "swe", "theta1", "theta2", "theta3", "s_gw", "profondeur_nappe_m")
 
 
-def test_les_diagnostics_derives_gardent_leur_gradient(monkeypatch):
+def test_derived_diagnostics_keep_their_gradient(monkeypatch):
     fabrique = _diagnostic_list_factory(True, monkeypatch)
     for nom in DERIVEES:
         source = torch.ones(3, requires_grad=True)
@@ -38,7 +38,7 @@ def test_les_diagnostics_derives_gardent_leur_gradient(monkeypatch):
         assert source.grad is not None and torch.all(source.grad == 2.0)
 
 
-def test_un_diagnostic_non_derive_est_bien_detache(monkeypatch):
+def test_underived_diagnostic_is_detached(monkeypatch):
     """Le reste doit rester détaché, sans quoi la mémoire de la carte n'est pas économisée."""
     fabrique = _diagnostic_list_factory(True, monkeypatch)
     source = torch.ones(3, requires_grad=True)
@@ -47,7 +47,7 @@ def test_un_diagnostic_non_derive_est_bien_detache(monkeypatch):
     assert not torch.stack(acc, dim=0).requires_grad
 
 
-def test_sans_la_variable_rien_nest_detache(monkeypatch):
+def test_without_variable_nothing_is_detached(monkeypatch):
     fabrique = _diagnostic_list_factory(False, monkeypatch)
     source = torch.ones(3, requires_grad=True)
     for nom in ("canopy", "etr"):
