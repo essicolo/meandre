@@ -36,7 +36,7 @@ Le registre cite ces fichiers sous leurs premiers noms. Ils ont été renommés 
 Depuis la racine du dépôt, modèle gelé, sans entraînement :
 
 ```bash
-ETL_CONFIG=experiments/layer3_drainage/config/drainage-class.toml ETL_REGION=mont ETL_EPOCHS=0 ETL_HELDOUT=2019-01-01,2024-12-31 MEANDRE_RAPPORT_AIRES=1 MEANDRE_TABLE_RATTACHEMENT={DERIVES}/auxiliaires/station-attachment.csv MEANDRE_PRIORS=1 MEANDRE_PRIOR_CLES=K_sat_3 MEANDRE_PRIOR_KSAT3_CENTRE=substratum MEANDRE_PRIOR_DEPART_CENTRE=K_sat_3 MEANDRE_PRIOR_CLES_NIVEAU=K_sat_3 ETL_WARM_FROM=.runs/quebec/checkpoints/best-quebec-etl-qv848-e32.pt python .runs/quebec/etl_run.py
+ETL_CONFIG=experiments/layer3-drainage/config/drainage-class.toml ETL_REGION=mont ETL_EPOCHS=0 ETL_HELDOUT=2019-01-01,2024-12-31 MEANDRE_RAPPORT_AIRES=1 MEANDRE_TABLE_RATTACHEMENT={DERIVES}/auxiliaires/station-attachment.csv MEANDRE_PRIORS=1 MEANDRE_PRIOR_CLES=K_sat_3 MEANDRE_PRIOR_KSAT3_CENTRE=substratum MEANDRE_PRIOR_DEPART_CENTRE=K_sat_3 MEANDRE_PRIOR_CLES_NIVEAU=K_sat_3 ETL_WARM_FROM=.runs/quebec/checkpoints/best-quebec-etl-qv848-e32.pt python .runs/quebec/etl_run.py
 ```
 
 Les points de reprise entraînés sous prior du dépôt et les journaux sont sur Ubuntu, dans `planml-out`.
