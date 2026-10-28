@@ -14,13 +14,13 @@ from meandre.model import HydroModel
 from meandre.spatial.field_network import SpatialParams
 from meandre.vertical import soil_processes as sp
 
-N_NOEUDS = 6
+N_NODES = 6
 N_TERRITORIAL = 4
 
 
 def _model():
     torch.manual_seed(0)
-    return HydroModel(n_nodes=N_NOEUDS, n_territorial=N_TERRITORIAL)
+    return HydroModel(n_nodes=N_NODES, n_territorial=N_TERRITORIAL)
 
 
 def _declared_profile():
@@ -35,10 +35,10 @@ def _declared_profile():
 def test_spatial_field_exposes_percolation_ceiling():
     """La quarante-troisième sortie doit exister et rester dans ses bornes."""
     m = _model()
-    coords = torch.rand(N_NOEUDS, 2) * torch.tensor([2.0, 1.0]) + torch.tensor([-75.0, 46.0])
-    params = m.spatial_encoder(coords, torch.rand(N_NOEUDS, N_TERRITORIAL))
+    coords = torch.rand(N_NODES, 2) * torch.tensor([2.0, 1.0]) + torch.tensor([-75.0, 46.0])
+    params = m.spatial_encoder(coords, torch.rand(N_NODES, N_TERRITORIAL))
     assert hasattr(params, "k_sub"), "le plafond de percolation doit etre une sortie du champ"
-    assert params.k_sub.shape == (N_NOEUDS,)
+    assert params.k_sub.shape == (N_NODES,)
     # Bornes de la construction : 2e-6 a 2e-3 m/h, soit 0,05 a 50 mm/jour.
     assert torch.all(params.k_sub >= 2e-6) and torch.all(params.k_sub <= 2e-3)
     assert torch.all(torch.isfinite(params.k_sub))
@@ -49,9 +49,9 @@ def test_named_ceiling_resolves_to_per_node_value():
     profil = _declared_profile()
     proc = profil.of(3, "percolation")[0]
     assert proc.ceiling == "k_sub"
-    par_noeud = torch.linspace(1e-6, 1e-3, N_NOEUDS)
-    resolu = profil.resolved({"k_sub": par_noeud})
-    assert torch.equal(resolu.of(3, "percolation")[0].ceiling, par_noeud)
+    per_node = torch.linspace(1e-6, 1e-3, N_NODES)
+    resolu = profil.resolved({"k_sub": per_node})
+    assert torch.equal(resolu.of(3, "percolation")[0].ceiling, per_node)
     # Le profil d'origine n'est pas modifie : il reste reutilisable d'un pas a l'autre.
     assert profil.of(3, "percolation")[0].ceiling == "k_sub"
 

@@ -29,20 +29,20 @@ def _run_pass(p, theta, apport, etp, n_substep=32):
 
 def test_hydrotel_profile_reproduces_clone_bit_for_bit():
     p, theta, apport, etp = _entrees()
-    avant = _run_pass(dict(p), theta, apport, etp)
+    before = _run_pass(dict(p), theta, apport, etp)
     p2 = dict(p)
     p2["soil_profile"] = sp.hydrotel_profile(krec=p["krec"])
-    apres = _run_pass(p2, theta, apport, etp)
-    for a, b, nom in zip(avant[:4], apres[:4], ("surface", "hypodermique", "base", "recharge")):
-        assert torch.equal(a, b), f"{nom} : la declaration ne reproduit pas le clone"
+    after = _run_pass(p2, theta, apport, etp)
+    for a, b, field_name in zip(before[:4], after[:4], ("surface", "hypodermique", "base", "recharge")):
+        assert torch.equal(a, b), f"{field_name} : la declaration ne reproduit pas le clone"
 
 
 def test_without_declaration_nothing_changes():
     """Le champ absent laisse le chemin d'origine, ce qui protege les harnais de validation."""
     p, theta, apport, etp = _entrees()
     un = _run_pass(dict(p), theta, apport, etp)
-    deux = _run_pass({**p, "soil_profile": None}, theta, apport, etp)
-    assert all(torch.equal(a, b) for a, b in zip(un[:4], deux[:4]))
+    two = _run_pass({**p, "soil_profile": None}, theta, apport, etp)
+    assert all(torch.equal(a, b) for a, b in zip(un[:4], two[:4]))
 
 
 def test_layer_without_declared_process_produces_no_flux():
@@ -59,21 +59,21 @@ def test_deep_lateral_output_is_a_catalogue_form():
     ctx = {"theta": torch.tensor([0.40]), "theta_fc": torch.tensor([0.30]),
            "thickness": torch.tensor([2.70]), "porosity": torch.tensor([0.50]),
            "conductivity": torch.tensor([1e-3]), "sin_slope": torch.tensor([0.04])}
-    a_la_main = torch.clamp(ctx["theta"] - ctx["theta_fc"], min=0.0) * ctx["thickness"] / 48.0
-    du_catalogue = sp.base_thresh_power(ctx, {"tau": 48.0})
-    assert torch.allclose(a_la_main, du_catalogue)
+    by_hand = torch.clamp(ctx["theta"] - ctx["theta_fc"], min=0.0) * ctx["thickness"] / 48.0
+    from_catalogue = sp.base_thresh_power(ctx, {"tau": 48.0})
+    assert torch.allclose(by_hand, from_catalogue)
 
 
 def test_ceiling_bounds_the_flux():
     ctx = {"theta": torch.tensor([0.49]), "theta_fc": torch.tensor([0.30]),
            "thickness": torch.tensor([2.70]), "porosity": torch.tensor([0.50]),
            "conductivity": torch.tensor([1e-3]), "sin_slope": torch.tensor([0.04])}
-    libre = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
+    free = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
                            params={"tau": 48.0})
-    borne = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
+    bound = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
                            params={"tau": 48.0}, ceiling=1e-6)
-    assert float(borne.flux(ctx)) == pytest.approx(1e-6)
-    assert float(libre.flux(ctx)) > 1e-6
+    assert float(bound.flux(ctx)) == pytest.approx(1e-6)
+    assert float(free.flux(ctx)) > 1e-6
 
 
 def test_toml_reading_converts_units():
@@ -104,7 +104,7 @@ def test_ceiling_can_come_from_spatial_field():
     prédit à 27 % contre le témoin sur l'indice d'écoulement de base, là où l'exposant et
     les constantes de temps ne sont prédits par aucune covariable disponible.
     """
-    par_troncon = torch.tensor([1e-6, 1e-4, 1e-3])
+    per_reach = torch.tensor([1e-6, 1e-4, 1e-3])
     profil = sp.from_toml({"layers": 3, "process": [
         {"layer": 3, "kind": "percolation", "form": "PERC_THRESH_POWER",
          "tau_days": 2.0, "ceiling_mm_per_day": "k_sub"}]})
@@ -114,12 +114,12 @@ def test_ceiling_can_come_from_spatial_field():
         proc.flux({"theta": torch.tensor([0.4]), "theta_fc": torch.tensor([0.3]),
                    "thickness": torch.tensor([2.7]), "porosity": torch.tensor([0.5]),
                    "conductivity": torch.tensor([1e-3]), "sin_slope": torch.tensor([0.04])})
-    resolu = profil.resolved({"k_sub": par_troncon})
+    resolu = profil.resolved({"k_sub": per_reach})
     ctx = {"theta": torch.full((3,), 0.49), "theta_fc": torch.full((3,), 0.30),
            "thickness": torch.full((3,), 2.70), "porosity": torch.full((3,), 0.50),
            "conductivity": torch.full((3,), 1e-3), "sin_slope": torch.full((3,), 0.04)}
     q = resolu.total(3, "percolation", ctx)
-    assert torch.allclose(q, par_troncon), "chaque troncon doit etre borne par SON plafond"
+    assert torch.allclose(q, per_reach), "chaque troncon doit etre borne par SON plafond"
 
 
 def test_unknown_field_name_refused():
@@ -152,15 +152,15 @@ def test_description_supports_both_ceiling_types():
     Une première version imprimait le plafond avec un format numérique, ce qui plante dès
     qu'il nomme une sortie du champ spatial. Deux passes perdues le 2026-09-21.
     """
-    nombre = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
+    number = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
                             params={"tau": 48.0}, ceiling=1.25e-4)
-    nomme = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
+    named = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
                            params={"tau": 48.0}, ceiling="k_sub")
     without = sp.SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR")
-    assert "1.250e-04" in nombre.describe()
-    assert "k_sub" in nomme.describe() and "champ spatial" in nomme.describe()
+    assert "1.250e-04" in number.describe()
+    assert "k_sub" in named.describe() and "champ spatial" in named.describe()
     assert "plafond" not in without.describe()
-    for proc in (nombre, nomme, without):
+    for proc in (number, named, without):
         assert isinstance(proc.describe(), str) and proc.describe()
 
 

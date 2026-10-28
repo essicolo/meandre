@@ -13,9 +13,9 @@ from meandre.training.trainer import Trainer
 
 def _fake_trainer(**poids):
     tr = Trainer.__new__(Trainer)
-    defaut = dict(w_kge=1.0, w_pbias=0.5, w_log_mse=0.0, w_low_flow=0.0, w_fdc_low=0.0)
-    defaut.update(poids)
-    tr.loss_fn = types.SimpleNamespace(**defaut)
+    default = dict(w_kge=1.0, w_pbias=0.5, w_log_mse=0.0, w_low_flow=0.0, w_fdc_low=0.0)
+    default.update(poids)
+    tr.loss_fn = types.SimpleNamespace(**default)
     return tr
 
 
@@ -27,15 +27,15 @@ def _series():
 
 def test_low_flow_too_high_costs_with_low_flow_term():
     q = _series()
-    haut = torch.where(q < 1.5, q * 1.4, q)
+    high = torch.where(q < 1.5, q * 1.4, q)
     without = _fake_trainer()
     avec = _fake_trainer(w_low_flow=1.0)
-    assert avec._validation_discharge_loss(q, haut) > without._validation_discharge_loss(q, haut)
+    assert avec._validation_discharge_loss(q, high) > without._validation_discharge_loss(q, high)
     assert avec._validation_discharge_loss(q, q) < 1e-3
 
 
 def test_too_short_station_ignored():
     q = _series()
-    q_court = q.clone()
-    q_court[20:] = float("nan")
-    assert _fake_trainer()._validation_discharge_loss(q_court, q) == float("inf")
+    q_short = q.clone()
+    q_short[20:] = float("nan")
+    assert _fake_trainer()._validation_discharge_loss(q_short, q) == float("inf")

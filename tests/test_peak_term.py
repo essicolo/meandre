@@ -15,8 +15,8 @@ import torch
 from meandre.training.loss import differentiable_peak_ratio_loss
 
 
-def _series(n=1500, graine=5):
-    g = torch.Generator().manual_seed(graine)
+def _series(n=1500, seed=5):
+    g = torch.Generator().manual_seed(seed)
     t = torch.arange(n, dtype=torch.float32)
     base = 10.0 + 6.0 * torch.sin(t / 58.0) + 3.0 * torch.sin(t / 11.0)
     return torch.clamp(base + torch.rand(n, generator=g) * 2.0, min=0.5)
@@ -31,19 +31,19 @@ def _smoothed(q, n):
     return torch.nn.functional.avg_pool1d(pad, n, 1).view(-1)[:len(q)]
 
 
-@pytest.mark.parametrize("fenetre", [7, 15, 30])
+@pytest.mark.parametrize("window", [7, 15, 30])
 @pytest.mark.parametrize("quantile", [0.75, 0.90, 0.95])
-def test_smoothing_always_costs_more_than_lag(fenetre, quantile):
+def test_smoothing_always_costs_more_than_lag(window, quantile):
     """Le choix réel du modèle : rester net et en retard, ou lisser."""
     q = _series()
     seuil = torch.quantile(q, quantile)
-    tard = _shifted(q)
-    liss = _smoothed(tard, fenetre)
-    perte_tard = float(differentiable_peak_ratio_loss(q, tard, seuil))
-    perte_liss = float(differentiable_peak_ratio_loss(q, liss, seuil))
-    assert perte_liss > perte_tard, (
-        f"lissage {fenetre} j au seuil {quantile} : le terme prefere le lissage, "
-        f"{perte_liss:.5f} contre {perte_tard:.5f}")
+    late = _shifted(q)
+    smoothed = _smoothed(late, window)
+    loss_late = float(differentiable_peak_ratio_loss(q, late, seuil))
+    loss_smoothed = float(differentiable_peak_ratio_loss(q, smoothed, seuil))
+    assert loss_smoothed > loss_late, (
+        f"lissage {window} j au seuil {quantile} : le terme prefere le lissage, "
+        f"{loss_smoothed:.5f} contre {loss_late:.5f}")
 
 
 def test_truth_is_zero():
@@ -55,16 +55,16 @@ def test_penalty_is_symmetric_in_log():
     """Une pointe deux fois trop forte coûte autant qu'une pointe deux fois trop faible."""
     q = _series()
     seuil = torch.quantile(q, 0.75)
-    forte = float(differentiable_peak_ratio_loss(q, q * 2.0, seuil))
+    strong = float(differentiable_peak_ratio_loss(q, q * 2.0, seuil))
     faible = float(differentiable_peak_ratio_loss(q, q * 0.5, seuil))
-    assert forte == pytest.approx(faible, rel=1e-5)
+    assert strong == pytest.approx(faible, rel=1e-5)
 
 
 def test_term_is_differentiable():
     q = _series()
     sim = (q * 0.8).clone().requires_grad_(True)
-    perte = differentiable_peak_ratio_loss(q, sim, torch.quantile(q, 0.75))
-    perte.backward()
+    loss = differentiable_peak_ratio_loss(q, sim, torch.quantile(q, 0.75))
+    loss.backward()
     assert sim.grad is not None and torch.isfinite(sim.grad).all()
     # Le gradient ne porte QUE sur les jours au-dessus du seuil observe.
     assert torch.all(sim.grad[q < torch.quantile(q, 0.75)] == 0.0)
@@ -86,12 +86,12 @@ def test_shape_terms_respond_at_FIRST_order():
     """
     q = _series()
     seuil = torch.quantile(q, 0.75)
-    haut = q >= seuil
-    petite, grande = 1.02, 1.04
+    high = q >= seuil
+    petite, large = 1.02, 1.04
     a = q.clone()
-    a[haut] = a[haut] * petite
+    a[high] = a[high] * petite
     b = q.clone()
-    b[haut] = b[haut] * grande
+    b[high] = b[high] * large
     pa = float(differentiable_peak_ratio_loss(q, a, seuil))
     pb = float(differentiable_peak_ratio_loss(q, b, seuil))
     # Erreur doublee : une forme du premier ordre double, une du second quadruple.

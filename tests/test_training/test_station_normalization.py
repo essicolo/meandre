@@ -12,11 +12,11 @@ import torch
 from meandre.training.loss import HydroLoss
 
 
-def _loss(station_var, echelle):
+def _loss(station_var, scale):
     """Une station, dix ans de debits, l'erreur valant un dixieme du signal."""
     torch.manual_seed(0)
     n = 3650
-    q_obs = (torch.rand(n, 1) * 2.0 + 1.0) * echelle
+    q_obs = (torch.rand(n, 1) * 2.0 + 1.0) * scale
     q_sim = q_obs * 1.1
     kw = dict(w_kge=0.0, w_pbias=0.0, w_mse=1.0, w_nse=0.0, w_nrmse=0.0,
               w_log_nse=0.0, w_log_mse=0.0, per_station=True)
@@ -71,9 +71,9 @@ def test_subbasin_bench_normalizes():
     """Garde-fou : le banc doit passer station_var a sa perte. Il ne le faisait pas
     jusqu'au 2026-09-13 et minimisait donc autre chose que la region qu'il represente."""
     src = open("experiments/subbasin-bench/subbasin_bench.py", encoding="utf-8").read()
-    debut = src.index("loss_fn = HydroLoss(")
-    fin = src.index("loss_fn = HydroLoss(", debut + 10)
-    assert "station_var=" in src[debut:fin + 600], "le banc construit une perte sans station_var"
+    start = src.index("loss_fn = HydroLoss(")
+    end = src.index("loss_fn = HydroLoss(", start + 10)
+    assert "station_var=" in src[start:end + 600], "le banc construit une perte sans station_var"
     assert src.count("station_var=_svar") == 2, "les deux branches doivent normaliser"
 
 

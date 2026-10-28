@@ -21,31 +21,31 @@ def test_reference_is_epoch_mean():
     for d in range(0, 730, 45):
         tr._center_et(et[d:d + 45], et[d:d + 45], data)
     tr._et_reference_epoch_end()
-    attendu = et[:720].mean().item()
+    expected = et[:720].mean().item()
     assert abs(float(tr._et_sim_base) - et.mean().item()) < 0.02
-    assert abs(float(tr._et_sim_base) - attendu) < 0.05
+    assert abs(float(tr._et_sim_base) - expected) < 0.05
 
 
 def test_first_winter_block_no_longer_sets_reference():
     tr = _trainer_factice()
-    hiver = torch.full((45, 1), 0.05)
-    ete = torch.full((45, 1), 3.0)
-    data = types.SimpleNamespace(et_obs=torch.cat([hiver, ete]))
-    tr._center_et(hiver, hiver, data)
-    tr._center_et(ete, ete, data)
+    winter = torch.full((45, 1), 0.05)
+    summer = torch.full((45, 1), 3.0)
+    data = types.SimpleNamespace(et_obs=torch.cat([winter, summer]))
+    tr._center_et(winter, winter, data)
+    tr._center_et(summer, summer, data)
     tr._et_reference_epoch_end()
     assert abs(float(tr._et_sim_base) - 1.525) < 1e-4
 
 
 def test_snow_free_weight_excludes_winter_from_means():
     tr = _trainer_factice()
-    hiver = torch.full((45, 1), 0.05)
-    ete = torch.full((45, 1), 3.0)
+    winter = torch.full((45, 1), 0.05)
+    summer = torch.full((45, 1), 3.0)
     obs = torch.cat([torch.full((45, 1), 0.8), torch.full((45, 1), 3.2)])
     poids = torch.cat([torch.zeros(45, 1), torch.ones(45, 1)])
     data = types.SimpleNamespace(et_obs=obs, et_weight=poids, train_slice=slice(0, 90))
-    tr._center_et(hiver, obs[:45], data, t0=0)
-    s_ete, o_ete = tr._center_et(ete, obs[45:], data, t0=45)
+    tr._center_et(winter, obs[:45], data, t0=0)
+    s_summer, o_summer = tr._center_et(summer, obs[45:], data, t0=45)
     tr._et_reference_epoch_end()
     assert abs(float(tr._et_obs_base) - 3.2) < 1e-5
     assert abs(float(tr._et_sim_base) - 3.0) < 1e-5

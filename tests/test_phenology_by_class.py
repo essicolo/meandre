@@ -34,11 +34,11 @@ def _etr(shape_value, classes):
 
 
 def test_conifers_keep_their_demand():
-    plein = _etr(None, None)
-    moitie = _etr(0.5, None)
-    feuillus = _etr(0.5, "feuillus,agri")
-    assert abs(moitie / plein - 0.5) < 0.05
-    assert abs(feuillus / plein - 0.75) < 0.05
+    full_value = _etr(None, None)
+    half = _etr(0.5, None)
+    deciduous = _etr(0.5, "feuillus,agri")
+    assert abs(half / full_value - 0.5) < 0.05
+    assert abs(deciduous / full_value - 0.75) < 0.05
 
 
 def test_without_restriction_nothing_changes():

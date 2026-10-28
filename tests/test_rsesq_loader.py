@@ -27,8 +27,8 @@ def test_monthly_grid_covers_exactly_the_period():
 def test_admissibility_filter_removes_wells():
     """Les puits captifs et influencés doivent disparaître, donc le compte doit baisser."""
     tout = read_rsesq("outv", TIMES, unconfined_only=False, uninfluenced=False)
-    libres = read_rsesq("outv", TIMES)
-    assert libres.n_wells < tout.n_wells
+    free = read_rsesq("outv", TIMES)
+    assert free.n_wells < tout.n_wells
 
 
 def test_no_well_below_minimum_months():

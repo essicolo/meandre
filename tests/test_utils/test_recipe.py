@@ -41,38 +41,38 @@ def test_never_captures_a_secret(monkeypatch):
 def test_written_toml_reloads(tmp_path, monkeypatch):
     monkeypatch.setenv("ETL_REGION", "gasp")
     monkeypatch.setenv("ETL_MELT_SAISON", "0.5")
-    cible = tmp_path / "modele.pt"
+    target = tmp_path / "modele.pt"
 
-    p = write_recipe_toml(cible, capture_recipe(),
+    p = write_recipe_toml(target, capture_recipe(),
                             record={"et_mode": "linacre", "hgm": True},
                             init_kwargs={"n_nodes": 42})
 
     assert p is not None and p.name == "modele.recipe.toml"
-    lu = tomllib.loads(p.read_text(encoding="utf-8"))
-    assert lu["recipe"]["ETL_REGION"] == "gasp"
-    assert lu["recipe"]["ETL_MELT_SAISON"] == "0.5"
-    assert lu["modele"]["et_mode"] == "linacre"
-    assert lu["modele"]["hgm"] is True
-    assert lu["construction"]["n_nodes"] == 42
+    read = tomllib.loads(p.read_text(encoding="utf-8"))
+    assert read["recipe"]["ETL_REGION"] == "gasp"
+    assert read["recipe"]["ETL_MELT_SAISON"] == "0.5"
+    assert read["modele"]["et_mode"] == "linacre"
+    assert read["modele"]["hgm"] is True
+    assert read["construction"]["n_nodes"] == 42
 
 
 def test_recipe_difference_is_reported(monkeypatch):
     monkeypatch.setenv("ETL_SEUIL_TWB", "-0.8")
-    sauvee = capture_recipe()
+    saved = capture_recipe()
     monkeypatch.setenv("ETL_SEUIL_TWB", "0.0")
 
-    ecarts = compare_recipe(sauvee)
+    gaps = compare_recipe(saved)
 
-    assert any("ETL_SEUIL_TWB" in e for e in ecarts)
+    assert any("ETL_SEUIL_TWB" in e for e in gaps)
 
 
 def test_deployment_path_is_not_a_difference(monkeypatch):
     """Les racines de données changent d'une machine à l'autre sans changer la physique."""
     monkeypatch.setenv("MEANDRE_DATA", "D:/meandre-data")
-    sauvee = capture_recipe()
+    saved = capture_recipe()
     monkeypatch.setenv("MEANDRE_DATA", "/scratch/atlas01/donnees")
 
-    assert compare_recipe(sauvee) == []
+    assert compare_recipe(saved) == []
 
 
 def test_checkpoint_carries_its_recipe(tmp_path, monkeypatch):
@@ -136,13 +136,13 @@ def test_socle_file_is_readable_and_applicable(monkeypatch):
     from pathlib import Path
     from meandre.utils.recipe import apply_recipe
 
-    chemin = Path(__file__).resolve().parents[2] / "experiments/archive/config/socle.toml"
-    if not chemin.exists():
+    file_path = Path(__file__).resolve().parents[2] / "experiments/archive/config/socle.toml"
+    if not file_path.exists():
         pytest.skip("socle.toml absent")
-    _cfg = tomllib.loads(chemin.read_text(encoding="utf-8"))
+    _cfg = tomllib.loads(file_path.read_text(encoding="utf-8"))
     section = _cfg.get("recipe") or _cfg["recette"]
-    for cle in section:
-        monkeypatch.delenv(cle, raising=False)
+    for key in section:
+        monkeypatch.delenv(key, raising=False)
 
     posees = apply_recipe(section)
 

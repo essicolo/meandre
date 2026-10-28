@@ -23,9 +23,9 @@ def _entrees(n=12, n_terr=4):
 
 def test_centers_are_physical_and_fallback_is_loam():
     n = 5
-    sable = np.array([0.8, 0.1, np.nan, 0.4, 0.3])
-    argile = np.array([0.05, 0.5, np.nan, 0.2, 0.3])
-    p = priors.soil_priors(n, {1: (sable, argile)}, np.array([0.5, 10.0, np.nan, 2.0, 1.0]))
+    sand = np.array([0.8, 0.1, np.nan, 0.4, 0.3])
+    clay = np.array([0.05, 0.5, np.nan, 0.2, 0.3])
+    p = priors.soil_priors(n, {1: (sand, clay)}, np.array([0.5, 10.0, np.nan, 2.0, 1.0]))
     por, _ = p["porosity_1"]
     assert por[0] > por[1] - 0.2 and 0.3 < por.min() and por.max() < 0.7
     assert p["K_sat_1"][0][0] > p["K_sat_1"][0][1], "le sable conduit mieux que l'argile"
@@ -40,12 +40,12 @@ def test_zero_raw_returns_center_and_zero_penalty():
     net = _field()
     coords, terr = _entrees()
     n = len(coords)
-    centre = np.linspace(0.35, 0.55, n)
-    net.set_prior("porosity_1", centre, 0.1)
+    center = np.linspace(0.35, 0.55, n)
+    net.set_prior("porosity_1", center, 0.1)
     net.set_prior("Z3", np.full(n, 1.7), 0.5)
     raw = torch.zeros(n, net.fc_out.out_features)
     sp = net._apply_constraints(raw)
-    assert np.allclose(sp.porosity_1.numpy(), centre, atol=1e-6)
+    assert np.allclose(sp.porosity_1.numpy(), center, atol=1e-6)
     assert np.allclose(sp.Z3.numpy(), 1.7, atol=1e-6)
     assert float(net.deviation_prior_loss()) == 0.0
     # la capacite au champ reste une fraction de la porosite centree
@@ -55,15 +55,15 @@ def test_zero_raw_returns_center_and_zero_penalty():
 def test_adoption_keeps_values_and_counts_deviation():
     net = _field()
     coords, terr = _entrees()
-    avant = net(coords, terr)
+    before = net(coords, terr)
     n = len(coords)
     pri = priors.soil_priors(n, None, None)
-    rapport = net.adopt_priors(coords, terr, pri, preserve=True)
-    apres = net(coords, terr)
-    for nom in ("porosity_1", "porosity_3", "theta_fc_2", "theta_wp_1", "K_sat_1", "K_sat_3", "Z2", "Z3"):
-        a, b = getattr(avant, nom), getattr(apres, nom)
-        assert torch.allclose(a, b, rtol=1e-5, atol=1e-7), nom
-    assert set(rapport) == set(priors.KEYS)
+    ratio = net.adopt_priors(coords, terr, pri, preserve=True)
+    after = net(coords, terr)
+    for field_name in ("porosity_1", "porosity_3", "theta_fc_2", "theta_wp_1", "K_sat_1", "K_sat_3", "Z2", "Z3"):
+        a, b = getattr(before, field_name), getattr(after, field_name)
+        assert torch.allclose(a, b, rtol=1e-5, atol=1e-7), field_name
+    assert set(ratio) == set(priors.KEYS)
     assert float(net.deviation_prior_loss()) > 0.0, "le modele de depart n'est pas a ses centres"
     # un tampon par cle, persistant : il voyage avec le point de reprise
     sd = net.state_dict()
@@ -83,17 +83,17 @@ def test_relative_modes_leave_level_free():
     net = _field()
     coords, terr = _entrees()
     n = len(coords)
-    centre = np.linspace(0.05, 0.5, n)
-    net.set_prior("K_sat_1", centre, 0.7)
+    center = np.linspace(0.05, 0.5, n)
+    net.set_prior("K_sat_1", center, 0.7)
     raw = torch.zeros(n, net.fc_out.out_features)
     from meandre.spatial.field_network import SpatialParams
-    noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
-    raw[:, noms.index("K_sat_1")] = 1.5   # tout le champ deux fois plus conducteur que la carte, motif identique
+    name_list = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
+    raw[:, name_list.index("K_sat_1")] = 1.5   # tout le champ deux fois plus conducteur que la carte, motif identique
     net._apply_constraints(raw)
     assert float(net.deviation_prior_loss("level")) > 1.0
     assert float(net.deviation_prior_loss("anomaly")) < 1e-10
     assert float(net.deviation_prior_loss("shape")) < 1e-8
-    raw[:, noms.index("K_sat_1")] = torch.linspace(-1.0, 1.0, n)   # motif deforme
+    raw[:, name_list.index("K_sat_1")] = torch.linspace(-1.0, 1.0, n)   # motif deforme
     net._apply_constraints(raw)
     assert float(net.deviation_prior_loss("anomaly")) > 0.1
 
@@ -102,7 +102,7 @@ def test_output_stuck_at_bound_is_freed_under_prior(monkeypatch):
     """Porosite 3 collee a 0,60 : sous prior restreint a cette sortie, valeur conservee et gradient
     plein ; les autres sorties gardent leur sigmoide (2026-10-27)."""
     from meandre.utils import settings
-    garde = dict(settings._configured)
+    kept = dict(settings._configured)
     settings._configured.clear()
     monkeypatch.setenv("MEANDRE_PRIOR_CLES", "porosity_3")
     try:
@@ -110,50 +110,50 @@ def test_output_stuck_at_bound_is_freed_under_prior(monkeypatch):
         coords, terr = _entrees()
         with torch.no_grad():
             net.fc_out.bias[[f for f in __import__("meandre.spatial.field_network", fromlist=["SpatialParams"]).SpatialParams.__dataclass_fields__].index("porosity_3")] += 20.0
-        avant = net(coords, terr)
-        assert torch.allclose(avant.porosity_3, torch.full_like(avant.porosity_3, 0.60), atol=1e-4)
+        before = net(coords, terr)
+        assert torch.allclose(before.porosity_3, torch.full_like(before.porosity_3, 0.60), atol=1e-4)
         pri = priors.soil_priors(len(coords), None, None)
         assert set(pri) == {"porosity_3"}
         net.adopt_priors(coords, terr, pri, preserve=True)
-        apres = net(coords, terr)
-        assert torch.allclose(avant.porosity_3, apres.porosity_3, atol=1e-5)
-        apres.porosity_3.sum().backward()
+        after = net(coords, terr)
+        assert torch.allclose(before.porosity_3, after.porosity_3, atol=1e-5)
+        after.porosity_3.sum().backward()
         assert float(net.fc_out.bias.grad.abs().max()) > 0.01
     finally:
         settings._configured.clear()
-        settings._configured.update(garde)
+        settings._configured.update(kept)
 
 
 def test_start_at_center_and_level_mode_per_key(monkeypatch):
     """`start_at_center` pose la valeur du prior exactement ; `priors.level_keys` juge cette clé
     en niveau même quand le mode global est anomalie (2026-10-27)."""
     from meandre.utils import settings
-    garde = dict(settings._configured)
+    kept = dict(settings._configured)
     settings._configured.clear()
     try:
         net = _field()
         coords, terr = _entrees()
         n = len(coords)
-        centre = np.linspace(0.001, 0.002, n)
-        pri = priors.soil_priors(n, None, None, k_sat_3_center_m_per_day=centre)
-        assert np.allclose(pri["K_sat_3"][0], centre)
+        center = np.linspace(0.001, 0.002, n)
+        pri = priors.soil_priors(n, None, None, k_sat_3_center_m_per_day=center)
+        assert np.allclose(pri["K_sat_3"][0], center)
         pri = {"K_sat_3": pri["K_sat_3"], "K_sat_1": pri["K_sat_1"]}
-        avant = net(coords, terr)
+        before = net(coords, terr)
         net.adopt_priors(coords, terr, pri, preserve=True, start_at_center=("K_sat_3",))
-        apres = net(coords, terr)
-        assert np.allclose(apres.K_sat_3.detach().numpy(), centre, rtol=1e-4), "K_sat_3 part au centre"
-        assert torch.allclose(avant.K_sat_1, apres.K_sat_1, rtol=1e-5), "K_sat_1 conserve"
+        after = net(coords, terr)
+        assert np.allclose(after.K_sat_3.detach().numpy(), center, rtol=1e-4), "K_sat_3 part au centre"
+        assert torch.allclose(before.K_sat_1, after.K_sat_1, rtol=1e-5), "K_sat_1 conserve"
         # tout le champ K_sat_3 deux fois le centre : rien en anomalie, une penalite en niveau
         raw = torch.zeros(n, net.fc_out.out_features)
         from meandre.spatial.field_network import SpatialParams
-        noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
+        name_list = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
         net._pr_o_K_sat_3.zero_()
         net._pr_o_K_sat_1.zero_()
-        raw[:, noms.index("K_sat_3")] = float(np.log(2.0) / pri["K_sat_3"][1])
+        raw[:, name_list.index("K_sat_3")] = float(np.log(2.0) / pri["K_sat_3"][1])
         net._apply_constraints(raw)
         assert float(net.deviation_prior_loss("anomaly")) < 1e-10
         monkeypatch.setenv("MEANDRE_PRIOR_CLES_NIVEAU", "K_sat_3")
         assert float(net.deviation_prior_loss("anomaly")) > 0.05
     finally:
         settings._configured.clear()
-        settings._configured.update(garde)
+        settings._configured.update(kept)

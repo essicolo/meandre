@@ -38,7 +38,7 @@ def _winter_then_melt(p, n=4, day_count=range(330, 366)):
     zero = torch.zeros(n, dtype=torch.float64)
     apports = 0.0
     for j in list(day_count):
-        neige = torch.full((n,), 4.0, dtype=torch.float64) if j % 3 == 0 else zero
+        snow = torch.full((n,), 4.0, dtype=torch.float64) if j % 3 == 0 else zero
         # REDOUX DOUX (tmax +2), pas des degel complets : la fonte doit etre limitee
         # par le COEFFICIENT et non par le stock, sinon tout fond quel que soit le
         # facteur et le test ne mesure rien (premiere version : degels a +6, stock
@@ -47,7 +47,7 @@ def _winter_then_melt(p, n=4, day_count=range(330, 366)):
         # le jour julien arrive en TENSEUR, comme la colonne le fournit (doy_t)
         jt = torch.tensor(float(j), dtype=torch.float64)
         a, s = DegreJourModifie(24)(tmin + (11 if chaud else 0), tmax + (6 if chaud else 0),
-                                    zero, neige, jt, s, p)
+                                    zero, snow, jt, s, p)
         apports = apports + a
     return apports, s["couvert_nival_mm"]
 
@@ -73,18 +73,18 @@ def test_in_december_amplitude_RETAINS_snow():
     C'est la cible CanSWE (11=0.66, 12=0.55 a remonter vers 1.0), pas un effet de bord :
     si ce test casse, la modulation ne sert plus a rien meme si elle est jolie.
     """
-    _, st_plat = _winter_then_melt(_params())
+    _, st_flat = _winter_then_melt(_params())
     _, st_mod = _winter_then_melt(_params(melt_seasonal_amp=0.5))
-    assert (st_mod > st_plat).all(), "en decembre le facteur vaut ~0.5x : le stock doit monter"
+    assert (st_mod > st_flat).all(), "en decembre le facteur vaut ~0.5x : le stock doit monter"
 
 
 def test_in_june_amplitude_ACCELERATES_melt():
     """Symetrie du sinus : maximum au solstice d'ete. Verifie sur un manteau pose en
     juin, ou le facteur vaut ~1.5x a amp=0.5."""
-    p_plat, p_mod = _params(), _params(melt_seasonal_amp=0.5)
+    p_flat, p_mod = _params(), _params(melt_seasonal_amp=0.5)
     n = 4
     fontes = {}
-    for nom, p in (("plat", p_plat), ("mod", p_mod)):
+    for field_name, p in (("plat", p_flat), ("mod", p_mod)):
         s = init_state(n, dtype=torch.float64)
         zero = torch.zeros(n, dtype=torch.float64)
         # poser 80 mm de manteau autour du jour 160, puis rechauffer
@@ -94,7 +94,7 @@ def test_in_june_amplitude_ACCELERATES_melt():
                                         torch.tensor(float(j), dtype=torch.float64), s, p)
         a, _ = DegreJourModifie(24)(zero + 4, zero + 14, zero, zero,
                                     torch.tensor(170.0, dtype=torch.float64), s, p)
-        fontes[nom] = a
+        fontes[field_name] = a
     assert (fontes["mod"] > fontes["plat"]).all()
 
 

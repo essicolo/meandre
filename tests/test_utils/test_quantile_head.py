@@ -27,15 +27,15 @@ from meandre.utils.quantile_head import QuantileHead
 TAUS = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
 
 
-def _head(graine=0, n_spatial=8):
-    torch.manual_seed(graine)
+def _head(seed=0, n_spatial=8):
+    torch.manual_seed(seed)
     return QuantileHead(n_spatial_params=n_spatial, taus=TAUS)
 
 
-def _quantiles(h, n_noeuds=6, n_pas=200, echelle=20.0, graine=1):
-    torch.manual_seed(graine)
-    sp = torch.randn(n_noeuds, 8)
-    Q = torch.rand(n_pas, n_noeuds) * echelle + 0.05
+def _quantiles(h, n_nodes=6, n_step=200, scale=20.0, seed=1):
+    torch.manual_seed(seed)
+    sp = torch.randn(n_nodes, 8)
+    Q = torch.rand(n_step, n_nodes) * scale + 0.05
     with torch.no_grad():
         return Q, Q.unsqueeze(-1) + h(sp, Q)
 
@@ -43,14 +43,14 @@ def _quantiles(h, n_noeuds=6, n_pas=200, echelle=20.0, graine=1):
 def test_quantiles_strictement_positifs():
     """DEFAUT 1 : un debit predit ne peut pas etre negatif."""
     for g in range(5):
-        Q, q = _quantiles(_head(g), graine=g)
+        Q, q = _quantiles(_head(g), seed=g)
         assert (q > 0).all(), f"quantile negatif ou nul (graine {g}), min {q.min():.3e}"
 
 
 def test_quantiles_monotones():
     """Les niveaux ne doivent jamais se croiser."""
     for g in range(5):
-        _, q = _quantiles(_head(g), graine=g)
+        _, q = _quantiles(_head(g), seed=g)
         assert (q.diff(dim=-1) > 0).all(), f"quantiles croises (graine {g})"
 
 
@@ -61,7 +61,7 @@ def test_envelope_plausible_at_initialization():
     seulement qu'un hydrologue puisse regarder la figure sans sursauter.
     """
     for g in range(5):
-        Q, q = _quantiles(_head(g), graine=g)
+        Q, q = _quantiles(_head(g), seed=g)
         r = q / Q.unsqueeze(-1)
         r05, r95 = r[..., 0].median().item(), r[..., -1].median().item()
         assert 0.05 < r05 < 0.98, f"cinquieme centile a {r05:.3e} fois la mediane (graine {g})"
@@ -87,11 +87,11 @@ def test_envelope_proportional_to_discharge():
     h = _head()
     torch.manual_seed(3)
     sp = torch.randn(4, 8)
-    for facteur in (1.0, 10.0, 100.0):
-        Q = torch.full((30, 4), facteur)
+    for factor in (1.0, 10.0, 100.0):
+        Q = torch.full((30, 4), factor)
         with torch.no_grad():
             r = (Q.unsqueeze(-1) + h(sp, Q)) / Q.unsqueeze(-1)
-        if facteur == 1.0:
+        if factor == 1.0:
             ref = r.median(dim=0).values
         else:
             # la pente en log(Q) fait deriver le rapport, mais il reste du meme ordre
@@ -149,8 +149,8 @@ def test_head_learns_the_right_width():
         q = torch.cat([Q.unsqueeze(-1) + off[..., :3], Q.unsqueeze(-1),
                        Q.unsqueeze(-1) + off[..., 3:]], dim=-1)
         d = obs.unsqueeze(-1) - q
-        perte = torch.maximum(t7 * d, (t7 - 1) * d).mean()
-        opt.zero_grad(); perte.backward(); opt.step()
+        loss = torch.maximum(t7 * d, (t7 - 1) * d).mean()
+        opt.zero_grad(); loss.backward(); opt.step()
     with torch.no_grad():
         off = h(sp, Q)
         q05 = Q + off[..., 0]

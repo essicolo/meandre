@@ -35,8 +35,8 @@ def test_thaw_hidden_by_mean_is_recovered():
     """Le cas qui motive le correctif : maximum au-dessus du seuil, moyenne en dessous.
     Le clone rend zero, la version diurne rend une fonte strictement positive."""
     tmin, tmax = torch.tensor([-8.0]), torch.tensor([6.0])
-    moyenne = (tmin + tmax) / 2
-    assert moyenne.item() < 0.5
+    mean = (tmin + tmax) / 2
+    assert mean.item() < 0.5
     dj = degre_jour_effectif(tmin, tmax, 0.5)
     assert dj.item() > 0.3
 

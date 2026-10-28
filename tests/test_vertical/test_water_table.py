@@ -58,12 +58,12 @@ def test_zero_extraction_below_extinction_depth():
     torch.set_default_dtype(torch.float64)
     m = _module(exponent=2.0)
     z = _col(7.0)
-    _z, _q, e_hors = m(z, _col(0.0), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),
+    _z, _q, e_outside = m(z, _col(0.0), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),
                        _col(4.0e-3), _col(3.0))
-    _z, _q, e_dans = m(z, _col(0.0), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),
+    _z, _q, e_in = m(z, _col(0.0), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),
                        _col(4.0e-3), _col(15.0))
-    assert float(e_hors[0]) == 0.0
-    assert float(e_dans[0]) > 0.0
+    assert float(e_outside[0]) == 0.0
+    assert float(e_in[0]) > 0.0
 
 
 def test_substep_convergence():
@@ -92,14 +92,14 @@ def test_linear_case_amplitude_and_lag_follow_theory():
 
     torch.set_default_dtype(torch.float64)
     k = K_B / (SY * H_REF)
-    gain, retard = WaterTable.analytic_response(k)
+    gain, lag = WaterTable.analytic_response(k)
     w = 2.0 * math.pi / 365.25
     assert gain == pytest.approx(1.0 / math.sqrt(k * k + w * w), rel=1e-12)
-    assert retard == pytest.approx(math.atan2(w, k) / w, rel=1e-12)
+    assert lag == pytest.approx(math.atan2(w, k) / w, rel=1e-12)
     # Un temps de réponse long achète de l'amplitude et paie du retard, toujours.
-    gain_lent, retard_lent = WaterTable.analytic_response(k / 10.0)
-    assert gain_lent > gain
-    assert retard_lent > retard
+    gain_slow, lag_slow = WaterTable.analytic_response(k / 10.0)
+    assert gain_slow > gain
+    assert lag_slow > lag
 
 
 def test_gradient_factor_neutral_at_one_and_zero_at_zero():
@@ -119,10 +119,10 @@ def test_gradient_factor_neutral_at_one_and_zero_at_zero():
     cl = BV3C2Clone(n_substep=16)
     args = (t, t, t, z(10.0), z(0.5), z(0.0), z(0.0))
     without = float(cl(*args, p)[2][0])
-    avec_un = float(cl(*args, {**p, "l3_gradient": z(1.0)})[2][0])
-    avec_zero = float(cl(*args, {**p, "l3_gradient": z(0.0)})[2][0])
-    assert avec_un == pytest.approx(without, rel=1e-12)
-    assert avec_zero == 0.0
+    with_one = float(cl(*args, {**p, "l3_gradient": z(1.0)})[2][0])
+    with_zero = float(cl(*args, {**p, "l3_gradient": z(0.0)})[2][0])
+    assert with_one == pytest.approx(without, rel=1e-12)
+    assert with_zero == 0.0
     assert without > 0.0
 
 
@@ -142,11 +142,11 @@ def test_gravity_drainage_stops_at_field_capacity():
     z = lambda v: torch.full((3,), float(v), dtype=torch.float64)
     cl = BV3C2Clone(n_substep=32)
     sec = z(0.45)
-    fidele = float(cl(sec, sec, z(0.50), z(0.0), z(0.0), z(0.0), z(0.0), p)[2][0])
+    faithful = float(cl(sec, sec, z(0.50), z(0.0), z(0.0), z(0.0), z(0.0), p)[2][0])
     p_grav = {**p, "l3_tau_fc": 120.0, "thetacc3": z(0.345)}
     humide = float(cl(sec, sec, z(0.50), z(0.0), z(0.0), z(0.0), z(0.0), p_grav)[2][0])
     tres_sec = float(cl(sec, sec, z(0.20), z(0.0), z(0.0), z(0.0), z(0.0), p_grav)[2][0])
-    assert humide > 100.0 * fidele
+    assert humide > 100.0 * faithful
     assert tres_sec == 0.0
 
 
@@ -173,8 +173,8 @@ def test_deep_interflow_drains_layer_to_reach():
     assert float(avec[1][0]) > float(without[1][0])
     assert float(avec[4][2][0]) < float(without[4][2][0])
     # Sans la clé, rien ne change.
-    temoin = cl(*args, {**p})
-    assert float(temoin[1][0]) == pytest.approx(float(without[1][0]), rel=1e-12)
+    control = cl(*args, {**p})
+    assert float(control[1][0]) == pytest.approx(float(without[1][0]), rel=1e-12)
 
 
 def test_deep_interflow_follows_its_own_time_constant():
@@ -198,7 +198,7 @@ def test_deep_interflow_follows_its_own_time_constant():
     p = {**p, "thetacc3": z(0.25)}
     args = (z(0.20), z(0.20), z(0.40), z(0.0), z(0.0), z(0.0), z(0.0))
     without = float(cl(*args, p)[1][0])
-    court = float(cl(*args, {**p, "l3_tau_lat": 120.0})[1][0]) - without
+    short = float(cl(*args, {**p, "l3_tau_lat": 120.0})[1][0]) - without
     long = float(cl(*args, {**p, "l3_tau_lat": 240.0})[1][0]) - without
-    assert court > 0.0
-    assert court == pytest.approx(2.0 * long, rel=0.1)
+    assert short > 0.0
+    assert short == pytest.approx(2.0 * long, rel=0.1)

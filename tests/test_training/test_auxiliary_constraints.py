@@ -26,26 +26,26 @@ def test_hydroloss_accepts_w_tws_clim():
     assert HydroLoss(w_tws_clim=0.05).w_tws_clim == 0.05
 
 
-def _data(n_pas=400, avec_swe=True, avec_tws=True, avec_et=True):
+def _data(n_step=400, with_swe=True, with_tws=True, with_et=True):
     from meandre.training.trainer import TrainingData
     from unittest.mock import MagicMock
     return TrainingData(
-        forcing=torch.zeros(n_pas, 4, 6), q_obs=torch.zeros(n_pas, 2),
+        forcing=torch.zeros(n_step, 4, 6), q_obs=torch.zeros(n_step, 2),
         station_mask=torch.ones(2, dtype=torch.bool),
         station_idx=torch.tensor([0, 1]), graph=MagicMock(),
         node_coords=torch.zeros(4, 2), territorial=MagicMock(),
-        withdrawals=MagicMock(), day_of_year=torch.arange(1, n_pas + 1) % 365 + 1,
-        train_slice=slice(0, n_pas), val_slice=slice(0, n_pas),
-        swe_obs=torch.zeros(n_pas, 4) if avec_swe else None,
-        tws_obs=torch.zeros(n_pas) if avec_tws else None,
-        et_obs=torch.zeros(n_pas, 4) if avec_et else None,
+        withdrawals=MagicMock(), day_of_year=torch.arange(1, n_step + 1) % 365 + 1,
+        train_slice=slice(0, n_step), val_slice=slice(0, n_step),
+        swe_obs=torch.zeros(n_step, 4) if with_swe else None,
+        tws_obs=torch.zeros(n_step) if with_tws else None,
+        et_obs=torch.zeros(n_step, 4) if with_et else None,
     )
 
 
 @pytest.mark.parametrize("poids, absent", [
-    ({"w_snow": 0.3}, "avec_swe"),
-    ({"w_tws": 0.2}, "avec_tws"),
-    ({"w_et": 1.0}, "avec_et"),
+    ({"w_snow": 0.3}, "with_swe"),
+    ({"w_tws": 0.2}, "with_tws"),
+    ({"w_et": 1.0}, "with_et"),
 ])
 def test_active_weight_without_target_raises(poids, absent):
     """LE COEUR DE LA DETTE #14 : un objectif demande mais absent doit CRIER.
@@ -63,7 +63,7 @@ def test_zero_weight_without_target_passes():
     """Le garde-fou ne doit pas gener la configuration normale (rien demande)."""
     from meandre.training.trainer import Trainer
     Trainer(model=torch.nn.Linear(1, 1), loss_fn=HydroLoss(),
-            train_data=_data(avec_swe=False, avec_tws=False, avec_et=False))
+            train_data=_data(with_swe=False, with_tws=False, with_et=False))
 
 
 def test_monthly_term_blind_to_seasonal_bias():
@@ -74,12 +74,12 @@ def test_monthly_term_blind_to_seasonal_bias():
     la perte se declare satisfaite, a sigma=5.4 (incertitude de la climatologie
     sur ~21 ans) le meme residu est massivement significatif.
     """
-    biais = torch.full((12,), 26.4)
-    sim, obs = biais, torch.zeros(12)
-    lu_mensuel = tws_anomaly_loss(sim, obs, 0.0, 0.0, sigma=25.0)
-    lu_clim = tws_anomaly_loss(sim, obs, 0.0, 0.0, sigma=5.4)
-    assert lu_mensuel < 1.5, "a l'incertitude d'un mois, la perte ne pousse plus"
-    assert lu_clim > 20 * lu_mensuel, "a l'incertitude de la climatologie, elle pousse"
+    bias = torch.full((12,), 26.4)
+    sim, obs = bias, torch.zeros(12)
+    read_monthly = tws_anomaly_loss(sim, obs, 0.0, 0.0, sigma=25.0)
+    read_clim = tws_anomaly_loss(sim, obs, 0.0, 0.0, sigma=5.4)
+    assert read_monthly < 1.5, "a l'incertitude d'un mois, la perte ne pousse plus"
+    assert read_clim > 20 * read_monthly, "a l'incertitude de la climatologie, elle pousse"
 
 
 def test_seasonal_bias_survives_centering():
@@ -117,10 +117,10 @@ def test_build_swe_targets_places_surveys_on_the_right_day():
     import pandas as pd
     from meandre.data.canswe_loader import build_swe_targets
     t = pd.date_range("2020-01-01", "2020-01-10", freq="D")
-    v, node, gardes = build_swe_targets(
+    v, node, kept_list = build_swe_targets(
         _measurements(["2020-01-03", "2020-01-07"], ["S0", "S2"], [120.0, 80.0]),
         _sites(), t)
-    assert v.shape == (10, 3) and len(gardes) == 3
+    assert v.shape == (10, 3) and len(kept_list) == 3
     assert float(v[2, 0]) == 120.0 and float(v[6, 2]) == 80.0
     assert torch.isnan(v).sum() == 28, "tout le reste doit rester manquant"
     assert node.tolist() == [0, 1, 2]
@@ -137,10 +137,10 @@ def test_build_swe_targets_drops_unrepresentative_sites():
     from meandre.data.canswe_loader import build_swe_targets
     t = pd.date_range("2020-01-01", "2020-01-05", freq="D")
     m = _measurements(["2020-01-02"] * 3, ["S0", "S1", "S2"], [100.0, 100.0, 100.0])
-    v, node, gardes = build_swe_targets(
+    v, node, kept_list = build_swe_targets(
         m, _sites(dist=(1.0, 99.0, 2.0), delev=(10.0, 10.0, 999.0)), t,
         max_dist_km=15.0, max_elev_diff_m=150.0)
-    assert list(gardes["swe_station_id"]) == ["S0"], "trop loin et trop haut ecartes"
+    assert list(kept_list["swe_station_id"]) == ["S0"], "trop loin et trop haut ecartes"
     assert v.shape == (5, 1)
 
 
@@ -148,10 +148,10 @@ def test_build_swe_targets_returns_none_when_nothing_passes():
     import pandas as pd
     from meandre.data.canswe_loader import build_swe_targets
     t = pd.date_range("2020-01-01", "2020-01-05", freq="D")
-    v, node, gardes = build_swe_targets(
+    v, node, kept_list = build_swe_targets(
         _measurements(["2020-01-02"], ["S0"], [100.0]),
         _sites(n=1, dist=(99.0,), delev=(10.0,)), t)
-    assert v is None and node is None and gardes is None
+    assert v is None and node is None and kept_list is None
 
 
 def test_mass_weight_without_target_raises():
@@ -170,21 +170,21 @@ def test_mass_and_coverage_are_DISTINCT_targets():
     couverture ne peut donc PAS corriger un ecart de masse, quelle que soit son poids.
     Les deux valeurs illustrent la saturation ; elles ne chiffrent aucun ecart mesure.
     """
-    couverture = lambda swe: 1.0 - torch.exp(-torch.tensor(swe) / 15.0)
-    mince, epais = couverture(121.0), couverture(238.0)
+    coverage = lambda swe: 1.0 - torch.exp(-torch.tensor(swe) / 15.0)
+    mince, epais = coverage(121.0), coverage(238.0)
     assert float(epais - mince) < 1e-3, "la couverture ne distingue plus 121 de 238 mm"
     assert abs(238.0 - 121.0) / 100.0 > 1.0, "la masse, elle, voit un ecart de 1.2 unite"
 
 
 # ── Terme climatologique GRACE : mecanique du passage direct (R23) ───────────
 
-def _direct_pass(res, biais, sigma=5.4):
+def _direct_pass(res, bias, sigma=5.4):
     """Reproduit le calcul du trainer : valeur = biais accumule, gradient = residu.
 
     `res` porte le graphe, `biais` est detache. La valeur penalisee doit etre le biais
     (donc insensible au residu courant), mais la derivee doit passer par le residu.
     """
-    st = res - res.detach() + biais
+    st = res - res.detach() + bias
     return (st.pow(2) / (sigma ** 2)).mean()
 
 
@@ -194,10 +194,10 @@ def test_direct_pass_penalizes_bias_not_current_residual():
     Sinon le terme redeviendrait un terme mensuel deguise, et on retomberait dans le
     defaut de R23 : juger un biais systematique a l'echelle de bruit d'un seul mois.
     """
-    biais = torch.full((4,), 20.0)
-    for valeur_residu in (0.0, 20.0, -50.0):
-        res = torch.full((4,), valeur_residu, requires_grad=True)
-        L = _direct_pass(res, biais).detach()
+    bias = torch.full((4,), 20.0)
+    for residual_value in (0.0, 20.0, -50.0):
+        res = torch.full((4,), residual_value, requires_grad=True)
+        L = _direct_pass(res, bias).detach()
         assert abs(float(L) - (20.0 / 5.4) ** 2) < 1e-4
 
 
@@ -230,10 +230,10 @@ def test_direct_pass_silent_while_bias_is_zero():
 
 def test_bucketize_julian_day_to_month():
     """Les bornes du trainer doivent rendre 0 pour janvier et 11 pour decembre."""
-    bornes = torch.tensor([31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335])
+    bounds = torch.tensor([31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335])
     for doy, months in [(1, 0), (31, 0), (32, 1), (60, 1), (61, 2), (121, 3),
                       (182, 5), (335, 10), (336, 11), (365, 11), (366, 11)]:
-        assert int(torch.bucketize(torch.tensor(doy), bornes)) == months, f"jour {doy}"
+        assert int(torch.bucketize(torch.tensor(doy), bounds)) == months, f"jour {doy}"
 
 
 # ── krec dans le champ : ancrage de la moyenne, variation spatiale libre ─────
@@ -264,12 +264,12 @@ def test_prior_krec_anchors_the_MEAN_not_each_node():
     """
     import math
     from meandre.spatial.field_network import KREC_REF
-    cible = math.log(KREC_REF)
-    plat = torch.full((100,), KREC_REF)
-    disperse = torch.exp(torch.linspace(cible - 1.0, cible + 1.0, 100))
-    terme = lambda p: (torch.log(p + 1e-12).mean() - cible) ** 2
-    assert abs(float(terme(plat))) < 1e-10
-    assert abs(float(terme(disperse))) < 1e-6, "la dispersion ne doit RIEN couter"
+    target = math.log(KREC_REF)
+    flat = torch.full((100,), KREC_REF)
+    disperse = torch.exp(torch.linspace(target - 1.0, target + 1.0, 100))
+    term = lambda p: (torch.log(p + 1e-12).mean() - target) ** 2
+    assert abs(float(term(flat))) < 1e-10
+    assert abs(float(term(disperse))) < 1e-6, "la dispersion ne doit RIEN couter"
 
 
 def test_prior_krec_restores_collapsed_field():
@@ -280,10 +280,10 @@ def test_prior_krec_restores_collapsed_field():
     """
     import math
     from meandre.spatial.field_network import KREC_REF
-    cible = math.log(KREC_REF)
+    target = math.log(KREC_REF)
     effondre = torch.full((100,), 1.3e-7)
-    terme = float((torch.log(effondre + 1e-12).mean() - cible) ** 2)
-    assert terme > 20.0, f"terme trop faible pour contrer le debit : {terme}"
+    term = float((torch.log(effondre + 1e-12).mean() - target) ** 2)
+    assert term > 20.0, f"terme trop faible pour contrer le debit : {term}"
 
 
 def test_krec_stays_within_physical_bounds():
@@ -293,10 +293,10 @@ def test_krec_stays_within_physical_bounds():
     au-dessus, la nappe fournit la quasi-totalite du debit et le score s'effondre.
     """
     net = _field()
-    brut = torch.linspace(-50.0, 50.0, 200)
+    raw_value = torch.linspace(-50.0, 50.0, 200)
     from meandre.spatial.field_network import KREC_REF
     import math
-    k = torch.exp(torch.clamp(brut * 0.3 + math.log(KREC_REF),
+    k = torch.exp(torch.clamp(raw_value * 0.3 + math.log(KREC_REF),
                               math.log(1e-7), math.log(1e-4)))
     assert float(k.min()) >= 1e-7 - 1e-12 and float(k.max()) <= 1e-4 + 1e-12
     # raw = 0 doit rendre exactement la reference : les points de reprise anciens,

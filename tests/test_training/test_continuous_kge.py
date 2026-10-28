@@ -22,8 +22,8 @@ def _loss():
                      w_log_nse=0.0, per_station=True)
 
 
-def _series(T=80, S=2, graine=0):
-    g = torch.Generator().manual_seed(graine)
+def _series(T=80, S=2, seed=0):
+    g = torch.Generator().manual_seed(seed)
     obs = 10.0 + 5.0 * torch.rand(T, S, generator=g)
     sim = obs * 0.8 + torch.rand(T, S, generator=g)
     return obs, sim
@@ -33,12 +33,12 @@ def test_history_changes_the_statistic():
     """Sans historique la perte ne voit que le bloc ; avec, elle voit toute la série."""
     obs, sim = _series()
     mask = torch.ones(2, dtype=torch.bool)
-    perte = _loss()
-    coupe = 40
+    loss = _loss()
+    cut = 40
 
-    without, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask)
-    avec, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask,
-                    q_obs_hist=obs[:coupe], q_sim_hist=sim[:coupe])
+    without, _ = loss(q_obs=obs[cut:], q_sim=sim[cut:], station_mask=mask)
+    avec, _ = loss(q_obs=obs[cut:], q_sim=sim[cut:], station_mask=mask,
+                    q_obs_hist=obs[:cut], q_sim_hist=sim[:cut])
 
     assert not torch.isclose(without, avec, atol=1e-6), \
         "l'historique doit changer la statistique de sequence"
@@ -48,29 +48,29 @@ def test_two_blocks_with_history_equal_whole_sequence():
     """Le second bloc, muni de son historique, retrouve la perte de la serie complete."""
     obs, sim = _series()
     mask = torch.ones(2, dtype=torch.bool)
-    perte = _loss()
-    coupe = 40
+    loss = _loss()
+    cut = 40
 
-    entiere, _ = perte(q_obs=obs, q_sim=sim, station_mask=mask)
-    par_blocs, _ = perte(q_obs=obs[coupe:], q_sim=sim[coupe:], station_mask=mask,
-                         q_obs_hist=obs[:coupe], q_sim_hist=sim[:coupe])
+    whole, _ = loss(q_obs=obs, q_sim=sim, station_mask=mask)
+    per_block, _ = loss(q_obs=obs[cut:], q_sim=sim[cut:], station_mask=mask,
+                         q_obs_hist=obs[:cut], q_sim_hist=sim[:cut])
 
-    assert torch.isclose(entiere, par_blocs, atol=1e-5)
+    assert torch.isclose(whole, per_block, atol=1e-5)
 
 
 def test_gradient_flows_only_through_current_block():
     """L'historique est detache : les blocs passes ont ete simules avec d'autres poids."""
     obs, sim = _series()
     mask = torch.ones(2, dtype=torch.bool)
-    coupe = 40
-    hist = sim[:coupe].clone().requires_grad_(True)
-    courant = sim[coupe:].clone().requires_grad_(True)
+    cut = 40
+    hist = sim[:cut].clone().requires_grad_(True)
+    current_value = sim[cut:].clone().requires_grad_(True)
 
-    perte, _ = _loss()(q_obs=obs[coupe:], q_sim=courant, station_mask=mask,
-                        q_obs_hist=obs[:coupe], q_sim_hist=hist)
-    perte.backward()
+    loss, _ = _loss()(q_obs=obs[cut:], q_sim=current_value, station_mask=mask,
+                        q_obs_hist=obs[:cut], q_sim_hist=hist)
+    loss.backward()
 
-    assert courant.grad is not None and float(courant.grad.abs().sum()) > 0
+    assert current_value.grad is not None and float(current_value.grad.abs().sum()) > 0
     assert hist.grad is None or float(hist.grad.abs().sum()) == 0.0
 
 
@@ -79,6 +79,6 @@ def test_loss_remains_a_kge_on_one_station():
     par station vaut bien 1 moins le KGE."""
     obs, sim = _series(S=1)
     mask = torch.ones(1, dtype=torch.bool)
-    perte, _ = _loss()(q_obs=obs, q_sim=sim, station_mask=mask)
-    attendu = differentiable_kge_loss(obs[:, 0], sim[:, 0])
-    assert torch.isclose(perte, attendu, atol=1e-5)
+    loss, _ = _loss()(q_obs=obs, q_sim=sim, station_mask=mask)
+    expected = differentiable_kge_loss(obs[:, 0], sim[:, 0])
+    assert torch.isclose(loss, expected, atol=1e-5)

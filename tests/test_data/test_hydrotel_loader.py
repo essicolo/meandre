@@ -136,9 +136,9 @@ def _write_snowmelt(path: Path, rows: list[dict]) -> None:
 def _make_simple_project(tmp: Path, n_uhrh: int = 4) -> Path:
     """Create a minimal HYDROTEL project with 2 river troncons."""
     physi = tmp / "physitel"
-    etat = tmp / "etat"
+    state_values = tmp / "etat"
     physi.mkdir()
-    etat.mkdir()
+    state_values.mkdir()
 
     # 4 UHRHs in 2 troncons
     uhrh_rows = [
@@ -171,10 +171,10 @@ def _make_simple_project(tmp: Path, n_uhrh: int = 4) -> Path:
 
     bv_rows = [{"id": i + 1, "t1": 0.35, "t2": 0.30, "t3": 0.25}
                for i in range(n_uhrh)]
-    _write_vertical_balance(etat / "bilan_vertical_2023080100.csv", bv_rows)
+    _write_vertical_balance(state_values / "bilan_vertical_2023080100.csv", bv_rows)
 
     fn_rows = [{"id": i + 1, "swe": 0.0} for i in range(n_uhrh)]
-    _write_snowmelt(etat / "fonte_neige_2023080100.csv", fn_rows)
+    _write_snowmelt(state_values / "fonte_neige_2023080100.csv", fn_rows)
 
     return tmp
 
@@ -219,7 +219,7 @@ class TestParseUhrh:
         assert uhrh[1]["slope_pct"] == pytest.approx(4.0)  # 0.04 * 100
 
 
-class TestParseOccupationSol:
+class TestParseLandCover:
     def test_pixel_counts_shape(self, tmp_path):
         lc_rows = [
             {"id": 1, "counts": [0, 100, 50, 200, 150, 100, 30, 40, 30]},
@@ -241,7 +241,7 @@ class TestParseOccupationSol:
         assert lc[1].sum() == pytest.approx(sum(counts))
 
 
-class TestParseTypeSol:
+class TestParseSoilType:
     def test_returns_class_per_uhrh(self, tmp_path):
         soil_rows = [{"id": 1, "cls": 4}, {"id": 2, "cls": 8}]
         _write_soil_type_cla(tmp_path / "type_sol.cla", soil_rows)
@@ -251,7 +251,7 @@ class TestParseTypeSol:
         assert soil[2] == 8
 
 
-class TestParseTroncon:
+class TestParseReach:
     def test_river_reach_parsed(self, tmp_path):
         reaches = [
             {"id": 1, "type": 1, "upstream_node": 1, "downstream_node": 2,
@@ -262,13 +262,13 @@ class TestParseTroncon:
              "uhrh_ids": [3], "downstream_id": 2},
         ]
         _write_reach(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_reach(tmp_path / "troncon.trl")
+        reaches_ = _parse_reach(tmp_path / "troncon.trl")
 
-        assert len(troncons) == 2
-        assert troncons[0]["id"] == 1
-        assert troncons[0]["length_m"] == pytest.approx(1000.0)
-        assert troncons[0]["uhrh_ids"] == [1, 2]
-        assert troncons[0]["downstream_id"] == 2
+        assert len(reaches_) == 2
+        assert reaches_[0]["id"] == 1
+        assert reaches_[0]["length_m"] == pytest.approx(1000.0)
+        assert reaches_[0]["uhrh_ids"] == [1, 2]
+        assert reaches_[0]["downstream_id"] == 2
 
     def test_lake_reach_parsed(self, tmp_path):
         """Le bloc metrique d'un lac porte une SURFACE, pas une longueur.
@@ -285,15 +285,15 @@ class TestParseTroncon:
              "uhrh_ids": [1, 2, 3], "downstream_id": 1},  # outlet (self)
         ]
         _write_reach(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_reach(tmp_path / "troncon.trl")
+        reaches_ = _parse_reach(tmp_path / "troncon.trl")
 
-        assert troncons[0]["type"] == 2
-        assert troncons[0]["lake_area_m2"] == pytest.approx(640_000.0)
-        assert troncons[0]["lake_depth_m"] == pytest.approx(3.5)
-        assert troncons[0]["lake_rating_beta"] == pytest.approx(1.5)
+        assert reaches_[0]["type"] == 2
+        assert reaches_[0]["lake_area_m2"] == pytest.approx(640_000.0)
+        assert reaches_[0]["lake_depth_m"] == pytest.approx(3.5)
+        assert reaches_[0]["lake_rating_beta"] == pytest.approx(1.5)
         # 640 000 m2 -> 800 m de cote, une longueur d'ecoulement plausible.
-        assert troncons[0]["length_m"] == pytest.approx(800.0)
-        assert troncons[0]["uhrh_ids"] == [1, 2, 3]
+        assert reaches_[0]["length_m"] == pytest.approx(800.0)
+        assert reaches_[0]["uhrh_ids"] == [1, 2, 3]
 
     def test_lake_length_stays_plausible(self, tmp_path):
         """Aucun lac ne doit produire un troncon plus long que la plus longue riviere."""
@@ -305,11 +305,11 @@ class TestParseTroncon:
              "uhrh_ids": [2], "downstream_id": 2},
         ]
         _write_reach(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_reach(tmp_path / "troncon.trl")
+        reaches_ = _parse_reach(tmp_path / "troncon.trl")
 
-        lac = next(t for t in troncons if t["type"] == 2)
-        assert lac["length_m"] == pytest.approx(3000.0)  # racine de 9 km2
-        assert lac["length_m"] < 50_000.0
+        lake = next(t for t in reaches_ if t["type"] == 2)
+        assert lake["length_m"] == pytest.approx(3000.0)  # racine de 9 km2
+        assert lake["length_m"] < 50_000.0
 
     def test_reach_count(self, tmp_path):
         reaches = [
@@ -319,8 +319,8 @@ class TestParseTroncon:
             for i in range(1, 6)
         ]
         _write_reach(tmp_path / "troncon.trl", reaches)
-        troncons = _parse_reach(tmp_path / "troncon.trl")
-        assert len(troncons) == 5
+        reaches_ = _parse_reach(tmp_path / "troncon.trl")
+        assert len(reaches_) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +341,7 @@ class TestLoadHydrotel:
         assert "node_ids" in result
         assert "n_nodes" in result
 
-    def test_n_nodes_matches_troncons(self, project):
+    def test_n_nodes_matches_reaches(self, project):
         result = load_hydrotel(project, normalized=False)
         # 2 troncons
         assert result["n_nodes"] == 2
@@ -408,14 +408,14 @@ class TestLoadHydrotel:
         result = load_hydrotel(project, normalized=False)
         assert result["node_ids"] == [1, 2]
 
-    def test_is_lake_false_for_river_troncons(self, project):
+    def test_is_lake_false_for_river_reaches(self, project):
         result = load_hydrotel(project, normalized=False)
         assert not result["graph"].is_lake.any()
 
-    def test_lake_troncon_is_flagged(self, tmp_path):
+    def test_lake_reach_is_flagged(self, tmp_path):
         physi = tmp_path / "physitel"
-        etat = tmp_path / "etat"
-        physi.mkdir(); etat.mkdir()
+        state_values = tmp_path / "etat"
+        physi.mkdir(); state_values.mkdir()
 
         uhrh_rows = [{"id": i + 1, "area": 1.0} for i in range(3)]
         _write_uhrh(physi / "uhrh.csv", uhrh_rows)
@@ -434,9 +434,9 @@ class TestLoadHydrotel:
              "uhrh_ids": [2, 3], "downstream_id": 2},  # self → outlet
         ]
         _write_reach(physi / "troncon.trl", reaches)
-        _write_vertical_balance(etat / "bilan_vertical_2023080100.csv",
+        _write_vertical_balance(state_values / "bilan_vertical_2023080100.csv",
                               [{"id": i + 1} for i in range(3)])
-        _write_snowmelt(etat / "fonte_neige_2023080100.csv",
+        _write_snowmelt(state_values / "fonte_neige_2023080100.csv",
                            [{"id": i + 1} for i in range(3)])
 
         result = load_hydrotel(tmp_path, normalized=False)
@@ -462,8 +462,8 @@ class TestLoadHydrotel:
     def test_no_crash_without_state_folder(self, tmp_path):
         """Loader issues a warning and falls back to default warm start."""
         physi = tmp_path / "physitel"
-        etat = tmp_path / "etat"
-        physi.mkdir(); etat.mkdir()
+        state_values = tmp_path / "etat"
+        physi.mkdir(); state_values.mkdir()
 
         uhrh_rows = [{"id": 1, "area": 1.0}]
         _write_uhrh(physi / "uhrh.csv", uhrh_rows)

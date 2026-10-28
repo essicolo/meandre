@@ -12,58 +12,58 @@ import torch
 
 from meandre.model import HydroModel
 
-PROFONDEUR = HydroModel._water_depth
+DEPTH = HydroModel._water_depth
 
 
-class _Graphe:
+class _Graph:
     def __init__(self, w=None, s=None):
         self.reach_width_m = w
         self.node_slope = s
 
 
-class _Champ:
-    def __init__(self, n=0.035, taille=2):
-        self.manning_n = torch.full((taille,), n)
+class _Field:
+    def __init__(self, n=0.035, size=2):
+        self.manning_n = torch.full((size,), n)
 
 
 def test_without_width_nothing_is_produced():
     """Une profondeur inventee serait pire qu'une absence."""
-    assert PROFONDEUR(torch.ones(3, 2), _Graphe(None, torch.full((2,), 0.01)), _Champ()) is None
+    assert DEPTH(torch.ones(3, 2), _Graph(None, torch.full((2,), 0.01)), _Field()) is None
 
 
 def test_without_slope_nothing_is_produced():
-    assert PROFONDEUR(torch.ones(3, 2), _Graphe(torch.full((2,), 50.0), None), _Champ()) is None
+    assert DEPTH(torch.ones(3, 2), _Graph(torch.full((2,), 50.0), None), _Field()) is None
 
 
 def test_depth_grows_with_discharge():
-    g = _Graphe(torch.full((2,), 50.0), torch.full((2,), 0.001))
-    h = PROFONDEUR(torch.tensor([[10.0, 100.0]]), g, _Champ())
+    g = _Graph(torch.full((2,), 50.0), torch.full((2,), 0.001))
+    h = DEPTH(torch.tensor([[10.0, 100.0]]), g, _Field())
     assert float(h[0, 1]) > float(h[0, 0])
 
 
 def test_exponent_is_three_fifths():
     """Un debit multiplie par dix doit multiplier la profondeur par dix puissance 0,6."""
-    g = _Graphe(torch.full((2,), 50.0), torch.full((2,), 0.001))
-    h = PROFONDEUR(torch.tensor([[10.0, 100.0]]), g, _Champ())
+    g = _Graph(torch.full((2,), 50.0), torch.full((2,), 0.001))
+    h = DEPTH(torch.tensor([[10.0, 100.0]]), g, _Field())
     assert float(h[0, 1] / h[0, 0]) == pytest.approx(10.0 ** 0.6, rel=1e-4)
 
 
 def test_wider_river_is_shallower():
-    g = _Graphe(torch.tensor([20.0, 200.0]), torch.full((2,), 0.001))
-    h = PROFONDEUR(torch.tensor([[100.0, 100.0]]), g, _Champ())
+    g = _Graph(torch.tensor([20.0, 200.0]), torch.full((2,), 0.001))
+    h = DEPTH(torch.tensor([[100.0, 100.0]]), g, _Field())
     assert float(h[0, 0]) > float(h[0, 1])
 
 
 def test_steeper_slope_gives_less_depth():
-    g = _Graphe(torch.full((2,), 50.0), torch.tensor([0.0001, 0.01]))
-    h = PROFONDEUR(torch.tensor([[100.0, 100.0]]), g, _Champ())
+    g = _Graph(torch.full((2,), 50.0), torch.tensor([0.0001, 0.01]))
+    h = DEPTH(torch.tensor([[100.0, 100.0]]), g, _Field())
     assert float(h[0, 0]) > float(h[0, 1])
 
 
 def test_order_of_magnitude_is_hydraulic():
     """Cent metres cubes par seconde sur cinquante metres de large, pente d'un pour mille."""
-    g = _Graphe(torch.full((2,), 50.0), torch.full((2,), 0.001))
-    h = float(PROFONDEUR(torch.tensor([[100.0, 100.0]]), g, _Champ())[0, 0])
+    g = _Graph(torch.full((2,), 50.0), torch.full((2,), 0.001))
+    h = float(DEPTH(torch.tensor([[100.0, 100.0]]), g, _Field())[0, 0])
     assert 0.5 < h < 5.0, f"profondeur hors plage hydraulique : {h:.2f} m"
 
 
@@ -74,6 +74,6 @@ def test_gradient_reaches_manning_coefficient():
     class _C:
         manning_n = n
 
-    g = _Graphe(torch.full((2,), 50.0), torch.full((2,), 0.001))
-    PROFONDEUR(torch.tensor([[100.0, 100.0]]), g, _C()).sum().backward()
+    g = _Graph(torch.full((2,), 50.0), torch.full((2,), 0.001))
+    DEPTH(torch.tensor([[100.0, 100.0]]), g, _C()).sum().backward()
     assert float(n.grad.abs().sum()) > 0

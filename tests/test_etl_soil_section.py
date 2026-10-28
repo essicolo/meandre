@@ -48,6 +48,6 @@ def test_at_least_one_configuration_declares_a_profile():
 
 def test_pilot_pattern_follows_profile_not_section():
     """Le test qui plantait : `if section` au lieu de `if profil is not None`."""
-    section_sans_processus = {"z1": 0.1, "z2_min": 0.3, "hydrotel_calib_dir": "/x"}
-    assert bool(section_sans_processus) is True, "la section est vraie, d'ou le piege"
-    assert sp.from_toml(section_sans_processus) is None
+    section_without_process = {"z1": 0.1, "z2_min": 0.3, "hydrotel_calib_dir": "/x"}
+    assert bool(section_without_process) is True, "la section est vraie, d'ou le piege"
+    assert sp.from_toml(section_without_process) is None

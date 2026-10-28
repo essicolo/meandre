@@ -11,42 +11,42 @@ import pytest
 
 def partager(wells, part):
     """Reproduit la règle du pilote : ordre stable, pas de tirage."""
-    garde = []
+    kept = []
     if 0.0 < part < 1.0 and len(wells) >= 4:
-        rang = sorted(range(len(wells)), key=lambda i: str(wells[i]))
+        rank = sorted(range(len(wells)), key=lambda i: str(wells[i]))
         n_val = max(1, int(round(part * len(wells))))
-        garde = sorted(rang[::max(len(wells) // n_val, 1)][:n_val])
-    entraine = [i for i in range(len(wells)) if i not in set(garde)]
-    if not entraine:
-        entraine, garde = list(range(len(wells))), []
-    return entraine, garde
+        kept = sorted(rank[::max(len(wells) // n_val, 1)][:n_val])
+    trained = [i for i in range(len(wells)) if i not in set(kept)]
+    if not trained:
+        trained, kept = list(range(len(wells))), []
+    return trained, kept
 
 
-PUITS = ["04300001", "04020001", "04630001", "04300011", "04020002", "04020005",
+WELL = ["04300001", "04020001", "04630001", "04300011", "04020002", "04020005",
          "04060003", "04010003"]
 
 
 def test_split_is_stable():
-    assert partager(PUITS, 0.5) == partager(PUITS, 0.5)
-    assert partager(list(reversed(PUITS)), 0.5)[1] == partager(list(reversed(PUITS)), 0.5)[1]
+    assert partager(WELL, 0.5) == partager(WELL, 0.5)
+    assert partager(list(reversed(WELL)), 0.5)[1] == partager(list(reversed(WELL)), 0.5)[1]
 
 
 def test_both_shares_are_disjoint_and_complete():
-    e, g = partager(PUITS, 0.5)
+    e, g = partager(WELL, 0.5)
     assert set(e) & set(g) == set()
-    assert sorted(e + g) == list(range(len(PUITS)))
+    assert sorted(e + g) == list(range(len(WELL)))
 
 
 def test_requested_share_is_respected():
-    _e, g = partager(PUITS, 0.5)
+    _e, g = partager(WELL, 0.5)
     assert len(g) == 4
-    _e, g = partager(PUITS, 0.25)
+    _e, g = partager(WELL, 0.25)
     assert len(g) == 2
 
 
 def test_no_well_held_out_when_share_is_zero():
-    e, g = partager(PUITS, 0.0)
-    assert g == [] and len(e) == len(PUITS)
+    e, g = partager(WELL, 0.0)
+    assert g == [] and len(e) == len(WELL)
 
 
 def test_poor_territory_keeps_everything_for_the_loss():
@@ -57,7 +57,7 @@ def test_poor_territory_keeps_everything_for_the_loss():
 
 def test_held_out_share_independent_of_input_order():
     """Deux exécutions qui lisent les puits dans un ordre différent tiennent les mêmes."""
-    _e1, g1 = partager(PUITS, 0.5)
-    autre = sorted(PUITS)
-    _e2, g2 = partager(autre, 0.5)
-    assert {PUITS[i] for i in g1} == {autre[i] for i in g2}
+    _e1, g1 = partager(WELL, 0.5)
+    other = sorted(WELL)
+    _e2, g2 = partager(other, 0.5)
+    assert {WELL[i] for i in g1} == {other[i] for i in g2}

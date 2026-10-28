@@ -24,11 +24,11 @@ import torch
 from meandre.hydrotel.frost import Rankinen, n_intervalles
 
 
-def _profile(mod, n, tair=-15.0, neige=0.2, day_count=60):
+def _profile(mod, n, tair=-15.0, snow=0.2, day_count=60):
     """Fait descendre un front de gel sur `jours` a temperature constante."""
     tmin = torch.full((n,), tair - 3.0)
     tmax = torch.full((n,), tair + 3.0)
-    hs = torch.full((n,), float(neige))
+    hs = torch.full((n,), float(snow))
     nd = n_intervalles(3.2, mod.dz)
     p = mod.init_profil(tmin, tmax, hs, nd)
     z = torch.full((n,), 1.0)
@@ -77,13 +77,13 @@ def test_gradient_crosses_both():
     """Un parametre dont le gradient ne passe pas n'est pas identifiable, et c'est
     l'identifiabilite qui est la promesse du projet."""
     mod = Rankinen()
-    for nom, val in (("alpha", 1.6e-7), ("fs", 2.35)):
+    for field_name, val in (("alpha", 1.6e-7), ("fs", 2.35)):
         x = torch.full((2,), val, requires_grad=True)
         tmin, tmax, hs, p, z, _ = _profile(mod, 2)
         for _ in range(20):
-            p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **{nom: x})
+            p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **{field_name: x})
         frost_state.sum().backward()
-        assert x.grad is not None and float(x.grad.abs().sum()) > 0.0, nom
+        assert x.grad is not None and float(x.grad.abs().sum()) > 0.0, field_name
 
 
 def test_bounds_respect_scheme_stability():

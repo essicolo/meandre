@@ -15,13 +15,13 @@ from meandre.adapters.physitel import neisim_loader as nl
 def test_cells_are_the_nearest(monkeypatch):
     lon = np.array([-80.0, -79.0, -78.0])
     lat = np.array([45.0, 46.0])
-    temps = pd.to_datetime(["2000-01-01 05:00", "2000-01-02 05:00"])
-    monkeypatch.setattr(nl, "_grid", lambda f: (lon, lat, temps.normalize()))
-    cellules, rang, _lo, _la, _t = nl.node_cells([-78.9, -80.1, -78.9], [45.9, 45.1, 45.9])
-    assert rang[0] == rang[2], "deux nœuds au même endroit doivent partager la cellule"
-    assert len(cellules) == 2
-    proche = cellules[rang[1]]
-    assert lon[proche[0]] == -80.0 and lat[proche[1]] == 45.0
+    time_values = pd.to_datetime(["2000-01-01 05:00", "2000-01-02 05:00"])
+    monkeypatch.setattr(nl, "_grid", lambda f: (lon, lat, time_values.normalize()))
+    cells, rank, _lo, _la, _t = nl.node_cells([-78.9, -80.1, -78.9], [45.9, 45.1, 45.9])
+    assert rank[0] == rank[2], "deux nœuds au même endroit doivent partager la cellule"
+    assert len(cells) == 2
+    near = cells[rank[1]]
+    assert lon[near[0]] == -80.0 and lat[near[1]] == 45.0
 
 
 def test_five_am_timestamp_intersects_midnight():
@@ -34,13 +34,13 @@ def test_five_am_timestamp_intersects_midnight():
 
 def test_days_outside_period_stay_missing(monkeypatch):
     lon, lat = np.array([-75.0]), np.array([46.0])
-    temps = pd.to_datetime(["2001-01-02", "2001-01-03"])
-    monkeypatch.setattr(nl, "_grid", lambda f: (lon, lat, temps))
+    time_values = pd.to_datetime(["2001-01-02", "2001-01-03"])
+    monkeypatch.setattr(nl, "_grid", lambda f: (lon, lat, time_values))
     monkeypatch.setattr(nl, "read_cells", lambda c, f=None, **k: np.array([[10.0, 20.0]], dtype="float32"))
     axe = pd.date_range("2001-01-01", "2001-01-04", freq="D")
-    value_list, couverture = nl.load_at_nodes([-75.0], [46.0], axe)
+    value_list, coverage = nl.load_at_nodes([-75.0], [46.0], axe)
     assert value_list.shape == (4, 1)
     assert np.isnan(value_list[0, 0]) and np.isnan(value_list[3, 0])
     assert value_list[1, 0] == pytest.approx(10.0)
     assert value_list[2, 0] == pytest.approx(20.0)
-    assert couverture == pytest.approx(0.5)
+    assert coverage == pytest.approx(0.5)

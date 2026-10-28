@@ -15,12 +15,12 @@ from meandre.hydrotel.bv3c2 import BV3C2Clone, SOIL_TEXTURES, EPAISSEUR, KREC_DE
 
 @pytest.fixture(autouse=True)
 def _double():
-    ancien = torch.get_default_dtype()
+    old = torch.get_default_dtype()
     torch.set_default_dtype(torch.float64)
     try:
         yield
     finally:
-        torch.set_default_dtype(ancien)
+        torch.set_default_dtype(old)
 
 
 def _column():
@@ -48,8 +48,8 @@ def _fast(pluie_mm, orage, theta_rel=0.7):
 
 def test_without_storm_duration_column_produces_almost_nothing():
     """Le clone fidele, au pas journalier, est sous un pour cent : c'est le defaut."""
-    for pluie in (20.0, 40.0, 80.0):
-        assert _fast(pluie, None) < 1.0, pluie
+    for rain in (20.0, 40.0, 80.0):
+        assert _fast(rain, None) < 1.0, rain
 
 
 def test_short_storm_produces_quick_flow():
@@ -69,8 +69,8 @@ def test_effect_grows_when_the_storm_concentrates():
 def test_rain_spread_over_day_restores_clone():
     """Vingt-quatre heures d'orage doivent rendre le comportement du pas journalier, sans
     quoi le mecanisme modifierait les pluies frontales qu'il ne vise pas."""
-    for pluie in (20.0, 40.0):
-        assert abs(_fast(pluie, 24.0) - _fast(pluie, None)) < 1.0, pluie
+    for rain in (20.0, 40.0):
+        assert abs(_fast(rain, 24.0) - _fast(rain, None)) < 1.0, rain
 
 
 def test_forcing_builder_exposes_the_channel():

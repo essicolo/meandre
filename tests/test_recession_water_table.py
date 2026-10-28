@@ -16,7 +16,7 @@ import pytest
 import torch
 
 
-def _drainage(n, pas=200000, fraction=0.002, s0=100.0, sous_pas=20):
+def _drainage(n, step=200000, fraction=0.002, s0=100.0, sub_step=20):
     """Récession libre d'un réservoir Q = c·S^n, sans recharge.
 
     Le coefficient est NORMALISÉ pour que le débit initial vaille la même fraction du stock
@@ -26,40 +26,40 @@ def _drainage(n, pas=200000, fraction=0.002, s0=100.0, sous_pas=20):
     """
     c = fraction * s0 ** (1.0 - n)
     s = s0
-    dt = 1.0 / sous_pas
+    dt = 1.0 / sub_step
     q = []
-    for _ in range(pas):
-        debit = c * s ** n
-        for _ in range(sous_pas):
+    for _ in range(step):
+        discharge = c * s ** n
+        for _ in range(sub_step):
             s = max(s - c * s ** n * dt, 1e-12)
-        q.append(debit)
-        if debit < 1e-12:
+        q.append(discharge)
+        if discharge < 1e-12:
             break
     return np.array(q)
 
 
-def _exponent(q, bas=0.05, haut=0.95):
+def _exponent(q, bas=0.05, high=0.95):
     """Pente de log(−dQ/dt) contre log(Q), sur la partie centrale de la récession."""
     qm = 0.5 * (q[1:] + q[:-1])
     dq = -np.diff(q)
-    garde = (dq > 0) & (qm > 0)
-    qm, dq = qm[garde], dq[garde]
-    lo, hi = np.quantile(qm, bas), np.quantile(qm, haut)
+    kept = (dq > 0) & (qm > 0)
+    qm, dq = qm[kept], dq[kept]
+    lo, hi = np.quantile(qm, bas), np.quantile(qm, high)
     m = (qm >= lo) & (qm <= hi)
     return float(np.polyfit(np.log(qm[m]), np.log(dq[m]), 1)[0])
 
 
-@pytest.mark.parametrize("n,attendu", [(1.0, 1.0), (2.0, 1.5), (3.0, 5.0 / 3.0),
+@pytest.mark.parametrize("n,expected", [(1.0, 1.0), (2.0, 1.5), (3.0, 5.0 / 3.0),
                                        (2.9, 2.0 - 1.0 / 2.9)])
-def test_relation_between_storage_and_recession_exponents(n, attendu):
-    assert _exponent(_drainage(n)) == pytest.approx(attendu, abs=0.03)
+def test_relation_between_storage_and_recession_exponents(n, expected):
+    assert _exponent(_drainage(n)) == pytest.approx(expected, abs=0.03)
 
 
 def test_deposit_water_table_follows_boussinesq_law():
     """La pièce réellement utilisée, et non une réécriture, doit donner b proche de 1,5."""
     from meandre.vertical.water_table import WaterTable
 
-    nappe = WaterTable()
+    water_table = WaterTable()
     sy = torch.tensor([0.05])
     k_b = torch.tensor([1.5e-3])
     z_riv = torch.tensor([5.0])
@@ -69,8 +69,8 @@ def test_deposit_water_table_follows_boussinesq_law():
     for _ in range(3000):
         # forward rend (profondeur, debit, evaporation) : le debit est le DEUXIEME terme,
         # et la profondeur mise a jour le premier.
-        z, debit, _e = nappe(z, torch.zeros(1), sy, k_b, z_riv, h_ref)
-        v = float(debit)
+        z, discharge, _e = water_table(z, torch.zeros(1), sy, k_b, z_riv, h_ref)
+        v = float(discharge)
         if v <= 1e-12:
             break
         q.append(v)
@@ -82,9 +82,9 @@ def test_deposit_water_table_follows_boussinesq_law():
 
 def test_observed_exponent_requires_storage_more_nonlinear_than_square():
     """1,65 mesuré sur 94 stations correspond à n proche de 2,9, non à n = 2."""
-    b_observe = 1.65
-    n = 1.0 / (2.0 - b_observe)
+    b_observed = 1.65
+    n = 1.0 / (2.0 - b_observed)
     assert n == pytest.approx(2.86, abs=0.05)
-    assert _exponent(_drainage(n)) == pytest.approx(b_observe, abs=0.03)
+    assert _exponent(_drainage(n)) == pytest.approx(b_observed, abs=0.03)
     # La loi en carre, elle, reste sous la valeur observee.
-    assert _exponent(_drainage(2.0)) < b_observe
+    assert _exponent(_drainage(2.0)) < b_observed

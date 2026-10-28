@@ -18,8 +18,8 @@ from meandre.hydrotel.bv3c2 import BV3C2Clone, EPAISSEUR, make_params
 from meandre.vertical import soil_processes as sp
 
 N = 5
-PLUIE = 6.0
-JOURS = 40
+RAIN = 6.0
+DAYS = 40
 
 
 def _params():
@@ -38,22 +38,22 @@ def _simuler(p, n_substep=64, theta=(0.32, 0.34, 0.40)):
     z1, z2, z3 = EPAISSEUR
     stock0 = (t1 * z1 + t2 * z2 + t3 * z3) * 1000.0
     zero = torch.zeros(N)
-    entree = sorties = 0.0
-    for _ in range(JOURS):
+    entree = outputs = 0.0
+    for _ in range(DAYS):
         ps, ph, pb, rech, (t1, t2, t3), _d = col.forward(
-            t1, t2, t3, torch.full((N,), PLUIE), zero, zero, zero, p)
-        entree += PLUIE
-        sorties += float((ps + ph + pb + rech).mean())
+            t1, t2, t3, torch.full((N,), RAIN), zero, zero, zero, p)
+        entree += RAIN
+        outputs += float((ps + ph + pb + rech).mean())
     stock1 = float(((t1 * z1 + t2 * z2 + t3 * z3) * 1000.0).mean())
-    return entree, sorties, stock1 - float(stock0.mean())
+    return entree, outputs, stock1 - float(stock0.mean())
 
 
 def _relative_gap(p, **kw):
-    entree, sorties, delta = _simuler(p, **kw)
-    return abs(entree - sorties - delta) / max(entree, 1e-9)
+    entree, outputs, delta = _simuler(p, **kw)
+    return abs(entree - outputs - delta) / max(entree, 1e-9)
 
 
-PROFILS = {
+PROFILES = {
     "hydrotel déclaré": lambda p: sp.hydrotel_profile(krec=p["krec"]),
     "pile à seuil": lambda p: sp.SoilProfile(layers=3, processes=(
         sp.SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR"),
@@ -79,11 +79,11 @@ def test_historical_path_closes():
     assert _relative_gap(_params()) < 1e-4
 
 
-@pytest.mark.parametrize("nom", list(PROFILS))
-def test_each_declared_profile_closes(nom):
+@pytest.mark.parametrize("field_name", list(PROFILES))
+def test_each_declared_profile_closes(field_name):
     p = _params()
-    p["soil_profile"] = PROFILS[nom](p)
-    assert _relative_gap(p) < 1e-4, f"{nom} : le bilan ne ferme pas"
+    p["soil_profile"] = PROFILES[field_name](p)
+    assert _relative_gap(p) < 1e-4, f"{field_name} : le bilan ne ferme pas"
 
 
 def test_empty_profile_loses_no_water_either():
@@ -101,5 +101,5 @@ def test_closure_holds_even_under_substep_cap(n_substep):
     la partition entre ruissellement et écoulement souterrain.
     """
     p = _params()
-    p["soil_profile"] = PROFILS["pile à seuil"](p)
+    p["soil_profile"] = PROFILES["pile à seuil"](p)
     assert _relative_gap(p, n_substep=n_substep, theta=(0.40, 0.42, 0.47)) < 1e-4

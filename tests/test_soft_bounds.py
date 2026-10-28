@@ -16,11 +16,11 @@ def _field(**kw):
     return SpatialFieldNetwork(n_territorial=4, n_coord_freqs=2, hidden=16, **kw)
 
 
-def _output(net, nom, brut):
-    raw = torch.zeros(len(brut), SpatialParams.N_PARAMS)
-    noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
-    raw[:, noms.index(nom)] = torch.tensor(brut)
-    return getattr(net._apply_constraints(raw), nom)
+def _output(net, field_name, raw_value):
+    raw = torch.zeros(len(raw_value), SpatialParams.N_PARAMS)
+    name_list = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
+    raw[:, name_list.index(field_name)] = torch.tensor(raw_value)
+    return getattr(net._apply_constraints(raw), field_name)
 
 
 def test_center_kept_for_log_outputs():
@@ -32,14 +32,14 @@ def test_center_kept_for_log_outputs():
 def test_nonzero_gradient_near_floor():
     net = _field()
     raw = torch.zeros(1, SpatialParams.N_PARAMS)
-    noms = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
-    raw[0, noms.index("K_sat_2")] = -40.0
+    name_list = [f for f in SpatialParams.__dataclass_fields__][:SpatialParams.N_PARAMS]
+    raw[0, name_list.index("K_sat_2")] = -40.0
     raw.requires_grad_(True)
     v = net._apply_constraints(raw).K_sat_2.sum()
     v.backward()
     lo = FIELD_BOUNDS["K_sat_2"][0]
     assert float(v) >= lo
-    assert float(raw.grad[0, noms.index("K_sat_2")]) > 0.0
+    assert float(raw.grad[0, name_list.index("K_sat_2")]) > 0.0
 
 
 def test_bounds_from_toml():

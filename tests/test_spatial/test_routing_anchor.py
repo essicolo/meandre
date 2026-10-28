@@ -118,14 +118,14 @@ def test_nan_node_keeps_parameter_bound_free():
     attenuation est portee par le module de lac."""
     f, (c, t) = _field(4), _entrees(4)
     with torch.no_grad():
-        libre = f(c, t).K_musk_hours.clone()
+        free = f(c, t).K_musk_hours.clone()
     L = torch.tensor([5.0, float("nan"), 5.0, float("nan")])
     f.set_routing_anchor(L)
     with torch.no_grad():
         k = f(c, t).K_musk_hours
-    assert torch.allclose(k[1], libre[1]), (float(k[1]), float(libre[1]))
-    assert torch.allclose(k[3], libre[3])
-    assert not torch.allclose(k[0], libre[0])
+    assert torch.allclose(k[1], free[1]), (float(k[1]), float(free[1]))
+    assert torch.allclose(k[3], free[3])
+    assert not torch.allclose(k[0], free[0])
     assert torch.isfinite(k).all()
 
 
@@ -140,8 +140,8 @@ def test_reference_slope_is_median_of_given_slopes():
     f.set_routing_anchor(torch.full((n,), 5.0), slope_frac=S)
     anc = f._k_musk_anchor
     # A la pente mediane, la celerite vaut 5/3 m/s : un troncon de 5 km prend 0,83 h.
-    attendu = 5000.0 / ((5.0 / 3.0) * 1.0) / 3600.0
-    assert abs(float(anc.median()) - attendu) < 0.05, float(anc.median())
+    expected = 5000.0 / ((5.0 / 3.0) * 1.0) / 3600.0
+    assert abs(float(anc.median()) - expected) < 0.05, float(anc.median())
     assert int((anc <= 0.0501).sum()) == 0
 
 

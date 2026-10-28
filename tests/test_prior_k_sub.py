@@ -23,7 +23,7 @@ def _network(prior=True, poids=0.3):
     torch.manual_seed(0)
     net = SpatialFieldNetwork(n_territorial=4)
     net.prior_on_k_sub = prior
-    net.poids_k_sub = poids
+    net.weight_k_sub = poids
     return net
 
 
@@ -39,19 +39,19 @@ def _params(net, k_sub):
 
 
 def test_without_flag_nothing_changes():
-    net_sans, net_avec = _network(prior=False), _network(prior=True)
+    net_without, net_with = _network(prior=False), _network(prior=True)
     k = torch.full((32,), KSUB_REF)
-    a = float(net_sans.physical_prior_loss(_params(net_sans, k)))
-    b = float(net_avec.physical_prior_loss(_params(net_avec, k)))
+    a = float(net_without.physical_prior_loss(_params(net_without, k)))
+    b = float(net_with.physical_prior_loss(_params(net_with, k)))
     assert b == pytest.approx(a, abs=1e-6), "a la reference, le prior ne doit rien couter"
 
 
 def test_mean_is_anchored():
     net = _network()
     ref = float(net.physical_prior_loss(_params(net, torch.full((32,), KSUB_REF))))
-    for facteur in (0.1, 10.0):
-        loin = float(net.physical_prior_loss(_params(net, torch.full((32,), KSUB_REF * facteur))))
-        assert loin > ref + 0.05, f"un plafond {facteur} fois la reference doit couter"
+    for factor in (0.1, 10.0):
+        far = float(net.physical_prior_loss(_params(net, torch.full((32,), KSUB_REF * factor))))
+        assert far > ref + 0.05, f"un plafond {factor} fois la reference doit couter"
 
 
 def test_spatial_dispersion_costs_NOTHING():
@@ -64,10 +64,10 @@ def test_spatial_dispersion_costs_NOTHING():
     """
     net = _network()
     n = 64
-    uniforme = torch.full((n,), KSUB_REF)
+    uniform = torch.full((n,), KSUB_REF)
     # Meme moyenne EN LOG, mais dispersee d'un facteur trois de part et d'autre.
     disperse = torch.tensor([KSUB_REF * (3.0 if i % 2 else 1 / 3.0) for i in range(n)])
-    a = float(net.physical_prior_loss(_params(net, uniforme)))
+    a = float(net.physical_prior_loss(_params(net, uniform)))
     b = float(net.physical_prior_loss(_params(net, disperse)))
     assert b == pytest.approx(a, abs=1e-6), (
         "la variation spatiale doit rester GRATUITE : seule la moyenne est ancree")
@@ -76,6 +76,6 @@ def test_spatial_dispersion_costs_NOTHING():
 def test_prior_stays_differentiable():
     net = _network()
     k = (torch.full((16,), KSUB_REF) * torch.linspace(0.5, 2.0, 16)).requires_grad_(True)
-    perte = net.physical_prior_loss(_params(net, k))
-    perte.backward()
+    loss = net.physical_prior_loss(_params(net, k))
+    loss.backward()
     assert k.grad is not None and torch.isfinite(k.grad).all()

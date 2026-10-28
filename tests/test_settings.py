@@ -25,10 +25,10 @@ def test_environment_alias_without_configuration(monkeypatch):
 def test_file_then_environment(monkeypatch):
     monkeypatch.delenv("MEANDRE_NSUBSTEP", raising=False)
     monkeypatch.delenv("MEANDRE_PENMAN_NEIGE", raising=False)
-    pris = settings.configure({"column": {"n_substeps": 64, "penman_snow": True}})
+    taken = settings.configure({"column": {"n_substeps": 64, "penman_snow": True}})
     assert settings.get("column.n_substeps") == 64
     assert settings.get("column.penman_snow") is True
-    assert set(pris) == {"column.n_substeps", "column.penman_snow"}
+    assert set(taken) == {"column.n_substeps", "column.penman_snow"}
     monkeypatch.setenv("MEANDRE_NSUBSTEP", "16")
     settings.configure({"column": {"n_substeps": 64}})
     assert settings.get("column.n_substeps") == 16
@@ -56,8 +56,8 @@ def test_snapshot_keeps_only_differences(monkeypatch):
 
 def test_pilot_section_neither_read_nor_refused(monkeypatch):
     monkeypatch.delenv("MEANDRE_PHENOLOGIE_MODE", raising=False)
-    pris = settings.configure({"phenology": {"enabled": True, "mode": "photo", "classes": ["feuillus"]}})
-    assert not [k for k in pris if k.startswith("phenology.")]
+    taken = settings.configure({"phenology": {"enabled": True, "mode": "photo", "classes": ["feuillus"]}})
+    assert not [k for k in taken if k.startswith("phenology.")]
     assert settings.get("phenology.mode") == "gdd"
     monkeypatch.setenv("MEANDRE_PHENOLOGIE_MODE", "photo")
     assert settings.get("phenology.mode") == "photo"

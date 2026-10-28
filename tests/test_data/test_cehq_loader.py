@@ -16,7 +16,7 @@ from meandre.adapters.physitel.cehq_loader import (RECONSTRUCTED_FLAGS, is_recon
 # Extrait fidele d'un fichier NNNNNN_Q.txt : en-tete, lexique, tableau. On garde les
 # colonnes alignees par des espaces comme le CEHQ les publie, y compris les lignes sans
 # debit (lacunes de station) qui ne doivent PAS disparaitre a l'analyse.
-_FICHIER = """Ministere de l'Environnement
+_FILE = """Ministere de l'Environnement
 Donnees validees jusqu'au 2025-09-30, preliminaires par la suite
 Station:        040830         Gatineau
 
@@ -35,7 +35,7 @@ Station        Date                Debit (m3/s)   Remarque
 
 
 def test_parse_reads_values_and_remarks():
-    d = parse_cehq_text(_FICHIER)
+    d = parse_cehq_text(_FILE)
     assert len(d) == 7, "les lignes SANS debit sont conservees : une lacune est une information"
     assert list(d.station_id.unique()) == ["040830"]
     assert d.date.iloc[0] == pd.Timestamp("2020-01-01")
@@ -50,12 +50,12 @@ def test_parse_does_not_confuse_remark_and_discharge():
     Sans ce cas, une remarque se retrouverait lue comme une valeur de debit (ou ferait
     lever), et une lacune deviendrait une observation fantome.
     """
-    d = parse_cehq_text(_FICHIER + "040830         2020/02/01                         R\n")
+    d = parse_cehq_text(_FILE + "040830         2020/02/01                         R\n")
     assert np.isnan(d.discharge.iloc[-1])
     assert d.remark.iloc[-1] == "R"
 
 
-@pytest.mark.parametrize("remarque, attendu", [
+@pytest.mark.parametrize("remark, expected", [
     ("R", True),        # refoulement : courbe de tarage jugee inapplicable
     ("E", True),        # estimee
     ("MJ R", True),     # codes cumules
@@ -65,8 +65,8 @@ def test_parse_does_not_confuse_remark_and_discharge():
     ("", False),
     ("P", False),       # provisoire, mais mesuree
 ])
-def test_reconstruction_rule(remarque, attendu):
-    assert is_reconstructed(remarque) is attendu
+def test_reconstruction_rule(remark, expected):
+    assert is_reconstructed(remark) is expected
 
 
 def test_p_star_is_not_a_reconstruction():

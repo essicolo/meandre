@@ -18,8 +18,8 @@ from meandre.training.loss import (HydroLoss, differentiable_beta_loss,
                                    differentiable_r_loss)
 
 
-def _series(n=400, graine=3):
-    g = torch.Generator().manual_seed(graine)
+def _series(n=400, seed=3):
+    g = torch.Generator().manual_seed(seed)
     t = torch.arange(n, dtype=torch.float32)
     return 10.0 + 5.0 * torch.sin(t / 30.0) + torch.rand(n, generator=g)
 
@@ -27,7 +27,7 @@ def _series(n=400, graine=3):
 def test_each_factor_sees_its_own_defect():
     """Un décalage touche le calendrier, un facteur d'échelle le volume, un lissage l'amplitude."""
     q = _series()
-    decale = torch.cat([q[:1], q[:-1]])
+    shifted = torch.cat([q[:1], q[:-1]])
     gonfle = q * 1.2
     # Amplitude reduite de trente pour cent AUTOUR de la moyenne : gamma seul doit bouger,
     # le volume et le calendrier restant intacts par construction.
@@ -41,8 +41,8 @@ def test_each_factor_sees_its_own_defect():
     assert g0 == pytest.approx(0.0, abs=1e-6)
 
     # Le decalage degrade le calendrier sans toucher au volume.
-    assert float(differentiable_r_loss(q, decale)) > 1e-3
-    assert float(differentiable_beta_loss(q, decale)) < 1e-3
+    assert float(differentiable_r_loss(q, shifted)) > 1e-3
+    assert float(differentiable_beta_loss(q, shifted)) < 1e-3
     # Le facteur d'echelle degrade le volume.
     assert float(differentiable_beta_loss(q, gonfle)) > 1e-2
     # L'amputation d'amplitude touche gamma et laisse le volume et le calendrier.
@@ -53,10 +53,10 @@ def test_each_factor_sees_its_own_defect():
 
 def test_weights_are_zero_by_default():
     """Sans declaration explicite, la perte est celle d'avant."""
-    perte = HydroLoss(per_station=True)
-    assert perte.w_r == 0.0
-    assert perte.w_beta == 0.0
-    assert perte.w_gamma == 0.0
+    loss = HydroLoss(per_station=True)
+    assert loss.w_r == 0.0
+    assert loss.w_beta == 0.0
+    assert loss.w_gamma == 0.0
 
 
 def _loss(**poids):
@@ -85,8 +85,8 @@ def test_three_factors_equal_whole_kge_in_simple_case():
     r = float(differentiable_r_loss(q, sim))
     b = float(differentiable_beta_loss(q, sim))
     g = float(differentiable_gamma_loss(q, sim))
-    attendu = (r ** 2 + b ** 2 + g ** 2) ** 0.5
-    assert float(differentiable_kge_loss(q, sim)) == pytest.approx(attendu, rel=1e-3)
+    expected = (r ** 2 + b ** 2 + g ** 2) ** 0.5
+    assert float(differentiable_kge_loss(q, sim)) == pytest.approx(expected, rel=1e-3)
 
 
 def test_components_are_logged():
@@ -95,5 +95,5 @@ def test_components_are_logged():
     mk = torch.ones(1, dtype=torch.bool)
     out = _loss(w_r=1.0, w_gamma=1.0)(q_obs=q, q_sim=sim, station_mask=mk)
     comps = out[1] if isinstance(out, tuple) and len(out) > 1 else {}
-    for cle in ("r_loss", "beta_loss", "gamma_loss"):
-        assert cle in comps, f"{cle} doit apparaitre dans la decomposition imprimee"
+    for key in ("r_loss", "beta_loss", "gamma_loss"):
+        assert key in comps, f"{key} doit apparaitre dans la decomposition imprimee"

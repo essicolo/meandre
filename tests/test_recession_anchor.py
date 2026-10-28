@@ -12,18 +12,18 @@ from meandre.data.recession_anchor import (B_MAX, N_DEFAULT, N_MAX, anchor_resul
                                            recession_segments)
 
 
-def _drainage(n, day_count=3000, fraction=0.002, s0=100.0, sous_pas=20, graine=0):
+def _drainage(n, day_count=3000, fraction=0.002, s0=100.0, sub_step=20, seed=0):
     """Hydrogramme synthétique d'un réservoir Q = c·S^n, rechargé par impulsions."""
-    rng = np.random.default_rng(graine)
+    rng = np.random.default_rng(seed)
     c = fraction * s0 ** (1.0 - n)
-    s, dt, q = s0, 1.0 / sous_pas, []
+    s, dt, q = s0, 1.0 / sub_step, []
     for j in range(day_count):
         if rng.random() < 0.05:
             s += rng.uniform(5.0, 40.0)
-        debit = c * s ** n
-        for _ in range(sous_pas):
+        discharge = c * s ** n
+        for _ in range(sub_step):
             s = max(s - c * s ** n * dt, 1e-9)
-        q.append(debit)
+        q.append(discharge)
     return np.array(q)
 
 
@@ -36,7 +36,7 @@ def test_exponent_recovers_the_reservoir_one(n):
 
 
 def test_territory_returns_median_of_its_stations():
-    q = np.column_stack([_drainage(2.0, graine=g) for g in range(8)])
+    q = np.column_stack([_drainage(2.0, seed=g) for g in range(8)])
     a = anchor_result(q)
     assert a.n_stations == 8 and a.reliable
     assert a.storage_exponent == pytest.approx(2.0, abs=0.4)
@@ -51,7 +51,7 @@ def test_territory_without_usable_station_returns_boussinesq():
 
 def test_exponent_is_bounded_to_avoid_blowup():
     """n = 1/(2−b) diverge quand b approche 2 : la borne doit tenir."""
-    q = np.column_stack([_drainage(n, graine=7) for n in (1.0, 2.0, 5.0)])
+    q = np.column_stack([_drainage(n, seed=7) for n in (1.0, 2.0, 5.0)])
     a = anchor_result(q)
     assert 1.0 <= a.storage_exponent <= N_MAX
     assert a.recession_exponent < B_MAX
@@ -59,9 +59,9 @@ def test_exponent_is_bounded_to_avoid_blowup():
 
 def test_segments_drop_post_peak_drainage():
     q = np.array([1.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.5, 1.2])
-    bons = recession_segments(q, delay=2, min_duration=5)
-    assert not bons[1] and not bons[2], "les deux jours suivant la pointe sont ecartes"
-    assert bons[4:9].all(), "le coeur de la decrue est retenu"
+    good = recession_segments(q, delay=2, min_duration=5)
+    assert not good[1] and not good[2], "les deux jours suivant la pointe sont ecartes"
+    assert good[4:9].all(), "le coeur de la decrue est retenu"
 
 
 def test_too_short_or_flat_series_returns_None():

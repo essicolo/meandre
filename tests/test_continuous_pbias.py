@@ -15,8 +15,8 @@ def test_volume_on_continuous_series(monkeypatch):
     qo, qs = torch.rand(45, 2) + 1.0, (torch.rand(45, 2) + 0.5).requires_grad_(True)
     mask = torch.tensor([True, True])
     _, comps = _loss()(q_obs=qo, q_sim=qs, station_mask=mask, q_obs_hist=qo_h, q_sim_hist=qs_h)
-    attendu = (((torch.cat([qs_h, qs]) - torch.cat([qo_h, qo])).sum(0) / torch.cat([qo_h, qo]).sum(0)).abs().mean())
-    assert abs(float(comps["pbias_loss"]) - float(attendu)) < 1e-5
+    expected = (((torch.cat([qs_h, qs]) - torch.cat([qo_h, qo])).sum(0) / torch.cat([qo_h, qo]).sum(0)).abs().mean())
+    assert abs(float(comps["pbias_loss"]) - float(expected)) < 1e-5
 
 
 def test_per_block_volume_restored(monkeypatch):
@@ -26,5 +26,5 @@ def test_per_block_volume_restored(monkeypatch):
     qo, qs = torch.rand(45, 2) + 1.0, torch.rand(45, 2) + 0.5
     mask = torch.tensor([True, True])
     _, comps = _loss()(q_obs=qo, q_sim=qs, station_mask=mask, q_obs_hist=qo_h, q_sim_hist=qs_h)
-    attendu = ((qs - qo).sum(0) / qo.sum(0)).abs().mean()
-    assert abs(float(comps["pbias_loss"]) - float(attendu)) < 1e-5
+    expected = ((qs - qo).sum(0) / qo.sum(0)).abs().mean()
+    assert abs(float(comps["pbias_loss"]) - float(expected)) < 1e-5

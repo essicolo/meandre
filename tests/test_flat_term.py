@@ -18,11 +18,11 @@ def test_zero_on_truth():
 
 def test_penalizes_plateau_and_keeps_gradient():
     q = _series()
-    plat = torch.full_like(q, float(q.mean())).requires_grad_(True)
-    perte = differentiable_flat_days_loss(q, plat * (1.0 + 1e-4 * torch.arange(len(q))))
-    assert float(perte) > 0.5
-    perte.backward()
-    assert plat.grad is not None and torch.isfinite(plat.grad).all()
+    flat = torch.full_like(q, float(q.mean())).requires_grad_(True)
+    loss = differentiable_flat_days_loss(q, flat * (1.0 + 1e-4 * torch.arange(len(q))))
+    assert float(loss) > 0.5
+    loss.backward()
+    assert flat.grad is not None and torch.isfinite(flat.grad).all()
 
 
 def test_wired_into_the_loss():

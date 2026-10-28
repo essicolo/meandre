@@ -10,10 +10,10 @@ import torch
 
 from meandre.vertical.hydrotel_column import HydrotelColumn
 
-PLAFOND = HydrotelColumn.ceiling_substratum
+CEILING = HydrotelColumn.ceiling_substratum
 
 
-class _Champ:
+class _Field:
     """Sortie minimale du champ spatial."""
 
     k_sub = torch.tensor([1e-6, 1e-5, 1e-4])
@@ -21,32 +21,32 @@ class _Champ:
 
 def test_number_gives_uniform_ceiling():
     like = torch.zeros(3)
-    p = PLAFOND(2.0e-5, _Champ(), like)
+    p = CEILING(2.0e-5, _Field(), like)
     assert p.shape == (3,)
     assert float(p.std()) == pytest.approx(0.0)
 
 
 def test_field_name_gives_per_node_ceiling():
     like = torch.zeros(3)
-    p = PLAFOND("k_sub", _Champ(), like)
-    assert torch.equal(p, _Champ.k_sub)
+    p = CEILING("k_sub", _Field(), like)
+    assert torch.equal(p, _Field.k_sub)
     assert float(p.max() / p.min()) == pytest.approx(100.0)
 
 
 def test_missing_field_fails_loudly():
     """Retomber sur une constante ferait tourner une recette qui n'est pas celle qu'on croit."""
     with pytest.raises(AttributeError, match="absent du champ spatial"):
-        PLAFOND("champ_qui_nexiste_pas", _Champ(), torch.zeros(3))
+        CEILING("champ_qui_nexiste_pas", _Field(), torch.zeros(3))
 
 
 def test_tensor_accepted_as_is():
-    p = PLAFOND(torch.tensor([1.0, 2.0, 3.0]), _Champ(), torch.zeros(3))
+    p = CEILING(torch.tensor([1.0, 2.0, 3.0]), _Field(), torch.zeros(3))
     assert p.tolist() == [1.0, 2.0, 3.0]
 
 
 def test_ceiling_bounds_percolation():
     """Deux nœuds identiques, plafonds différents : le plafond bas percole moins."""
     q3 = torch.tensor([5e-4, 5e-4])
-    borne = torch.minimum(q3, torch.tensor([1e-5, 1e-3]))
-    assert float(borne[0]) == pytest.approx(1e-5)
-    assert float(borne[1]) == pytest.approx(5e-4)
+    bound = torch.minimum(q3, torch.tensor([1e-5, 1e-3]))
+    assert float(bound[0]) == pytest.approx(1e-5)
+    assert float(bound[1]) == pytest.approx(5e-4)

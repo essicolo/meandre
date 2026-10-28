@@ -26,9 +26,9 @@ def test_winter_order_of_magnitude():
     t = torch.tensor([-10.0])
     es_kpa = 0.6112 * torch.exp(torch.tensor(21.87 * -10.0 / (-10.0 + 265.5)))
     ea = 0.7 * es_kpa
-    e_jour = sublimation_kuzmin(torch.tensor([3.0]), ea, t)
-    hiver = float(e_jour) * 150
-    assert 10.0 < hiver < 60.0, f"hiver simule {hiver:.0f} mm, hors de la plage boreale"
+    e_day = sublimation_kuzmin(torch.tensor([3.0]), ea, t)
+    winter = float(e_day) * 150
+    assert 10.0 < winter < 60.0, f"hiver simule {winter:.0f} mm, hors de la plage boreale"
 
 
 def test_saturated_air_does_not_sublimate():
@@ -51,9 +51,9 @@ def test_saturation_over_ice_not_water():
     """A -20 degres, la saturation sur GLACE est ~20 % sous la courbe eau liquide.
     Utiliser la courbe eau surestimerait la sublimation d'autant. Constantes glace
     de Magnus-Tetens : 21.87 / 265.5."""
-    es_glace = 6.112 * torch.exp(torch.tensor(21.87 * -20.0 / (-20.0 + 265.5)))
-    es_eau = 6.112 * torch.exp(torch.tensor(17.62 * -20.0 / (-20.0 + 243.12)))
-    assert float(es_glace) < float(es_eau) * 0.90
+    es_ice = 6.112 * torch.exp(torch.tensor(21.87 * -20.0 / (-20.0 + 265.5)))
+    es_water = 6.112 * torch.exp(torch.tensor(17.62 * -20.0 / (-20.0 + 243.12)))
+    assert float(es_ice) < float(es_water) * 0.90
 
 
 def test_snowpack_surface_capped_at_zero():
@@ -111,9 +111,9 @@ def test_kuzmin_removes_from_storage_and_reports_it():
     si elle casse, l'audit ETL_BILAN lit une fuite, exactement comme pour le milieu
     humide avant le 2026-08-20 (dette #12).
     """
-    d_sans, _ = _winter(_column())
-    d_avec, subl = _winter(_column(mode="kuzmin"))
+    d_without, _ = _winter(_column())
+    d_with, subl = _winter(_column(mode="kuzmin"))
     assert (subl > 0).all(), "hiver froid, sec et vente : Kuzmin doit sublimer"
-    ecart = d_sans["couvert_nival_mm"] - d_avec["couvert_nival_mm"]
-    assert torch.allclose(ecart, subl, atol=1e-6), (
+    gap = d_without["couvert_nival_mm"] - d_with["couvert_nival_mm"]
+    assert torch.allclose(gap, subl, atol=1e-6), (
         "ce qui a quitte le manteau doit EGALER ce qui est declare au diagnostic")

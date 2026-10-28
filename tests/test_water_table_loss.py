@@ -10,8 +10,8 @@ import torch
 from meandre.training.loss import water_table_anomaly_loss
 
 
-def _series(graine=0, months=120, wells=8):
-    g = torch.Generator().manual_seed(graine)
+def _series(seed=0, months=120, wells=8):
+    g = torch.Generator().manual_seed(seed)
     return torch.randn(months, wells, generator=g, dtype=torch.float64)
 
 

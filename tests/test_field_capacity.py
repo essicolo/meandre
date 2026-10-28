@@ -29,9 +29,9 @@ def test_capacity_stays_below_porosity():
 
 def test_clayier_soil_retains_more():
     """Un b plus grand est une courbe plus plate : plus d'eau retenue a la meme succion."""
-    sable = float(DEDUIRE(_soil(b=2.5), 3)[0])
-    argile = float(DEDUIRE(_soil(b=8.0), 3)[0])
-    assert argile > sable
+    sand = float(DEDUIRE(_soil(b=2.5), 3)[0])
+    clay = float(DEDUIRE(_soil(b=8.0), 3)[0])
+    assert clay > sand
 
 
 def test_larger_porosity_gives_larger_capacity():

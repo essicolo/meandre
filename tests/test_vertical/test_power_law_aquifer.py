@@ -44,15 +44,15 @@ def test_two_time_constants():
     q = _recession(PowerLawAquifer(), S0=300.0, day_count=150,
                    q_ref=torch.tensor([3.0]), b=torch.tensor([2.0]))
     lnq = torch.log(q.clamp(min=1e-12))
-    k_debut = float(lnq[2] - lnq[7]) / 5.0
-    k_fin = float(lnq[100] - lnq[140]) / 40.0
-    assert k_debut > 2.5 * k_fin, f"raide {k_debut:.4f} vs etire {k_fin:.4f}"
+    k_start = float(lnq[2] - lnq[7]) / 5.0
+    k_end = float(lnq[100] - lnq[140]) / 40.0
+    assert k_start > 2.5 * k_end, f"raide {k_start:.4f} vs etire {k_end:.4f}"
     q1 = _recession(PowerLawAquifer(), S0=300.0, day_count=150,
                     q_ref=torch.tensor([3.0]), b=torch.tensor([1.0]))
     lnq1 = torch.log(q1.clamp(min=1e-12))
-    k1_debut = float(lnq1[2] - lnq1[7]) / 5.0
-    k1_fin = float(lnq1[100] - lnq1[140]) / 40.0
-    assert abs(k1_debut - k1_fin) / k1_debut < 0.05, "lineaire : UNE constante"
+    k1_start = float(lnq1[2] - lnq1[7]) / 5.0
+    k1_end = float(lnq1[100] - lnq1[140]) / 40.0
+    assert abs(k1_start - k1_end) / k1_start < 0.05, "lineaire : UNE constante"
 
 
 def test_strict_conservation():
@@ -105,9 +105,9 @@ def test_residences_mesurees_atteignables():
     q = _recession(PowerLawAquifer(), S0=250.0, day_count=200,
                    q_ref=torch.tensor([2.6]), b=torch.tensor([2.2]))
     lnq = torch.log(q.clamp(min=1e-12))
-    k_plein = float(lnq[1] - lnq[6]) / 5.0
+    k_full = float(lnq[1] - lnq[6]) / 5.0
     k_bas = float(lnq[150] - lnq[190]) / 40.0
-    assert 1.0 / k_plein < 60.0, f"residence a stock plein {1/k_plein:.0f} j, cible ~37"
+    assert 1.0 / k_full < 60.0, f"residence a stock plein {1/k_full:.0f} j, cible ~37"
     assert 1.0 / k_bas > 80.0, f"residence a stock bas {1/k_bas:.0f} j, cible ~111"
 
 

@@ -46,8 +46,8 @@ def test_attributes_and_series_follow_kept_reaches():
     t = subbasin.restrict_territorial(terr, keep)
     assert t.data.tolist() == [[2.0, 3.0], [6.0, 7.0]]
     assert t.physical["area_km2_local"].tolist() == [1.0, 3.0]
-    serie = torch.arange(21, dtype=torch.float32).reshape(3, 7)
-    assert subbasin.restrict_nodes(serie, keep).tolist() == [[1.0, 3.0], [8.0, 10.0], [15.0, 17.0]]
+    series = torch.arange(21, dtype=torch.float32).reshape(3, 7)
+    assert subbasin.restrict_nodes(series, keep).tolist() == [[1.0, 3.0], [8.0, 10.0], [15.0, 17.0]]
     assert subbasin.restrict_nodes(None, keep) is None
 
 

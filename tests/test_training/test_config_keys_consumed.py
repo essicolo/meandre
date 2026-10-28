@@ -25,7 +25,7 @@ except ImportError:                                     # Python < 3.11
     import tomli as tomllib
 
 REPO = Path(__file__).resolve().parents[2]
-PILOTE = REPO / "meandre" / "run" / "pilot.py"
+PILOT = REPO / "meandre" / "run" / "pilot.py"
 CONFIGS = sorted((REPO / "experiments" / "archive" / "config").glob("*-v4.toml"))
 
 # Cles [training] IGNOREES PAR LE PILOTE QUEBECOIS, chacune avec sa raison. Ce bloc est
@@ -47,7 +47,7 @@ IGNOREES_SCIEMMENT = {
 
 
 def _consumed_keys() -> set:
-    src = PILOTE.read_text(encoding="utf-8")
+    src = PILOT.read_text(encoding="utf-8")
     return (set(re.findall(r'tcfg\.get\("([a-z_0-9]+)"', src))
             | set(re.findall(r'tcfg\["([a-z_0-9]+)"\]', src)))
 
@@ -69,7 +69,7 @@ def test_patience_is_really_consumed():
 
 def test_grad_clip_read_under_its_real_name():
     """Verrou du second bug attrape par ce balayage : la cle lue sous un autre nom."""
-    src = PILOTE.read_text(encoding="utf-8")
+    src = PILOT.read_text(encoding="utf-8")
     assert 'tcfg.get("grad_clip"' in src
     assert 'tcfg.get("clip_grad_norm"' not in src
 

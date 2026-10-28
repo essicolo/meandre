@@ -29,19 +29,19 @@ def test_three_modes_are_accepted():
 def test_basin_mode_ignores_split_between_nodes():
     """Deux champs de même moyenne par pas de temps doivent coûter la même chose."""
     obs = torch.tensor([[1.0, 3.0], [2.0, 2.0]])
-    egal = torch.tensor([[2.0, 2.0], [2.0, 2.0]])
+    equal = torch.tensor([[2.0, 2.0], [2.0, 2.0]])
     inverse = torch.tensor([[3.0, 1.0], [2.0, 2.0]])
     p = _loss("bassin")
-    a = _cout(p, obs, egal)
+    a = _cout(p, obs, equal)
     b = _cout(p, obs, inverse)
     assert a == pytest.approx(b), "le mode bassin ne doit voir que la moyenne"
 
 
 def test_level_mode_sees_the_split():
     obs = torch.tensor([[1.0, 3.0], [2.0, 2.0]])
-    egal = torch.tensor([[2.0, 2.0], [2.0, 2.0]])
+    equal = torch.tensor([[2.0, 2.0], [2.0, 2.0]])
     p = _loss("level")
-    assert _cout(p, obs, egal) > 0.0
+    assert _cout(p, obs, equal) > 0.0
 
 
 def test_node_without_observation_does_not_pull_the_mean():

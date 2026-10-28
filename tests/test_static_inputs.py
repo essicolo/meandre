@@ -20,7 +20,7 @@ from meandre.training.loss import rolling_mean
 from meandre.vertical.hydrotel_column import HydrotelColumn
 
 PROJ = Path("C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel/LN24HA/OUTV_LN24HA_2020")
-besoin_projet = pytest.mark.skipif(not PROJ.exists(), reason="projet Hydrotel absent")
+needs_project = pytest.mark.skipif(not PROJ.exists(), reason="projet Hydrotel absent")
 
 
 # ── CONSERVATION ────────────────────────────────────────────────────────────
@@ -98,16 +98,16 @@ def test_etr_covers_whole_permeable_fraction():
     le sol nu ne transpiraient pas du tout, soit ~20 % du territoire."""
     # occupation cohérente qui somme à 1 : forêt 0.70, humide 0.05, agri 0.12,
     # eau 0.09, imperméable 0.02, sol nu 0.02
-    pct_feu, pct_conif, f_wet, pct_agri = 0.40, 0.30, 0.05, 0.12
+    pct_deciduous, pct_conifer, f_wet, pct_agri = 0.40, 0.30, 0.05, 0.12
     fsa = 1.0 - 0.09 - 0.02
-    couvert = pct_feu + pct_conif + f_wet + pct_agri
-    reste = max(fsa - couvert, 0.0)
-    assert couvert + reste == pytest.approx(fsa, abs=1e-6)
-    assert reste == pytest.approx(0.02, abs=1e-6), "le sol nu doit recevoir la classe ouverte"
+    cover = pct_deciduous + pct_conifer + f_wet + pct_agri
+    rest = max(fsa - cover, 0.0)
+    assert cover + rest == pytest.approx(fsa, abs=1e-6)
+    assert rest == pytest.approx(0.02, abs=1e-6), "le sol nu doit recevoir la classe ouverte"
 
 
 # ── CHARGEURS depuis le projet Hydrotel ─────────────────────────────────────
-@besoin_projet
+@needs_project
 def test_rain_snow_threshold_loaded():
     from meandre.adapters.physitel.hydrotel_calib import load_rain_snow_transition
     s = load_rain_snow_transition(str(PROJ))
@@ -115,7 +115,7 @@ def test_rain_snow_threshold_loaded():
     assert s != 0.0, "le seuil calibré ne doit pas retomber sur le défaut 0 °C"
 
 
-@besoin_projet
+@needs_project
 def test_land_cover_loads_credible_fractions():
     from meandre.adapters.physitel.hydrotel_calib import load_land_cover
     ids = _reach_ids(60)
@@ -128,7 +128,7 @@ def test_land_cover_loads_credible_fractions():
     assert float(somme.mean()) == pytest.approx(1.0, abs=0.05)
 
 
-@besoin_projet
+@needs_project
 def test_wetlands_loaded():
     from meandre.adapters.physitel.hydrotel_calib import load_wetlands
     mh = load_wetlands(str(PROJ), _reach_ids(200))
@@ -141,10 +141,10 @@ def test_wetlands_loaded():
 
 def _reach_ids(n):
     """Premiers identifiants de tronçons du projet (1-indexés dans troncon.trl)."""
-    lignes = [l.split() for l in
+    lines = [l.split() for l in
               (PROJ / "physitel" / "troncon.trl").read_text(encoding="latin-1").splitlines()[3:]
               if l.strip()]
-    return [int(t[0]) for t in lignes[:n]]
+    return [int(t[0]) for t in lines[:n]]
 
 
 # ── BORNES ──────────────────────────────────────────────────────────────────

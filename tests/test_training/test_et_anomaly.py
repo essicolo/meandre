@@ -37,9 +37,9 @@ def test_center_et_level_is_identity():
 def test_center_et_anomaly_removes_level_bias():
     torch.manual_seed(0)
     T, N = 400, 3
-    saison = torch.sin(torch.arange(T, dtype=torch.float32) * 2 * np.pi / 365.25)[:, None]
-    obs = 1.2 + 0.8 * saison + 0.01 * torch.randn(T, N)
-    sim = 1.6 + 0.8 * saison + 0.01 * torch.randn(T, N)   # biais de NIVEAU +0.4, même saisonnalité
+    season = torch.sin(torch.arange(T, dtype=torch.float32) * 2 * np.pi / 365.25)[:, None]
+    obs = 1.2 + 0.8 * season + 0.01 * torch.randn(T, N)
+    sim = 1.6 + 0.8 * season + 0.01 * torch.randn(T, N)   # biais de NIVEAU +0.4, même saisonnalité
     obs_nan = obs.clone(); obs_nan[::7] = float("nan")     # trous MODIS
     tr = _mk_trainer_stub("anomaly")
     s, o = tr._center_et(sim, obs_nan, _FakeData(obs_nan))

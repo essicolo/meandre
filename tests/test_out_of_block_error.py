@@ -16,55 +16,55 @@ pytest.importorskip("sklearn")
 _m = SourceFileLoader("idb", _F).load_module()
 
 
-def _jeu(n_par_bloc=30, graine=0, decalage=5.0):
+def _jeu(n_per_block=30, seed=0, shift=5.0):
     """Trois blocs. Les deux premiers portent une relation nette, le bloc 2 est PLAT.
 
     `decalage` éloigne le bloc plat de la moyenne des autres. À zéro, il tombe dessus : son
     erreur devient minuscule alors que sa part de variance expliquée part très bas, parce que
     le dénominateur de celle-ci est sa propre dispersion.
     """
-    rng = np.random.default_rng(graine)
-    X, y, blocs = [], [], []
-    for b, (pente, bruit) in enumerate([(1.0, 0.1), (1.0, 0.1), (0.0, 0.0)]):
-        x = rng.normal(size=(n_par_bloc, 2))
+    rng = np.random.default_rng(seed)
+    X, y, blocks = [], [], []
+    for b, (pente, noise) in enumerate([(1.0, 0.1), (1.0, 0.1), (0.0, 0.0)]):
+        x = rng.normal(size=(n_per_block, 2))
         X.append(x)
-        y.append(pente * x[:, 0] + rng.normal(scale=bruit, size=n_par_bloc) + decalage * (b == 2))
-        blocs.append(np.full(n_par_bloc, b))
-    return np.vstack(X), np.concatenate(y), np.concatenate(blocs)
+        y.append(pente * x[:, 0] + rng.normal(scale=noise, size=n_per_block) + shift * (b == 2))
+        blocks.append(np.full(n_per_block, b))
+    return np.vstack(X), np.concatenate(y), np.concatenate(blocks)
 
 
 def test_evaluated_block_does_not_mix_directions():
-    X, y, blocs = _jeu()
-    deux = np.where(blocs == 2, 2, 0)
-    melange, _ = _m.erreur_hors_bloc(X, y, deux)
-    seul, _ = _m.erreur_hors_bloc(X, y, deux, evalue=2)
-    assert seul > melange, "le bloc 2 est le plus dur : l'isoler doit donner une erreur plus grande"
+    X, y, blocks = _jeu()
+    two = np.where(blocks == 2, 2, 0)
+    mix, _ = _m.erreur_hors_bloc(X, y, two)
+    only, _ = _m.erreur_hors_bloc(X, y, two, evalue=2)
+    assert only > mix, "le bloc 2 est le plus dur : l'isoler doit donner une erreur plus grande"
 
 
 def test_control_is_mean_of_the_rest():
-    X, y, blocs = _jeu()
-    _, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=2)
-    attendu = np.abs(y[blocs == 2] - y[blocs != 2].mean()).mean()
-    assert temoin == pytest.approx(attendu, rel=1e-9)
+    X, y, blocks = _jeu()
+    _, control = _m.erreur_hors_bloc(X, y, blocks, evalue=2)
+    expected = np.abs(y[blocks == 2] - y[blocks != 2].mean()).mean()
+    assert control == pytest.approx(expected, rel=1e-9)
 
 
 def test_informative_covariates_beat_the_control():
-    X, y, blocs = _jeu()
-    err, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=0)
-    assert err < temoin
+    X, y, blocks = _jeu()
+    err, control = _m.erreur_hors_bloc(X, y, blocks, evalue=0)
+    assert err < control
 
 
 def test_missing_block_returns_missing_values():
-    X, y, blocs = _jeu()
-    err, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=99)
-    assert np.isnan(err) and np.isnan(temoin)
+    X, y, blocks = _jeu()
+    err, control = _m.erreur_hors_bloc(X, y, blocks, evalue=99)
+    assert np.isnan(err) and np.isnan(control)
 
 
 def test_explained_share_collapses_on_block_without_dispersion():
     """La raison pour laquelle l'outil ne rend plus la part de variance par défaut."""
-    X, y, blocs = _jeu(decalage=0.0)
-    err, temoin = _m.erreur_hors_bloc(X, y, blocs, evalue=2)
-    part = _m.part_expliquee(X, y, blocs, evalue=2)
+    X, y, blocks = _jeu(shift=0.0)
+    err, control = _m.erreur_hors_bloc(X, y, blocks, evalue=2)
+    part = _m.part_expliquee(X, y, blocks, evalue=2)
     assert err < 1.0, "l'erreur sur le bloc plat reste petite"
-    assert temoin < 0.2, "le témoin aussi : ce bloc tombe sur la moyenne des autres"
+    assert control < 0.2, "le témoin aussi : ce bloc tombe sur la moyenne des autres"
     assert part < -5.0, "la part de variance, elle, s'effondre sur un dénominateur minuscule"

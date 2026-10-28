@@ -61,8 +61,8 @@ def test_threshold_drain_does_not_flow_below_its_level():
     assert float(diag["drain_mm"].max()) < 1e-9
 
     # couche 2 saturee : le drain doit couler
-    plein = tuple(p[f"thetas{i}"] * f for i, f in ((1, 0.9), (2, 1.0), (3, 0.9)))
-    _, _, _, _, _, d2 = _step(p, plein, drain, apport=0.0)
+    full_value = tuple(p[f"thetas{i}"] * f for i, f in ((1, 0.9), (2, 1.0), (3, 0.9)))
+    _, _, _, _, _, d2 = _step(p, full_value, drain, apport=0.0)
     assert float(d2["drain_mm"].min()) > 0.0
 
 
@@ -101,10 +101,10 @@ def test_response_direction_spacing_and_fraction():
     large = _step(p, t, dict(base, drain_spacing=torch.full((n,), 30.0)), apport=0.0)
     assert float(serre[5]["drain_mm"].mean()) > float(large[5]["drain_mm"].mean())
 
-    moitie = _step(p, t, dict(drain_depth=torch.full((n,), 1.0),
+    half = _step(p, t, dict(drain_depth=torch.full((n,), 1.0),
                              drain_spacing=torch.full((n,), 10.0),
                              drain_frac=torch.full((n,), 0.5)), apport=0.0)
-    assert float(moitie[5]["drain_mm"].mean()) < float(serre[5]["drain_mm"].mean())
+    assert float(half[5]["drain_mm"].mean()) < float(serre[5]["drain_mm"].mean())
 
 
 def test_gradient_crosses_drain_parameters():

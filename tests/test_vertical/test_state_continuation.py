@@ -26,12 +26,12 @@ N = 4
 def _double_precision():
     """Le clone travaille en double precision ; on la pose SANS fuite vers les autres
     modules de test (un set_default_dtype global en avait casse seize)."""
-    ancien = torch.get_default_dtype()
+    old = torch.get_default_dtype()
     torch.set_default_dtype(torch.float64)
     try:
         yield
     finally:
-        torch.set_default_dtype(ancien)
+        torch.set_default_dtype(old)
 
 
 def _column():
@@ -60,13 +60,13 @@ def _winter(col, st, day_count=45):
 
 
 def _field(col):
-    reseau = SpatialFieldNetwork(n_territorial=17)
+    network = SpatialFieldNetwork(n_territorial=17)
     coords = torch.tensor([[-74.0, 45.3 + 0.01 * i] for i in range(N)],
                           dtype=torch.float64)
     terr = TerritorialFeatures.zeros(n_nodes=N, n_features=17)
     terr.physical["area_km2_physical"] = torch.ones(N) * 10.0
     terr.physical["slope_fraction"] = torch.ones(N) * 0.026
-    return reseau(coords, terr.to_tensor()), terr, coords
+    return network(coords, terr.to_tensor()), terr, coords
 
 
 def test_without_continuation_state_is_rebuilt():
@@ -86,15 +86,15 @@ def test_continuation_keeps_snowpack_and_frost():
     """Le bloc suivant d'un entraînement découpé doit hériter de l'hiver précédent."""
     col = _column()
     st = _winter(col, col.init_state(N, theta_init=(0.36, 0.36, 0.36)))
-    swe_avant = _total_swe(st.snow)
-    gel_avant = float(st.frost_profile.abs().mean())
+    swe_before = _total_swe(st.snow)
+    frost_before = float(st.frost_profile.abs().mean())
     col._aux = st
     sp, terr, coords = _field(col)
 
     col.setup_simulate(sp, terr, coords, st, continue_state=True)
 
-    assert _total_swe(col._aux.snow) == swe_avant
-    assert float(col._aux.frost_profile.abs().mean()) == gel_avant
+    assert _total_swe(col._aux.snow) == swe_before
+    assert float(col._aux.frost_profile.abs().mean()) == frost_before
     # L'état conservé est DÉTACHÉ : la troncature du gradient entre blocs doit tenir,
     # sans quoi le graphe d'autograd croîtrait sur toute la séquence.
     assert not col._aux.frost_profile.requires_grad

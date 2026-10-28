@@ -12,22 +12,22 @@ from meandre.spatial.field_network import SpatialParams, SpatialFieldNetwork
 
 def test_n_params_coherent():
     import dataclasses
-    noms = [f.name for f in dataclasses.fields(SpatialParams)]
-    assert len(noms) == SpatialParams.N_PARAMS
+    name_list = [f.name for f in dataclasses.fields(SpatialParams)]
+    assert len(name_list) == SpatialParams.N_PARAMS
     # Les deux retards de fonte sous couvert restent ADJACENTS et dans cet ordre, la
     # construction du conifere ajoutant son retard a celui du feuillu. Ils ne sont plus en
     # queue depuis l'ajout du plafond de percolation le 2026-09-20 : toute sortie ajoutee va
     # en DERNIER, pour que le remplissage par zeros d'un ancien point de reprise reste
     # inoffensif, ce qui deplace mecaniquement ce qui precede.
-    i = noms.index("dT_canopee_feu")
-    assert noms[i:i + 2] == ["dT_canopee_feu", "dT_canopee_conif"]
-    assert noms[-1] == "k_sub", "la derniere sortie ajoutee doit rester en queue"
+    i = name_list.index("dT_canopee_feu")
+    assert name_list[i:i + 2] == ["dT_canopee_feu", "dT_canopee_conif"]
+    assert name_list[-1] == "k_sub", "la derniere sortie ajoutee doit rester en queue"
 
 
 def test_krec_index_follows_the_field():
     import dataclasses
-    noms = [f.name for f in dataclasses.fields(SpatialParams)]
-    assert noms[SpatialFieldNetwork._IDX_KREC] == "krec"
+    name_list = [f.name for f in dataclasses.fields(SpatialParams)]
+    assert name_list[SpatialFieldNetwork._IDX_KREC] == "krec"
 
 
 def test_nonnegative_lags_and_guaranteed_order():
@@ -86,22 +86,22 @@ def test_warm_start_keeps_learned_fields(tmp_path):
     n_old = n_new - 2
 
     sd = {k: v.clone() for k, v in m.state_dict().items()}
-    vieux_w = torch.randn(n_old, n_in)
-    vieux_b = torch.randn(n_old)
-    sd["spatial_encoder.fc_out.weight"] = vieux_w
-    sd["spatial_encoder.fc_out.bias"] = vieux_b
-    chemin = tmp_path / "vieux.pt"
-    torch.save({"state_dict": sd}, chemin)
+    old_w = torch.randn(n_old, n_in)
+    old_b = torch.randn(n_old)
+    sd["spatial_encoder.fc_out.weight"] = old_w
+    sd["spatial_encoder.fc_out.bias"] = old_b
+    file_path = tmp_path / "vieux.pt"
+    torch.save({"state_dict": sd}, file_path)
 
     neuf = HydroModel(n_territorial=4, n_nodes=8)
-    avant = neuf.spatial_encoder.fc_out.weight.detach().clone()
-    neuf.load(chemin)
-    apres = neuf.spatial_encoder.fc_out.weight.detach()
+    before = neuf.spatial_encoder.fc_out.weight.detach().clone()
+    neuf.load(file_path)
+    after = neuf.spatial_encoder.fc_out.weight.detach()
 
-    assert apres.shape[0] == n_new
+    assert after.shape[0] == n_new
     # les lignes apprises sont reprises
-    assert torch.allclose(apres[:n_old], vieux_w, atol=1e-6)
+    assert torch.allclose(after[:n_old], old_w, atol=1e-6)
     # les deux nouvelles sont mises a zero par le rembourrage historique
-    assert torch.allclose(apres[n_old:], torch.zeros_like(apres[n_old:]), atol=1e-6)
-    assert not torch.allclose(avant[n_old:], torch.zeros_like(avant[n_old:]))
-    assert torch.allclose(neuf.spatial_encoder.fc_out.bias.detach()[:n_old], vieux_b, atol=1e-6)
+    assert torch.allclose(after[n_old:], torch.zeros_like(after[n_old:]), atol=1e-6)
+    assert not torch.allclose(before[n_old:], torch.zeros_like(before[n_old:]))
+    assert torch.allclose(neuf.spatial_encoder.fc_out.bias.detach()[:n_old], old_b, atol=1e-6)

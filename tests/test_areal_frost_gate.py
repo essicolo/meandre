@@ -11,16 +11,16 @@ import meandre.hydrotel.bv3c2 as bv
 N = 4
 
 
-def _runoff(porte, gel_cm, neige_mm=0.0):
+def _runoff(gate, frost_cm, neige_mm=0.0):
     bv._SEMI_IMPLICITE = False
     p = bv.make_params("loam", "loam", "loam")
     for k in list(p):
         if torch.is_tensor(p[k]) and p[k].ndim == 0:
             p[k] = p[k].expand(N).clone()
-    m = bv.BV3C2Clone(n_substep=32, frozen_gate_continuous=(porte == "continue"))
-    m.frozen_gate_areal = porte == "surfacique"
+    m = bv.BV3C2Clone(n_substep=32, frozen_gate_continuous=(gate == "continue"))
+    m.frozen_gate_areal = gate == "surfacique"
     t = [0.5 * p[f"thetas{i}"] for i in (1, 2, 3)]
-    frost_state = torch.full((N,), float(gel_cm) if gel_cm != "moitie" else 50.0 * float(p["z1"][0]))
+    frost_state = torch.full((N,), float(frost_cm) if frost_cm != "moitie" else 50.0 * float(p["z1"][0]))
     out = m(t[0], t[1], t[2], torch.full((N,), 5.0), torch.zeros(N), frost_state, torch.full((N,), neige_mm), p)
     return float(out[0][0])
 
@@ -39,8 +39,8 @@ def test_bracketed_by_the_two_other_rules():
 
 
 def test_soil_stays_permeable_under_snow():
-    sans_gel = _runoff("surfacique", 0.0, neige_mm=50.0)
-    assert abs(_runoff("surfacique", "moitie", neige_mm=50.0) - sans_gel) < 1e-9
+    without_frost = _runoff("surfacique", 0.0, neige_mm=50.0)
+    assert abs(_runoff("surfacique", "moitie", neige_mm=50.0) - without_frost) < 1e-9
 
 
 def test_without_frost_identical_to_original_rule():

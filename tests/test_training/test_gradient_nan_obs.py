@@ -25,15 +25,15 @@ def test_finite_gradient_with_missing_observations():
     q_obs[10:20, 0] = float("nan")          # une lacune, cas courant en hiver
     q_obs[:, 1] = float("nan")              # une station entierement absente
     q_obs[30:, 1] = torch.rand(T - 30) + 0.5
-    for nom, poids in (("mse", dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0)),
+    for field_name, poids in (("mse", dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0)),
                        ("pbias", dict(w_mse=0.0, w_pbias=1.0, w_log_mse=0.0)),
                        ("log_mse", dict(w_mse=0.0, w_pbias=0.0, w_log_mse=1.0))):
         if q_sim.grad is not None:
             q_sim.grad = None
-        perte, _ = _loss(poids)(q_obs=q_obs, q_sim=q_sim, station_mask=mask)
-        assert torch.isfinite(perte), f"{nom} : perte non finie"
-        perte.backward()
-        assert torch.isfinite(q_sim.grad).all(), f"{nom} : gradient non fini"
+        loss, _ = _loss(poids)(q_obs=q_obs, q_sim=q_sim, station_mask=mask)
+        assert torch.isfinite(loss), f"{field_name} : perte non finie"
+        loss.backward()
+        assert torch.isfinite(q_sim.grad).all(), f"{field_name} : gradient non fini"
 
 
 def test_value_equals_mean_without_gaps():
@@ -44,13 +44,13 @@ def test_value_equals_mean_without_gaps():
     q_sim = torch.rand(T, S)
     q_obs = torch.rand(T, S) + 0.5
     mask = torch.ones(S, dtype=torch.bool)
-    p_plein, _ = _loss(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
+    p_full, _ = _loss(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
         q_obs=q_obs, q_sim=q_sim, station_mask=mask)
-    q_trou = q_obs.clone()
-    q_trou[5:15] = float("nan")
-    p_trou, _ = _loss(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
-        q_obs=q_trou, q_sim=q_sim, station_mask=mask)
+    q_hole = q_obs.clone()
+    q_hole[5:15] = float("nan")
+    p_hole, _ = _loss(dict(w_mse=1.0, w_pbias=0.0, w_log_mse=0.0))(
+        q_obs=q_hole, q_sim=q_sim, station_mask=mask)
     ref = ((q_obs - q_sim) ** 2)
-    garde = torch.ones(T, dtype=torch.bool); garde[5:15] = False
-    assert torch.allclose(p_plein, ref.mean(), atol=1e-5)
-    assert torch.allclose(p_trou, ref[garde].mean(), atol=1e-5)
+    kept = torch.ones(T, dtype=torch.bool); kept[5:15] = False
+    assert torch.allclose(p_full, ref.mean(), atol=1e-5)
+    assert torch.allclose(p_hole, ref[kept].mean(), atol=1e-5)

@@ -15,43 +15,43 @@ import tomllib
 from meandre.training.loss import HydroLoss, normalize_loss_section
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PILOTE = os.path.join(ROOT, "meandre", "run", "territory_data.py")
+PILOT = os.path.join(ROOT, "meandre", "run", "territory_data.py")
 # Poses ailleurs que dans l'appel de construction, par le pilote ou la phase quantile.
-HORS_APPEL = {"w_water_table", "w_quantile"}
+OUTSIDE_CALL = {"w_water_table", "w_quantile"}
 
 
 def _weights_of_the_call():
     """Noms des poids passés à HydroLoss dans le chargeur de territoire."""
-    arbre = ast.parse(io.open(PILOTE, encoding="utf-8").read())
+    arbre = ast.parse(io.open(PILOT, encoding="utf-8").read())
     for n in ast.walk(arbre):
         if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "HydroLoss":
             return {k.arg for k in n.keywords if k.arg and k.arg.startswith("w_")}
-    raise AssertionError("aucun appel a HydroLoss dans " + PILOTE)
+    raise AssertionError("aucun appel a HydroLoss dans " + PILOT)
 
 
 def test_configuration_weights_are_all_set():
     poses = _weights_of_the_call()
-    acceptes = set(inspect.signature(HydroLoss.__init__).parameters)
-    manquants = {}
+    accepted = set(inspect.signature(HydroLoss.__init__).parameters)
+    missing = {}
     for f in glob.glob(os.path.join(ROOT, ".runs", "quebec", "*.toml")) + glob.glob(os.path.join(ROOT, "experiments", "**", "config", "*.toml"), recursive=True):
         section = normalize_loss_section(tomllib.load(open(f, "rb")).get("loss", {}))
-        for cle, valeur in section.items():
-            if not cle.startswith("w_") or cle not in acceptes or cle in HORS_APPEL:
+        for key, value in section.items():
+            if not key.startswith("w_") or key not in accepted or key in OUTSIDE_CALL:
                 continue
-            if cle not in poses:
-                manquants.setdefault(cle, []).append(os.path.basename(f))
-    assert not manquants, f"poids lus dans une configuration et jamais poses : {manquants}"
+            if key not in poses:
+                missing.setdefault(key, []).append(os.path.basename(f))
+    assert not missing, f"poids lus dans une configuration et jamais poses : {missing}"
 
 
 def test_decomposed_kge_terms_are_set():
     poses = _weights_of_the_call()
-    for cle in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession", "w_flat"):
-        assert cle in poses, f"{cle} n'atteint pas l'objet de perte"
+    for key in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession", "w_flat"):
+        assert key in poses, f"{key} n'atteint pas l'objet de perte"
 
 
 def test_peak_threshold_follows_both_terms():
     """Le seuil doit être construit pour le terme en rapport comme pour celui en carré."""
-    source = io.open(PILOTE, encoding="utf-8").read()
-    debut = source.index("peak_threshold=")
-    extrait = source[debut:debut + 200]
+    source = io.open(PILOT, encoding="utf-8").read()
+    start = source.index("peak_threshold=")
+    extrait = source[start:start + 200]
     assert "w_peak_ratio" in extrait, "le seuil n'est construit que pour le terme en carre"

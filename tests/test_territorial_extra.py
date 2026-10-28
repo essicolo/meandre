@@ -7,11 +7,11 @@ import torch
 from meandre.data.basin_cache import BasinCache
 
 
-def _base(tmp_path, avec_extra):
+def _base(tmp_path, with_extra):
     f = tmp_path / "b.duckdb"
     con = duckdb.connect(str(f))
     con.execute("CREATE TABLE territorial AS SELECT * FROM (VALUES (0, 1.0, 10.0), (1, 2.0, 20.0), (2, 3.0, 30.0)) t(node_idx, f_forest, area_km2_local)")
-    if avec_extra:
+    if with_extra:
         con.execute("CREATE TABLE territorial_siigsol AS SELECT * FROM (VALUES (0, 4.0), (2, 8.0)) t(node_idx, argile)")
     con.close()
     return f

@@ -21,10 +21,10 @@ def test_without_scale_output_switches_off():
 
 def test_law_is_linear_then_amplified_at_scale():
     lin = sp.base_thresh_power(_ctx(10.0), {"tau": 72.0})
-    a_l_echelle = sp.base_thresh_power(_ctx(10.0), {"tau": 72.0, "exponent": 2.0, "scale": 0.010})
-    assert torch.allclose(lin, a_l_echelle)
+    at_scale = sp.base_thresh_power(_ctx(10.0), {"tau": 72.0, "exponent": 2.0, "scale": 0.010})
+    assert torch.allclose(lin, at_scale)
     double = sp.base_thresh_power(_ctx(20.0), {"tau": 72.0, "exponent": 2.0, "scale": 0.010})
-    assert torch.allclose(double, 4.0 * a_l_echelle)
+    assert torch.allclose(double, 4.0 * at_scale)
 
 
 def test_from_toml_converts_scale():
