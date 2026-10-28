@@ -64,7 +64,7 @@ Réfuté, à ne pas relancer : hortonien sous-journalier (R330), attributs de d�
 
 Deux défauts majeurs trouvés et corrigés dans l'entraîneur, tous deux poussés sur `origin/requalification-masse` :
 
-- Tous les modèles s'entraînaient sans prélèvements ni rejets. La simulation lit les prélèvements à l'indice de pas compté depuis le début de l'appel, et l'entraîneur passait la série complète avec le forçage d'un bloc : chaque bloc lisait janvier 2000, nul. Correctif `WithdrawalData.slice` dans `meandre/routing/withdrawals.py`, dix appels dans `meandre/training/trainer.py`, test `tests/test_prelevements_tranche.py`. Registre R308.
+- Tous les modèles s'entraînaient sans prélèvements ni rejets. La simulation lit les prélèvements à l'indice de pas compté depuis le début de l'appel, et l'entraîneur passait la série complète avec le forçage d'un bloc : chaque bloc lisait janvier 2000, nul. Correctif `WithdrawalData.slice` dans `meandre/routing/withdrawals.py`, dix appels dans `meandre/training/trainer.py`, test `tests/test_withdrawal_slice.py`. Registre R308.
 - La référence du terme MOD16 centré n'était jamais posée au pilote régional (il évalue avant d'entraîner) ; le repli prenait la moyenne du premier bloc d'hiver (0,02 mm/j au lieu de 1,61), et le terme poussait K_c vers le bas quatre-vingts fois plus fort que les termes de débit. Correctif `_et_reference_exacte` appelée au début de l'époque dans `trainer.py` ; registre R309 à R311. Un mode `forme` (centré et réduit) a été ajouté à `meandre/training/loss.py` et `trainer.py` mais n'est pas retenu (R311).
 
 Outils ajoutés :
@@ -88,7 +88,7 @@ Chaînes sur Ubuntu, dans l'ordre : `chaine_nuit.sh` (Montérégie faite, Saint-
 Mécanismes ajoutés, tous opt-in, testés en passe avant seulement :
 
 - porte de gel sur la vidange de la nappe libre, `ETL_NAPPE_GEL=0.3` (pilote et banc), `nappe_gel_facteur` dans `meandre/vertical/hydrotel_column.py` ; règle l'hiver du nord mais déplace l'eau en mai (R318) ;
-- porte de gel par processus de sol déclaré, clé `frost_factor` dans un `[[soil.process]]` (`meandre/vertical/soil_processes.py`, `hydrotel_clone/bv3c2.py`), test `tests/test_porte_gel_declaree.py` ; pas encore éprouvée ;
+- porte de gel par processus de sol déclaré, clé `frost_factor` dans un `[[soil.process]]` (`meandre/vertical/soil_processes.py`, `hydrotel_clone/bv3c2.py`), test `tests/test_declared_frost_gate.py` ; pas encore éprouvée ;
 - sublimation de Kuzmin au banc, `ETL_SUBLIM=1` (existait au pilote depuis le 22 août, R36) : sous CaSR brut elle ramène le manteau du nord sur NEISIM et retire la moitié de l'excès de volume (R320).
 
 Diagnostics : le manteau du modèle régional dépasse NEISIM de 16 à 36 % et fond en mai (R319, qui corrige la lecture de R316 au sud) ; CaSR brut est 1,3 à 1,44 fois les stations en hiver sur l'Outaouais et 0,69 à 0,86 fois les stations en été en Montérégie (R321, `experiments/seasonal-diagnostics/pluie_casr_vs_stations.py` avec `JOINT_FX_SUFFIX=-casr-brut MEANDRE_PLUIE_MARGE=1.0 MEANDRE_PLUIE_ANNEES=2011,2024`). La correction du forçage par territoire et par saison est une décision d'Essi, hors de meandre.
