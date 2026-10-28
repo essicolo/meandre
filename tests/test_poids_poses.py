@@ -33,7 +33,7 @@ def test_les_poids_des_configurations_sont_tous_poses():
     poses = _poids_de_lappel()
     acceptes = set(inspect.signature(HydroLoss.__init__).parameters)
     manquants = {}
-    for f in glob.glob(os.path.join(RACINE, ".runs", "quebec", "config", "*.toml")):
+    for f in glob.glob(os.path.join(RACINE, ".runs", "quebec", "config", "*.toml")) + glob.glob(os.path.join(RACINE, "experiments", "**", "config", "*.toml"), recursive=True):
         section = tomllib.load(open(f, "rb")).get("loss", {})
         for cle, valeur in section.items():
             if not cle.startswith("w_") or cle not in acceptes or cle in HORS_APPEL:

@@ -8,7 +8,7 @@ import pytest
 
 from meandre import observations as obs
 
-CONFIG = Path(__file__).resolve().parents[1] / ".runs/quebec/config/modele-provincial-2026-10.toml"
+CONFIG = Path(__file__).resolve().parents[1] / "experiments/archive/config/modele-provincial-2026-10.toml"
 
 
 def test_traduction_vers_la_perte():

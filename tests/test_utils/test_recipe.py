@@ -136,7 +136,7 @@ def test_le_fichier_de_socle_est_lisible_et_applicable(monkeypatch):
     from pathlib import Path
     from meandre.utils.recipe import apply_recipe
 
-    chemin = Path(__file__).resolve().parents[2] / ".runs/quebec/config/socle.toml"
+    chemin = Path(__file__).resolve().parents[2] / "experiments/archive/config/socle.toml"
     if not chemin.exists():
         pytest.skip("socle.toml absent")
     _cfg = tomllib.loads(chemin.read_text(encoding="utf-8"))

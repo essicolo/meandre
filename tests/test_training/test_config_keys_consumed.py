@@ -26,7 +26,7 @@ except ImportError:                                     # Python < 3.11
 
 REPO = Path(__file__).resolve().parents[2]
 PILOTE = REPO / ".runs" / "quebec" / "etl_run.py"
-CONFIGS = sorted((REPO / ".runs" / "quebec" / "config").glob("*-v4.toml"))
+CONFIGS = sorted((REPO / "experiments" / "archive" / "config").glob("*-v4.toml"))
 
 # Cles [training] IGNOREES PAR LE PILOTE QUEBECOIS, chacune avec sa raison. Ce bloc est
 # un registre, pas une poubelle : toute entree sans raison verifiable doit sauter.

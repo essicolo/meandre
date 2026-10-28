@@ -17,7 +17,7 @@ from meandre.vertical import soil_processes as sp
 
 
 def _sections_reelles():
-    for f in sorted(glob.glob(".runs/quebec/config/*.toml") + glob.glob(".runs/slso/config/*.toml")):
+    for f in sorted(glob.glob(".runs/quebec/config/*.toml") + glob.glob(".runs/slso/config/*.toml") + glob.glob("experiments/**/config/*.toml", recursive=True)):
         with open(f, "rb") as fh:
             try:
                 cfg = tomllib.load(fh)

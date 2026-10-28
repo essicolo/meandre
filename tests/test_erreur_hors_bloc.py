@@ -11,7 +11,7 @@ import pytest
 from importlib.machinery import SourceFileLoader
 
 _F = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                  ".runs", "quebec", "identifiabilite_indice_base.py")
+                  "experiments", "identifiability", "identifiabilite_indice_base.py")
 pytest.importorskip("sklearn")
 _m = SourceFileLoader("idb", _F).load_module()
 

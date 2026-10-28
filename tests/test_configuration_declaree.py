@@ -37,7 +37,7 @@ def test_sans_argument_l_environnement_garde_son_role():
 
 
 def test_la_configuration_candidate_declare_les_trois_pieces():
-    with open(".runs/quebec/config/configuration-nuit-2026-09-30.toml", "rb") as f:
+    with open("experiments/archive/config/configuration-nuit-2026-09-30.toml", "rb") as f:
         cfg = tomllib.load(f)
     assert cfg["et"]["formula"] == "penman"
     assert cfg["phenology"]["enabled"] and cfg["phenology"]["mode"] == "photo"
