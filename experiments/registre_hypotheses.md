@@ -6041,3 +6041,17 @@ Tronçons sous la loi à seuil (classe > 4,5) : Saint-Laurent sud-ouest 978/2 88
 Réglage déclaré `[stations] exclude_reconstructed` (`MEANDRE_SANS_RECONSTITUES`) : au chargement, les jours marqués `reconstructed` dans la base (remarque R de l'organisme) deviennent des valeurs manquantes (`meandre.observations.mask_flagged`). Ils sortent ainsi de la perte d'entraînement, de la validation, des statistiques par station (variance, seuil des pointes) et des métriques d'évaluation. Vérifié en Outaouais sur 2000-2001 : 1 398 valeurs retirées sur 6 030 (23 %). La recette d'octobre, qui définit le modèle gelé de référence, les garde. Conséquence : une évaluation sous la recette de novembre ne se compare plus directement à une évaluation sous celle d'octobre, l'hiver n'étant plus jugé sur les mêmes jours.
 
 Note du 2026-10-28, rangement. Les fichiers de l'expérience de la couche 3 ont quitté `.runs/quebec` pour `experiments/layer3-drainage/` et ont pris des noms anglais (règle des identifiants) : `sonde_conflit.py` devient `conflict_probe.py`, les `tmp-darcy*.toml` deviennent `darcy.toml`, `darcy-substratum.toml`, `hybrid.toml`, `anisotropic.toml`, `darcy-lateral.toml` et `drainage-class.toml`. La table de rattachement devient `station-attachment.csv`, colonnes `territory`, `station`, `reach_id`, `status` (`kept`, `changed`, `outside_territory`, `no_coordinates`), et l'audit complet `station-audit.csv`. Les entrées R410 à R435 citent les anciens noms ; la correspondance est dans `experiments/layer3-drainage/README.md`.
+
+## R436 — Témoin à jour : prélèvements d'io-eau du 21 octobre sur les deux machines, débits reconstitués retirés ; la recette de novembre bat le modèle gelé sur les trois territoires éprouvés (2026-10-28) — ÉTABLI EN PASSE AVANT, Ubuntu, 2019-2024, zéro époque
+
+Les tables `withdrawals` des 15 bases ont été réingérées depuis la source primaire (`io-eau/data/derived/io-eau-meandre.parquet`, 1 280 554 lignes, 2001-2024) sur le poste et sur Ubuntu, qui portait jusque-là l'ingestion du 14 octobre. La source du 21 octobre décompose les rejets des stations d'épuration et inscrit l'infiltration de la nappe dans les égouts comme un prélèvement souterrain : en Montérégie, le prélèvement souterrain net moyen passe de 1,77 à 12,5 m³/s et le débit net de surface de −1,07 à +6,09 m³/s (rejet net). Tout résultat antérieur au 28 octobre porte les anciens prélèvements.
+
+Pertes 2019-2024, termes de débit, règles de stations des deux côtés (rapport d'aires, rattachement, débits reconstitués retirés) :
+
+| territoire | modèle gelé | recette de novembre | écart |
+|---|---|---|---|
+| Montérégie | 1,3004 | 1,2258 | −5,7 % |
+| Saint-Laurent sud-ouest | 1,0725 | 1,0153 | −5,3 % |
+| Outaouais | 0,8940 | 0,8746 | −2,2 % |
+
+Modèle gelé : `experiments/archive/config/modele-provincial-2026-10.toml`, point de départ `qv848-e32`, règles de stations posées par l'environnement. Recette : `.runs/quebec/recipe.toml`, points de reprise `best-<territoire>-etl-ft-prior-depot-bloc365.pt`. Le Saint-Laurent sud-ouest, à +0,4 % le matin sous R432, passe à −5,3 % ; l'effet du retrait des jours reconstitués et celui des nouveaux prélèvements ne sont pas séparés. Ces six valeurs sont le témoin de toute variante à venir. Journaux : `~/planml-out/baseline-2026-10-28/` sur Ubuntu.
