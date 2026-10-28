@@ -333,7 +333,7 @@ class TestLoadHydrotel:
         return _make_simple_project(tmp_path)
 
     def test_returns_dict_with_required_keys(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         assert "graph" in result
         assert "territorial" in result
         assert "node_coords" in result
@@ -342,28 +342,28 @@ class TestLoadHydrotel:
         assert "n_nodes" in result
 
     def test_n_nodes_matches_troncons(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         # 2 troncons
         assert result["n_nodes"] == 2
 
     def test_graph_is_river_graph(self, project):
         from meandre.routing.graph import RiverGraph
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         assert isinstance(result["graph"], RiverGraph)
 
     def test_graph_has_one_edge(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         g = result["graph"]
         # Troncon 1 → troncon 2 (troncon 2 is its own downstream = outlet, no edge)
         assert g.n_edges == 1
 
     def test_topo_order_valid(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         g = result["graph"]
         assert g.topo_order.shape[0] == 2
 
     def test_territorial_correct_shape(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         t = result["territorial"]
         # Feature columns are in t.data, accessed by column index
         assert "drainage_area_km2" in t.columns
@@ -372,7 +372,7 @@ class TestLoadHydrotel:
         assert t.data[:, idx].shape == (2,)
 
     def test_territorial_fractions_in_range(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         t = result["territorial"]
         # Before normalisation, fractions should be in [0,1]
         for field in ("f_forest", "f_agriculture", "f_urban", "f_wetland", "f_water"):
@@ -382,18 +382,18 @@ class TestLoadHydrotel:
             assert vals.max() <= 1.01, f"{field} above 1"
 
     def test_node_coords_shape(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         coords = result["node_coords"]
         assert coords.shape == (2, 2)
 
     def test_initial_state_shape(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         state = result["initial_state"]
         assert state.theta1.shape == (2,)
         assert state.swe.shape == (2,)
 
     def test_initial_state_theta_in_range(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         state = result["initial_state"]
         assert (state.theta1 >= 0.0).all()
         assert (state.theta1 <= 1.0).all()
@@ -401,15 +401,15 @@ class TestLoadHydrotel:
         assert (state.theta3 >= 0.0).all()
 
     def test_initial_state_swe_nonneg(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         assert (result["initial_state"].swe >= 0.0).all()
 
     def test_node_ids_list(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         assert result["node_ids"] == [1, 2]
 
     def test_is_lake_false_for_river_troncons(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         assert not result["graph"].is_lake.any()
 
     def test_lake_troncon_is_flagged(self, tmp_path):
@@ -439,7 +439,7 @@ class TestLoadHydrotel:
         _write_fonte_neige(etat / "fonte_neige_2023080100.csv",
                            [{"id": i + 1} for i in range(3)])
 
-        result = load_hydrotel(tmp_path, normalise=False)
+        result = load_hydrotel(tmp_path, normalized=False)
         g = result["graph"]
 
         # Node index for troncon 2
@@ -450,7 +450,7 @@ class TestLoadHydrotel:
         assert not g.is_lake[ni1].item()
 
     def test_drainage_area_increases_downstream(self, project):
-        result = load_hydrotel(project, normalise=False)
+        result = load_hydrotel(project, normalized=False)
         t = result["territorial"]
         g = result["graph"]
         # Upstream node drains to downstream — downstream should have larger area
@@ -476,6 +476,6 @@ class TestLoadHydrotel:
         # No etat files
 
         with pytest.warns(UserWarning, match="bilan_vertical"):
-            result = load_hydrotel(tmp_path, normalise=False)
+            result = load_hydrotel(tmp_path, normalized=False)
 
         assert result["initial_state"].theta1.shape == (1,)

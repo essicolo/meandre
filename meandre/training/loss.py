@@ -100,7 +100,7 @@ def differentiable_peak_ratio_loss(q_obs: Tensor, q_sim: Tensor, seuil: Tensor) 
     return torch.abs(torch.log(mean_sim / mean_obs))
 
 
-def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delai: int = 2,
+def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delay: int = 2,
                                   min_duration: int = 5) -> Tensor:
     """Écart sur la VITESSE DE VIDANGE, mesurée sur les jours de décrue franche.
 
@@ -132,7 +132,7 @@ def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delai: int = 2,
     # Un jour compte s'il decroit ET si les `delai` jours precedents decroissent aussi : on
     # ecarte ainsi mecaniquement le sommet de la pointe et le ressuyage qui le suit.
     guard = decreasing.clone()
-    for k in range(1, delai + 1):
+    for k in range(1, delay + 1):
         guard[k:] = guard[k:] & decreasing[:-k]
     if int(guard.sum()) < min_duration * 4:
         return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
@@ -141,10 +141,10 @@ def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delai: int = 2,
     level_ = q_obs[:-1]
     seuil = level_[guard].median()
     loss_value = torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
-    for bande in (guard & (level_ >= seuil), guard & (level_ < seuil)):
-        if int(bande.sum()) < min_duration:
+    for band in (guard & (level_ >= seuil), guard & (level_ < seuil)):
+        if int(band.sum()) < min_duration:
             continue
-        loss_value = loss_value + torch.abs(ratio_sim[bande].mean() - ratio_obs[bande].mean())
+        loss_value = loss_value + torch.abs(ratio_sim[band].mean() - ratio_obs[band].mean())
     return loss_value
 
 
@@ -435,7 +435,7 @@ def water_table_anomaly_loss(
     if not bool(valid_.any()):
         return torch.zeros((), device=z_sim_month.device)
 
-    def _centrer(x):
+    def _center_series(x):
         """Écart à la moyenne, sur les seuls pas observés."""
         xm = torch.where(m, x, torch.zeros_like(x))
         mean_ = xm.sum(dim=0) / torch.clamp(n, min=1)
@@ -447,8 +447,8 @@ def water_table_anomaly_loss(
     # cas du stock souterrain qu'on cherche à corriger. Mesuré le 2026-09-19 : le terme
     # atteignait 311 contre 2,2 pour tous les autres réunis, soit 9305 pour cent de la
     # perte, et écrasait l'entraînement. Un terme de perte doit être borné par construction.
-    c_sim = _centrer(-z_sim_month)
-    c_obs = _centrer(-level_obs_month)
+    c_sim = _center_series(-z_sim_month)
+    c_obs = _center_series(-level_obs_month)
     cov = (c_sim * c_obs).sum(dim=0)
     n_sim = torch.sqrt((c_sim.pow(2)).sum(dim=0))
     n_obs = torch.sqrt((c_obs.pow(2)).sum(dim=0))
@@ -463,9 +463,9 @@ def water_table_anomaly_loss(
     if porosity_weight > 0.0 and sy is not None and amplitude_sim is not None:
         # Le garde-fou ne cale RIEN : il interdit seulement une porosité que la géologie
         # rendrait impossible, et reste nul tant qu'on est dans la plage connue.
-        implique = sy * amplitude_sim / torch.clamp(amplitude_obs, min=1e-6)
-        too_low = torch.clamp(torch.log(torch.tensor(0.01)) - torch.log(torch.clamp(implique, min=1e-6)), min=0.0)
-        too_high = torch.clamp(torch.log(torch.clamp(implique, min=1e-6)) - torch.log(torch.tensor(0.30)), min=0.0)
+        implies = sy * amplitude_sim / torch.clamp(amplitude_obs, min=1e-6)
+        too_low = torch.clamp(torch.log(torch.tensor(0.01)) - torch.log(torch.clamp(implies, min=1e-6)), min=0.0)
+        too_high = torch.clamp(torch.log(torch.clamp(implies, min=1e-6)) - torch.log(torch.tensor(0.30)), min=0.0)
         loss_value = loss_value + porosity_weight * (too_low + too_high)[valid_].pow(2).mean()
     return loss_value
 
@@ -1124,20 +1124,20 @@ class HydroLoss(nn.Module):
                             _n_viv = max(int(v.sum()), 1)
                             _ech_t = torch.tensor(float(q_o_v.numel()) / _n_viv, device=q_o_v.device)
                             _ech = _ech_t
-                        def _remis(l_):
+                        def _reset(l_):
                             return l_.detach() + (l_ - l_.detach()) * _ech
                         if self.w_nse > 0:
-                            nse_v.append(_remis(differentiable_nse_loss(q_o_v, q_s_v)))
+                            nse_v.append(_reset(differentiable_nse_loss(q_o_v, q_s_v)))
                         if self.w_kge > 0:
-                            kge_v.append(_remis(differentiable_kge_loss(q_o_v, q_s_v)))
+                            kge_v.append(_reset(differentiable_kge_loss(q_o_v, q_s_v)))
                         if self.w_r > 0:
-                            r_v.append(_remis(differentiable_r_loss(q_o_v, q_s_v)))
+                            r_v.append(_reset(differentiable_r_loss(q_o_v, q_s_v)))
                         if self.w_beta > 0:
-                            beta_v.append(_remis(differentiable_beta_loss(q_o_v, q_s_v)))
+                            beta_v.append(_reset(differentiable_beta_loss(q_o_v, q_s_v)))
                         if self.w_gamma > 0:
-                            gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
+                            gamma_v.append(_reset(differentiable_gamma_loss(q_o_v, q_s_v)))
                         if self.w_recession > 0:
-                            rec_v.append(_remis(differentiable_recession_loss(q_o_v, q_s_v)))
+                            rec_v.append(_reset(differentiable_recession_loss(q_o_v, q_s_v)))
                         if self.w_flat > 0 and self.doy_block is not None:
                             # BLOC SEUL ET MOIS CIBLES (2026-10-16, R382). Sur la serie entiere,
                             # l'optimiseur satisfaisait le terme en rendant l'ete nerveux et
@@ -1153,15 +1153,15 @@ class HydroLoss(nn.Module):
                                 flat_v.append(q_sim_at_stations[v, si].sum() * 0.0)
                         if self.w_peak_ratio > 0 and self.peak_threshold is not None:
                             _threshold = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
-                            pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _threshold)))
+                            pr_v.append(_reset(differentiable_peak_ratio_loss(q_o_v, q_s_v, _threshold)))
                         if self.w_dq > 0:
-                            dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
+                            dq_v.append(_reset(differentiable_dq_loss(q_o_v, q_s_v)))
                         if self.w_dq_log > 0:
-                            dql_v.append(_remis(differentiable_dq_log_loss(q_o_v, q_s_v)))
+                            dql_v.append(_reset(differentiable_dq_log_loss(q_o_v, q_s_v)))
                         if self.w_low_flow > 0:
-                            low_flow_v.append(_remis(differentiable_low_flow_loss(q_o_v, q_s_v)))
+                            low_flow_v.append(_reset(differentiable_low_flow_loss(q_o_v, q_s_v)))
                         if self.w_fdc_low > 0:
-                            fdc_v.append(_remis(differentiable_fdc_low_loss(q_o_v, q_s_v)))
+                            fdc_v.append(_reset(differentiable_fdc_low_loss(q_o_v, q_s_v)))
                             if settings.get("debug.kge_trace"):
                                 # Trace de controle (2026-09-04) : le terme KGE de la perte
                                 # valait 0.04 quand le KGE de l'annee d'entrainement

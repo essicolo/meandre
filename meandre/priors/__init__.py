@@ -77,12 +77,12 @@ def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_t
     priors["Z2"] = (z2, SIGMAS["Z2"])
     priors["Z3"] = (z3, SIGMAS["Z3"])
     from meandre.utils import settings
-    choisies = [k for k in (settings.get("priors.keys") or "").replace(" ", "").split(",") if k]
-    if choisies:
-        inconnues = set(choisies) - set(priors)
-        if inconnues:
-            raise KeyError(f"priors.keys : sorties inconnues {sorted(inconnues)} ; catalogue {list(KEYS)}")
-        priors = {k: priors[k] for k in choisies}
+    chosen = [k for k in (settings.get("priors.keys") or "").replace(" ", "").split(",") if k]
+    if chosen:
+        unknown_keys = set(chosen) - set(priors)
+        if unknown_keys:
+            raise KeyError(f"priors.keys : sorties inconnues {sorted(unknown_keys)} ; catalogue {list(KEYS)}")
+        priors = {k: priors[k] for k in chosen}
     return priors
 
 

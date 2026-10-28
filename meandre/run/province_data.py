@@ -307,11 +307,11 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
         union |= set(p["territorial"].physical)
     if schema_names:
         phys_keys &= _common_physical(schema_names)
-    perdus = sorted(union - phys_keys)
-    if perdus:
+    lost = sorted(union - phys_keys)
+    if lost:
         _owner = [p["name"] for p in parts if set(p["territorial"].physical) - phys_keys]
-        print(f"[domaine] ATTENTION {len(perdus)} champs physiques presents seulement sur "
-              f"{_owner} sont ECARTES : {perdus}")
+        print(f"[domaine] ATTENTION {len(lost)} champs physiques presents seulement sur "
+              f"{_owner} sont ECARTES : {lost}")
     territorial = TerritorialFeatures(
         data=torch.cat([p["territorial"].data for p in parts]).to(device),
         columns=cols,
@@ -439,7 +439,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     land_cover, melt_params, phenology = {}, {}, None
     try:
         from meandre.adapters.physitel.hydrotel_calib import (load_land_cover, load_wetlands,
-                                                 load_melt_nodes, load_phenologie)
+                                                 load_melt_nodes, load_phenology)
         from meandre.utils import paths as _mp
         lc_parts, mp_parts = [], []
         for p in parts:
@@ -449,7 +449,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
             lc_parts.append(d)
             mp_parts.append(load_melt_nodes(pl, p["node_ids"], device="cpu"))
             if phenology is None:
-                phenology = load_phenologie(pl)
+                phenology = load_phenology(pl)
         # MILIEUX HUMIDES : presents sur DOUZE plateformes sur quatorze (seules MONT et
         # SLNO n'en declarent pas). L'intersection les supprimait donc pour TOUT LE MONDE
         # a cause de deux territoires -- exactement l'inverse de ce qu'il faut faire.
@@ -543,11 +543,11 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
         for p in parts:
             pl = f"{_mp3.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
             cs_parts.append(load_calibrated_soil(pl, p["node_ids"], 0.15, device="cpu"))
-        communs = set(cs_parts[0])
+        shared_keys = set(cs_parts[0])
         for d in cs_parts[1:]:
-            communs &= set(d)
+            shared_keys &= set(d)
         soil = {}
-        for k in sorted(communs):
+        for k in sorted(shared_keys):
             v = [d[k] for d in cs_parts]
             if all(hasattr(x, "shape") and x.ndim >= 1 and x.shape[0] == sz
                    for x, sz in zip(v, sizes)):

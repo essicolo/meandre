@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from meandre.adapters.physitel.builders.drainage_maps import CODE_TO_GROUP, RESOLUTION, SIGEOM, SIGEOM_GROUP, rasteriser
+from meandre.adapters.physitel.builders.drainage_maps import CODE_TO_GROUP, RESOLUTION, SIGEOM, SIGEOM_GROUP, rasterize_layer
 from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
@@ -40,13 +40,13 @@ def build_territory(reg):
     uh["uhrh"] = uh.uhrh.astype(int)
     crs = uh.crs
     x0, y0, x1, y1 = uh.total_bounds
-    emprise = tuple(uh.to_crs(4326).total_bounds)
+    extent = tuple(uh.to_crs(4326).total_bounds)
     shape_value = (int(np.ceil((y1 - y0) / RESOLUTION)), int(np.ceil((x1 - x0) / RESOLUTION)))
     transform = from_origin(x0, y1, RESOLUTION, RESOLUTION)
     ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value,
                              transform=transform, fill=0, dtype=np.int32)
     z = gpd.read_file(SIGEOM, layer="F10E15_ZONE_MORPH_SEDIM", columns=["CODE_DEPOT_MORP_SEDM"],
-                      engine="pyogrio", bbox=emprise).to_crs(crs)
+                      engine="pyogrio", bbox=extent).to_crs(crs)
     code = z.CODE_DEPOT_MORP_SEDM.fillna("")
     z["groupe"] = code.map(CODE_TO_GROUP)
     z.loc[code.str.startswith("R"), "groupe"] = "roc"
@@ -54,14 +54,14 @@ def build_territory(reg):
     dans = ids > 0
     n = np.bincount(ids[dans])
     par = pd.DataFrame({"n": n})
-    carte = rasteriser(z, "carte", transform, shape_value)
+    carte = rasterize_layer(z, "carte", transform, shape_value)
     par["carte"] = np.bincount(ids[dans & np.isfinite(carte)], minlength=len(n))
     for f in FAMILIES:
         z[f"est_{f}"] = np.where(z.groupe == f, 1.0, np.nan)
-        r = rasteriser(z, f"est_{f}", transform, shape_value)
+        r = rasterize_layer(z, f"est_{f}", transform, shape_value)
         par[f] = np.bincount(ids[dans & np.isfinite(r)], minlength=len(n))
     # Eskers : longueur dans chaque unité hydrologique, en km.
-    esk = gpd.read_file(SIGEOM, layer="F10E36_ESKER_QC_LO", engine="pyogrio", bbox=emprise).to_crs(crs)
+    esk = gpd.read_file(SIGEOM, layer="F10E36_ESKER_QC_LO", engine="pyogrio", bbox=extent).to_crs(crs)
     par["esker_km"] = 0.0
     if len(esk):
         inter = gpd.overlay(esk[["geometry"]], uh, how="intersection", keep_geom_type=True)

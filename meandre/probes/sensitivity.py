@@ -32,7 +32,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-SAISONS = {"hiver": (12, 1, 2), "printemps": (3, 4, 5), "ete": (6, 7, 8), "automne": (9, 10, 11)}
+SEASONS = {"hiver": (12, 1, 2), "printemps": (3, 4, 5), "ete": (6, 7, 8), "automne": (9, 10, 11)}
 
 
 def _effective_rank(j, seuil=0.95):
@@ -86,11 +86,11 @@ def _width_and_slope(model, td, device):
     return w, pente.to(device).clamp(min=1e-5)
 
 
-def _resumes(field_name, series, months, nodes=None):
+def _summaries(field_name, series, months, nodes=None):
     """Quatre moyennes saisonnières d'un observable, éventuellement restreint à des nœuds."""
     out = {}
     x = series if nodes is None else series[:, nodes]
-    for s, m in SAISONS.items():
+    for s, m in SEASONS.items():
         mask = torch.tensor(np.isin(months, m), device=x.device)
         if not bool(mask.any()):
             continue
@@ -98,7 +98,7 @@ def _resumes(field_name, series, months, nodes=None):
     return out
 
 
-def mesurer(model, td, times, device, day_count=365, step_output=None, block=None):
+def measure(model, td, times, device, day_count=365, step_output=None, block=None):
     """Mesure appelée PAR LE PILOTE, une fois le modèle et les données construits.
 
     L'inversion est voulue : le pilote lit soixante-dix-neuf variables d'environnement et
@@ -201,7 +201,7 @@ def mesurer(model, td, times, device, day_count=365, step_output=None, block=Non
                 if v is None or not torch.is_tensor(v) or not v.requires_grad:
                     continue
                 series = v
-            for sais, m in SAISONS.items():
+            for sais, m in SEASONS.items():
                 mask = torch.tensor(np.isin(months, m), device=series.device)
                 n = int(mask.sum())
                 if not n:
@@ -258,16 +258,16 @@ def _ratio(J, names, field_names):
     # LES CHAMPS QUE PERSONNE NE VOIT. Une colonne nulle de la matrice designe un parametre
     # qu'aucune observation ne touche : il n'est pas mal identifie, il n'est pas identifie du
     # tout, et l'entrainement ne peut que le laisser ou le prior le met.
-    norme = np.linalg.norm(J, axis=0)
-    seuil = norme.max() * 1e-6 if norme.size and norme.max() > 0 else 0.0
-    muets = [field_names[i] for i in np.argsort(norme)[:10] if norme[i] <= max(seuil, 1e-30)]
+    norm_value = np.linalg.norm(J, axis=0)
+    seuil = norm_value.max() * 1e-6 if norm_value.size and norm_value.max() > 0 else 0.0
+    silent = [field_names[i] for i in np.argsort(norm_value)[:10] if norm_value[i] <= max(seuil, 1e-30)]
     print("")
-    if muets:
-        print(f"champs qu'AUCUN observable ne touche ({len(muets)}) : {', '.join(muets)}")
+    if silent:
+        print(f"champs qu'AUCUN observable ne touche ({len(silent)}) : {', '.join(silent)}")
     else:
-        order = np.argsort(norme)[:6]
+        order = np.argsort(norm_value)[:6]
         print("champs les moins vus : "
-              + ", ".join(f"{field_names[i]} {norme[i]:.1e}" for i in order))
+              + ", ".join(f"{field_names[i]} {norm_value[i]:.1e}" for i in order))
 
 
 def main():

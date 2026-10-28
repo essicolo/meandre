@@ -40,7 +40,7 @@ RESOLUTION = float(os.environ.get("DRAINAGE_RESOLUTION_M", "100"))
 # Ordre de preseance des sources, du premier au dernier recours.
 ORDER = os.environ.get("DRAINAGE_ORDRE", "irda,ecoforestier,sigeom").split(",")
 # Suffixe du parquet de sortie, pour tenir plusieurs ordres cote a cote.
-SUFFIXE = os.environ.get("DRAINAGE_SUFFIXE", "")
+SUFFIX = os.environ.get("DRAINAGE_SUFFIXE", "")
 
 # Cle de permeabilite des depots de la collegue d'Essi, validee par un geologue du
 # Quaternaire (2026-09-23), placee sur l'echelle de drainage de 1 a 7 par pas egaux.
@@ -98,12 +98,12 @@ def ecoforest_deposit_rank(codes):
 def ecoforest_rank(code):
     """Dizaine du code `cl_drai` plus un ; 16 (complexe) et les codes absents restent vides."""
     v = pd.to_numeric(code, errors="coerce")
-    dizaine = np.floor(v / 10.0)
-    ok = np.isfinite(v) & (v != 16) & (dizaine >= 0) & (dizaine <= 6)
-    return np.where(ok, dizaine + 1.0, np.nan)
+    tens = np.floor(v / 10.0)
+    ok = np.isfinite(v) & (v != 16) & (tens >= 0) & (tens <= 6)
+    return np.where(ok, tens + 1.0, np.nan)
 
 
-def hierarchiser(layers):
+def rank_layers(layers):
     """Cellule par cellule, la premiere couche qui porte une valeur l'emporte.
 
     Rend la valeur retenue et le rang de la couche qui l'a donnee, 1 pour la premiere ;
@@ -113,13 +113,13 @@ def hierarchiser(layers):
     source = np.zeros(layers[0].shape, dtype=np.int8)
     for k, c in enumerate(layers, start=1):
         vide = ~np.isfinite(value)
-        prend = vide & np.isfinite(c)
-        value = np.where(prend, c, value)
-        source = np.where(prend, k, source)
+        takes = vide & np.isfinite(c)
+        value = np.where(takes, c, value)
+        source = np.where(takes, k, source)
     return value, source
 
 
-def rasteriser(gdf, column, transform, shape_value):
+def rasterize_layer(gdf, column, transform, shape_value):
     """Rasterise une valeur flottante par polygone ; les cellules sans polygone valent nan."""
     from rasterio import features
     g = gdf[gdf[column].notna()]
@@ -129,28 +129,28 @@ def rasteriser(gdf, column, transform, shape_value):
     return features.rasterize(shapes, out_shape=shape_value, transform=transform, fill=np.nan, dtype=np.float32)
 
 
-def irda_layer(crs, emprise):
+def irda_layer(crs, extent):
     import geopandas as gpd
-    from meandre.adapters.physitel.builders.irda_properties import GPKG, component_properties, proprietes_polygones
-    props = proprietes_polygones(component_properties())[["Code_polygone", "drainage", "couv_drainage"]]
-    geo = gpd.read_file(GPKG, layer="Couverture_pedologique", columns=["Code_polygone"], engine="pyogrio", bbox=emprise)
+    from meandre.adapters.physitel.builders.irda_properties import GPKG, component_properties, properties_polygons
+    props = properties_polygons(component_properties())[["Code_polygone", "drainage", "couv_drainage"]]
+    geo = gpd.read_file(GPKG, layer="Couverture_pedologique", columns=["Code_polygone"], engine="pyogrio", bbox=extent)
     poly = geo.merge(props, on="Code_polygone", how="inner").to_crs(crs)
     # Un polygone dont moins de la moitie des composantes portent un drainage ne le definit pas.
     poly.loc[poly.couv_drainage < 0.5, "drainage"] = np.nan
     return poly
 
 
-def ecoforest_layer(crs, emprise_4326, feuillets):
+def ecoforest_layer(crs, extent_4326, feuillets):
     """Polygones ecoforestiers de l'emprise, avec drainage et depot ranges ; la lecture des
     feuillets coute jusqu'a trente minutes par territoire, le resultat est mis en cache."""
     import geopandas as gpd
     cache = Path(f"{ECOFOREST}/cache")
     cache.mkdir(exist_ok=True)
-    key = "_".join(f"{v:.2f}" for v in emprise_4326)
+    key = "_".join(f"{v:.2f}" for v in extent_4326)
     f_cache = cache / f"ecoforestier-{key}.parquet"
     if f_cache.exists():
         return gpd.read_parquet(f_cache).to_crs(crs)
-    morceaux = []
+    pieces = []
     for f in feuillets:
         z = Path(f"{ECOFOREST}/feuillets/{f}.zip")
         d = Path(f"{ECOFOREST}/feuillets/{f}")
@@ -165,20 +165,20 @@ def ecoforest_layer(crs, emprise_4326, feuillets):
         g = next(d.rglob("*.gpkg"))
         lay = f"pee_maj_{f.lower()}"
         # Tout le feuillet est lu, puis coupe a l'emprise : pyogrio filtre par bbox dans le CRS de la couche.
-        emprise = gpd.GeoSeries.from_xy([emprise_4326[0], emprise_4326[2]], [emprise_4326[1], emprise_4326[3]], crs=4326).to_crs("EPSG:32198").total_bounds + np.array([-5e3, -5e3, 5e3, 5e3])
-        pee = gpd.read_file(g, layer=lay, columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(emprise))
+        extent = gpd.GeoSeries.from_xy([extent_4326[0], extent_4326[2]], [extent_4326[1], extent_4326[3]], crs=4326).to_crs("EPSG:32198").total_bounds + np.array([-5e3, -5e3, 5e3, 5e3])
+        pee = gpd.read_file(g, layer=lay, columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(extent))
         pee["drainage"] = ecoforest_rank(pee.cl_drai)
         pee["depot"] = ecoforest_deposit_rank(pee.dep_sur)
-        morceaux.append(pee[["drainage", "depot", "dep_sur", "geometry"]])
-    if not morceaux:
+        pieces.append(pee[["drainage", "depot", "dep_sur", "geometry"]])
+    if not pieces:
         return None
-    eco = gpd.GeoDataFrame(pd.concat(morceaux, ignore_index=True), crs="EPSG:32198")
+    eco = gpd.GeoDataFrame(pd.concat(pieces, ignore_index=True), crs="EPSG:32198")
     eco["dep_sur"] = eco.dep_sur.astype(str)
     eco.to_parquet(f_cache)
     return eco.to_crs(crs)
 
 
-def ecoforest_rasters(crs, emprise_4326, feuillets, transform, shape_value, column_names=("drainage", "depot")):
+def ecoforest_rasters(crs, extent_4326, feuillets, transform, shape_value, column_names=("drainage", "depot")):
     """Rasters ecoforestiers de l'emprise, construits FEUILLET PAR FEUILLET : un feuillet est lu,
     rasterise sur la grille du territoire, puis libere. Tenir tous les polygones d'un
     territoire en memoire coutait 12,6 Go pour 2,6 millions de polygones au Saguenay et
@@ -189,7 +189,7 @@ def ecoforest_rasters(crs, emprise_4326, feuillets, transform, shape_value, colu
     import geopandas as gpd
     cache = Path(f"{ECOFOREST}/cache")
     cache.mkdir(exist_ok=True)
-    key = "_".join(f"{v:.2f}" for v in emprise_4326) + f"-{RESOLUTION:.0f}m"
+    key = "_".join(f"{v:.2f}" for v in extent_4326) + f"-{RESOLUTION:.0f}m"
     f_cache = cache / f"rasters-{key}.npz"
     if f_cache.exists():
         z = np.load(f_cache)
@@ -208,8 +208,8 @@ def ecoforest_rasters(crs, emprise_4326, feuillets, transform, shape_value, colu
             import zipfile
             zipfile.ZipFile(z).extractall(d)
         g = next(d.rglob("*.gpkg"))
-        emprise = gpd.GeoSeries.from_xy([emprise_4326[0], emprise_4326[2]], [emprise_4326[1], emprise_4326[3]], crs=4326).to_crs("EPSG:32198").total_bounds + np.array([-5e3, -5e3, 5e3, 5e3])
-        pee = gpd.read_file(g, layer=f"pee_maj_{f.lower()}", columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(emprise)).to_crs(crs)
+        extent = gpd.GeoSeries.from_xy([extent_4326[0], extent_4326[2]], [extent_4326[1], extent_4326[3]], crs=4326).to_crs("EPSG:32198").total_bounds + np.array([-5e3, -5e3, 5e3, 5e3])
+        pee = gpd.read_file(g, layer=f"pee_maj_{f.lower()}", columns=["cl_drai", "dep_sur"], engine="pyogrio", bbox=tuple(extent)).to_crs(crs)
         if "drainage" in column_names:
             pee["drainage"] = ecoforest_rank(pee.cl_drai)
         if "depot" in column_names:
@@ -218,32 +218,32 @@ def ecoforest_rasters(crs, emprise_4326, feuillets, transform, shape_value, colu
             from reconstruire_drainage import famille_ecoforestier
             pee["famille"], pee["mince"] = famille_ecoforestier(pee.dep_sur)
         for c in column_names:
-            r = rasteriser(pee, c, transform, shape_value)
-            prend = np.isfinite(r) & ~np.isfinite(out[c])
-            out[c][prend] = r[prend]
+            r = rasterize_layer(pee, c, transform, shape_value)
+            takes = np.isfinite(r) & ~np.isfinite(out[c])
+            out[c][takes] = r[takes]
         del pee
     np.savez_compressed(f_cache, **out)
     return out
 
 
-def sigeom_layer(crs, emprise_4326):
+def sigeom_layer(crs, extent_4326):
     import geopandas as gpd
-    z = gpd.read_file(SIGEOM, layer="F10E15_ZONE_MORPH_SEDIM", columns=["CODE_DEPOT_MORP_SEDM"], engine="pyogrio", bbox=emprise_4326)
+    z = gpd.read_file(SIGEOM, layer="F10E15_ZONE_MORPH_SEDIM", columns=["CODE_DEPOT_MORP_SEDM"], engine="pyogrio", bbox=extent_4326)
     z["groupe"] = z.CODE_DEPOT_MORP_SEDM.map(CODE_TO_GROUP)
     area_value = z.geometry.to_crs(crs).area
-    etendu = z.CODE_DEPOT_MORP_SEDM.isin([c for v in SIGEOM_EXTENSION.values() for c in v])
+    extended = z.CODE_DEPOT_MORP_SEDM.isin([c for v in SIGEOM_EXTENSION.values() for c in v])
     outside = z.groupe.isna()
-    print(f"  SIGEOM : {100 * area_value[etendu].sum() / area_value.sum():.0f} % de la surface par codes rattaches par extension, {100 * area_value[outside].sum() / area_value.sum():.0f} % hors cle ("
+    print(f"  SIGEOM : {100 * area_value[extended].sum() / area_value.sum():.0f} % de la surface par codes rattaches par extension, {100 * area_value[outside].sum() / area_value.sum():.0f} % hors cle ("
           + ", ".join(f"{c} {100 * a / area_value.sum():.0f} %" for c, a in area_value[outside].groupby(z.CODE_DEPOT_MORP_SEDM[outside]).sum().sort_values(ascending=False).head(6).items()) + ")", flush=True)
     z["drainage"] = z.groupe.map(SIGEOM_RANK)
     return z.to_crs(crs)
 
 
-def sheets_of(emprise_4326):
+def sheets_of(extent_4326):
     import json
     from shapely.geometry import box, shape
     g = json.load(open(f"{ECOFOREST}/URL_250K_MAJ.geojson", encoding="utf-8"))
-    b = box(*emprise_4326)
+    b = box(*extent_4326)
     return [f["properties"]["Feuillet250K"] for f in g["features"] if shape(f["geometry"]).intersects(b)]
 
 
@@ -259,7 +259,7 @@ def build_territory(reg):
     uh["uhrh"] = uh.uhrh.astype(int)
     crs = uh.crs
     x0, y0, x1, y1 = uh.total_bounds
-    emprise_4326 = tuple(uh.to_crs(4326).total_bounds)
+    extent_4326 = tuple(uh.to_crs(4326).total_bounds)
     ncol = int(np.ceil((x1 - x0) / RESOLUTION))
     nlig = int(np.ceil((y1 - y0) / RESOLUTION))
     transform = from_origin(x0, y1, RESOLUTION, RESOLUTION)
@@ -268,20 +268,20 @@ def build_territory(reg):
     print(f"{reg}: grille {nlig} x {ncol} a {RESOLUTION:.0f} m, {int((ids > 0).sum())} cellules dans les unites", flush=True)
 
     layers = {}
-    layers["irda"] = rasteriser(irda_layer(crs, emprise_4326), "drainage", transform, shape_value)
-    eco = ecoforest_rasters(crs, emprise_4326, sheets_of(emprise_4326), transform, shape_value)
+    layers["irda"] = rasterize_layer(irda_layer(crs, extent_4326), "drainage", transform, shape_value)
+    eco = ecoforest_rasters(crs, extent_4326, sheets_of(extent_4326), transform, shape_value)
     layers["ecoforestier"] = eco["drainage"]
     eco_deposit = eco["depot"]
-    sig = sigeom_layer(crs, emprise_4326)
-    layers["sigeom"] = rasteriser(sig, "drainage", transform, shape_value)
+    sig = sigeom_layer(crs, extent_4326)
+    layers["sigeom"] = rasterize_layer(sig, "drainage", transform, shape_value)
     for g in SIGEOM_GROUP:
         sig[f"est_{g}"] = (sig.groupe == g).astype(float)
-    groups = {g: rasteriser(sig, f"est_{g}", transform, shape_value) for g in SIGEOM_GROUP}
+    groups = {g: rasterize_layer(sig, f"est_{g}", transform, shape_value) for g in SIGEOM_GROUP}
 
     dans = ids > 0
     print("  couverture brute des unites : " + ", ".join(f"{k} {np.isfinite(v[dans]).mean():.2f}" for k, v in layers.items()), flush=True)
 
-    value, source = hierarchiser([layers[field_name] for field_name in ORDER])
+    value, source = rank_layers([layers[field_name] for field_name in ORDER])
 
     dans = ids > 0
     n_uhrh = np.bincount(ids[dans])
@@ -325,10 +325,10 @@ def build_territory(reg):
     return d
 
 
-def enregistrer(d):
+def save(d):
     """Fusionne le territoire dans le parquet des le calcul fini : un arret en cours de
     route ne perd que le territoire en cours, pas les precedents."""
-    f = f"{OUTPUT}/drainage-hierarchique{SUFFIXE}-troncons.parquet"
+    f = f"{OUTPUT}/drainage-hierarchique{SUFFIX}-troncons.parquet"
     if os.path.exists(f):
         old = pd.read_parquet(f)
         d = pd.concat([old[~old.region.isin(d.region.unique())], d], ignore_index=True)
@@ -340,7 +340,7 @@ def main(regions):
     for r in regions:
         d = build_territory(r)
         if d is not None:
-            f, n, k = enregistrer(d)
+            f, n, k = save(d)
             print(f"  enregistre : {f} ({n} tronçons, {k} colonnes)", flush=True)
     print("croisement fait", flush=True)
     return 0

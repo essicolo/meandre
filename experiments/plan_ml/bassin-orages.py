@@ -44,14 +44,14 @@ def aires_modele(reg):
     return out
 
 
-SUFFIXE = sys.argv[2] if len(sys.argv) > 2 else ""
+SUFFIX = sys.argv[2] if len(sys.argv) > 2 else ""
 
 
 def main(reg):
     global AIRES_MODELE
     AIRES_MODELE = aires_modele(reg)
-    D = np.load(f"{DOSSIER}/diag-bassin{SUFFIXE}-{reg}.npz", allow_pickle=True)
-    Z = np.load(f"{DOSSIER}/q-bassin{SUFFIXE}-{reg}.npz", allow_pickle=True)
+    D = np.load(f"{DOSSIER}/diag-bassin{SUFFIX}-{reg}.npz", allow_pickle=True)
+    Z = np.load(f"{DOSSIER}/q-bassin{SUFFIX}-{reg}.npz", allow_pickle=True)
     fx = pd.read_parquet(f"{REF}/forcage_bassin.parquet")
     at = pd.read_parquet(f"{REF}/attributs.parquet")
     td, tq = pd.DatetimeIndex(D["dates"]), pd.DatetimeIndex(Z["dates"])
@@ -84,7 +84,7 @@ def main(reg):
             pl = p.iloc[w].sum()
             lignes.append(dict(station=st, rapport_aire=AIRES_MODELE[st] / float(at.loc[st, "aire_km2"]), pluie=pl, c_prod=(prod.iloc[w] - prod.iloc[i - 1]).clip(lower=0).sum() / pl, c_surf=(surf.iloc[w] - surf.iloc[i - 1]).clip(lower=0).sum() / pl, c_sim=(q.iloc[w] - q.iloc[i - 1]).clip(lower=0).sum() / pl, c_obs=(o.iloc[w] - o.iloc[i - 1]).clip(lower=0).sum() / pl, prod_annee=prod.loc[str(t.year)].mean(), q_annee=q.loc[str(t.year)].mean(), theta2=th2.iloc[i - 1], etr=etr.iloc[i - 5:i].mean()))
     E = pd.DataFrame(lignes).dropna()
-    E.to_parquet(f"{DOSSIER}/bassin-orages{SUFFIXE}-{reg}.parquet")
+    E.to_parquet(f"{DOSSIER}/bassin-orages{SUFFIX}-{reg}.parquet")
     print(f"{reg} : {len(E)} orages, {E.station.nunique()} stations, 2011-2024 ; médianes")
     print(E[["pluie", "c_prod", "c_surf", "c_sim", "c_obs"]].median().round(3).to_string())
     print(f"rapport simulé / production (part de la production d'orage qui arrive en cinq jours) : {np.median(E.c_sim / E.c_prod.clip(lower=1e-4)):.2f}")

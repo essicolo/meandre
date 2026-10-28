@@ -19,7 +19,7 @@ import sys
 
 import numpy as np
 
-FLOTTE = os.environ.get("MEANDRE_FLOTTE", f"{os.environ.get('MEANDRE_DATA', '.')}/quebec/flotte")
+FLEET = os.environ.get("MEANDRE_FLOTTE", f"{os.environ.get('MEANDRE_DATA', '.')}/quebec/flotte")
 
 
 def lyne_hollick(q, alpha: float = 0.925, passes: int = 3):
@@ -39,7 +39,7 @@ def lyne_hollick(q, alpha: float = 0.925, passes: int = 3):
 
 
 def indices(region: str, jours_minimum: int = 700):
-    fichiers = sorted(glob.glob(f"{FLOTTE}/q-{region}-*.npz"))
+    fichiers = sorted(glob.glob(f"{FLEET}/q-{region}-*.npz"))
     if not fichiers:
         return np.array([])
     z = np.load(fichiers[0], allow_pickle=True)
@@ -59,7 +59,7 @@ def main(regions):
     for reg in regions:
         b = indices(reg)
         if len(b) == 0:
-            print(f"{reg} : aucune série de station trouvée sous {FLOTTE}")
+            print(f"{reg} : aucune série de station trouvée sous {FLEET}")
             continue
         print(f"{reg} {len(b):2d} stations | indice mesuré : médiane {np.median(b):.2f}, "
               f"quartiles {np.percentile(b, 25):.2f} à {np.percentile(b, 75):.2f}, "

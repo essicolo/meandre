@@ -273,12 +273,12 @@ class TrainingData:
         # casser aucun pilote existant.
         try:
             n_f, n_o = int(self.forcing.shape[0]), int(self.q_obs.shape[0])
-            attendu = n_f - int(self.train_slice.start)
-            if n_o != attendu:
+            expected = n_f - int(self.train_slice.start)
+            if n_o != expected:
                 print(f"[TrainingData] AVERTISSEMENT alignement : q_obs a {n_o} pas de temps, "
                       f"forcing en a {n_f} et train_slice commence a {self.train_slice.start} ; "
                       f"la convention veut q_obs[0] <-> forcing[train_slice.start], soit "
-                      f"{attendu} pas. Score FAUX si ce n'est pas volontaire.")
+                      f"{expected} pas. Score FAUX si ce n'est pas volontaire.")
         except Exception:
             pass
 
@@ -1014,7 +1014,7 @@ class Trainer:
                     self._et_sim_std = torch.sqrt((_acc[2] / _n - self._et_sim_base ** 2).clamp(min=1e-6))
         self._et_sim_acc = None
 
-    def _et_reference_exacte(self, data: TrainingData, carried_state: HydroState) -> None:
+    def _et_reference_exact(self, data: TrainingData, carried_state: HydroState) -> None:
         """Reference simulee du terme MOD16 centre ou en forme, avant la premiere epoque.
 
         Moyenne et ecart-type EXACTS de l'ET simulee sur la periode d'entrainement, aux poids
@@ -1078,13 +1078,13 @@ class Trainer:
         # chunk, accumulate gradients, single optimizer.step().
         # Memory ∝ chunk_steps, no checkpointing overhead.
         initial_state = self._run_spinup(data)
-        _spinup_a_tourne = min(self.config.spinup_steps, data.train_slice.start) > 0
+        _spinup_has_run = min(self.config.spinup_steps, data.train_slice.start) > 0
         if (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
                 and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
                 and not settings.get("trainer.et_center_ema")
                 and not settings.get("trainer.et_reference_from_spinup")
                 and (getattr(self, "_et_sim_base", None) is None or getattr(self, "_et_sim_std", None) is None)):
-            self._et_reference_exacte(data, initial_state)
+            self._et_reference_exact(data, initial_state)
             # La passe laisse l'etat interne (manteau, gel, lacs) a la fin de la periode :
             # la mise en regime est rejouee pour que le premier bloc reparte de son etat.
             initial_state = self._run_spinup(data)
@@ -1158,7 +1158,7 @@ class Trainer:
                     graph=data.graph, node_coords=data.node_coords,
                     territorial=data.territorial, withdrawals=data.withdrawals.slice(data.train_slice.start, data.train_slice.stop),
                     day_of_year=data.day_of_year[data.train_slice],
-                    continue_state=(_continuous_state and _spinup_a_tourne),
+                    continue_state=(_continuous_state and _spinup_has_run),
                 )
             _T = data.train_slice.stop - data.train_slice.start
             _pre_s = _Qp[:, data.station_mask].detach()
@@ -1224,7 +1224,7 @@ class Trainer:
                     # tourner : sans cela le manteau spinne etait jete au passage, le
                     # premier hiver de chaque epoque etait faux et le premier bloc
                     # rendait des gradients NaN en janvier (2026-09-04).
-                    continue_state=(_continuous_state and (n_chunks > 0 or _spinup_a_tourne)),
+                    continue_state=(_continuous_state and (n_chunks > 0 or _spinup_has_run)),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out
@@ -2152,7 +2152,7 @@ class Trainer:
         d'entrainement, ne jouait aucun role dans le modele retenu. On calcule ici les
         termes de debit de la perte, avec ses poids, sur la serie de validation entiere.
         """
-        out = self._val_epoch_metriques()
+        out = self._val_epoch_metrics()
         q = getattr(self, "_val_series", None)
         if q is not None and self.loss_fn is not None:
             out["loss"] = self._validation_discharge_loss(*q)
@@ -2181,7 +2181,7 @@ class Trainer:
             term_list.append(float(t))
         return float(sum(term_list) / len(term_list)) if term_list else float("inf")
 
-    def _val_epoch_metriques(self) -> dict[str, float]:
+    def _val_epoch_metrics(self) -> dict[str, float]:
         _continuous_state_val = settings.get("trainer.state_continuous")
         """Validation: simulate val period, compute evaluation metrics.
 

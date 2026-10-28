@@ -157,11 +157,11 @@ def test_la_description_supporte_les_deux_types_de_plafond():
     nomme = sp.SoilProcess(layer=3, kind="percolation", form="PERC_THRESH_POWER",
                            params={"tau": 48.0}, ceiling="k_sub")
     without = sp.SoilProcess(layer=2, kind="lateral", form="BASE_LINEAR")
-    assert "1.250e-04" in nombre.decrire()
-    assert "k_sub" in nomme.decrire() and "champ spatial" in nomme.decrire()
-    assert "plafond" not in without.decrire()
+    assert "1.250e-04" in nombre.describe()
+    assert "k_sub" in nomme.describe() and "champ spatial" in nomme.describe()
+    assert "plafond" not in without.describe()
     for proc in (nombre, nomme, without):
-        assert isinstance(proc.decrire(), str) and proc.decrire()
+        assert isinstance(proc.describe(), str) and proc.describe()
 
 
 def test_la_percolation_gravitaire_vaut_la_conductivite_et_s_effondre_au_sec():

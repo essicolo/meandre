@@ -22,7 +22,7 @@ def test_hierarchiser_premiere_source_qui_repond():
     a = np.array([[1, n, n, n]], dtype=np.float32)
     b = np.array([[5, 2, n, n]], dtype=np.float32)
     c = np.array([[6, 6, 3, n]], dtype=np.float32)
-    v, s = cd.hierarchiser([a, b, c])
+    v, s = cd.rank_layers([a, b, c])
     assert np.allclose(v[0, :3], [1, 2, 3]) and np.isnan(v[0, 3])
     assert s.tolist() == [[1, 2, 3, 0]]
 

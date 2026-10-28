@@ -207,7 +207,7 @@ class SoilProcess:
             if key == "ceiling" and self.ceiling is None:
                 raise ValueError("plafond appris sans plafond declare")
 
-    def decrire(self) -> str:
+    def describe(self) -> str:
         """Une ligne lisible dans un journal, quel que soit le type du plafond.
 
         Le formatage vit ICI et non dans le pilote : une premiere version imprimait le
@@ -215,15 +215,15 @@ class SoilProcess:
         au lieu de porter un nombre. Le defaut a coute deux passes le 2026-09-21, dans un
         script qu'aucun test ne couvre. Sous test, il ne peut plus se reproduire.
         """
-        bout = f"couche {self.layer} {self.kind} {self.form}"
+        end = f"couche {self.layer} {self.kind} {self.form}"
         if self.params:
-            bout += " " + " ".join(f"{k}={v:g}" if isinstance(v, (int, float)) else f"{k}={v}"
+            end += " " + " ".join(f"{k}={v:g}" if isinstance(v, (int, float)) else f"{k}={v}"
                                    for k, v in sorted(self.params.items()))
         if self.ceiling is None:
-            return bout
+            return end
         if isinstance(self.ceiling, str):
-            return f"{bout} | plafond pris du champ spatial : {self.ceiling}"
-        return f"{bout} | plafond {float(self.ceiling):.3e} m/h"
+            return f"{end} | plafond pris du champ spatial : {self.ceiling}"
+        return f"{end} | plafond {float(self.ceiling):.3e} m/h"
 
     def resolved(self, fields: dict):
         """Remplace les valeurs SYMBOLIQUES par les tenseurs du champ spatial.
@@ -309,10 +309,10 @@ class SoilProfile:
 
     def resolved(self, fields: dict):
         """Profil dont les valeurs symboliques sont remplacées par les tenseurs du champ."""
-        pris = tuple(p.resolved(fields) for p in self.processes)
-        if all(a is b for a, b in zip(pris, self.processes)):
+        taken = tuple(p.resolved(fields) for p in self.processes)
+        if all(a is b for a, b in zip(taken, self.processes)):
             return self
-        return SoilProfile(layers=self.layers, processes=pris)
+        return SoilProfile(layers=self.layers, processes=taken)
 
     def of(self, layer: int, kind: str):
         """Les processus d'un type attachés à une couche, dans l'ordre de déclaration."""

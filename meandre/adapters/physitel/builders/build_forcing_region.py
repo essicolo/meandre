@@ -52,8 +52,8 @@ if __name__ == "__main__":
         finally: c.close()
         st = st.dropna()
         if len(st) >= 2:
-            lame = (st.q * 31_557_600.0 / (st.drainage_area_km2 * 1e6) * 1000.0).median()
-            VOL = float(lame + ET_MM)
+            runoff_depth = (st.q * 31_557_600.0 / (st.drainage_area_km2 * 1e6) * 1000.0).median()
+            VOL = float(runoff_depth + ET_MM)
         else:
             VOL = 1147.0
             print(f"[{REG}] pas assez de jauges — volume fallback 1147")

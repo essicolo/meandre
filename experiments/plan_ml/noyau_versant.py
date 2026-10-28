@@ -57,7 +57,7 @@ def hausse(q, date, base):
     return np.clip(r, 0.0, None)
 
 
-def normalise(profils):
+def normalized(profils):
     somme = profils.sum(1, keepdims=True)
     return profils / np.where(somme > 0, somme, 1.0)
 
@@ -204,7 +204,7 @@ def principale():
     regions = np.asarray(regions)
     annees = np.asarray(annees)
     api_rel = np.asarray(api_rel)
-    no, ns = normalise(obs), normalise(sim)
+    no, ns = normalized(obs), normalized(sim)
     print(f"{len(pluies)} orages, {len(set(stations))} stations, {len(set(regions))} territoires, "
           f"{annees.min()}-{annees.max()}")
 

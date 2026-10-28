@@ -1182,10 +1182,10 @@ class SpatialFieldNetwork(nn.Module):
 
         changes = {}
         for field_name, factor in m.items():
-            champ = getattr(sp, field_name, None)
-            if champ is None:
+            field = getattr(sp, field_name, None)
+            if field is None:
                 raise AttributeError(f"multiplicateur pose sur '{field_name}', absent du champ spatial")
-            changes[field_name] = champ * factor
+            changes[field_name] = field * factor
         return _remplace(sp, **changes)
 
 

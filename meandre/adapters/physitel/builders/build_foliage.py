@@ -37,8 +37,8 @@ import numpy as np
 from meandre.utils import paths as _paths
 
 RESULTS = f"{_paths.DATA_ROOT}/quebec/results"
-FLOTTE = os.environ.get("MEANDRE_FLOTTE", f"{_paths.DATA_ROOT}/quebec/flotte")
-BRAS = os.environ.get("MEANDRE_BRAS", "A-v2lr1e-4")
+FLEET = os.environ.get("MEANDRE_FLOTTE", f"{_paths.DATA_ROOT}/quebec/flotte")
+ARM = os.environ.get("MEANDRE_BRAS", "A-v2lr1e-4")
 # SORTIE HORS DU DEPOT (architecture, remarque d'Essi 2026-08-24) : meandre produit
 # des DONNEES ; feuillage est une APPLICATION qui vit dans son propre depot
 # (github.com/essicolo/feuillage) et se deploie a part. L'instance = feuillage pointe
@@ -51,7 +51,7 @@ OUTPUT = f"{_paths.DATA_ROOT}/quebec/carte"
 REGIONS = ["outv", "gasp", "mont", "sagu", "slno", "abit", "slso", "outm",
            "cnda", "cndb", "cndc", "cndd", "cnde", "labi", "vaud"]
 MAP_PARAMS = ["krec", "K_sat_1", "k_gw", "C_f", "T_melt"]   # les 5 les plus parlants
-N_ROUGES = 150   # zones rouges provinciales (pas par region)
+N_RED = 150   # zones rouges provinciales (pas par region)
 
 
 def _flat(x):
@@ -83,7 +83,7 @@ def load_territory(reg):
     # l'ancien cache nb-<region>-q.npz. MEANDRE_BRAS choisit le bras ; a defaut on retombe
     # sur l'ancien. Un rapport, une carte, doivent dire QUEL modele ils montrent.
     qd, qd_src = None, None
-    for _f, _s in ((f"{FLOTTE}/q-{reg}-{BRAS}.npz", BRAS), (f"{RESULTS}/nb-{reg}-q.npz", "cache")):
+    for _f, _s in ((f"{FLEET}/q-{reg}-{ARM}.npz", ARM), (f"{RESULTS}/nb-{reg}-q.npz", "cache")):
         if os.path.exists(_f):
             qd, qd_src = np.load(_f, allow_pickle=True), _s
             break
@@ -93,8 +93,8 @@ def load_territory(reg):
 
 def main():
     os.makedirs(OUTPUT, exist_ok=True)
-    feats_reseau, feats_rouges, feats_stations = [], [], []
-    rouges_pool = []
+    feats_network, feats_red, feats_stations = [], [], []
+    red_pool = []
 
     for reg in REGIONS:
         d = load_territory(reg)
@@ -163,7 +163,7 @@ def main():
                 x = float(v[s])
                 if np.isfinite(x):
                     pr[k] = round(x, 4)
-            feats_reseau.append({
+            feats_network.append({
                 "type": "Feature",
                 "geometry": {"type": "LineString",
                              "coordinates": [[round(float(lon[s]), 5), round(float(lat[s]), 5)],
@@ -173,8 +173,8 @@ def main():
         if avec is not None and without is not None:
             rel = props_n.get("prelev_rel_pct")
             if rel is not None:
-                for i in np.argsort(np.nan_to_num(rel))[::-1][:N_ROUGES]:
-                    rouges_pool.append((float(rel[i]), reg, int(i),
+                for i in np.argsort(np.nan_to_num(rel))[::-1][:N_RED]:
+                    red_pool.append((float(rel[i]), reg, int(i),
                                         float(lon[i]), float(lat[i]),
                                         avec["q_mensuel"][:, i], without["q_mensuel"][:, i],
                                         float(props_n["effet_prelev_pct"][i])))
@@ -222,9 +222,9 @@ def main():
               + ("" if d["qd"] is None else f" + {len(feats_stations)} stations cumulees"))
 
     # zones rouges : classement PROVINCIAL, pas par region
-    rouges_pool.sort(key=lambda x: -x[0])
-    for rel, reg, i, lo, la, qm_a, qm_s, eff in rouges_pool[:N_ROUGES]:
-        feats_rouges.append({
+    red_pool.sort(key=lambda x: -x[0])
+    for rel, reg, i, lo, la, qm_a, qm_s, eff in red_pool[:N_RED]:
+        feats_red.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [round(lo, 5), round(la, 5)]},
             "properties": {"prelev_rel_pct": round(rel, 2),
@@ -233,7 +233,7 @@ def main():
                            "q_mensuel_avec": [round(float(x), 3) for x in qm_a],
                            "q_mensuel_renature": [round(float(x), 3) for x in qm_s]}})
 
-    for field_name, feats in (("reseau", feats_reseau), ("zones_rouges", feats_rouges),
+    for field_name, feats in (("reseau", feats_network), ("zones_rouges", feats_red),
                        ("stations", feats_stations)):
         p = os.path.join(OUTPUT, f"{field_name}.geojson")
         with open(p, "w", encoding="utf-8") as f:

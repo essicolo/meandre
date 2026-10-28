@@ -274,8 +274,8 @@ def load_land_cover(project_dir, node_ids, device="cpu"):
     frac = A / tot                                   # fraction de pixels par UHRH
     par_uhrh = {int(i): frac[k] for k, i in enumerate(ids)}
 
-    def col(motifs):
-        return [k for k, nm in enumerate(name_list) if any(m in nm.lower() for m in motifs)]
+    def col(patterns):
+        return [k for k, nm in enumerate(name_list) if any(m in nm.lower() for m in patterns)]
     idx = {
         "f_water_raw": col(["eau"]),
         "f_urban_raw": col(["impermeable"]),
@@ -370,7 +370,7 @@ def load_wetlands(project_dir, node_ids, device="cpu"):
             for k, v in out.items()}
 
 
-def load_phenologie(project_dir):
+def load_phenology(project_dir):
     """PHÉNOLOGIE du projet Hydrotel : indice foliaire (physio/ind_fol.def) et
     profondeur racinaire (physio/pro_rac.def), par classe d'occupation et par jour.
 
@@ -409,15 +409,15 @@ def load_phenologie(project_dir):
     import numpy as _np
     day_count = sorted(set(jf) | set(jr))
 
-    def col(name_list, motifs):
-        return [k for k, nm in enumerate(name_list) if any(m in nm.lower() for m in motifs)]
+    def col(name_list, patterns):
+        return [k for k, nm in enumerate(name_list) if any(m in nm.lower() for m in patterns)]
 
-    corresp = {"feuillus": ["feuillu"], "conifers": ["conifere"],
+    match_table = {"feuillus": ["feuillu"], "conifers": ["conifere"],
                "agri": ["agricole"], "humides": ["tourbiere", "milieu_humide"],
                "ouverts": ["sol_nu"]}
     out = {}
-    for cl, motifs in corresp.items():
-        cf, cr = col(nf, motifs), col(nr, motifs)
+    for cl, patterns in match_table.items():
+        cf, cr = col(nf, patterns), col(nr, patterns)
         if not cf or not cr:
             continue
         lai_pts = [sum(v[k] for k in cf) / len(cf) for v in vf]
@@ -452,7 +452,7 @@ def id_local(id_prov: str) -> tuple[str, int]:
     return s[:4].upper(), int(s[4:])
 
 
-def provincial_matching(region: str, local_reaches, ids_provinciaux):
+def provincial_matching(region: str, local_reaches, provincial_ids):
     """Rangs, dans un tableau provincial, des tronçons locaux demandés.
 
     `ids_provinciaux` : la coordonnée `troncon_id` du stockage (chaînes "REG#####").
@@ -460,12 +460,12 @@ def provincial_matching(region: str, local_reaches, ids_provinciaux):
     AUCUN ne s'apparie : un appariement vide est toujours un bug de convention, jamais
     un résultat, et le laisser passer produit des scores absurdes silencieux.
     """
-    pos = {str(t): k for k, t in enumerate(ids_provinciaux)}
+    pos = {str(t): k for k, t in enumerate(provincial_ids)}
     ranks = [pos.get(id_provincial(region, t)) for t in local_reaches]
     if all(r is None for r in ranks):
         raise ValueError(
             f"aucun tronçon apparié pour {region.upper()} : les identifiants fournis "
-            f"ressemblent à {str(ids_provinciaux[0])!r}, on cherchait "
+            f"ressemblent à {str(provincial_ids[0])!r}, on cherchait "
             f"{id_provincial(region, local_reaches[0])!r}")
     return ranks
 

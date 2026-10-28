@@ -11,7 +11,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-SAISONS = {"dec-mar": (12, 1, 2, 3), "avr-mai": (4, 5), "jun-aou": (6, 7, 8), "sep-oct": (9, 10)}
+SEASONS = {"dec-mar": (12, 1, 2, 3), "avr-mai": (4, 5), "jun-aou": (6, 7, 8), "sep-oct": (9, 10)}
 
 
 def rapports(f):
@@ -19,7 +19,7 @@ def rapports(f):
     dates = pd.to_datetime(d["dates"])
     months = dates.month
     out = {}
-    for nom, ms in SAISONS.items():
+    for nom, ms in SEASONS.items():
         sel = np.isin(months, ms)
         r = []
         for k in range(d["q_sim"].shape[1]):
@@ -39,7 +39,7 @@ def main(fichiers):
     print(f"{'fichier':28s} {'n':>3s} {'annee':>6s} | {'dec-mar':>7s} {'avr-mai':>7s} {'jun-aou':>7s} {'sep-oct':>7s}   (mediane des stations, 2022-2024)")
     for f in fichiers:
         r = rapports(f)
-        print(f"{os.path.basename(f)[:-4]:28s} {r['annee'][1]:3d} {r['annee'][0]:6.2f} | " + " ".join(f"{r[s][0]:7.2f}" for s in SAISONS))
+        print(f"{os.path.basename(f)[:-4]:28s} {r['annee'][1]:3d} {r['annee'][0]:6.2f} | " + " ".join(f"{r[s][0]:7.2f}" for s in SEASONS))
 
 
 if __name__ == "__main__":

@@ -88,8 +88,8 @@ def read_rsesq(region: str, times, file_path: str | None = None, unconfined_only
 
     # Un puits trop court ne porte aucune information de forme : on l'écarte ici plutôt que
     # de laisser le terme de perte le découvrir à chaque pas.
-    assez = table.notna().sum(axis=0) >= min_months
-    table = table.loc[:, assez[assez].index]
+    enough = table.notna().sum(axis=0) >= min_months
+    table = table.loc[:, enough[enough].index]
     order = [p for p in wells.puits if p in table.columns]
     table = table[order]
     meta = wells.set_index("puits").loc[order]

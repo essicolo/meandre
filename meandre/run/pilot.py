@@ -134,7 +134,7 @@ if "ETL_WSNOW" in os.environ:
         print("      R24 : elle tire vers MOINS de neige en mars-avril, contre GRACE et "
               "CanSWE. Mettre ETL_WSNOW=0 tant que la cible n'est pas CanSWE (masse) "
               "plutot que MOD10 (couverture).")
-for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", "w_pbias"),
+for _key, _name in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", "w_pbias"),
                    ("ETL_WLOGMSE", "w_log_mse"), ("ETL_WPEAK", "w_peak"),
                    # KGE DECOMPOSE (2026-09-20). Porte entier, le KGE melange calendrier,
                    # volume et amplitude en un nombre, et l'optimiseur ne peut pas choisir
@@ -167,9 +167,9 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
     # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
     # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle
     # provinciale pour le verifier.
-    if _cle in os.environ:
-        lcfg[_nom] = float(os.environ[_cle])
-        print(f"[etl] {_nom} = {lcfg[_nom]}")
+    if _key in os.environ:
+        lcfg[_name] = float(os.environ[_key])
+        print(f"[etl] {_name} = {lcfg[_name]}")
 if "ETL_WDQLOG" in os.environ:
     # Variations journalieres en espace LOG : voit la platitude d'etiage, invisible au
     # terme absolu (R90). A poids 1.0 sur un sous-bassin sain il sur-corrige (pointes
@@ -237,10 +237,10 @@ def _territories():
     return [(REG, r["node_ids"], 0, n_nodes)]
 print(f"[etl] {REG}: {n_nodes} nœuds, {r['n_gauges']} jauges")
 
-_ETP_FORMULE = os.environ.get("ETL_ETP") or str((cfg.get("et") or {}).get("formula") or "")
+_ETP_FORMULA = os.environ.get("ETL_ETP") or str((cfg.get("et") or {}).get("formula") or "")
 if DOMAIN:
-    if _ETP_FORMULE != "penman":
-        raise SystemExit(f"domaine : seule l'ETP de Penman est prise en charge (ETP {_ETP_FORMULE!r})")
+    if _ETP_FORMULA != "penman":
+        raise SystemExit(f"domaine : seule l'ETP de Penman est prise en charge (ETP {_ETP_FORMULA!r})")
     f7 = td.forcing
     print("[etl] domaine : forcage a six canaux sur disque, demande apprise non calculee (Penman)")
 else:
@@ -451,7 +451,7 @@ if _settings.raw("groundwater.water_table", "0") == "1":
         raw_value = _settings.raw("groundwater.exponent", "2.0")
         if raw_value.lower() not in ("mesure", "mesuré", "ancrage"):
             return float(raw_value)
-        from meandre.data.recession_anchor import ancrage as _ancrage
+        from meandre.data.recession_anchor import anchor_result as _ancrage
 
         a = _ancrage(td.q_obs.detach().cpu().numpy())
         state_label = "" if a.reliable else " (PEU DE STATIONS, defaut de Boussinesq conserve)"
@@ -501,7 +501,7 @@ if _profile is not None:
     print(f"[etl] profil de sol declare : {_profile.layers} couches, "
           f"{len(_profile.processes)} processus")
     for _pr in _profile.processes:
-        print(f"[etl]   {_pr.decrire()}")
+        print(f"[etl]   {_pr.describe()}")
 
 if _settings.raw("snow.wet_bulb_threshold") is not None:
     # Partage pluie-neige au BULBE HUMIDE (generalisation du seuil, remarque d'Essi
@@ -531,7 +531,7 @@ if _settings.raw("snow.project_threshold", "1") == "1":
 # FORMULE D'ETP (2026-09-30) : ETL_ETP si pose, sinon [et].formula du TOML, sinon la
 # demande apprise. "penman" est la formule etablie sur le banc : Linacre inverse la saison
 # de l'evapotranspiration (avril sur octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit.
-_etp_choix = os.environ.get("ETL_ETP") or cfg.get("et", {}).get("formula", "appris")
+_etp_choice = os.environ.get("ETL_ETP") or cfg.get("et", {}).get("formula", "appris")
 # CE QUE LE MODELE PORTE REELLEMENT (2026-09-30, audit avant Narval) : une ligne par piece
 # declaree, lue sur l'objet construit et non sur la configuration, pour que le journal
 # dise ce qui est pose et non ce qui etait demande.
@@ -542,7 +542,7 @@ print("[etl] pieces declarees : "
       f"porte de gel continue={bool(getattr(getattr(_vc, 'soil', None), 'frozen_gate_continuous', False))} | "
       f"schema semi-implicite={bool(getattr(getattr(_vc, 'soil', None), 'semi_implicite', False))} | "
       f"GRACE en forme={os.environ.get('ETL_TWS_FORME', str(int(tcfg.get('tws_shape_only', 0)))) == '1'}")
-if _etp_choix == "mcguinness":
+if _etp_choice == "mcguinness":
     from meandre.adapters.physitel.hydrotel_calib import load_mcguinness_nodes as _lmg
     model.vertical_column.et_mode = "mcguinness"
     _cmg = _lmg(_PROJ_M, r["node_ids"], device=DEVICE)
@@ -551,11 +551,11 @@ if _etp_choix == "mcguinness":
     print(f"[etl] ETP : McGuinness CALÉE de {_MEMBER} "
           f"(coefficient méd {float(_cmg.median()):.3f})" if _cmg is not None
           else "[etl] ETP : McGuinness SANS coefficient (fichier absent)")
-elif _etp_choix == "penman":
+elif _etp_choice == "penman":
     model.vertical_column.et_mode = "penman"
     model.vertical_column.etp_channel = None
     print("[etl] ETP : Penman-Monteith (formule declaree, [et].formula)")
-elif _etp_choix == "linacre":
+elif _etp_choice == "linacre":
     from meandre.adapters.physitel.hydrotel_calib import load_linacre_nodes as _lln
     _pll = os.environ.get("ETL_MELT_DIR") or         _PROJ_M
     model.vertical_column.et_mode = "linacre"
@@ -767,7 +767,7 @@ _flat = f"{_paths.PLATFORMS_ROOT}/LN24HA"
 _pl = os.environ.get("ETL_MELT_DIR") or f"{_flat}/{REG.upper()}_LN24HA_2020"
 try:
     from meandre.adapters.physitel.hydrotel_calib import (load_land_cover, load_wetlands,
-                                             load_phenologie)
+                                             load_phenology)
     _WET = ("wet_a_raw", "wet_dra_fr_raw", "wetdnor_raw", "wetdmax_raw", "wet_vol_init_raw", "frac_raw")
     if DOMAIN or "ETL_MELT_DIR" in os.environ:
         # Province, ou plateforme d'ancrage imposee : lecture directe du projet (chemin historique).
@@ -780,7 +780,7 @@ try:
     _lc.update(_mh)
     model.vertical_column.set_land_cover(_lc)
     # En domaine, le calendrier du premier projet : ceux des projets ne different que d'un jour.
-    _ph = r["phenology"] if DOMAIN else (load_phenologie(_pl) if "ETL_MELT_DIR" in os.environ else r["domain"].phenology)
+    _ph = r["phenology"] if DOMAIN else (load_phenology(_pl) if "ETL_MELT_DIR" in os.environ else r["domain"].phenology)
     model.vertical_column.set_phenology(_ph or None)
     if _ph:
         print(f"[etl] phénologie du projet : {len(_ph)} classes "
@@ -920,7 +920,7 @@ _projh = _PROJ_M
 if _MEMBER == "LN24HA" and r["domain"].hgm_kernel is not None:
     _K = r["domain"].hgm_kernel
 elif DOMAIN:
-    _Ks = [read_hgm(f"{_PLATB}/{_MEMBER}/{_nom.upper()}_{_MEMBER}_2020", _ids) for _nom, _ids, _o, _n in _territories()]
+    _Ks = [read_hgm(f"{_PLATB}/{_MEMBER}/{_name.upper()}_{_MEMBER}_2020", _ids) for _name, _ids, _o, _n in _territories()]
     _L = max(k.shape[1] for k in _Ks)
     _K = np.concatenate([np.pad(k, ((0, 0), (0, _L - k.shape[1]))) for k in _Ks], axis=0)
 elif False:
@@ -939,12 +939,12 @@ print(f"[etl] noyau HGM actif : jour0 med {float(_nph.median(_K[:,0])):.2f}, L={
 from pathlib import Path as _Pl
 import numpy as _npl
 _surf = _npl.full(n_nodes, _npl.nan); _c = _npl.full(n_nodes, _npl.nan); _k = _npl.full(n_nodes, _npl.nan)
-for _nom, _ids, _o, _n in _territories():
+for _name, _ids, _o, _n in _territories():
     if r["domain"].lake_geometry is not None:
         _lg = r["domain"].lake_geometry
         _surf[:], _c[:], _k[:] = _lg["area_km2"].numpy(), _lg["k"].numpy(), _lg["beta"].numpy()
         break
-    _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{_nom.upper()}_LN24HA_2020/physitel/troncon.trl")
+    _pt = _Pl(f"{_paths.PLATFORMS_ROOT}/LN24HA/{_name.upper()}_LN24HA_2020/physitel/troncon.trl")
     _lgn = [l.strip() for l in _pt.read_text(encoding="latin-1").splitlines() if l.strip()]
     _dl = {}
     for _l in _lgn[3:]:
@@ -1126,7 +1126,7 @@ tconf = TrainingConfig(
 # On imprime le poids ET la presence de la cible, cote a cote.
 _lf = r["loss_fn"]
 print("[etl] contraintes auxiliaires effectives :")
-for _nom, _weights, _target in (
+for _name, _weights, _target in (
         ("MODIS ET (MOD16)", getattr(_lf, "w_et", 0.0), td.et_obs),
         ("  mode ET", getattr(_lf, "et_mode", "?"), None),
         ("MODIS couverture nivale", getattr(_lf, "w_snow", 0.0), td.swe_obs),
@@ -1134,20 +1134,20 @@ for _nom, _weights, _target in (
         ("GRACE TWS mensuel", getattr(_lf, "w_tws", 0.0), td.tws_obs),
         ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs),
         ("Niveaux de nappe mesures", getattr(_lf, "w_water_table", 0.0), td.water_table_obs)):
-    if _nom == "  mode ET":
-        print(f"        {_nom:<26s} {_weights}")
+    if _name == "  mode ET":
+        print(f"        {_name:<26s} {_weights}")
         continue
     _state = ("ACTIVE" if (_weights > 0 and _target is not None)
              else "eteinte" if _weights == 0 else "POIDS SANS CIBLE")
-    print(f"        {_nom:<26s} poids {_weights:<6g} cible "
+    print(f"        {_name:<26s} poids {_weights:<6g} cible "
           f"{'presente' if _target is not None else 'ABSENTE':<9s} -> {_state}")
 
 if os.environ.get("ETL_QUANTILE", "0") == "1":
     # GEL DU SOCLE : tout sauf la tete quantile. La mediane reste exactement le Q_sim
     # du point de reprise charge par ETL_WARM_FROM ; seule l'enveloppe s'apprend.
     _free = 0
-    for _nom, _p in model.named_parameters():
-        if "quantile_head" in _nom:
+    for _name, _p in model.named_parameters():
+        if "quantile_head" in _name:
             _p.requires_grad = True; _free += _p.numel()
         else:
             _p.requires_grad = False
@@ -1181,12 +1181,12 @@ if os.environ.get("ETL_QUANTILE", "0") == "1":
 # le diagnostic du souterrain n'etait pas retenu, et le terme des puits tournait sans
 # gradient. La garde du trainer l'a signale ; la source de verite doit etre la meme des deux
 # cotes (2026-09-22).
-def _weights(nom):
+def _weights(field_name):
     # L'objet de perte prime DES LORS qu'il porte l'attribut, y compris a zero : le pilote
     # peut eteindre un terme que la configuration allumait, et un repli sur la configuration
     # le rallumerait en douce.
-    v = getattr(r["loss_fn"], nom, None)
-    return float(v if v is not None else lcfg.get(nom, 0.0) or 0.0)
+    v = getattr(r["loss_fn"], field_name, None)
+    return float(v if v is not None else lcfg.get(field_name, 0.0) or 0.0)
 
 
 _needs = {"etr": _weights("w_et"),
@@ -1223,7 +1223,7 @@ if os.environ.get("MEANDRE_SENSIBILITE") == "1":
     from importlib.machinery import SourceFileLoader as _SFL
 
     _bench = _SFL("sensibilite", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "probes", "sensitivity.py")).load_module()
-    _bench.mesurer(model, td, r["times"], DEVICE,
+    _bench.measure(model, td, r["times"], DEVICE,
                   day_count=int(os.environ.get("MEANDRE_SENSIBILITE_JOURS", "365")),
                   step_output=os.environ.get("MEANDRE_SENSIBILITE_SORTIE"))
     sys.stdout.flush()
@@ -1380,13 +1380,13 @@ print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {REG} (termes de d
 # aux modeles territoriaux.
 if DOMAIN:
     _node_ho = np.array(_node_ho)
-    for _nom, _, _o, _n in _territories():
+    for _name, _, _o, _n in _territories():
         _m = (_node_ho >= _o) & (_node_ho < _o + _n)
         if not _m.any():
-            print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_nom} : aucune station evaluable")
+            print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_name} : aucune station evaluable")
             continue
         _parts = {k: float(np.mean(np.array(x)[_m])) for k, x in _sum_ho.items()}
-        print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_nom} ({int(_m.sum())} stations) : total {sum(_parts.values()):.4f} | "
+        print(f"[etl] PERTE {_HO[0].strip()[:4]}-{_HO[1].strip()[:4]} {_name} ({int(_m.sum())} stations) : total {sum(_parts.values()):.4f} | "
               + " | ".join(f"{k} {v:.4f}" for k, v in _parts.items()))
 # PAR ANNÉE DE LA FENÊTRE (2026-10-09, R355) : KGE médian des stations et rapport simulé sur
 # observé de juillet-août, année par année, pour qu'un verdict ne repose pas sur un été.
@@ -1430,10 +1430,10 @@ for s in range(Qs.shape[1]):
     _ps = np.abs(np.diff(_s)) / np.maximum(_s[:-1], 1e-9) < 0.01
     _po = np.abs(np.diff(_o)) / np.maximum(_o[:-1], 1e-9) < 0.01
     _mm = _m[:-1] & _m[1:]
-    _ete = np.isin(_month[:-1], (6, 7, 8, 9)) & _mm
+    _summer = np.isin(_month[:-1], (6, 7, 8, 9)) & _mm
     _f_flat.append(_ps[_mm].mean()); _f_flat_o.append(_po[_mm].mean())
-    if _ete.any():
-        _f_summer.append(_ps[_ete].mean()); _f_summer_o.append(_po[_ete].mean())
+    if _summer.any():
+        _f_summer.append(_ps[_summer].mean()); _f_summer_o.append(_po[_summer].mean())
     _n = _mx = 0
     for _c in _ps[_mm]:
         _n = _n + 1 if _c else 0
@@ -1484,11 +1484,11 @@ try:
                 times[np.flatnonzero(sl)[0]:np.flatnonzero(sl)[-1] + 1]).normalize()
             _piv.index = _pdm.DatetimeIndex(_piv.index).normalize()
             _rec = _piv.reindex(index=_days, columns=_sids).to_numpy()
-            _mes = (_rec == False)   # noqa: E712 -- NaN (pas de drapeau) exclu aussi
+            _measured = (_rec == False)   # noqa: E712 -- NaN (pas de drapeau) exclu aussi
             _ks2, _ksh = [], []
             for _s in range(Qs.shape[1]):
                 _v = (~torch.isnan(qo_test[:, _s]) & ~torch.isnan(Qs[:, _s])).numpy()
-                _vm = _v & _mes[:, _s]
+                _vm = _v & _measured[:, _s]
                 if _v.sum() >= 60:
                     _ks2.append(float(kge_fn(qo_test[_v, _s], Qs[_v, _s])))
                 if _vm.sum() >= 60:
@@ -1499,7 +1499,7 @@ try:
                       f"(contre {np.median(_ks2):.4f} tous jours confondus, "
                       f"ecart {np.median(_ksh)-np.median(_ks2):+.4f})")
                 print(f"        jours reconstruits ecartes : "
-                      f"{100*(1-_mes.sum()/max(np.isfinite(_rec.astype(float)).sum(),1)):.1f} % "
+                      f"{100*(1-_measured.sum()/max(np.isfinite(_rec.astype(float)).sum(),1)):.1f} % "
                       f"des jours drapeautes de la tenue de cote")
     else:
         _cf.close()
@@ -1647,7 +1647,7 @@ if os.environ.get("ETL_DUMP_REACH"):
     # climatologie perd l'interannuel : impossible d'y lire une annee seche, un classement
     # d'annees ou une anomalie, ce qu'une comparaison aux nappes mesurees demande. Le
     # journalier couterait 105 Mo par variable et par region, la serie mensuelle 3,5 Mo.
-    for _att, _nom, _cumulative in (("recharge", "recharge", True), ("etr", "etr", True),
+    for _att, _name, _cumulative in (("recharge", "recharge", True), ("etr", "etr", True),
                                ("swe", "swe", False), ("q_baseflow", "debit_base", True),
                                ("s_gw", "stock_nappe", False), ("wet_vol", "stock_mh", False),
                                # PROFONDEUR D'EAU : l'observable de l'altimetrie satellitaire.
@@ -1663,16 +1663,16 @@ if os.environ.get("ETL_DUMP_REACH"):
         # an ; un STOCK comme l'equivalent en eau de la neige reste en millimetres, et
         # c'est son maximum annuel qui a un sens, pas sa moyenne.
         if _cumulative:
-            _flux[f"{_nom}_annuel"] = (_a.mean(axis=0) * 365.25).astype(np.float32)
+            _flux[f"{_name}_annuel"] = (_a.mean(axis=0) * 365.25).astype(np.float32)
         else:
-            _ans = _pdm.DatetimeIndex(times).year.to_numpy()
-            _flux[f"{_nom}_max_annuel"] = np.stack(
-                [_a[_ans == _y].max(axis=0) for _y in np.unique(_ans)]).mean(axis=0).astype(np.float32)
+            _years = _pdm.DatetimeIndex(times).year.to_numpy()
+            _flux[f"{_name}_max_annuel"] = np.stack(
+                [_a[_years == _y].max(axis=0) for _y in np.unique(_years)]).mean(axis=0).astype(np.float32)
         # Cycle saisonnier par noeud : douze valeurs, la climatologie mensuelle.
-        _flux[f"{_nom}_mensuel"] = np.stack(
+        _flux[f"{_name}_mensuel"] = np.stack(
             [_a[_month_r == _m].mean(axis=0) for _m in range(1, 13)]).astype(np.float32)
         # Serie mensuelle, un point par mois de la simulation : porte l'interannuel.
-        _flux[f"{_nom}_mois_serie"] = np.stack(
+        _flux[f"{_name}_mois_serie"] = np.stack(
             [_a[_month_key == _m].mean(axis=0) for _m in _month_u]).astype(np.float32)
     # ETL_DUMP_NAPPE=<chemin.npz> : stock souterrain, recharge et debit de base JOURNALIERS
     # aux noeuds portant un puits du reseau de suivi. La mesure du reseau est une profondeur
@@ -1705,7 +1705,7 @@ if os.environ.get("ETL_DUMP_REACH"):
     # ce qui est arrive le jour meme avec les nappes mesurees. Environ 105 Mo par variable et
     # par region en float32. Le cache principal, lui, reste leger pour la carte et le rapport.
     _daily = {}
-    for _att, _nom in (("recharge", "recharge"), ("etr", "etr"), ("swe", "swe"),
+    for _att, _name in (("recharge", "recharge"), ("etr", "etr"), ("swe", "swe"),
                        ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
                        ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
                        ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3"),
@@ -1719,7 +1719,7 @@ if os.environ.get("ETL_DUMP_REACH"):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue
-        _daily[_nom] = _v.detach().cpu().numpy().astype(np.float32)
+        _daily[_name] = _v.detach().cpu().numpy().astype(np.float32)
     # Sans diagnostics (ETL_DUMP_REACH_DIAG=0), le debit journalier seul reste ecrit : la carte en a besoin.
     if _daily or os.environ.get("ETL_DUMP_REACH_DIAG", "1") == "0":
         _fj = os.environ["ETL_DUMP_REACH"]
@@ -2016,34 +2016,34 @@ if os.environ.get("ETL_STOCKS", "0") == "1":
         # TOTALE (549 mm/an). Deux lectures opposees en decoulent : ou bien L3 est un tuyau
         # sature qui ne stocke rien, ou bien elle travaille a pleine capacite et porte
         # l'essentiel de l'ecoulement. La partition tranche, le calcul ne le peut pas.
-        for _cle, _nom in (("prod_surf", "  dont surface"), ("prod_hypo", "  dont hypoderm."),
+        for _key, _name in (("prod_surf", "  dont surface"), ("prod_hypo", "  dont hypoderm."),
                            ("prod_base", "  dont base")):
-            _v = getattr(_DIAG, _cle, None)
+            _v = getattr(_DIAG, _key, None)
             if _v is not None:
-                _flux[_nom] = _v.cpu().numpy()
+                _flux[_name] = _v.cpu().numpy()
         if _DIAG.etr_mh is not None:
             _flux["evap. milieu humide"] = _DIAG.etr_mh.cpu().numpy()
         _n = len(_month_tot)
         print("\n[etl] STOCKS, niveau moyen par mois (mm sur le bassin, moyenne des noeuds) :")
         print("        " + f"{'stock':>16s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
         _cyc = {}
-        for _nom, _v in _storages.items():
+        for _name, _v in _storages.items():
             _c = np.array([np.nanmean(_v[:_n][_month_tot == _m]) for _m in range(1, 13)])
-            _cyc[_nom] = _c
-            print("        " + f"{_nom:>16s}" + "".join(f"{_x:7.0f}" for _x in _c))
+            _cyc[_name] = _c
+            print("        " + f"{_name:>16s}" + "".join(f"{_x:7.0f}" for _x in _c))
         _tot = np.sum(list(_cyc.values()), axis=0)
         print("        " + f"{'TOTAL':>16s}" + "".join(f"{_x:7.0f}" for _x in _tot))
         print("\n[etl] FLUX, lame moyenne par mois (mm/mois, moyenne des noeuds) :")
         print("        " + f"{'flux':>16s}" + "".join(f"{_m:>7d}" for _m in range(1, 13)))
-        for _nom, _v in _flux.items():
+        for _name, _v in _flux.items():
             _c = np.array([np.nansum(_v[:_n][_month_tot == _m])
                            / max((_month_tot == _m).sum(), 1) * 30.4
                            / max(_v.shape[1], 1) for _m in range(1, 13)])
-            print("        " + f"{_nom:>16s}" + "".join(f"{_x:7.1f}" for _x in _c))
+            print("        " + f"{_name:>16s}" + "".join(f"{_x:7.1f}" for _x in _c))
         print("\n[etl] VARIATION decembre -> avril, par stock (mm ; negatif = le")
         print("      reservoir se VIDE pendant l'hiver au lieu de se remplir) :")
-        for _nom, _c in sorted(_cyc.items(), key=lambda kv: kv[1][3] - kv[1][11]):
-            print(f"        {_nom:>16s} : dec {_c[11]:8.0f} -> avr {_c[3]:8.0f}"
+        for _name, _c in sorted(_cyc.items(), key=lambda kv: kv[1][3] - kv[1][11]):
+            print(f"        {_name:>16s} : dec {_c[11]:8.0f} -> avr {_c[3]:8.0f}"
                   f"   {_c[3]-_c[11]:+8.0f}")
         print(f"        {'TOTAL':>16s} : dec {_tot[11]:8.0f} -> avr {_tot[3]:8.0f}"
               f"   {_tot[3]-_tot[11]:+8.0f}")
@@ -2069,11 +2069,11 @@ if os.environ.get("ETL_AUX", "0") == "1":
         _idx = _pdm.DatetimeIndex(times)
         _year_t, _mo_t = _idx.year.to_numpy(), _idx.month.to_numpy()
 
-        def _audit(nom, sim, obs, unit, weight, sigma_loss, note=""):
+        def _audit(field_name, sim, obs, unit, weight, sigma_loss, note=""):
             """sim, obs : (T,) moyenne-bassin alignees sur `times`, NaN admis."""
             _v = np.isfinite(sim) & np.isfinite(obs)
             if _v.sum() < 200:
-                print(f"\n  {nom} : indisponible ({int(_v.sum())} pas valides)"); return
+                print(f"\n  {field_name} : indisponible ({int(_v.sum())} pas valides)"); return
             _r = np.where(_v, sim - obs, np.nan)
             # climatologie mensuelle du residu = partie SYSTEMATIQUE
             _sys = np.array([np.nanmean(_r[_mo_t == _m]) for _m in range(1, 13)])
@@ -2090,7 +2090,7 @@ if os.environ.get("ETL_AUX", "0") == "1":
             _rms_tot = float(np.sqrt(np.nanmean(_r ** 2)))
             _sig_clim = _disp / np.sqrt(np.clip(_nann, 1, None))
             _z = np.abs(_sys) / np.clip(_sig_clim, 1e-9, None)
-            print(f"\n  ── {nom} ({unit}) | poids actif {weight}"
+            print(f"\n  ── {field_name} ({unit}) | poids actif {weight}"
                   + (f" | sigma de la perte {sigma_loss}" if sigma_loss else " | MSE brute, sans sigma")
                   + (f"\n     {note}" if note else ""))
             print("       mois " + "".join(f"{_m:>7d}" for _m in range(1, 13)))
@@ -2101,9 +2101,9 @@ if os.environ.get("ETL_AUX", "0") == "1":
             print(f"     biais saisonnier a {np.nanmax(_z):.1f} ecarts-types au pire mois "
                   f"(mois {int(np.nanargmax(_z))+1})")
             if sigma_loss:
-                _lu = _rms_tot / float(sigma_loss)
-                print(f"     LA PERTE LIT : {_lu:.2f} ecart-type"
-                      + ("  -> DEJA SATISFAITE, ne pousse plus" if _lu < 1.5 else ""))
+                _read = _rms_tot / float(sigma_loss)
+                print(f"     LA PERTE LIT : {_read:.2f} ecart-type"
+                      + ("  -> DEJA SATISFAITE, ne pousse plus" if _read < 1.5 else ""))
 
         # DEMANDE OU OFFRE ? (remarque d'Essi, 2026-08-21). Un residu d'ET ne dit pas
         # a lui seul d'ou il vient : la phenologie et la formule d'ETP fixent la DEMANDE,
@@ -2127,13 +2127,13 @@ if os.environ.get("ETL_AUX", "0") == "1":
             _r = [np.nansum(_etr_m[_mo_t == _m]) / max(np.nansum(_etp_m[_mo_t == _m]), 1e-9)
                   for _m in range(1, 13)]
             print("        " + f"{'ETR/ETP':>14s}" + "".join(f"{_x:7.2f}" for _x in _r))
-        for _nom, _th, _zz in (("sat. L1", _DIAG.theta1, "1"), ("sat. L2", _DIAG.theta2, "2"),
+        for _name, _th, _zz in (("sat. L1", _DIAG.theta1, "1"), ("sat. L2", _DIAG.theta2, "2"),
                                ("sat. L3", _DIAG.theta3, "3")):
             _t = _th.cpu().numpy()
             _p = _n3(getattr(model.spatial_encoder(td.node_coords, td.territorial.to_tensor()),
                              f"porosity_{_zz}"))
             _s2 = _t / np.clip(_p, 1e-9, None)
-            print("        " + f"{_nom:>14s}"
+            print("        " + f"{_name:>14s}"
                   + "".join(f"{np.nanmean(_s2[_mo_t == _m]):7.2f}" for _m in range(1, 13)))
             # UNE MOYENNE ARRONDIE A 1.00 NE DIT PAS SI LE SOL EST *EPINGLE* A SATURATION.
             # La difference compte : un reservoir a 0.95 respire encore un peu, un
@@ -2274,14 +2274,14 @@ if _WANTS_DIAGNOSTICS and _DIAG.swe is not None:
     from meandre.data.basin_cache import BasinCache as _BC
     from meandre.run.territory_data import _paths as _jp
     _db = _jp(REG)[0]
-    _mes, _sit = _BC(_db).load_canswe(_HO[0].strip(), _HO[1].strip())
-    if _mes is None or _mes.empty:
+    _measured, _sit = _BC(_db).load_canswe(_HO[0].strip(), _HO[1].strip())
+    if _measured is None or _measured.empty:
         print("[etl] neige : aucune mesure CanSWE dans la fenetre")
     else:
         _swe = _DIAG.swe.cpu().numpy()                      # (T, n_noeuds), mm
         _tt = _pdm.DatetimeIndex(times)
         _pos = {d: k for k, d in enumerate(_tt.normalize())}
-        _m = _mes.copy()
+        _m = _measured.copy()
         _m["t"] = _m["date"].map(lambda x: _pos.get(_pdm.Timestamp(x).normalize()))
         _m = _m[_m["t"].notna()]
         _m["t"] = _m["t"].astype(int)
@@ -2313,11 +2313,11 @@ if _WANTS_DIAGNOSTICS and _DIAG.swe is not None:
             _jm = _pdm.DatetimeIndex(_hiv["date"]).dayofyear
             _vm = _hiv.groupby(_jm)["swe_mm"].mean()
             _vs = _hiv.groupby(_jm)["sim"].mean()
-            def _fin(series):
+            def _end(series):
                 _after = series[series.index >= series.idxmax()]
                 _below = _after[_after < 10.0]
                 return int(_below.index[0]) if len(_below) else -1
-            _dm, _ds = _fin(_vm), _fin(_vs)
+            _dm, _ds = _end(_vm), _end(_vs)
             print(f"{_an:6d} {_pm:8.0f} {_ps:8.0f} {_ps/max(_pm,1e-9):6.2f} "
                   f"{_dm:12d} {_ds:12d} {_ds-_dm if _dm>0 and _ds>0 else 0:+6d}")
         print("[etl] lecture : ratio de pic < 1 = masse manquante ; ecart de "

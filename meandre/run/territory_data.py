@@ -30,7 +30,7 @@ DATE_START, DATE_END = "2000-01-01", "2024-12-31"
 TRAIN_END, VAL_START, VAL_END = "2018-12-31", "2019-01-01", "2021-12-31"
 
 
-def decoupage():
+def split_spec():
     """(fin d'entraînement, début et fin de validation) en vigueur, JOINT_SPLIT d'abord."""
     _split = os.environ.get("JOINT_SPLIT")
     if _split:
@@ -200,7 +200,7 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
         i0 = int(np.searchsorted(times.values, np.datetime64(d0)))
         i1 = int(np.searchsorted(times.values, np.datetime64(d1))) + 1
         return slice(i0, i1)
-    _te, _vs, _ve = decoupage()
+    _te, _vs, _ve = split_spec()
     if (_te, _vs, _ve) != (TRAIN_END, VAL_START, VAL_END):
         print(f"[joint] découpage NON STANDARD : train -> {_te} | val {_vs}..{_ve}")
     train_sl = sl(DATE_START, _te)
@@ -251,11 +251,11 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     import inspect as _inspect
 
     _accepted = set(_inspect.signature(HydroLoss.__init__).parameters)
-    _oubliees = [k for k, v in lcfg.items()
+    _forgotten = [k for k, v in lcfg.items()
                  if k.startswith("w_") and k in _accepted and float(v or 0.0) > 0
                  and abs(float(getattr(loss_fn, k, 0.0)) - float(v)) > 1e-12]
-    if _oubliees:
-        raise ValueError("poids demandes et non poses sur la perte : " + ", ".join(sorted(_oubliees)))
+    if _forgotten:
+        raise ValueError("poids demandes et non poses sur la perte : " + ", ".join(sorted(_forgotten)))
 
     def mk(sl_):
         return TrainingData(

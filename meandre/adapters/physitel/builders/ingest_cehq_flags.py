@@ -44,22 +44,22 @@ def ingest(region: str) -> None:
     stations = con.execute("SELECT DISTINCT station_id FROM observations ORDER BY 1") \
                   .df().station_id.tolist()
 
-    morceaux, echecs = [], []
+    pieces, failures = [], []
     for s in stations:
         try:
             d = parse_cehq_text(fetch_station(str(s)))
             d = d[d.discharge.notna()][["station_id", "date", "remark"]]
             if len(d):
-                morceaux.append(d)
+                pieces.append(d)
         except Exception as e:
-            echecs.append(f"{s}({type(e).__name__})")
+            failures.append(f"{s}({type(e).__name__})")
         time.sleep(0.4)   # courtoisie envers le serveur du CEHQ
 
-    if not morceaux:
-        print(f"[{region}] aucune station recuperee ({len(echecs)} echecs)")
+    if not pieces:
+        print(f"[{region}] aucune station recuperee ({len(failures)} echecs)")
         con.close()
         return
-    flags = pd.concat(morceaux, ignore_index=True)
+    flags = pd.concat(pieces, ignore_index=True)
     flags["station_id"] = flags.station_id.astype(str)
     flags["date"] = pd.to_datetime(flags.date).dt.date
     flags["reconstructed"] = flags.remark.map(is_reconstructed)
@@ -81,10 +81,10 @@ def ingest(region: str) -> None:
         "SELECT count(*) FROM observations WHERE discharge IS NOT NULL "
         "AND reconstructed IS NULL").fetchone()[0]
     con.close()
-    print(f"[{region}] {len(morceaux)}/{len(stations)} stations | {n_tot} valeurs "
+    print(f"[{region}] {len(pieces)}/{len(stations)} stations | {n_tot} valeurs "
           f"appariees dont {100*n_rec/max(n_tot,1):.1f} % reconstruites | "
           f"{n_without} sans drapeau"
-          + (f" | echecs : {', '.join(echecs)}" if echecs else ""))
+          + (f" | echecs : {', '.join(failures)}" if failures else ""))
 
 
 if __name__ == "__main__":

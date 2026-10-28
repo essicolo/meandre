@@ -20,17 +20,17 @@ if __name__ == "__main__":
     _PLATFORMS_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
     _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 
-    PLATEFORMES = Path(f"{_PLATFORMS_ROOT}/LN24HA")
+    PLATFORMS = Path(f"{_PLATFORMS_ROOT}/LN24HA")
     # Le fichier des observations a suivi la chaine RQH sur le disque de donnees ; a l'ancien
     # emplacement, la reconstruction d'une region produisait une base SANS AUCUNE STATION,
     # en silence, et la region devenait inevaluable (2026-09-02).
-    _STATIONS_CANDIDATS = [
+    _STATIONS_CANDIDATES = [
         "D:/rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
         f"{_DATA_ROOT}/../rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
         r"C:\Users\parse01\documents-locaux\rqh-local\rqh_2026-04\data\07_stations\stations_concatenees.nc",
     ]
-    STATIONS = Path(next((c for c in _STATIONS_CANDIDATS if _osp.path.exists(str(c))),
-                         _STATIONS_CANDIDATS[0]))
+    STATIONS = Path(next((c for c in _STATIONS_CANDIDATES if _osp.path.exists(str(c))),
+                         _STATIONS_CANDIDATES[0]))
     OUT = Path(f"{_DATA_ROOT}/quebec"); OUT.mkdir(parents=True, exist_ok=True)
     REGIONS = sys.argv[1:] or ["GASP", "VAUD", "MONT", "SLSO", "SLNO", "SAGU", "LABI", "ABIT",
                                "OUTM", "OUTV", "CNDA", "CNDB", "CNDC", "CNDD", "CNDE"]
@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     all_tiles = set()
     for reg in REGIONS:
-        proj = PLATEFORMES / f"{reg}_LN24HA_2020"
+        proj = PLATFORMS / f"{reg}_LN24HA_2020"
         db = OUT / f"{reg.lower()}.duckdb"
         print(f"\n=== {reg} ===")
         if not proj.exists():

@@ -32,10 +32,10 @@ LEGACY_FORCINGS = {"slso": f"{_paths.DATA_ROOT}/slso/forcing-casr-corr.nc"}
 LEGACY_DBS = {"slso": ".runs/slso/data/slso.duckdb"}
 
 
-def build_database(project_dir, path, normalise: bool = True) -> BasinCache:
+def build_database(project_dir, path, normalized: bool = True) -> BasinCache:
     """Lit un projet PHYSITEL/Hydrotel et écrit la base DuckDB du territoire (ingestion)."""
     from meandre.adapters.physitel.physitel_loader import load_hydrotel
-    hydro = load_hydrotel(project_dir, normalise=normalise, device=None)
+    hydro = load_hydrotel(project_dir, normalized=normalized, device=None)
     cache = BasinCache(path)
     cache.write(hydro, source=str(project_dir))
     return cache
@@ -70,7 +70,7 @@ def forcing_path(name: str) -> str:
     return LEGACY_FORCINGS.get(name, f"{_paths.DATA_ROOT}/quebec/forcing-{name}-budyko.nc")
 
 
-def _normalise_on_province(name: str, local: TerritorialFeatures, device, manifest: Manifest) -> TerritorialFeatures:
+def _normalized_on_province(name: str, local: TerritorialFeatures, device, manifest: Manifest) -> TerritorialFeatures:
     """Attributs normalisés sur les statistiques provinciales, non territoriales.
 
     Sans cela le tronçon médian de chaque territoire arrive au champ avec des attributs proches
@@ -100,11 +100,11 @@ def project_dir(name: str, member: str = "LN24HA") -> str:
 
 def land_cover(name: str, node_ids, device, project: str | None = None) -> tuple[dict, dict | None]:
     """Occupation brute par classe et géométrie des milieux humides isolés, et phénologie du projet."""
-    from meandre.adapters.physitel.hydrotel_calib import load_wetlands, load_land_cover, load_phenologie
+    from meandre.adapters.physitel.hydrotel_calib import load_wetlands, load_land_cover, load_phenology
     pl = project or project_dir(name)
     lc = load_land_cover(pl, node_ids, device=device)
     lc.update(load_wetlands(pl, node_ids, device=device))
-    return lc, load_phenologie(pl)
+    return lc, load_phenology(pl)
 
 
 def texture_conductivity(name: str, node_ids, n_nodes: int) -> dict:
@@ -191,7 +191,7 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     graph, territorial = h["graph"], h["territorial"]
     attribute_columns = list(territorial.columns) + list(territorial.physical)
     if _settings.raw("spatial.global_normalization", "0") == "1":
-        territorial = _normalise_on_province(name, territorial, device, manifest)
+        territorial = _normalized_on_province(name, territorial, device, manifest)
 
     import xarray as xr
     print(f"[forcage] {name}: {os.path.basename(fx_path)}")

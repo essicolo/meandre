@@ -87,11 +87,11 @@ if __name__ == "__main__":
         sel["troncon"] = sel.IDTRONCON.map(lambda x: id_local(x)[1])
         corr = dict(zip(nodes.node_id.astype(int), nodes.node_idx.astype(int)))
         sel["node_idx"] = sel["troncon"].map(corr)
-        perdus = int(sel.node_idx.isna().sum())
+        lost = int(sel.node_idx.isna().sum())
         sel = sel.dropna(subset=["node_idx"])
         sel["node_idx"] = sel["node_idx"].astype(int)
         if sel.empty:
-            print(f"[prelev] {reg}: aucun troncon apparie ({perdus:,} lignes sans correspondance)")
+            print(f"[prelev] {reg}: aucun troncon apparie ({lost:,} lignes sans correspondance)")
             continue
         # TABLE VIDEE AVANT REIMPORTATION (2026-09-08). `import_withdrawals` insere sans
         # jamais effacer : les deux ingestions successives s'empilaient. Mesure sur les bases
@@ -112,4 +112,4 @@ if __name__ == "__main__":
         net = float(sel["net_withdrawal"].sum()) / max(sel["date"].nunique(), 1)
         print(f"[prelev] {reg}: {sel.site_id.nunique() if 'site_id' in sel else 0:,} sites | "
               f"{n:,} lignes | {sel.node_idx.nunique()} noeuds | "
-              f"net moyen {net:+.3f} m3/s | {perdus:,} lignes sans troncon correspondant")
+              f"net moyen {net:+.3f} m3/s | {lost:,} lignes sans troncon correspondant")

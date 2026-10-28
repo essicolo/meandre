@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = str(Path(__file__).resolve().parents[4])
-from meandre.adapters.physitel.builders.drainage_maps import RESOLUTION, SIGEOM, rasteriser
+from meandre.adapters.physitel.builders.drainage_maps import RESOLUTION, SIGEOM, rasterize_layer
 from meandre.adapters.physitel.physitel_loader import _parse_reach
 from meandre.utils import paths as _paths
 
@@ -65,7 +65,7 @@ def build_territory(reg, par_code):
     n = np.bincount(ids[dans])
     par = pd.DataFrame({"n": n})
     for c in ("loge", "mince", "epais"):
-        r = rasteriser(z, c, transform, shape_value)
+        r = rasterize_layer(z, c, transform, shape_value)
         ok = dans & np.isfinite(r)
         par[f"n_{c}"] = np.bincount(ids[ok], minlength=len(n))
         par[f"s_{c}"] = np.bincount(ids[ok], weights=r[ok], minlength=len(n))

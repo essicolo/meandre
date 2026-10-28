@@ -39,26 +39,26 @@ REGIONS = ["outv", "gasp", "sagu", "mont", "slno", "slso", "abit", "cnda", "cndb
 
 # Classes granulométriques de famille, en sommets (sable %, argile %) du triangle textural.
 # La fraction fine d'une classe squelettique est celle de la classe sans préfixe.
-_SABLEUSE = [(70, 0), (100, 0), (85, 15)]
-_LOAMEUSE = [(0, 0), (70, 0), (85, 15), (65, 35), (0, 35)]
-_ARGILEUSE = [(0, 35), (65, 35), (0, 100)]
+_SANDY = [(70, 0), (100, 0), (85, 15)]
+_LOAMY = [(0, 0), (70, 0), (85, 15), (65, 35), (0, 35)]
+_CLAYEY = [(0, 35), (65, 35), (0, 100)]
 FAMILIES = {
-    "Sableuse": _SABLEUSE,
-    "Squelettique-sableuse": _SABLEUSE,
+    "Sableuse": _SANDY,
+    "Squelettique-sableuse": _SANDY,
     "Loameuse-grossière": [(15, 0), (70, 0), (85, 15), (82, 18), (15, 18)],
     "Loameuse-fine": [(15, 18), (82, 18), (65, 35), (15, 35)],
     "Limoneuse-grossière": [(0, 0), (15, 0), (15, 18), (0, 18)],
     "Limoneuse-fine": [(0, 18), (15, 18), (15, 35), (0, 35)],
-    "Loameuse": _LOAMEUSE,
-    "Squelettique-loameuse": _LOAMEUSE,
-    "Argileuse": _ARGILEUSE,
-    "Squelettique-argileuse": _ARGILEUSE,
+    "Loameuse": _LOAMY,
+    "Squelettique-loameuse": _LOAMY,
+    "Argileuse": _CLAYEY,
+    "Squelettique-argileuse": _CLAYEY,
     "Argileuse-fine": [(0, 35), (65, 35), (40, 60), (0, 60)],
     "Argileuse-très fine": [(0, 60), (40, 60), (0, 100)],
 }
 DRAINAGE = {"Très rapidement drainé": 1, "Rapidement drainé": 2, "Bien drainé": 3, "Modérément bien drainé": 4, "Imparfaitement drainé": 5, "Mal drainé": 6, "Très mal drainé": 7}
 # Classes de perméabilité de Wischmeier et Smith (1978), bornes en mm/h ; classes extrêmes fermées à 500 et 0,5.
-PERMEABILITE = {1: (152, 500), 2: (51, 152), 3: (15, 51), 4: (5, 15), 5: (1.5, 5), 6: (0.5, 1.5)}
+PERMEABILITY = {1: (152, 500), 2: (51, 152), 3: (15, 51), 4: (5, 15), 5: (1.5, 5), 6: (0.5, 1.5)}
 GROUP = {"A": 1.0, "B": 2.0, "C": 3.0, "C/D": 3.5, "D": 4.0}
 VARIABLES = ["ilr_1", "ilr_2", "drainage", "log_permeabilite", "structure", "groupe_hydro", "lithique", "organique"]
 
@@ -70,9 +70,9 @@ def centroid(vertices):
     x1, y1 = np.roll(x, -1), np.roll(y, -1)
     c = x * y1 - x1 * y
     a = c.sum() / 2
-    sable = ((x + x1) * c).sum() / (6 * a)
-    argile = ((y + y1) * c).sum() / (6 * a)
-    return sable, 100 - sable - argile, argile
+    sand = ((x + x1) * c).sum() / (6 * a)
+    clay = ((y + y1) * c).sum() / (6 * a)
+    return sand, 100 - sand - clay, clay
 
 
 def component_properties():
@@ -95,7 +95,7 @@ def component_properties():
     d["ilr_1"], d["ilr_2"] = coords[:, 0], coords[:, 1]
     d["texture_source"] = np.where(~ok, None, np.where(without, "centre de classe", "BDHP"))
     d["drainage"] = d.Classe_drainage.map(DRAINAGE)
-    d["log_permeabilite"] = d.Permeabilite.map({k: 0.5 * (np.log10(a) + np.log10(b)) for k, (a, b) in PERMEABILITE.items()})
+    d["log_permeabilite"] = d.Permeabilite.map({k: 0.5 * (np.log10(a) + np.log10(b)) for k, (a, b) in PERMEABILITY.items()})
     d["structure"] = d.Code_structure.astype(float)
     d["groupe_hydro"] = d.Groupe_hydrologique.map(GROUP)
     mineral = d.Sorte.isin(["Minéral", "Organique"])
@@ -104,7 +104,7 @@ def component_properties():
     return d
 
 
-def proprietes_polygones(comp):
+def properties_polygons(comp):
     cx = sqlite3.connect(GPKG)
     pps = pd.read_sql("select Code_polygone, Composante, Pourcentage from Couverture_pps", cx)
     cx.close()
@@ -161,7 +161,7 @@ def main(regions):
     import geopandas as gpd
     comp = component_properties()
     print(f"{len(comp)} composantes | texture BDHP {int((comp.texture_source == 'BDHP').sum())}, centre de classe {int((comp.texture_source == 'centre de classe').sum())}, sans texture {int(comp.texture_source.isna().sum())}", flush=True)
-    props = proprietes_polygones(comp)
+    props = properties_polygons(comp)
     geo = gpd.read_file(GPKG, layer="Couverture_pedologique", columns=["Code_polygone"], engine="pyogrio")
     poly = geo.merge(props, on="Code_polygone", how="inner")
     poly = poly[poly[[f"couv_{v}" for v in VARIABLES]].sum(axis=1) > 0]
@@ -193,8 +193,8 @@ def columns_nodes(reg, node_ids):
     m = t[t.region == reg].set_index("troncon").reindex([int(i) for i in node_ids])
     for j, v in enumerate(RESERVOIRS):
         ref = t.loc[(t[f"couv_{v}"] >= 0.5) & t[v].notna(), v]
-        couv = m[f"couv_{v}"].fillna(0.0).clip(0.0, 1.0).to_numpy()
+        cover = m[f"couv_{v}"].fillna(0.0).clip(0.0, 1.0).to_numpy()
         z = ((m[v] - ref.mean()) / ref.std()).fillna(0.0).to_numpy()
-        x[:, j] = z * couv
+        x[:, j] = z * cover
     x[:, -1] = m["couv_drainage"].fillna(0.0).clip(0.0, 1.0).to_numpy()
     return x, [f"irda_{v}" for v in RESERVOIRS] + ["irda_couverture"]

@@ -24,7 +24,7 @@ RAW_QC = f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
 HYDROLAKES = f"{_paths.DATA_ROOT}/quebec/lacs_hydrolakes.parquet"
 
 
-def set_lake_area_from_hydrolakes(model, reg: str, area_km2_local, n_nodes: int, bavard: bool = True):
+def set_lake_area_from_hydrolakes(model, reg: str, area_km2_local, n_nodes: int, verbose: bool = True):
     """Corrige la surface des lacs (defaut du pilote depuis le 2026-08-09).
 
     Le module de lac calcule la hauteur d'eau comme S/A mais recevait l'aire de
@@ -50,6 +50,6 @@ def set_lake_area_from_hydrolakes(model, reg: str, area_km2_local, n_nodes: int,
     except Exception:
         src = "lake_fraction x aire locale"
     model.set_lake_area(torch.tensor(alac, dtype=torch.float32))
-    if bavard:
+    if verbose:
         print(f"[recette] surface de lac corrigee ({src})")
     return src

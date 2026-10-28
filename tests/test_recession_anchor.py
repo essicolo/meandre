@@ -8,7 +8,7 @@ entre par la loi des ancrages comme l'évapotranspiration de Linacre et les taux
 import numpy as np
 import pytest
 
-from meandre.data.recession_anchor import (B_MAX, N_DEFAULT, N_MAX, ancrage, recession_exponent,
+from meandre.data.recession_anchor import (B_MAX, N_DEFAULT, N_MAX, anchor_result, recession_exponent,
                                            recession_segments)
 
 
@@ -37,7 +37,7 @@ def test_l_exposant_retrouve_celui_du_reservoir(n):
 
 def test_un_territoire_rend_la_mediane_de_ses_stations():
     q = np.column_stack([_vidange(2.0, graine=g) for g in range(8)])
-    a = ancrage(q)
+    a = anchor_result(q)
     assert a.n_stations == 8 and a.reliable
     assert a.storage_exponent == pytest.approx(2.0, abs=0.4)
     assert a.etendue[0] <= a.storage_exponent <= a.etendue[1]
@@ -45,14 +45,14 @@ def test_un_territoire_rend_la_mediane_de_ses_stations():
 
 def test_un_territoire_sans_station_exploitable_rend_boussinesq():
     """Le défaut est la loi en carré de la charge, pas une valeur inventée."""
-    a = ancrage(np.full((3000, 2), np.nan))
+    a = anchor_result(np.full((3000, 2), np.nan))
     assert a.storage_exponent == N_DEFAULT and not a.reliable
 
 
 def test_l_exposant_est_borne_pour_ne_pas_exploser():
     """n = 1/(2−b) diverge quand b approche 2 : la borne doit tenir."""
     q = np.column_stack([_vidange(n, graine=7) for n in (1.0, 2.0, 5.0)])
-    a = ancrage(q)
+    a = anchor_result(q)
     assert 1.0 <= a.storage_exponent <= N_MAX
     assert a.recession_exponent < B_MAX
 

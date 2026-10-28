@@ -32,14 +32,14 @@ from pathlib import Path
 PREFIXES = ("ETL_", "MEANDRE_", "JOINT_", "PROV_")
 
 # Jamais capturé : secrets et jetons. La recette est destinée à être lue et partagée.
-INTERDITS = ("TOKEN", "SECRET", "PASSWORD", "MOTDEPASSE", "KEY", "CODE")
+FORBIDDEN = ("TOKEN", "SECRET", "PASSWORD", "MOTDEPASSE", "KEY", "CODE")
 
 
 def _est_secret(field_name: str) -> bool:
-    return any(m in field_name.upper() for m in INTERDITS)
+    return any(m in field_name.upper() for m in FORBIDDEN)
 
 
-def _empreinte_code() -> dict:
+def _fingerprint_code() -> dict:
     """Révision git et état de l'arbre, si le dépôt est disponible."""
     out = {}
     root = Path(__file__).resolve().parents[2]
@@ -69,7 +69,7 @@ def capture_recipe() -> dict:
     """
     variables = {n: v for n, v in os.environ.items()
                  if n.startswith(PREFIXES) and not _est_secret(n)}
-    contexte = {"python": platform.python_version(), "hote": platform.node(),
+    context = {"python": platform.python_version(), "hote": platform.node(),
                 "systeme": platform.system()}
     try:
         import torch
@@ -77,15 +77,15 @@ def capture_recipe() -> dict:
         # chargement securise de torch (weights_only, defaut depuis 2.6) refuse de
         # deserialiser. Sans cette conversion, tout point de reprise ecrit avec une
         # recette devient illisible.
-        contexte["torch"] = str(torch.__version__)
-        contexte["cuda"] = str(torch.version.cuda or "aucun")
+        context["torch"] = str(torch.__version__)
+        context["cuda"] = str(torch.version.cuda or "aucun")
     except Exception:
         pass
     from meandre.utils import settings
     from meandre.domain import manifest as _manifest
     _m = _manifest.current()
     return {"variables": dict(sorted(variables.items())), "settings": settings.snapshot(),
-            "contexte": contexte, "code": _empreinte_code(), "domain": _m.as_dict() if _m else {}}
+            "contexte": context, "code": _fingerprint_code(), "domain": _m.as_dict() if _m else {}}
 
 
 def _toml_value(v) -> str:
@@ -189,7 +189,7 @@ def apply_recipe(section: dict | None) -> list[str]:
     return sorted(posees)
 
 
-def compare_recipe(saved: dict | None, ignorer: tuple[str, ...] = ()) -> list[str]:
+def compare_recipe(saved: dict | None, ignore: tuple[str, ...] = ()) -> list[str]:
     """Écarts entre la recette sauvegardée et l'environnement courant.
 
     Retourne une liste de phrases lisibles, vide si tout concorde. Les chemins de
@@ -198,12 +198,12 @@ def compare_recipe(saved: dict | None, ignorer: tuple[str, ...] = ()) -> list[st
     """
     if not saved or not isinstance(saved, dict):
         return []
-    neutres = ("MEANDRE_DATA", "MEANDRE_PLATEFORMES", "MEANDRE_PLATFORMS",
+    neutral = ("MEANDRE_DATA", "MEANDRE_PLATEFORMES", "MEANDRE_PLATFORMS",
                "MEANDRE_RQH", "ETL_TAG", "ETL_DUMP_Q", "ETL_DUMP_REACH",
-               "ETL_WARM_FROM", "ETL_MELT_DIR", "ETL_SOIL_DIR") + tuple(ignorer)
-    old = {k: v for k, v in saved.get("variables", {}).items() if k not in neutres}
+               "ETL_WARM_FROM", "ETL_MELT_DIR", "ETL_SOIL_DIR") + tuple(ignore)
+    old = {k: v for k, v in saved.get("variables", {}).items() if k not in neutral}
     current_value = {n: v for n, v in os.environ.items()
-               if n.startswith(PREFIXES) and n not in neutres and not _est_secret(n)}
+               if n.startswith(PREFIXES) and n not in neutral and not _est_secret(n)}
     gaps = []
     from meandre.domain import manifest as _manifest
     _m = _manifest.current()

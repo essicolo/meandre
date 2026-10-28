@@ -809,9 +809,9 @@ class HydroModel(nn.Module):
                 # Au recalcul, les attributs des modules (etat interne de la colonne, stock des
                 # lacs, operateur de routage) valent ceux de la FIN de la simulation : on remet
                 # ceux du debut du segment, puis on rend ceux de la fin.
-                courant = None
+                current_value = None
                 if k in snapshots:
-                    courant = self._snapshot_attributes()
+                    current_value = self._snapshot_attributes()
                     self._restore_attributes(snapshots[k])
                 else:
                     snapshots[k] = self._snapshot_attributes()
@@ -820,8 +820,8 @@ class HydroModel(nn.Module):
                     steps = [run_step(t, c) for t in range(t0, t1)]
                     stacked = {key: torch.stack([x[key] for x in steps]) for key in steps[0]}
                 finally:
-                    if courant is not None:
-                        self._restore_attributes(courant)
+                    if current_value is not None:
+                        self._restore_attributes(current_value)
                 return stacked, c
 
             for k, t0 in enumerate(range(0, n_timesteps, _seg)):

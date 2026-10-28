@@ -642,8 +642,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _wa = (_Al / _Al.sum())
             print(f"  lacs hors reseau : eau libre {float((_fd * _wa).sum()):.3f} du bassin, part drainee {float((_rdd * _wa).sum()):.2f}, c {_c:g}, temps de sejour {_Td:g} j a {_hr:g} m, beta {_bd:g}, bornes {_bornes}, appris : {', '.join(_appris) or 'aucun'}", flush=True)
         if os.environ.get("MEANDRE_BANC_PHENO_PROJET", "1") == "1":
-            from meandre.adapters.physitel.hydrotel_calib import load_phenologie
-            _ph = load_phenologie(plat)
+            from meandre.adapters.physitel.hydrotel_calib import load_phenology
+            _ph = load_phenology(plat)
             if _ph:
                 col.set_phenology(_ph)
                 print(f"  phenologie du projet : {len(_ph)} classes", flush=True)
@@ -926,7 +926,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                         f = F[t]
                         z = torch.zeros(n, device=dev)
                         try:
-                            e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n), couv=z, albn=z)
+                            e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n), cover=z, albn=z)
                         except TypeError:
                             e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n))
                         vals.append(float((e * _w).sum()))

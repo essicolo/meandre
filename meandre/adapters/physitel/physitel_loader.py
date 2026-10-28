@@ -143,7 +143,7 @@ def _parse_isolated_wetlands(project_dir: Path) -> dict:
 
 def load_hydrotel(
     project_dir: str | Path,
-    normalise: bool = True,
+    normalized: bool = True,
     velocity_m_s: float = 1.0,
     device: torch.device | None = None,
 ) -> dict:
@@ -198,7 +198,7 @@ def load_hydrotel(
     # ---- 6. Territorial indicators ------------------------------------------
     territorial, node_coords = _build_territorial(
         reaches, reach_idx, node_ids, uhrh, lc_pixels, soil_class,
-        graph, normalise=normalise, device=device, wetlands=wetlands,
+        graph, normalized=normalized, device=device, wetlands=wetlands,
     )
 
     # ---- 7. HydroState from latest etat/ snapshot ---------------------------
@@ -371,7 +371,7 @@ def _parse_reach(path: Path) -> list[dict]:
 
         downstream_id = int(tokens[ptr])
 
-        enregistrement = {
+        record = {
             "id": reach_id,
             "type": type_code,
             "length_m": length_m,
@@ -383,13 +383,13 @@ def _parse_reach(path: Path) -> list[dict]:
             "downstream_id": downstream_id,
         }
         if type_code != 1:
-            enregistrement.update({
+            record.update({
                 "lake_area_m2": lake_area_m2,
                 "lake_depth_m": lake_depth_m,
                 "lake_rating_k": lake_rating_k,
                 "lake_rating_beta": lake_rating_beta,
             })
-        reaches.append(enregistrement)
+        reaches.append(record)
 
     return reaches
 
@@ -692,7 +692,7 @@ def _build_territorial(
     lc_pixels: dict[int, np.ndarray],
     soil_class: dict[int, int],
     graph: RiverGraph,
-    normalise: bool,
+    normalized: bool,
     device: torch.device | None,
     wetlands: dict | None = None,
 ) -> tuple[TerritorialFeatures, Tensor]:
@@ -845,7 +845,7 @@ def _build_territorial(
     # z-score normalisation
     def _t(arr: np.ndarray) -> Tensor:
         x = torch.from_numpy(arr.astype(np.float32))
-        if normalise:
+        if normalized:
             mu, sig = x.mean(), x.std()
             if sig > 0:
                 x = (x - mu) / sig

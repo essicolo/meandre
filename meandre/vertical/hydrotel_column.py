@@ -1114,7 +1114,7 @@ class HydrotelColumn(nn.Module):
             self.register_buffer(f"melt_{k}", torch.as_tensor(v, dtype=torch.get_default_dtype()), persistent=False)
         self._melt_anchored = True
 
-    def _etp(self, tmin_j, tmax_j, Rn, u2, ea, lat, doy, couv=None, albn=None):
+    def _etp(self, tmin_j, tmax_j, Rn, u2, ea, lat, doy, cover=None, albn=None):
         if self.et_mode == "linacre":
             # clone fidèle linacre.cpp (validé à la décimale sur MONT 4780 UHRH) ;
             # couv/albn = couvert nival + albédo du module neige interne.
@@ -1122,7 +1122,7 @@ class HydrotelColumn(nn.Module):
             assert hasattr(self, "lin_coeff"), "et_mode=linacre : appeler set_linacre_params()"
             z = torch.zeros_like(tmin_j)
             return linacre_etp(tmin_j, tmax_j, self.lin_lat, self.lin_alti,
-                               couv if couv is not None else z,
+                               cover if cover is not None else z,
                                albn if albn is not None else z,
                                t_froid=self.lin_tfroid, t_chaud=self.lin_tchaud,
                                albedo=self.lin_albedo, coeff=self.lin_coeff)
@@ -1241,11 +1241,11 @@ class HydrotelColumn(nn.Module):
             etp = torch.clamp(etp_ext, min=0.0) * _kc
         elif self.et_mode == "linacre":
             # couvert nival agrégé (mm SWE) + albédo neige pondéré par classe
-            _couv = snow_new.get("couvert_nival_mm", high * 1000.0)
+            _cover_values = snow_new.get("couvert_nival_mm", high * 1000.0)
             _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                         * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
             etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t,
-                            couv=_couv, albn=_albn) * _kc
+                            cover=_cover_values, albn=_albn) * _kc
         else:
             etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t) * _kc
             # COUVERT NIVAL DANS PENMAN (2026-10-02, opt-in MEANDRE_PENMAN_NEIGE=1). Le
@@ -1254,10 +1254,10 @@ class HydrotelColumn(nn.Module):
             # au rayonnement absorbe, avec une fraction enneigee continue
             # f = 1 - exp(-SWE / 5 mm) : facteur 1 - f + f (1 - albedo_neige) / (1 - 0,23).
             if self.et_mode == "penman" and settings.get("column.penman_snow"):
-                _couv = snow_new.get("couvert_nival_mm", high * 1000.0)
+                _cover_values = snow_new.get("couvert_nival_mm", high * 1000.0)
                 _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                             * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
-                _fn = 1.0 - torch.exp(-torch.clamp(_couv, min=0.0) / 5.0)
+                _fn = 1.0 - torch.exp(-torch.clamp(_cover_values, min=0.0) / 5.0)
                 etp = etp * (1.0 - _fn + _fn * torch.clamp(1.0 - _albn, min=0.0) / 0.77)
 
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en

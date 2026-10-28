@@ -159,7 +159,7 @@ def raster_slc(crs, emprise_4326, transform, shape_value):
     poly = poly.join(pd.DataFrame({"drainage": val, "part": part}), on="POLY_ID").to_crs(crs)
     # Un polygone dont moins de la moitie des composantes portent un drainage ne le definit pas.
     poly.loc[poly.part.fillna(0) < 0.5, "drainage"] = np.nan
-    return cd.rasteriser(poly, "drainage", transform, shape_value)
+    return cd.rasterize_layer(poly, "drainage", transform, shape_value)
 
 
 def pedons(crs):
@@ -193,13 +193,13 @@ def grille(reg):
     shape_value = (nlig, ncol)
     ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value, transform=transform, fill=0, dtype=np.int32)
     couches = {"ids": ids}
-    couches["irda"] = cd.rasteriser(cd.irda_layer(crs, emprise_4326), "drainage", transform, shape_value)
+    couches["irda"] = cd.rasterize_layer(cd.irda_layer(crs, emprise_4326), "drainage", transform, shape_value)
     couches["slc"] = raster_slc(crs, emprise_4326, transform, shape_value)
     eco = cd.ecoforest_rasters(crs, emprise_4326, cd.sheets_of(emprise_4326), transform, shape_value, colonnes=("drainage", "depot", "famille", "mince"))
     for k in ("drainage", "depot", "famille", "mince"):
         couches[f"eco_{k}"] = eco[k]
     sig = cd.sigeom_layer(crs, emprise_4326)
-    couches["sigeom_rang"] = cd.rasteriser(sig, "drainage", transform, shape_value)
+    couches["sigeom_rang"] = cd.rasterize_layer(sig, "drainage", transform, shape_value)
     for nom in ("sable", "limon", "argile", "corg"):
         couches[nom] = raster_siigsol(nom, crs, transform, shape_value)
     couches["twi"] = raster_twi(crs, emprise_4326, transform, shape_value)

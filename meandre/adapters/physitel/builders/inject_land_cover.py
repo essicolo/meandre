@@ -37,7 +37,7 @@ COLUMNS = {
 }
 
 
-def projet(reg):
+def project(reg):
     root = Path(os.environ.get("MEANDRE_PLATEFORMES", f"{_p.DATA_ROOT}/plateformes-hydrotel")) / "LN24HA"
     cand = sorted(root.glob(f"{reg.upper()}_*"))
     if not cand:
@@ -46,7 +46,7 @@ def projet(reg):
 
 
 def fractions(reg):
-    ph = projet(reg)
+    ph = project(reg)
     uhrh = _parse_uhrh(ph / "uhrh.csv")
     occ = _parse_land_cover_cla(ph / "occupation_sol.cla", uhrh)
     reaches = _parse_reach(ph / "troncon.trl")
@@ -69,10 +69,10 @@ def main(regs):
         con = duckdb.connect(f"{_p.DATA_ROOT}/quebec/{reg}.duckdb")
         nodes = con.execute("SELECT node_idx, node_id FROM nodes").df()
         f = nodes.merge(f, on="node_id", how="left").drop(columns="node_id")
-        presentes = {c[0] for c in con.execute("DESCRIBE territorial").fetchall()}
+        present = {c[0] for c in con.execute("DESCRIBE territorial").fetchall()}
         con.register("occ", f)
         for col in COLUMNS:
-            if col not in presentes:
+            if col not in present:
                 con.execute(f"ALTER TABLE territorial ADD COLUMN {col} FLOAT")
             con.execute(f"UPDATE territorial SET {col} = occ.{col} FROM occ WHERE territorial.node_idx = occ.node_idx")
         con.unregister("occ")

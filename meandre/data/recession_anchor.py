@@ -34,7 +34,7 @@ N_DEFAULT = 2.0
 
 
 @dataclass(frozen=True)
-class AncrageRecession:
+class RecessionAnchor:
     """Exposant de vidange d'un territoire, et de quoi juger sa fiabilité."""
     storage_exponent: float
     recession_exponent: float
@@ -112,7 +112,7 @@ def recession_exponent(q) -> float | None:
     return float(np.polyfit(ex, ey, 1)[0])
 
 
-def ancrage(q_obs) -> AncrageRecession:
+def anchor_result(q_obs) -> RecessionAnchor:
     """Exposant de vidange d'un territoire, depuis ses hydrogrammes observés.
 
     Args:
@@ -122,10 +122,10 @@ def ancrage(q_obs) -> AncrageRecession:
     bs = [b for j in range(q_obs.shape[1])
           if (b := recession_exponent(q_obs[:, j])) is not None and b < B_MAX]
     if not bs:
-        return AncrageRecession(N_DEFAULT, 2.0 - 1.0 / N_DEFAULT, 0, (N_DEFAULT, N_DEFAULT))
+        return RecessionAnchor(N_DEFAULT, 2.0 - 1.0 / N_DEFAULT, 0, (N_DEFAULT, N_DEFAULT))
     b_med = float(np.median(bs))
     ns = np.clip(1.0 / (2.0 - np.asarray(bs)), N_MIN, N_MAX)
-    return AncrageRecession(
+    return RecessionAnchor(
         storage_exponent=float(np.clip(1.0 / (2.0 - b_med), N_MIN, N_MAX)),
         recession_exponent=b_med,
         n_stations=len(bs),

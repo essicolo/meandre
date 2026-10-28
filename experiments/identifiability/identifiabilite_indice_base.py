@@ -261,12 +261,12 @@ def main():
     if not morceaux:
         return 1
     t = pd.concat(morceaux, ignore_index=True).dropna()
-    couv = [c for c in t.columns if "__couv_" in c]
-    if couv and a.couverture_min > 0:
+    cover = [c for c in t.columns if "__couv_" in c]
+    if cover and a.couverture_min > 0:
         avant = len(t)
-        t = t[(t[couv] >= a.couverture_min).all(axis=1)].reset_index(drop=True)
+        t = t[(t[cover] >= a.couverture_min).all(axis=1)].reset_index(drop=True)
         print(f"couverture minimale {a.couverture_min:.2f} : {len(t)} stations gardees sur {avant}")
-    t = t.drop(columns=couv)
+    t = t.drop(columns=cover)
     gros = t.region.value_counts()
     garde = gros[gros >= a.minimum].index
     if len(garde) < 2:

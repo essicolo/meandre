@@ -220,20 +220,20 @@ def _split_stages(stage: list[int], n_stages: int, src: list[int], dst: list[int
     for k in range(n_stages):
         comps = sorted(comp_per_level[k].values(), key=len, reverse=True)
         if sum(len(c) for c in comps) <= max_block:
-            bacs = [[i for c in comps for i in c]]
+            pans = [[i for c in comps for i in c]]
         else:
             # Premier ajustement décroissant ; un bassin plus grand que le bloc reste entier.
-            bacs, sizes = [], []
+            pans, sizes = [], []
             for c in comps:
                 j = next((j for j, t in enumerate(sizes) if t + len(c) <= max_block), None)
                 if j is None:
-                    bacs.append(list(c)); sizes.append(len(c))
+                    pans.append(list(c)); sizes.append(len(c))
                 else:
-                    bacs[j].extend(c); sizes[j] += len(c)
-        for b, bac in enumerate(bacs):
+                    pans[j].extend(c); sizes[j] += len(c)
+        for b, bac in enumerate(pans):
             for i in bac:
                 new[i] = k_new + b
-        k_new += max(len(bacs), 1)
+        k_new += max(len(pans), 1)
         for i in range(n):
             if is_lake[i] and stage[i] == k:
                 new[i] = k_new - 1
