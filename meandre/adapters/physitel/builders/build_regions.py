@@ -6,85 +6,86 @@ Sorties : D:/meandre-data/quebec/<reg>.duckdb + tiles_needed.txt (union pour fet
 """
 import os, sys
 from pathlib import Path
-os.chdir(Path(__file__).resolve().parents[4])
-import numpy as np, xarray as xr
-from pathlib import Path
-from pyproj import CRS, Transformer
-from meandre.data.basin_cache import BasinCache
-from meandre.adapters.physitel import build_database
+if __name__ == "__main__":
+    os.chdir(Path(__file__).resolve().parents[4])
+    import numpy as np, xarray as xr
+    from pathlib import Path
+    from pyproj import CRS, Transformer
+    from meandre.data.basin_cache import BasinCache
+    from meandre.adapters.physitel import build_database
 
-# Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
-# execution hors du poste d'origine impossible. Defauts inchanges.
-import os as _osp
-_PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
-_DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
+    # Racines portables (portage grappe, 2026-09-01) : les chemins absolus rendaient toute
+    # execution hors du poste d'origine impossible. Defauts inchanges.
+    import os as _osp
+    _PLAT_ROOT = _osp.environ.get("MEANDRE_PLATFORMS", "C:/Users/parse01/documents-locaux/GitHub/plateformes-hydrotel")
+    _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 
-PLATEFORMES = Path(f"{_PLAT_ROOT}/LN24HA")
-# Le fichier des observations a suivi la chaine RQH sur le disque de donnees ; a l'ancien
-# emplacement, la reconstruction d'une region produisait une base SANS AUCUNE STATION,
-# en silence, et la region devenait inevaluable (2026-09-02).
-_STATIONS_CANDIDATS = [
-    "D:/rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
-    f"{_DATA_ROOT}/../rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
-    r"C:\Users\parse01\documents-locaux\rqh-local\rqh_2026-04\data\07_stations\stations_concatenees.nc",
-]
-STATIONS = Path(next((c for c in _STATIONS_CANDIDATS if _osp.path.exists(str(c))),
-                     _STATIONS_CANDIDATS[0]))
-OUT = Path(f"{_DATA_ROOT}/quebec"); OUT.mkdir(parents=True, exist_ok=True)
-REGIONS = sys.argv[1:] or ["GASP", "VAUD", "MONT", "SLSO", "SLNO", "SAGU", "LABI", "ABIT",
-                           "OUTM", "OUTV", "CNDA", "CNDB", "CNDC", "CNDD", "CNDE"]
+    PLATEFORMES = Path(f"{_PLAT_ROOT}/LN24HA")
+    # Le fichier des observations a suivi la chaine RQH sur le disque de donnees ; a l'ancien
+    # emplacement, la reconstruction d'une region produisait une base SANS AUCUNE STATION,
+    # en silence, et la region devenait inevaluable (2026-09-02).
+    _STATIONS_CANDIDATS = [
+        "D:/rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
+        f"{_DATA_ROOT}/../rqh/rqh_2026-04/data/07_stations/stations_concatenees.nc",
+        r"C:\Users\parse01\documents-locaux\rqh-local\rqh_2026-04\data\07_stations\stations_concatenees.nc",
+    ]
+    STATIONS = Path(next((c for c in _STATIONS_CANDIDATS if _osp.path.exists(str(c))),
+                         _STATIONS_CANDIDATS[0]))
+    OUT = Path(f"{_DATA_ROOT}/quebec"); OUT.mkdir(parents=True, exist_ok=True)
+    REGIONS = sys.argv[1:] or ["GASP", "VAUD", "MONT", "SLSO", "SLNO", "SAGU", "LABI", "ABIT",
+                               "OUTM", "OUTV", "CNDA", "CNDB", "CNDC", "CNDD", "CNDE"]
 
-# grille pôle tourné CaSR (attrs depuis une tuile SLSO existante)
-# Tuile de reference, uniquement pour la projection a pole tourne qui choisit les tuiles.
-# L'ancien emplacement (.runs/slso/data/casr) a disparu quand les tuiles ont ete
-# regroupees sous MEANDRE_DATA ; la reconstruction d'une region echouait au chargement
-# du script, avant meme de lire le reseau (2026-09-01).
-_TUILE = "CaSR_v3.2_A_TT_1.5m_rlon526-560_rlat351-385_2000-2003.nc"
-_ref_chemins = [f"{_DATA_ROOT}/casr/{_TUILE}", f".runs/slso/data/casr/{_TUILE}"]
-_ref = xr.open_dataset(next(c for c in _ref_chemins if _osp.path.exists(c)))
-_g = _ref["rotated_pole"].attrs
-rlon_vals = _ref.rlon.values; rlat_vals = _ref.rlat.values; _ref.close()
-# pas et origine : index i (1-based) -> valeur ; tuile rlon526-560 = indices 526..560
-dr_lon = float(np.diff(rlon_vals).mean()); dr_lat = float(np.diff(rlat_vals).mean())
-rlon0 = rlon_vals[0] - 526 * dr_lon   # valeur à l'index 0 (virtuel)
-rlat0 = rlat_vals[0] - 351 * dr_lat
-rp = CRS.from_cf({"grid_mapping_name": "rotated_latitude_longitude",
-    "grid_north_pole_latitude": float(_g["grid_north_pole_latitude"]),
-    "grid_north_pole_longitude": float(_g["grid_north_pole_longitude"]),
-    "north_pole_grid_longitude": float(_g.get("north_pole_grid_longitude", 0.0))})
-geo = CRS.from_proj4(f"+proj=longlat +R={float(_g['earth_radius'])} +no_defs")
-tr = Transformer.from_crs(geo, rp, always_xy=True)
-def blocks(idx):
-    k = (np.asarray(idx) - 1) // 35
-    return [f"{35*int(b)+1}-{35*int(b)+35}" for b in sorted(set(k))]
+    # grille pôle tourné CaSR (attrs depuis une tuile SLSO existante)
+    # Tuile de reference, uniquement pour la projection a pole tourne qui choisit les tuiles.
+    # L'ancien emplacement (.runs/slso/data/casr) a disparu quand les tuiles ont ete
+    # regroupees sous MEANDRE_DATA ; la reconstruction d'une region echouait au chargement
+    # du script, avant meme de lire le reseau (2026-09-01).
+    _TUILE = "CaSR_v3.2_A_TT_1.5m_rlon526-560_rlat351-385_2000-2003.nc"
+    _ref_chemins = [f"{_DATA_ROOT}/casr/{_TUILE}", f".runs/slso/data/casr/{_TUILE}"]
+    _ref = xr.open_dataset(next(c for c in _ref_chemins if _osp.path.exists(c)))
+    _g = _ref["rotated_pole"].attrs
+    rlon_vals = _ref.rlon.values; rlat_vals = _ref.rlat.values; _ref.close()
+    # pas et origine : index i (1-based) -> valeur ; tuile rlon526-560 = indices 526..560
+    dr_lon = float(np.diff(rlon_vals).mean()); dr_lat = float(np.diff(rlat_vals).mean())
+    rlon0 = rlon_vals[0] - 526 * dr_lon   # valeur à l'index 0 (virtuel)
+    rlat0 = rlat_vals[0] - 351 * dr_lat
+    rp = CRS.from_cf({"grid_mapping_name": "rotated_latitude_longitude",
+        "grid_north_pole_latitude": float(_g["grid_north_pole_latitude"]),
+        "grid_north_pole_longitude": float(_g["grid_north_pole_longitude"]),
+        "north_pole_grid_longitude": float(_g.get("north_pole_grid_longitude", 0.0))})
+    geo = CRS.from_proj4(f"+proj=longlat +R={float(_g['earth_radius'])} +no_defs")
+    tr = Transformer.from_crs(geo, rp, always_xy=True)
+    def blocks(idx):
+        k = (np.asarray(idx) - 1) // 35
+        return [f"{35*int(b)+1}-{35*int(b)+35}" for b in sorted(set(k))]
 
-all_tiles = set()
-for reg in REGIONS:
-    proj = PLATEFORMES / f"{reg}_LN24HA_2020"
-    db = OUT / f"{reg.lower()}.duckdb"
-    print(f"\n=== {reg} ===")
-    if not proj.exists():
-        print(f"  ABSENT : {proj}"); continue
-    if db.exists():
-        print(f"  cache déjà présent : {db}")
-        cache = BasinCache(db)
-    else:
-        cache = build_database(project_dir=proj, path=db)
-        try:
-            cache.import_observations(STATIONS, basin_prefix=reg)
-        except Exception as e:
-            print(f"  [obs] échec import ({e}) — région sans jauge ?")
-    h = cache.load(device="cpu")
-    nc_ = h["node_coords"].numpy()
-    rlon_n, rlat_n = tr.transform(nc_[:, 0], nc_[:, 1])
-    i_lon = np.round((rlon_n - rlon0) / dr_lon).astype(int)
-    i_lat = np.round((rlat_n - rlat0) / dr_lat).astype(int)
-    tiles = [f"rlon{a}_rlat{b}" for a in blocks(i_lon) for b in blocks(i_lat)]
-    # ATTENTION : produit cartésien = enveloppe ; suffisant pour le fetch
-    all_tiles.update(tiles)
-    print(f"  nœuds {h['n_nodes']} | tuiles : {tiles}")
+    all_tiles = set()
+    for reg in REGIONS:
+        proj = PLATEFORMES / f"{reg}_LN24HA_2020"
+        db = OUT / f"{reg.lower()}.duckdb"
+        print(f"\n=== {reg} ===")
+        if not proj.exists():
+            print(f"  ABSENT : {proj}"); continue
+        if db.exists():
+            print(f"  cache déjà présent : {db}")
+            cache = BasinCache(db)
+        else:
+            cache = build_database(project_dir=proj, path=db)
+            try:
+                cache.import_observations(STATIONS, basin_prefix=reg)
+            except Exception as e:
+                print(f"  [obs] échec import ({e}) — région sans jauge ?")
+        h = cache.load(device="cpu")
+        nc_ = h["node_coords"].numpy()
+        rlon_n, rlat_n = tr.transform(nc_[:, 0], nc_[:, 1])
+        i_lon = np.round((rlon_n - rlon0) / dr_lon).astype(int)
+        i_lat = np.round((rlat_n - rlat0) / dr_lat).astype(int)
+        tiles = [f"rlon{a}_rlat{b}" for a in blocks(i_lon) for b in blocks(i_lat)]
+        # ATTENTION : produit cartésien = enveloppe ; suffisant pour le fetch
+        all_tiles.update(tiles)
+        print(f"  nœuds {h['n_nodes']} | tuiles : {tiles}")
 
-with open(OUT / "tiles_needed.txt", "w") as f:
-    f.write("\n".join(sorted(all_tiles)))
-print(f"\nUNION : {len(all_tiles)} tuiles -> {OUT / 'tiles_needed.txt'}")
-print(f"volume estimé : ~{len(all_tiles) * 2.5:.0f} Go (6 vars x 7 chunks x ~60 Mo)")
+    with open(OUT / "tiles_needed.txt", "w") as f:
+        f.write("\n".join(sorted(all_tiles)))
+    print(f"\nUNION : {len(all_tiles)} tuiles -> {OUT / 'tiles_needed.txt'}")
+    print(f"volume estimé : ~{len(all_tiles) * 2.5:.0f} Go (6 vars x 7 chunks x ~60 Mo)")

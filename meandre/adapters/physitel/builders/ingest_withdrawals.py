@@ -22,93 +22,94 @@ from pathlib import Path
 import os
 import sys
 
-os.chdir(Path(__file__).resolve().parents[4])
+if __name__ == "__main__":
+    os.chdir(Path(__file__).resolve().parents[4])
 
-import duckdb
-import pandas as pd
+    import duckdb
+    import pandas as pd
 
-from meandre.data.basin_cache import BasinCache
-from meandre.adapters.physitel.hydrotel_calib import id_local
-from meandre.utils import paths as _paths
+    from meandre.data.basin_cache import BasinCache
+    from meandre.adapters.physitel.hydrotel_calib import id_local
+    from meandre.utils import paths as _paths
 
-# SOURCE : le derive d'io-eau, surchargeable par IO_EAU. La copie locale `data/` etait
-# une COPIE DATEE ; on lit desormais le derive a la source par defaut, pour ne plus
-# reingerer un instantane perime sans s'en apercevoir. La version du 2026-06-10 corrige
-# un mauvais appariement majeur : l'emissaire de la rive sud de Montreal (32 m3/s) etait
-# porte par un troncon de 13 km2, soit 1857 L/s/km2 -- cent fois le debit specifique
-# d'un cours d'eau quebecois. Il revient sur MONT00002, l'axe principal (38 931 km2),
-# ou il vaut 0.8 L/s/km2.
-SOURCE = os.environ.get(
-    "IO_EAU",
-    "C:/Users/parse01/documents-locaux/GitHub/io-eau/data/derived/io-eau-meandre.parquet")
-if not os.path.exists(SOURCE):
-    # REPLI BRUYANT (2026-09-08). Le repli silencieux sur la copie locale est ce qui a
-    # permis d'ingerer un instantane perime sans s'en apercevoir (R91) ; sur la grappe,
-    # ou le depot d'io-eau n'existe pas, il aurait reintroduit la donnee d'avril.
-    _repli = ".data/io-eau-meandre.parquet"
-    if not os.path.exists(_repli):
-        raise SystemExit(f"[prelev] ARRET : ni {SOURCE} ni {_repli} n'existent. "
-                         "Poser IO_EAU sur le derive d'io-eau.")
-    import pandas as _pd
-    _fin = _pd.read_parquet(_repli, columns=["date"]).date.max()
-    print(f"[prelev] ATTENTION : source io-eau absente, repli sur {_repli}, "
-          f"dont la donnee s'arrete au {str(_fin)[:10]}. Verifier que c'est voulu.")
-    SOURCE = _repli
-REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
-           "outm", "outv", "sagu", "slno", "slso", "vaud"]
+    # SOURCE : le derive d'io-eau, surchargeable par IO_EAU. La copie locale `data/` etait
+    # une COPIE DATEE ; on lit desormais le derive a la source par defaut, pour ne plus
+    # reingerer un instantane perime sans s'en apercevoir. La version du 2026-06-10 corrige
+    # un mauvais appariement majeur : l'emissaire de la rive sud de Montreal (32 m3/s) etait
+    # porte par un troncon de 13 km2, soit 1857 L/s/km2 -- cent fois le debit specifique
+    # d'un cours d'eau quebecois. Il revient sur MONT00002, l'axe principal (38 931 km2),
+    # ou il vaut 0.8 L/s/km2.
+    SOURCE = os.environ.get(
+        "IO_EAU",
+        "C:/Users/parse01/documents-locaux/GitHub/io-eau/data/derived/io-eau-meandre.parquet")
+    if not os.path.exists(SOURCE):
+        # REPLI BRUYANT (2026-09-08). Le repli silencieux sur la copie locale est ce qui a
+        # permis d'ingerer un instantane perime sans s'en apercevoir (R91) ; sur la grappe,
+        # ou le depot d'io-eau n'existe pas, il aurait reintroduit la donnee d'avril.
+        _repli = ".data/io-eau-meandre.parquet"
+        if not os.path.exists(_repli):
+            raise SystemExit(f"[prelev] ARRET : ni {SOURCE} ni {_repli} n'existent. "
+                             "Poser IO_EAU sur le derive d'io-eau.")
+        import pandas as _pd
+        _fin = _pd.read_parquet(_repli, columns=["date"]).date.max()
+        print(f"[prelev] ATTENTION : source io-eau absente, repli sur {_repli}, "
+              f"dont la donnee s'arrete au {str(_fin)[:10]}. Verifier que c'est voulu.")
+        SOURCE = _repli
+    REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont",
+               "outm", "outv", "sagu", "slno", "slso", "vaud"]
 
-cible = (REGIONS if (len(sys.argv) > 1 and sys.argv[1].lower() == "toutes")
-         else [(sys.argv[1] if len(sys.argv) > 1 else "outv").lower()])
+    cible = (REGIONS if (len(sys.argv) > 1 and sys.argv[1].lower() == "toutes")
+             else [(sys.argv[1] if len(sys.argv) > 1 else "outv").lower()])
 
-df = pd.read_parquet(SOURCE)
-df["date"] = pd.to_datetime(df["date"])
-print(f"[prelev] source : {len(df):,} lignes, {df.site_id.nunique():,} sites, "
-      f"{df.date.min().date()} -> {df.date.max().date()}")
+    df = pd.read_parquet(SOURCE)
+    df["date"] = pd.to_datetime(df["date"])
+    print(f"[prelev] source : {len(df):,} lignes, {df.site_id.nunique():,} sites, "
+          f"{df.date.min().date()} -> {df.date.max().date()}")
 
-for reg in cible:
-    db = _paths.data_path("quebec", f"{reg}.duckdb")
-    if not os.path.exists(db):
-        print(f"[prelev] {reg}: base absente")
-        continue
-    con = duckdb.connect(db, read_only=True)
-    noeuds = con.execute("SELECT node_idx, node_id FROM nodes ORDER BY node_idx").df()
-    con.close()
-    # APPARIEMENT EXACT par l'identifiant de troncon, PAS par coordonnees. Le fichier
-    # porte IDTRONCON au format provincial ("OUTV03387") et la base porte l'entier
-    # local : la conversion est celle de hydrotel_calib, ecrite pour la dette #1 du
-    # registre (trois numerotations de troncons). Un rattachement au noeud le plus
-    # proche a 10 km ecartait 879 sites sur 1 661 et en placait d'autres a 6.7 km,
-    # alors que l'appariement exact existe.
-    sel = df[df.IDTRONCON.str.upper().str.startswith(reg.upper())].copy()
-    if sel.empty:
-        print(f"[prelev] {reg}: aucun point porte cet identifiant de region")
-        continue
-    sel["troncon"] = sel.IDTRONCON.map(lambda x: id_local(x)[1])
-    corr = dict(zip(noeuds.node_id.astype(int), noeuds.node_idx.astype(int)))
-    sel["node_idx"] = sel["troncon"].map(corr)
-    perdus = int(sel.node_idx.isna().sum())
-    sel = sel.dropna(subset=["node_idx"])
-    sel["node_idx"] = sel["node_idx"].astype(int)
-    if sel.empty:
-        print(f"[prelev] {reg}: aucun troncon apparie ({perdus:,} lignes sans correspondance)")
-        continue
-    # TABLE VIDEE AVANT REIMPORTATION (2026-09-08). `import_withdrawals` insere sans
-    # jamais effacer : les deux ingestions successives s'empilaient. Mesure sur les bases
-    # du 8 septembre : 33 noeuds perimes en Monterégie, finissant au 2024-12-01 comme la
-    # copie locale d'avril, portant 39,0 m3/s, soit AUTANT que les 217 noeuds a jour. La
-    # region a donc ete entrainee avec le double du flux anthropique reel, dont la moitie
-    # sur de mauvais troncons -- dont l'ancien mauvais appariement de l'emissaire de la
-    # rive sud, corrige en juin par ajout sans retrait de la ligne fautive.
-    _c = duckdb.connect(db)
-    try:
-        _av = _c.execute("select count(*) from withdrawals").fetchone()[0]             if _c.execute("select count(*) from duckdb_tables() where table_name='withdrawals'").fetchone()[0] else 0
-        if _av:
-            _c.execute("DELETE FROM withdrawals")
-    finally:
-        _c.close()
-    n = BasinCache(db).import_withdrawals(sel[["date", "node_idx", "net_withdrawal", "source"]],
-                                          node_col="node_idx", site_col=None)
-    net = float(sel["net_withdrawal"].sum()) / max(sel["date"].nunique(), 1)
-    print(f"[prelev] {reg}: {sel.site_id.nunique() if 'site_id' in sel else 0:,} sites | "
-          f"{n:,} lignes | {sel.node_idx.nunique()} noeuds | "
-          f"net moyen {net:+.3f} m3/s | {perdus:,} lignes sans troncon correspondant")
+    for reg in cible:
+        db = _paths.data_path("quebec", f"{reg}.duckdb")
+        if not os.path.exists(db):
+            print(f"[prelev] {reg}: base absente")
+            continue
+        con = duckdb.connect(db, read_only=True)
+        noeuds = con.execute("SELECT node_idx, node_id FROM nodes ORDER BY node_idx").df()
+        con.close()
+        # APPARIEMENT EXACT par l'identifiant de troncon, PAS par coordonnees. Le fichier
+        # porte IDTRONCON au format provincial ("OUTV03387") et la base porte l'entier
+        # local : la conversion est celle de hydrotel_calib, ecrite pour la dette #1 du
+        # registre (trois numerotations de troncons). Un rattachement au noeud le plus
+        # proche a 10 km ecartait 879 sites sur 1 661 et en placait d'autres a 6.7 km,
+        # alors que l'appariement exact existe.
+        sel = df[df.IDTRONCON.str.upper().str.startswith(reg.upper())].copy()
+        if sel.empty:
+            print(f"[prelev] {reg}: aucun point porte cet identifiant de region")
+            continue
+        sel["troncon"] = sel.IDTRONCON.map(lambda x: id_local(x)[1])
+        corr = dict(zip(noeuds.node_id.astype(int), noeuds.node_idx.astype(int)))
+        sel["node_idx"] = sel["troncon"].map(corr)
+        perdus = int(sel.node_idx.isna().sum())
+        sel = sel.dropna(subset=["node_idx"])
+        sel["node_idx"] = sel["node_idx"].astype(int)
+        if sel.empty:
+            print(f"[prelev] {reg}: aucun troncon apparie ({perdus:,} lignes sans correspondance)")
+            continue
+        # TABLE VIDEE AVANT REIMPORTATION (2026-09-08). `import_withdrawals` insere sans
+        # jamais effacer : les deux ingestions successives s'empilaient. Mesure sur les bases
+        # du 8 septembre : 33 noeuds perimes en Monterégie, finissant au 2024-12-01 comme la
+        # copie locale d'avril, portant 39,0 m3/s, soit AUTANT que les 217 noeuds a jour. La
+        # region a donc ete entrainee avec le double du flux anthropique reel, dont la moitie
+        # sur de mauvais troncons -- dont l'ancien mauvais appariement de l'emissaire de la
+        # rive sud, corrige en juin par ajout sans retrait de la ligne fautive.
+        _c = duckdb.connect(db)
+        try:
+            _av = _c.execute("select count(*) from withdrawals").fetchone()[0]             if _c.execute("select count(*) from duckdb_tables() where table_name='withdrawals'").fetchone()[0] else 0
+            if _av:
+                _c.execute("DELETE FROM withdrawals")
+        finally:
+            _c.close()
+        n = BasinCache(db).import_withdrawals(sel[["date", "node_idx", "net_withdrawal", "source"]],
+                                              node_col="node_idx", site_col=None)
+        net = float(sel["net_withdrawal"].sum()) / max(sel["date"].nunique(), 1)
+        print(f"[prelev] {reg}: {sel.site_id.nunique() if 'site_id' in sel else 0:,} sites | "
+              f"{n:,} lignes | {sel.node_idx.nunique()} noeuds | "
+              f"net moyen {net:+.3f} m3/s | {perdus:,} lignes sans troncon correspondant")
