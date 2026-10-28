@@ -24,6 +24,8 @@ Every IDENTIFIER is in English: variable, function, class, module, file name, an
 
 Everything a human READS is in French: comments, docstrings, printed output, reports, and conversation with the developer.
 
+Two exceptions, decided 2026-10-28. The faithful clone in `meandre/hydrotel/` keeps the names of the Hydrotel C++ source (`apport`, `ruiss`, `wetdnor`...), so that it can be compared line by line with the binary; quantities named after the C++ elsewhere (`t_neige_seuil`, `apport`) keep them too. Names that are STORED keep their spelling until a reader converts them: checkpoint parameter names (`sp_fonte_*`, `photo_pente_h`), keys of the recipe record (`recette`, `contexte`), keys of output files (`debit_base`, `q_mois_serie`), and old `[loss]` keys, which `normalize_loss_section` converts on reading (`w_etiage` becomes `w_low_flow`, `w_fdc_bas` `w_fdc_low`, `w_plat` `w_flat`). The package and tests were renamed on 2026-10-28, each step checked bit for bit on a short Montérégie pass.
+
 ## Code style
 
 - **Pas d'alignement multi-espaces** sur les colonnes (listes de tuples, dicts, assignations, arguments). Un seul espace après la virgule ou le `=`. L'alignement visuel rend chaque édition pénible (il faut reformater toutes les autres lignes pour garder l'alignement) et casse les diffs. Préférer toujours `("a", 1), ("bb", 22)` à `("a",  1), ("bb", 22)`.
