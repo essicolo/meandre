@@ -89,7 +89,7 @@ class HydrotelColumn(nn.Module):
 
     def __init__(self, et_mode: str = "mcguinness", use_frost: bool = True,
                  soil_n_substep: int = 48, frost_intervalle: float = 0.05,
-                 frost_temp_ini: float = 4.0, frost_seuil: float = -0.5,
+                 frost_temp_ini: float = 4.0, frost_threshold: float = -0.5,
                  frost_fs: float = 2.35, frost_kt: float = 0.8,
                  frost_cs: float = 1.0e6, frost_cice: float = 4.0e6,
                  t_neige_seuil: float = 0.0, compile_soil: bool = False,
@@ -144,12 +144,12 @@ class HydrotelColumn(nn.Module):
         # aux puits par la porosité de drainage, une loi stock-débit en carré de la charge qui
         # découple l'amplitude du retard, et une extraction depuis la zone saturée, seul
         # moyen de creuser l'étiage estival de la nappe.
-        self.nappe_libre = None
-        self._nappe = None
+        self.free_water_table = None
+        self._water_table = None
 
         self.t_neige_seuil = t_neige_seuil   # seuil pluie/neige (split de phase, TODO: règle Hydrotel exacte)
         self.snow = DegreJourModifie(pas_de_temps=24)
-        self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_seuil, frost_fs,
+        self.frost = Rankinen(frost_intervalle, frost_temp_ini, frost_threshold, frost_fs,
                               frost_kt, frost_cs, frost_cice, pas_de_temps=24)
         # compile_soil : torch.compile du sol, le seul poste qui compte. Le temps
         # mural est dominé par le pilotage CPU de la boucle de sous-pas (banc OUTV
@@ -240,7 +240,7 @@ class HydrotelColumn(nn.Module):
     # ── Paramètres statiques par nœud ───────────────────────────────────
     def set_static(self, p_snow: dict, p_soil: dict, p_etr: dict,
                    wetland: dict | None = None, n_depth: int = 31,
-                   gel: dict | None = None) -> None:
+                   frost_state: dict | None = None) -> None:
         """Pose les paramètres statiques par nœud (une fois par simulate).
         p_snow : params DegreJourModifie (lat, ce1, ce0, pct_*, coeff_fonte_*, ...).
         p_soil : params BV3C2 (make_params : Campbell + fsa/fse/fsi + krec/cin/slope + z).
@@ -253,7 +253,7 @@ class HydrotelColumn(nn.Module):
         # champ les produit. Absentes d'un ancien point de reprise, Rankinen retombe
         # sur ses scalaires C++ et le clone reste fidele.
         self._static = dict(snow=p_snow, soil=p_soil, etr=p_etr, wetland=wetland,
-                            n_depth=n_depth, gel=gel or {})
+                            n_depth=n_depth, frost_state=frost_state or {})
         # Les breakpoints de phénologie sont convertis en tenseurs ICI, une fois par
         # simulate, et NON dans forward. La conversion (torch.as_tensor sur une liste
         # de tenseurs 0-d) est de la préparation de données : dans le pas, elle rendait
@@ -310,8 +310,8 @@ class HydrotelColumn(nn.Module):
         # moindre message : c'est ainsi que méandre a simulé le Québec avec 0 % de forêt
         # et 0 % d'eau libre pendant des mois. On imprime UNE FOIS ce que la physique
         # reçoit réellement, et on avertit si l'occupation est manifestement absente.
-        if not getattr(self, "_entrees_verifiees", False):
-            self._entrees_verifiees = True
+        if not getattr(self, "_inputs_checked", False):
+            self._inputs_checked = True
             _ff, _fw = float(f_forest.mean()), float(f_water.mean())
             _fu, _fwe = float(f_urban.mean()), float(f_wet.mean())
             print(f"[colonne] occupation reçue : forêt {_ff:.3f} | eau {_fw:.3f} | "
@@ -343,11 +343,11 @@ class HydrotelColumn(nn.Module):
         # classes neige : forêt → feuillus (split conif brut indispo sur OD), reste découvert
         f_conif_raw = gp("f_forest_conifer_raw")
         if f_conif_raw is not None:        # disponible après rebuild → split fidèle
-            pct_conif = f_conif_raw
+            pct_conifer = f_conif_raw
             _mix = gp("f_forest_mixed_raw")
-            pct_feu = gp("f_forest_deciduous_raw") + (_mix if _mix is not None else 0.0)
+            pct_deciduous = gp("f_forest_deciduous_raw") + (_mix if _mix is not None else 0.0)
         else:                               # fallback OD : toute la forêt en feuillus
-            pct_conif = torch.zeros_like(like); pct_feu = f_forest
+            pct_conifer = torch.zeros_like(like); pct_deciduous = f_forest
         sp_ = torch.nn.functional.softplus
         # échelle de fonte par nœud (NeRF C_f / 4.5), sinon 1.0 partout
         if self.spatial_melt and hasattr(sp, "C_f"):
@@ -394,8 +394,8 @@ class HydrotelColumn(nn.Module):
         if _gm is not None:
             tgeo = torch.full_like(like, float(_gm))
         p_snow = dict(lat=lat, ce1=ce1, ce0=ce0,
-                      pct_conifers=pct_conif, pct_feuillus=pct_feu,
-                      pct_autres=torch.clamp(1.0 - pct_conif - pct_feu, 0.0, 1.0),
+                      pct_conifers=pct_conifer, pct_feuillus=pct_deciduous,
+                      pct_autres=torch.clamp(1.0 - pct_conifer - pct_deciduous, 0.0, 1.0),
                       coeff_fonte_conifers=cf_c,
                       coeff_fonte_feuillus=cf_f,
                       coeff_fonte_decouver=cf_d,
@@ -475,12 +475,12 @@ class HydrotelColumn(nn.Module):
             # `k_sub`, sont remplacees ici par la sortie du champ spatial, qui donne une
             # valeur PAR TRONCON. C'est ce qui rend le plafond de percolation spatial sans
             # que la declaration ait a connaitre le champ.
-            _champ = {"k_sub": getattr(sp, "k_sub", None), "krec": sp.krec,
+            _field = {"k_sub": getattr(sp, "k_sub", None), "krec": sp.krec,
                       "k_gw": getattr(sp, "k_gw", None)}
-            _champ = {k: v for k, v in _champ.items() if v is not None}
-            for _nom in getattr(self, "_soil_learn_names", ()):
-                _champ[_nom] = torch.exp(getattr(self, _nom))
-            p_soil["soil_profile"] = _profile.resolved(_champ)
+            _field = {k: v for k, v in _field.items() if v is not None}
+            for _field_name in getattr(self, "_soil_learn_names", ()):
+                _field[_field_name] = torch.exp(getattr(self, _field_name))
+            p_soil["soil_profile"] = _profile.resolved(_field)
             # Part agricole brute du troncon, lue par le drainage agricole declare (2026-10-04).
             _lca = getattr(self, "_land_cover", None) or {}
             if "f_agriculture_raw" in _lca:
@@ -513,10 +513,10 @@ class HydrotelColumn(nn.Module):
             # levier d'ajustement. Deduire de cette courbe propage l'artefact : la deduction
             # coute 0,394 de KGE en Gaspesie, ou b vaut 1,99, contre 0,041 en Outaouais, ou il
             # vaut 3,97, seule valeur presque plausible du lot.
-            _deduite = (self.capacite_au_champ_de_la_courbe(p_soil, 3)
+            _derived = (self.field_capacity_from_curve(p_soil, 3)
                         if settings.get("column.field_capacity_from_curve")
                         else None)
-            p_soil["thetacc3"] = sp.theta_fc_3 if _deduite is None else _deduite
+            p_soil["thetacc3"] = sp.theta_fc_3 if _derived is None else _derived
             _ksub = getattr(self, "l3_k_sub", None)
             if _ksub is not None:
                 # PLAFOND SPATIAL (2026-09-22). Le plafond est une propriete du depot et du
@@ -525,7 +525,7 @@ class HydrotelColumn(nn.Module):
                 # contre le temoin. C'est le SEUL parametre dont la spatialisation soit
                 # mesuree comme payante. `l3_k_sub` vaut donc soit un nombre, en metres par
                 # heure, soit le nom d'une sortie du champ spatial.
-                p_soil["l3_k_sub"] = self.plafond_substratum(_ksub, sp, like)
+                p_soil["l3_k_sub"] = self.ceiling_substratum(_ksub, sp, like)
             _lat = getattr(self, "l3_lateral", None)
             if _lat is not None:
                 p_soil["l3_lateral"] = torch.full_like(like, float(_lat))
@@ -573,16 +573,16 @@ class HydrotelColumn(nn.Module):
         et_classes = []
         # Noms des classes, dans le meme ordre : la phenologie pilotee par la meteo ne
         # s'applique qu'aux classes qui perdent leurs feuilles (MEANDRE_PHENOLOGIE_CLASSES).
-        self._pheno_noms = []
-        def _ajouter(pct, nom):
-            et_classes.append((pct, *_prof(nom)))
-            self._pheno_noms.append(nom)
-        if pct_feu.sum() > 0:
-            _ajouter(pct_feu, "feuillus")
-        if pct_conif.sum() > 0:
-            _ajouter(pct_conif, "conifers")
+        self._pheno_names = []
+        def _add(pct, field_name):
+            et_classes.append((pct, *_prof(field_name)))
+            self._pheno_names.append(field_name)
+        if pct_deciduous.sum() > 0:
+            _add(pct_deciduous, "feuillus")
+        if pct_conifer.sum() > 0:
+            _add(pct_conifer, "conifers")
         if f_wet.sum() > 0:
-            _ajouter(f_wet, "humides")
+            _add(f_wet, "humides")
         # DÉFICIT D'ETR D'ÉTÉ (corrigé le 2026-08-10) : seules forêt et milieu humide
         # recevaient une classe de végétation, soit 79.6 % du territoire sur OUTV.
         # L'agriculture (12 %) et le sol nu ne transpiraient PAS DU TOUT, alors que les
@@ -592,12 +592,12 @@ class HydrotelColumn(nn.Module):
         # perméable en classe ouverte, pour que l'ETR couvre bien tout fsa.
         pct_agri = z("f_agriculture_raw", 0.0)
         if pct_agri.sum() > 0:
-            _ajouter(pct_agri, "agri")
+            _add(pct_agri, "agri")
         if et_classes:
-            _couvert = pct_feu + pct_conif + f_wet + pct_agri
-            _reste = torch.clamp(fsa - _couvert, min=0.0)
-            if _reste.sum() > 0:
-                _ajouter(_reste, "ouverts")
+            _cover = pct_deciduous + pct_conifer + f_wet + pct_agri
+            _rest = torch.clamp(fsa - _cover, min=0.0)
+            if _rest.sum() > 0:
+                _add(_rest, "ouverts")
         # DÉGRADATION GRACIEUSE : sans descriptif d'occupation (ex réseau PHYSITEL,
         # qui ne porte pas les fractions par classe), l'ET ne doit PAS tomber à 0.
         # Classe végétation par défaut sur la fraction perméable (LAI/racines
@@ -606,7 +606,7 @@ class HydrotelColumn(nn.Module):
         # = optionnelle, pas un prérequis (objectif découplage).
         if not et_classes:
             et_classes.append((fsa, _JBP, _LEAF["default"], _ROOT["default"]))
-            self._pheno_noms.append("default")
+            self._pheno_names.append("default")
         # z des couches : calibrés Hydrotel si ancré (cohérence ETR/gel/sol), sinon NeRF.
         #
         # GRADIENT (2026-09-03). `float(sp.Z2.mean())` faisait DEUX choses à la fois :
@@ -618,14 +618,14 @@ class HydrotelColumn(nn.Module):
         # tenseurs. `calcule_etr` accepte déjà l'un ou l'autre (il convertit les scalaires
         # en tenseurs), donc les deux usages se séparent sans risque.
         # MEANDRE_Z_TENSEUR=0 restitue l'ancien comportement, pour comparaison.
-        _z_tenseur = settings.get("column.z_tensor")
+        _z_tensor = settings.get("column.z_tensor")
         # .detach() explicite : ces deux scalaires ne servent QU'A dimensionner le
         # maillage de gel. Sans lui, torch emet un avertissement de conversion qui
         # finirait par masquer une vraie fuite de gradient.
         z22_s = float(sp.Z2.detach().mean())
         z33_s = float(sp.Z3.detach().mean())
         z11 = self.z1
-        z22, z33 = (sp.Z2, sp.Z3) if _z_tenseur else (z22_s, z33_s)
+        z22, z33 = (sp.Z2, sp.Z3) if _z_tensor else (z22_s, z33_s)
         if self._calib_soil is not None and self._calib_z is not None:
             z11, z22, z33 = self._calib_z
             z22_s = float(z22.detach().mean()) if torch.is_tensor(z22) else float(z22)
@@ -636,7 +636,7 @@ class HydrotelColumn(nn.Module):
         kc = sp.K_c if hasattr(sp, "K_c") else torch.ones_like(like)
         p_etr = dict(thetacc=sp.theta_fc_1, thetapf=sp.theta_wp_1, alpha=alpha * torch.ones_like(like),
                      des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
-                     z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc, class_names=list(self._pheno_noms))
+                     z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc, class_names=list(self._pheno_names))
 
         # milieu humide isolé : actif SI le territorial porte la géométrie par nœud
         # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
@@ -645,7 +645,7 @@ class HydrotelColumn(nn.Module):
         # Le maillage de gel compte des intervalles : il lui faut un SCALAIRE.
         n_depth = n_intervalles(float(z11) + z22_s + z33_s, self.frost.dz)
         self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth,
-                        gel={k: getattr(sp, k, None)
+                        frost_state={k: getattr(sp, k, None)
                              for k in ("diff_gel", "fs_neige")})
         if self.use_aquifer:
             self._static["k_gw"] = sp.k_gw   # récession aquifère par nœud (1/j)
@@ -708,7 +708,7 @@ class HydrotelColumn(nn.Module):
 
     # ── Adaptateur interface VerticalColumn (pour model.py simulate) ────
     def setup_simulate(self, spatial_params, territorial, node_coords, init_state,
-                       poursuivre: bool = False):
+                       continue_state: bool = False):
         """Assemble les params depuis le NeRF et prépare l'état interne riche.
 
         POURSUIVRE (défaut False, comportement historique). L'état interne de la colonne
@@ -732,11 +732,11 @@ class HydrotelColumn(nn.Module):
         self.params_from_nerf(spatial_params, territorial, node_coords)
         n = init_state.theta1.shape[0]
         dev, dt = init_state.theta1.device, init_state.theta1.dtype
-        ancien = getattr(self, "_aux", None)
-        if (poursuivre and ancien is not None
-                and getattr(ancien, "theta1", None) is not None
-                and ancien.theta1.shape[0] == n):
-            aux = ancien.detach()
+        previous = getattr(self, "_aux", None)
+        if (continue_state and previous is not None
+                and getattr(previous, "theta1", None) is not None
+                and previous.theta1.shape[0] == n):
+            aux = previous.detach()
             aux.theta1, aux.theta2, aux.theta3 = (init_state.theta1, init_state.theta2,
                                                   init_state.theta3)
             self._aux = aux
@@ -788,15 +788,15 @@ class HydrotelColumn(nn.Module):
         etp_ext = enriched[:, self.etp_channel] if getattr(self, "etp_channel", None) is not None else None
         # Facteur de gradient pour le drainage profond, lu sur la nappe de la veille.
         self._l3_gradient = None
-        if self._nappe is not None and self._nappe.get("couplage", 0.0) > 0.0:
-            _p = self._nappe
-            _z_veille = _p["z_riv"] - state.S_gw / (1000.0 * _p["sy"])
+        if self._water_table is not None and self._water_table.get("couplage", 0.0) > 0.0:
+            _p = self._water_table
+            _z_previous_day = _p["z_riv"] - state.S_gw / (1000.0 * _p["sy"])
             # Profondeur de la base du sol, sous laquelle la nappe doit se tenir pour que
             # le drainage garde son gradient. `couplage` est l'epaisseur, en metres, sur
             # laquelle le facteur passe de 0 a 1 : c'est la frange capillaire effective.
-            _sol = self._static["soil"]
-            _z_sol = _sol["z1"] + _sol["z2"] + _sol["z3"]
-            self._l3_gradient = torch.clamp((_z_veille - _z_sol) / _p["couplage"], 0.0, 1.0)
+            _soil = self._static["soil"]
+            _z_soil = _soil["z1"] + _soil["z2"] + _soil["z3"]
+            self._l3_gradient = torch.clamp((_z_previous_day - _z_soil) / _p["couplage"], 0.0, 1.0)
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
                                      doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours,
                                      etp_ext=etp_ext)
@@ -834,19 +834,19 @@ class HydrotelColumn(nn.Module):
                     q_ref=torch.full_like(pb, float(_qr)),
                     b=torch.full_like(pb, float(_b)),
                     gw_withdrawal=gw_withdrawal_mm)
-            elif self._nappe is not None:
+            elif self._water_table is not None:
                 # La profondeur de la surface libre se DÉDUIT du stock, l'application étant
                 # affine : z = z_riv − S / (1000 Sy). Aucun champ d'état nouveau, donc les
                 # points de reprise restent lisibles.
-                p = self._nappe
+                p = self._water_table
                 sy = torch.full_like(pb, p["sy"])
                 z = torch.full_like(pb, p["z_riv"]) - state.S_gw / (1000.0 * sy)
                 # La demande atmosphérique vient de la colonne elle-même, pas d'une saison
                 # imposée : c'est la même ETP qui sèche le sol au-dessus.
-                if getattr(self, "_nappe_apprise", False):
+                if getattr(self, "_water_table_learned", False):
                     _kb_t = torch.exp(self.nappe_log_kb).to(pb.dtype)
                     _ef_t = torch.sigmoid(self.nappe_logit_efrac).to(pb.dtype)
-                    self.nappe_libre.exposant = 1.0 + torch.exp(self.nappe_log_exp1).to(pb.dtype)
+                    self.free_water_table.exponent = 1.0 + torch.exp(self.nappe_log_exp1).to(pb.dtype)
                 else:
                     _kb_t = torch.tensor(p["k_b"], dtype=pb.dtype, device=pb.device)
                     _ef_t = torch.tensor(p["e_frac"], dtype=pb.dtype, device=pb.device)
@@ -868,13 +868,13 @@ class HydrotelColumn(nn.Module):
                 if _kbc is not None and self._static.get("k_gw") is not None:
                     _kg = self._static["k_gw"].to(pb.dtype)
                     _kb_t = _kb_t * (_kg / float(_kbc[0])) ** float(_kbc[1])
-                _gel_f = getattr(self, "nappe_gel_facteur", None)
-                if _gel_f is not None and diag.get("prof_gel_cm") is not None:
-                    _w_gel = torch.clamp(diag["prof_gel_cm"] / 30.0, 0.0, 1.0).to(pb.dtype)
-                    _kb_t = _kb_t * (1.0 - (1.0 - float(_gel_f)) * _w_gel)
+                _frost_f = getattr(self, "nappe_gel_facteur", None)
+                if _frost_f is not None and diag.get("prof_gel_cm") is not None:
+                    _w_frost = torch.clamp(diag["prof_gel_cm"] / 30.0, 0.0, 1.0).to(pb.dtype)
+                    _kb_t = _kb_t * (1.0 - (1.0 - float(_frost_f)) * _w_frost)
                 e_max = torch.clamp(diag["etp"], min=0.0) * _ef_t / 1000.0
                 prel = None if gw_withdrawal_mm is None else -gw_withdrawal_mm / 1000.0
-                z_new, q_m, e_m = self.nappe_libre(
+                z_new, q_m, e_m = self.free_water_table(
                     z, pb / 1000.0, sy, torch.ones_like(pb) * _kb_t,
                     torch.full_like(pb, p["z_riv"]), torch.full_like(pb, p["h_ref"]),
                     e_max, torch.full_like(pb, p["z_ext"]), prelevement=prel)
@@ -913,8 +913,8 @@ class HydrotelColumn(nn.Module):
             # simulation sans diagnostics, dont l'evaluation du pilote regional.
             diag=(diag if return_diagnostics else {k: diag[k] for k in ("etp", "apport", "ruiss_eau_mm") if k in diag}))
 
-    def activer_nappe_libre(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
-                            z_ext=9.0, exposant=2.0, n_substep=4, couplage=0.0, apprise=False):
+    def enable_free_water_table(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
+                            z_ext=9.0, exponent=2.0, n_substep=4, coupling=0.0, learned=False):
         """Remplace le réservoir restituant par une nappe libre, paramètres uniformes.
 
         Valeurs par défaut issues du banc du 2026-09-18 : temps de réponse de 100 jours,
@@ -924,30 +924,30 @@ class HydrotelColumn(nn.Module):
         """
         from meandre.vertical.water_table import WaterTable
 
-        self.nappe_libre = WaterTable(n_substep=n_substep, exposant=exposant)
-        self._nappe = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
+        self.free_water_table = WaterTable(n_substep=n_substep, exponent=exponent)
+        self._water_table = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
                            h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext),
-                           couplage=float(couplage))
+                           coupling=float(coupling))
         # NAPPE APPRISE (2026-09-30). Conductance, extraction et exposant etaient des
         # constantes posees par variable d'environnement : aucun terme de perte ne pouvait
         # les deplacer, et le plancher d'etiage en depend entierement (R234). Trois scalaires
         # par bassin, bornes par leur forme : k_b > 0, e_frac dans ]0, 1[, exposant > 1.
-        self._nappe_apprise = bool(apprise)
-        if apprise:
+        self._water_table_learned = bool(learned)
+        if learned:
             import math as _mn
             self.nappe_log_kb = nn.Parameter(torch.tensor(_mn.log(float(k_b))))
             self.nappe_logit_efrac = nn.Parameter(torch.tensor(_mn.log(float(e_frac) / (1.0 - float(e_frac)))))
-            self.nappe_log_exp1 = nn.Parameter(torch.tensor(_mn.log(max(float(exposant) - 1.0, 1e-3))))
+            self.nappe_log_exp1 = nn.Parameter(torch.tensor(_mn.log(max(float(exponent) - 1.0, 1e-3))))
 
-    def nappe_valeurs(self) -> dict:
+    def water_table_values(self) -> dict:
         """Constantes de la nappe en vigueur, apprises ou posées."""
-        p = dict(self._nappe or {})
-        if getattr(self, "_nappe_apprise", False):
+        p = dict(self._water_table or {})
+        if getattr(self, "_water_table_learned", False):
             p["k_b"] = float(torch.exp(self.nappe_log_kb))
             p["e_frac"] = float(torch.sigmoid(self.nappe_logit_efrac))
             p["exposant"] = 1.0 + float(torch.exp(self.nappe_log_exp1))
         else:
-            p["exposant"] = float(getattr(self.nappe_libre, "exposant", 2.0)) if getattr(self, "nappe_libre", None) is not None else None
+            p["exposant"] = float(getattr(self.free_water_table, "exponent", 2.0)) if getattr(self, "free_water_table", None) is not None else None
         return p
 
     # ── Split de phase pluie/neige FIDÈLE (THIESSEN::PassagePluieNeige, thiessen1.cpp:259-279) ──
@@ -981,10 +981,10 @@ class HydrotelColumn(nn.Module):
                    + torch.atan(T + rh) - torch.atan(rh - 1.676331)
                    + 0.00391838 * rh ** 1.5 * torch.atan(0.023101 * rh) - 4.686035)
             s = s + (T - twb)     # comparer Twb au seuil == relever le seuil AIR de T-Twb
-        taux = torch.clamp((tmax - s) / (tmax - tmin + 1e-6), 0.0, 1.0)   # fraction pluie
-        taux = torch.where(tmax < s, torch.zeros_like(taux), taux)
-        taux = torch.where(tmin >= s, torch.ones_like(taux), taux)
-        return taux * P, (1.0 - taux) * P   # pluie (SWE), neige (SWE)
+        rain_fraction = torch.clamp((tmax - s) / (tmax - tmin + 1e-6), 0.0, 1.0)   # fraction pluie
+        rain_fraction = torch.where(tmax < s, torch.zeros_like(rain_fraction), rain_fraction)
+        rain_fraction = torch.where(tmin >= s, torch.ones_like(rain_fraction), rain_fraction)
+        return rain_fraction * P, (1.0 - rain_fraction) * P   # pluie (SWE), neige (SWE)
 
     # ── ETP au choix ────────────────────────────────────────────────────
     def set_linacre_params(self, lat, alti, t_froid, t_chaud, albedo, coeff):
@@ -1012,37 +1012,37 @@ class HydrotelColumn(nn.Module):
         le nomme a la place du nombre et `resolved` le substitue a chaque pas (2026-10-01).
         """
         import math as _m
-        from dataclasses import replace as _remplace
-        noms = []
+        from dataclasses import replace as _replace
+        field_names = []
         procs = []
         for i, proc in enumerate(profile.processes):
             params = dict(proc.params)
-            plafond = proc.ceiling
+            ceiling_value = proc.ceiling
             for key in proc.learn:
-                nom = f"soil_learn_{i}_{key}"
-                depart = float(plafond) if key == "ceiling" else float(params[key])
-                self.register_parameter(nom, nn.Parameter(torch.tensor(_m.log(depart))))
-                noms.append(nom)
+                field_name = f"soil_learn_{i}_{key}"
+                start = float(ceiling_value) if key == "ceiling" else float(params[key])
+                self.register_parameter(field_name, nn.Parameter(torch.tensor(_m.log(start))))
+                field_names.append(field_name)
                 if key == "ceiling":
-                    plafond = nom
+                    ceiling_value = field_name
                 else:
-                    params[key] = nom
-            procs.append(_remplace(proc, params=params, ceiling=plafond))
-        self._soil_learn_names = tuple(noms)
+                    params[key] = field_name
+            procs.append(_replace(proc, params=params, ceiling=ceiling_value))
+        self._soil_learn_names = tuple(field_names)
         self.soil_profile = type(profile)(layers=profile.layers, processes=tuple(procs))
-        return noms
+        return field_names
 
     def soil_learned_values(self) -> dict:
         """Valeurs en vigueur des parametres appris du profil, en unites lisibles."""
         out = {}
-        for nom in getattr(self, "_soil_learn_names", ()):
-            v = float(torch.exp(getattr(self, nom)).detach())
-            if nom.endswith("_tau"):
-                out[nom] = (v / 24.0, "jours")
-            elif nom.endswith("_ceiling"):
-                out[nom] = (v * 24.0 * 1000.0, "mm/j")
+        for field_name in getattr(self, "_soil_learn_names", ()):
+            v = float(torch.exp(getattr(self, field_name)).detach())
+            if field_name.endswith("_tau"):
+                out[field_name] = (v / 24.0, "jours")
+            elif field_name.endswith("_ceiling"):
+                out[field_name] = (v * 24.0 * 1000.0, "mm/j")
             else:
-                out[nom] = (v, "")
+                out[field_name] = (v, "")
         return out
 
     def set_phenology(self, ph: dict | None):
@@ -1061,10 +1061,10 @@ class HydrotelColumn(nn.Module):
     # Succion de reference de la capacite au champ, en metres de colonne d'eau. La valeur
     # usuelle en pedologie est -33 kPa, soit -3,37 m ; la convention du clone porte des
     # succions POSITIVES en metres.
-    PSI_CAPACITE_AU_CHAMP = 3.37
+    PSI_FIELD_CAPACITY = 3.37
 
     @staticmethod
-    def capacite_au_champ_de_la_courbe(p_soil, couche, psi_fc=None):
+    def field_capacity_from_curve(p_soil, layer, psi_fc=None):
         """Capacite au champ DEDUITE de la courbe de retention imposee, et non apprise.
 
         INCOHERENCE CORRIGEE (2026-09-22). Le calage d'Hydrotel impose par nœud la courbe de
@@ -1079,31 +1079,31 @@ class HydrotelColumn(nn.Module):
         sensible de tous les quarante-trois : le laisser libre revenait a ajuster un parametre
         de premier ordre sans qu'aucune donnee ne le rattache a la texture du sol.
         """
-        b = p_soil.get(f"b{couche}")
-        psis = p_soil.get(f"psis{couche}")
-        thetas = p_soil.get(f"thetas{couche}")
+        b = p_soil.get(f"b{layer}")
+        psis = p_soil.get(f"psis{layer}")
+        thetas = p_soil.get(f"thetas{layer}")
         if b is None or psis is None or thetas is None:
             return None
-        psi = float(psi_fc if psi_fc is not None else HydrotelColumn.PSI_CAPACITE_AU_CHAMP)
+        psi = float(psi_fc if psi_fc is not None else HydrotelColumn.PSI_FIELD_CAPACITY)
         omega = (psis.abs().clamp(min=1e-6) / psi) ** (1.0 / b.clamp(min=0.1))
         return thetas * omega.clamp(0.05, 0.95)
 
     @staticmethod
-    def plafond_substratum(valeur, sp, like):
+    def ceiling_substratum(value, sp, like):
         """Plafond de percolation par nœud, en mètres par heure.
 
         `valeur` est soit un nombre, soit un tenseur, soit le NOM d'une sortie du champ
         spatial. Nommer un champ absent échoue bruyamment : retomber silencieusement sur une
         constante ferait tourner une recette qui n'est pas celle qu'on croit.
         """
-        if isinstance(valeur, str):
-            champ = getattr(sp, valeur, None)
-            if champ is None:
-                raise AttributeError(f"l3_k_sub nomme '{valeur}', absent du champ spatial")
-            return champ
-        if torch.is_tensor(valeur):
-            return valeur.to(like.device).expand_as(like)
-        return torch.full_like(like, float(valeur))
+        if isinstance(value, str):
+            field_name = getattr(sp, value, None)
+            if field_name is None:
+                raise AttributeError(f"l3_k_sub nomme '{value}', absent du champ spatial")
+            return field_name
+        if torch.is_tensor(value):
+            return value.to(like.device).expand_as(like)
+        return torch.full_like(like, float(value))
 
     def set_melt_params(self, mp: dict):
         """Params fonte RÉGIONAUX par nœud (degre_jour_modifie.csv du calage
@@ -1177,8 +1177,8 @@ class HydrotelColumn(nn.Module):
                  else torch.tensor(float(doy), dtype=P.dtype, device=P.device))
 
         # 1. split pluie/neige → fonte neige → apport
-        pluie, neige = self._split_precip(P, tmin, tmax, ea=ea)
-        apport, snow_new = self.snow(tmin, tmax, pluie, neige, doy_t, state.snow, ps, sw_in=sw_in)
+        rain, snow_part = self._split_precip(P, tmin, tmax, ea=ea)
+        apport, snow_new = self.snow(tmin, tmax, rain, snow_part, doy_t, state.snow, ps, sw_in=sw_in)
 
         # ── SUBLIMATION du manteau (opt-in, R32, 2026-08-22) ─────────────────
         # Kuzmin 1957, la parametrisation la plus simple de Raven (SUBLIM_KUZMIN) : elle
@@ -1196,19 +1196,19 @@ class HydrotelColumn(nn.Module):
             subl_tot = torch.zeros_like(pot_m)
             for c in _DJM.CLASSES:
                 st, ha, ch, er = snow_new[c]
-                pris = torch.minimum(pot_m, st)                     # borne par le stock
-                frac = torch.where(st > 0, (st - pris) / st.clamp(min=1e-12),
+                taken = torch.minimum(pot_m, st)                     # borne par le stock
+                frac = torch.where(st > 0, (st - taken) / st.clamp(min=1e-12),
                                    torch.ones_like(st))
-                snow_new[c] = (st - pris, ha * frac, ch * frac, er * frac)
+                snow_new[c] = (st - taken, ha * frac, ch * frac, er * frac)
                 pct_c = ps["pct_" + c] if c != "decouver" else ps["pct_autres"]
-                subl_tot = subl_tot + pct_c * pris
+                subl_tot = subl_tot + pct_c * taken
             snow_new["couvert_nival_mm"] = sum(
                 (ps[f"pct_{c}"] if c != "decouver" else ps["pct_autres"]) * snow_new[c][0]
                 for c in _DJM.CLASSES) * 1000.0
             subl_mm = subl_tot * 1000.0
 
         # hauteur agrégée du couvert nival [m] pour le gel
-        haut = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"] * snow_new[c][1]
+        high = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"] * snow_new[c][1]
                    for c in DegreJourModifie.CLASSES)
 
         # 2. gel RANKINEN → profondeur de gel [cm]
@@ -1217,7 +1217,7 @@ class HydrotelColumn(nn.Module):
             # ancien point de reprise : on retombe alors sur les scalaires du C++, ce
             # qui preserve la fidelite du clone.
             frost_profile, prof_gel_cm = self.frost(
-                tmin, tmax, haut, state.frost_profile,
+                tmin, tmax, high, state.frost_profile,
                 pe["z11"], pe["z22"], pe["z33"],
                 alpha=_pg.get("diff_gel"), fs=_pg.get("fs_neige"))
         else:
@@ -1241,7 +1241,7 @@ class HydrotelColumn(nn.Module):
             etp = torch.clamp(etp_ext, min=0.0) * _kc
         elif self.et_mode == "linacre":
             # couvert nival agrégé (mm SWE) + albédo neige pondéré par classe
-            _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
+            _couv = snow_new.get("couvert_nival_mm", high * 1000.0)
             _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                         * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
             etp = self._etp(tmin_j, tmax_j, Rn, u2, ea, ps["lat"], doy_t,
@@ -1254,7 +1254,7 @@ class HydrotelColumn(nn.Module):
             # au rayonnement absorbe, avec une fraction enneigee continue
             # f = 1 - exp(-SWE / 5 mm) : facteur 1 - f + f (1 - albedo_neige) / (1 - 0,23).
             if self.et_mode == "penman" and settings.get("column.penman_snow"):
-                _couv = snow_new.get("couvert_nival_mm", haut * 1000.0)
+                _couv = snow_new.get("couvert_nival_mm", high * 1000.0)
                 _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                             * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
                 _fn = 1.0 - torch.exp(-torch.clamp(_couv, min=0.0) / 5.0)
@@ -1272,20 +1272,20 @@ class HydrotelColumn(nn.Module):
         if isinstance(_cl_pheno, str):
             _cl_pheno = _cl_pheno.split(",")
         _cl_pheno = set(_cl_pheno) if _cl_pheno else None
-        _noms = pe.get("class_names") or getattr(self, "_pheno_noms", None) or [None] * len(pheno)
+        _field_names = pe.get("class_names") or getattr(self, "_pheno_names", None) or [None] * len(pheno)
         # Phenologie sur le coefficient de culture (cible « kc ») : `etp` porte deja la forme
         # saisonniere pour toutes les classes. Les classes qui ne perdent pas leurs feuilles
         # reprennent la demande au K_c de base, sans la forme. Quand le sol ne limite pas
         # l'evapotranspiration, seule cette branche change le total : l'indice foliaire ne
         # fait que repartir entre evaporation du sol et transpiration (2026-09-29).
         _kc_base = pe.get("K_c", None)
-        _sans_forme = None
+        _shapeless = None
         if _cl_pheno is not None and getattr(self, "_kc_dynamic", None) is not None and _kc_base is not None:
-            _sans_forme = etp * (_kc_base / torch.clamp(self._kc_dynamic, min=1e-6))
-        for (pct, jbp_t, leaf_t, root_t), _nom in zip(pheno, _noms):
-            _etp_cl = _sans_forme if (_sans_forme is not None and _nom not in _cl_pheno) else etp
+            _shapeless = etp * (_kc_base / torch.clamp(self._kc_dynamic, min=1e-6))
+        for (pct, jbp_t, leaf_t, root_t), _field_name in zip(pheno, _field_names):
+            _etp_cl = _shapeless if (_shapeless is not None and _field_name not in _cl_pheno) else etp
             _kc_agri = getattr(self, "_kc_dynamic_agri", None)
-            if _nom == "agri" and _kc_agri is not None and _cl_pheno is not None and "agri" in _cl_pheno:
+            if _field_name == "agri" and _kc_agri is not None and _cl_pheno is not None and "agri" in _cl_pheno:
                 # Classe agricole à calendrier propre : la demande `etp` porte la forme commune ;
                 # on la remplace par celle des cultures (2026-10-24).
                 _etp_cl = etp * (_kc_agri / torch.clamp(self._kc_dynamic, min=1e-6))
@@ -1294,7 +1294,7 @@ class HydrotelColumn(nn.Module):
             # racinaire de toutes les classes : epreuve de l'extraction profonde (R216).
             roots.append((_interp1d(d, jbp_t, root_t) * float(getattr(self, "root_depth_scale", 1.0))).expand_as(P))
             _lf = getattr(self, "_lai_shape", None)
-            if _lf is not None and _cl_pheno is not None and _nom not in _cl_pheno:
+            if _lf is not None and _cl_pheno is not None and _field_name not in _cl_pheno:
                 # Classe qui ne perd pas ses feuilles (coniferes, milieux humides, ouverts) :
                 # calendrier du projet, la forme pilotee par la meteo ne s'y applique pas.
                 _lf = None
@@ -1309,15 +1309,15 @@ class HydrotelColumn(nn.Module):
                                  pe["alpha"], pe["z11"], pe["z22"], pe["z33"], pe["des"], pe["coef_assech"])
 
         # 5. bilan sol BV3C2 (porte gel via prof_gel_cm + couvert nival)
-        couvert_mm = snow_new["couvert_nival_mm"]
+        cover_mm = snow_new["couvert_nival_mm"]
         # Durée d'orage EFFECTIVE pondérée par la masse pluie vs fonte : seule la
         # PLUIE porte l'intensité convective DT_eff ; la fonte s'écoule sur 24 h.
         # Sans ça, un jour de fonte + averse courte fait passer toute la lame de
         # fonte dans le cap hortonien -> horton fictif massif au freshet (revue
         # 2026-07-01). apport = pluie (si pas de neige) ou fonte+pluie relâchées.
         if storm_hours is not None:
-            melt_mm = torch.clamp(apport - pluie, min=0.0)
-            w_rain = pluie / torch.clamp(pluie + melt_mm, min=1e-6)
+            melt_mm = torch.clamp(apport - rain, min=0.0)
+            w_rain = rain / torch.clamp(rain + melt_mm, min=1e-6)
             storm_hours = w_rain * storm_hours + (1.0 - w_rain) * 24.0
         # TRANSPIRATION FREINEE PAR LE SOL FROID (2026-10-02, opt-in MEANDRE_TRANSP_TSOL_REF en
         # degres). Les racines prelevent mal dans un sol gele ou froid : la colonne laissait
@@ -1333,10 +1333,10 @@ class HydrotelColumn(nn.Module):
             _z1 = torch.as_tensor(pe["z11"], device=frost_profile.device, dtype=frost_profile.dtype)
             _z2 = _z1 + torch.as_tensor(pe["z22"], device=frost_profile.device, dtype=frost_profile.dtype)
             _z3 = _z2 + torch.as_tensor(pe["z33"], device=frost_profile.device, dtype=frost_profile.dtype)
-            _bornes = [(torch.zeros_like(_z1), _z1), (_z1, _z2), (_z2, _z3)]
+            _bounds = [(torch.zeros_like(_z1), _z1), (_z1, _z2), (_z2, _z3)]
             _fact = []
-            for _haut, _bas in _bornes:
-                _m = ((_prof[None, :] >= _haut.reshape(-1, 1)) & (_prof[None, :] < _bas.reshape(-1, 1))).to(frost_profile.dtype)
+            for _high, _bas in _bounds:
+                _m = ((_prof[None, :] >= _high.reshape(-1, 1)) & (_prof[None, :] < _bas.reshape(-1, 1))).to(frost_profile.dtype)
                 _m = _m.expand_as(frost_profile)
                 _tk = (frost_profile * _m).sum(dim=1) / _m.sum(dim=1).clamp(min=1.0)
                 _tk = torch.where(_m.sum(dim=1) > 0, _tk, frost_profile[:, -1])
@@ -1352,9 +1352,9 @@ class HydrotelColumn(nn.Module):
         # MEANDRE_ETR_FIDELE=1 restitue la formulation d'origine (comparaisons au binaire).
         if not settings.get("column.etr_faithful"):
             _fsa = torch.clamp(pso["fsa"], min=1e-3)
-            e1_sol, e2_sol, e3_sol = e1 / _fsa, e2 / _fsa, e3 / _fsa
+            e1_soil, e2_soil, e3_soil = e1 / _fsa, e2 / _fsa, e3 / _fsa
         else:
-            e1_sol, e2_sol, e3_sol = e1, e2, e3
+            e1_soil, e2_soil, e3_soil = e1, e2, e3
         # VISCOSITE DE L'EAU (2026-10-16, R384, opt-in MEANDRE_VISCOSITE_TREF en degres). La
         # conductivite hydraulique varie comme l'inverse de la viscosite de l'eau, qui double
         # presque de 20 a 2 degres (Vogel). Le sol drainait l'hiver au rythme de l'automne et
@@ -1373,8 +1373,8 @@ class HydrotelColumn(nn.Module):
                 return 2.414e-5 * torch.pow(10.0, 247.8 / (t + 133.15))
 
             _visc = []
-            for _haut, _bas in ((torch.zeros_like(_za), _za), (_za, _zb), (_zb, _zc)):
-                _m = ((_prof[None, :] >= _haut.reshape(-1, 1)) & (_prof[None, :] < _bas.reshape(-1, 1))).to(frost_profile.dtype)
+            for _high, _bas in ((torch.zeros_like(_za), _za), (_za, _zb), (_zb, _zc)):
+                _m = ((_prof[None, :] >= _high.reshape(-1, 1)) & (_prof[None, :] < _bas.reshape(-1, 1))).to(frost_profile.dtype)
                 _m = _m.expand_as(frost_profile)
                 _tk = (frost_profile * _m).sum(dim=1) / _m.sum(dim=1).clamp(min=1.0)
                 _tk = torch.where(_m.sum(dim=1) > 0, _tk, frost_profile[:, -1])
@@ -1383,8 +1383,8 @@ class HydrotelColumn(nn.Module):
             pso["ks1"], pso["ks2"], pso["ks3"] = pso["ks1"] * _visc[0], pso["ks2"] * _visc[1], pso["ks3"] * _visc[2]
             pso["visc2"], pso["visc3"] = _visc[1], _visc[2]
         ps_surf, ph, pb, rech, (t1, t2, t3), sdiag = self.soil(
-            state.theta1, state.theta2, state.theta3, apport, etp, prof_gel_cm, couvert_mm, pso,
-            etr1_mm=e1_sol * 1000.0, etr2_mm=e2_sol * 1000.0, etr3_mm=e3_sol * 1000.0, storm_hours=storm_hours)
+            state.theta1, state.theta2, state.theta3, apport, etp, prof_gel_cm, cover_mm, pso,
+            etr1_mm=e1_soil * 1000.0, etr2_mm=e2_soil * 1000.0, etr3_mm=e3_soil * 1000.0, storm_hours=storm_hours)
         prod = ps_surf + ph + pb   # mm
 
         # 5b. Hydrogramme de VERSANT (cascade de Nash, fidèle Hydrotel, porté de
@@ -1443,7 +1443,7 @@ class HydrotelColumn(nn.Module):
         # libre, perte atmospherique que le bilan doit voir (2026-10-02).
         etr_tot = (e1 + e2 + e3) * 1000.0 + sdiag.get("evap_eau_mm", 0.0)
         diag = dict(apport=apport, etp=etp, etr1=e1 * 1000.0, etr2=e2 * 1000.0, etr3=e3 * 1000.0,
-                    prof_gel_cm=prof_gel_cm, couvert_nival_mm=couvert_mm,
+                    prof_gel_cm=prof_gel_cm, couvert_nival_mm=cover_mm,
                     prod_surf=ps_surf, prod_hypo=ph, prod_base=pb,
                     # clés attendues par model.py / SimDiagnostics
                     etr=etr_tot, snowmelt=apport, lateral_mm=prod,
@@ -1477,7 +1477,7 @@ _ROOT = {"feuillus": [1.5] * 11, "ouverts": [0.5] * 11, "humides": [0.75] * 11,
          "default": [1.2] * 11}
 
 
-def build_static_params(n_nodes, lat, slope, orientation, texture, z, occupation,
+def build_static_params(n_nodes, lat, slope, orientation, texture, z, land_cover_table,
                         device="cpu", dtype=torch.float64):
     """Construit les 3 dicts de params statiques par nœud à partir de descripteurs
     simples. SEAM Phase A : le NeRF/territorial fournira le sous-ensemble apprenable
@@ -1489,13 +1489,13 @@ def build_static_params(n_nodes, lat, slope, orientation, texture, z, occupation
     texture : nom dans SOIL_TEXTURES. z = (z1,z2,z3) épaisseurs [m]."""
     T = lambda v: torch.full((n_nodes,), float(v), device=device, dtype=dtype)
     ce1, ce0 = init_ce(T(lat), T(slope), T(orientation))
-    occ = {k: occupation.get(k, 0.0) for k in
+    occ = {k: land_cover_table.get(k, 0.0) for k in
            ("conifers", "feuillus", "mixtes", "agri", "urbain", "routes", "ouverts", "eau", "sols_nus", "humides")}
-    pct_conif = occ["conifers"]
-    pct_feu = occ["feuillus"] + occ["mixtes"]   # CLASSE INTEGRE FEUILLUS = feuillus + mixtes (DELISLE)
+    pct_conifer = occ["conifers"]
+    pct_deciduous = occ["feuillus"] + occ["mixtes"]   # CLASSE INTEGRE FEUILLUS = feuillus + mixtes (DELISLE)
     p_snow = dict(lat=T(lat), ce1=ce1, ce0=ce0,
-                  pct_conifers=T(pct_conif), pct_feuillus=T(pct_feu),
-                  pct_autres=T(max(1.0 - pct_conif - pct_feu, 0.0)),
+                  pct_conifers=T(pct_conifer), pct_feuillus=T(pct_deciduous),
+                  pct_autres=T(max(1.0 - pct_conifer - pct_deciduous, 0.0)),
                   coeff_fonte_conifers=T(.012), coeff_fonte_feuillus=T(.014), coeff_fonte_decouver=T(.016),
                   seuil_fonte_conifers=T(0.0), seuil_fonte_feuillus=T(0.0), seuil_fonte_decouver=T(0.0),
                   taux_fonte_geo=T(0.5), densite_max=T(466.0), constante_tassement=T(0.1))
@@ -1510,14 +1510,14 @@ def build_static_params(n_nodes, lat, slope, orientation, texture, z, occupation
 
     tx = SOIL_TEXTURES[texture]
     et_classes = []
-    noms = []
+    field_names = []
     for c in ("conifers", "feuillus", "mixtes", "agri", "ouverts", "sols_nus", "humides"):
         pct = occ.get(c if c != "feuillus" else "feuillus", 0.0)
         if c in _LEAF and pct > 0:
             et_classes.append((pct, _JBP, _LEAF[c], _ROOT[c]))
-            noms.append(c)
+            field_names.append(c)
     p_etr = dict(thetacc=T(tx["thetacc"]), thetapf=T(tx["thetapf"]), alpha=T(_TEXTURE_ALPHA[texture]),
-                 des=T(0.6), coef_assech=T(1.0), z11=z[0], z22=z[1], z33=z[2], classes=et_classes, class_names=noms, K_c=T(1.0))
+                 des=T(0.6), coef_assech=T(1.0), z11=z[0], z22=z[1], z33=z[2], classes=et_classes, class_names=field_names, K_c=T(1.0))
     return p_snow, p_soil, p_etr
 
 

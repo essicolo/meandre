@@ -112,14 +112,14 @@ def territoire(reg):
 
 def main(regs):
     E = pd.concat([territoire(r) for r in regs], ignore_index=True)
-    E = E[np.isfinite(E.gel) & np.isfinite(E.neige)]
+    E = E[np.isfinite(E.frost_state) & np.isfinite(E.neige)]
     # La réponse est normalisée par la réponse médiane de la station aux pluies sur sol non gelé
     # (indice < 5) pour comparer les stations entre elles.
-    ref = E[E.gel < 5].groupby("station").reponse.median().rename("ref")
+    ref = E[E.frost_state < 5].groupby("station").reponse.median().rename("ref")
     E = E.join(ref, on="station")
     E = E[E.ref > 0.01]
     E["rel"] = E.reponse / E.ref
-    E["classe_gel"] = pd.cut(E.gel, CLASSES_GEL, labels=NOMS_GEL)
+    E["classe_gel"] = pd.cut(E.frost_state, CLASSES_GEL, labels=NOMS_GEL)
     E["classe_neige"] = pd.cut(E.neige, [-1, 5, 30, 1e9], labels=["< 5 mm", "5-30 mm", "> 30 mm"])
     print(f"{len(E)} pluies de novembre-décembre (≥ 5 mm, T > 0,5 °C) sur {E.station.nunique()} stations, {len(regs)} territoires, jours mesurés")
     print("\nréponse relative (hausse du débit sur 3 jours / pluie, rapportée à la réponse de la station sur sol non gelé) par classe d'indice de gel (°C·jour) :")
@@ -131,11 +131,11 @@ def main(regs):
     print("\npar territoire : réponse relative médiane sous gel 20-100 contre 0-5, et part des stations où le gel répond plus :")
     for r in regs:
         s = E[E.region == r]
-        g = s[(s.gel >= 20) & (s.gel < 100)]
+        g = s[(s.frost_state >= 20) & (s.frost_state < 100)]
         par_st = g.groupby("station").rel.median()
         if len(g):
             print(f"  {r} : {g.rel.median():.2f} (n {len(g)}, {len(par_st)} stations, gel répond plus dans {100 * (par_st > 1).mean():.0f} %)")
-    g = E[(E.gel >= 20) & (E.gel < 100)].groupby("station").agg(rel=("rel", "median"), agri=("f_agriculture", "first"), pente=("mean_slope_pct", "first"), lacs=("lake_fraction", "first"), foret=("f_forest", "first"))
+    g = E[(E.frost_state >= 20) & (E.frost_state < 100)].groupby("station").agg(rel=("rel", "median"), agri=("f_agriculture", "first"), pente=("mean_slope_pct", "first"), lacs=("lake_fraction", "first"), foret=("f_forest", "first"))
     print("\ncorrélation de rang de la réponse relative sous gel (20-100) avec les attributs amont : " + ", ".join(f"{a} {g[['rel', a]].dropna().corr(method='spearman').iloc[0, 1]:+.2f}" for a in ("agri", "pente", "lacs", "foret")))
     E.to_parquet(f"{DOSSIER}/sol_gele_evenements.parquet")
 

@@ -43,13 +43,13 @@ class WaterTable(nn.Module):
     des hauteurs d'eau par jour rapportées à la surface du sol, non des volumes.
     """
 
-    def __init__(self, n_substep: int = 8, exposant: float = 2.0) -> None:
+    def __init__(self, n_substep: int = 8, exponent: float = 2.0) -> None:
         super().__init__()
         # Sous-pas internes. Le pas journalier suffit tant que le temps de réponse de la
         # nappe dépasse quelques jours, mais la loi non linéaire se raidit quand la charge
         # est forte : la convergence se VÉRIFIE au banc au lieu d'être supposée.
         self.n_substep = int(n_substep)
-        self.exposant = float(exposant)
+        self.exponent = float(exponent)
 
     def forward(self, z: Tensor, recharge: Tensor, sy: Tensor, k_b: Tensor, z_riv: Tensor,
                 h_ref: Tensor, e_max: Tensor | None = None, z_ext: Tensor | None = None,
@@ -78,7 +78,7 @@ class WaterTable(nn.Module):
         e_cumul = torch.zeros_like(z)
         for _ in range(self.n_substep):
             h = torch.clamp(z_riv - z, min=0.0)
-            q = k_b * (h / h_ref).pow(self.exposant)
+            q = k_b * (h / h_ref).pow(self.exponent)
             if e_max is not None:
                 e = e_max * torch.clamp(1.0 - z / z_ext, min=0.0, max=1.0)
             else:

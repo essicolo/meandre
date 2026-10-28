@@ -41,9 +41,9 @@ def reponses(p, tm, q):
     dq = (q.shift(-1).rolling(3).max().shift(-2) - q.shift(1)).clip(lower=0.0)
     ev = (p >= 5.0) & (tm > 0.5) & p.index.month.isin((11, 12)) & q.notna() & dq.notna()
     rep = (dq / p)[ev]
-    gel = indice >= 20.0
+    frost_state = indice >= 20.0
     chaud = indice < 5.0
-    return rep[gel[ev]], rep[chaud[ev]]
+    return rep[frost_state[ev]], rep[chaud[ev]]
 
 
 def territoire(reg):

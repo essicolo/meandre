@@ -39,32 +39,32 @@ MINIMUM_CELLULE = 20
 GRAINE = 0
 
 
-def rampe(x, gel, neige):
-    return 1.0 + x[0] * np.minimum(gel / x[1], 1.0)
+def rampe(x, frost_state, neige):
+    return 1.0 + x[0] * np.minimum(frost_state / x[1], 1.0)
 
 
-def rampe_manteau(x, gel, neige):
-    return rampe(x[:2], gel, neige) * (1.0 + x[2] * neige / (neige + x[3]))
+def rampe_manteau(x, frost_state, neige):
+    return rampe(x[:2], frost_state, neige) * (1.0 + x[2] * neige / (neige + x[3]))
 
 
-def lineaire(x, gel, neige):
-    return 1.0 + x[0] * gel
+def lineaire(x, frost_state, neige):
+    return 1.0 + x[0] * frost_state
 
 
-def puissance(x, gel, neige):
-    return (1.0 + gel / x[0]) ** x[1]
+def puissance(x, frost_state, neige):
+    return (1.0 + frost_state / x[0]) ** x[1]
 
 
-def puissance_manteau(x, gel, neige):
-    return puissance(x[:2], gel, neige) * (1.0 + x[2] * neige / (neige + x[3]))
+def puissance_manteau(x, frost_state, neige):
+    return puissance(x[:2], frost_state, neige) * (1.0 + x[2] * neige / (neige + x[3]))
 
 
-def exponentielle(x, gel, neige):
-    return np.exp(x[0] * gel)
+def exponentielle(x, frost_state, neige):
+    return np.exp(x[0] * frost_state)
 
 
-def exponentielle_manteau(x, gel, neige):
-    return np.exp(x[0] * gel) * (1.0 + x[1] * neige / (neige + x[2]))
+def exponentielle_manteau(x, frost_state, neige):
+    return np.exp(x[0] * frost_state) * (1.0 + x[1] * neige / (neige + x[2]))
 
 
 FORMES = {
@@ -81,12 +81,12 @@ FORMES = {
 }
 
 
-def cellules(gel, neige, rel):
+def cellules(frost_state, neige, rel):
     """Médiane observée par cellule de gel et de manteau, cellules assez peuplées."""
-    cg = np.digitize(gel, CLASSES_GEL) - 1
+    cg = np.digitize(frost_state, CLASSES_GEL) - 1
     cn = np.digitize(neige, CLASSES_NEIGE) - 1
-    d = pd.DataFrame({"cg": cg, "cn": cn, "gel": gel, "neige": neige, "rel": rel})
-    g = d.groupby(["cg", "cn"]).agg(n=("rel", "size"), gel=("gel", "median"),
+    d = pd.DataFrame({"cg": cg, "cn": cn, "gel": frost_state, "neige": neige, "rel": rel})
+    g = d.groupby(["cg", "cn"]).agg(n=("rel", "size"), frost_state=("gel", "median"),
                                     neige=("neige", "median"), rel=("rel", "median")).reset_index()
     return g[g.n >= MINIMUM_CELLULE].reset_index(drop=True)
 
@@ -94,12 +94,12 @@ def cellules(gel, neige, rel):
 def ajuste(nom, tab):
     """Ajuste une forme sur le logarithme des médianes de cellule, poids de la cellule."""
     forme, bornes, departs = FORMES[nom]
-    gel, neige = tab.gel.to_numpy(), tab.neige.to_numpy()
+    frost_state, neige = tab.frost_state.to_numpy(), tab.neige.to_numpy()
     cible = np.log(tab.rel.to_numpy())
     poids = tab.n.to_numpy(dtype=float)
 
     def objectif(x):
-        pred = forme(x, gel, neige)
+        pred = forme(x, frost_state, neige)
         if np.any(~np.isfinite(pred)) or np.any(pred <= 0):
             return 1e9
         return float(np.sum(poids * (np.log(pred) - cible) ** 2))
@@ -112,13 +112,13 @@ def ajuste(nom, tab):
     return meilleur.x
 
 
-def predit(nom, x, gel, neige):
-    return np.clip(FORMES[nom][0](x, gel, neige), 0.02, 50.0)
+def predit(nom, x, frost_state, neige):
+    return np.clip(FORMES[nom][0](x, frost_state, neige), 0.02, 50.0)
 
 
 def erreur(nom, x, tab):
     """Écart aux médianes des cellules retenues, en logarithme, et biais signé."""
-    pred = predit(nom, x, tab.gel.to_numpy(), tab.neige.to_numpy())
+    pred = predit(nom, x, tab.frost_state.to_numpy(), tab.neige.to_numpy())
     ecart = np.log(pred) - np.log(tab.rel.to_numpy())
     return float(np.mean(np.abs(ecart))), float(np.mean(ecart))
 
@@ -126,20 +126,20 @@ def erreur(nom, x, tab):
 def principale():
     rng = np.random.default_rng(GRAINE)
     d = pd.read_parquet(f"{DOSSIER}/sol_gele_evenements.parquet")
-    d = d[np.isfinite(d.rel) & np.isfinite(d.gel) & (d.gel >= 0) & np.isfinite(d.neige) & (d.neige >= 0)]
+    d = d[np.isfinite(d.rel) & np.isfinite(d.frost_state) & (d.frost_state >= 0) & np.isfinite(d.neige) & (d.neige >= 0)]
     d = d.reset_index(drop=True)
-    gel, neige = d.gel.to_numpy(), d.neige.to_numpy()
+    frost_state, neige = d.frost_state.to_numpy(), d.neige.to_numpy()
     rel = d.rel.to_numpy()
     stations = d.station.to_numpy()
     regions = d.region.to_numpy()
     annees = pd.DatetimeIndex(d.date).year.to_numpy()
-    tab = cellules(gel, neige, rel)
+    tab = cellules(frost_state, neige, rel)
     print(f"{len(d)} pluies, {d.station.nunique()} stations, {d.region.nunique()} territoires, "
           f"{annees.min()}-{annees.max()} ; {len(tab)} cellules de gel et de manteau "
           f"d'au moins {MINIMUM_CELLULE} pluies")
 
     # Ajustement sur tout l'échantillon et courbe par classe de gel.
-    cg = np.digitize(gel, CLASSES_GEL) - 1
+    cg = np.digitize(frost_state, CLASSES_GEL) - 1
     obs = [np.median(rel[cg == c]) for c in range(len(NOMS_GEL))]
     print("\nformes ajustées sur tout l'échantillon, médiane par classe de gel et paramètres :")
     print("  observé                  " + " ".join(f"{v:.2f}" for v in obs))
@@ -147,7 +147,7 @@ def principale():
     for nom in FORMES:
         x = ajuste(nom, tab)
         ajustes[nom] = x
-        pred = predit(nom, x, gel, neige)
+        pred = predit(nom, x, frost_state, neige)
         courbe = [np.median(pred[cg == c]) if (cg == c).sum() >= MINIMUM_CELLULE else np.nan
                   for c in range(len(NOMS_GEL))]
         e, b = erreur(nom, x, tab)
@@ -164,15 +164,15 @@ def principale():
             tr, te = app != f, app == f
             if te.sum() < 100:
                 continue
-            x = ajuste(nom, cellules(gel[tr], neige[tr], rel[tr]))
-            vals.append(erreur(nom, x, cellules(gel[te], neige[te], rel[te]))[0])
+            x = ajuste(nom, cellules(frost_state[tr], neige[tr], rel[tr]))
+            vals.append(erreur(nom, x, cellules(frost_state[te], neige[te], rel[te]))[0])
         print(f"  {nom:24s} médiane {np.median(vals):.3f} | plis " + " ".join(f"{v:.3f}" for v in vals))
 
     print("\nretrait d'années, forme apprise jusqu'à 2014, éprouvée de 2015 à 2024 :")
     tr, te = annees <= 2014, annees >= 2015
     for nom in FORMES:
-        x = ajuste(nom, cellules(gel[tr], neige[tr], rel[tr]))
-        e, b = erreur(nom, x, cellules(gel[te], neige[te], rel[te]))
+        x = ajuste(nom, cellules(frost_state[tr], neige[tr], rel[tr]))
+        e, b = erreur(nom, x, cellules(frost_state[te], neige[te], rel[te]))
         print(f"  {nom:24s} écart {e:.3f} biais {b:+.3f}")
 
     print("\nretrait d'un territoire entier, écart moyen aux cellules du territoire (log) :")
@@ -183,16 +183,16 @@ def principale():
         tr = ~te
         valeurs = []
         for nom in FORMES:
-            x = ajuste(nom, cellules(gel[tr], neige[tr], rel[tr]))
-            valeurs.append(erreur(nom, x, cellules(gel[te], neige[te], rel[te]))[0])
+            x = ajuste(nom, cellules(frost_state[tr], neige[tr], rel[tr]))
+            valeurs.append(erreur(nom, x, cellules(frost_state[te], neige[te], rel[te]))[0])
         print(f"  {reg:5s} {int(te.sum()):4d} pluies | " +
               " ".join(f"{nom.split()[0][:9]} {v:.2f}" for nom, v in zip(FORMES, valeurs)))
 
     # Ce que la meilleure forme prédit par territoire, sous gel 20 à 100.
     nom = min(FORMES, key=lambda n: erreur(n, ajustes[n], tab)[0])
     x = ajustes[nom]
-    pred = predit(nom, x, gel, neige)
-    m = (gel >= 20) & (gel < 100)
+    pred = predit(nom, x, frost_state, neige)
+    m = (frost_state >= 20) & (frost_state < 100)
     print(f"\nforme la plus proche des cellules : {nom}")
     print("  territoire | observé sous gel 20-100 | prédit | écart")
     for reg in sorted(set(regions)):

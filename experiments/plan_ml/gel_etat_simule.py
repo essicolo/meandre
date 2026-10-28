@@ -63,12 +63,12 @@ def main(regs):
             qs = pd.Series(z["q_sim"][:, k] * conv, index=tq)
             f = fx[st].reindex(tq)
             p, tm = f["P"], (f["Tmin"] + f["Tmax"]) / 2
-            gel = pd.Series(d["prof_gel_cm"][:, j], index=td).reindex(tq).shift(1)
+            frost_state = pd.Series(d["prof_gel_cm"][:, j], index=td).reindex(tq).shift(1)
             swe = pd.Series(d["swe"][:, j], index=td).reindex(tq).shift(1)
             ev, ro, indice = evenements(p, tm, qo)
             _, rs, _ = evenements(p, tm, qs.where(qo.notna()))
             for t in tq[ev]:
-                lignes.append(dict(station=st, region=reg, date=t, rep_obs=ro[t], rep_sim=rs[t], indice=indice[t], gel_cm=gel[t], swe=swe[t]))
+                lignes.append(dict(station=st, region=reg, date=t, rep_obs=ro[t], rep_sim=rs[t], indice=indice[t], gel_cm=frost_state[t], swe=swe[t]))
     E = pd.DataFrame(lignes).dropna()
     ref_o = E[E.indice < 5].groupby("station").rep_obs.median().rename("ro")
     ref_s = E[E.indice < 5].groupby("station").rep_sim.median().rename("rs")

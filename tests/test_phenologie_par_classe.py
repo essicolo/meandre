@@ -18,7 +18,7 @@ OCC = dict(feuillus=0.5, conifers=0.5, ouverts=0.0, humides=0.0, urbain=0.0, rou
 
 def _etr(forme, classes):
     torch.set_default_dtype(torch.float64)
-    psnow, psoil, petr = build_static_params(N, lat=45.3, slope=0.02, orientation=7, texture="loam", z=(0.2, 0.4, 1.0), occupation=OCC)
+    psnow, psoil, petr = build_static_params(N, lat=45.3, slope=0.02, orientation=7, texture="loam", z=(0.2, 0.4, 1.0), land_cover_table=OCC)
     col = HydrotelColumn(et_mode="mcguinness", use_frost=False)
     col.set_static(psnow, psoil, petr, wetland=None, n_depth=n_intervalles(1.5, 0.05))
     st = col.init_state(N, theta_init=(0.40, 0.40, 0.40))

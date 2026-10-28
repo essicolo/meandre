@@ -74,7 +74,7 @@ def _colonne(mode=None, n=3):
     occ = dict(feuillus=0.3, ouverts=0.2, humides=0.0, urbain=0.2, routes=0.1, eau=0.2)
     psnow, psoil, petr = build_static_params(
         n, lat=46.0, slope=0.03, orientation=7, texture="sandy_loam",
-        z=(0.1, 0.4, 1.0), occupation=occ)
+        z=(0.1, 0.4, 1.0), land_cover_table=occ)
     col = HydrotelColumn(et_mode="mcguinness", use_frost=True)
     if mode is not None:
         col.sublimation_mode = mode

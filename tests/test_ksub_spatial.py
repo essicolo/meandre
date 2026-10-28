@@ -10,7 +10,7 @@ import torch
 
 from meandre.vertical.hydrotel_column import HydrotelColumn
 
-PLAFOND = HydrotelColumn.plafond_substratum
+PLAFOND = HydrotelColumn.ceiling_substratum
 
 
 class _Champ:

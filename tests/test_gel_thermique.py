@@ -37,10 +37,10 @@ def _profil(mod, n, tair=-15.0, neige=0.2, jours=60):
 
 def _descendre(mod, n, jours=60, **kw):
     tmin, tmax, hs, p, z, _ = _profil(mod, n)
-    gel = None
+    frost_state = None
     for _ in range(jours):
-        p, gel = mod(tmin, tmax, hs, p, z, z, z, **kw)
-    return gel
+        p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **kw)
+    return frost_state
 
 
 def test_sans_champs_le_clone_est_identique():
@@ -56,8 +56,8 @@ def test_deux_sols_differents_gelent_differemment():
     gelaient pareil, ce qui rendait le gel aveugle a la texture et a l'humidite."""
     mod = Rankinen()
     al = torch.tensor([0.6e-7, 1.6e-7, 4.0e-7])   # inerte -> reactif
-    gel = _descendre(mod, 3, alpha=al)
-    assert float(gel.max() - gel.min()) > 1.0, gel
+    frost_state = _descendre(mod, 3, alpha=al)
+    assert float(frost_state.max() - frost_state.min()) > 1.0, frost_state
 
 
 def test_sens_physique_des_proprietes():
@@ -81,8 +81,8 @@ def test_gradient_traverse_les_deux():
         x = torch.full((2,), val, requires_grad=True)
         tmin, tmax, hs, p, z, _ = _profil(mod, 2)
         for _ in range(20):
-            p, gel = mod(tmin, tmax, hs, p, z, z, z, **{nom: x})
-        gel.sum().backward()
+            p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **{nom: x})
+        frost_state.sum().backward()
         assert x.grad is not None and float(x.grad.abs().sum()) > 0.0, nom
 
 
@@ -108,5 +108,5 @@ def test_les_bornes_respectent_la_stabilite_du_schema():
     assert float(sp.diff_gel.max()) < alpha_max, (float(sp.diff_gel.max()), alpha_max)
 
     # et le gel reste fini sur une descente complete
-    gel = _descendre(mod, 3, alpha=sp.diff_gel.detach())
-    assert torch.isfinite(gel).all(), gel
+    frost_state = _descendre(mod, 3, alpha=sp.diff_gel.detach())
+    assert torch.isfinite(frost_state).all(), frost_state

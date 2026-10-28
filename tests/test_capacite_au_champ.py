@@ -14,7 +14,7 @@ import torch
 
 from meandre.vertical.hydrotel_column import HydrotelColumn
 
-DEDUIRE = HydrotelColumn.capacite_au_champ_de_la_courbe
+DEDUIRE = HydrotelColumn.field_capacity_from_curve
 
 
 def _sol(b=4.0, psis=0.3, thetas=0.45, n=3):

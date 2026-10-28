@@ -416,7 +416,7 @@ class HydroModel(nn.Module):
                     theta3=frac * spatial_params.porosity_3)
             self.vertical_column.setup_simulate(
                 spatial_params, territorial, node_coords, state,
-                poursuivre=continue_state)
+                continue_state=continue_state)
         # Constante de transfert de Muskingum, en secondes. Ses BORNES sont le levier
         # (MEANDRE_KMUSK="min,max,init", cf field_network) : le troncon median mesure 2.9
         # a 3.5 km, parcouru en une heure a 1 m/s, alors que la borne inferieure par

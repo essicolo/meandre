@@ -25,8 +25,8 @@ def _col(v, n=4):
     return torch.full((n,), float(v), dtype=torch.float64)
 
 
-def _module(exposant=1.0, n_substep=8):
-    return WaterTable(n_substep=n_substep, exposant=exposant)
+def _module(exponent=1.0, n_substep=8):
+    return WaterTable(n_substep=n_substep, exponent=exponent)
 
 
 def test_equilibre_analytique_cas_lineaire():
@@ -44,7 +44,7 @@ def test_equilibre_analytique_cas_lineaire():
 def test_bilan_ferme_sur_un_pas():
     """Le stock perdu par la nappe vaut exactement ce qui en sort, moins ce qui y entre."""
     torch.set_default_dtype(torch.float64)
-    m = _module(exposant=2.0, n_substep=32)
+    m = _module(exponent=2.0, n_substep=32)
     r = 6.0e-4
     z0 = _col(5.0)
     z1, q, e = m(z0, _col(r), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),
@@ -56,7 +56,7 @@ def test_bilan_ferme_sur_un_pas():
 def test_extraction_nulle_sous_la_profondeur_d_extinction():
     """Une nappe plus profonde que z_ext ne peut rien céder à l'atmosphère."""
     torch.set_default_dtype(torch.float64)
-    m = _module(exposant=2.0)
+    m = _module(exponent=2.0)
     z = _col(7.0)
     _z, _q, e_hors = m(z, _col(0.0), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),
                        _col(4.0e-3), _col(3.0))
@@ -72,7 +72,7 @@ def test_convergence_du_sous_pas():
     r = 8.0e-4
     finals = []
     for ns in (1, 8, 64):
-        m = _module(exposant=2.0, n_substep=ns)
+        m = _module(exponent=2.0, n_substep=ns)
         z = _col(6.0)
         for _ in range(2000):
             z, _q, _e = m(z, _col(r), _col(SY), _col(K_B), _col(Z_RIV), _col(H_REF),

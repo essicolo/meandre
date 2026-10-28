@@ -687,7 +687,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             col.root_depth_scale = float(os.environ["MEANDRE_RACINES_ECHELLE"])
             print(f"  racines : profondeur x {col.root_depth_scale:g}", flush=True)
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
-            col.activer_nappe_libre(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exposant=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), couplage=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), apprise=os.environ.get("ETL_NAPPE_APPRIS") == "1")
+            col.enable_free_water_table(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exponent=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), coupling=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), learned=os.environ.get("ETL_NAPPE_APPRIS") == "1")
             if "ETL_NAPPE_GEL" in os.environ:
                 col.nappe_gel_facteur = float(os.environ["ETL_NAPPE_GEL"])
                 print(f"  porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}", flush=True)
@@ -1206,8 +1206,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 _bp5 = _kp.Qsim.mean() / _kp.Qobs.mean()
                 _gp5 = (_kp.Qsim.std() / _kp.Qsim.mean()) / (_kp.Qobs.std() / _kp.Qobs.mean())
                 print(f"  KGE {debut_eval}-{pd.DatetimeIndex(temps)[-1].year} a poids fixes : {1 - np.sqrt((_rp5 - 1) ** 2 + (_bp5 - 1) ** 2 + (_gp5 - 1) ** 2):.3f} | r {_rp5:.3f} | beta {_bp5:.3f} | gamma {_gp5:.3f}", flush=True)
-            if getattr(m.vertical_column, "_nappe_apprise", False):
-                _nv = m.vertical_column.nappe_valeurs()
+            if getattr(m.vertical_column, "_water_table_learned", False):
+                _nv = m.vertical_column.water_table_values()
                 print(f"  nappe apprise : conductance {_nv['k_b']:.2e} m/j, extraction {_nv['e_frac']:.3f}, exposant {_nv['exposant']:.2f}", flush=True)
             # TEMPS DE TRANSFERT DE MUSKINGUM APPRIS (2026-09-30) : mediane, quartiles et part
             # des troncons colles aux bornes. Dit si le routage libre compense encore un

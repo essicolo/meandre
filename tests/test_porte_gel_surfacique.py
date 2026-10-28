@@ -20,8 +20,8 @@ def _ruissellement(porte, gel_cm, neige_mm=0.0):
     m = bv.BV3C2Clone(n_substep=32, frozen_gate_continuous=(porte == "continue"))
     m.frozen_gate_areal = porte == "surfacique"
     t = [0.5 * p[f"thetas{i}"] for i in (1, 2, 3)]
-    gel = torch.full((N,), float(gel_cm) if gel_cm != "moitie" else 50.0 * float(p["z1"][0]))
-    out = m(t[0], t[1], t[2], torch.full((N,), 5.0), torch.zeros(N), gel, torch.full((N,), neige_mm), p)
+    frost_state = torch.full((N,), float(gel_cm) if gel_cm != "moitie" else 50.0 * float(p["z1"][0]))
+    out = m(t[0], t[1], t[2], torch.full((N,), 5.0), torch.zeros(N), frost_state, torch.full((N,), neige_mm), p)
     return float(out[0][0])
 
 

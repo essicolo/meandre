@@ -39,7 +39,7 @@ def _colonne():
                urbain=1111 / 1754, routes=280 / 1754, eau=119 / 1754)
     psnow, psoil, petr = build_static_params(
         N, lat=45.3, slope=0.026, orientation=7, texture="sandy_loam",
-        z=(0.1, 0.4, 1.0), occupation=occ)
+        z=(0.1, 0.4, 1.0), land_cover_table=occ)
     col = HydrotelColumn(et_mode="mcguinness", use_frost=True)
     col.set_static(psnow, psoil, petr, wetland=None, n_depth=n_intervalles(1.5, 0.05))
     return col
@@ -91,7 +91,7 @@ def test_avec_poursuite_le_manteau_et_le_gel_survivent():
     col._aux = st
     sp, terr, coords = _champ(col)
 
-    col.setup_simulate(sp, terr, coords, st, poursuivre=True)
+    col.setup_simulate(sp, terr, coords, st, continue_state=True)
 
     assert _swe_total(col._aux.snow) == swe_avant
     assert float(col._aux.frost_profile.abs().mean()) == gel_avant

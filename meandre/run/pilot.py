@@ -466,8 +466,8 @@ if _settings.raw("groundwater.water_table", "0") == "1":
                h_ref=float(_settings.raw("groundwater.reference_head_m", 4.0)),
                e_frac=float(_settings.raw("groundwater.extraction_fraction", 0.35)),
                z_ext=float(_settings.raw("groundwater.extinction_depth_m", 9.0)),
-               exposant=_exposant_de_nappe())
-    model.vertical_column.activer_nappe_libre(**_np)
+               exponent=_exposant_de_nappe())
+    model.vertical_column.enable_free_water_table(**_np)
     print(f"[etl] NAPPE LIBRE active : {_np}")
     if _settings.raw("groundwater.frost_factor") is not None:
         # Porte de gel sur la vidange de la nappe (R316) : facteur quand le gel atteint 30 cm.
