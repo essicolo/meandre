@@ -49,10 +49,10 @@ def _kge_components(q_obs: Tensor, q_sim: Tensor) -> tuple[Tensor, Tensor, Tenso
     # n'apprenait donc RIEN de l'epoque (validation identique a la quatrieme decimale
     # d'une epoque a l'autre, perte qui ne bougeait que par le prior). Un plancher de
     # 0.1 % du debit moyen rend le gradient fini partout, sans effet mesurable ailleurs.
-    plancher_obs = (1e-3 * q_obs.mean().abs()).clamp(min=1e-6)
-    plancher_sim = (1e-3 * q_sim.mean().abs()).clamp(min=1e-6)
-    std_obs = torch.sqrt(var_obs + plancher_obs ** 2)
-    std_sim = torch.sqrt(var_sim + plancher_sim ** 2)
+    floor_obs = (1e-3 * q_obs.mean().abs()).clamp(min=1e-6)
+    floor_sim = (1e-3 * q_sim.mean().abs()).clamp(min=1e-6)
+    std_obs = torch.sqrt(var_obs + floor_obs ** 2)
+    std_sim = torch.sqrt(var_sim + floor_sim ** 2)
     r = (x * y).mean() / (std_obs * std_sim)
     r = r.clamp(-1.0, 1.0)
 
@@ -88,20 +88,20 @@ def differentiable_peak_ratio_loss(q_obs: Tensor, q_sim: Tensor, seuil: Tensor) 
     sur-estimation et sous-estimation, une pointe deux fois trop forte coûtant autant qu'une
     pointe deux fois trop faible.
     """
-    haut = q_obs >= seuil
-    if haut.sum() < 10:
+    high = q_obs >= seuil
+    if high.sum() < 10:
         return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
-    moy_obs = q_obs[haut].mean().clamp(min=1e-8)
-    moy_sim = q_sim[haut].mean().clamp(min=1e-8)
+    mean_obs = q_obs[high].mean().clamp(min=1e-8)
+    mean_sim = q_sim[high].mean().clamp(min=1e-8)
     # VALEUR ABSOLUE DU LOGARITHME, non son carre : le carre repondrait au second ordre pour
     # une petite erreur de pointe, defaut mesure le meme jour sur les facteurs du KGE et sur
     # le terme d'etiage. La symetrie entre sur-estimation et sous-estimation est conservee,
     # |log(r)| valant |log(1/r)|.
-    return torch.abs(torch.log(moy_sim / moy_obs))
+    return torch.abs(torch.log(mean_sim / mean_obs))
 
 
 def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delai: int = 2,
-                                  duree_min: int = 5) -> Tensor:
+                                  min_duration: int = 5) -> Tensor:
     """Écart sur la VITESSE DE VIDANGE, mesurée sur les jours de décrue franche.
 
     POURQUOI CE TERME EXISTE. La colonne a deux chemins lents, l'écoulement hypodermique et
@@ -128,24 +128,24 @@ def differentiable_recession_loss(q_obs: Tensor, q_sim: Tensor, delai: int = 2,
     if q_obs.numel() < 20:
         return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
     eps = (1e-3 * q_obs.median().abs()).clamp(min=1e-8)
-    decroit = q_obs[1:] < q_obs[:-1]
+    decreasing = q_obs[1:] < q_obs[:-1]
     # Un jour compte s'il decroit ET si les `delai` jours precedents decroissent aussi : on
     # ecarte ainsi mecaniquement le sommet de la pointe et le ressuyage qui le suit.
-    garde = decroit.clone()
+    guard = decreasing.clone()
     for k in range(1, delai + 1):
-        garde[k:] = garde[k:] & decroit[:-k]
-    if int(garde.sum()) < duree_min * 4:
+        guard[k:] = guard[k:] & decreasing[:-k]
+    if int(guard.sum()) < min_duration * 4:
         return torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
     ratio_obs = torch.log((q_obs[1:] + eps) / (q_obs[:-1] + eps))
     ratio_sim = torch.log((q_sim[1:] + eps) / (q_sim[:-1] + eps))
-    niveau = q_obs[:-1]
-    seuil = niveau[garde].median()
-    perte = torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
-    for bande in (garde & (niveau >= seuil), garde & (niveau < seuil)):
-        if int(bande.sum()) < duree_min:
+    level_ = q_obs[:-1]
+    seuil = level_[guard].median()
+    loss_value = torch.zeros((), device=q_sim.device, dtype=q_sim.dtype)
+    for bande in (guard & (level_ >= seuil), guard & (level_ < seuil)):
+        if int(bande.sum()) < min_duration:
             continue
-        perte = perte + torch.abs(ratio_sim[bande].mean() - ratio_obs[bande].mean())
-    return perte
+        loss_value = loss_value + torch.abs(ratio_sim[bande].mean() - ratio_obs[bande].mean())
+    return loss_value
 
 
 def differentiable_r_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
@@ -253,14 +253,14 @@ def differentiable_dq_log_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return torch.abs(s_s / s_o.clamp(min=1e-8) - 1.0)
 
 
-def _mois_du_jour(doy: Tensor) -> Tensor:
+def _month_of_day(doy: Tensor) -> Tensor:
     """Mois (1 a 12) d'un jour de l'annee, calendrier non bissextile ; un jour d'ecart au plus."""
     fins = torch.tensor([31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 366], device=doy.device)
     return torch.bucketize(doy.long(), fins, right=False) + 1
 
 
 def differentiable_flat_days_loss(q_obs: Tensor, q_sim: Tensor, seuil: float = 0.01,
-                                  largeur: float = 0.003) -> Tensor:
+                                  width: float = 0.003) -> Tensor:
     """Écart sur la PART DE JOURS PLATS, variation relative d'un jour à l'autre sous `seuil`.
 
     POURQUOI (2026-10-16, R382). L'hiver du modèle unique est plat (17 % de jours plats contre
@@ -279,12 +279,12 @@ def differentiable_flat_days_loss(q_obs: Tensor, q_sim: Tensor, seuil: float = 0
     def _part(q):
         lq = torch.log(q.clamp(min=0.0) + eps)
         d = torch.sqrt((lq[1:] - lq[:-1]) ** 2 + 1e-8)
-        return torch.sigmoid((seuil - d) / largeur).mean()
+        return torch.sigmoid((seuil - d) / width).mean()
 
     return torch.abs(_part(q_sim) - _part(q_obs))
 
 
-def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
+def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
                                 bas: float = 0.2, ref: float = 0.5) -> Tensor:
     """Ecart sur le SOUTIEN d'etiage : quantile bas rapporte a la mediane.
 
@@ -309,7 +309,7 @@ def differentiable_fdc_bas_loss(q_obs: Tensor, q_sim: Tensor,
     return torch.abs(r_s - r_o)
 
 
-def differentiable_etiage_loss(q_obs: Tensor, q_sim: Tensor, quantile: float = 0.3,
+def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float = 0.3,
                                eps: float = 1e-3) -> Tensor:
     """Écart absolu des logarithmes du débit sur les jours d'étiage observés.
 
@@ -381,10 +381,10 @@ def tws_anomaly_loss(
     return resid.pow(2).mean()
 
 
-def nappe_anomaly_loss(
-    z_sim_month: Tensor, niveau_obs_month: Tensor, masque: Tensor | None = None,
+def water_table_anomaly_loss(
+    z_sim_month: Tensor, level_obs_month: Tensor, mask: Tensor | None = None,
     sy: Tensor | float | None = None, amplitude_sim: Tensor | None = None,
-    amplitude_obs: Tensor | None = None, poids_porosite: float = 0.0,
+    amplitude_obs: Tensor | None = None, porosity_weight: float = 0.0,
 ) -> Tensor:
     """Anomalies mensuelles de la nappe simulée contre les niveaux mesurés, RÉDUITES.
 
@@ -429,17 +429,17 @@ def nappe_anomaly_loss(
     """
     if z_sim_month.numel() == 0:
         return torch.zeros((), device=z_sim_month.device)
-    m = torch.ones_like(z_sim_month, dtype=torch.bool) if masque is None else masque
+    m = torch.ones_like(z_sim_month, dtype=torch.bool) if mask is None else mask
     n = m.sum(dim=0)
-    valide = n >= 24
-    if not bool(valide.any()):
+    valid_ = n >= 24
+    if not bool(valid_.any()):
         return torch.zeros((), device=z_sim_month.device)
 
     def _centrer(x):
         """Écart à la moyenne, sur les seuls pas observés."""
         xm = torch.where(m, x, torch.zeros_like(x))
-        moy = xm.sum(dim=0) / torch.clamp(n, min=1)
-        return torch.where(m, x - moy, torch.zeros_like(x))
+        mean_ = xm.sum(dim=0) / torch.clamp(n, min=1)
+        return torch.where(m, x - mean_, torch.zeros_like(x))
 
     # La perte vaut 2 (1 - r), avec r la corrélation, ce qui la BORNE entre 0 et 4. On la
     # calcule par la corrélation plutôt qu'en réduisant chaque série : diviser par
@@ -448,26 +448,26 @@ def nappe_anomaly_loss(
     # atteignait 311 contre 2,2 pour tous les autres réunis, soit 9305 pour cent de la
     # perte, et écrasait l'entraînement. Un terme de perte doit être borné par construction.
     c_sim = _centrer(-z_sim_month)
-    c_obs = _centrer(-niveau_obs_month)
+    c_obs = _centrer(-level_obs_month)
     cov = (c_sim * c_obs).sum(dim=0)
     n_sim = torch.sqrt((c_sim.pow(2)).sum(dim=0))
     n_obs = torch.sqrt((c_obs.pow(2)).sum(dim=0))
     # Un puits dont la simulation ne varie pas ne porte aucune information de forme : sa
     # corrélation n'est pas définie et on lui donne la valeur NEUTRE, ni récompense ni
     # punition, plutôt qu'une valeur infinie.
-    plat = (n_sim < 1e-6 * torch.clamp(n_obs, min=1e-12)) | (n_obs < 1e-12)
+    flat = (n_sim < 1e-6 * torch.clamp(n_obs, min=1e-12)) | (n_obs < 1e-12)
     r = cov / torch.clamp(n_sim * n_obs, min=1e-12)
-    r = torch.where(plat, torch.zeros_like(r), torch.clamp(r, -1.0, 1.0))
-    perte = (2.0 * (1.0 - r))[valide].mean()
+    r = torch.where(flat, torch.zeros_like(r), torch.clamp(r, -1.0, 1.0))
+    loss_value = (2.0 * (1.0 - r))[valid_].mean()
 
-    if poids_porosite > 0.0 and sy is not None and amplitude_sim is not None:
+    if porosity_weight > 0.0 and sy is not None and amplitude_sim is not None:
         # Le garde-fou ne cale RIEN : il interdit seulement une porosité que la géologie
         # rendrait impossible, et reste nul tant qu'on est dans la plage connue.
         implique = sy * amplitude_sim / torch.clamp(amplitude_obs, min=1e-6)
-        trop_bas = torch.clamp(torch.log(torch.tensor(0.01)) - torch.log(torch.clamp(implique, min=1e-6)), min=0.0)
-        trop_haut = torch.clamp(torch.log(torch.clamp(implique, min=1e-6)) - torch.log(torch.tensor(0.30)), min=0.0)
-        perte = perte + poids_porosite * (trop_bas + trop_haut)[valide].pow(2).mean()
-    return perte
+        too_low = torch.clamp(torch.log(torch.tensor(0.01)) - torch.log(torch.clamp(implique, min=1e-6)), min=0.0)
+        too_high = torch.clamp(torch.log(torch.clamp(implique, min=1e-6)) - torch.log(torch.tensor(0.30)), min=0.0)
+        loss_value = loss_value + porosity_weight * (too_low + too_high)[valid_].pow(2).mean()
+    return loss_value
 
 
 def peak_weighted_mse_loss(
@@ -751,7 +751,7 @@ class CompositeKGELoss(nn.Module):
         return loss, components
 
 
-def rolling_mean(x, fenetre: int):
+def rolling_mean(x, window: int):
     """Moyenne glissante causale sur l'axe TEMPS (axe 0), fenêtre en pas de temps.
 
     Sert à apparier l'ETR simulée AUX COMPOSITES MOD16A2GF, qui sont des moyennes sur
@@ -759,12 +759,12 @@ def rolling_mean(x, fenetre: int):
     2026-08-10 : on comparait une moyenne de 8 jours à une valeur journalière). Les
     `fenetre - 1` premiers pas sont laissés tels quels faute d'historique.
     """
-    if fenetre <= 1 or x.dim() < 1 or x.shape[0] < fenetre:
+    if window <= 1 or x.dim() < 1 or x.shape[0] < window:
         return x
     c = torch.nn.functional.avg_pool1d(
-        x.transpose(0, -1).unsqueeze(0), kernel_size=fenetre, stride=1,
+        x.transpose(0, -1).unsqueeze(0), kernel_size=window, stride=1,
         padding=0, count_include_pad=False).squeeze(0).transpose(0, -1)
-    return torch.cat([x[:fenetre - 1], c], dim=0)[:x.shape[0]]
+    return torch.cat([x[:window - 1], c], dim=0)[:x.shape[0]]
 
 
 class HydroLoss(nn.Module):
@@ -803,23 +803,23 @@ class HydroLoss(nn.Module):
         w_et: float = 0.0,
         et_mode: str = "level",
         w_tws: float = 0.0,
-        w_nappe: float = 0.0,
+        w_water_table: float = 0.0,
         w_tws_clim: float = 0.0,
         w_quantile: float = 0.0,
         w_peak: float = 0.0,
         w_dq: float = 0.0,
         w_dq_log: float = 0.0,
-        w_fdc_bas: float = 0.0,
-        w_etiage: float = 0.0,
+        w_fdc_low: float = 0.0,
+        w_low_flow: float = 0.0,
         w_r: float = 0.0,
         w_beta: float = 0.0,
         w_gamma: float = 0.0,
         w_peak_ratio: float = 0.0,
         w_recession: float = 0.0,
-        w_plat: float = 0.0,
-        plat_seuil: float = 0.01,
-        plat_largeur: float = 0.003,
-        plat_mois: tuple = (12, 1, 2, 3),
+        w_flat: float = 0.0,
+        flat_threshold: float = 0.01,
+        flat_width: float = 0.003,
+        flat_months: tuple = (12, 1, 2, 3),
         w_physics: float = 0.01,
         per_station: bool = False,
         station_weights: Tensor | None = None,
@@ -864,7 +864,7 @@ class HydroLoss(nn.Module):
         self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
         # Niveaux de nappe mesurés (2026-09-19), contrainte de FORME en anomalies réduites.
-        self.w_nappe = w_nappe
+        self.w_water_table = w_water_table
         # Biais saisonnier GRACE par mois calendaire (R23). Le terme mensuel
         # ci-dessus juge à l'incertitude d'UNE observation (25 mm) et laisse
         # passer un biais systématique de 26 mm ; celui-ci le juge à
@@ -875,8 +875,8 @@ class HydroLoss(nn.Module):
         # FORME (2026-09-05) : variations journalieres et soutien d'etiage.
         self.w_dq = w_dq
         self.w_dq_log = w_dq_log
-        self.w_fdc_bas = w_fdc_bas
-        self.w_etiage = w_etiage
+        self.w_fdc_low = w_fdc_low
+        self.w_low_flow = w_low_flow
         # KGE DECOMPOSE (2026-09-20, proposition d'Essi). Porte entier, le KGE melange une
         # erreur de calendrier, une erreur de volume et une erreur d'amplitude en un seul
         # nombre, et l'optimiseur ne peut plus choisir laquelle reduire. Mesure du banc de
@@ -892,10 +892,10 @@ class HydroLoss(nn.Module):
         # Vitesse de vidange sur les jours de decrue : seule grandeur qui identifie la
         # partition entre ecoulement hypodermique et nappe.
         self.w_recession = w_recession
-        self.w_plat = w_plat
-        self.plat_seuil = plat_seuil
-        self.plat_largeur = plat_largeur
-        self.plat_mois = tuple(int(m) for m in plat_mois)
+        self.w_flat = w_flat
+        self.flat_threshold = flat_threshold
+        self.flat_width = flat_width
+        self.flat_months = tuple(int(m) for m in flat_months)
         # Jour de l'annee de chaque pas du bloc courant, pose par le trainer avant l'appel :
         # le terme de platitude ne regarde que les mois `plat_mois` du bloc (R382).
         self.doy_block = None
@@ -944,7 +944,7 @@ class HydroLoss(nn.Module):
         # station les remplissait, d'ou une variable non liee sur l'autre.
         L_r = L_beta = L_gamma = L_peak_ratio = torch.tensor(0.0, device=q_sim.device)
         L_recession = torch.tensor(0.0, device=q_sim.device)
-        L_plat = torch.tensor(0.0, device=q_sim.device)
+        L_flat = torch.tensor(0.0, device=q_sim.device)
 
         if self.per_station:
             n_stations = q_sim_at_stations.shape[1]
@@ -980,7 +980,7 @@ class HydroLoss(nn.Module):
                 # Les termes de forme aussi, sans quoi un bloc sans aucune station gardee
                 # leve une erreur au lieu de rendre une perte nulle (2026-09-09).
                 L_dq = L_dql = L_fdc = zero
-                L_etiage = zero
+                L_low_flow = zero
             else:
                 # MASQUE SANS NaN (2026-09-08). L'ancienne version posait des NaN DANS
                 # le tenseur simule, puis s'appuyait sur nanmean et nansum. Ces reductions
@@ -1071,18 +1071,18 @@ class HydroLoss(nn.Module):
                 # or correlation — only compute if weight > 0
                 L_nse = L_kge = L_nrmse = L_log_nse = zero
                 L_dq = L_fdc = L_dql = zero
-                L_etiage = zero
-                need_loop = (self.w_nse > 0 or self.w_kge > 0 or self.w_etiage > 0
+                L_low_flow = zero
+                need_loop = (self.w_nse > 0 or self.w_kge > 0 or self.w_low_flow > 0
                              or self.w_nrmse > 0 or self.w_log_nse > 0
-                             or self.w_dq > 0 or self.w_fdc_bas > 0 or self.w_dq_log > 0
+                             or self.w_dq > 0 or self.w_fdc_low > 0 or self.w_dq_log > 0
                              or self.w_r > 0 or self.w_beta > 0 or self.w_gamma > 0
-                             or self.w_peak_ratio > 0 or self.w_recession > 0 or self.w_plat > 0)
+                             or self.w_peak_ratio > 0 or self.w_recession > 0 or self.w_flat > 0)
                 if need_loop:
                     nse_v, kge_v, nrmse_v, lnse_v = [], [], [], []
                     dq_v, fdc_v, dql_v = [], [], []
-                    etiage_v = []
+                    low_flow_v = []
                     r_v, beta_v, gamma_v = [], [], []
-                    pr_v, rec_v, plat_v = [], [], []
+                    pr_v, rec_v, flat_v = [], [], []
                     keep_idx = keep.nonzero(as_tuple=True)[0]
                     # HISTORIQUE DÉTACHÉ (2026-09-03). Le KGE, le Nash-Sutcliffe et le
                     # NRMSE sont des statistiques de SÉQUENCE : moyennes, écarts-types et
@@ -1138,30 +1138,30 @@ class HydroLoss(nn.Module):
                             gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
                         if self.w_recession > 0:
                             rec_v.append(_remis(differentiable_recession_loss(q_o_v, q_s_v)))
-                        if self.w_plat > 0 and self.doy_block is not None:
+                        if self.w_flat > 0 and self.doy_block is not None:
                             # BLOC SEUL ET MOIS CIBLES (2026-10-16, R382). Sur la serie entiere,
                             # l'optimiseur satisfaisait le terme en rendant l'ete nerveux et
                             # gardait l'hiver plat. Sur le seul bloc de 90 jours et les seuls
                             # jours des mois cibles, aucune compensation entre saisons.
-                            _mois = _mois_du_jour(self.doy_block.to(v.device))
-                            _k = v & torch.isin(_mois, torch.tensor(self.plat_mois, device=v.device))
+                            _month = _month_of_day(self.doy_block.to(v.device))
+                            _k = v & torch.isin(_month, torch.tensor(self.flat_months, device=v.device))
                             if int(_k.sum()) >= 20:
-                                plat_v.append(differentiable_flat_days_loss(
-                                    q_obs[_k, si], q_sim_at_stations[_k, si], self.plat_seuil, self.plat_largeur))
+                                flat_v.append(differentiable_flat_days_loss(
+                                    q_obs[_k, si], q_sim_at_stations[_k, si], self.flat_threshold, self.flat_width))
                             else:
                                 # Meme longueur que les poids par station : zero hors des mois cibles.
-                                plat_v.append(q_sim_at_stations[v, si].sum() * 0.0)
+                                flat_v.append(q_sim_at_stations[v, si].sum() * 0.0)
                         if self.w_peak_ratio > 0 and self.peak_threshold is not None:
-                            _seuil = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
-                            pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _seuil)))
+                            _threshold = self.peak_threshold[si] if self.peak_threshold.numel() > 1                                 else self.peak_threshold
+                            pr_v.append(_remis(differentiable_peak_ratio_loss(q_o_v, q_s_v, _threshold)))
                         if self.w_dq > 0:
                             dq_v.append(_remis(differentiable_dq_loss(q_o_v, q_s_v)))
                         if self.w_dq_log > 0:
                             dql_v.append(_remis(differentiable_dq_log_loss(q_o_v, q_s_v)))
-                        if self.w_etiage > 0:
-                            etiage_v.append(_remis(differentiable_etiage_loss(q_o_v, q_s_v)))
-                        if self.w_fdc_bas > 0:
-                            fdc_v.append(_remis(differentiable_fdc_bas_loss(q_o_v, q_s_v)))
+                        if self.w_low_flow > 0:
+                            low_flow_v.append(_remis(differentiable_low_flow_loss(q_o_v, q_s_v)))
+                        if self.w_fdc_low > 0:
+                            fdc_v.append(_remis(differentiable_fdc_low_loss(q_o_v, q_s_v)))
                             if settings.get("debug.kge_trace"):
                                 # Trace de controle (2026-09-04) : le terme KGE de la perte
                                 # valait 0.04 quand le KGE de l'annee d'entrainement
@@ -1193,8 +1193,8 @@ class HydroLoss(nn.Module):
                         L_peak_ratio = (torch.stack(pr_v) * w).sum()
                     if self.w_recession > 0 and rec_v:
                         L_recession = (torch.stack(rec_v) * w).sum()
-                    if self.w_plat > 0 and plat_v:
-                        L_plat = (torch.stack(plat_v) * w).sum()
+                    if self.w_flat > 0 and flat_v:
+                        L_flat = (torch.stack(flat_v) * w).sum()
                     if self.w_nrmse > 0 and nrmse_v:
                         L_nrmse = (torch.stack(nrmse_v) * w).sum()
                     if self.w_log_nse > 0 and lnse_v:
@@ -1203,10 +1203,10 @@ class HydroLoss(nn.Module):
                         L_dq = (torch.stack(dq_v) * w).sum()
                     if self.w_dq_log > 0 and dql_v:
                         L_dql = (torch.stack(dql_v) * w).sum()
-                    if self.w_fdc_bas > 0 and fdc_v:
+                    if self.w_fdc_low > 0 and fdc_v:
                         L_fdc = (torch.stack(fdc_v) * w).sum()
-                    if self.w_etiage > 0 and etiage_v:
-                        L_etiage = (torch.stack(etiage_v) * w).sum()
+                    if self.w_low_flow > 0 and low_flow_v:
+                        L_low_flow = (torch.stack(low_flow_v) * w).sum()
         else:
             # Pooled metrics: flatten time x station (dominated by largest station)
             q_o = q_obs.reshape(-1)
@@ -1228,8 +1228,8 @@ class HydroLoss(nn.Module):
             L_tol_mse = _zero   # tolérance timing : chemin per_station uniquement
             L_dq = differentiable_dq_loss(q_o, q_s) if self.w_dq > 0 else _zero
             L_dql = differentiable_dq_log_loss(q_o, q_s) if self.w_dq_log > 0 else _zero
-            L_fdc = differentiable_fdc_bas_loss(q_o, q_s) if self.w_fdc_bas > 0 else _zero
-            L_etiage = differentiable_etiage_loss(q_o, q_s) if self.w_etiage > 0 else _zero
+            L_fdc = differentiable_fdc_low_loss(q_o, q_s) if self.w_fdc_low > 0 else _zero
+            L_low_flow = differentiable_low_flow_loss(q_o, q_s) if self.w_low_flow > 0 else _zero
 
         # Pondération pics (seuil climato Q_p75 par station) : MSE restreinte
         # aux pas de temps où Q_obs dépasse le seuil. Vise la queue haute
@@ -1251,16 +1251,16 @@ class HydroLoss(nn.Module):
                 + self.w_peak * L_peak
                 + self.w_dq * L_dq
                 + self.w_dq_log * L_dql
-                + self.w_fdc_bas * L_fdc
-                + self.w_etiage * L_etiage
+                + self.w_fdc_low * L_fdc
+                + self.w_low_flow * L_low_flow
                 + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma
                 + self.w_peak_ratio * L_peak_ratio + self.w_recession * L_recession
-                + self.w_plat * L_plat)
+                + self.w_flat * L_flat)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
-                      "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc, "etiage_loss": L_etiage,
+                      "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc, "etiage_loss": L_low_flow,
                       "kge_loss": L_kge, "mse_loss": L_mse,
                       "r_loss": L_r, "beta_loss": L_beta, "gamma_loss": L_gamma,
-                      "peak_ratio_loss": L_peak_ratio, "recession_loss": L_recession, "plat_loss": L_plat,
+                      "peak_ratio_loss": L_peak_ratio, "recession_loss": L_recession, "plat_loss": L_flat,
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
@@ -1323,4 +1323,20 @@ class HydroLoss(nn.Module):
 
 
 # Alias de compatibilite (nettoyage 2026-08-24, convention anglaise pour le code).
-moyenne_glissante = rolling_mean
+
+
+# Anciennes clés françaises de la section [loss], renommées le 2026-10-28 (identifiants en
+# anglais). Une configuration ou une recette archivée qui les porte se relit telle quelle.
+LEGACY_LOSS_KEYS = {"w_etiage": "w_low_flow", "w_fdc_bas": "w_fdc_low", "w_plat": "w_flat", "w_nappe": "w_water_table", "plat_seuil": "flat_threshold", "plat_mois": "flat_months", "plat_largeur": "flat_width"}
+
+
+def normalize_loss_section(section: dict) -> dict:
+    """Section [loss] avec les anciennes clés converties ; refuse une clé donnée sous ses deux noms."""
+    out = dict(section)
+    for old, new in LEGACY_LOSS_KEYS.items():
+        if old in out:
+            if new in out:
+                raise ValueError(f"[loss] porte {old} et {new} : garder seulement {new}")
+            out[new] = out.pop(old)
+    return out
+

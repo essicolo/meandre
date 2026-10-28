@@ -381,7 +381,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
               substeps=None, chunk=45, w_et=0.4, w_kge=1.0, w_pbias=0.5, w_mse=0.1,
               w_dq=0.0, w_fdc=0.0, w_dq_log=0.0, quantile=False, charger=None,
               w_log_mse=0.0, w_peak=0.0,
-              w_nappe=0.0, nappe_valid=0.5):
+              w_water_table=0.0, nappe_valid=0.5):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -748,7 +748,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # Les puits sont extraits des que la moitie tenue de cote doit etre evaluee, y compris
     # pour le temoin a poids nul : sans cela le temoin n'avait pas de ligne de puits a
     # comparer (2026-09-23). Seul le terme de perte reste conditionne au poids.
-    if float(w_nappe) > 0 or float(nappe_valid) > 0:
+    if float(w_water_table) > 0 or float(nappe_valid) > 0:
         import pandas as _pdn
         from meandre.adapters.physitel.rsesq_loader import _chemin_defaut, read_rsesq
 
@@ -769,18 +769,18 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             puits_garde = sorted(_rang[::max(len(_pu) // max(_n_val, 1), 1)][:_n_val]) if _n_val else []
             _entraine = [i for i in range(len(_pu)) if i not in set(puits_garde)]
             _sb_idx = [_pos[int(_cn.node_idx[_dans[i]])] for i in range(len(_pu))]
-            if float(w_nappe) > 0:
+            if float(w_water_table) > 0:
                 water_table_obs = torch.tensor(_val[:, _entraine], device=dev)
                 water_table_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
             nappe_garde = (_val[:, puits_garde], [_sb_idx[i] for i in puits_garde],
                            [_pu[i] for i in puits_garde])
             print(f"  puits : {len(_pu)} dans le sous-bassin, {len(_entraine)} "
-                  f"{'dans la perte' if float(w_nappe) > 0 else 'hors perte (poids nul)'}, "
+                  f"{'dans la perte' if float(w_water_table) > 0 else 'hors perte (poids nul)'}, "
                   f"{len(puits_garde)} tenus de cote "
                   f"({', '.join(_pu[i] for i in puits_garde) or 'aucun'})", flush=True)
         else:
             print("  puits : aucun puits recevable dans ce sous-bassin, terme inactif", flush=True)
-            w_nappe = 0.0
+            w_water_table = 0.0
     # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03), MEANDRE_ET_NEIGE_MM = tau en mm d'equivalent
     # en eau : w = exp(-SWE_NEISIM / tau) par noeud et par jour, sur l'axe du forcage. Une
     # donnee et non le manteau simule, donc un poids fixe. Voir TrainingData.et_weight.
@@ -1390,10 +1390,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 # de la perte), « biais », « et » (MOD16 centre). Le signe dit ou l'optimiseur
                 # poussera : negatif, augmenter le champ fait baisser la cible.
                 if _cible == "etiage":
-                    from meandre.training.loss import differentiable_etiage_loss
+                    from meandre.training.loss import differentiable_low_flow_loss
                     _ob = _o_all[sl]
                     _okk = torch.isfinite(_ob)
-                    _L = differentiable_etiage_loss(_ob[_okk], Q[:, s["exutoire"]][_okk])
+                    _L = differentiable_low_flow_loss(_ob[_okk], Q[:, s["exutoire"]][_okk])
                 elif _cible == "et":
                     # Terme MOD16 centre, calcule comme le trainer corrige (2026-10-03) :
                     # moyenne glissante de 8 jours, chaque cote prive de sa moyenne.
@@ -1468,12 +1468,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # optimise un KGE de quinze ou quarante-cinq jours, la faute meme que R67
         # corrige ; slso.py passe per_station=True, le banc ne le faisait pas.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
-                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_plat=float(os.environ.get("MEANDRE_BANC_W_PLAT", "0")),
+                            w_nse=0.0, w_nrmse=0.0, w_dq=float(w_dq), w_fdc_low=float(w_fdc), w_low_flow=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_flat=float(os.environ.get("MEANDRE_BANC_W_PLAT", "0")),
                             w_dq_log=float(w_dq_log), station_var=_svar,
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
                             peak_threshold=_pthr if float(w_peak) > 0 else None,
-                            w_et=float(w_et), w_nappe=float(w_nappe), per_station=True,
+                            w_et=float(w_et), w_water_table=float(w_water_table), per_station=True,
                             # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
                             # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
@@ -1492,7 +1492,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # trois resultats identiques sans que rien ne le signale.
         loss_fn = HydroLoss(w_kge=float(w_kge), w_pbias=float(w_pbias), w_mse=float(w_mse),
                             w_nse=0.0, w_nrmse=0.0, station_var=_svar,
-                            w_dq=float(w_dq), w_fdc_bas=float(w_fdc), w_etiage=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_plat=float(os.environ.get("MEANDRE_BANC_W_PLAT", "0")), w_dq_log=float(w_dq_log),
+                            w_dq=float(w_dq), w_fdc_low=float(w_fdc), w_low_flow=float(os.environ.get("MEANDRE_BANC_W_ETIAGE", "0")), w_flat=float(os.environ.get("MEANDRE_BANC_W_PLAT", "0")), w_dq_log=float(w_dq_log),
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
                             peak_threshold=_pthr if float(w_peak) > 0 else None,
@@ -1653,7 +1653,7 @@ def main():
                   w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc,
                   w_dq_log=a.w_dq_log, quantile=a.quantile, charger=a.charger,
                   w_log_mse=a.w_log_mse, w_peak=a.w_peak,
-                  w_nappe=a.w_nappe, nappe_valid=a.nappe_valid)
+                  w_water_table=a.w_water_table, nappe_valid=a.nappe_valid)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
@@ -1665,7 +1665,7 @@ def main():
                   w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc, w_dq_log=a.w_dq_log,
                   quantile=a.quantile, charger=a.charger,
                   w_log_mse=a.w_log_mse, w_peak=a.w_peak,
-                  w_nappe=a.w_nappe, nappe_valid=a.nappe_valid)
+                  w_water_table=a.w_water_table, nappe_valid=a.nappe_valid)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,

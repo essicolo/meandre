@@ -34,7 +34,7 @@ _be = SourceFileLoader("be", os.path.join(os.path.dirname(os.path.abspath(__file
 
 # Termes candidats de la recette décomposée, avec le nom de leur poids.
 CANDIDATS = [("calendrier", "w_r"), ("volume", "w_beta"), ("amplitude", "w_gamma"),
-             ("pics par rapport", "w_peak_ratio"), ("soutien d'étiage", "w_fdc_bas"),
+             ("pics par rapport", "w_peak_ratio"), ("soutien d'étiage", "w_fdc_low"),
              ("variations", "w_dq")]
 
 # Défauts de référence. La sévérité de chacun est choisie pour qu'un hydrologue les juge

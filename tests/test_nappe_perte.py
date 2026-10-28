@@ -7,7 +7,7 @@ connues aux trois cas de corrélation, écart des puits trop courts, et garde-fo
 """
 import torch
 
-from meandre.training.loss import nappe_anomaly_loss
+from meandre.training.loss import water_table_anomaly_loss
 
 
 def _series(graine=0, mois=120, puits=8):
@@ -17,18 +17,18 @@ def _series(graine=0, mois=120, puits=8):
 
 def test_valeurs_aux_trois_correlations():
     z = _series()
-    assert float(nappe_anomaly_loss(z, z)) < 1e-10
-    assert abs(float(nappe_anomaly_loss(z, -z)) - 4.0) < 0.2
-    assert abs(float(nappe_anomaly_loss(z, _series(1))) - 2.0) < 0.2
+    assert float(water_table_anomaly_loss(z, z)) < 1e-10
+    assert abs(float(water_table_anomaly_loss(z, -z)) - 4.0) < 0.2
+    assert abs(float(water_table_anomaly_loss(z, _series(1))) - 2.0) < 0.2
 
 
 def test_insensible_a_l_echelle_et_au_decalage():
     """Multiplier une série par un facteur ou la décaler ne change pas la perte."""
     z = _series()
     o = _series(2)
-    base = float(nappe_anomaly_loss(z, o))
-    assert abs(float(nappe_anomaly_loss(z * 7.0 + 13.0, o)) - base) < 1e-9
-    assert abs(float(nappe_anomaly_loss(z, o * 0.1 - 5.0)) - base) < 1e-9
+    base = float(water_table_anomaly_loss(z, o))
+    assert abs(float(water_table_anomaly_loss(z * 7.0 + 13.0, o)) - base) < 1e-9
+    assert abs(float(water_table_anomaly_loss(z, o * 0.1 - 5.0)) - base) < 1e-9
 
 
 def test_puits_trop_court_ecarte():
@@ -36,14 +36,14 @@ def test_puits_trop_court_ecarte():
     z = _series(mois=120, puits=2)
     m = torch.zeros_like(z, dtype=torch.bool)
     m[:10] = True
-    assert float(nappe_anomaly_loss(z, -z, masque=m)) == 0.0
+    assert float(water_table_anomaly_loss(z, -z, mask=m)) == 0.0
     m[:30] = True
-    assert float(nappe_anomaly_loss(z, -z, masque=m)) > 1.0
+    assert float(water_table_anomaly_loss(z, -z, mask=m)) > 1.0
 
 
 def test_vide_rend_zero():
     v = torch.zeros(0, 0)
-    assert float(nappe_anomaly_loss(v, v)) == 0.0
+    assert float(water_table_anomaly_loss(v, v)) == 0.0
 
 
 def test_garde_fou_porosite_nul_dans_la_plage():
@@ -51,18 +51,18 @@ def test_garde_fou_porosite_nul_dans_la_plage():
     z = _series()
     amp_s = torch.full((z.shape[1],), 2.0, dtype=torch.float64)
     amp_o = torch.full((z.shape[1],), 1.0, dtype=torch.float64)
-    base = float(nappe_anomaly_loss(z, _series(3)))
-    dedans = float(nappe_anomaly_loss(z, _series(3), sy=0.05, amplitude_sim=amp_s,
-                                      amplitude_obs=amp_o, poids_porosite=1.0))
-    dehors = float(nappe_anomaly_loss(z, _series(3), sy=0.05, amplitude_sim=amp_s * 20.0,
-                                      amplitude_obs=amp_o, poids_porosite=1.0))
+    base = float(water_table_anomaly_loss(z, _series(3)))
+    dedans = float(water_table_anomaly_loss(z, _series(3), sy=0.05, amplitude_sim=amp_s,
+                                      amplitude_obs=amp_o, porosity_weight=1.0))
+    dehors = float(water_table_anomaly_loss(z, _series(3), sy=0.05, amplitude_sim=amp_s * 20.0,
+                                      amplitude_obs=amp_o, porosity_weight=1.0))
     assert abs(dedans - base) < 1e-9
     assert dehors > base + 0.1
 
 
 def test_gradient_remonte_vers_la_simulation():
     z = _series().requires_grad_(True)
-    nappe_anomaly_loss(z, _series(4)).backward()
+    water_table_anomaly_loss(z, _series(4)).backward()
     assert torch.isfinite(z.grad).all()
     assert float(z.grad.abs().sum()) > 0.0
 
@@ -78,15 +78,15 @@ def test_terme_borne_meme_si_la_simulation_est_plate():
     plate = torch.full_like(obs, 3.0)
     presque = plate + 1e-9 * _series(9)
     for sim in (plate, presque):
-        v = float(nappe_anomaly_loss(sim, obs))
+        v = float(water_table_anomaly_loss(sim, obs))
         assert 0.0 <= v <= 4.0
     # Le terme reste borné dans tous les cas de figure.
-    assert float(nappe_anomaly_loss(obs, obs)) <= 4.0
-    assert float(nappe_anomaly_loss(-obs, obs)) <= 4.0
+    assert float(water_table_anomaly_loss(obs, obs)) <= 4.0
+    assert float(water_table_anomaly_loss(-obs, obs)) <= 4.0
 
 
 def test_valeur_neutre_pour_un_puits_sans_variance():
     """Un puits que la simulation ne distingue pas reçoit la valeur neutre, soit 2."""
     obs = _series(puits=1)
     plate = torch.full_like(obs, 1.5)
-    assert abs(float(nappe_anomaly_loss(plate, obs)) - 2.0) < 1e-6
+    assert abs(float(water_table_anomaly_loss(plate, obs)) - 2.0) < 1e-6

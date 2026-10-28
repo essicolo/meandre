@@ -32,7 +32,7 @@ from meandre.utils import paths as _paths
 
 _ici = os.path.dirname(os.path.abspath(__file__))
 _ii = SourceFileLoader("ii", os.path.join(_ici, "identifiabilite_indice_base.py")).load_module()
-POIDS = {"kge": (1.0, L.differentiable_kge_loss), "pbias": (0.5, L.differentiable_pbias_loss), "log_mse": (0.3, L.differentiable_log_mse_loss), "etiage": (1.0, L.differentiable_etiage_loss), "fdc_bas": (1.0, L.differentiable_fdc_bas_loss)}
+POIDS = {"kge": (1.0, L.differentiable_kge_loss), "pbias": (0.5, L.differentiable_pbias_loss), "log_mse": (0.3, L.differentiable_log_mse_loss), "etiage": (1.0, L.differentiable_low_flow_loss), "fdc_bas": (1.0, L.differentiable_fdc_low_loss)}
 SOURCES = [["physitel-texture"], ["depots-sigeom"], ["depots-sigeom-carto"], ["drainage-fusion-sigeom2"], ["drainage-hierarchique"], ["slc-drainage"], ["slc-hydro", "slc-drainage"]]
 
 

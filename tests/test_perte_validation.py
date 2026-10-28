@@ -13,7 +13,7 @@ from meandre.training.trainer import Trainer
 
 def _faux_trainer(**poids):
     tr = Trainer.__new__(Trainer)
-    defaut = dict(w_kge=1.0, w_pbias=0.5, w_log_mse=0.0, w_etiage=0.0, w_fdc_bas=0.0)
+    defaut = dict(w_kge=1.0, w_pbias=0.5, w_log_mse=0.0, w_low_flow=0.0, w_fdc_low=0.0)
     defaut.update(poids)
     tr.loss_fn = types.SimpleNamespace(**defaut)
     return tr
@@ -29,7 +29,7 @@ def test_etiage_trop_haut_coute_avec_le_terme_d_etiage():
     q = _serie()
     haut = torch.where(q < 1.5, q * 1.4, q)
     sans = _faux_trainer()
-    avec = _faux_trainer(w_etiage=1.0)
+    avec = _faux_trainer(w_low_flow=1.0)
     assert avec._validation_discharge_loss(q, haut) > sans._validation_discharge_loss(q, haut)
     assert avec._validation_discharge_loss(q, q) < 1e-3
 

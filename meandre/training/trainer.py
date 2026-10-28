@@ -694,7 +694,7 @@ class Trainer:
                 if "nappe" in _nz and "nappe_poids_applique" in train_comps:
                     _nz["nappe"] = _nz["nappe"]
                     _pa = float(train_comps["nappe_poids_applique"])
-                    print(f"            puits : poids demande {self.loss_fn.w_nappe:.2f}, "
+                    print(f"            puits : poids demande {self.loss_fn.w_water_table:.2f}, "
                           f"poids applique moyen {_pa:.2f}", flush=True)
                 if _nz:
                     _tot = float(train_loss) or 1.0
@@ -919,7 +919,7 @@ class Trainer:
         for term_weight, target_value, term_name in (
             (getattr(self.loss_fn, "w_snow", 0.0), data.swe_obs, "w_snow / swe_obs (MODIS snow cover)"),
             (getattr(self.loss_fn, "w_tws", 0.0), data.tws_obs, "w_tws / tws_obs (GRACE TWS)"),
-            (getattr(self.loss_fn, "w_nappe", 0.0), data.water_table_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
+            (getattr(self.loss_fn, "w_water_table", 0.0), data.water_table_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
             (getattr(self.loss_fn, "w_et", 0.0), data.et_obs, "w_et / et_obs (MODIS MOD16)"),
             (getattr(self.loss_fn, "w_swe_mass", 0.0), data.swe_mass_obs,
              "w_swe_mass / swe_mass_obs (CanSWE, masse du manteau)"),
@@ -1192,7 +1192,7 @@ class Trainer:
             # gradient) plutôt qu'un 2e forward détaché.
             _need_et = (self.loss_fn.w_et > 0 and data.et_obs is not None)
             _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
-            _need_water_table = (getattr(self.loss_fn, "w_nappe", 0.0) > 0
+            _need_water_table = (getattr(self.loss_fn, "w_water_table", 0.0) > 0
                            and data.water_table_obs is not None and data.water_table_idx is not None)
             # Neige : MODIS snow cover (fraction) cale le taux de FONTE (sp_fonte).
             # On compare une fraction de couverture SIMULÉE = 1-exp(-SWE/SWE_REF)
@@ -1336,7 +1336,7 @@ class Trainer:
                 # prise au pas journalier plutot qu'au mois : le lissage mensuel servait au
                 # diagnostic, la perte gagne a voir tous les points.
                 if _need_water_table:
-                    from meandre.training.loss import nappe_anomaly_loss
+                    from meandre.training.loss import water_table_anomaly_loss
                     # La grandeur simulee est la PROFONDEUR de la surface libre quand la
                     # nappe libre est active, sinon le STOCK souterrain. Le terme travaille
                     # sur des anomalies reduites, donc l'echelle est eliminee et les deux
@@ -1358,7 +1358,7 @@ class Trainer:
                     if _on.device != _zn.device:
                         _on = _on.to(_zn.device)
                     _mn = ~torch.isnan(_on)
-                    L_water_table = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
+                    L_water_table = water_table_anomaly_loss(_zn, torch.nan_to_num(_on), mask=_mn)
                     # PART PLAFONNEE (2026-09-23). Le terme vaut 2(1 - r) en moyenne sur les
                     # puits : la ou la nappe est mal simulee, il prend jusqu'a la moitie de la
                     # perte a poids egal, 53 % au Saint-Laurent nord-ouest et 49 % en Gaspesie
@@ -1371,7 +1371,7 @@ class Trainer:
                     # de perte a deja ajoutes. La gravimetrie et la masse du manteau viennent
                     # apres et n'en font pas partie.
                     _part_max = float(settings.get("trainer.groundwater_max_share"))
-                    _weight_n = self.loss_fn.w_nappe
+                    _weight_n = self.loss_fn.w_water_table
                     _ref = float(loss_chunk.detach())
                     if _part_max > 0 and _ref > 0 and float(L_water_table.detach()) > 0:
                         _weight_n = min(_weight_n, _part_max * _ref / float(L_water_table.detach()))
@@ -2161,8 +2161,8 @@ class Trainer:
     def _validation_discharge_loss(self, q_obs_val: Tensor, q_sim_val: Tensor) -> float:
         """Termes de debit de la perte, memes poids, par station puis moyennes ponderees."""
         from meandre.training.loss import (differentiable_kge_loss, differentiable_pbias_loss,
-                                           differentiable_log_mse_loss, differentiable_etiage_loss,
-                                           differentiable_fdc_bas_loss)
+                                           differentiable_log_mse_loss, differentiable_low_flow_loss,
+                                           differentiable_fdc_low_loss)
         lf = self.loss_fn
         term_list = []
         for s in range(q_sim_val.shape[1]):
@@ -2174,10 +2174,10 @@ class Trainer:
             t = t + getattr(lf, "w_pbias", 0.0) * differentiable_pbias_loss(qo, qs)
             if getattr(lf, "w_log_mse", 0.0) > 0:
                 t = t + lf.w_log_mse * differentiable_log_mse_loss(qo, qs)
-            if getattr(lf, "w_etiage", 0.0) > 0:
-                t = t + lf.w_etiage * differentiable_etiage_loss(qo, qs)
-            if getattr(lf, "w_fdc_bas", 0.0) > 0:
-                t = t + lf.w_fdc_bas * differentiable_fdc_bas_loss(qo, qs)
+            if getattr(lf, "w_low_flow", 0.0) > 0:
+                t = t + lf.w_low_flow * differentiable_low_flow_loss(qo, qs)
+            if getattr(lf, "w_fdc_low", 0.0) > 0:
+                t = t + lf.w_fdc_low * differentiable_fdc_low_loss(qo, qs)
             term_list.append(float(t))
         return float(sum(term_list) / len(term_list)) if term_list else float("inf")
 

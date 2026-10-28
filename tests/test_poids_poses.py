@@ -12,12 +12,12 @@ import io
 import os
 import tomllib
 
-from meandre.training.loss import HydroLoss
+from meandre.training.loss import HydroLoss, normalize_loss_section
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PILOTE = os.path.join(RACINE, "meandre", "run", "territory_data.py")
 # Poses ailleurs que dans l'appel de construction, par le pilote ou la phase quantile.
-HORS_APPEL = {"w_nappe", "w_quantile"}
+HORS_APPEL = {"w_water_table", "w_quantile"}
 
 
 def _poids_de_lappel():
@@ -34,7 +34,7 @@ def test_les_poids_des_configurations_sont_tous_poses():
     acceptes = set(inspect.signature(HydroLoss.__init__).parameters)
     manquants = {}
     for f in glob.glob(os.path.join(RACINE, ".runs", "quebec", "*.toml")) + glob.glob(os.path.join(RACINE, "experiments", "**", "config", "*.toml"), recursive=True):
-        section = tomllib.load(open(f, "rb")).get("loss", {})
+        section = normalize_loss_section(tomllib.load(open(f, "rb")).get("loss", {}))
         for cle, valeur in section.items():
             if not cle.startswith("w_") or cle not in acceptes or cle in HORS_APPEL:
                 continue
@@ -45,7 +45,7 @@ def test_les_poids_des_configurations_sont_tous_poses():
 
 def test_les_termes_du_kge_decompose_sont_poses():
     poses = _poids_de_lappel()
-    for cle in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession", "w_plat"):
+    for cle in ("w_r", "w_beta", "w_gamma", "w_peak_ratio", "w_recession", "w_flat"):
         assert cle in poses, f"{cle} n'atteint pas l'objet de perte"
 
 

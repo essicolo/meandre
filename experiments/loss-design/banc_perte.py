@@ -77,7 +77,7 @@ def termes(q_obs, q_sim, var, q75):
     sv = torch.tensor([var], dtype=torch.float32)
     pt = torch.tensor([q75], dtype=torch.float32)
     base = dict(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_nse=0.0, w_nrmse=0.0,
-                w_log_nse=0.0, w_log_mse=0.0, w_dq=0.0, w_fdc_bas=0.0, w_dq_log=0.0,
+                w_log_nse=0.0, w_log_mse=0.0, w_dq=0.0, w_fdc_low=0.0, w_dq_log=0.0,
                 w_peak=0.0, per_station=True, station_var=sv)
     out = {}
     for nom, cle, extra in [("KGE", "w_kge", {}), ("biais de volume", "w_pbias", {}),
@@ -86,7 +86,7 @@ def termes(q_obs, q_sim, var, q75):
                             ("pics", "w_peak", {"peak_threshold": pt}),
                             ("variations d'un jour", "w_dq", {}),
                             ("variations log", "w_dq_log", {}),
-                            ("soutien d'étiage", "w_fdc_bas", {})]:
+                            ("soutien d'étiage", "w_fdc_low", {})]:
         f = HydroLoss(**{**base, cle: 1.0}, **extra)
         with torch.no_grad():
             r = f(q_obs=o, q_sim=s, station_mask=mk)

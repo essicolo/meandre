@@ -61,7 +61,7 @@ def test_les_poids_sont_nuls_par_defaut():
 
 def _perte(**poids):
     base = dict(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_nse=0.0, w_nrmse=0.0, w_log_nse=0.0,
-                w_log_mse=0.0, w_dq=0.0, w_fdc_bas=0.0, w_dq_log=0.0, w_peak=0.0,
+                w_log_mse=0.0, w_dq=0.0, w_fdc_low=0.0, w_dq_log=0.0, w_peak=0.0,
                 per_station=True)
     return HydroLoss(**{**base, **poids})
 

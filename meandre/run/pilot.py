@@ -113,7 +113,8 @@ if _per:
 if _posees:
     print(f"[recette] {os.path.basename(BASE_CFG)} : {len(_posees)} reglage(s) pose(s) "
           f"depuis le fichier : {', '.join(_posees)}")
-lcfg = dict(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
+from meandre.training.loss import normalize_loss_section
+lcfg = normalize_loss_section(cfg["loss"]); tcfg = cfg["training"]; mcfg = cfg["model"]
 if "ETL_WSNOW" in os.environ:
     # seuils de fonte appris contre MOD10 (fonte à 0 jusqu'à Tmax+5.5 au banc freshet
     # = 2 semaines de retard ; la donnée entre par la loss, leçon pilote4b/4c)
@@ -151,7 +152,7 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
                    ("ETL_WPEAKRATIO", "w_peak_ratio"),
                    # ETIAGE DIRECT (2026-10-01) : ecart absolu des logarithmes sur les jours
                    # sous le 30e centile observe, meme terme qu'au banc de sous-bassin.
-                   ("ETL_WETIAGE", "w_etiage"),
+                   ("ETL_WETIAGE", "w_low_flow"),
                    # VITESSE DE VIDANGE (2026-09-21). Seul terme dont la reponse a la
                    # partition entre ecoulement hypodermique et nappe n'est pas confondue
                    # avec le volume : 0,0001 contre 0,20 pour le terme de variations.
@@ -161,7 +162,7 @@ for _cle, _nom in (("ETL_WKGE", "w_kge"), ("ETL_WMSE", "w_mse"), ("ETL_WPBIAS", 
                    # plus faible.
                    ("ETL_WRECESS", "w_recession"),
                    # PART DE JOURS PLATS (2026-10-16, R382) : seul terme qui voie la platitude d'hiver.
-                   ("ETL_WPLAT", "w_plat")):
+                   ("ETL_WPLAT", "w_flat")):
     # Poids des termes de debit, exposes le 2026-09-05 : le balayage de neuf pertes du
     # meme jour a montre que le KGE dans la perte coute sept points de pointes et que la
     # perte sans lui ne degrade rien (R89). Il faut pouvoir l'eteindre a l'echelle
@@ -184,8 +185,8 @@ if "ETL_WDQ" in os.environ:
 if "ETL_WFDC" in os.environ:
     # Soutien d'etiage Q20/Q50 : substitut d'indice d'ecoulement de base, seule prise sur
     # le CHEMIN de l'eau a partir des debits observes (R86).
-    lcfg["w_fdc_bas"] = float(os.environ["ETL_WFDC"])
-    print(f"[etl] w_fdc_bas = {lcfg['w_fdc_bas']} (soutien d'etiage)")
+    lcfg["w_fdc_low"] = float(os.environ["ETL_WFDC"])
+    print(f"[etl] w_fdc_low = {lcfg['w_fdc_low']} (soutien d'etiage)")
 if "ETL_WTWS" in os.environ:
     # GRACE (anomalie de stockage total). Actif par défaut à 0.2 via le fichier de
     # config ; on l'expose pour pouvoir mesurer ce qu'il apporte OU coûte, sa ligne de
@@ -1096,7 +1097,7 @@ tconf = TrainingConfig(
     # Choix du point de reprise (2026-10-01) : par la perte de debit sur la validation des que
     # l'etiage est dans la perte ; avec le KGE seul, l'etiage ne comptait pas dans le modele
     # retenu. ETL_CHOIX force kge_median ou val_loss.
-    best_metric=os.environ.get("ETL_CHOIX", "val_loss" if (lcfg.get("w_etiage", 0.0) > 0 or lcfg.get("w_fdc_bas", 0.0) > 0) else "kge_median"),
+    best_metric=os.environ.get("ETL_CHOIX", "val_loss" if (lcfg.get("w_low_flow", 0.0) > 0 or lcfg.get("w_fdc_low", 0.0) > 0) else "kge_median"),
     # autopilot du TOML : LR plateau + garde-fou régression (sans lui, GASP/MONT-etl
     # divergeaient après le pic epoch ~7-12, val -0.15 non rattrapée — bug 2026-07-22)
     # Montee du taux : cinq epoques par defaut, ce qui vide un entrainement de huit epoques ;
@@ -1132,7 +1133,7 @@ for _nom, _poids, _cible in (
         ("CanSWE masse du manteau", getattr(_lf, "w_swe_mass", 0.0), td.swe_mass_obs),
         ("GRACE TWS mensuel", getattr(_lf, "w_tws", 0.0), td.tws_obs),
         ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs),
-        ("Niveaux de nappe mesures", getattr(_lf, "w_nappe", 0.0), td.water_table_obs)):
+        ("Niveaux de nappe mesures", getattr(_lf, "w_water_table", 0.0), td.water_table_obs)):
     if _nom == "  mode ET":
         print(f"        {_nom:<26s} {_poids}")
         continue
@@ -1190,8 +1191,8 @@ def _poids(nom):
 
 _besoins = {"etr": _poids("w_et"),
             "swe": _poids("w_snow") or _poids("w_swe_mass"),
-            "s_gw": _poids("w_nappe") or _poids("w_tws"),
-            "profondeur_nappe_m": _poids("w_nappe"),
+            "s_gw": _poids("w_water_table") or _poids("w_tws"),
+            "profondeur_nappe_m": _poids("w_water_table"),
             "theta1": _poids("w_tws"), "theta2": _poids("w_tws"),
             "theta3": _poids("w_tws")}
 _garde = sorted(k for k, v in _besoins.items() if float(v or 0.0) > 0.0)
@@ -1360,8 +1361,8 @@ from meandre.training import loss as _lmod
 _lf = r["loss_fn"]
 _termes_ho = {"kge": (_lf.w_kge, _lmod.differentiable_kge_loss), "pbias": (_lf.w_pbias, _lmod.differentiable_pbias_loss),
               "log_mse": (getattr(_lf, "w_log_mse", 0.0), _lmod.differentiable_log_mse_loss),
-              "etiage": (getattr(_lf, "w_etiage", 0.0), _lmod.differentiable_etiage_loss),
-              "fdc_bas": (getattr(_lf, "w_fdc_bas", 0.0), _lmod.differentiable_fdc_bas_loss)}
+              "etiage": (getattr(_lf, "w_low_flow", 0.0), _lmod.differentiable_low_flow_loss),
+              "fdc_bas": (getattr(_lf, "w_fdc_low", 0.0), _lmod.differentiable_fdc_low_loss)}
 _som_ho = {k: [] for k, (w, _) in _termes_ho.items() if w > 0}
 _noeud_ho = []
 _st_noeuds = td.station_idx.cpu().numpy()

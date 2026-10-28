@@ -41,7 +41,7 @@ ETIAGE = (7, 8, 9)
 TERMES = [("KGE", "w_kge"), ("biais de volume", "w_pbias"), ("écart quadratique", "w_mse"),
           ("écart quadratique log", "w_log_mse"), ("pics", "w_peak"),
           ("pics par rapport", "w_peak_ratio"), ("calendrier", "w_r"), ("volume", "w_beta"),
-          ("amplitude", "w_gamma"), ("variations", "w_dq"), ("soutien d'étiage", "w_fdc_bas"),
+          ("amplitude", "w_gamma"), ("variations", "w_dq"), ("soutien d'étiage", "w_fdc_low"),
           ("vitesse de vidange", "w_recession")]
 
 
@@ -78,7 +78,7 @@ def deformations(q, mois):
 
 def note(cle, q_obs, q_sim, var, q75):
     base = dict(w_kge=0.0, w_pbias=0.0, w_mse=0.0, w_nse=0.0, w_nrmse=0.0, w_log_nse=0.0,
-                w_log_mse=0.0, w_dq=0.0, w_fdc_bas=0.0, w_dq_log=0.0, w_peak=0.0,
+                w_log_mse=0.0, w_dq=0.0, w_fdc_low=0.0, w_dq_log=0.0, w_peak=0.0,
                 w_r=0.0, w_beta=0.0, w_gamma=0.0, w_peak_ratio=0.0, w_recession=0.0,
                 per_station=True,
                 station_var=torch.tensor([var]), peak_threshold=torch.tensor([q75]))

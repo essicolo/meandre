@@ -18,8 +18,8 @@ def besoins(loss_fn, lcfg):
 
     d = {"etr": poids("w_et"),
          "swe": poids("w_snow") or poids("w_swe_mass"),
-         "s_gw": poids("w_nappe") or poids("w_tws"),
-         "profondeur_nappe_m": poids("w_nappe"),
+         "s_gw": poids("w_water_table") or poids("w_tws"),
+         "profondeur_nappe_m": poids("w_water_table"),
          "theta1": poids("w_tws")}
     return sorted(k for k, v in d.items() if v > 0.0)
 
@@ -32,8 +32,8 @@ class _Perte:
 
 def test_un_poids_pose_apres_coup_est_vu():
     """Le cas exact qui a echoue : w_nappe absent de la configuration."""
-    assert "s_gw" in besoins(_Perte(w_nappe=1.0), {})
-    assert "profondeur_nappe_m" in besoins(_Perte(w_nappe=1.0), {})
+    assert "s_gw" in besoins(_Perte(w_water_table=1.0), {})
+    assert "profondeur_nappe_m" in besoins(_Perte(w_water_table=1.0), {})
 
 
 def test_un_poids_de_la_configuration_seule_est_vu():

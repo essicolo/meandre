@@ -41,7 +41,7 @@ CATALOGUE: dict[str, Observable] = {
     "tws": Observable("tws", "theta1+theta2+theta3+swe+s_gw+canopy+wet_vol", "w_tws", ("shape", "level"), "GRACE", "Stock d'eau total du domaine, mensuel ; en forme seulement."),
     "swe_mass": Observable("swe_mass", "swe", "w_swe_mass", ("level",), "CanSWE", "Masse du manteau aux sites du réseau au sol."),
     "snow": Observable("snow", "swe", "w_snow", ("cover",), "MOD10", "Couverture nivale ; fraction simulée 1 - exp(-SWE/référence)."),
-    "wells": Observable("wells", "profondeur_nappe", "w_nappe", ("shape",), "RSESQ", "Niveaux de nappe, en anomalies réduites et centrées."),
+    "wells": Observable("wells", "profondeur_nappe", "w_water_table", ("shape",), "RSESQ", "Niveaux de nappe, en anomalies réduites et centrées."),
 }
 KEYS = {"weight", "mode", "snow_scale_mm"}
 
