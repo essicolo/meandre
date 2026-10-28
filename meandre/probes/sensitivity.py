@@ -136,7 +136,7 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
     champs = [f.name for f in dataclasses.fields(type(sp0))
               if torch.is_tensor(getattr(sp0, f.name))]
     mults = {c: torch.ones((), device=device, requires_grad=True) for c in champs}
-    model.spatial_encoder.multiplicateurs = mults
+    model.spatial_encoder.multipliers = mults
     cles = list(mults)
     n_blocs = (jours + bloc - 1) // bloc
     print(f"[sensibilite] {jours} jours en {n_blocs} blocs de {bloc}, {len(champs)} champs",

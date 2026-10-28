@@ -36,7 +36,7 @@ def test_sans_multiplicateur_le_champ_est_intact():
 
 def test_un_multiplicateur_agit_sur_le_seul_champ_vise():
     r, sp = _Faux(), _params()
-    r.multiplicateurs = {"K_sat_1": torch.tensor(3.0)}
+    r.multipliers = {"K_sat_1": torch.tensor(3.0)}
     sortie = r._applique_multiplicateurs(sp)
     assert float(sortie.K_sat_1[0]) == pytest.approx(6.0)
     assert float(sortie.K_sat_2[0]) == pytest.approx(2.0)
@@ -44,7 +44,7 @@ def test_un_multiplicateur_agit_sur_le_seul_champ_vise():
 
 def test_le_facteur_un_ne_change_rien():
     r, sp = _Faux(), _params()
-    r.multiplicateurs = {"K_sat_1": torch.tensor(1.0)}
+    r.multipliers = {"K_sat_1": torch.tensor(1.0)}
     assert float(r._applique_multiplicateurs(sp).K_sat_1[0]) == pytest.approx(2.0)
 
 
@@ -52,7 +52,7 @@ def test_le_gradient_remonte_jusqu_au_facteur():
     """Sans cela le banc de sensibilite mesurerait zero partout."""
     r, sp = _Faux(), _params()
     m = torch.ones((), requires_grad=True)
-    r.multiplicateurs = {"porosity_1": m}
+    r.multipliers = {"porosity_1": m}
     sortie = r._applique_multiplicateurs(sp)
     sortie.porosity_1.sum().backward()
     assert float(m.grad) == pytest.approx(6.0), "d(somme)/d(facteur) = somme du champ"
@@ -60,12 +60,12 @@ def test_le_gradient_remonte_jusqu_au_facteur():
 
 def test_un_champ_inexistant_echoue_bruyamment():
     r, sp = _Faux(), _params()
-    r.multiplicateurs = {"champ_invente": torch.tensor(1.0)}
+    r.multipliers = {"champ_invente": torch.tensor(1.0)}
     with pytest.raises(AttributeError, match="absent du champ spatial"):
         r._applique_multiplicateurs(sp)
 
 
 def test_un_dictionnaire_vide_est_neutre():
     r, sp = _Faux(), _params()
-    r.multiplicateurs = {}
+    r.multipliers = {}
     assert r._applique_multiplicateurs(sp) is sp

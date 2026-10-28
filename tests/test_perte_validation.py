@@ -30,12 +30,12 @@ def test_etiage_trop_haut_coute_avec_le_terme_d_etiage():
     haut = torch.where(q < 1.5, q * 1.4, q)
     sans = _faux_trainer()
     avec = _faux_trainer(w_etiage=1.0)
-    assert avec._perte_debit_validation(q, haut) > sans._perte_debit_validation(q, haut)
-    assert avec._perte_debit_validation(q, q) < 1e-3
+    assert avec._validation_discharge_loss(q, haut) > sans._validation_discharge_loss(q, haut)
+    assert avec._validation_discharge_loss(q, q) < 1e-3
 
 
 def test_station_trop_courte_ignoree():
     q = _serie()
     q_court = q.clone()
     q_court[20:] = float("nan")
-    assert _faux_trainer()._perte_debit_validation(q_court, q) == float("inf")
+    assert _faux_trainer()._validation_discharge_loss(q_court, q) == float("inf")

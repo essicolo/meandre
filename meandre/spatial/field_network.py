@@ -679,7 +679,7 @@ class SpatialFieldNetwork(nn.Module):
             # Toutes les sorties du bloc sont gardees : le champ est appele par la simulation
             # puis par l'ancrage sur la litterature, et seule la somme fait le gradient du bloc.
             raw.retain_grad()
-            self.brut_capture = getattr(self, "brut_capture", []) + [raw]
+            self.raw_capture = getattr(self, "raw_capture", []) + [raw]
         return self._apply_constraints(raw)
 
     def enable_routing_head(self, n_territorial: int) -> None:
@@ -1176,7 +1176,7 @@ class SpatialFieldNetwork(nn.Module):
                 if getattr(sp, nom).shape != val.shape:
                     raise ValueError(f"carte figee de '{nom}' de forme {tuple(val.shape)}, appel de forme {tuple(getattr(sp, nom).shape)}")
             sp = _remplace(sp, **figees)
-        m = getattr(self, "multiplicateurs", None)
+        m = getattr(self, "multipliers", None)
         if not m:
             return sp
 

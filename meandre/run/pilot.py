@@ -1021,7 +1021,7 @@ if _settings.get("spatial.priors"):
 if os.environ.get("ETL_MULT_FIXE"):
     # Multiplicateurs FIXES sur des sorties du champ (2026-10-04), meme syntaxe que le banc
     # ("K_c:1.3,C_f:0.9") : passe avant de sensibilite sur un modele entraine.
-    model.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=DEVICE) for a in os.environ["ETL_MULT_FIXE"].split(",")}
+    model.spatial_encoder.multipliers = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=DEVICE) for a in os.environ["ETL_MULT_FIXE"].split(",")}
     print(f"[etl] champ spatial : multiplicateurs fixes {os.environ['ETL_MULT_FIXE']}")
 if os.environ.get("MEANDRE_DUMP_CHAMPS"):
     # CHAMPS SEULS (2026-10-27) : les sorties du champ spatial par troncon, modele charge (priors et
@@ -1132,7 +1132,7 @@ for _nom, _poids, _cible in (
         ("CanSWE masse du manteau", getattr(_lf, "w_swe_mass", 0.0), td.swe_mass_obs),
         ("GRACE TWS mensuel", getattr(_lf, "w_tws", 0.0), td.tws_obs),
         ("GRACE biais saisonnier", getattr(_lf, "w_tws_clim", 0.0), td.tws_obs),
-        ("Niveaux de nappe mesures", getattr(_lf, "w_nappe", 0.0), td.nappe_obs)):
+        ("Niveaux de nappe mesures", getattr(_lf, "w_nappe", 0.0), td.water_table_obs)):
     if _nom == "  mode ET":
         print(f"        {_nom:<26s} {_poids}")
         continue

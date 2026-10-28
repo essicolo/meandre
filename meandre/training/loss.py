@@ -898,7 +898,7 @@ class HydroLoss(nn.Module):
         self.plat_mois = tuple(int(m) for m in plat_mois)
         # Jour de l'annee de chaque pas du bloc courant, pose par le trainer avant l'appel :
         # le terme de platitude ne regarde que les mois `plat_mois` du bloc (R382).
-        self.doy_bloc = None
+        self.doy_block = None
         self.w_physics = w_physics
         self.per_station = per_station
         if station_weights is not None:
@@ -1138,12 +1138,12 @@ class HydroLoss(nn.Module):
                             gamma_v.append(_remis(differentiable_gamma_loss(q_o_v, q_s_v)))
                         if self.w_recession > 0:
                             rec_v.append(_remis(differentiable_recession_loss(q_o_v, q_s_v)))
-                        if self.w_plat > 0 and self.doy_bloc is not None:
+                        if self.w_plat > 0 and self.doy_block is not None:
                             # BLOC SEUL ET MOIS CIBLES (2026-10-16, R382). Sur la serie entiere,
                             # l'optimiseur satisfaisait le terme en rendant l'ete nerveux et
                             # gardait l'hiver plat. Sur le seul bloc de 90 jours et les seuls
                             # jours des mois cibles, aucune compensation entre saisons.
-                            _mois = _mois_du_jour(self.doy_bloc.to(v.device))
+                            _mois = _mois_du_jour(self.doy_block.to(v.device))
                             _k = v & torch.isin(_mois, torch.tensor(self.plat_mois, device=v.device))
                             if int(_k.sum()) >= 20:
                                 plat_v.append(differentiable_flat_days_loss(

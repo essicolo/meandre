@@ -29,7 +29,7 @@ def test_multiplicateur_applique_apres_le_gel():
     net = SpatialFieldNetwork.__new__(SpatialFieldNetwork)
     torch.nn.Module.__init__(net)
     net.figer_au_prochain_appel = {"K_sat_1"}
-    net.multiplicateurs = {"K_sat_1": torch.tensor(0.3)}
+    net.multipliers = {"K_sat_1": torch.tensor(0.3)}
     net._applique_multiplicateurs(_sp(0.2))
     sortie = net._applique_multiplicateurs(_sp(0.9))
     assert torch.allclose(sortie.K_sat_1, torch.full((5,), 0.06))

@@ -743,7 +743,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # epoques regionales ne peuvent pas dire. Les puits du domaine sont restreints aux
     # nœuds du sous-bassin, puis partages par un ordre stable : la moitie dans la perte, la
     # moitie tenue de cote et evaluee en fin d'entrainement.
-    nappe_obs = nappe_idx = None
+    water_table_obs = water_table_idx = None
     puits_garde, nappe_garde = [], None
     # Les puits sont extraits des que la moitie tenue de cote doit etre evaluee, y compris
     # pour le temoin a poids nul : sans cela le temoin n'avait pas de ligne de puits a
@@ -770,8 +770,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             _entraine = [i for i in range(len(_pu)) if i not in set(puits_garde)]
             _sb_idx = [_pos[int(_cn.node_idx[_dans[i]])] for i in range(len(_pu))]
             if float(w_nappe) > 0:
-                nappe_obs = torch.tensor(_val[:, _entraine], device=dev)
-                nappe_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
+                water_table_obs = torch.tensor(_val[:, _entraine], device=dev)
+                water_table_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
             nappe_garde = (_val[:, puits_garde], [_sb_idx[i] for i in puits_garde],
                            [_pu[i] for i in puits_garde])
             print(f"  puits : {len(_pu)} dans le sous-bassin, {len(_entraine)} "
@@ -795,13 +795,13 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     td = TrainingData(train_slice=tr_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[tr_sl.start:],
                          "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None),
-                         "nappe_obs": (nappe_obs[tr_sl.start:] if nappe_obs is not None else None),
-                         "nappe_idx": nappe_idx})
+                         "water_table_obs": (water_table_obs[tr_sl.start:] if water_table_obs is not None else None),
+                         "water_table_idx": water_table_idx})
     vd = TrainingData(train_slice=va_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[va_sl.start:],
                          "et_obs": (et_obs[va_sl.start:] if et_obs is not None else None),
-                         "nappe_obs": (nappe_obs[va_sl.start:] if nappe_obs is not None else None),
-                         "nappe_idx": nappe_idx})
+                         "water_table_obs": (water_table_obs[va_sl.start:] if water_table_obs is not None else None),
+                         "water_table_idx": water_table_idx})
 
     def _evaluer(m, etiquette):
         m.eval()
@@ -879,7 +879,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # Multiplicateur FIXE sur des champs, actif aussi pendant l'entrainement (2026-09-28) :
         # par exemple K_c:0.5 pour ramener Penman au volume de Linacre calee, le champ
         # apprenant autour.
-        m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
+        m.spatial_encoder.multipliers = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
         print(f"  champ spatial : multiplicateurs fixes {os.environ['MEANDRE_BANC_MULT_FIXE']}", flush=True)
     if os.environ.get("MEANDRE_KMUSK"):
         # INITIALISATION DU TEMPS DE TRANSFERT (2026-09-30). Le banc n'appelle pas
@@ -947,7 +947,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             if _ck != "initial":
                 m.load(_ck)
             if os.environ.get("MEANDRE_BANC_MULT_FIXE"):
-                m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
+                m.spatial_encoder.multipliers = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in os.environ["MEANDRE_BANC_MULT_FIXE"].split(",")}
             m.eval()
             with torch.no_grad():
                 Q, _, _d = m.simulate(forcing=F, initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w, day_of_year=doy, return_diagnostics=True)
@@ -1308,7 +1308,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         # champs sur tous les noeuds, evalue, et s'arrete. Repond sans entrainer a la
         # question : tel parametre peut-il corriger tel defaut.
         for _spec in os.environ["MEANDRE_BANC_MULT"].split(";"):
-            m.spatial_encoder.multiplicateurs = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in _spec.split(",") if a} if _spec != "aucun" else None
+            m.spatial_encoder.multipliers = {a.split(":")[0]: torch.tensor(float(a.split(":")[1]), device=dev) for a in _spec.split(",") if a} if _spec != "aucun" else None
             _evaluer(m, f"x {_spec}")
         return
     q0, ev = _evaluer(m, "zero epoque")
@@ -1377,7 +1377,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 os.environ["MEANDRE_DETACHE_JOUR"] = "" if _var in ("aucun", "cascade") else _var.replace("+", ",")
                 sl = slice(tr_sl.start, tr_sl.start + H)
                 mult = {nm: torch.ones((), device=dev, requires_grad=True) for nm in noms}
-                mm.spatial_encoder.multiplicateurs = mult
+                mm.spatial_encoder.multipliers = mult
                 # Chaque horizon repart du meme etat interne de mise en regime.
                 with torch.no_grad():
                     _, st0 = mm.simulate(forcing=F[:tr_sl.start], initial_state=HydroState.zeros(n, device=dev), graph=g, node_coords=coords, territorial=terr, withdrawals=w.slice(0, tr_sl.start), day_of_year=doy[:tr_sl.start])
@@ -1425,7 +1425,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     _L = 1 - k
                 _L.backward()
                 gm = {nm: float(t.grad.double()) if t.grad is not None else 0.0 for nm, t in mult.items()}
-                mm.spatial_encoder.multiplicateurs = None
+                mm.spatial_encoder.multipliers = None
                 haut = sorted(gm.items(), key=lambda kv: -abs(kv[1]))[:8]
                 print(f"  sonde : cible {_cible} {float(_L):.3f}, {nsub} sous-pas, horizon {H:3d} j, KGE {float(k):.3f} | plus forts : " + ", ".join(f"{a} {b:+.2e}" for a, b in haut) + f" | nuls {sum(1 for v in gm.values() if v == 0)} sur {len(gm)}", flush=True)
                 _vus = [x for x in os.environ.get("MEANDRE_SONDE_CHAMPS", "K_sat_1,K_sat_2,K_sat_3,porosity_2,porosity_3,Z2,Z3,K_c,C_f").split(",") if x in gm]

@@ -20,7 +20,7 @@ def test_reference_est_la_moyenne_de_l_epoque():
     data = types.SimpleNamespace(et_obs=et.clone())
     for d in range(0, 730, 45):
         tr._center_et(et[d:d + 45], et[d:d + 45], data)
-    tr._et_reference_fin_epoque()
+    tr._et_reference_epoch_end()
     attendu = et[:720].mean().item()
     assert abs(float(tr._et_sim_base) - et.mean().item()) < 0.02
     assert abs(float(tr._et_sim_base) - attendu) < 0.05
@@ -33,7 +33,7 @@ def test_premier_bloc_d_hiver_ne_fixe_plus_la_reference():
     data = types.SimpleNamespace(et_obs=torch.cat([hiver, ete]))
     tr._center_et(hiver, hiver, data)
     tr._center_et(ete, ete, data)
-    tr._et_reference_fin_epoque()
+    tr._et_reference_epoch_end()
     assert abs(float(tr._et_sim_base) - 1.525) < 1e-4
 
 
@@ -46,6 +46,6 @@ def test_poids_hors_neige_exclut_l_hiver_des_moyennes():
     data = types.SimpleNamespace(et_obs=obs, et_weight=poids, train_slice=slice(0, 90))
     tr._center_et(hiver, obs[:45], data, t0=0)
     s_ete, o_ete = tr._center_et(ete, obs[45:], data, t0=45)
-    tr._et_reference_fin_epoque()
+    tr._et_reference_epoch_end()
     assert abs(float(tr._et_obs_base) - 3.2) < 1e-5
     assert abs(float(tr._et_sim_base) - 3.0) < 1e-5

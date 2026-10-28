@@ -49,7 +49,7 @@ def measure(model, td, device, spinup=365, block=30, output=None, station_ids=No
     import dataclasses
     fields = [f.name for f in dataclasses.fields(type(sp0)) if torch.is_tensor(getattr(sp0, f.name))]
     multipliers = {c: torch.ones((), device=device, requires_grad=True) for c in fields}
-    model.spatial_encoder.multiplicateurs = multipliers
+    model.spatial_encoder.multipliers = multipliers
     n_steps = td.forcing.shape[0]
     t0 = int(td.train_slice.start)
     q_obs = td.q_obs.to(device)   # q_obs[0] correspond à forcing[t0]

@@ -254,8 +254,8 @@ class TrainingData:
     # et le tableau des lignes rouges les ecarte. Profondeur sous le repere du tubage, en
     # metres, par PUITS et non par noeud, NaN quand la mesure manque. Puits captifs et puits
     # influences deja retires par le chargeur.
-    nappe_obs: Tensor | None = None   # (n_timesteps, n_puits)
-    nappe_idx: Tensor | None = None   # (n_puits,) indice du noeud portant chaque puits
+    water_table_obs: Tensor | None = None   # (n_timesteps, n_puits)
+    water_table_idx: Tensor | None = None   # (n_puits,) indice du noeud portant chaque puits
     # CanSWE : MASSE du manteau mesurée au sol, par SITE et non par nœud (R24). Plusieurs
     # sites peuvent viser le même tronçon et les agréger détruirait la dispersion
     # intra-nœud, qui EST la mesure de l'incertitude de représentativité ponctuelle.
@@ -408,10 +408,10 @@ class Trainer:
                     gdd_threshold_params.append(p)
             # Scalaires de la nappe apprise (2026-09-30) : en espace logarithmique, un pas au
             # taux de base ne les bouge pas ; taux x 20, sans decroissance de poids.
-            nappe_params = [p for name, p in model.named_parameters() if "nappe_log_kb" in name or "nappe_logit_efrac" in name or "nappe_log_exp1" in name]
-            if nappe_params:
-                base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in nappe_params)]
-                groups.append({"params": nappe_params, "lr": self.config.lr * 20.0, "weight_decay": 0.0})
+            water_table_params = [p for name, p in model.named_parameters() if "nappe_log_kb" in name or "nappe_logit_efrac" in name or "nappe_log_exp1" in name]
+            if water_table_params:
+                base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in water_table_params)]
+                groups.append({"params": water_table_params, "lr": self.config.lr * 20.0, "weight_decay": 0.0})
                 logger.info("Discriminative LR: nappe scalaires=%.1e (20x), wd=0", self.config.lr * 20.0)
             # Parametres appris du profil de sol declare (2026-10-01) : scalaires en espace
             # logarithmique, taux x 50 pour qu'un facteur 3 a 10 soit atteignable en une
@@ -544,7 +544,7 @@ class Trainer:
             self._cur_epoch = epoch   # utilisé par l'offset aléatoire des chunks
 
             train_loss, train_comps = self._train_epoch()
-            self._et_reference_fin_epoque()
+            self._et_reference_epoch_end()
 
             # ── Divergence guard ──────────────────────────────────────
             # Track EMA of train loss; if current loss exceeds 3× EMA,
@@ -644,7 +644,7 @@ class Trainer:
                 # jamais ponderes, alors que le total l'est. Un pourcentage naif compare
                 # donc une pomme a une somme de poires et surestime les termes a petit
                 # poids. On remultiplie par le poids avant de parler de part.
-                _poids = {"tws": getattr(self.loss_fn, "w_tws", 1.0),
+                _weights = {"tws": getattr(self.loss_fn, "w_tws", 1.0),
                           "tws_clim": getattr(self.loss_fn, "w_tws_clim", 1.0),
                           "et": getattr(self.loss_fn, "w_et", 1.0),
                           "snow": getattr(self.loss_fn, "w_snow", 1.0),
@@ -664,7 +664,7 @@ class Trainer:
                           "prior": getattr(self.config, "w_prior", 1.0),
                           "diversity": getattr(self.config, "w_diversity", 1.0)}
 
-                def _poids_de(nom):
+                def _weight_of(term_name):
                     """Poids d'un terme, cherché par son nom plutôt que dans une table tenue
                     à la main. Celle-ci ne couvrait que huit termes sur la vingtaine
                     existante ; tous les autres, dont le KGE, l'écart quadratique et le
@@ -672,12 +672,12 @@ class Trainer:
                     au milieu de termes pondérés, sous un en-tête annonçant le contraire.
                     C'est le piège décrit juste au-dessus pour le prior, qui valait pour
                     presque tous les termes de débit (constaté le 2026-09-20)."""
-                    if nom == "nappe" and "nappe_poids_applique" in train_comps:
+                    if term_name == "nappe" and "nappe_poids_applique" in train_comps:
                         return float(train_comps["nappe_poids_applique"])
-                    if nom in _poids:
-                        return _poids[nom]
+                    if term_name in _weights:
+                        return _weights[term_name]
                     for source in (self.loss_fn, self.config):
-                        w = getattr(source, f"w_{nom}", None)
+                        w = getattr(source, f"w_{term_name}", None)
                         if w is not None:
                             return float(w)
                     return 1.0
@@ -687,8 +687,8 @@ class Trainer:
                     v = float(v)
                     if abs(v) <= 1e-9 or math.isnan(v) or k == "nappe_poids_applique":
                         continue
-                    _nom = k.replace("_loss", "")
-                    _nz[_nom] = v * _poids_de(_nom)
+                    _name = k.replace("_loss", "")
+                    _nz[_name] = v * _weight_of(_name)
                 # Le poids APPLIQUE aux puits s'imprime en clair : le plafond peut le reduire
                 # sous le poids demande, et le produit seul ne permet pas de le voir.
                 if "nappe" in _nz and "nappe_poids_applique" in train_comps:
@@ -868,9 +868,9 @@ class Trainer:
             spun_state = _res[1]
             if _ref_et and len(_res) == 3 and settings.get("trainer.et_reference_from_spinup"):
                 # Reference initiale de l'ET centree : annees completes de la mise en regime.
-                _n_ans = spinup_end // 365
-                if _n_ans >= 1:
-                    _a0 = spinup_end - 365 * _n_ans
+                _n_years = spinup_end // 365
+                if _n_years >= 1:
+                    _a0 = spinup_end - 365 * _n_years
                     _e = _res[2].etr[_a0:spinup_end].to(device)
                     _Wsp = getattr(data, "et_weight", None)
                     if _Wsp is not None:
@@ -878,7 +878,7 @@ class Trainer:
                         self._et_sim_base = ((_ww * _e).sum(dim=0) / _ww.sum(dim=0).clamp(min=1e-6)).detach()
                     else:
                         self._et_sim_base = _e.mean(dim=0).detach()
-                    logger.info("ET centree : reference initiale sur %d an(s) de mise en regime, moyenne %.3f mm/j", _n_ans, float(self._et_sim_base.mean()))
+                    logger.info("ET centree : reference initiale sur %d an(s) de mise en regime, moyenne %.3f mm/j", _n_years, float(self._et_sim_base.mean()))
 
         # Cache for next epoch
         self._cached_spinup_state = spun_state.detach()
@@ -915,20 +915,20 @@ class Trainer:
         On leve, on n'avertit pas : un multi-objectif dont un objectif manque n'est pas
         le modele qu'on croit entrainer, et le score qui en sort n'est comparable a rien.
         """
-        manquants = []
-        for poids, cible, nom in (
+        missing_targets = []
+        for term_weight, target_value, term_name in (
             (getattr(self.loss_fn, "w_snow", 0.0), data.swe_obs, "w_snow / swe_obs (MODIS snow cover)"),
             (getattr(self.loss_fn, "w_tws", 0.0), data.tws_obs, "w_tws / tws_obs (GRACE TWS)"),
-            (getattr(self.loss_fn, "w_nappe", 0.0), data.nappe_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
+            (getattr(self.loss_fn, "w_nappe", 0.0), data.water_table_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
             (getattr(self.loss_fn, "w_et", 0.0), data.et_obs, "w_et / et_obs (MODIS MOD16)"),
             (getattr(self.loss_fn, "w_swe_mass", 0.0), data.swe_mass_obs,
              "w_swe_mass / swe_mass_obs (CanSWE, masse du manteau)"),
         ):
-            if poids > 0 and cible is None:
-                manquants.append(f"  - {nom} : poids {poids} mais observation absente")
-        if manquants:
+            if term_weight > 0 and target_value is None:
+                missing_targets.append(f"  - {term_name} : poids {term_weight} mais observation absente")
+        if missing_targets:
             raise ValueError(
-                "Contrainte auxiliaire demandee sans sa cible :\n" + "\n".join(manquants)
+                "Contrainte auxiliaire demandee sans sa cible :\n" + "\n".join(missing_targets)
                 + "\nMettre le poids a zero, ou fournir l'observation dans TrainingData."
             )
 
@@ -1002,7 +1002,7 @@ class Trainer:
         _r = torch.sqrt(w.clamp(min=0.0))
         return (et_sim - self._et_sim_base) * _r, (et_obs - base_obs) * _r
 
-    def _et_reference_fin_epoque(self) -> None:
+    def _et_reference_epoch_end(self) -> None:
         """Pose la reference simulee de l'ET centree sur la moyenne exacte de l'epoque qui
         s'acheve (somme des blocs sur toute la periode d'entrainement), puis remet a zero."""
         _acc = getattr(self, "_et_sim_acc", None)
@@ -1014,7 +1014,7 @@ class Trainer:
                     self._et_sim_std = torch.sqrt((_acc[2] / _n - self._et_sim_base ** 2).clamp(min=1e-6))
         self._et_sim_acc = None
 
-    def _et_reference_exacte(self, data: TrainingData, etat: HydroState) -> None:
+    def _et_reference_exacte(self, data: TrainingData, carried_state: HydroState) -> None:
         """Reference simulee du terme MOD16 centre ou en forme, avant la premiere epoque.
 
         Moyenne et ecart-type EXACTS de l'ET simulee sur la periode d'entrainement, aux poids
@@ -1028,11 +1028,11 @@ class Trainer:
         """
         device = data.forcing.device
         _Wsp = getattr(data, "et_weight", None)
-        _s, _num, _num2, _den = etat, None, None, None
-        _t, _fin = data.train_slice.start, data.train_slice.stop
+        _s, _num, _num2, _den = carried_state, None, None, None
+        _t, _end = data.train_slice.start, data.train_slice.stop
         with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
-            while _t < _fin:
-                _u = min(_t + 365, _fin)
+            while _t < _end:
+                _u = min(_t + 365, _end)
                 _r = self.model.simulate(
                     forcing=data.forcing[_t:_u], initial_state=_s, graph=data.graph,
                     node_coords=data.node_coords, territorial=data.territorial,
@@ -1096,26 +1096,26 @@ class Trainer:
         all_components: dict[str, float] = {}
         n_chunks = 0
         import time as _time
-        _t_bloc = _time.perf_counter()  # duree du bloc courant, lue par la sonde du recalcul
+        _t_block = _time.perf_counter()  # duree du bloc courant, lue par la sonde du recalcul
         if settings.get("probe.terms"):
             # La sonde retropropage chaque terme avec retain_graph ; une fonction compilee qui
             # recycle ses tampons (donated buffers) le refuse des que la taille du bloc change.
             import torch._functorch.config as _fconf
             _fconf.donated_buffer = False
             # Facteurs par troncon, valant un (neutres), hors de l'optimiseur.
-            _champs_s = [x for x in settings.get("probe.terms").split(",") if x]
-            self._sonde_mult = {k_: torch.ones(self.model.n_nodes, device=data.forcing.device, requires_grad=True)
-                                for k_ in _champs_s}
-            self._sonde_acc = {}
-            self.model.spatial_encoder.multiplicateurs = self._sonde_mult
+            _fields_s = [x for x in settings.get("probe.terms").split(",") if x]
+            self._probe_mult = {k_: torch.ones(self.model.n_nodes, device=data.forcing.device, requires_grad=True)
+                                for k_ in _fields_s}
+            self._probe_acc = {}
+            self.model.spatial_encoder.multipliers = self._probe_mult
         sp_tensor: Tensor | None = None  # parametres spatiaux du bloc, pour la tete de quantiles
         # HISTORIQUE DÉTACHÉ des débits aux stations, pour que le KGE et la famille
         # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
         # (voir la note dans loss.py). MEANDRE_KGE_CONTINU=0 restitue le comportement
         # historique, pour comparaison.
-        _kge_continu = settings.get("trainer.kge_continuous")
-        _etat_continu = settings.get("trainer.state_continuous")
-        _pas_par_bloc = settings.get("trainer.step_per_block")
+        _kge_continuous = settings.get("trainer.kge_continuous")
+        _continuous_state = settings.get("trainer.state_continuous")
+        _steps_per_block = settings.get("trainer.step_per_block")
         if settings.get("debug.nan_level") == "2" and not torch.is_anomaly_enabled():
             # NIVEAU 2 : mode anomalie pose des la passe AVANT, seul moyen d'obtenir la
             # ligne de code qui cree le tenseur fautif. Le niveau 1 ne nomme que
@@ -1131,7 +1131,7 @@ class Trainer:
         # 0.83 -> 0.55 apres 65 pas). Ici, une passe SANS gradient en debut d'epoque
         # fournit la serie de toute la periode ; le bloc k voit alors le KGE de toute la
         # periode, lui-meme en direct et le reste detache.
-        _amorce = settings.get("trainer.history_priming") and _kge_continu
+        _primer = settings.get("trainer.history_priming") and _kge_continuous
         _pre_o = _pre_s = None
         _hist_o: list[Tensor] = []
         _hist_s: list[Tensor] = []
@@ -1147,7 +1147,7 @@ class Trainer:
         _g = torch.Generator().manual_seed(int(getattr(self, "_cur_epoch", 0)))
         _first_offset = int(torch.randint(0, chunk, (1,), generator=_g).item())
 
-        if _amorce:
+        if _primer:
             _col = getattr(self.model, "vertical_column", None)
             _aux0 = getattr(_col, "_aux", None)
             _lac0 = getattr(self.model, "_lake_storage_end", None)
@@ -1158,7 +1158,7 @@ class Trainer:
                     graph=data.graph, node_coords=data.node_coords,
                     territorial=data.territorial, withdrawals=data.withdrawals.slice(data.train_slice.start, data.train_slice.stop),
                     day_of_year=data.day_of_year[data.train_slice],
-                    continue_state=(_etat_continu and _spinup_a_tourne),
+                    continue_state=(_continuous_state and _spinup_a_tourne),
                 )
             _T = data.train_slice.stop - data.train_slice.start
             _pre_s = _Qp[:, data.station_mask].detach()
@@ -1186,14 +1186,14 @@ class Trainer:
             # que ceux de la fonction de perte etaient ponderes plus bas : le bilan portait
             # un facteur deux cents entre les deux familles, et se lisait comme une
             # domination de GRACE qui n'existait pas (2026-09-21).
-            _part_bloc = chunk_len / n_train
+            _block_share = chunk_len / n_train
 
             # ET multi-objectif : on récupère et_sim depuis CE forward (avec
             # gradient) plutôt qu'un 2e forward détaché.
             _need_et = (self.loss_fn.w_et > 0 and data.et_obs is not None)
             _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
-            _need_nappe = (getattr(self.loss_fn, "w_nappe", 0.0) > 0
-                           and data.nappe_obs is not None and data.nappe_idx is not None)
+            _need_water_table = (getattr(self.loss_fn, "w_nappe", 0.0) > 0
+                           and data.water_table_obs is not None and data.water_table_idx is not None)
             # Neige : MODIS snow cover (fraction) cale le taux de FONTE (sp_fonte).
             # On compare une fraction de couverture SIMULÉE = 1-exp(-SWE/SWE_REF)
             # (différentiable, monotone) à snow_frac MODIS. data.swe_obs porte le
@@ -1224,7 +1224,7 @@ class Trainer:
                     # tourner : sans cela le manteau spinne etait jete au passage, le
                     # premier hiver de chaque epoque etait faux et le premier bloc
                     # rendait des gradients NaN en janvier (2026-09-04).
-                    continue_state=(_etat_continu and (n_chunks > 0 or _spinup_a_tourne)),
+                    continue_state=(_continuous_state and (n_chunks > 0 or _spinup_a_tourne)),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out
@@ -1249,11 +1249,11 @@ class Trainer:
                 # simulee qui n'est pas rattachee au graphe ne peut RIEN contraindre : on
                 # le dit une fois par execution, fort, au lieu de le decouvrir en
                 # constatant que deux passes different d'un terme donnent le meme chiffre.
-                if not getattr(self, "_garde_gradient_faite", False):
-                    self._garde_gradient_faite = True
-                    _a_verifier = [("evapotranspiration MODIS", _need_et, "etr"),
+                if not getattr(self, "_gradient_guard_done", False):
+                    self._gradient_guard_done = True
+                    _to_check = [("evapotranspiration MODIS", _need_et, "etr"),
                                    ("neige", _need_snow, "swe"),
-                                   ("niveaux de puits", _need_nappe, "s_gw"),
+                                   ("niveaux de puits", _need_water_table, "s_gw"),
                                    ("gravimetrie GRACE", _need_tws, "theta3")]
                     # Le terme de pics par rapport a besoin d'un SEUIL venu de
                     # l'observation. Sans lui il est silencieusement nul, et c'est justement
@@ -1262,15 +1262,15 @@ class Trainer:
                         print("[garde] TERME INERTE : « pics par rapport » est active mais "
                               "aucun seuil de pointe n'a ete construit. Le terme vaudra zero.",
                               flush=True)
-                    for _nom_terme, _actif, _cle in _a_verifier:
-                        if not _actif:
+                    for _term_name, _active, _key in _to_check:
+                        if not _active:
                             continue
-                        _t = getattr(_diag_chunk, _cle, None)
+                        _t = getattr(_diag_chunk, _key, None)
                         if _t is None or not torch.is_tensor(_t):
                             continue
                         if not _t.requires_grad:
-                            print(f"[garde] TERME INERTE : « {_nom_terme} » est active mais "
-                                  f"son diagnostic « {_cle} » est DETACHE du graphe. Le terme "
+                            print(f"[garde] TERME INERTE : « {_term_name} » est active mais "
+                                  f"son diagnostic « {_key} » est DETACHE du graphe. Le terme "
                                   f"gardera sa valeur dans le journal et ne produira aucun "
                                   f"gradient. Verifier MEANDRE_DIAG_CPU et "
                                   f"HydroModel.DIAGNOSTICS_WITH_GRADIENT.", flush=True)
@@ -1288,8 +1288,8 @@ class Trainer:
                     scf_sim_chunk = 1.0 - torch.exp(-_swe_mm / self.config.snow_swe_ref)
                     snow_obs_chunk = data.swe_obs[obs_offset + burnin:obs_offset + chunk_len]
 
-                if hasattr(self.loss_fn, "doy_bloc"):
-                    self.loss_fn.doy_bloc = data.day_of_year[sl][burnin:]
+                if hasattr(self.loss_fn, "doy_block"):
+                    self.loss_fn.doy_block = data.day_of_year[sl][burnin:]
                 loss_chunk, comps = self.loss_fn(
                     q_obs=q_obs_chunk,
                     q_sim=Q_chunk_loss,
@@ -1299,13 +1299,13 @@ class Trainer:
                     swe_obs=snow_obs_chunk,
                     swe_sim=scf_sim_chunk,
                     q_obs_hist=(torch.cat([_pre_o[:obs_offset + burnin], _pre_o[obs_offset + chunk_len:]])
-                                if _amorce else
-                                (torch.cat(_hist_o) if (_kge_continu and _hist_o) else None)),
+                                if _primer else
+                                (torch.cat(_hist_o) if (_kge_continuous and _hist_o) else None)),
                     q_sim_hist=(torch.cat([_pre_s[:obs_offset + burnin], _pre_s[obs_offset + chunk_len:]])
-                                if _amorce else
-                                (torch.cat(_hist_s) if (_kge_continu and _hist_s) else None)),
+                                if _primer else
+                                (torch.cat(_hist_s) if (_kge_continuous and _hist_s) else None)),
                 )
-                if _kge_continu:
+                if _kge_continuous:
                     _hist_o.append(q_obs_chunk.detach())
                     _hist_s.append(Q_chunk_loss[:, data.station_mask].detach())
 
@@ -1316,26 +1316,26 @@ class Trainer:
                 # l'ET simulee moyenne de l'epoque precedente a la moyenne MOD16 de la periode
                 # d'entrainement ; son ecart a 1, en forme absolue (premier ordre au-dela de 5 %),
                 # pousse l'ET du bloc vers le niveau observe. MEANDRE_W_ET_NIVEAU (poids, defaut 0).
-                _w_niv = float(settings.get("trainer.et_level_weight"))
-                L_et_niv = None
-                if (_w_niv > 0 and _need_et and getattr(self, "_et_sim_base", None) is not None
+                _w_level = float(settings.get("trainer.et_level_weight"))
+                L_et_level = None
+                if (_w_level > 0 and _need_et and getattr(self, "_et_sim_base", None) is not None
                         and getattr(self, "_et_obs_base", None) is not None):
                     _raw_et = _diag_chunk.etr[burnin:]
                     _bo = torch.nan_to_num(self._et_obs_base.to(_raw_et.device), nan=0.0)
                     _ok_n = _bo > 0.05
                     _r_n = (self._et_sim_base.to(_raw_et.device) / _bo.clamp(min=0.05)).detach()
                     _coef = torch.clamp((_r_n - 1.0) / 0.05, -1.0, 1.0)
-                    L_et_niv = (_coef * _raw_et.mean(dim=0) / _bo.clamp(min=0.05))[_ok_n].mean()
-                    self.loss_fn.w_et_niveau = _w_niv
-                    loss_chunk = loss_chunk + _w_niv * L_et_niv
-                    all_components["et_niveau"] = all_components.get("et_niveau", 0.0) + float(((_r_n - 1.0).abs())[_ok_n].mean()) * _part_bloc
+                    L_et_level = (_coef * _raw_et.mean(dim=0) / _bo.clamp(min=0.05))[_ok_n].mean()
+                    self.loss_fn.w_et_level = _w_level
+                    loss_chunk = loss_chunk + _w_level * L_et_level
+                    all_components["et_niveau"] = all_components.get("et_niveau", 0.0) + float(((_r_n - 1.0).abs())[_ok_n].mean()) * _block_share
 
                 # ── NIVEAUX DE NAPPE MESURES : contrainte de FORME ──────────
                 # Anomalies REDUITES, centrees et normalisees DANS LE BLOC, donc compatible
                 # avec l'accumulation par blocs sans calendrier a transporter. La serie est
                 # prise au pas journalier plutot qu'au mois : le lissage mensuel servait au
                 # diagnostic, la perte gagne a voir tous les points.
-                if _need_nappe:
+                if _need_water_table:
                     from meandre.training.loss import nappe_anomaly_loss
                     # La grandeur simulee est la PROFONDEUR de la surface libre quand la
                     # nappe libre est active, sinon le STOCK souterrain. Le terme travaille
@@ -1350,15 +1350,15 @@ class Trainer:
                     # L'indice des puits vit sur la carte et le diagnostic peut vivre sur
                     # le processeur : on aligne AVANT d'indexer, un tenseur d'indices
                     # devant etre sur l'appareil du tenseur indexe.
-                    _zn = _zn[:, data.nappe_idx.to(_zn.device)]
+                    _zn = _zn[:, data.water_table_idx.to(_zn.device)]
                     # On calcule LA OU VIT LE DIAGNOSTIC, sans le rapatrier sur la carte :
                     # sous MEANDRE_DIAG_CPU=1 il est sur le processeur, et le ramener a
                     # sature les 8 Go de la carte. Le gradient traverse les appareils.
-                    _on = data.nappe_obs[obs_offset + burnin:obs_offset + chunk_len]
+                    _on = data.water_table_obs[obs_offset + burnin:obs_offset + chunk_len]
                     if _on.device != _zn.device:
                         _on = _on.to(_zn.device)
                     _mn = ~torch.isnan(_on)
-                    L_nappe = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
+                    L_water_table = nappe_anomaly_loss(_zn, torch.nan_to_num(_on), masque=_mn)
                     # PART PLAFONNEE (2026-09-23). Le terme vaut 2(1 - r) en moyenne sur les
                     # puits : la ou la nappe est mal simulee, il prend jusqu'a la moitie de la
                     # perte a poids egal, 53 % au Saint-Laurent nord-ouest et 49 % en Gaspesie
@@ -1371,19 +1371,19 @@ class Trainer:
                     # de perte a deja ajoutes. La gravimetrie et la masse du manteau viennent
                     # apres et n'en font pas partie.
                     _part_max = float(settings.get("trainer.groundwater_max_share"))
-                    _poids_n = self.loss_fn.w_nappe
+                    _weight_n = self.loss_fn.w_nappe
                     _ref = float(loss_chunk.detach())
-                    if _part_max > 0 and _ref > 0 and float(L_nappe.detach()) > 0:
-                        _poids_n = min(_poids_n, _part_max * _ref / float(L_nappe.detach()))
-                    loss_chunk = loss_chunk + _poids_n * L_nappe
+                    if _part_max > 0 and _ref > 0 and float(L_water_table.detach()) > 0:
+                        _weight_n = min(_weight_n, _part_max * _ref / float(L_water_table.detach()))
+                    loss_chunk = loss_chunk + _weight_n * L_water_table
                     all_components["nappe_loss"] = (
-                        all_components.get("nappe_loss", 0.0) + float(L_nappe.detach()) * _part_bloc)
+                        all_components.get("nappe_loss", 0.0) + float(L_water_table.detach()) * _block_share)
                     # Le bilan multiplie chaque terme par son poids NOMINAL. Pour les puits le
                     # poids applique peut etre plus petit, a cause du plafond : on garde le
                     # poids reellement applique, moyenne sur l'epoque, pour que le bilan
                     # montre ce que l'optimiseur a vu et non ce que la configuration demandait.
                     all_components["nappe_poids_applique"] = (
-                        all_components.get("nappe_poids_applique", 0.0) + _poids_n * _part_bloc)
+                        all_components.get("nappe_poids_applique", 0.0) + _weight_n * _block_share)
 
                 # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
                 # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).
@@ -1534,12 +1534,12 @@ class Trainer:
                             L_tws = ((_rs / _ss) - (_ro / _so)).pow(2).mean()
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                             all_components["tws_loss"] = (
-                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()) * _part_bloc)
-                            _skip_niveau = True
+                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()) * _block_share)
+                            _skip_level = True
                         else:
-                            _skip_niveau = False
+                            _skip_level = False
                         _d0 = float(getattr(self.config, "aux_huber_delta", 0.0))
-                        if _skip_niveau:
+                        if _skip_level:
                             pass
                         elif _d0 > 0:
                             _zt = ((_s - _sbv) - (_g - _gbv)) / 25.0
@@ -1548,10 +1548,10 @@ class Trainer:
                                                 _d0 * (_at - 0.5 * _d0)).mean()
                         else:
                             L_tws = tws_anomaly_loss(_s, _g, _sbv, _gbv, sigma=25.0)
-                        if not _skip_niveau:
+                        if not _skip_level:
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                             all_components["tws_loss"] = (
-                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()) * _part_bloc)
+                                all_components.get("tws_loss", 0.0) + float(L_tws.detach()) * _block_share)
 
                         # ── TERME CLIMATOLOGIQUE (2026-08-21, R23) ──────────────
                         # Le terme ci-dessus compare des mois INDIVIDUELS a sigma=25 mm,
@@ -1656,7 +1656,7 @@ class Trainer:
                             loss_chunk = loss_chunk + _w_clim * L_tws_clim
                             all_components["tws_clim_loss"] = (
                                 all_components.get("tws_clim_loss", 0.0)
-                                + float(L_tws_clim.detach()) * _part_bloc)
+                                + float(L_tws_clim.detach()) * _block_share)
 
                 # ── CanSWE : MASSE du manteau mesurée au sol (2026-08-21, R24) ──
                 # La cible existante (w_snow) est la FRACTION DE COUVERTURE MODIS, qui
@@ -1689,7 +1689,7 @@ class Trainer:
                         loss_chunk = loss_chunk + self.loss_fn.w_swe_mass * L_swe_mass
                         all_components["swe_mass_loss"] = (
                             all_components.get("swe_mass_loss", 0.0)
-                            + float(L_swe_mass.detach()) * _part_bloc)
+                            + float(L_swe_mass.detach()) * _block_share)
 
                 # ── Régression quantile (Phase 2 v2) : q_τ = μ + δ_τ ─────
                 # δ_τ via quantile_head (avec gradient), μ détaché (la tête
@@ -1718,14 +1718,14 @@ class Trainer:
                         L_q = _qloss(_y, _q, _taus)
                         loss_chunk = loss_chunk + self.loss_fn.w_quantile * L_q
                         all_components["quantile_loss"] = (
-                            all_components.get("quantile_loss", 0.0) + float(L_q.detach()) * _part_bloc)
+                            all_components.get("quantile_loss", 0.0) + float(L_q.detach()) * _block_share)
 
             # BLOC SANS DONNEE (2026-09-04). Si la perte de donnees n'a pas de gradient
             # (aucune station gardee dans ce bloc), le prior ajoute ci-dessous en aurait
             # un, et le pas par bloc se ferait sur le prior SEUL : mesure sur le banc de
             # sous-bassin, 23 pas sur 24 par epoque tiraient le champ vers la litterature
             # sans qu'aucune observation ne pese. Un tel bloc ne doit pas faire de pas.
-            _sans_donnees = not loss_chunk.requires_grad
+            _no_data = not loss_chunk.requires_grad
             # Soft physical prior regularization on spatial params (k_gw, krec, K_sat, K_c, ...).
             # Pulls toward literature targets — prevents drift toward overfit values.
             if self.config.w_prior > 0 or self.config.w_diversity > 0:
@@ -1735,89 +1735,89 @@ class Trainer:
                 if self.config.w_prior > 0:
                     prior_loss = self.model.spatial_encoder.physical_prior_loss(params_t)
                     loss_chunk = loss_chunk + self.config.w_prior * prior_loss
-                    all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach()) * _part_bloc
+                    all_components["prior"] = all_components.get("prior", 0.0) + float(prior_loss.detach()) * _block_share
                 if self.config.w_diversity > 0:
                     div_loss = self.model.spatial_encoder.param_diversity_loss(
                         params_t, cv_target=self.config.diversity_cv_target)
                     loss_chunk = loss_chunk + self.config.w_diversity * div_loss
-                    all_components["diversity"] = all_components.get("diversity", 0.0) + float(div_loss.detach()) * _part_bloc
+                    all_components["diversity"] = all_components.get("diversity", 0.0) + float(div_loss.detach()) * _block_share
 
             if getattr(self.config, "w_deviation_prior", 0.0) > 0:
                 dev_loss = self.model.spatial_encoder.deviation_prior_loss()
                 loss_chunk = loss_chunk + self.config.w_deviation_prior * dev_loss
-                all_components["deviation"] = all_components.get("deviation", 0.0) + float(dev_loss.detach()) * _part_bloc
+                all_components["deviation"] = all_components.get("deviation", 0.0) + float(dev_loss.detach()) * _block_share
 
             if self.config.w_latent_reg > 0 and getattr(self.model.spatial_encoder, "use_latent_codes", False):
                 latent_loss = self.model.spatial_encoder.latent_reg()
                 loss_chunk = loss_chunk + self.config.w_latent_reg * latent_loss
-                all_components["latent_reg"] = all_components.get("latent_reg", 0.0) + float(latent_loss.detach()) * _part_bloc
+                all_components["latent_reg"] = all_components.get("latent_reg", 0.0) + float(latent_loss.detach()) * _block_share
 
             if self.config.w_boundary > 0:
                 boundary_loss = self.model.spatial_encoder.boundary_regularization(
                     data.node_coords, data.territorial.to_tensor()
                 )
                 loss_chunk = loss_chunk + self.config.w_boundary * boundary_loss
-                all_components["boundary"] = all_components.get("boundary", 0.0) + float(boundary_loss.detach()) * _part_bloc
+                all_components["boundary"] = all_components.get("boundary", 0.0) + float(boundary_loss.detach()) * _block_share
 
             # Scale by chunk fraction so total gradient ≈ full-series gradient
-            weight = _part_bloc
+            weight = _block_share
             if settings.get("debug.grad") and n_chunks < 3:
                 # QUI POUSSE LE PLUS FORT (2026-09-05). Norme du gradient de chaque terme
                 # pondere, mesuree sur les trois premiers blocs, pour savoir quel terme
                 # domine la descente : la flotte du 4 septembre a diverge dans les regions
                 # ou GRACE est active, tous les termes montant ensemble.
                 _params = [p_ for p_ in self.model.parameters() if p_.requires_grad]
-                _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
+                _terms = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
                            if torch.is_tensor(v_) and v_.requires_grad}
-                for _nom, _var in (("prior", locals().get("prior_loss")),
+                for _name, _var in (("prior", locals().get("prior_loss")),
                                    ("tws", locals().get("L_tws")),
                                    ("tws_clim", locals().get("L_tws_clim"))):
                     if torch.is_tensor(_var) and _var.requires_grad:
-                        _termes[_nom] = _var
-                _lignes = []
-                for _nom, _v in _termes.items():
-                    _w = getattr(self.loss_fn, f"w_{_nom}", None)
+                        _terms[_name] = _var
+                _lines = []
+                for _name, _v in _terms.items():
+                    _w = getattr(self.loss_fn, f"w_{_name}", None)
                     if _w is None:
-                        _w = getattr(self.config, f"w_{_nom}", 1.0)
+                        _w = getattr(self.config, f"w_{_name}", 1.0)
                     _g = torch.autograd.grad(_v, _params, retain_graph=True, allow_unused=True)
                     _n2 = sum(float((g_ ** 2).sum()) for g_ in _g if g_ is not None)
-                    _lignes.append(f"{_nom}={float(_v):.3g} x{float(_w):g} -> grad {float(_w) * _n2 ** 0.5:.3g}")
-                print(f"[grad-debug] bloc {n_chunks} (t={t_start}) : " + " | ".join(_lignes), flush=True)
+                    _lines.append(f"{_name}={float(_v):.3g} x{float(_w):g} -> grad {float(_w) * _n2 ** 0.5:.3g}")
+                print(f"[grad-debug] bloc {n_chunks} (t={t_start}) : " + " | ".join(_lines), flush=True)
                 if n_chunks == 2 and settings.get("debug.grad_stop"):
                     raise SystemExit("grad-debug termine apres trois blocs")
-            if getattr(self, "_sonde_mult", None) is not None and loss_chunk.requires_grad:
+            if getattr(self, "_probe_mult", None) is not None and loss_chunk.requires_grad:
                 # SONDE PAR TERME (2026-10-06, MEANDRE_SONDE_TERMES) : gradient de chaque terme
                 # pondere de la perte par rapport a un facteur par troncon pose sur les champs
                 # demandes, cumule sur l'epoque. Negatif : augmenter le champ fait baisser le
                 # terme, l'optimiseur le poussera vers le haut.
                 # La perte rend aussi son total parmi ses composantes : il est ecarte ici, le
                 # total du bloc etant mesure a part.
-                _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
+                _terms = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
                            if torch.is_tensor(v_) and v_.requires_grad and k_ not in ("total", "total_loss")}
-                for _nom, _var in (("prior", locals().get("prior_loss")),
+                for _name, _var in (("prior", locals().get("prior_loss")),
                                    ("tws", locals().get("L_tws")),
                                    ("tws_clim", locals().get("L_tws_clim")),
                                    ("nappe", locals().get("L_nappe")),
                                    ("et_niveau", locals().get("L_et_niv"))):
                     if torch.is_tensor(_var) and _var.requires_grad:
-                        _termes[_nom] = _var
-                _noms_m = list(self._sonde_mult)
-                _facteurs = [self._sonde_mult[k_] for k_ in _noms_m]
-                _seuls = [x for x in settings.get("probe.terms_only").split(",") if x]
-                if _seuls:
-                    _termes = {k_: v_ for k_, v_ in _termes.items() if k_ in _seuls}
-                for _nom, _v in list(_termes.items()) + [("total", loss_chunk)]:
-                    if _nom == "total":
+                        _terms[_name] = _var
+                _names_m = list(self._probe_mult)
+                _factors = [self._probe_mult[k_] for k_ in _names_m]
+                _only = [x for x in settings.get("probe.terms_only").split(",") if x]
+                if _only:
+                    _terms = {k_: v_ for k_, v_ in _terms.items() if k_ in _only}
+                for _name, _v in list(_terms.items()) + [("total", loss_chunk)]:
+                    if _name == "total":
                         _w = 1.0
                     else:
-                        _w = getattr(self.loss_fn, f"w_{_nom}", None)
+                        _w = getattr(self.loss_fn, f"w_{_name}", None)
                         if _w is None:
-                            _w = getattr(self.config, f"w_{_nom}", 1.0)
+                            _w = getattr(self.config, f"w_{_name}", 1.0)
                     if float(_w) == 0.0:
                         continue
-                    _g = torch.autograd.grad(_v * float(_w) * weight, _facteurs, retain_graph=True, allow_unused=True)
-                    _acc = self._sonde_acc.setdefault(_nom, {k_: torch.zeros_like(f_) for k_, f_ in zip(_noms_m, _facteurs)})
-                    for k_, g_ in zip(_noms_m, _g):
+                    _g = torch.autograd.grad(_v * float(_w) * weight, _factors, retain_graph=True, allow_unused=True)
+                    _acc = self._probe_acc.setdefault(_name, {k_: torch.zeros_like(f_) for k_, f_ in zip(_names_m, _factors)})
+                    for k_, g_ in zip(_names_m, _g):
                         if g_ is not None:
                             _acc[k_] += torch.nan_to_num(g_.detach())
             if not torch.isnan(loss_chunk) and loss_chunk.requires_grad:
@@ -1829,7 +1829,7 @@ class Trainer:
                 # identique a la quatrieme decimale d'une epoque a l'autre). On prend une
                 # copie des gradients avant le bloc ; si le bloc les rend non finis, on
                 # la restaure et on compte le bloc comme jete, au lieu de perdre l'epoque.
-                _instantane = {p_: (p_.grad.detach().clone() if p_.grad is not None else None)
+                _snapshot = {p_: (p_.grad.detach().clone() if p_.grad is not None else None)
                                for p_ in self.model.parameters() if p_.requires_grad}
                 if settings.get("debug.nan_level") == "2":
                     # NIVEAU 2 SEULEMENT (2026-09-09). Ce bloc interrompt la
@@ -1847,9 +1847,9 @@ class Trainer:
                         import traceback as _tb
                         print("[nan-debug] operation fautive :\n" + "".join(_tb.format_exc())[-3000:],
                               flush=True)
-                        _noms = [n_ for n_, p_ in self.model.named_parameters()
+                        _names = [n_ for n_, p_ in self.model.named_parameters()
                                  if p_.grad is not None and not torch.isfinite(p_.grad).all()]
-                        print(f"[nan-debug] parametres a gradient non fini ({len(_noms)}) : {_noms[:15]}",
+                        print(f"[nan-debug] parametres a gradient non fini ({len(_names)}) : {_names[:15]}",
                               flush=True)
                 else:
                     (loss_chunk * weight).backward()
@@ -1859,19 +1859,19 @@ class Trainer:
                     # d'optimisation ; arret apres MEANDRE_SONDE_CONFLIT_BLOCS blocs. Les bassins
                     # etant independants, la part de chaque bassin s'en deduit exactement.
                     _se = self.model.spatial_encoder
-                    _gs = [t_.grad for t_ in getattr(_se, "brut_capture", []) if t_.grad is not None]
-                    _se.brut_capture = []
+                    _gs = [t_.grad for t_ in getattr(_se, "raw_capture", []) if t_.grad is not None]
+                    _se.raw_capture = []
                     _g = torch.stack(_gs).sum(0) if _gs else None
-                    _liste = getattr(self, "_sonde_conflit", [])
+                    _list = getattr(self, "_probe_conflict", [])
                     if _g is not None:
-                        _liste.append(_g.detach().float().cpu().numpy())
-                    self._sonde_conflit = _liste
+                        _list.append(_g.detach().float().cpu().numpy())
+                    self._probe_conflict = _list
                     _nrm = [f"{float(t_.norm()):.2e}" for t_ in _gs]
                     print(f"[sonde-conflit] bloc {n_chunks} (t={t_start}) : perte {float(loss_chunk):.4f} | {len(_gs)} appels du champ, normes {_nrm}", flush=True)
-                    if len(_liste) >= int(settings.get("probe.conflict_blocks")):
+                    if len(_list) >= int(settings.get("probe.conflict_blocks")):
                         import numpy as _np_c
-                        _np_c.save(settings.get("probe.conflict"), _np_c.stack(_liste))
-                        print(f"[sonde-conflit] {len(_liste)} blocs ecrits dans {settings.get('probe.conflict')}", flush=True)
+                        _np_c.save(settings.get("probe.conflict"), _np_c.stack(_list))
+                        print(f"[sonde-conflit] {len(_list)} blocs ecrits dans {settings.get('probe.conflict')}", flush=True)
                         os._exit(0)
                     self.optimizer.zero_grad()
                 if settings.get("probe.segment") and n_chunks >= 1:
@@ -1880,58 +1880,58 @@ class Trainer:
                     # MEANDRE_SEGMENT_GRADIENT, doivent rendre la meme empreinte du gradient.
                     _gs = [p_.grad.detach().double().flatten() for p_ in self.model.parameters() if p_.grad is not None]
                     _gv = torch.cat(_gs) if _gs else torch.zeros(1, dtype=torch.float64)
-                    _pic = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
-                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {settings.get('compute.gradient_segments')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_pic:.2f} Go | duree du bloc {_time.perf_counter() - _t_bloc:.1f} s", flush=True)
+                    _peak = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
+                    print(f"[sonde-segment] bloc de {chunk_len} jours, segments {settings.get('compute.gradient_segments')} | perte {float(loss_chunk):.8f} | norme du gradient {float(_gv.norm()):.8e} | somme {float(_gv.sum()):.8e} | pic memoire {_peak:.2f} Go | duree du bloc {_time.perf_counter() - _t_block:.1f} s", flush=True)
                     raise SystemExit(0)
-                _pourri = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
-                              for p_ in _instantane)
-                if _pourri and settings.get("debug.nan_level") == "1":
+                _corrupt = any(p_.grad is not None and not torch.isfinite(p_.grad).all()
+                              for p_ in _snapshot)
+                if _corrupt and settings.get("debug.nan_level") == "1":
                     # AVANT restauration : quels parametres, NaN ou inf, et quel TERME de
                     # la perte porte le gradient non fini (le detecteur d'anomalie ne voit
                     # que les NaN ; un inf de debordement passe).
-                    _touches = []
+                    _affected = []
                     for n_, p_ in self.model.named_parameters():
                         if p_.grad is not None and not torch.isfinite(p_.grad).all():
                             _g = p_.grad
-                            _touches.append(f"{n_} nan={int(torch.isnan(_g).sum())} inf={int(torch.isinf(_g).sum())}"
+                            _affected.append(f"{n_} nan={int(torch.isnan(_g).sum())} inf={int(torch.isinf(_g).sum())}"
                                             f" maxfini={float(_g[torch.isfinite(_g)].abs().max()) if torch.isfinite(_g).any() else float('nan'):.3g}")
                     print(f"[nan-debug] bloc {n_chunks} (t={t_start}) perte={float(loss_chunk):.4g} | "
-                          f"{len(_touches)} parametre(s) touche(s) : " + " ; ".join(_touches[:10]), flush=True)
+                          f"{len(_affected)} parametre(s) touche(s) : " + " ; ".join(_affected[:10]), flush=True)
                     _params = [p_ for p_ in self.model.parameters() if p_.requires_grad]
-                    _termes = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
+                    _terms = {k_.replace("_loss", ""): v_ for k_, v_ in comps.items()
                                if torch.is_tensor(v_) and v_.requires_grad}
-                    for _nom, _var in (("prior", locals().get("prior_loss")), ("tws", locals().get("L_tws")),
+                    for _name, _var in (("prior", locals().get("prior_loss")), ("tws", locals().get("L_tws")),
                                        ("tws_clim", locals().get("L_tws_clim"))):
                         if torch.is_tensor(_var) and _var.requires_grad:
-                            _termes[_nom] = _var
-                    for _nom, _v in _termes.items():
+                            _terms[_name] = _var
+                    for _name, _v in _terms.items():
                         try:
                             _g = torch.autograd.grad(_v, _params, retain_graph=True, allow_unused=True)
-                            _fini = all(torch.isfinite(g_).all() for g_ in _g if g_ is not None)
+                            _done = all(torch.isfinite(g_).all() for g_ in _g if g_ is not None)
                             _n2 = sum(float((g_[torch.isfinite(g_)] ** 2).sum()) for g_ in _g if g_ is not None)
-                            print(f"[nan-debug]   terme {_nom:10s} valeur {float(_v):.4g} gradient fini={_fini} "
+                            print(f"[nan-debug]   terme {_name:10s} valeur {float(_v):.4g} gradient fini={_done} "
                                   f"norme finie {_n2 ** 0.5:.3g}", flush=True)
                         except RuntimeError as _e:
-                            print(f"[nan-debug]   terme {_nom:10s} : {str(_e)[:120]}", flush=True)
-                if _pourri:
-                    for p_, g_ in _instantane.items():
+                            print(f"[nan-debug]   terme {_name:10s} : {str(_e)[:120]}", flush=True)
+                if _corrupt:
+                    for p_, g_ in _snapshot.items():
                         p_.grad = g_
-                    _n_jetes = getattr(self, "_n_blocs_jetes", 0) + 1
-                    self._n_blocs_jetes = _n_jetes
-                    if _n_jetes <= 3 or _n_jetes % 20 == 0:
+                    _n_dropped = getattr(self, "_n_blocks_dropped", 0) + 1
+                    self._n_blocks_dropped = _n_dropped
+                    if _n_dropped <= 3 or _n_dropped % 20 == 0:
                         print(f"[train] bloc {n_chunks} (t={t_start}) : gradient non fini, "
-                              f"bloc JETE, gradients restaures ({_n_jetes} bloc(s) jete(s) "
+                              f"bloc JETE, gradients restaures ({_n_dropped} bloc(s) jete(s) "
                               f"jusqu'ici)", flush=True)
                     if settings.get("debug.nan_level") == "1":
                         # Autopsie du bloc (2026-09-05) : quels parametres portent le
                         # gradient non fini, et la perte elle-meme etait-elle finie ?
-                        _noms = [n_ for n_, p_ in self.model.named_parameters()
+                        _names = [n_ for n_, p_ in self.model.named_parameters()
                                  if p_.grad is not None and not torch.isfinite(p_.grad).all()]
                         print(f"[nan-debug] perte={float(loss_chunk):.4g} finie="
                               f"{bool(torch.isfinite(loss_chunk))} | q_sim non finis="
                               f"{int((~torch.isfinite(Q_chunk_loss)).sum())} sur {Q_chunk_loss.numel()}"
-                              f" | parametres touches ({len(_noms)}) : {_noms[:12]}", flush=True)
-                del _instantane
+                              f" | parametres touches ({len(_names)}) : {_names[:12]}", flush=True)
+                del _snapshot
                 # UN PAS PAR BLOC (2026-09-04, MEANDRE_PAS_PAR_BLOC=1). Le trainer ne
                 # faisait qu'UN pas d'optimisation par epoque, sur les gradients
                 # accumules de tous les blocs (plein lot), avec un rechauffement du taux
@@ -1940,15 +1940,15 @@ class Trainer:
                 # etait IDENTIQUE a l'initialisation. Un champ spatial n'apprend pas en
                 # trente pas. Ici, un pas apres chaque bloc (la troncature du gradient
                 # habituelle) : soixante-cinq pas par epoque au lieu d'un.
-                if _pas_par_bloc and _sans_donnees:
+                if _steps_per_block and _no_data:
                     # Gradient du prior seul : jete, pas de pas (voir plus haut).
                     self.optimizer.zero_grad()
-                    _n_vides = getattr(self, "_n_blocs_sans_donnees", 0) + 1
-                    self._n_blocs_sans_donnees = _n_vides
-                    if _n_vides <= 2:
+                    _n_empty = getattr(self, "_n_blocks_no_data", 0) + 1
+                    self._n_blocks_no_data = _n_empty
+                    if _n_empty <= 2:
                         print(f"[train] bloc {n_chunks} (t={t_start}) : aucune donnee, pas "
-                              f"d'optimisation SAUTE ({_n_vides} bloc(s) jusqu'ici)", flush=True)
-                elif _pas_par_bloc and not _pourri:
+                              f"d'optimisation SAUTE ({_n_empty} bloc(s) jusqu'ici)", flush=True)
+                elif _steps_per_block and not _corrupt:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
                     self.optimizer.step()
                     self.optimizer.zero_grad()
@@ -1965,7 +1965,7 @@ class Trainer:
             for k, v in comps.items():
                 all_components[k] = all_components.get(k, 0.0) + float(v.detach()) * weight
             n_chunks += 1
-            _t_bloc = _time.perf_counter()
+            _t_block = _time.perf_counter()
 
             # Detach state for next chunk (TBPTT across chunks)
             state = state_out.detach()
@@ -2008,22 +2008,22 @@ class Trainer:
                 f"NaN/Inf gradients in {len(nan_params)} params — "
                 f"zeroed: {nan_params[:5]}"
             )
-        if not _pas_par_bloc:
+        if not _steps_per_block:
             total_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.grad_clip
             )
             self.optimizer.step()
 
-        if getattr(self, "_sonde_mult", None) is not None:
+        if getattr(self, "_probe_mult", None) is not None:
             import numpy as _np_s
             _out = settings.get("probe.terms_output")
-            _np_s.savez_compressed(_out, **{f"{t_}__{k_}": g_.cpu().numpy() for t_, d_ in self._sonde_acc.items()
+            _np_s.savez_compressed(_out, **{f"{t_}__{k_}": g_.cpu().numpy() for t_, d_ in self._probe_acc.items()
                                          for k_, g_ in d_.items()})
             print(f"[sonde] gradient par terme, somme sur le domaine (negatif : le champ sera pousse vers le haut) -> {_out}", flush=True)
-            for t_, d_ in sorted(self._sonde_acc.items()):
+            for t_, d_ in sorted(self._probe_acc.items()):
                 print(f"[sonde]   {t_:14s} " + "  ".join(f"{k_} {float(g_.sum()):+.3e}" for k_, g_ in d_.items()), flush=True)
-            self.model.spatial_encoder.multiplicateurs = None
-            self._sonde_mult = None
+            self.model.spatial_encoder.multipliers = None
+            self._probe_mult = None
         comp_tensors = {k: torch.tensor(v) for k, v in all_components.items()}
         return total_loss, comp_tensors
 
@@ -2155,16 +2155,16 @@ class Trainer:
         out = self._val_epoch_metriques()
         q = getattr(self, "_val_series", None)
         if q is not None and self.loss_fn is not None:
-            out["loss"] = self._perte_debit_validation(*q)
+            out["loss"] = self._validation_discharge_loss(*q)
         return out
 
-    def _perte_debit_validation(self, q_obs_val: Tensor, q_sim_val: Tensor) -> float:
+    def _validation_discharge_loss(self, q_obs_val: Tensor, q_sim_val: Tensor) -> float:
         """Termes de debit de la perte, memes poids, par station puis moyennes ponderees."""
         from meandre.training.loss import (differentiable_kge_loss, differentiable_pbias_loss,
                                            differentiable_log_mse_loss, differentiable_etiage_loss,
                                            differentiable_fdc_bas_loss)
         lf = self.loss_fn
-        termes = []
+        term_list = []
         for s in range(q_sim_val.shape[1]):
             v = ~torch.isnan(q_obs_val[:, s]) & ~torch.isnan(q_sim_val[:, s])
             if int(v.sum()) < 30:
@@ -2178,11 +2178,11 @@ class Trainer:
                 t = t + lf.w_etiage * differentiable_etiage_loss(qo, qs)
             if getattr(lf, "w_fdc_bas", 0.0) > 0:
                 t = t + lf.w_fdc_bas * differentiable_fdc_bas_loss(qo, qs)
-            termes.append(float(t))
-        return float(sum(termes) / len(termes)) if termes else float("inf")
+            term_list.append(float(t))
+        return float(sum(term_list) / len(term_list)) if term_list else float("inf")
 
     def _val_epoch_metriques(self) -> dict[str, float]:
-        _etat_continu_val = settings.get("trainer.state_continuous")
+        _continuous_state_val = settings.get("trainer.state_continuous")
         """Validation: simulate val period, compute evaluation metrics.
 
         Reports both pooled metrics (all stations flattened) and per-station
@@ -2235,7 +2235,7 @@ class Trainer:
                         withdrawals=data.withdrawals.slice(data.val_slice.start, data.val_slice.stop),
                         day_of_year=data.day_of_year[data.val_slice],
                         tbptt_steps=self.config.tbptt_steps,
-                        continue_state=_etat_continu_val,
+                        continue_state=_continuous_state_val,
                     )
                 else:
                     # Slow path: no cached state (e.g. before first train epoch).
@@ -2248,7 +2248,7 @@ class Trainer:
                     Q_full, _ = self.model.simulate(
                         forcing=data.forcing[full_slice],
                         initial_state=initial_state,
-                        continue_state=(_etat_continu_val and spinup_end > 0),
+                        continue_state=(_continuous_state_val and spinup_end > 0),
                         graph=data.graph,
                         node_coords=data.node_coords,
                         territorial=data.territorial,
