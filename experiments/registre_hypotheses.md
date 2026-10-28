@@ -6061,3 +6061,24 @@ Modèle gelé : `experiments/archive/config/modele-provincial-2026-10.toml`, poi
 Passe sans entraînement de `.runs/quebec/recipe.toml` depuis `qv848-e32` (conductivité de la couche 3 au centre de son prior, couche 3 par classe de drainage), contre le modèle gelé sous sa propre recette (R436) : Montérégie 1,5563 contre 1,3004, Saint-Laurent sud-ouest 1,3940 contre 1,0725, Outaouais 0,9966 contre 0,8940. Les mêmes territoires, recette évaluée depuis un affinage de deux époques par territoire : 1,2258, 1,0153, 0,8746 (R436). Les autres paramètres du champ ont été appris avec l'ancienne couche 3 ; la recette n'est pas un réglage qu'on pose sur le modèle gelé, elle demande l'entraînement. Pertes sans entraînement des autres territoires : Abitibi 0,8852, Côte-Nord A 0,5705, B 0,8094, C 0,3569, D 0,4506, E 0,8173, Gaspésie 1,3652, LABI 2,0636, Saguenay 0,8902, Saint-Laurent nord-ouest 0,8504. Conséquences : (1) les analyses de résultats portent sur le modèle gelé tant que la ronde provinciale n'a pas eu lieu ; (2) le verdict par territoire exigé avant la ronde (aucun territoire sous le modèle gelé) demande un affinage de la recette par territoire, lancé le 28 au soir sur les quatorze territoires (deux époques, 2e-4, dernière époque, `~/planml-out/ft-recipe-2026-10-28/`).
 
 La passe de l'Outaouais-Montréal avait échoué : sa base n'avait pas le drapeau des débits reconstitués, le constructeur `ingest_cehq_flags` omettant `outm` de sa liste par défaut (ajouté, drapeau ingéré sur les deux machines : 4 stations, 12,7 % des valeurs reconstituées).
+
+## R438 — Analyses du modèle gelé sur le domaine provincial, 2020-2024, débits reconstitués retirés de l'évaluation : meandre en dessous d'Hydrotel sur le KGE de tous les jours et en crue, au-dessus en étiage ; les attributs de terrain ne prédisent pas l'erreur d'étiage ni de crue ; la couche profonde d'Hydrotel est presque inerte (2026-10-28) — ÉTABLI SANS ENTRAÎNER
+
+Sources : `meandre-analyse` (notebooks `flow-comparison`, `kge-drivers`, `water-balance`, `io-effects`), passe provinciale du modèle gelé avec les prélèvements d'io-eau du 21 octobre (fichiers `reach-quebec-gele-daily*` et `reach-quebec-gele-diag` sous `D:/meandre-data/quebec/modele-provincial-2026-10`), Hydrotel = médiane des six versions.
+
+| indicateur (médiane des stations) | meandre | Hydrotel | stations | meandre plus proche de 1 |
+|---|---|---|---|---|
+| KGE, tous les jours | 0,636 | 0,706 | 147 | 27 % |
+| corrélation r | 0,777 | 0,852 | 147 | 18 % |
+| rapport des moyennes | 0,869 | 0,904 | 147 | 41 % |
+| rapport des écarts-types | 1,024 | 0,812 | 147 | 60 % |
+| KGE d'étiage (sous le Q2-7) | −0,454 | −0,637 | 139 | 56 % |
+| KGE de crue (au-dessus du Q2) | −0,706 | 0,086 | 33 | 18 % |
+
+Le Q2 de crue se calcule sur les années dont 90 % des jours d'avril à novembre sont mesurés ; exiger 90 % de l'année entière ne laissait que 4 stations une fois les jours reconstitués retirés.
+
+Attributs de bassin contre KGE borné (forêt aléatoire, territoire retiré à tour de rôle, compositions en ilr) : gain sur la moyenne de 28,7 % pour meandre et 25,1 % pour Hydrotel en tous les jours, 17,5 % pour leur écart (porté par la latitude) ; nul ou négatif en étiage et en crue (−5,6 à +1,8 %). L'erreur d'étiage et de crue ne suit pas le terrain, ce qui désigne le forçage, la régularisation ou la station.
+
+Bilan d'eau, 113 bassins à 90 % de jours observés : évapotranspiration médiane de meandre 467 mm/an contre 485 exigés par CaSR et le débit observé ; Hydrotel 471 (apport moins débit simulé) contre 444 exigés par sa météo. L'ET de meandre suit la diagonale de l'exigence de bilan d'une station à l'autre, celle d'Hydrotel reste entre 400 et 550 mm/an quelle que soit l'exigence. Recharge de meandre (couche 3 vers la nappe) 117 mm/an en médiane ; percolation d'Hydrotel de la couche 2 vers la couche 3 de 0,02 mm/an et écoulement de base de sa couche 3 de 1,45 mm/an : dans Hydrotel, tout l'écoulement lent passe par la couche 2.
+
+Prélèvements et rejets (io-eau du 21 octobre, débit net provincial −17,7 m³/s) : 327 tronçons sur 27 831 voient leur Q2-7 baisser d'au moins 10 %, aucun leur crue Q2 ; 15 stations sur 177 ont un Q2-7 altéré d'au moins 5 %.
