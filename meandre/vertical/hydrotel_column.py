@@ -877,14 +877,14 @@ class HydrotelColumn(nn.Module):
                 z_new, q_m, e_m = self.free_water_table(
                     z, pb / 1000.0, sy, torch.ones_like(pb) * _kb_t,
                     torch.full_like(pb, p["z_riv"]), torch.full_like(pb, p["h_ref"]),
-                    e_max, torch.full_like(pb, p["z_ext"]), prelevement=prel)
+                    e_max, torch.full_like(pb, p["z_ext"]), withdrawal=prel)
                 Q_bf = q_m * 1000.0
                 S_gw_new = torch.clamp(torch.full_like(pb, p["z_riv"]) - z_new, min=0.0) * sy * 1000.0
                 # L'eau évaporée depuis la zone saturée est une SORTIE ATMOSPHÉRIQUE : sans
                 # elle au bilan, l'audit de fermeture lirait une fuite du volume de la nappe.
-                etr_nappe = e_m * 1000.0
-                diag["etr_nappe"] = etr_nappe
-                diag["etr"] = diag["etr"] + etr_nappe
+                etr_water_table = e_m * 1000.0
+                diag["etr_nappe"] = etr_water_table
+                diag["etr"] = diag["etr"] + etr_water_table
                 diag["profondeur_nappe_m"] = z_new
             else:
                 Q_bf, S_gw_new = self.aquifer(pb, state.S_gw, kgw, gw_withdrawal=gw_withdrawal_mm)
@@ -1216,13 +1216,13 @@ class HydrotelColumn(nn.Module):
             # PROPRIETES THERMIQUES DU CHAMP (2026-08-27). Elles n'existent pas sur un
             # ancien point de reprise : on retombe alors sur les scalaires du C++, ce
             # qui preserve la fidelite du clone.
-            frost_profile, prof_gel_cm = self.frost(
+            frost_profile, frost_depth_cm = self.frost(
                 tmin, tmax, high, state.frost_profile,
                 pe["z11"], pe["z22"], pe["z33"],
                 alpha=_pg.get("diff_gel"), fs=_pg.get("fs_neige"))
         else:
             frost_profile = state.frost_profile
-            prof_gel_cm = torch.zeros_like(P)
+            frost_depth_cm = torch.zeros_like(P)
 
         # 3. ETP × K_c (coefficient cultural NeRF par nœud) — corrige le biais
         # McGuinness et donne au NeRF un levier direct sur le volume (β).
@@ -1383,7 +1383,7 @@ class HydrotelColumn(nn.Module):
             pso["ks1"], pso["ks2"], pso["ks3"] = pso["ks1"] * _visc[0], pso["ks2"] * _visc[1], pso["ks3"] * _visc[2]
             pso["visc2"], pso["visc3"] = _visc[1], _visc[2]
         ps_surf, ph, pb, rech, (t1, t2, t3), sdiag = self.soil(
-            state.theta1, state.theta2, state.theta3, apport, etp, prof_gel_cm, cover_mm, pso,
+            state.theta1, state.theta2, state.theta3, apport, etp, frost_depth_cm, cover_mm, pso,
             etr1_mm=e1_soil * 1000.0, etr2_mm=e2_soil * 1000.0, etr3_mm=e3_soil * 1000.0, storm_hours=storm_hours)
         prod = ps_surf + ph + pb   # mm
 
@@ -1443,11 +1443,11 @@ class HydrotelColumn(nn.Module):
         # libre, perte atmospherique que le bilan doit voir (2026-10-02).
         etr_tot = (e1 + e2 + e3) * 1000.0 + sdiag.get("evap_eau_mm", 0.0)
         diag = dict(apport=apport, etp=etp, etr1=e1 * 1000.0, etr2=e2 * 1000.0, etr3=e3 * 1000.0,
-                    prof_gel_cm=prof_gel_cm, couvert_nival_mm=cover_mm,
+                    frost_depth_cm=frost_depth_cm, couvert_nival_mm=cover_mm,
                     prod_surf=ps_surf, prod_hypo=ph, prod_base=pb,
                     # clés attendues par model.py / SimDiagnostics
                     etr=etr_tot, snowmelt=apport, lateral_mm=prod,
-                    temps_non_traite=sdiag["temps_non_traite"])
+                    untreated_time=sdiag["temps_non_traite"])
         # milieu humide : evaporation et STOCK, exposes le 2026-08-20 (ils existaient
         # dans la physique mais n'etaient rendus par aucune sortie, ce qui rendait le
         # bilan d'eau infermable)

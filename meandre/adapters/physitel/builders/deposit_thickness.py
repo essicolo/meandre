@@ -52,9 +52,9 @@ def une_region(reg, par_code):
     uh = uh.rename(columns={col: "uhrh"})[["uhrh", "geometry"]]
     uh["uhrh"] = uh.uhrh.astype(int)
     x0, y0, x1, y1 = uh.total_bounds
-    forme = (int(np.ceil((y1 - y0) / RESOLUTION)), int(np.ceil((x1 - x0) / RESOLUTION)))
+    shape_value = (int(np.ceil((y1 - y0) / RESOLUTION)), int(np.ceil((x1 - x0) / RESOLUTION)))
     transform = from_origin(x0, y1, RESOLUTION, RESOLUTION)
-    ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=forme, transform=transform, fill=0, dtype=np.int32)
+    ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value, transform=transform, fill=0, dtype=np.int32)
     z = gpd.read_file(SIGEOM, layer=COUCHE, columns=["CODE_DEPOT_MORP_SEDM", "VAL_EPAIS_MINIM", "VAL_EPAIS_MAXIM"], engine="pyogrio", bbox=tuple(uh.to_crs(4326).total_bounds)).to_crs(uh.crs)
     e = epaisseur_inscrite(z)
     z["e"] = e.fillna(z.CODE_DEPOT_MORP_SEDM.fillna("").map(par_code))
@@ -65,7 +65,7 @@ def une_region(reg, par_code):
     n = np.bincount(ids[dans])
     par = pd.DataFrame({"n": n})
     for c in ("loge", "mince", "epais"):
-        r = rasteriser(z, c, transform, forme)
+        r = rasteriser(z, c, transform, shape_value)
         ok = dans & np.isfinite(r)
         par[f"n_{c}"] = np.bincount(ids[ok], minlength=len(n))
         par[f"s_{c}"] = np.bincount(ids[ok], weights=r[ok], minlength=len(n))

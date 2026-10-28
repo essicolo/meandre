@@ -159,9 +159,9 @@ def main():
         if len(E):
             E["b"] = b
             tout.append(E)
-    if a.sortie and tout:
-        pd.concat(tout, ignore_index=True).to_parquet(a.sortie)
-        print(f"\necrit : {a.sortie}")
+    if a.step_output and tout:
+        pd.concat(tout, ignore_index=True).to_parquet(a.step_output)
+        print(f"\necrit : {a.step_output}")
 
 
 if __name__ == "__main__":

@@ -48,13 +48,13 @@ def amont(edges, n):
 
 def exposant_ete(q, dates):
     q = np.asarray(q, dtype=float)
-    bons = ra.segments_de_decrue(np.nan_to_num(q, nan=0.0))
+    bons = ra.recession_segments(np.nan_to_num(q, nan=0.0))
     dqdt = np.concatenate([[np.nan], -np.diff(q)])
     qm = np.concatenate([[np.nan], 0.5 * (q[1:] + q[:-1])])
     garde = bons & np.isfinite(dqdt) & np.isfinite(qm) & (dqdt > 0) & (qm > 0) & np.isin(dates.month, (7, 8, 9))
     if garde.sum() < 60:
         return np.nan
-    ex, ey = ra._enveloppe_inferieure(np.log(qm[garde]), np.log(dqdt[garde]))
+    ex, ey = ra._lower_envelope(np.log(qm[garde]), np.log(dqdt[garde]))
     if ex is None or len(ex) < 10:
         return np.nan
     return float(np.polyfit(ex, ey, 1)[0])

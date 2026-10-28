@@ -42,10 +42,10 @@ def rendre(nom):
     texte = journal.read_text(encoding="utf-8", errors="replace")
     # Le piege : quarto rend 0 meme quand il n'a execute aucun bloc.
     muet = "Jupyter is not available" in texte or "ModuleNotFoundError" in texte
-    sortie = DOSSIER / (src.replace(".qmd", ".html"))
-    ok = p.returncode == 0 and not muet and sortie.exists()
+    step_output = DOSSIER / (src.replace(".qmd", ".html"))
+    ok = p.returncode == 0 and not muet and step_output.exists()
     print(f"[rendu] {nom} : {'ok' if ok else 'ECHEC'} en {time.time()-t0:.0f} s "
-          f"-> {sortie.name} ({sortie.stat().st_size/1024:.0f} ko)" if sortie.exists()
+          f"-> {step_output.name} ({step_output.stat().st_size/1024:.0f} ko)" if step_output.exists()
           else f"[rendu] {nom} : ECHEC, aucune sortie")
     if not ok:
         print("".join(texte.splitlines(keepends=True)[-25:]))

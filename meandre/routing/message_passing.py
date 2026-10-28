@@ -48,7 +48,7 @@ from meandre.routing.withdrawals import WithdrawalData
 # Détachement du stockage des lacs entre pas de temps. True = comportement historique
 # (gradient tronqué, cause probable du gel de k_lake/beta) ; False = gradient complet,
 # tronqué par le TBPTT comme le reste de l'état. Bascule pour le banc de mesure.
-LACS_DETACHER = True
+LAKES_DETACHER = True
 
 
 class RoutingLayer(nn.Module):

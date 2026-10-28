@@ -92,12 +92,12 @@ def test_amplitude_et_retard_du_cas_lineaire_suivent_la_theorie():
 
     torch.set_default_dtype(torch.float64)
     k = K_B / (SY * H_REF)
-    gain, retard = WaterTable.reponse_analytique(k)
+    gain, retard = WaterTable.analytic_response(k)
     w = 2.0 * math.pi / 365.25
     assert gain == pytest.approx(1.0 / math.sqrt(k * k + w * w), rel=1e-12)
     assert retard == pytest.approx(math.atan2(w, k) / w, rel=1e-12)
     # Un temps de réponse long achète de l'amplitude et paie du retard, toujours.
-    gain_lent, retard_lent = WaterTable.reponse_analytique(k / 10.0)
+    gain_lent, retard_lent = WaterTable.analytic_response(k / 10.0)
     assert gain_lent > gain
     assert retard_lent > retard
 

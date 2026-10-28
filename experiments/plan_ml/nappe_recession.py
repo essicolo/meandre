@@ -34,7 +34,7 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from meandre.data.recession_anchor import segments_de_decrue, _enveloppe_inferieure
+from meandre.data.recession_anchor import recession_segments, _lower_envelope
 from meandre.utils import paths as _p
 
 DOSSIER = f"{_p.DATA_ROOT}/experiments/plan_ml"
@@ -61,7 +61,7 @@ def points_station(reg, code, aire):
     idx = np.flatnonzero(fini)
     if len(idx) < 700:
         return None
-    seg = segments_de_decrue(vv[fini])
+    seg = recession_segments(vv[fini])
     bons[idx] = seg
     dqdt = np.concatenate([[np.nan], -np.diff(vv)])
     qm = np.concatenate([[np.nan], 0.5 * (vv[1:] + vv[:-1])])
@@ -73,7 +73,7 @@ def points_station(reg, code, aire):
     x = np.log(qm[garde] * f)
     y = np.log(dqdt[garde] * f)
     annee = q.index.year.to_numpy()[garde]
-    ex, ey = _enveloppe_inferieure(x, y)
+    ex, ey = _lower_envelope(x, y)
     if ex is None:
         return None
     # Retrouver les années des points d'enveloppe par appariement exact.

@@ -14,12 +14,12 @@ from meandre.spatial.field_network import FIELD_BOUNDS
 from meandre.utils import paths as _p
 
 r = np.load(f"{_p.DATA_ROOT}/quebec/modele-provincial-2026-10/reach-quebec-gele.npz", allow_pickle=True)
-champs = {k[6:]: r[k].astype(float) for k in r.keys() if k.startswith("param_")}
+field_names = {k[6:]: r[k].astype(float) for k in r.keys() if k.startswith("param_")}
 for c in (1, 2, 3):
-    champs[f"theta_fc_frac_{c}"] = champs[f"theta_fc_{c}"] / champs[f"porosity_{c}"]
-    champs[f"theta_wp_frac_{c}"] = champs[f"theta_wp_{c}"] / champs[f"theta_fc_{c}"]
+    field_names[f"theta_fc_frac_{c}"] = field_names[f"theta_fc_{c}"] / field_names[f"porosity_{c}"]
+    field_names[f"theta_wp_frac_{c}"] = field_names[f"theta_wp_{c}"] / field_names[f"theta_fc_{c}"]
 lignes = []
-for nom, v in champs.items():
+for nom, v in field_names.items():
     cle = nom if nom in FIELD_BOUNDS else nom.rsplit("_", 1)[0]
     if cle not in FIELD_BOUNDS:
         continue

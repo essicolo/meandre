@@ -33,7 +33,7 @@ def bassin_amont(edge_index, n, exutoire):
 
 
 def main():
-    base, sortie, stations = sys.argv[1], sys.argv[2], sys.argv[3].split(",")
+    base, step_output, stations = sys.argv[1], sys.argv[2], sys.argv[3].split(",")
     points = sys.argv[4:]
     d = BasinCache(base).load(device=torch.device("cpu"))
     terr, coords, graph = d["territorial"], d["node_coords"], d["graph"]
@@ -54,7 +54,7 @@ def main():
         m.load(ck)
         m.eval()
         with torch.no_grad():
-            v = getattr(m.spatial_encoder(coords, terr.to_tensor()), sortie).reshape(-1)[:n].double().numpy()
+            v = getattr(m.spatial_encoder(coords, terr.to_tensor()), step_output).reshape(-1)[:n].double().numpy()
         print(os.path.basename(ck)[:34].ljust(36) + "  ".join(f"{v[b].mean():8.3f}" for b in bassins.values())
               + f"   {v.mean():7.3f}", flush=True)
 

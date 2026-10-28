@@ -44,15 +44,15 @@ def indices(region: str, jours_minimum: int = 700):
         return np.array([])
     z = np.load(fichiers[0], allow_pickle=True)
     obs = z["q_obs"]
-    sortie = []
+    step_output = []
     for j in range(obs.shape[1]):
         s = obs[:, j]
         fini = np.isfinite(s)
         if fini.sum() < jours_minimum:
             continue
         s = np.where(fini, s, np.nanmedian(s))
-        sortie.append(lyne_hollick(s).sum() / s.sum())
-    return np.array(sortie)
+        step_output.append(lyne_hollick(s).sum() / s.sum())
+    return np.array(step_output)
 
 
 def main(regions):

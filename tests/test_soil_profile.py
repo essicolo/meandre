@@ -49,9 +49,9 @@ def test_une_couche_sans_processus_declare_ne_produit_aucun_flux():
     """Semantique de Raven : la declaration est complete, elle ne complete pas l'existant."""
     p, theta, apport, etp = _entrees()
     vide = sp.SoilProfile(layers=3, processes=())
-    sortie = _passe({**p, "soil_profile": vide}, theta, apport, etp)
-    assert torch.all(sortie[1] == 0.0), "aucun lateral declare : l'hypodermique doit etre nul"
-    assert torch.all(sortie[2] == 0.0), "aucune percolation declaree : la base doit etre nulle"
+    step_output = _passe({**p, "soil_profile": vide}, theta, apport, etp)
+    assert torch.all(step_output[1] == 0.0), "aucun lateral declare : l'hypodermique doit etre nul"
+    assert torch.all(step_output[2] == 0.0), "aucune percolation declaree : la base doit etre nulle"
 
 
 def test_la_sortie_laterale_profonde_est_bien_une_forme_du_catalogue():

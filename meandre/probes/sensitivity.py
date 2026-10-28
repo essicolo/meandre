@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 SAISONS = {"hiver": (12, 1, 2), "printemps": (3, 4, 5), "ete": (6, 7, 8), "automne": (9, 10, 11)}
 
 
-def _rang_effectif(j, seuil=0.95):
+def _effective_rank(j, seuil=0.95):
     """Nombre de directions de paramètres qu'un bloc de sensibilité distingue.
 
     Chaque ligne est normalisée avant la décomposition : sans cela, un observable dont
@@ -58,7 +58,7 @@ def _rang_effectif(j, seuil=0.95):
     return int(np.searchsorted(part, seuil) + 1), float(vp.sum() ** 2 / (vp ** 2).sum())
 
 
-def _largeur_et_pente(model, td, device):
+def _width_and_slope(model, td, device):
     """Largeur du tronçon et pente, pour tirer un niveau d'eau du débit.
 
     La largeur vient de `physio/troncon_width_depth.csv` du projet Hydrotel, la pente du
@@ -67,10 +67,10 @@ def _largeur_et_pente(model, td, device):
     """
     import pandas as pd
 
-    plat = os.environ.get("ETL_MELT_DIR")
-    if not plat:
+    flat = os.environ.get("ETL_MELT_DIR")
+    if not flat:
         return None
-    f = os.path.join(plat, "physio", "troncon_width_depth.csv")
+    f = os.path.join(flat, "physio", "troncon_width_depth.csv")
     if not os.path.exists(f):
         print(f"[sensibilite] pas de geometrie de tronçon : {f}")
         return None
@@ -86,19 +86,19 @@ def _largeur_et_pente(model, td, device):
     return w, pente.to(device).clamp(min=1e-5)
 
 
-def _resumes(nom, serie, mois, noeuds=None):
+def _resumes(field_name, series, months, nodes=None):
     """Quatre moyennes saisonnières d'un observable, éventuellement restreint à des nœuds."""
     out = {}
-    x = serie if noeuds is None else serie[:, noeuds]
+    x = series if nodes is None else series[:, nodes]
     for s, m in SAISONS.items():
-        masque = torch.tensor(np.isin(mois, m), device=x.device)
-        if not bool(masque.any()):
+        mask = torch.tensor(np.isin(months, m), device=x.device)
+        if not bool(mask.any()):
             continue
-        out[f"{nom}:{s}"] = x[masque].mean()
+        out[f"{field_name}:{s}"] = x[mask].mean()
     return out
 
 
-def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
+def mesurer(model, td, times, device, day_count=365, step_output=None, block=None):
     """Mesure appelée PAR LE PILOTE, une fois le modèle et les données construits.
 
     L'inversion est voulue : le pilote lit soixante-dix-neuf variables d'environnement et
@@ -127,22 +127,22 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
     # Les teneurs en eau des trois couches servent au stockage total, ce que la gravimetrie
     # mesure : sans elles ce terme sortait absent du tableau.
     os.environ["MEANDRE_DIAG_DERIVES"] = "etr,swe,s_gw,recharge,theta1,theta2,theta3"
-    bloc = int(bloc or os.environ.get("MEANDRE_SENSIBILITE_BLOC", "15"))
+    block = int(block or os.environ.get("MEANDRE_SENSIBILITE_BLOC", "15"))
     # Le pilote a deja fait tourner la colonne : on rend la memoire avant de construire un
     # graphe, faute de quoi le premier bloc part avec la carte a moitie pleine.
     torch.cuda.empty_cache() if torch.cuda.is_available() else None
-    mois_tout = pd.DatetimeIndex(times[:jours]).month.to_numpy()
+    month_all = pd.DatetimeIndex(times[:day_count]).month.to_numpy()
     sp0 = model.spatial_encoder(td.node_coords, td.territorial.to_tensor())
-    champs = [f.name for f in dataclasses.fields(type(sp0))
+    field_names = [f.name for f in dataclasses.fields(type(sp0))
               if torch.is_tensor(getattr(sp0, f.name))]
-    mults = {c: torch.ones((), device=device, requires_grad=True) for c in champs}
+    mults = {c: torch.ones((), device=device, requires_grad=True) for c in field_names}
     model.spatial_encoder.multipliers = mults
-    cles = list(mults)
-    n_blocs = (jours + bloc - 1) // bloc
-    print(f"[sensibilite] {jours} jours en {n_blocs} blocs de {bloc}, {len(champs)} champs",
+    keys = list(mults)
+    n_blocks = (day_count + block - 1) // block
+    print(f"[sensibilite] {day_count} jours en {n_blocks} blocs de {block}, {len(field_names)} champs",
           flush=True)
 
-    familles = [("debit", None), ("evapotranspiration", "etr"), ("neige", "swe"),
+    families = [("debit", None), ("evapotranspiration", "etr"), ("neige", "swe"),
                 ("nappe", "s_gw"), ("recharge", "recharge")]
     # GRACE et SWOT n'etaient pas dans le banc : le premier faute d'un resume de stockage
     # total, le second faute d'un niveau d'eau, que le modele ne produit pas. Les deux se
@@ -150,124 +150,124 @@ def mesurer(model, td, times, device, jours=365, sortie=None, bloc=None):
     # Le champ spatial se recalcule A CHAQUE BLOC. Calcule une seule fois hors de la boucle,
     # son graphe est libere par la derniere retropropagation du premier bloc, et le bloc
     # suivant echoue en voulant y repasser.
-    _geom = _largeur_et_pente(model, td, device)
-    cumul, compte = {}, {}
-    etat = HydroState.zeros(td.forcing.shape[1], device=device)
+    _geom = _width_and_slope(model, td, device)
+    cumulative, count = {}, {}
+    state_values = HydroState.zeros(td.forcing.shape[1], device=device)
     stations = td.station_idx.detach().cpu().numpy()
-    for b in range(n_blocs):
-        a0, a1 = b * bloc, min((b + 1) * bloc, jours)
-        Q, etat, diag = model.simulate(
-            forcing=td.forcing[a0:a1], initial_state=etat,
+    for b in range(n_blocks):
+        a0, a1 = b * block, min((b + 1) * block, day_count)
+        Q, state_values, diag = model.simulate(
+            forcing=td.forcing[a0:a1], initial_state=state_values,
             graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
             withdrawals=td.withdrawals, day_of_year=td.day_of_year[a0:a1],
             return_diagnostics=True)
-        mois = mois_tout[a0:a1]
-        sommes = {}
+        months = month_all[a0:a1]
+        sums = {}
         # STOCKAGE TOTAL, ce que la gravimetrie mesure : sol, manteau, souterrain, canopee.
-        _stock = None
+        _storage = None
         for _att, _ep in (("theta1", 0.3), ("theta2", None), ("theta3", None)):
             _v = getattr(diag, _att, None)
             if _v is None or not torch.is_tensor(_v) or not _v.requires_grad:
-                _stock = None
+                _storage = None
                 break
             _z = (_ep if _ep is not None
                   else float(getattr(model.vertical_column, "z2_ref", 1.0)))
-            _stock = _v * _z * 1000.0 if _stock is None else _stock + _v * _z * 1000.0
-        if _stock is not None:
+            _storage = _v * _z * 1000.0 if _storage is None else _storage + _v * _z * 1000.0
+        if _storage is not None:
             for _att in ("swe", "s_gw", "canopy"):
                 _v = getattr(diag, _att, None)
                 if _v is not None and torch.is_tensor(_v) and _v.requires_grad:
-                    _stock = _stock + _v
-            familles_sup = [("gravimetrie", _stock)]
+                    _storage = _storage + _v
+            extra_families = [("gravimetrie", _storage)]
         else:
-            familles_sup = []
+            extra_families = []
         # NIVEAU D'EAU, ce que SWOT mesure. Manning en section large : la profondeur vaut
         # (Q n / (w racine(S)))^(3/5). Le niveau absolu demanderait l'altitude du lit, que
         # nous n'avons pas ; SWOT se comparerait donc en ANOMALIES, comme les puits.
         if _geom is not None:
-            _w, _pente = _geom
+            _w, _slope = _geom
             _n_man = getattr(model.spatial_encoder(td.node_coords, td.territorial.to_tensor()),
                              "manning_n", None)
             if _n_man is not None:
-                _h = (Q.clamp(min=1e-3) * _n_man / (_w * _pente.clamp(min=1e-5).sqrt())) ** 0.6
-                familles_sup.append(("niveau", _h))
-        for nom, att in familles + familles_sup:
+                _h = (Q.clamp(min=1e-3) * _n_man / (_w * _slope.clamp(min=1e-5).sqrt())) ** 0.6
+                extra_families.append(("niveau", _h))
+        for field_name, att in families + extra_families:
             if torch.is_tensor(att):
-                serie = att
+                series = att
             elif att is None:
-                serie = torch.log(Q.clamp(min=1e-3))[:, stations]
+                series = torch.log(Q.clamp(min=1e-3))[:, stations]
             else:
                 v = getattr(diag, att, None)
                 if v is None or not torch.is_tensor(v) or not v.requires_grad:
                     continue
-                serie = v
+                series = v
             for sais, m in SAISONS.items():
-                masque = torch.tensor(np.isin(mois, m), device=serie.device)
-                n = int(masque.sum())
+                mask = torch.tensor(np.isin(months, m), device=series.device)
+                n = int(mask.sum())
                 if not n:
                     continue
-                cle = f"{nom}:{sais}"
-                sommes[cle] = serie[masque].sum()
-                compte[cle] = compte.get(cle, 0) + n * serie.shape[1]
-        for k, (cle, valeur) in enumerate(sommes.items()):
-            g = torch.autograd.grad(valeur, [mults[c] for c in cles],
-                                    retain_graph=(k < len(sommes) - 1), allow_unused=True)
+                key = f"{field_name}:{sais}"
+                sums[key] = series[mask].sum()
+                count[key] = count.get(key, 0) + n * series.shape[1]
+        for k, (key, value) in enumerate(sums.items()):
+            g = torch.autograd.grad(value, [mults[c] for c in keys],
+                                    retain_graph=(k < len(sums) - 1), allow_unused=True)
             v = np.array([float(x) if x is not None else 0.0 for x in g])
-            cumul[cle] = cumul.get(cle, 0.0) + v
-        etat = etat.detach()
-        print(f"[sensibilite] bloc {b + 1}/{n_blocs}, {len(sommes)} resumes", flush=True)
+            cumulative[key] = cumulative.get(key, 0.0) + v
+        state_values = state_values.detach()
+        print(f"[sensibilite] bloc {b + 1}/{n_blocks}, {len(sums)} resumes", flush=True)
 
-    noms = sorted(cumul)
-    J = np.array([cumul[n] / max(compte[n], 1) for n in noms])
-    _rapport(J, noms, cles)
-    if sortie:
-        np.savez_compressed(sortie, J=J, observables=np.array(noms), champs=np.array(cles))
-        print(f"ecrit : {sortie}")
-    return J, noms, cles
+    names = sorted(cumulative)
+    J = np.array([cumulative[n] / max(count[n], 1) for n in names])
+    _ratio(J, names, keys)
+    if step_output:
+        np.savez_compressed(step_output, J=J, observables=np.array(names), field_names=np.array(keys))
+        print(f"ecrit : {step_output}")
+    return J, names, keys
 
 
-def _rapport(J, noms, champs):
+def _ratio(J, names, field_names):
     """Tableau des directions de paramètres, par observable puis en apport propre."""
     print("")
     print(f"{'observable':<22s} {'resumes':>8s} {'directions':>11s} {'participation':>14s}")
-    familles = sorted({n.split(":")[0] for n in noms})
-    for fam in familles:
-        idx = [i for i, n in enumerate(noms) if n.startswith(fam + ":")]
-        d, part = _rang_effectif(J[idx])
+    families = sorted({n.split(":")[0] for n in names})
+    for fam in families:
+        idx = [i for i, n in enumerate(names) if n.startswith(fam + ":")]
+        d, part = _effective_rank(J[idx])
         part_t = f"{part:>14.1f}" if np.isfinite(part) else f"{'—':>14s}"
         print(f"{fam:<22s} {len(idx):>8d} {d:>11d} {part_t}")
-    d_tout, part_tout = _rang_effectif(J)
+    d_all, part_all = _effective_rank(J)
     # TEMOIN NUL. Une matrice de meme forme, de memes normes de ligne, remplie de directions
     # tirees au hasard : c'est ce que le rang donnerait sans aucune structure. Sans lui, le
     # chiffre n'a pas d'echelle, defaut qui a produit deux conclusions fausses le meme jour.
     rng = np.random.default_rng(1234)
-    faux = rng.standard_normal(J.shape)
-    faux *= np.linalg.norm(J, axis=1, keepdims=True) / np.clip(
-        np.linalg.norm(faux, axis=1, keepdims=True), 1e-30, None)
-    d_bruit, part_bruit = _rang_effectif(faux)
+    false = rng.standard_normal(J.shape)
+    false *= np.linalg.norm(J, axis=1, keepdims=True) / np.clip(
+        np.linalg.norm(false, axis=1, keepdims=True), 1e-30, None)
+    d_noise, part_noise = _effective_rank(false)
     print("")
-    print(f"ensemble : {d_tout} directions de parametres sur {len(champs)}, "
-          f"participation {part_tout:.1f}")
-    print(f"temoin de bruit : {d_bruit} directions, participation {part_bruit:.1f}")
+    print(f"ensemble : {d_all} directions de parametres sur {len(field_names)}, "
+          f"participation {part_all:.1f}")
+    print(f"temoin de bruit : {d_noise} directions, participation {part_noise:.1f}")
     print("")
     print(f"{'observable retire':<22s} {'directions restantes':>21s} {'apport propre':>15s}")
-    for fam in familles:
-        idx = [i for i, n in enumerate(noms) if not n.startswith(fam + ":")]
-        d_sans, _ = _rang_effectif(J[idx])
-        print(f"{fam:<22s} {d_sans:>21d} {d_tout - d_sans:>15d}")
+    for fam in families:
+        idx = [i for i, n in enumerate(names) if not n.startswith(fam + ":")]
+        d_without, _ = _effective_rank(J[idx])
+        print(f"{fam:<22s} {d_without:>21d} {d_all - d_without:>15d}")
     # LES CHAMPS QUE PERSONNE NE VOIT. Une colonne nulle de la matrice designe un parametre
     # qu'aucune observation ne touche : il n'est pas mal identifie, il n'est pas identifie du
     # tout, et l'entrainement ne peut que le laisser ou le prior le met.
     norme = np.linalg.norm(J, axis=0)
     seuil = norme.max() * 1e-6 if norme.size and norme.max() > 0 else 0.0
-    muets = [champs[i] for i in np.argsort(norme)[:10] if norme[i] <= max(seuil, 1e-30)]
+    muets = [field_names[i] for i in np.argsort(norme)[:10] if norme[i] <= max(seuil, 1e-30)]
     print("")
     if muets:
         print(f"champs qu'AUCUN observable ne touche ({len(muets)}) : {', '.join(muets)}")
     else:
-        ordre = np.argsort(norme)[:6]
+        order = np.argsort(norme)[:6]
         print("champs les moins vus : "
-              + ", ".join(f"{champs[i]} {norme[i]:.1e}" for i in ordre))
+              + ", ".join(f"{field_names[i]} {norme[i]:.1e}" for i in order))
 
 
 def main():
@@ -277,14 +277,14 @@ def main():
     p.add_argument("--sortie", default=None)
     a = p.parse_args()
     os.environ["MEANDRE_SENSIBILITE"] = "1"
-    os.environ["MEANDRE_SENSIBILITE_JOURS"] = str(a.jours)
-    if a.sortie:
-        os.environ["MEANDRE_SENSIBILITE_SORTIE"] = a.sortie
+    os.environ["MEANDRE_SENSIBILITE_JOURS"] = str(a.day_count)
+    if a.step_output:
+        os.environ["MEANDRE_SENSIBILITE_SORTIE"] = a.step_output
     os.environ.setdefault("ETL_EPOCHS", "0")
-    pilote = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "run", "pilot.py")
+    pilot = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "run", "pilot.py")
     import runpy
 
-    runpy.run_path(pilote, run_name="__main__")
+    runpy.run_path(pilot, run_name="__main__")
     return 0
 
 

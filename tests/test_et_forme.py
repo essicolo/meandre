@@ -23,8 +23,8 @@ def _centre(mode, sim, obs):
 
 def test_forme_aveugle_au_facteur():
     torch.manual_seed(0)
-    jours = torch.arange(730, dtype=torch.float32)
-    cycle = 1.5 + torch.sin(2 * torch.pi * jours / 365.25)
+    day_count = torch.arange(730, dtype=torch.float32)
+    cycle = 1.5 + torch.sin(2 * torch.pi * day_count / 365.25)
     sim = cycle[:, None] * torch.tensor([0.8, 1.0, 1.2]) + 0.05 * torch.randn(730, 3)
     obs = cycle[:, None].repeat(1, 3) + 0.05 * torch.randn(730, 3)
     zs1, zo1 = _centre("forme", sim, obs)
@@ -34,8 +34,8 @@ def test_forme_aveugle_au_facteur():
 
 
 def test_centre_voit_le_facteur():
-    jours = torch.arange(730, dtype=torch.float32)
-    sim = (1.5 + torch.sin(2 * torch.pi * jours / 365.25))[:, None].repeat(1, 2)
+    day_count = torch.arange(730, dtype=torch.float32)
+    sim = (1.5 + torch.sin(2 * torch.pi * day_count / 365.25))[:, None].repeat(1, 2)
     zs1, _ = _centre("anomaly", sim, sim.clone())
     zs2, _ = _centre("anomaly", 0.6 * sim, sim.clone())
     assert not torch.allclose(zs1, zs2)

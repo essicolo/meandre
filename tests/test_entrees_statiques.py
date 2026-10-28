@@ -192,6 +192,6 @@ def test_garde_fou_occupation_nulle(capsys):
         m.simulate(forcing=f, initial_state=HydroState.zeros(n), graph=synthetic_linear_graph(n, tau_days=1),
                    node_coords=_t.zeros(n, 2), territorial=terr,
                    withdrawals=WithdrawalData.zeros(T, n), day_of_year=_t.ones(T, dtype=_t.long))
-    sortie = capsys.readouterr().out
-    assert "occupation reçue" in sortie, "la colonne doit annoncer ce qu'elle reçoit"
-    assert "AVERTISSEMENT" in sortie, "occupation nulle : l'avertissement doit se déclencher"
+    step_output = capsys.readouterr().out
+    assert "occupation reçue" in step_output, "la colonne doit annoncer ce qu'elle reçoit"
+    assert "AVERTISSEMENT" in step_output, "occupation nulle : l'avertissement doit se déclencher"

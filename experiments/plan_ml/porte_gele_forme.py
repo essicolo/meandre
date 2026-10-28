@@ -39,12 +39,12 @@ MINIMUM_CELLULE = 20
 GRAINE = 0
 
 
-def rampe(x, frost_state, neige):
+def ramp(x, frost_state, neige):
     return 1.0 + x[0] * np.minimum(frost_state / x[1], 1.0)
 
 
 def rampe_manteau(x, frost_state, neige):
-    return rampe(x[:2], frost_state, neige) * (1.0 + x[2] * neige / (neige + x[3]))
+    return ramp(x[:2], frost_state, neige) * (1.0 + x[2] * neige / (neige + x[3]))
 
 
 def lineaire(x, frost_state, neige):
@@ -68,7 +68,7 @@ def exponentielle_manteau(x, frost_state, neige):
 
 
 FORMES = {
-    "rampe saturante": (rampe, [(0.0, 10.0), (5.0, 500.0)], [[2.0, 100.0], [3.0, 50.0], [1.0, 200.0]]),
+    "rampe saturante": (ramp, [(0.0, 10.0), (5.0, 500.0)], [[2.0, 100.0], [3.0, 50.0], [1.0, 200.0]]),
     "linéaire": (lineaire, [(0.0, 0.05)], [[0.01], [0.005]]),
     "puissance": (puissance, [(1.0, 500.0), (0.05, 2.0)], [[20.0, 0.5], [5.0, 1.0], [50.0, 0.3]]),
     "exponentielle": (exponentielle, [(0.0, 0.05)], [[0.01], [0.005]]),
@@ -93,13 +93,13 @@ def cellules(frost_state, neige, rel):
 
 def ajuste(nom, tab):
     """Ajuste une forme sur le logarithme des médianes de cellule, poids de la cellule."""
-    forme, bornes, departs = FORMES[nom]
+    shape_value, bornes, departs = FORMES[nom]
     frost_state, neige = tab.frost_state.to_numpy(), tab.neige.to_numpy()
     cible = np.log(tab.rel.to_numpy())
     poids = tab.n.to_numpy(dtype=float)
 
     def objectif(x):
-        pred = forme(x, frost_state, neige)
+        pred = shape_value(x, frost_state, neige)
         if np.any(~np.isfinite(pred)) or np.any(pred <= 0):
             return 1e9
         return float(np.sum(poids * (np.log(pred) - cible) ** 2))

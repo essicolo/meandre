@@ -21,7 +21,7 @@ def _colonne(apprise):
     return col
 
 
-def _vidange(col, apprise, jours=30):
+def _vidange(col, apprise, day_count=30):
     p = col._water_table
     if apprise:
         kb = torch.exp(col.nappe_log_kb)
@@ -32,7 +32,7 @@ def _vidange(col, apprise, jours=30):
     z = torch.full((N,), 2.0)
     full = lambda v: torch.full((N,), float(v))
     q_tot = torch.zeros(N)
-    for _ in range(jours):
+    for _ in range(day_count):
         z, q, e = col.free_water_table(z, full(0.0005), full(p["sy"]), torch.ones(N) * kb, full(p["z_riv"]), full(p["h_ref"]), full(0.003) * ef, full(p["z_ext"]))
         q_tot = q_tot + q
     return q_tot

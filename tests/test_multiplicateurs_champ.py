@@ -24,22 +24,22 @@ class _Faux(SpatialFieldNetwork):
 def _params(n=3):
     from meandre.spatial.field_network import SpatialParams
 
-    champs = {f.name: torch.full((n,), 2.0) for f in dataclasses.fields(SpatialParams)}
-    return SpatialParams(**champs)
+    field_names = {f.name: torch.full((n,), 2.0) for f in dataclasses.fields(SpatialParams)}
+    return SpatialParams(**field_names)
 
 
 def test_sans_multiplicateur_le_champ_est_intact():
     r, sp = _Faux(), _params()
-    sortie = r._apply_multipliers(sp)
-    assert sortie is sp, "aucune copie ne doit etre faite quand rien n'est pose"
+    step_output = r._apply_multipliers(sp)
+    assert step_output is sp, "aucune copie ne doit etre faite quand rien n'est pose"
 
 
 def test_un_multiplicateur_agit_sur_le_seul_champ_vise():
     r, sp = _Faux(), _params()
     r.multipliers = {"K_sat_1": torch.tensor(3.0)}
-    sortie = r._apply_multipliers(sp)
-    assert float(sortie.K_sat_1[0]) == pytest.approx(6.0)
-    assert float(sortie.K_sat_2[0]) == pytest.approx(2.0)
+    step_output = r._apply_multipliers(sp)
+    assert float(step_output.K_sat_1[0]) == pytest.approx(6.0)
+    assert float(step_output.K_sat_2[0]) == pytest.approx(2.0)
 
 
 def test_le_facteur_un_ne_change_rien():
@@ -53,8 +53,8 @@ def test_le_gradient_remonte_jusqu_au_facteur():
     r, sp = _Faux(), _params()
     m = torch.ones((), requires_grad=True)
     r.multipliers = {"porosity_1": m}
-    sortie = r._apply_multipliers(sp)
-    sortie.porosity_1.sum().backward()
+    step_output = r._apply_multipliers(sp)
+    step_output.porosity_1.sum().backward()
     assert float(m.grad) == pytest.approx(6.0), "d(somme)/d(facteur) = somme du champ"
 
 

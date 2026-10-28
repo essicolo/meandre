@@ -203,41 +203,41 @@ def _split_stages(stage: list[int], n_stages: int, src: list[int], dst: list[int
     n = len(stage)
     parent = list(range(n))
 
-    def racine(i: int) -> int:
+    def root(i: int) -> int:
         while parent[i] != i:
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
     for s, d in zip(src, dst):
         if not is_lake[s] and not is_lake[d] and stage[s] == stage[d]:
-            parent[racine(s)] = racine(d)
-    comp_par_etage: list[dict[int, list[int]]] = [{} for _ in range(n_stages)]
+            parent[root(s)] = root(d)
+    comp_per_level: list[dict[int, list[int]]] = [{} for _ in range(n_stages)]
     for i in range(n):
         if not is_lake[i]:
-            comp_par_etage[stage[i]].setdefault(racine(i), []).append(i)
-    nouveau = [0] * n
+            comp_per_level[stage[i]].setdefault(root(i), []).append(i)
+    new = [0] * n
     k_new = 0
     for k in range(n_stages):
-        comps = sorted(comp_par_etage[k].values(), key=len, reverse=True)
+        comps = sorted(comp_per_level[k].values(), key=len, reverse=True)
         if sum(len(c) for c in comps) <= max_block:
             bacs = [[i for c in comps for i in c]]
         else:
             # Premier ajustement décroissant ; un bassin plus grand que le bloc reste entier.
-            bacs, tailles = [], []
+            bacs, sizes = [], []
             for c in comps:
-                j = next((j for j, t in enumerate(tailles) if t + len(c) <= max_block), None)
+                j = next((j for j, t in enumerate(sizes) if t + len(c) <= max_block), None)
                 if j is None:
-                    bacs.append(list(c)); tailles.append(len(c))
+                    bacs.append(list(c)); sizes.append(len(c))
                 else:
-                    bacs[j].extend(c); tailles[j] += len(c)
+                    bacs[j].extend(c); sizes[j] += len(c)
         for b, bac in enumerate(bacs):
             for i in bac:
-                nouveau[i] = k_new + b
+                new[i] = k_new + b
         k_new += max(len(bacs), 1)
         for i in range(n):
             if is_lake[i] and stage[i] == k:
-                nouveau[i] = k_new - 1
-    return nouveau, k_new
+                new[i] = k_new - 1
+    return new, k_new
 
 
 class OperatorState(NamedTuple):

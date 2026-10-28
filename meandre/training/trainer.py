@@ -1345,7 +1345,7 @@ class Trainer:
                     # une profondeur qui diminue, d'ou le signe. Sans cela le terme ne
                     # s'appliquerait qu'aux configurations portant la nappe libre, et une
                     # ronde appariee cesserait de l'etre.
-                    _pn = getattr(_diag_chunk, "profondeur_nappe", None)
+                    _pn = getattr(_diag_chunk, "water_table_depth", None)
                     _zn = (_pn[burnin:] if _pn is not None else -_diag_chunk.s_gw[burnin:])
                     # L'indice des puits vit sur la carte et le diagnostic peut vivre sur
                     # le processeur : on aligne AVANT d'indexer, un tenseur d'indices

@@ -46,9 +46,9 @@ def _as_text(a):
     qualite rejette alors 100 % des mesures (bug du 2026-08-20, 45 037 mesures ecartees
     en silence). On decode explicitement."""
     out = np.empty(a.shape, dtype=object)
-    plat = a.ravel()
+    flat = a.ravel()
     res = out.ravel()
-    for i, x in enumerate(plat):
+    for i, x in enumerate(flat):
         if isinstance(x, bytes):
             res[i] = x.decode("utf-8", "ignore").strip()
         elif x is None:
@@ -68,9 +68,9 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * R * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
 
 
-def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = None,
-                   marge_deg: float = 0.25, dist_max_km: float = 25.0,
-                   date_debut: str = "1980-01-01", date_fin: str = "2025-07-31"):
+def read_canswe(lat_nodes, lon_nodes, elev_nodes=None, path: str | None = None,
+                   margin_deg: float = 0.25, dist_max_km: float = 25.0,
+                   date_start: str = "1980-01-01", date_end: str = "2025-07-31"):
     """Selectionne les sites CanSWE d'une region et les apparie au noeud le plus proche.
 
     Retourne (sites, mesures) :
@@ -85,14 +85,14 @@ def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = N
     """
     import xarray as xr
 
-    d = xr.open_dataset(chemin or DEFAULT_FILE)
+    d = xr.open_dataset(path or DEFAULT_FILE)
     lat_s = d["lat"].values.astype(float)
     lon_s = d["lon"].values.astype(float)
 
-    lat_n = np.asarray(lat_noeuds, dtype=float)
-    lon_n = np.asarray(lon_noeuds, dtype=float)
-    dans = ((lat_s >= lat_n.min() - marge_deg) & (lat_s <= lat_n.max() + marge_deg)
-            & (lon_s >= lon_n.min() - marge_deg) & (lon_s <= lon_n.max() + marge_deg))
+    lat_n = np.asarray(lat_nodes, dtype=float)
+    lon_n = np.asarray(lon_nodes, dtype=float)
+    dans = ((lat_s >= lat_n.min() - margin_deg) & (lat_s <= lat_n.max() + margin_deg)
+            & (lon_s >= lon_n.min() - margin_deg) & (lon_s <= lon_n.max() + margin_deg))
     idx_s = np.flatnonzero(dans)
     if idx_s.size == 0:
         d.close()
@@ -106,18 +106,18 @@ def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = N
         j = int(np.argmin(dd))
         node_idx[k], dist_km[k] = j, float(dd[j])
 
-    garde = dist_km <= dist_max_km
-    idx_s, node_idx, dist_km = idx_s[garde], node_idx[garde], dist_km[garde]
+    kept = dist_km <= dist_max_km
+    idx_s, node_idx, dist_km = idx_s[kept], node_idx[kept], dist_km[kept]
     if idx_s.size == 0:
         d.close()
         return pd.DataFrame(), pd.DataFrame()
 
-    def _txt(nom):
-        return _as_text(d[nom].values[idx_s])
+    def _txt(field_name):
+        return _as_text(d[field_name].values[idx_s])
 
     elev_s = d["elevation"].values[idx_s].astype(float)
-    ediff = (elev_s - np.asarray(elev_noeuds, dtype=float)[node_idx]
-             if elev_noeuds is not None else np.full(idx_s.size, np.nan))
+    ediff = (elev_s - np.asarray(elev_nodes, dtype=float)[node_idx]
+             if elev_nodes is not None else np.full(idx_s.size, np.nan))
     ids = _txt("station_id")
 
     sites = pd.DataFrame({
@@ -133,15 +133,15 @@ def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = N
 
     # mesures, restreintes a la periode demandee
     t = pd.DatetimeIndex(d["time"].values)
-    per = np.flatnonzero((t >= pd.Timestamp(date_debut)) & (t <= pd.Timestamp(date_fin)))
+    per = np.flatnonzero((t >= pd.Timestamp(date_start)) & (t <= pd.Timestamp(date_end)))
     snw = d["snw"].values[idx_s][:, per].astype("float32")
     snd = d["snd"].values[idx_s][:, per].astype("float32")
     dfl = d["data_flag_snw"].values[idx_s][:, per]
     qfl = d["qc_flag_snw"].values[idx_s][:, per]
     d.close()
 
-    fini = np.isfinite(snw)
-    si, ti = np.nonzero(fini)
+    finite = np.isfinite(snw)
+    si, ti = np.nonzero(finite)
     if si.size == 0:
         return sites, pd.DataFrame()
 
@@ -149,17 +149,17 @@ def read_canswe(lat_noeuds, lon_noeuds, elev_noeuds=None, chemin: str | None = N
         return _as_text(a[si, ti])
 
     ok = np.isin(_flat(dfl), list(_DATA_FLAGS_OK)) & np.isin(_flat(qfl), list(_QC_FLAGS_OK))
-    mesures = pd.DataFrame({
+    measurements = pd.DataFrame({
         "swe_station_id": ids[si],
         "date": t[per][ti],
         "swe_mm": snw[si, ti],              # kg/m2 == mm d'eau
         "snow_depth_m": snd[si, ti],
         "quality_ok": ok,
     })
-    return sites, mesures
+    return sites, measurements
 
 
-def build_swe_targets(mesures, sites, times, max_dist_km: float = 15.0,
+def build_swe_targets(measurements, sites, times, max_dist_km: float = 15.0,
                       max_elev_diff_m: float = 150.0):
     """Cible d'entrainement sur la MASSE du manteau, a partir des releves CanSWE.
 
@@ -188,17 +188,17 @@ def build_swe_targets(mesures, sites, times, max_dist_km: float = 15.0,
     import pandas as pd
     import torch
 
-    if mesures is None or sites is None or len(mesures) == 0:
+    if measurements is None or sites is None or len(measurements) == 0:
         return None, None, None
-    gardes = sites[(sites["dist_km"] <= max_dist_km)
+    kept_list = sites[(sites["dist_km"] <= max_dist_km)
                    & (sites["elev_diff_m"].abs() <= max_elev_diff_m)
                    & sites["node_idx"].notna()].copy()
-    if len(gardes) == 0:
+    if len(kept_list) == 0:
         return None, None, None
-    gardes = gardes.reset_index(drop=True)
-    rang = {s: i for i, s in enumerate(gardes["swe_station_id"])}
+    kept_list = kept_list.reset_index(drop=True)
+    rank = {s: i for i, s in enumerate(kept_list["swe_station_id"])}
 
-    m = mesures[mesures["swe_station_id"].isin(rang)].copy()
+    m = measurements[measurements["swe_station_id"].isin(rank)].copy()
     m = m[m["swe_mm"].notna()]
     if len(m) == 0:
         return None, None, None
@@ -210,14 +210,14 @@ def build_swe_targets(mesures, sites, times, max_dist_km: float = 15.0,
     if not ok.any():
         return None, None, None
 
-    valeurs = np.full((len(axe), len(gardes)), np.nan, dtype=np.float32)
-    lignes = it[ok].astype(int)
-    colonnes = m["swe_station_id"].map(rang).to_numpy()[ok].astype(int)
+    value_list = np.full((len(axe), len(kept_list)), np.nan, dtype=np.float32)
+    lines = it[ok].astype(int)
+    columns = m["swe_station_id"].map(rank).to_numpy()[ok].astype(int)
     # Plusieurs releves peuvent tomber le meme jour au meme site (doublons de source) :
     # le dernier ecrit gagne, l'ecart entre eux est negligeable devant la
     # representativite ponctuelle qu'on ne sait de toute facon pas corriger.
-    valeurs[lignes, colonnes] = m["swe_mm"].to_numpy(dtype=np.float32)[ok]
+    value_list[lines, columns] = m["swe_mm"].to_numpy(dtype=np.float32)[ok]
 
-    return (torch.from_numpy(valeurs),
-            torch.tensor(gardes["node_idx"].to_numpy(), dtype=torch.long),
-            gardes)
+    return (torch.from_numpy(value_list),
+            torch.tensor(kept_list["node_idx"].to_numpy(), dtype=torch.long),
+            kept_list)

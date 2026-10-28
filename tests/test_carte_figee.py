@@ -31,5 +31,5 @@ def test_multiplicateur_applique_apres_le_gel():
     net.freeze_on_next_call = {"K_sat_1"}
     net.multipliers = {"K_sat_1": torch.tensor(0.3)}
     net._apply_multipliers(_sp(0.2))
-    sortie = net._apply_multipliers(_sp(0.9))
-    assert torch.allclose(sortie.K_sat_1, torch.full((5,), 0.06))
+    step_output = net._apply_multipliers(_sp(0.9))
+    assert torch.allclose(step_output.K_sat_1, torch.full((5,), 0.06))

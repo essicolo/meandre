@@ -53,7 +53,7 @@ class WaterTable(nn.Module):
 
     def forward(self, z: Tensor, recharge: Tensor, sy: Tensor, k_b: Tensor, z_riv: Tensor,
                 h_ref: Tensor, e_max: Tensor | None = None, z_ext: Tensor | None = None,
-                prelevement: Tensor | None = None, dt: float = 1.0) -> tuple[Tensor, Tensor, Tensor]:
+                withdrawal: Tensor | None = None, dt: float = 1.0) -> tuple[Tensor, Tensor, Tensor]:
         """Un pas de temps.
 
         Args:
@@ -73,9 +73,9 @@ class WaterTable(nn.Module):
             q_base: débit de base moyen sur le pas (m/j).
             e_nappe: évapotranspiration prélevée sur la nappe, moyenne sur le pas (m/j).
         """
-        sous_dt = dt / self.n_substep
-        q_cumul = torch.zeros_like(z)
-        e_cumul = torch.zeros_like(z)
+        sub_dt = dt / self.n_substep
+        q_cumulative = torch.zeros_like(z)
+        e_cumulative = torch.zeros_like(z)
         for _ in range(self.n_substep):
             h = torch.clamp(z_riv - z, min=0.0)
             q = k_b * (h / h_ref).pow(self.exponent)
@@ -83,19 +83,19 @@ class WaterTable(nn.Module):
                 e = e_max * torch.clamp(1.0 - z / z_ext, min=0.0, max=1.0)
             else:
                 e = torch.zeros_like(z)
-            sortie = q + e
-            if prelevement is not None:
-                sortie = sortie + prelevement
+            output = q + e
+            if withdrawal is not None:
+                output = output + withdrawal
             # La nappe ne peut pas rendre plus que ce qu'elle contient au-dessus du lit :
             # sans ce plafond une charge résiduelle produirait un débit à stock nul.
-            z = z - (recharge - sortie) * sous_dt / sy
+            z = z - (recharge - output) * sub_dt / sy
             z = torch.clamp(z, min=0.0)
-            q_cumul = q_cumul + q * sous_dt
-            e_cumul = e_cumul + e * sous_dt
-        return z, q_cumul / dt, e_cumul / dt
+            q_cumulative = q_cumulative + q * sub_dt
+            e_cumulative = e_cumulative + e * sub_dt
+        return z, q_cumulative / dt, e_cumulative / dt
 
     @staticmethod
-    def reponse_analytique(k: float, periode: float = 365.25) -> tuple[float, float]:
+    def analytic_response(k: float, period: float = 365.25) -> tuple[float, float]:
         """Amplitude et retard d'un réservoir LINÉAIRE sous recharge sinusoïdale.
 
         Pour dS/dt = R0 (1 + a cos(wt)) - k S, la composante oscillante du stock a pour
@@ -109,5 +109,5 @@ class WaterTable(nn.Module):
         """
         import math
 
-        w = 2.0 * math.pi / periode
+        w = 2.0 * math.pi / period
         return 1.0 / math.sqrt(k * k + w * w), math.atan2(w, k) / w

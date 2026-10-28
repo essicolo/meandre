@@ -50,10 +50,10 @@ def _swe_total(snow):
     return sum(float(snow[c][0].mean()) * 1000.0 for c in DegreJourModifie.CLASSES)
 
 
-def _hiver(col, st, jours=45):
+def _hiver(col, st, day_count=45):
     """Accumule un manteau : neige tous les jours par froid franc."""
     t = lambda x: torch.full((N,), float(x))
-    for i in range(jours):
+    for i in range(day_count):
         _, st, _ = col(t(4.0), t(-12.0), t(-4.0), t(8.0), t(1.5), t(0.8),
                        float((i % 365) + 1), st)
     return st

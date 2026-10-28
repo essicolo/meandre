@@ -33,8 +33,8 @@ def main():
     for an in range(2019, 2025):
         b = d.pr.sel(time=slice(f"{an}-05-31T08:00", f"{an}-10-01T07:00"))
         v = b.values.reshape(-1, b.sizes["time"])[cel]
-        jours = pd.DatetimeIndex(b.time.values - np.timedelta64(8, "h")).normalize()
-        st = pd.DataFrame((Wc @ np.nan_to_num(v)).T, index=jours, columns=stations).groupby(level=0).sum()
+        day_count = pd.DatetimeIndex(b.time.values - np.timedelta64(8, "h")).normalize()
+        st = pd.DataFrame((Wc @ np.nan_to_num(v)).T, index=day_count, columns=stations).groupby(level=0).sum()
         blocs.append(st)
     G = pd.concat(blocs)
     G = G[G.index.month.isin([6, 7, 8, 9])]

@@ -96,7 +96,7 @@ def test_desactive_le_clone_est_rendu_a_l_identique():
         assert torch.equal(x, y)
 
 
-def _cumul_fonte(jours, diurne, tmin, tmax):
+def _cumul_fonte(day_count, diurne, tmin, tmax):
     """Enchaine les pas de temps en reportant l'etat du manteau, et rend l'eau totale
     liberee. Un pas isole ne suffit pas : l'eau fondue rechauffe d'abord le manteau puis
     y est retenue, et la liberation ne commence qu'une fois celui-ci mur."""
@@ -107,7 +107,7 @@ def _cumul_fonte(jours, diurne, tmin, tmax):
     er = torch.zeros(1)
     alb = torch.tensor([0.55])
     total = 0.0
-    for _ in range(jours):
+    for _ in range(day_count):
         f, st, ha, ch, er, alb = calcule_fonte(
             tmin, tmax, torch.zeros(1), torch.zeros(1), torch.tensor([0.6]),
             st, ha, ch, er, alb, torch.tensor([0.004]), torch.tensor([0.5]),

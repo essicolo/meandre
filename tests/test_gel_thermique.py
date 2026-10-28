@@ -24,7 +24,7 @@ import torch
 from meandre.hydrotel.frost import Rankinen, n_intervalles
 
 
-def _profil(mod, n, tair=-15.0, neige=0.2, jours=60):
+def _profil(mod, n, tair=-15.0, neige=0.2, day_count=60):
     """Fait descendre un front de gel sur `jours` a temperature constante."""
     tmin = torch.full((n,), tair - 3.0)
     tmax = torch.full((n,), tair + 3.0)
@@ -35,10 +35,10 @@ def _profil(mod, n, tair=-15.0, neige=0.2, jours=60):
     return tmin, tmax, hs, p, z, nd
 
 
-def _descendre(mod, n, jours=60, **kw):
+def _descendre(mod, n, day_count=60, **kw):
     tmin, tmax, hs, p, z, _ = _profil(mod, n)
     frost_state = None
-    for _ in range(jours):
+    for _ in range(day_count):
         p, frost_state = mod(tmin, tmax, hs, p, z, z, z, **kw)
     return frost_state
 

@@ -72,17 +72,17 @@ def famille_ecoforestier(codes):
     return np.array(out, dtype=float), np.array(mince, dtype=float)
 
 
-def raster_siigsol(nom, crs, transform, forme):
+def raster_siigsol(nom, crs, transform, shape_value):
     """SIIGSOL reprojete sur la grille du territoire, nan hors donnee."""
     import rasterio
     from rasterio.warp import Resampling, reproject
-    out = np.full(forme, np.nan, dtype=np.float32)
+    out = np.full(shape_value, np.nan, dtype=np.float32)
     with rasterio.open(f"{SIIGSOL}/{nom}_fr_siigsol.tif") as src:
         reproject(rasterio.band(src, 1), out, dst_transform=transform, dst_crs=crs, src_nodata=src.nodata, dst_nodata=np.nan, resampling=Resampling.bilinear)
     return out
 
 
-def raster_twi(crs, emprise_4326, transform, forme):
+def raster_twi(crs, emprise_4326, transform, shape_value):
     """Indice d'humidite topographique LiDAR (MFFP, 1 m, 2 321 feuillets), lu a distance a
     100 m par feuillet puis reprojete sur la grille ; chaque feuillet lu est mis en cache."""
     import geopandas as gpd
@@ -118,12 +118,12 @@ def raster_twi(crs, emprise_4326, transform, forme):
         print(f"    TWI {nom} : lecture impossible", flush=True)
         return None, None, None
 
-    out = np.full(forme, np.nan, dtype=np.float32)
+    out = np.full(shape_value, np.nan, dtype=np.float32)
     with ThreadPoolExecutor(max_workers=8) as pool:
         for data, t, c in pool.map(un_feuillet, [r for _, r in feuillets.iterrows()]):
             if data is None:
                 continue
-            morceau = np.full(forme, np.nan, dtype=np.float32)
+            morceau = np.full(shape_value, np.nan, dtype=np.float32)
             reproject(data, morceau, src_transform=t, src_crs=c, src_nodata=np.nan, dst_transform=transform, dst_crs=crs, dst_nodata=np.nan, resampling=Resampling.average)
             prend = np.isfinite(morceau) & ~np.isfinite(out)
             out[prend] = morceau[prend]
@@ -137,17 +137,17 @@ def completer_twi(reg):
     f = SORTIE / f"grille-{reg}.npz"
     z = dict(np.load(f, allow_pickle=True))
     t = Affine.from_gdal(*z["transform"])
-    forme = z["ids"].shape
+    shape_value = z["ids"].shape
     import geopandas as gpd
     from rasterio.transform import array_bounds
-    b = array_bounds(forme[0], forme[1], t)
+    b = array_bounds(shape_value[0], shape_value[1], t)
     emprise_4326 = tuple(gpd.GeoSeries.from_xy([b[0], b[2]], [b[1], b[3]], crs=str(z["crs"])).to_crs(4326).total_bounds)
-    z["twi"] = raster_twi(str(z["crs"]), emprise_4326, t, forme)
+    z["twi"] = raster_twi(str(z["crs"]), emprise_4326, t, shape_value)
     np.savez_compressed(f, **z)
     print(f"{reg}: grille completee", flush=True)
 
 
-def raster_slc(crs, emprise_4326, transform, forme):
+def raster_slc(crs, emprise_4326, transform, shape_value):
     import geopandas as gpd
     poly = gpd.read_file(f"{cs.SLC}/ca_all_slc_v3r2.shp", bbox=emprise_4326)
     cmp = gpd.read_file(f"{cs.SLC}/ca_all_slc_v3r2_cmp.dbf")
@@ -159,7 +159,7 @@ def raster_slc(crs, emprise_4326, transform, forme):
     poly = poly.join(pd.DataFrame({"drainage": val, "part": part}), on="POLY_ID").to_crs(crs)
     # Un polygone dont moins de la moitie des composantes portent un drainage ne le definit pas.
     poly.loc[poly.part.fillna(0) < 0.5, "drainage"] = np.nan
-    return cd.rasteriser(poly, "drainage", transform, forme)
+    return cd.rasteriser(poly, "drainage", transform, shape_value)
 
 
 def pedons(crs):
@@ -190,19 +190,19 @@ def grille(reg):
     emprise_4326 = tuple(uh.to_crs(4326).total_bounds)
     ncol, nlig = int(np.ceil((x1 - x0) / RESOLUTION)), int(np.ceil((y1 - y0) / RESOLUTION))
     transform = from_origin(x0, y1, RESOLUTION, RESOLUTION)
-    forme = (nlig, ncol)
-    ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=forme, transform=transform, fill=0, dtype=np.int32)
+    shape_value = (nlig, ncol)
+    ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value, transform=transform, fill=0, dtype=np.int32)
     couches = {"ids": ids}
-    couches["irda"] = cd.rasteriser(cd.couche_irda(crs, emprise_4326), "drainage", transform, forme)
-    couches["slc"] = raster_slc(crs, emprise_4326, transform, forme)
-    eco = cd.rasters_ecoforestier(crs, emprise_4326, cd.feuillets_de(emprise_4326), transform, forme, colonnes=("drainage", "depot", "famille", "mince"))
+    couches["irda"] = cd.rasteriser(cd.couche_irda(crs, emprise_4326), "drainage", transform, shape_value)
+    couches["slc"] = raster_slc(crs, emprise_4326, transform, shape_value)
+    eco = cd.rasters_ecoforestier(crs, emprise_4326, cd.feuillets_de(emprise_4326), transform, shape_value, colonnes=("drainage", "depot", "famille", "mince"))
     for k in ("drainage", "depot", "famille", "mince"):
         couches[f"eco_{k}"] = eco[k]
     sig = cd.couche_sigeom(crs, emprise_4326)
-    couches["sigeom_rang"] = cd.rasteriser(sig, "drainage", transform, forme)
+    couches["sigeom_rang"] = cd.rasteriser(sig, "drainage", transform, shape_value)
     for nom in ("sable", "limon", "argile", "corg"):
-        couches[nom] = raster_siigsol(nom, crs, transform, forme)
-    couches["twi"] = raster_twi(crs, emprise_4326, transform, forme)
+        couches[nom] = raster_siigsol(nom, crs, transform, shape_value)
+    couches["twi"] = raster_twi(crs, emprise_4326, transform, shape_value)
     # Pedons : indices de cellule et rang, pour l'epreuve forestiere.
     pe = pedons(crs)
     pe = pe[pe.geometry.within(gpd.GeoSeries([uh.union_all()], crs=crs).iloc[0])]

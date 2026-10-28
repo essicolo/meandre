@@ -43,8 +43,8 @@ def main(reg, season=None):
     for m in pd.period_range(temps[0], temps[-1], freq="M"):
         b = g.pr.sel(time=slice(f"{m.start_time:%Y-%m-%d}T08:00", f"{(m.end_time + pd.Timedelta(days=1)):%Y-%m-%d}T07:00"))
         v = np.nan_to_num(b.values.reshape(-1, b.sizes["time"])[cel])
-        jours = pd.DatetimeIndex(b.time.values - np.timedelta64(8, "h")).normalize()
-        jour = pd.DataFrame(v.T, index=jours).groupby(level=0).sum()
+        day_count = pd.DatetimeIndex(b.time.values - np.timedelta64(8, "h")).normalize()
+        jour = pd.DataFrame(v.T, index=day_count).groupby(level=0).sum()
         for d, row in jour.iterrows():
             k = pos.get(d)
             if k is not None:

@@ -33,7 +33,7 @@ KIND_PERCOLATION = "percolation"
 KINDS = (KIND_LATERAL, KIND_PERCOLATION)
 
 
-def _stock_above(ctx, prm):
+def _storage_above(ctx, prm):
     """Stock au-dessus d'un niveau de la couche, en mètres, coupé net ou lissé (2026-10-02).
 
     `threshold` choisit le niveau : « field_capacity » (défaut, eau gravitaire) ou
@@ -42,8 +42,8 @@ def _stock_above(ctx, prm):
     smooth · softplus(stock / smooth) : le flux reste continu et dérivable au passage du
     niveau, sans porte ni bascule de conductivité. Sans `smooth`, la coupure d'origine.
     """
-    niveau = ctx["theta_wp"] if prm.get("threshold", "field_capacity") == "wilting_point" else ctx["theta_fc"]
-    s = (ctx["theta"] - niveau) * ctx["thickness"]
+    level = ctx["theta_wp"] if prm.get("threshold", "field_capacity") == "wilting_point" else ctx["theta_fc"]
+    s = (ctx["theta"] - level) * ctx["thickness"]
     w = prm.get("smooth")
     if w is None:
         return torch.clamp(s, min=0.0)
@@ -79,7 +79,7 @@ def base_thresh_power(ctx, prm):
     2026-09-19 sur une couche de 2,70 m : à tau = 5 jours la loi est convergée dès 64 sous-pas,
     266,7 mm contre 267,9 à 512 ; à tau = 20 jours elle ne l'est pas, 168,2 contre 204,4.
     """
-    s = _stock_above(ctx, prm)
+    s = _storage_above(ctx, prm)
     q = s / prm["tau"]
     n = prm.get("exponent", 1.0)
     if n != 1.0:
@@ -236,17 +236,17 @@ class SoilProcess:
         """
         from dataclasses import replace
 
-        plafond = self.ceiling
-        if isinstance(plafond, str):
-            if plafond not in fields:
-                raise KeyError(f"plafond « {plafond} » absent du champ spatial : "
+        ceiling_value = self.ceiling
+        if isinstance(ceiling_value, str):
+            if ceiling_value not in fields:
+                raise KeyError(f"plafond « {ceiling_value} » absent du champ spatial : "
                                f"sorties connues {sorted(fields)}")
-            plafond = fields[plafond]
+            ceiling_value = fields[ceiling_value]
         params = {k: (fields[v] if isinstance(v, str) and v in fields else v)
                   for k, v in self.params.items()}
-        if plafond is self.ceiling and params == self.params:
+        if ceiling_value is self.ceiling and params == self.params:
             return self
-        return replace(self, ceiling=plafond, params=params)
+        return replace(self, ceiling=ceiling_value, params=params)
 
     def flux(self, ctx):
         """Flux en mètres par heure, dans les unités internes de la boucle de sous-pas."""

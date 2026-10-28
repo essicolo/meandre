@@ -454,11 +454,11 @@ if _settings.raw("groundwater.water_table", "0") == "1":
         from meandre.data.recession_anchor import ancrage as _ancrage
 
         a = _ancrage(td.q_obs.detach().cpu().numpy())
-        state_label = "" if a.fiable else " (PEU DE STATIONS, defaut de Boussinesq conserve)"
+        state_label = "" if a.reliable else " (PEU DE STATIONS, defaut de Boussinesq conserve)"
         print(f"[etl] exposant de nappe MESURE sur {a.n_stations} stations : "
-              f"{a.exposant_stock:.2f} (recession b = {a.exposant_recession:.2f}, "
+              f"{a.storage_exponent:.2f} (recession b = {a.recession_exponent:.2f}, "
               f"quartiles {a.etendue[0]:.2f} a {a.etendue[1]:.2f}){state_label}")
-        return a.exposant_stock if a.fiable else 2.0
+        return a.storage_exponent if a.reliable else 2.0
 
     _np = dict(sy=float(_settings.raw("groundwater.specific_yield", 0.05)),
                k_b=float(_settings.raw("groundwater.conductance", 2.0e-3)),
@@ -1224,8 +1224,8 @@ if os.environ.get("MEANDRE_SENSIBILITE") == "1":
 
     _bench = _SFL("sensibilite", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "probes", "sensitivity.py")).load_module()
     _bench.mesurer(model, td, r["times"], DEVICE,
-                  jours=int(os.environ.get("MEANDRE_SENSIBILITE_JOURS", "365")),
-                  sortie=os.environ.get("MEANDRE_SENSIBILITE_SORTIE"))
+                  day_count=int(os.environ.get("MEANDRE_SENSIBILITE_JOURS", "365")),
+                  step_output=os.environ.get("MEANDRE_SENSIBILITE_SORTIE"))
     sys.stdout.flush()
     os._exit(0)
 
@@ -1576,7 +1576,7 @@ if os.environ.get("ETL_DUMP_STATIONS"):
             _W[_k, _ix] = _area[_ix] / _area[_ix].sum()
         _Wt = torch.from_numpy(_W.T)
         for _att in ("theta1", "theta2", "prod_surf", "prod_hypo", "prod_base",
-                     "lateral_mm", "swe", "recharge", "s_gw", "etr", "prof_gel_cm", "snowmelt"):
+                     "lateral_mm", "swe", "recharge", "s_gw", "etr", "frost_depth_cm", "snowmelt"):
             _v = getattr(_dg_st, _att, None)
             if _v is None or not hasattr(_v, "shape") or _v.shape[-1] != n_nodes:
                 print(f"[etl] diagnostics aux stations : {_att} absent")
@@ -1653,7 +1653,7 @@ if os.environ.get("ETL_DUMP_REACH"):
                                # PROFONDEUR D'EAU : l'observable de l'altimetrie satellitaire.
                                # Elle se compare en ANOMALIES, l'elevation absolue demandant
                                # l'altitude du lit, donc c'est la serie mensuelle qui sert.
-                               ("profondeur_eau_m", "profondeur_eau", False),
+                               ("water_depth_m", "profondeur_eau", False),
                                ("etr_mh", "etr_mh", True)):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
@@ -1693,8 +1693,8 @@ if os.environ.get("ETL_DUMP_REACH"):
                                 q_baseflow=_dg_r.q_baseflow.cpu().numpy()[:, _idx].astype(np.float32),
                                 # Profondeur de la surface libre : la seule grandeur
                                 # DIRECTEMENT comparable au niveau mesure dans un puits.
-                                **({"profondeur_nappe": _dg_r.profondeur_nappe.cpu().numpy()[:, _idx].astype(np.float32)}
-                                   if getattr(_dg_r, "profondeur_nappe", None) is not None else {}))
+                                **({"profondeur_nappe": _dg_r.water_table_depth.cpu().numpy()[:, _idx].astype(np.float32)}
+                                   if getattr(_dg_r, "water_table_depth", None) is not None else {}))
             print(f"[etl] nappe sauvee aux {len(_pu)} puits du reseau : {os.environ['ETL_DUMP_NAPPE']}")
         else:
             print(f"[etl] aucun puits du reseau dans {REG}")
@@ -1709,13 +1709,13 @@ if os.environ.get("ETL_DUMP_REACH"):
                        ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
                        ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
                        ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3"),
-                       ("temps_non_traite", "temps_non_traite"),
+                       ("untreated_time", "temps_non_traite"),
                        # Partition de la production laterale : sans elle on ne peut pas dire
                        # par quel chemin le modele soutient ses etiages, donc si sa reponse
                        # a un prelevement en basses eaux vient du bon reservoir.
                        ("prod_surf", "prod_surf"), ("prod_hypo", "prod_hypo"),
-                       ("prod_base", "prod_base"), ("profondeur_nappe", "profondeur_nappe"),
-                       ("etr_nappe", "etr_nappe")):
+                       ("prod_base", "prod_base"), ("water_table_depth", "profondeur_nappe"),
+                       ("etr_water_table", "etr_nappe")):
         _v = getattr(_dg_r, _att, None) if _dg_r is not None else None
         if _v is None or not hasattr(_v, "shape") or _v.shape[-1:] != (n_nodes,):
             continue

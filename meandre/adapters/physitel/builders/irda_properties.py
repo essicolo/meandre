@@ -110,15 +110,15 @@ def proprietes_polygones(comp):
     cx.close()
     d = pps.merge(comp[["Composante"] + VARIABLES], on="Composante", how="left")
     lignes = {"Code_polygone": d.Code_polygone.unique()}
-    sortie = pd.DataFrame(lignes).set_index("Code_polygone")
+    step_output = pd.DataFrame(lignes).set_index("Code_polygone")
     for v in VARIABLES:
         m = d[v].notna()
         w = d.Pourcentage.where(m, 0.0)
         num = (d[v].fillna(0.0) * w).groupby(d.Code_polygone).sum()
         den = w.groupby(d.Code_polygone).sum()
-        sortie[v] = num / den.replace(0, np.nan)
-        sortie[f"couv_{v}"] = den / 100.0
-    return sortie.reset_index()
+        step_output[v] = num / den.replace(0, np.nan)
+        step_output[f"couv_{v}"] = den / 100.0
+    return step_output.reset_index()
 
 
 def une_region(reg, poly):

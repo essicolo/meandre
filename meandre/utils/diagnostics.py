@@ -77,7 +77,7 @@ class SimDiagnostics:
     theta3: Tensor | None = None   # (T, N) m³/m³ — soil moisture L3 (100-200 cm)
     s_gw: Tensor | None = None     # (T, N) mm — groundwater storage (aquifer)
     canopy: Tensor | None = None   # (T, N) mm — canopy interception storage
-    prof_gel_cm: Tensor | None = None  # (T, N) cm — profondeur du front de gel
+    frost_depth_cm: Tensor | None = None  # (T, N) cm — profondeur du front de gel
     wetland: Tensor | None = None  # (T, N) mm — wetland storage
     # Décomposition de lateral_mm (mm/jour) : surface (ruissellement + débordement de
     # saturation), hypodermique (drainage latéral couche 2), base (recharge q3). Sert à
@@ -102,18 +102,18 @@ class SimDiagnostics:
     # 0 a 1). La pluie de ce temps ruisselle et son evapotranspiration est prelevee, mais
     # son drainage profond n'est jamais accumule : la recharge y est convertie en
     # ruissellement. Non nulle la ou la condition de Courant exige des sous-pas courts.
-    temps_non_traite: Tensor | None = None
+    untreated_time: Tensor | None = None
     # Nappe libre (opt-in) : profondeur de la surface libre sous le sol (m), directement
     # comparable au niveau mesuré dans un puits, et évapotranspiration prélevée sur la zone
     # saturée (mm/jour), sortie atmosphérique à compter au bilan.
-    profondeur_nappe: Tensor | None = None
-    etr_nappe: Tensor | None = None
+    water_table_depth: Tensor | None = None
+    etr_water_table: Tensor | None = None
     # PROFONDEUR D'EAU DANS LE TRONÇON, en metres (2026-09-22). Manning en section large :
     # h = (Q n / (w racine(pente)))^(3/5). C'est l'observable de l'altimetrie satellitaire,
     # qui mesure une elevation de surface libre et non un debit. L'ELEVATION absolue
     # demanderait l'altitude du lit, que nous n'avons pas : la comparaison se fait en
     # ANOMALIES, comme pour les puits et la gravimetrie.
-    profondeur_eau_m: Tensor | None = None
+    water_depth_m: Tensor | None = None
 
     # Temperature
     T_water: Tensor | None = None  # (T, N) °C, None if temperature disabled

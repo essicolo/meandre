@@ -119,14 +119,14 @@ def hierarchiser(couches):
     return valeur, source
 
 
-def rasteriser(gdf, colonne, transform, forme):
+def rasteriser(gdf, colonne, transform, shape_value):
     """Rasterise une valeur flottante par polygone ; les cellules sans polygone valent nan."""
     from rasterio import features
     g = gdf[gdf[colonne].notna()]
     if g.empty:
-        return np.full(forme, np.nan, dtype=np.float32)
+        return np.full(shape_value, np.nan, dtype=np.float32)
     formes = ((geom, float(val)) for geom, val in zip(g.geometry, g[colonne]))
-    return features.rasterize(formes, out_shape=forme, transform=transform, fill=np.nan, dtype=np.float32)
+    return features.rasterize(formes, out_shape=shape_value, transform=transform, fill=np.nan, dtype=np.float32)
 
 
 def couche_irda(crs, emprise):
@@ -178,7 +178,7 @@ def couche_ecoforestier(crs, emprise_4326, feuillets):
     return eco.to_crs(crs)
 
 
-def rasters_ecoforestier(crs, emprise_4326, feuillets, transform, forme, colonnes=("drainage", "depot")):
+def rasters_ecoforestier(crs, emprise_4326, feuillets, transform, shape_value, colonnes=("drainage", "depot")):
     """Rasters ecoforestiers de l'emprise, construits FEUILLET PAR FEUILLET : un feuillet est lu,
     rasterise sur la grille du territoire, puis libere. Tenir tous les polygones d'un
     territoire en memoire coutait 12,6 Go pour 2,6 millions de polygones au Saguenay et
@@ -195,7 +195,7 @@ def rasters_ecoforestier(crs, emprise_4326, feuillets, transform, forme, colonne
         z = np.load(f_cache)
         if all(c in z.files for c in colonnes):
             return {c: z[c] for c in colonnes}
-    out = {c: np.full(forme, np.nan, dtype=np.float32) for c in colonnes}
+    out = {c: np.full(shape_value, np.nan, dtype=np.float32) for c in colonnes}
     journal = Path(f"{ECOFOR}/feuillets/telechargement.log")
     for f in feuillets:
         z = Path(f"{ECOFOR}/feuillets/{f}.zip")
@@ -218,7 +218,7 @@ def rasters_ecoforestier(crs, emprise_4326, feuillets, transform, forme, colonne
             from reconstruire_drainage import famille_ecoforestier
             pee["famille"], pee["mince"] = famille_ecoforestier(pee.dep_sur)
         for c in colonnes:
-            r = rasteriser(pee, c, transform, forme)
+            r = rasteriser(pee, c, transform, shape_value)
             prend = np.isfinite(r) & ~np.isfinite(out[c])
             out[c][prend] = r[prend]
         del pee
@@ -263,20 +263,20 @@ def une_region(reg):
     ncol = int(np.ceil((x1 - x0) / RESOLUTION))
     nlig = int(np.ceil((y1 - y0) / RESOLUTION))
     transform = from_origin(x0, y1, RESOLUTION, RESOLUTION)
-    forme = (nlig, ncol)
-    ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=forme, transform=transform, fill=0, dtype=np.int32)
+    shape_value = (nlig, ncol)
+    ids = features.rasterize(((g, int(u)) for g, u in zip(uh.geometry, uh.uhrh)), out_shape=shape_value, transform=transform, fill=0, dtype=np.int32)
     print(f"{reg}: grille {nlig} x {ncol} a {RESOLUTION:.0f} m, {int((ids > 0).sum())} cellules dans les unites", flush=True)
 
     couches = {}
-    couches["irda"] = rasteriser(couche_irda(crs, emprise_4326), "drainage", transform, forme)
-    eco = rasters_ecoforestier(crs, emprise_4326, feuillets_de(emprise_4326), transform, forme)
+    couches["irda"] = rasteriser(couche_irda(crs, emprise_4326), "drainage", transform, shape_value)
+    eco = rasters_ecoforestier(crs, emprise_4326, feuillets_de(emprise_4326), transform, shape_value)
     couches["ecoforestier"] = eco["drainage"]
     depot_eco = eco["depot"]
     sig = couche_sigeom(crs, emprise_4326)
-    couches["sigeom"] = rasteriser(sig, "drainage", transform, forme)
+    couches["sigeom"] = rasteriser(sig, "drainage", transform, shape_value)
     for g in SIGEOM_GROUPE:
         sig[f"est_{g}"] = (sig.groupe == g).astype(float)
-    groupes = {g: rasteriser(sig, f"est_{g}", transform, forme) for g in SIGEOM_GROUPE}
+    groupes = {g: rasteriser(sig, f"est_{g}", transform, shape_value) for g in SIGEOM_GROUPE}
 
     dans = ids > 0
     print("  couverture brute des unites : " + ", ".join(f"{k} {np.isfinite(v[dans]).mean():.2f}" for k, v in couches.items()), flush=True)

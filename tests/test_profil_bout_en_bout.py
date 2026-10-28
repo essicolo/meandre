@@ -81,11 +81,11 @@ def test_les_trois_formes_du_catalogue_rendent_des_flux_finis_et_positifs():
            "theta_fc": torch.full((5,), 0.30), "thickness": torch.full((5,), 2.70),
            "porosity": torch.full((5,), 0.50), "conductivity": torch.full((5,), 1e-3),
            "sin_slope": torch.full((5,), 0.04)}
-    for forme, params in (("BASE_LINEAR", {}), ("BASE_THRESH_POWER", {"tau": 72.0}),
+    for shape_value, params in (("BASE_LINEAR", {}), ("BASE_THRESH_POWER", {"tau": 72.0}),
                           ("BASE_THRESH_POWER", {"tau": 72.0, "exponent": 2.0}),
                           ("PERC_LINEAR", {"krec": 2e-5}),
                           ("PERC_POWER_LAW", {"krec": 2e-5, "exponent": 3.0})):
-        kind = "lateral" if forme.startswith("BASE") else "percolation"
-        q = sp.SoilProcess(layer=3, kind=kind, form=forme, params=params).flux(ctx)
-        assert torch.all(torch.isfinite(q)), f"{forme} {params} rend des valeurs non finies"
-        assert torch.all(q >= 0.0), f"{forme} {params} rend un flux negatif"
+        kind = "lateral" if shape_value.startswith("BASE") else "percolation"
+        q = sp.SoilProcess(layer=3, kind=kind, form=shape_value, params=params).flux(ctx)
+        assert torch.all(torch.isfinite(q)), f"{shape_value} {params} rend des valeurs non finies"
+        assert torch.all(q >= 0.0), f"{shape_value} {params} rend un flux negatif"

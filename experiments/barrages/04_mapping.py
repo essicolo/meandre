@@ -162,7 +162,7 @@ def main():
         .then(pl.lit("assuré"))
         .otherwise(pl.lit("douteux")))
 
-    sortie = m.select(
+    step_output = m.select(
         "no_barrage", "nom_barrage", "categorie", "latitude", "longitude",
         "region_administrative", "municipalite", "mrc",
         pl.col("IDTRONCON_final").alias("IDTRONCON"),
@@ -175,15 +175,15 @@ def main():
         "hauteur_retenue_m", "superficie_reservoir_ha", "utilisations",
     )
     dest = DATA / "mapping-barrages-troncons.csv"
-    sortie.write_csv(dest)
-    print(f"{sortie.height} rattachements -> {dest}")
+    step_output.write_csv(dest)
+    print(f"{step_output.height} rattachements -> {dest}")
 
     # meme contenu en points, pour la cartographie (cf. prelevements.geojson)
-    pts = sortie.to_pandas()
+    pts = step_output.to_pandas()
     gpd.GeoDataFrame(pts, geometry=gpd.points_from_xy(pts["longitude"], pts["latitude"]),
                      crs="EPSG:4326").to_file(DATA / "barrages.geojson",
                                               driver="GeoJSON")
-    print(sortie.select(
+    print(step_output.select(
         n_lac=pl.col("relocalise_lac").sum(),
         d_med=pl.col("distance_m").median(),
         d_p90=pl.col("distance_m").quantile(0.9),
@@ -192,7 +192,7 @@ def main():
         desaccord=(~pl.col("accord_nom")).sum(),
         indecidable=pl.col("accord_nom").is_null().sum(),
     ))
-    print(sortie.group_by("qualite").len().sort("len", descending=True))
+    print(step_output.group_by("qualite").len().sort("len", descending=True))
 
 
 if __name__ == "__main__":

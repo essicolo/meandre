@@ -11,12 +11,12 @@ import pytest
 from meandre.vertical.aquifer import AquiferModule, PowerLawAquifer
 
 
-def _recession(module, S0=200.0, jours=120, **params):
+def _recession(module, S0=200.0, day_count=120, **params):
     """Vidange libre depuis S0, sans recharge. Retourne la serie de Q (mm/j)."""
     S = torch.tensor([S0])
     zero = torch.zeros(1)
     qs = []
-    for _ in range(jours):
+    for _ in range(day_count):
         Q, S = module(zero, S, **params)
         qs.append(float(Q))
     return torch.tensor(qs)
@@ -41,13 +41,13 @@ def test_deux_constantes_de_temps():
     Pour b > 1 le rapport debut/fin doit etre franc (les recessions d'OUTV donnent
     0.0273 contre 0.0090, rapport 3) ; pour b = 1 il vaut exactement 1.
     """
-    q = _recession(PowerLawAquifer(), S0=300.0, jours=150,
+    q = _recession(PowerLawAquifer(), S0=300.0, day_count=150,
                    q_ref=torch.tensor([3.0]), b=torch.tensor([2.0]))
     lnq = torch.log(q.clamp(min=1e-12))
     k_debut = float(lnq[2] - lnq[7]) / 5.0
     k_fin = float(lnq[100] - lnq[140]) / 40.0
     assert k_debut > 2.5 * k_fin, f"raide {k_debut:.4f} vs etire {k_fin:.4f}"
-    q1 = _recession(PowerLawAquifer(), S0=300.0, jours=150,
+    q1 = _recession(PowerLawAquifer(), S0=300.0, day_count=150,
                     q_ref=torch.tensor([3.0]), b=torch.tensor([1.0]))
     lnq1 = torch.log(q1.clamp(min=1e-12))
     k1_debut = float(lnq1[2] - lnq1[7]) / 5.0
@@ -102,7 +102,7 @@ def test_residences_mesurees_atteignables():
     """Les deux cibles d'OUTV (37 j a stock plein, 111 j a stock bas) doivent etre
     DANS l'enveloppe d'un meme jeu (q_ref, b) plausible -- sinon le module ne peut pas
     representer le bassin qu'on lui demande de representer."""
-    q = _recession(PowerLawAquifer(), S0=250.0, jours=200,
+    q = _recession(PowerLawAquifer(), S0=250.0, day_count=200,
                    q_ref=torch.tensor([2.6]), b=torch.tensor([2.2]))
     lnq = torch.log(q.clamp(min=1e-12))
     k_plein = float(lnq[1] - lnq[6]) / 5.0

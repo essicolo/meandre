@@ -286,7 +286,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
 
 
 
-def forme(temps, q, o, garde=None):
+def shape_value(temps, q, o, garde=None):
     """Deux questions que gamma ne separe pas (Essi, 2026-09-04) :
       1. l'hydrogramme est-il RABOTE ? -> rapport des pointes annuelles et des hauts
          quantiles, simule sur observe ;
@@ -356,7 +356,7 @@ def rapport(reg, station, **kw):
     k, r, b, gm = _kge(q[garde], o[garde])
     print(f"{reg.upper()} / {station} : KGE {k:.3f} | r {r:.3f} | beta {b:.3f} | "
           f"gamma {gm:.3f}")
-    _ligne_forme("forme", forme(temps, q, o, garde))
+    _ligne_forme("forme", shape_value(temps, q, o, garde))
     mo = temps.month.to_numpy()
     ps, po = [], []
     for mm in range(1, 13):
@@ -843,7 +843,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                     _rs.append(float(np.corrcoef(-_s[_ok], -_o[_ok])[0, 1]) if int(_ok.sum()) >= 24 else float("nan"))
                 print(f"  {etiquette:28s} puits tenus de cote : " + ", ".join(
                     f"{nappe_garde[2][j]} r {_rs[j]:5.2f}" for j in range(len(_rs))), flush=True)
-        _ligne_forme(etiquette, forme(temps, q, o, ev))
+        _ligne_forme(etiquette, shape_value(temps, q, o, ev))
         # Le meme KGE sur la fenetre d'ENTRAINEMENT : a comparer au terme KGE de la
         # perte (1 - KGE), qui semblait deja presque nul a la premiere epoque.
         tr = (temps.year >= debut_train) & (temps.year <= fin_train)
@@ -1144,7 +1144,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                 # trois quarts reconstruit sous glace (R98) ; ce tableau separe le defaut du
                 # modele de celui de la reference.
                 _dm = df.assign(mes=mesure[_ok_t])
-                _tm = _dm[_dm.mes].groupby("mois").agg(jours=("Qobs", "size"), Qobs=("Qobs", "mean"), Qsim=("Qsim", "mean"))
+                _tm = _dm[_dm.mes].groupby("mois").agg(day_count=("Qobs", "size"), Qobs=("Qobs", "mean"), Qsim=("Qsim", "mean"))
                 _tt = _dm.groupby("mois").agg(Qobs_tous=("Qobs", "mean"), Qsim_tous=("Qsim", "mean"))
                 _tm = _tm.join(_tt)
                 _tm["sim/obs mesures"] = _tm.Qsim / _tm.Qobs
@@ -1165,7 +1165,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             # VOLUME PAR ANNEE (2026-10-01) : debit simule et observe, precipitation et ET, sur les
             # jours ou l'observe existe. Dit si le biais de volume derive d'une periode a l'autre.
             _va = df.assign(annee=pd.DatetimeIndex(temps)[_ok_t].year).dropna(subset=["Qobs"])
-            _vy = _va.groupby("annee").agg(jours=("Qobs", "size"), P=("P", "mean"), ET=("ET", "mean"), Qobs=("Qobs", "mean"), Qsim=("Qsim", "mean"))
+            _vy = _va.groupby("annee").agg(day_count=("Qobs", "size"), P=("P", "mean"), ET=("ET", "mean"), Qobs=("Qobs", "mean"), Qsim=("Qsim", "mean"))
             _vy["Qsim/Qobs"] = _vy.Qsim / _vy.Qobs
             _vy["(P-Qobs)"] = _vy.P - _vy.Qobs
             print("  volume par annee, jours ou le debit observe existe, mm/j :", flush=True)
@@ -1559,7 +1559,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             k, r, b, gm = _kge(h[ev], o[ev])
             print(f"  {'Hydrotel':28s} KGE vs observe {k:6.3f} | r {r:5.3f} | beta {b:5.3f} "
                   f"| gamma {gm:5.3f}")
-            _ligne_forme("Hydrotel", forme(temps, h, o, ev))
+            _ligne_forme("Hydrotel", shape_value(temps, h, o, ev))
             for etiq, q in (("zero epoque", q0), (f"apres {epoques} epoques", q1)):
                 k, r, b, gm = _kge(q[ev], h[ev])
                 print(f"  {etiq + ' vs Hydrotel':28s} KGE {k:6.3f} | r {r:5.3f}")

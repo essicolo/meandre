@@ -57,7 +57,7 @@ def _mensualise(x, times, hiver):
     return out
 
 
-def _rang_effectif(x, recouvrement_min=24):
+def _effective_rank(x, recouvrement_min=24):
     """Rang effectif d'une matrice mois x colonnes, par corrélation deux à deux.
 
     Retourne (composantes pour 95 %, rapport de participation, colonnes retenues). Le
@@ -183,7 +183,7 @@ def main():
                     lignes.append(("neisim-aux-sites", z["valeurs"][:, col]))
         for nom, m in lignes:
             mm = _mensualise(m, times, hiver)
-            n95, part, cols = _rang_effectif(mm)
+            n95, part, cols = _effective_rank(mm)
             rep, p = _reproductibilite(mm)
             n95_t = f"{n95:>7d}" if np.isfinite(n95) else f"{'—':>7s}"
             part_t = f"{part:>14.1f}" if np.isfinite(part) else f"{'—':>14s}"

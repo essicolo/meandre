@@ -8,69 +8,69 @@ tritanopia, and every qualitative colour holds at least 3:1 against white.
 """
 
 # Official tokens, light theme
-BLEU_PALE = "#DAE6F0"
-BLEU_150 = "#C6DBEE"
-BLEU_200 = "#ADCDEB"
-BLEU_300 = "#72B2EB"
-BLEU_400 = "#3B95E1"
-BLEU_CLAIR = "#4A98D9"
-BLEU_500 = "#0078CC"
-BLEU = "#1472BF"
-BLEU_PIV = "#095797"
-BLEU_MOYEN = "#19406C"
-BLEU_FONCE = "#223654"
-BLEU_800 = "#162B47"
-ROSE_PALE = "#FFDBD6"
-ROSE = "#E58271"
-ROUGE = "#CB381F"
-ROUGE_FONCE = "#692519"
-VERT_PALE = "#D7F0BB"
-VERT = "#4F813D"
-VERT_FONCE = "#2C4024"
-JAUNE_PALE = "#F8E69A"
-JAUNE = "#E0AD03"
-JAUNE_FONCE = "#AD781C"
+BLUE_PALE = "#DAE6F0"
+BLUE_150 = "#C6DBEE"
+BLUE_200 = "#ADCDEB"
+BLUE_300 = "#72B2EB"
+BLUE_400 = "#3B95E1"
+BLUE_LIGHT = "#4A98D9"
+BLUE_500 = "#0078CC"
+BLUE = "#1472BF"
+BLUE_PIV = "#095797"
+BLUE_MEDIUM = "#19406C"
+BLUE_DARK = "#223654"
+BLUE_800 = "#162B47"
+PINK_PALE = "#FFDBD6"
+PINK = "#E58271"
+RED = "#CB381F"
+RED_DARK = "#692519"
+GREEN_PALE = "#D7F0BB"
+GREEN = "#4F813D"
+GREEN_DARK = "#2C4024"
+YELLOW_PALE = "#F8E69A"
+YELLOW = "#E0AD03"
+YELLOW_DARK = "#AD781C"
 VIOLET = "#6B4FA1"
-GRIS_PALE = "#F1F1F2"
-GRIS_CLAIR = "#C5CAD2"
-GRIS = "#8893A2"
-GRIS_MOYEN = "#6B778A"
-GRIS_FONCE = "#4E5662"
+GRAY_PALE = "#F1F1F2"
+GRAY_LIGHT = "#C5CAD2"
+GRAY = "#8893A2"
+GRAY_MEDIUM = "#6B778A"
+GRAY_DARK = "#4E5662"
 
 # Continuous variables: two anchors, let the scale interpolate. Never bin.
-SEQUENTIEL_BAS = BLEU_PALE
-SEQUENTIEL_HAUT = BLEU_800
+SEQUENTIAL_LOW = BLUE_PALE
+SEQUENTIAL_HIGH = BLUE_800
 
 # Discrete sequential ramps, regular in L*. 4 and 7 classes are the regular ones.
-SEQUENTIEL_3 = [BLEU_200, BLEU_500, BLEU_800]
-SEQUENTIEL_4 = [BLEU_PALE, BLEU_300, BLEU_500, BLEU_MOYEN]
-SEQUENTIEL_5 = [BLEU_PALE, BLEU_300, BLEU_500, BLEU_PIV, BLEU_800]
-SEQUENTIEL_7 = [BLEU_PALE, BLEU_200, BLEU_300, BLEU_400, BLEU, BLEU_PIV, BLEU_MOYEN]
+SEQUENTIAL_3 = [BLUE_200, BLUE_500, BLUE_800]
+SEQUENTIAL_4 = [BLUE_PALE, BLUE_300, BLUE_500, BLUE_MEDIUM]
+SEQUENTIAL_5 = [BLUE_PALE, BLUE_300, BLUE_500, BLUE_PIV, BLUE_800]
+SEQUENTIAL_7 = [BLUE_PALE, BLUE_200, BLUE_300, BLUE_400, BLUE, BLUE_PIV, BLUE_MEDIUM]
 
 # Diverging, symmetric in L* around a near-neutral centre.
-DIVERGENT_5 = [ROUGE, ROSE, GRIS_PALE, BLEU_300, BLEU]
-DIVERGENT_7 = [ROUGE_FONCE, ROUGE, ROSE, GRIS_PALE, BLEU_300, BLEU, BLEU_MOYEN]
+DIVERGING_5 = [RED, PINK, GRAY_PALE, BLUE_300, BLUE]
+DIVERGING_7 = [RED_DARK, RED, PINK, GRAY_PALE, BLUE_300, BLUE, BLUE_MEDIUM]
 
 # Qualitative, nested: take the first n. Worst-case dE76 stays at 20 from n=3 to n=6.
-QUALITATIF = [BLEU_MOYEN, ROUGE, JAUNE_FONCE, BLEU_CLAIR, VIOLET, ROUGE_FONCE]
-QUALITATIF_MANQUANT = GRIS_CLAIR
+QUALITATIVE = [BLUE_MEDIUM, RED, YELLOW_DARK, BLUE_LIGHT, VIOLET, RED_DARK]
+QUALITATIVE_MISSING = GRAY_LIGHT
 
 # Single-series accent, and neutral reference lines.
-ACCENT = BLEU_PIV
-REFERENCE = GRIS_MOYEN
+ACCENT = BLUE_PIV
+REFERENCE = GRAY_MEDIUM
 
 # Dark theme (background #121519): the identity blue lightens.
-ACCENT_SOMBRE = BLEU_300
-SEQUENTIEL_SOMBRE_BAS = BLEU_800
-SEQUENTIEL_SOMBRE_HAUT = BLEU_150
+ACCENT_DARK = BLUE_300
+SEQUENTIAL_DARK_LOW = BLUE_800
+SEQUENTIAL_DARK_HIGH = BLUE_150
 
 
 # Control points of the continuous ramp: the official blue ladder, already near-regular
 # in L* (90.7, 81.0, 70.5, 59.8, 46.9, 36.2, 26.6, 17.2).
-_RAMPE_ANCRES = [BLEU_PALE, BLEU_200, BLEU_300, BLEU_400, BLEU, BLEU_PIV, BLEU_MOYEN, BLEU_800]
+_RAMP_ANCHORS = [BLUE_PALE, BLUE_200, BLUE_300, BLUE_400, BLUE, BLUE_PIV, BLUE_MEDIUM, BLUE_800]
 
 
-def _srgb_vers_lab(hexa):
+def _srgb_to_lab(hexa):
     def lin(c):
         c = c / 255
         return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -85,7 +85,7 @@ def _srgb_vers_lab(hexa):
     return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
 
 
-def _lab_vers_srgb(lab):
+def _lab_to_srgb(lab):
     def finv(t):
         return t ** 3 if t ** 3 > 0.008856 else (t - 16 / 116) / 7.787
     def unlin(c):
@@ -101,20 +101,20 @@ def _lab_vers_srgb(lab):
     return "#" + "".join(f"{max(0, min(255, round(unlin(max(0.0, min(1.0, c))) * 255))):02X}" for c in (r, g, bl))
 
 
-def rampe(n=256, ancres=None):
+def ramp(n=256, anchors=None):
     """Continuous sequential ramp, n colours interpolated in CIE Lab.
 
     Some geoms (geom_imshow) take a list of colours rather than two anchors, and they
     quantise that list into bands. Passing rampe(256) gives them a ramp the reader sees
     as continuous, instead of classes that the data does not have.
     """
-    ancres = ancres or _RAMPE_ANCRES
-    labs = [_srgb_vers_lab(c) for c in ancres]
+    anchors = anchors or _RAMP_ANCHORS
+    labs = [_srgb_to_lab(c) for c in anchors]
     m = len(labs) - 1
     out = []
     for i in range(n):
         t = i / (n - 1) * m
         k = min(int(t), m - 1)
         u = t - k
-        out.append(_lab_vers_srgb(tuple(labs[k][j] + u * (labs[k + 1][j] - labs[k][j]) for j in range(3))))
+        out.append(_lab_to_srgb(tuple(labs[k][j] + u * (labs[k + 1][j] - labs[k][j]) for j in range(3))))
     return out

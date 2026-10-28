@@ -913,7 +913,7 @@ class BasinCache:
         return torch.from_numpy(arr).to(device)
 
     # ── CanSWE : neige MESUREE, appariee aux noeuds (patron stations/observations) ──
-    def import_canswe(self, sites: "pd.DataFrame", mesures: "pd.DataFrame") -> int:
+    def import_canswe(self, sites: "pd.DataFrame", measurements: "pd.DataFrame") -> int:
         """Importe les sites nivometriques et leurs mesures d'EEN.
 
         Suit le patron des jauges de debit (stations + observations) et non celui de
@@ -922,8 +922,8 @@ class BasinCache:
         de mesure) rendrait tout desaccord ininterpretable.
         """
         import duckdb, pandas as pd
-        mesures = mesures.copy()
-        mesures["date"] = pd.to_datetime(mesures["date"]).dt.normalize()
+        measurements = measurements.copy()
+        measurements["date"] = pd.to_datetime(measurements["date"]).dt.normalize()
         con = duckdb.connect(str(self.path))
         try:
             con.execute("""
@@ -952,13 +952,13 @@ class BasinCache:
             """)
             con.execute("INSERT OR REPLACE INTO snow_sites SELECT * FROM sites")
             con.execute("INSERT OR REPLACE INTO snow_obs SELECT * FROM mesures")
-            n = len(mesures)
+            n = len(measurements)
         finally:
             con.close()
         print(f"[import_canswe] {len(sites):,} sites, {n:,} mesures")
         return n
 
-    def load_canswe(self, date_start: str, date_end: str, qualite_seule: bool = True):
+    def load_canswe(self, date_start: str, date_end: str, quality_only: bool = True):
         """Charge (mesures, sites) : DataFrame long des mesures + table des sites.
 
         Volontairement pas de tenseur (T, n_noeuds) ici : plusieurs sites peuvent
@@ -971,8 +971,8 @@ class BasinCache:
             tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             if "snow_obs" not in tables:
                 return None, None
-            cond = " AND quality_ok = TRUE" if qualite_seule else ""
-            mesures = con.execute(
+            cond = " AND quality_ok = TRUE" if quality_only else ""
+            measurements = con.execute(
                 "SELECT o.swe_station_id, o.date, o.swe_mm, o.snow_depth_m, s.node_idx "
                 "FROM snow_obs o JOIN snow_sites s USING (swe_station_id) "
                 "WHERE o.date >= CAST(? AS DATE) AND o.date <= CAST(? AS DATE)" + cond +
@@ -980,7 +980,7 @@ class BasinCache:
             sites = con.execute("SELECT * FROM snow_sites").df()
         finally:
             con.close()
-        return mesures, sites
+        return measurements, sites
 
     def has_canswe(self) -> bool:
         import duckdb
@@ -1054,7 +1054,7 @@ class BasinCache:
 
         ds = xr.open_dataset(path)
         try:
-            troncon_ids_raw = ds.troncon_id.values
+            reach_ids_raw = ds.troncon_id.values
             station_ids_raw = ds.station_id.values
             lons = ds.lon.values
             lats = ds.lat.values
@@ -1068,14 +1068,14 @@ class BasinCache:
         node_ids_rows = con.execute(
             "SELECT node_idx, node_id FROM nodes ORDER BY node_idx"
         ).fetchall()
-        troncon_to_node = {int(r[1]): int(r[0]) for r in node_ids_rows}
+        reach_to_node = {int(r[1]): int(r[0]) for r in node_ids_rows}
 
         import pandas as pd
 
         stations_rows = []
         obs_rows = []
 
-        for i, (sid, tid_str) in enumerate(zip(station_ids_raw, troncon_ids_raw)):
+        for i, (sid, tid_str) in enumerate(zip(station_ids_raw, reach_ids_raw)):
             tid_str = str(tid_str).strip()
             sid = str(sid).strip()
 
@@ -1099,7 +1099,7 @@ class BasinCache:
             except ValueError:
                 continue
 
-            node_idx = troncon_to_node.get(tid_int)
+            node_idx = reach_to_node.get(tid_int)
 
             stations_rows.append({
                 "station_id": sid,

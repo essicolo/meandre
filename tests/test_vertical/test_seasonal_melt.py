@@ -31,13 +31,13 @@ def _params(n=4, **extra):
     return p
 
 
-def _hiver_puis_fonte(p, n=4, jours=range(330, 366)):
+def _hiver_puis_fonte(p, n=4, day_count=range(330, 366)):
     """Accumule 60 mm puis rechauffe : retourne (apport total, stock final)."""
     s = init_state(n, dtype=torch.float64)
     tmin, tmax = torch.full((n,), -12.0, dtype=torch.float64), torch.full((n,), -4.0, dtype=torch.float64)
     zero = torch.zeros(n, dtype=torch.float64)
     apports = 0.0
-    for j in list(jours):
+    for j in list(day_count):
         neige = torch.full((n,), 4.0, dtype=torch.float64) if j % 3 == 0 else zero
         # REDOUX DOUX (tmax +2), pas des degel complets : la fonte doit etre limitee
         # par le COEFFICIENT et non par le stock, sinon tout fond quel que soit le

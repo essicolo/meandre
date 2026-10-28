@@ -107,7 +107,7 @@ class HydroModel(nn.Module):
     # Ceux-là ne peuvent pas être détachés, sous peine d'un terme qui garde sa valeur, s'affiche
     # dans le journal et ne produit aucun gradient. Les autres le sont, c'est tout l'intérêt.
     DIAGNOSTICS_WITH_GRADIENT = frozenset({"etr", "swe", "theta1", "theta2", "theta3", "s_gw",
-                                     "profondeur_nappe_m", "profondeur_nappe"})
+                                     "profondeur_nappe_m", "water_table_depth"})
 
     @staticmethod
     def _diagnostic_list_factory():
@@ -578,7 +578,7 @@ class HydroModel(nn.Module):
                     if (self.phenology_target or settings.get("phenology.target")) == "lai":
                         # La phénologie module l'INDICE FOLIAIRE, donc la seule transpiration :
                         # l'évaporation du sol nu reste entière hors saison (2026-09-28).
-                        self.vertical_column._lai_shape = self.phenology_modulator.forme(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
+                        self.vertical_column._lai_shape = self.phenology_modulator.shape_value(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
                     else:
                         self.vertical_column._kc_dynamic = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
                         _cal_agri = getattr(self, "phenology_calendar_agri", None)
@@ -870,7 +870,7 @@ class HydroModel(nn.Module):
             etr_mh=stack_diagnostic("etr_mh_mm"),
             wet_vol=stack_diagnostic("wet_vol_mm"),
             sublimation=stack_diagnostic("subl_mm"),
-            prof_gel_cm=stack_diagnostic("prof_gel_cm"),
+            frost_depth_cm=stack_diagnostic("prof_gel_cm"),
             prod_surf=stack_diagnostic("prod_surf"),
             prod_hypo=stack_diagnostic("prod_hypo"),
             prod_base=stack_diagnostic("prod_base"),
@@ -878,9 +878,9 @@ class HydroModel(nn.Module):
             etr1=stack_diagnostic("etr1"),
             etr2=stack_diagnostic("etr2"),
             etr3=stack_diagnostic("etr3"),
-            temps_non_traite=stack_diagnostic("temps_non_traite"),
-            profondeur_nappe=stack_diagnostic("profondeur_nappe_m"),
-            etr_nappe=stack_diagnostic("etr_nappe"),
+            untreated_time=stack_diagnostic("temps_non_traite"),
+            water_table_depth=stack_diagnostic("profondeur_nappe_m"),
+            etr_water_table=stack_diagnostic("etr_nappe"),
             q_lateral=stack_diagnostic("q_lateral"),
             q_upstream=stack_diagnostic("q_upstream"),
             recharge=stack_diagnostic("recharge"),
@@ -893,7 +893,7 @@ class HydroModel(nn.Module):
             canopy=stack_diagnostic("canopy"),
             wetland=stack_diagnostic("wetland"),
             T_water=stack_diagnostic("T_water"),
-            profondeur_eau_m=self._water_depth(Q_sim, graph, spatial_params),
+            water_depth_m=self._water_depth(Q_sim, graph, spatial_params),
         )
         return Q_sim, state, diagnostics
 

@@ -44,7 +44,7 @@ def test_le_toml_ecrit_se_relit(tmp_path, monkeypatch):
     cible = tmp_path / "modele.pt"
 
     p = write_recipe_toml(cible, capture_recipe(),
-                            fiche={"et_mode": "linacre", "hgm": True},
+                            record={"et_mode": "linacre", "hgm": True},
                             init_kwargs={"n_nodes": 42})
 
     assert p is not None and p.name == "modele.recipe.toml"

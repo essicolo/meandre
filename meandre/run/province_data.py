@@ -107,11 +107,11 @@ def _memmap_forcing(parts, names, device):
     # Un sous-bassin (ETL_SUBBASIN) entre aussi dans la cle : deux sous-bassins de meme
     # taille partageraient sinon le meme fichier.
     _sb = os.environ.get("ETL_SUBBASIN", "").replace(":", "-")
-    cle = "-".join(names) + (f"-sb{_sb}" if _sb else "") + _sfx + f"_{T}x{N}x{C}"
-    if len(cle) > 120:                      # noms de fichiers Windows
+    key_name = "-".join(names) + (f"-sb{_sb}" if _sb else "") + _sfx + f"_{T}x{N}x{C}"
+    if len(key_name) > 120:                      # noms de fichiers Windows
         import hashlib
-        cle = f"dom{len(names)}_{T}x{N}x{C}_{hashlib.md5(cle.encode()).hexdigest()[:8]}"
-    f = f"{rep}/forcage-{cle}.npy"
+        key_name = f"dom{len(names)}_{T}x{N}x{C}_{hashlib.md5(key_name.encode()).hexdigest()[:8]}"
+    f = f"{rep}/forcage-{key_name}.npy"
     if not os.path.exists(f):
         mm = np.lib.format.open_memmap(f, mode="w+", dtype=np.float32, shape=(T, N, C))
         o = 0
@@ -309,9 +309,9 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
         phys_keys &= _common_physical(schema_names)
     perdus = sorted(union - phys_keys)
     if perdus:
-        _qui = [p["name"] for p in parts if set(p["territorial"].physical) - phys_keys]
+        _owner = [p["name"] for p in parts if set(p["territorial"].physical) - phys_keys]
         print(f"[domaine] ATTENTION {len(perdus)} champs physiques presents seulement sur "
-              f"{_qui} sont ECARTES : {perdus}")
+              f"{_owner} sont ECARTES : {perdus}")
     territorial = TerritorialFeatures(
         data=torch.cat([p["territorial"].data for p in parts]).to(device),
         columns=cols,
@@ -394,12 +394,12 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     import inspect as _inspect
 
     ref = parts[0]["loss_fn"]
-    _acceptes = set(_inspect.signature(HydroLoss.__init__).parameters)
-    _weights = {k: getattr(ref, k) for k in _acceptes if k.startswith("w_") and hasattr(ref, k)}
+    _accepted = set(_inspect.signature(HydroLoss.__init__).parameters)
+    _weights = {k: getattr(ref, k) for k in _accepted if k.startswith("w_") and hasattr(ref, k)}
     for p in parts[1:]:
-        _ecart = [k for k, v in _weights.items() if abs(float(getattr(p["loss_fn"], k, 0.0)) - float(v)) > 1e-12]
-        if _ecart:
-            raise ValueError(f"{p['name']} : poids de perte differents du premier territoire : {_ecart}")
+        _gap = [k for k, v in _weights.items() if abs(float(getattr(p["loss_fn"], k, 0.0)) - float(v)) > 1e-12]
+        if _gap:
+            raise ValueError(f"{p['name']} : poids de perte differents du premier territoire : {_gap}")
     if swe_mass_obs is None:
         _weights["w_swe_mass"] = 0.0
     loss_fn = HydroLoss(
@@ -620,9 +620,9 @@ def _kahn(edge_index: torch.Tensor, n: int) -> torch.Tensor:
     return _topological_sort(edge_index, n)
 
 
-def _dense_w(part, champ):
+def _dense_w(part, field):
     w = part["train_data"].withdrawals
-    v = getattr(w, champ, None)
+    v = getattr(w, field, None)
     if v is None:
         v = torch.zeros_like(w.net)
     return v.cpu()

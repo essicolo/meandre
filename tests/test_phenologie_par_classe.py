@@ -16,7 +16,7 @@ N = 2
 OCC = dict(feuillus=0.5, conifers=0.5, ouverts=0.0, humides=0.0, urbain=0.0, routes=0.0, eau=0.0, mixtes=0.0)
 
 
-def _etr(forme, classes):
+def _etr(shape_value, classes):
     torch.set_default_dtype(torch.float64)
     psnow, psoil, petr = build_static_params(N, lat=45.3, slope=0.02, orientation=7, texture="loam", z=(0.2, 0.4, 1.0), land_cover_table=OCC)
     col = HydrotelColumn(et_mode="mcguinness", use_frost=False)
@@ -26,7 +26,7 @@ def _etr(forme, classes):
         os.environ["MEANDRE_PHENOLOGIE_CLASSES"] = classes
     else:
         os.environ.pop("MEANDRE_PHENOLOGIE_CLASSES", None)
-    col._kc_dynamic = torch.full((N,), forme) if forme is not None else None
+    col._kc_dynamic = torch.full((N,), shape_value) if shape_value is not None else None
     T = lambda x: torch.full((N,), float(x))
     _, _, diag = col(T(0.0), T(15.0), T(28.0), T(20.0), T(2.0), T(1.5), 200.0, st)
     os.environ.pop("MEANDRE_PHENOLOGIE_CLASSES", None)

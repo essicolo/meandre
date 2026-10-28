@@ -250,9 +250,9 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     # donc terme a terme ce qui a ete demande et ce qui a ete construit.
     import inspect as _inspect
 
-    _acceptes = set(_inspect.signature(HydroLoss.__init__).parameters)
+    _accepted = set(_inspect.signature(HydroLoss.__init__).parameters)
     _oubliees = [k for k, v in lcfg.items()
-                 if k.startswith("w_") and k in _acceptes and float(v or 0.0) > 0
+                 if k.startswith("w_") and k in _accepted and float(v or 0.0) > 0
                  and abs(float(getattr(loss_fn, k, 0.0)) - float(v)) > 1e-12]
     if _oubliees:
         raise ValueError("poids demandes et non poses sur la perte : " + ", ".join(sorted(_oubliees)))
@@ -279,11 +279,11 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     # `station_indices` est un `sorted(set(...))` : si deux stations visaient le meme
     # noeud, l'une des deux disparaitrait ici. On rend la premiere et on le SIGNALE
     # plutot que de laisser un decalage silencieux s'installer.
-    _par_noeud = {}
+    _per_node = {}
     for _sid, _ni in station_node_map.items():
-        _par_noeud.setdefault(_ni, []).append(str(_sid))
-    station_ids = [sorted(_par_noeud[_ni])[0] for _ni in station_indices]
-    _double = {n: v for n, v in _par_noeud.items() if len(v) > 1}
+        _per_node.setdefault(_ni, []).append(str(_sid))
+    station_ids = [sorted(_per_node[_ni])[0] for _ni in station_indices]
+    _double = {n: v for n, v in _per_node.items() if len(v) > 1}
     if _double:
         print(f"[stations] {len(_double)} noeud(s) vises par plusieurs stations, "
               f"une seule retenue par noeud : {_double}")

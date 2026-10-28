@@ -47,7 +47,7 @@ def _params(n=N):
     )
 
 
-def _production(n_substep, saturation, pluie_mm=40.0, jours=3):
+def _production(n_substep, saturation, pluie_mm=40.0, day_count=3):
     """Production cumulée (surface, hypodermique, profond) en mm, à plafond donné."""
     dtype = torch.get_default_dtype()
     torch.set_default_dtype(torch.float64)
@@ -57,7 +57,7 @@ def _production(n_substep, saturation, pluie_mm=40.0, jours=3):
         z = lambda v: torch.full((N,), float(v))
         t1 = t2 = t3 = z(saturation * TEXTURE["thetas"])
         totaux = [0.0, 0.0, 0.0]
-        for _ in range(jours):
+        for _ in range(day_count):
             surf, hypo, base, _rech, (t1, t2, t3), _diag = clone(
                 t1, t2, t3, z(pluie_mm), z(0.1), z(0.0), z(0.0), p, etr1_mm=z(0.0))
             for i, v in enumerate((surf, hypo, base)):

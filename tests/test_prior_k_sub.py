@@ -30,12 +30,12 @@ def _reseau(prior=True, poids=0.3):
 def _params(net, k_sub):
     raw = net._literature_raw_vector().unsqueeze(0).expand(len(k_sub), -1).clone()
     p = net._apply_constraints(raw)
-    champs = {f.name: getattr(p, f.name) for f in p.__dataclass_fields__.values()} \
+    field_names = {f.name: getattr(p, f.name) for f in p.__dataclass_fields__.values()} \
         if hasattr(p, "__dataclass_fields__") else {}
     import dataclasses
-    champs = {f.name: getattr(p, f.name) for f in dataclasses.fields(p)}
-    champs["k_sub"] = k_sub
-    return SpatialParams(**champs)
+    field_names = {f.name: getattr(p, f.name) for f in dataclasses.fields(p)}
+    field_names["k_sub"] = k_sub
+    return SpatialParams(**field_names)
 
 
 def test_sans_le_drapeau_rien_ne_change():

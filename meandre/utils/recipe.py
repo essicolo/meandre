@@ -35,24 +35,24 @@ PREFIXES = ("ETL_", "MEANDRE_", "JOINT_", "PROV_")
 INTERDITS = ("TOKEN", "SECRET", "PASSWORD", "MOTDEPASSE", "KEY", "CODE")
 
 
-def _est_secret(nom: str) -> bool:
-    return any(m in nom.upper() for m in INTERDITS)
+def _est_secret(field_name: str) -> bool:
+    return any(m in field_name.upper() for m in INTERDITS)
 
 
 def _empreinte_code() -> dict:
     """Révision git et état de l'arbre, si le dépôt est disponible."""
     out = {}
-    racine = Path(__file__).resolve().parents[2]
-    for cle, cmd in (("revision", ["git", "rev-parse", "HEAD"]),
+    root = Path(__file__).resolve().parents[2]
+    for key, cmd in (("revision", ["git", "rev-parse", "HEAD"]),
                      ("branche", ["git", "rev-parse", "--abbrev-ref", "HEAD"])):
         try:
-            r = subprocess.run(cmd, cwd=racine, capture_output=True, text=True, timeout=10)
+            r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=10)
             if r.returncode == 0:
-                out[cle] = r.stdout.strip()
+                out[key] = r.stdout.strip()
         except Exception:
             pass
     try:
-        r = subprocess.run(["git", "status", "--porcelain"], cwd=racine,
+        r = subprocess.run(["git", "status", "--porcelain"], cwd=root,
                            capture_output=True, text=True, timeout=10)
         if r.returncode == 0:
             out["arbre_propre"] = (r.stdout.strip() == "")
@@ -88,7 +88,7 @@ def capture_recipe() -> dict:
             "contexte": contexte, "code": _empreinte_code(), "domain": _m.as_dict() if _m else {}}
 
 
-def _toml_valeur(v) -> str:
+def _toml_value(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
@@ -96,7 +96,7 @@ def _toml_valeur(v) -> str:
     return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def write_recipe_toml(chemin, recette: dict, fiche: dict | None = None,
+def write_recipe_toml(path, recette: dict, record: dict | None = None,
                         init_kwargs: dict | None = None) -> Path | None:
     """Écrit la recette en TOML lisible. Retourne le chemin, ou None en cas d'échec.
 
@@ -104,8 +104,8 @@ def write_recipe_toml(chemin, recette: dict, fiche: dict | None = None,
     perdre le point de reprise.
     """
     try:
-        p = Path(chemin).with_suffix(".recipe.toml")
-        lignes = [
+        p = Path(path).with_suffix(".recipe.toml")
+        lines = [
             "# Recette d'exécution de meandre, écrite automatiquement à la sauvegarde.",
             "# Ce document enregistre ce qui a produit le point de reprise du même nom :",
             "# un point de reprise seul ne définit pas un modèle.",
@@ -113,41 +113,41 @@ def write_recipe_toml(chemin, recette: dict, fiche: dict | None = None,
             "[contexte]",
         ]
         for k, v in sorted(recette.get("contexte", {}).items()):
-            lignes.append(f"{k} = {_toml_valeur(v)}")
+            lines.append(f"{k} = {_toml_value(v)}")
         if recette.get("code"):
-            lignes += ["", "[code]"]
+            lines += ["", "[code]"]
             for k, v in sorted(recette["code"].items()):
-                lignes.append(f"{k} = {_toml_valeur(v)}")
-        if fiche:
-            lignes += ["", "# État du modèle au moment de la sauvegarde : occupation du sol,",
+                lines.append(f"{k} = {_toml_value(v)}")
+        if record:
+            lines += ["", "# État du modèle au moment de la sauvegarde : occupation du sol,",
                        "# milieux humides, phénologie, noyau de versant, lacs, aquifère, ETP.",
                        "[modele]"]
-            for k, v in sorted(fiche.items()):
+            for k, v in sorted(record.items()):
                 if v is not None:
-                    lignes.append(f"{k} = {_toml_valeur(v)}")
+                    lines.append(f"{k} = {_toml_value(v)}")
         if init_kwargs:
-            lignes += ["", "# Arguments de construction du modèle.", "[construction]"]
+            lines += ["", "# Arguments de construction du modèle.", "[construction]"]
             for k, v in sorted(init_kwargs.items()):
                 if isinstance(v, (str, int, float, bool)):
-                    lignes.append(f"{k} = {_toml_valeur(v)}")
+                    lines.append(f"{k} = {_toml_value(v)}")
         var = recette.get("variables", {})
-        lignes += ["", "# Variables d'environnement du projet effectivement posées.",
+        lines += ["", "# Variables d'environnement du projet effectivement posées.",
                    "# Une variable absente signifie que le défaut du code s'applique.",
                    "[recipe]"]
         for k, v in var.items():
-            lignes.append(f"{k} = {_toml_valeur(v)}")
+            lines.append(f"{k} = {_toml_value(v)}")
         if not var:
-            lignes.append("# aucune : l'exécution tournait entièrement sur les défauts du code")
-        reglages = recette.get("settings") or {}
-        if reglages:
-            lignes += ["", "# Réglages du paquet qui s'écartent de leur défaut (meandre/utils/settings.py).", "[settings]"]
-            for k, v in sorted(reglages.items()):
-                lignes.append(f'"{k}" = {_toml_valeur(v)}')
+            lines.append("# aucune : l'exécution tournait entièrement sur les défauts du code")
+        setting_values = recette.get("settings") or {}
+        if setting_values:
+            lines += ["", "# Réglages du paquet qui s'écartent de leur défaut (meandre/utils/settings.py).", "[settings]"]
+            for k, v in sorted(setting_values.items()):
+                lines.append(f'"{k}" = {_toml_value(v)}')
         for k, src in sorted((recette.get("domain") or {}).items()):
-            lignes += ["", f"[domain.{k}]"]
+            lines += ["", f"[domain.{k}]"]
             for kk, vv in src.items():
-                lignes.append(f"{kk} = {_toml_valeur(vv)}")
-        p.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+                lines.append(f"{kk} = {_toml_value(vv)}")
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return p
     except Exception:
         return None
@@ -172,51 +172,51 @@ def apply_recipe(section: dict | None) -> list[str]:
     if not section:
         return []
     posees = []
-    for cle, valeur in section.items():
-        nom = str(cle)
-        if not nom.startswith(PREFIXES):
+    for key, value in section.items():
+        field_name = str(key)
+        if not field_name.startswith(PREFIXES):
             raise ValueError(
-                f"recette : '{nom}' ne porte aucun prefixe du projet {PREFIXES}. "
+                f"recette : '{field_name}' ne porte aucun prefixe du projet {PREFIXES}. "
                 f"Une cle sans prefixe ne serait lue par personne.")
-        if nom in os.environ:
+        if field_name in os.environ:
             continue
-        if isinstance(valeur, bool):
-            texte = "1" if valeur else "0"
+        if isinstance(value, bool):
+            text_value = "1" if value else "0"
         else:
-            texte = str(valeur)
-        os.environ[nom] = texte
-        posees.append(nom)
+            text_value = str(value)
+        os.environ[field_name] = text_value
+        posees.append(field_name)
     return sorted(posees)
 
 
-def compare_recipe(sauvee: dict | None, ignorer: tuple[str, ...] = ()) -> list[str]:
+def compare_recipe(saved: dict | None, ignorer: tuple[str, ...] = ()) -> list[str]:
     """Écarts entre la recette sauvegardée et l'environnement courant.
 
     Retourne une liste de phrases lisibles, vide si tout concorde. Les chemins de
     déploiement sont ignorés par défaut : ils changent légitimement d'une machine à
     l'autre et ne modifient pas la physique.
     """
-    if not sauvee or not isinstance(sauvee, dict):
+    if not saved or not isinstance(saved, dict):
         return []
     neutres = ("MEANDRE_DATA", "MEANDRE_PLATEFORMES", "MEANDRE_PLATFORMS",
                "MEANDRE_RQH", "ETL_TAG", "ETL_DUMP_Q", "ETL_DUMP_REACH",
                "ETL_WARM_FROM", "ETL_MELT_DIR", "ETL_SOIL_DIR") + tuple(ignorer)
-    ancien = {k: v for k, v in sauvee.get("variables", {}).items() if k not in neutres}
-    courant = {n: v for n, v in os.environ.items()
+    old = {k: v for k, v in saved.get("variables", {}).items() if k not in neutres}
+    current_value = {n: v for n, v in os.environ.items()
                if n.startswith(PREFIXES) and n not in neutres and not _est_secret(n)}
-    ecarts = []
+    gaps = []
     from meandre.domain import manifest as _manifest
     _m = _manifest.current()
     if _m is not None:
-        ecarts += _m.differences(sauvee.get("domain"))
-    for k in sorted(set(ancien) | set(courant)):
-        a, c = ancien.get(k), courant.get(k)
+        gaps += _m.differences(saved.get("domain"))
+    for k in sorted(set(old) | set(current_value)):
+        a, c = old.get(k), current_value.get(k)
         if a == c:
             continue
         if a is None:
-            ecarts.append(f"{k} posee a {c!r} maintenant, absente a l'entrainement")
+            gaps.append(f"{k} posee a {c!r} maintenant, absente a l'entrainement")
         elif c is None:
-            ecarts.append(f"{k} valait {a!r} a l'entrainement, absente maintenant")
+            gaps.append(f"{k} valait {a!r} a l'entrainement, absente maintenant")
         else:
-            ecarts.append(f"{k} valait {a!r} a l'entrainement, vaut {c!r} maintenant")
-    return ecarts
+            gaps.append(f"{k} valait {a!r} a l'entrainement, vaut {c!r} maintenant")
+    return gaps

@@ -155,8 +155,8 @@ def main():
                     e += 1
                 if e - i > 20:
                     n_ = e - i
-                    forme = np.exp(np.log(0.83) * np.arange(n_) / n_)
-                    g2[i:e] = forme * (tard[i:e].mean() / forme.mean())
+                    shape_value = np.exp(np.log(0.83) * np.arange(n_) / n_)
+                    g2[i:e] = shape_value * (tard[i:e].mean() / shape_value.mean())
                 i = e
             cand["retard puis hiver figé, volume conservé"] = g2
             r = tard.copy()

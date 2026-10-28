@@ -85,11 +85,11 @@ def main():
         print(f"{reg} : {100 * np.isfinite(valeurs).mean():.1f} % de valeurs renseignées")
         print(f"  équivalent en eau moyen de novembre à mai : {np.nanmean(valeurs[hiver]):.0f} mm")
         print(f"  maximum médian par nœud : {np.nanmedian(np.nanmax(valeurs, axis=0)):.0f} mm")
-        sortie = f"{_paths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
-        os.makedirs(os.path.dirname(sortie), exist_ok=True)
-        np.savez_compressed(sortie, valeurs=valeurs, node_idx=garde.astype("int64"),
+        step_output = f"{_paths.DERIVED_ROOT}/auxiliaires/neisim-{reg}.npz"
+        os.makedirs(os.path.dirname(step_output), exist_ok=True)
+        np.savez_compressed(step_output, valeurs=valeurs, node_idx=garde.astype("int64"),
                             n_nodes=n_total, times=times.to_numpy().astype("datetime64[D]"))
-        print(f"  écrit : {sortie} ({os.path.getsize(sortie) / 1e6:.1f} Mo)")
+        print(f"  écrit : {step_output} ({os.path.getsize(step_output) / 1e6:.1f} Mo)")
     return 0
 
 

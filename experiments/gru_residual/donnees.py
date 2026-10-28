@@ -54,7 +54,7 @@ def main():
     z = np.load(f"{MODELE}/q-quebec-proba.npz", allow_pickle=True)
     ids = [str(s) for s in z["station_ids"]]
     rz = np.load(f"{MODELE}/reach-quebec-gele.npz", allow_pickle=True)
-    champs = {k[6:]: rz[k][rz["station_idx"]] for k in rz.files if k.startswith("param_")}
+    field_names = {k[6:]: rz[k][rz["station_idx"]] for k in rz.files if k.startswith("param_")}
 
     par_reg = defaultdict(list)
     for k, s in enumerate(ids):
@@ -84,7 +84,7 @@ def main():
             forcage[ids[k]] = pd.DataFrame(moy, index=temps, columns=variables)
             a = {c: float(terr.data[noeuds[st], j]) for j, c in enumerate(terr.columns)}
             a.update(station=ids[k], region=reg, n_troncons=len(idx), aire_km2=float(aires[st] or 0.0))
-            a.update({f"champ_{c}": float(v[k]) for c, v in champs.items()})
+            a.update({f"champ_{c}": float(v[k]) for c, v in field_names.items()})
             attributs.append(a)
         fx.close()
         print(f"{reg} : {len(liste)} stations", flush=True)

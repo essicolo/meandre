@@ -66,7 +66,7 @@ def _apport_marginal(sources, axe, _rec=24):
         mm = _inf._mensualise(np.where(masque[:, None], mat, np.nan), axe, plein)
         # On ne garde qu'un nombre borne de colonnes par source : au-dela, une source tres
         # redondante gonflerait la matrice sans rien ajouter, et le calcul deviendrait lourd.
-        n95, _part, _c = _inf._rang_effectif(mm, recouvrement_min=_rec)
+        n95, _part, _c = _inf._effective_rank(mm, recouvrement_min=_rec)
         k = int(n95) * 4 if np.isfinite(n95) else 8
         v = np.isfinite(mm).sum(axis=0)
         ordre = np.argsort(v)[::-1][:max(k, 8)]
@@ -79,7 +79,7 @@ def _apport_marginal(sources, axe, _rec=24):
         blocs[nom] = bloc
     noms = list(blocs)
     ensemble = np.concatenate([blocs[n] for n in noms], axis=1)
-    n_tout, part_tout, _ = _inf._rang_effectif(ensemble, recouvrement_min=_rec)
+    n_tout, part_tout, _ = _inf._effective_rank(ensemble, recouvrement_min=_rec)
     print("")
     print(f"ensemble des sources : {n_tout} directions a 95 %, participation {part_tout:.1f}")
     print("")
@@ -88,7 +88,7 @@ def _apport_marginal(sources, axe, _rec=24):
     rng = np.random.default_rng(1234)
     for n in noms:
         reste = np.concatenate([blocs[m] for m in noms if m != n], axis=1)
-        n_sans, _p, _c = _inf._rang_effectif(reste, recouvrement_min=_rec)
+        n_sans, _p, _c = _inf._effective_rank(reste, recouvrement_min=_rec)
         if not (np.isfinite(n_tout) and np.isfinite(n_sans)):
             continue
         # TEMOIN : la meme source remplacee par du bruit de meme forme et de memes trous.
@@ -96,7 +96,7 @@ def _apport_marginal(sources, axe, _rec=24):
         # nombre de colonnes.
         faux = np.where(np.isfinite(blocs[n]), rng.standard_normal(blocs[n].shape), np.nan)
         avec_bruit = np.concatenate([faux] + [blocs[m] for m in noms if m != n], axis=1)
-        n_bruit, _pb, _cb = _inf._rang_effectif(avec_bruit, recouvrement_min=_rec)
+        n_bruit, _pb, _cb = _inf._effective_rank(avec_bruit, recouvrement_min=_rec)
         t = f"{n_bruit - n_sans:>20d}" if np.isfinite(n_bruit) else f"{'—':>20s}"
         print(f"{n:<26s} {n_sans:>21d} {n_tout - n_sans:>15d} {t}")
 
@@ -178,7 +178,7 @@ def main():
           f"{'reproductible':>14s} {'hasard':>8s}")
     for nom, mat, masque in sources:
         mm = _inf._mensualise(mat, axe, masque)
-        n95, part, cols = _inf._rang_effectif(mm, recouvrement_min=_rec)
+        n95, part, cols = _inf._effective_rank(mm, recouvrement_min=_rec)
         rep, pp = _inf._reproductibilite(mm, recouvrement_min=max(3, _rec // 2))
         # TEMOIN NUL, sans lequel le chiffre n'a pas d'echelle. Du bruit independant de meme
         # forme et de memes trous gonfle le rang effectif a lui seul : mesure sur l'altimetrie
@@ -186,7 +186,7 @@ def main():
         # rang seul ne discrimine donc rien, et c'est la reproductibilite qui tranche.
         _rng = np.random.default_rng(1234)
         _faux = np.where(np.isfinite(mm), _rng.standard_normal(mm.shape), np.nan)
-        _nb, _pb, _ = _inf._rang_effectif(_faux, recouvrement_min=_rec)
+        _nb, _pb, _ = _inf._effective_rank(_faux, recouvrement_min=_rec)
         _rb, _ = _inf._reproductibilite(_faux, recouvrement_min=max(3, _rec // 2))
         n95_t = f"{n95:>7d}" if np.isfinite(n95) else f"{'—':>7s}"
         part_t = f"{part:>14.1f}" if np.isfinite(part) else f"{'—':>14s}"

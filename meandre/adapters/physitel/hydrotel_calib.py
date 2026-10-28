@@ -390,13 +390,13 @@ def load_phenologie(project_dir):
     def lire(f):
         li = [l for l in (proj / f).read_text(encoding="latin-1").splitlines() if l.strip()]
         noms = li[3].split()[1:]
-        jours, vals = [], []
+        day_count, vals = [], []
         for l in li[4:]:
             t = l.split()
             if not t[0].lstrip("-").isdigit():
                 continue
-            jours.append(int(t[0])); vals.append([float(x) for x in t[1:]])
-        return noms, jours, vals
+            day_count.append(int(t[0])); vals.append([float(x) for x in t[1:]])
+        return noms, day_count, vals
 
     try:
         nf, jf, vf = lire("ind_fol.def")
@@ -407,7 +407,7 @@ def load_phenologie(project_dir):
     # le feuillage, 1/160/190/260/365 pour les racines). On interpole linéairement les
     # deux sur la grille RÉUNIE, ce que fait aussi le C++ entre ses points de rupture.
     import numpy as _np
-    jours = sorted(set(jf) | set(jr))
+    day_count = sorted(set(jf) | set(jr))
 
     def col(noms, motifs):
         return [k for k, nm in enumerate(noms) if any(m in nm.lower() for m in motifs)]
@@ -422,9 +422,9 @@ def load_phenologie(project_dir):
             continue
         lai_pts = [sum(v[k] for k in cf) / len(cf) for v in vf]
         rac_pts = [sum(v[k] for k in cr) / len(cr) for v in vr]
-        lai = list(_np.interp(jours, jf, lai_pts))
-        rac = list(_np.interp(jours, jr, rac_pts))
-        out[cl] = (list(jours), lai, rac)
+        lai = list(_np.interp(day_count, jf, lai_pts))
+        rac = list(_np.interp(day_count, jr, rac_pts))
+        out[cl] = (list(day_count), lai, rac)
     return out
 
 

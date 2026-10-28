@@ -128,13 +128,13 @@ class PhenologyModulator(nn.Module):
             t = _pd.read_csv(_csv, parse_dates=["date"])
             t["doy"] = t.date.dt.dayofyear
             clim = t.groupby("doy").lai_median.mean()
-            jours = _np.arange(1, 367)
+            days = _np.arange(1, 367)
             # Interpolation circulaire sur l'année.
             x = _np.concatenate([clim.index.values - 366, clim.index.values, clim.index.values + 366])
             y = _np.concatenate([clim.values, clim.values, clim.values])
-            forme = _np.interp(jours, x, y)
-            forme = forme / forme.max()
-            self.register_buffer("forme_modis", torch.tensor(forme, dtype=torch.float32))
+            shape_value = _np.interp(days, x, y)
+            shape_value = shape_value / shape_value.max()
+            self.register_buffer("forme_modis", torch.tensor(shape_value, dtype=torch.float32))
         # Hyperparamètres fixes (largeurs des transitions, non appris)
         self.register_buffer("sharpness_emerg", torch.tensor(float(sharpness_emerg)))
         self.register_buffer("sharpness_senesc", torch.tensor(float(sharpness_senesc)))
@@ -151,13 +151,13 @@ class PhenologyModulator(nn.Module):
         return ramp * senesc
 
     @staticmethod
-    def duree_du_jour(lat_deg: Tensor, doy: int) -> Tensor:
+    def day_length(lat_deg: Tensor, doy: int) -> Tensor:
         """Longueur du jour en heures (déclinaison de Cooper, angle horaire au coucher)."""
         decl = math.radians(23.44) * math.sin(2.0 * math.pi * (284 + doy) / 365.0)
         x = -torch.tan(torch.deg2rad(lat_deg)) * math.tan(decl)
         return 24.0 / math.pi * torch.arccos(x.clamp(-1.0, 1.0))
 
-    def forme(self, gdd_cum: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, like: Tensor | None = None, calendar=None) -> Tensor:
+    def shape_value(self, gdd_cum: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, like: Tensor | None = None, calendar=None) -> Tensor:
         """Forme saisonnière de la végétation, de 0 (dormance) à 1 (plateau).
 
         `calendar` (mode photo seulement) : (levée en degrés-jours, seuil de longueur du jour en
@@ -175,7 +175,7 @@ class PhenologyModulator(nn.Module):
             ramp = torch.sigmoid((gdd_cum - emerg) / s1)
             if doy > 172:
                 seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit) if calendar is None else _crit_h
-                senesc = torch.sigmoid((self.duree_du_jour(lat_deg, doy) - seuil) / s2)
+                senesc = torch.sigmoid((self.day_length(lat_deg, doy) - seuil) / s2)
             else:
                 senesc = torch.ones_like(ramp)
             shape = ramp * senesc
@@ -190,7 +190,7 @@ class PhenologyModulator(nn.Module):
         K_c_base : (N,) — K_c de référence par nœud (sortie NeRF)
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
-        shape = self.forme(gdd_cum, doy, lat_deg, like=K_c_base, calendar=calendar)
+        shape = self.shape_value(gdd_cum, doy, lat_deg, like=K_c_base, calendar=calendar)
         # Born K_c_min ≥ 0.05 (floor strict), K_c_max_factor ≥ 0.5 (pas de réduction excessive)
         kc_min_safe = self.k_c_min.clamp(min=0.05, max=1.0)
         kc_max_safe = self.k_c_max_factor.clamp(min=0.5, max=2.0)

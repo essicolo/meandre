@@ -15,8 +15,8 @@ def _trainer_factice():
 
 def test_reference_est_la_moyenne_de_l_epoque():
     tr = _trainer_factice()
-    jours = torch.arange(730, dtype=torch.float32)
-    et = (1.0 + math.sqrt(2.0) * torch.sin(2 * math.pi * jours / 365.0)).clamp(min=0.0).unsqueeze(1)
+    day_count = torch.arange(730, dtype=torch.float32)
+    et = (1.0 + math.sqrt(2.0) * torch.sin(2 * math.pi * day_count / 365.0)).clamp(min=0.0).unsqueeze(1)
     data = types.SimpleNamespace(et_obs=et.clone())
     for d in range(0, 730, 45):
         tr._center_et(et[d:d + 45], et[d:d + 45], data)
