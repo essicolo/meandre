@@ -14,7 +14,7 @@ d'amplitude 2e, et on lit l'exposant p tel que la perte varie comme e^p : il vau
 en base deux du rapport des deux variations. Un terme du premier ordre rend p proche de 1, un
 terme du second ordre p proche de 2.
 
-    .venv/Scripts/python.exe .runs/quebec/ordre_de_reponse.py
+    python experiments/loss-design/ordre_de_reponse.py
 """
 import os
 import sys

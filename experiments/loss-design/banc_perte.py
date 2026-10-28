@@ -20,7 +20,7 @@ Les deformations sont celles que le diagnostic a mesurees sur les sorties reelle
 Un terme est DECLARE AVEUGLE a une deformation quand il la note mieux que la verite ou
 qu'il l'en separe de moins de un pour cent.
 
-    .venv/Scripts/python.exe .runs/quebec/banc_perte.py
+    python experiments/loss-design/banc_perte.py
 """
 import numpy as np
 import pandas as pd

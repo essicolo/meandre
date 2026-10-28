@@ -15,9 +15,9 @@ Le banc extrait le sous-bassin en amont d'une station, reindexe le graphe, decou
 forcage et le territorial, et fait tourner le modele COMPLET. Il rend le KGE sur la
 periode d'evaluation, la repartition mensuelle contre l'observe, et la platitude.
 
-  python .runs/quebec/banc_sousbassin.py liste gasp outv mont
-  python .runs/quebec/banc_sousbassin.py gasp 021702
-  python .runs/quebec/banc_sousbassin.py gasp 021702 --epoques 5
+  python experiments/subbasin-bench/banc_sousbassin.py liste gasp outv mont
+  python experiments/subbasin-bench/banc_sousbassin.py gasp 021702
+  python experiments/subbasin-bench/banc_sousbassin.py gasp 021702 --epoques 5
 """
 import argparse
 import os
@@ -540,7 +540,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         if os.environ.get("MEANDRE_BANC_LACS_SURFACE", "1") == "1":
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import pandas as _pdl
-            from recipe import RAW_QC as _RAWQC, HYDROLAKES as _HL
+            from meandre.run.execution_pieces import RAW_QC as _RAWQC, HYDROLAKES as _HL
             _idx = np.asarray(s["idx"])
             _rang = {int(v): k for k, v in enumerate(_idx)}
             _A = terr.get_physical("area_km2_local").cpu().numpy()

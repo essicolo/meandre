@@ -16,7 +16,7 @@ profondeur du roc, part des puits arrêtés dans les dépôts, parts des épaiss
 grossières et de till. La couverture vaut 1 à partir de `--puits-min` puits, 0 sous ce seuil ;
 une valeur manquante n'est jamais comblée.
 
-    .venv/Scripts/python.exe .runs/quebec/croiser_sih.py mont slso slno outv gasp sagu
+    python experiments/drainage-maps/croiser_sih.py mont slso slno outv gasp sagu
 """
 import argparse
 import os

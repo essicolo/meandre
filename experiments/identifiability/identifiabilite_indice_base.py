@@ -25,7 +25,7 @@ deux territoires d'une et de deux stations dominaient la moyenne et faisaient co
 géologie du socle prédisait l'indice ; sur l'erreur, elle ne le prédit pas. Les territoires
 sous `--minimum` stations sont donc écartés du bilan.
 
-    .venv/bin/python .runs/quebec/identifiabilite_indice_base.py outv slno --cache <suffixe>
+    python experiments/identifiability/identifiabilite_indice_base.py outv slno --cache <suffixe>
 """
 import argparse
 import os

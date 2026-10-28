@@ -6,7 +6,7 @@ de mai à octobre (moyenne des années) et, pour juillet-août, chaque année de
 la zone racinaire sèche-t-elle en été, et le modèle (qui reste au-dessus de la capacité au champ,
 R339) le fait-il ?
 
-    python .runs/quebec/humidite_sol_c3s.py mont outv
+    python experiments/seasonal-diagnostics/humidite_sol_c3s.py mont outv
 """
 import glob
 import os

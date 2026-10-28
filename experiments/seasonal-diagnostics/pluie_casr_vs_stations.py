@@ -7,7 +7,7 @@ de pluie d'été du forçage est le premier suspect. Pour chaque sous-bassin, on
 précipitation mensuelle de la station à celle du nœud CaSR le plus proche, 2005 à 2013. Rapport
 CaSR sur station par mois, médiane des couples station-mois.
 
-    python .runs/quebec/pluie_casr_vs_stations.py outv 040110 mont 030905 slno 052805
+    python experiments/seasonal-diagnostics/pluie_casr_vs_stations.py outv 040110 mont 030905 slno 052805
 """
 import glob
 import os

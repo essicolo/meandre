@@ -18,7 +18,7 @@ Le nombre qui décide est la SENSIBILITÉ relative : de combien la note d'un ter
 rapportée à sa valeur sur la série non déformée. Un terme dont la note bouge de moins d'un
 pour cent pour un prélèvement de cinq pour cent est aveugle à la grandeur visée.
 
-    .venv/Scripts/python.exe .runs/quebec/banc_etiage.py
+    python experiments/loss-design/banc_etiage.py
 """
 import os
 import sys

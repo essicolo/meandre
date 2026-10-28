@@ -6,7 +6,7 @@ amont, fraction de lac, KGE de meandre (export ETL_DUMP_Q) et du calage LN24HA d
 les memes jours, rapport simule/observe de juin a aout, et KGE de l'observe decale d'un jour
 contre lui-meme (nervosite).
 
-    python .runs/quebec/stations_contrastees.py <q-mont.npz> <q-outv.npz>
+    python experiments/seasonal-diagnostics/stations_contrastees.py <q-mont.npz> <q-outv.npz>
 """
 import os
 import sys

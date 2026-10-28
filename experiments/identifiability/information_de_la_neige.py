@@ -16,7 +16,7 @@ d'un chemin de gradient, ce que ce banc ne mesure pas.
 RÉSERVE DE FOND. NEISIM est un modèle : sa structure spatiale est la sienne. Un rang effectif
 élevé y désigne la richesse de NEISIM, pas nécessairement celle de la réalité.
 
-    .venv/bin/python .runs/quebec/information_de_la_neige.py outv gasp
+    python experiments/identifiability/information_de_la_neige.py outv gasp
 """
 import argparse
 import os

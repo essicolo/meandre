@@ -5,7 +5,7 @@ Pour chaque station : aire drainee officielle (table stations) contre aire amont
 export ETL_DUMP_Q est fourni. Pour le reseau : arêtes, composantes, exutoires, cycles. Pour les
 attributs : valeurs constantes, manquantes, collees, et part de troncons a la valeur de repli.
 
-    python .runs/quebec/audit_reseau.py mont [q-mont.npz]
+    python experiments/network-audit/audit_reseau.py mont [q-mont.npz]
 """
 import os
 import sys

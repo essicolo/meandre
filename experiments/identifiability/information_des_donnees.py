@@ -14,7 +14,7 @@ Le débit entre en LOGARITHME : c'est l'échelle sur laquelle ses variations son
 d'une station à l'autre, un bassin de mille kilomètres carrés et un de dix ne se comparant
 pas en mètres cubes par seconde.
 
-    .venv/bin/python .runs/quebec/information_des_donnees.py outv
+    python experiments/identifiability/information_des_donnees.py outv
 """
 import argparse
 import os

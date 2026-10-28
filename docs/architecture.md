@@ -108,7 +108,7 @@ Training runs on 2001-2018 and selects on 2019-2021. Evaluation uses 2022-2024, 
 
 ### Configuration
 
-A model is defined by a TOML file. Every setting of the package and the pilot is declared once in `meandre/utils/settings.py` (95 settings on 2026-10-26): its key in the file, a legacy environment alias, a default and a role. An alias set in the environment takes precedence over the file, and the file over the default; an unknown key in a declared section stops the run. The frozen provincial model is `.runs/quebec/config/modele-provincial-2026-10.toml`. Every checkpoint writes the configuration that produced it to `<name>.recette.toml`, readable without torch. The `[recette]` section and the `.recette.toml` name are legacy; Part 2 renames them to `recipe`.
+A model is defined by a TOML file. Every setting of the package and the pilot is declared once in `meandre/utils/settings.py` (95 settings on 2026-10-26): its key in the file, a legacy environment alias, a default and a role. An alias set in the environment takes precedence over the file, and the file over the default; an unknown key in a declared section stops the run. The frozen provincial model is `experiments/archive/config/modele-provincial-2026-10.toml`. Every checkpoint writes the configuration that produced it to `<name>.recette.toml`, readable without torch. The `[recette]` section and the `.recette.toml` name are legacy; Part 2 renames them to `recipe`.
 
 ### Why the soil is learned, not borrowed from Hydrotel
 
@@ -118,7 +118,7 @@ The operational reference is an ensemble of six calibrations of the same Hydrote
 
 ### Why
 
-The model is hard to drive because four things that should be separate are mixed: knowledge of the world (network, attributes, forcing, observations), physics, learning, and launching. The pilot `.runs/quebec/etl_run.py` is 2 400 lines and reads 95 settings; the loaders in `meandre/data` know about PHYSITEL, Hydrotel calibrations and Quebec territories; the field encodes bounds that are in fact calibration choices. The question "what is this parameter and why" has no single place where it is answered. Three consequences were measured in October 2026:
+The model is hard to drive because four things that should be separate are mixed: knowledge of the world (network, attributes, forcing, observations), physics, learning, and launching. The pilot `meandre/run/pilot.py` is 2 400 lines and reads 95 settings; the loaders in `meandre/data` know about PHYSITEL, Hydrotel calibrations and Quebec territories; the field encodes bounds that are in fact calibration choices. The question "what is this parameter and why" has no single place where it is answered. Three consequences were measured in October 2026:
 
 * Under-identification. The field produces 43 parameters per reach; discharge identifies a few combinations, and ten fields have zero sensitivity. Any physical correction imposed on one process is undone by compensation in another (winter precipitation excess compensated by an empty summer; an agricultural phenology calendar, right against MOD16, erased by fine-tuning; a surface permeability divided by three, cancelled by the field).
 * Hidden calibration in bounds. Two thirds of the reaches sit on a bound without gradient, and a bound change remaps every reach.

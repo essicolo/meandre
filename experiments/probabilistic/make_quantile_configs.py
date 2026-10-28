@@ -1,6 +1,6 @@
 """Configs tête quantile par région (recette zn-quantile prouvée : backbone gelé,
 médiane = mu, pinball K=6, 15 epochs). À lancer APRÈS la file d'entraînement.
-  python .runs/quebec/make_quantile_configs.py
+  python experiments/probabilistic/make_quantile_configs.py
 """
 import os, re, sys
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -14,9 +14,9 @@ _DATA_ROOT = _osp.environ.get("MEANDRE_DATA", "D:/meandre-data")
 
 REGIONS = ["labi", "cndc", "cnda", "cnde", "cndb", "cndd", "abit", "mont",
            "sagu", "outm", "slno", "outv", "gasp"]
-OUTDIR = Path(".runs/quebec/config")
+OUTDIR = Path("experiments/probabilistic/config")
 for r in REGIONS:
-    base = Path(f".runs/quebec/config/{r}.toml")
+    base = Path(f"experiments/archive/config/{r}.toml")
     if not base.exists(): continue
     s = base.read_text(encoding="utf-8")
     s = re.sub(r'checkpoint = "[^"]*"', f'checkpoint = "checkpoints/best-{r}-quantile.pt"', s)

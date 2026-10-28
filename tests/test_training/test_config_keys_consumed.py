@@ -25,7 +25,7 @@ except ImportError:                                     # Python < 3.11
     import tomli as tomllib
 
 REPO = Path(__file__).resolve().parents[2]
-PILOTE = REPO / ".runs" / "quebec" / "etl_run.py"
+PILOTE = REPO / "meandre" / "run" / "pilot.py"
 CONFIGS = sorted((REPO / "experiments" / "archive" / "config").glob("*-v4.toml"))
 
 # Cles [training] IGNOREES PAR LE PILOTE QUEBECOIS, chacune avec sa raison. Ce bloc est

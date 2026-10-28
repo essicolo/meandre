@@ -3,7 +3,7 @@
   SLSO utilise le champion (.runs/slso/results/reach-physitel-hydrotel-casr-zn.parquet).
 - Hydrotel brut : posttraitement_LN24HA.zarr (Dis par troncon_id, 2020-2026, non interpolé).
 - obs : duckdb de chaque région.
-  python .runs/quebec/eval_regions.py [REG ...]
+  python experiments/seasonal-diagnostics/eval_regions.py [REG ...]
 Sortie : .reports/quebec/quebec_heldout.csv + tableau console.
 """
 import os, sys

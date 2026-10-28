@@ -5,14 +5,13 @@ implicite P - Q, et évapotranspiration de MOD16 sur le même bassin. Si l'évap
 tombe sous ce que deux produits indépendants mesurent (SSEBop, MOD16 ; R355), c'est la pluie du
 forçage qui manque. Années entières où la station a au moins 330 jours mesurés, 2003-2024.
 
-    python .runs/quebec/fermeture_bassins.py mont outv
+    python experiments/seasonal-diagnostics/fermeture_bassins.py mont outv
 """
 import os
 import sys
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.getcwd())
-sys.path.insert(0, ".runs/quebec")
 import duckdb
 import numpy as np
 import pandas as pd

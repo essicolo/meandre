@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# UNE region = UNE tache du tableau. Les quinze sont independantes, donc elles tournent en
+# parallele : la nuit de vingt heures du poste devient l'attente d'une seule region.
+#
+#   sbatch --account=<compte> --array=0-14 region.sbatch
+#
+# RANGEMENT (impose par les quotas de l'Alliance, et par l'experience du 2026-09-01 ou
+# tout avait atterri en vrac dans le dossier personnel) :
+#   $HOME      code et environnement Python : petit, sauvegarde, jamais de donnees
+#   $PROJET    donnees de reference : forcages, bases regionales, fichiers de calage
+#   $TRAVAIL   journaux et points de reprise produits ici : grand, rapide, PURGE a 60 jours
+# Les trois se declarent avant la soumission ; des defauts raisonnables prennent le relais.
+#SBATCH --job-name=meandre
+#SBATCH --time=06:00:00
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=32000M
+#SBATCH --gres=gpu:1
+#SBATCH --output=%x-%A_%a.out
+set -euo pipefail
+RACINE=${MEANDRE_RACINE:-$HOME/meandre}
+# Le groupe primaire n'est pas toujours celui de l'allocation (id -gn donne "atlas01"
+# la ou le dossier s'appelle "def-atlas01") : on cherche le dossier qui porte les
+# donnees plutot que de deviner son nom. Une tache est morte en douze secondes sur
+# cette devinette le 2026-09-02.
+if [ -z "${PROJET:-}" ]; then
+  for _c in "$HOME"/projects/*/"$USER"; do
+    [ -d "$_c/meandre/donnees" ] && PROJET="$_c" && break
+  done
+  PROJET=${PROJET:-$HOME/projects/$(id -gn)/$USER}
+fi
+TRAVAIL=${TRAVAIL:-$HOME/scratch}
+JOURNAUX=$TRAVAIL/meandre/journaux
+mkdir -p "$JOURNAUX" "$TRAVAIL/meandre/checkpoints"
+REGIONS=(outv gasp sagu mont slno slso abit cnda cndb cndc cndd cnde labi outm vaud)
+REG=${REGIONS[$SLURM_ARRAY_TASK_ID]}
+exec > "$JOURNAUX/$REG-$SLURM_ARRAY_JOB_ID.log" 2>&1
+
+# arrow fournit pyarrow et mpi4py son homonyme : a l'Alliance ils viennent de MODULES,
+# jamais de pip, et le module doit etre charge AVANT l'activation de l'environnement.
+module purge && module load StdEnv/2023 gcc arrow mpi4py python/3.11 scipy-stack
+source "$HOME/venv-meandre/bin/activate"
+cd "$RACINE"
+# git ne versionne pas les dossiers vides : sans cette ligne, une tache s'entraine
+# vingt minutes puis meurt au moment de sauvegarder son point de reprise.
+mkdir -p .runs/quebec/checkpoints
+
+# Les donnees vivent dans l'espace de projet ; on les copie sur le disque LOCAL du noeud,
+# beaucoup plus rapide et sans concurrence entre les taches du tableau.
+LOCAL=$SLURM_TMPDIR/donnees
+mkdir -p "$LOCAL/quebec"
+D=$PROJET/meandre/donnees/quebec
+cp "$D/${REG}.duckdb" "$LOCAL/quebec/" 2>/dev/null || true
+cp "$D"/forcing-${REG}*.nc "$LOCAL/quebec/" 2>/dev/null || true
+cp "$D"/forcing-casr-corr.nc "$LOCAL/quebec/" 2>/dev/null || true
+cp "$D"/*.parquet "$LOCAL/quebec/" 2>/dev/null || true
+cp -r "$D/checkpoints-etbench" "$LOCAL/quebec/" 2>/dev/null || true
+# SLSO est une exception du chargeur : sa variante corrigee de CaSR vit dans un dossier
+# a elle, hors de quebec/. Sans cette copie la tache echoue apres deux minutes de mise
+# en place, sur un chemin qui n'existe pas dans le disque local du noeud.
+mkdir -p "$LOCAL/slso"
+cp "$D/forcing-casr-corr.nc" "$LOCAL/slso/" 2>/dev/null || true
+export MEANDRE_DATA="$LOCAL"
+export MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
+
+MAJ=$(echo "$REG" | tr a-z A-Z)
+# Poids auxiliaires a zero la ou les observations satellitaires ne sont pas en cache : la
+# construction de la perte refuse un poids sans sa cible.
+AUX=(ETL_WET=0.4)
+case "$REG" in slso|vaud|outm|labi|abit|cnd*) AUX=(ETL_WET=0 ETL_WTWS=0 ETL_WTWSCLIM=0) ;; esac
+SFX=${JOINT_FX_SUFFIX:--budyko}
+[ "$REG" = vaud ] && SFX=-none
+# ETL_COMPILE : la compilation du sol exige Triton, disponible dans la logitheque de
+# l'Alliance (pip install --no-index triton) mais absent des environnements batis
+# avant le 2026-09-01. Sans elle, une simulation SLSO prend 27 min sur A100 contre
+# 6 min en local : notre colonne est dominee par le lancement de petits noyaux, le
+# cas ou la compilation apporte le plus. ETL_COMPILE=0 pour s'en passer.
+# RECETTE DU SOCLE, identique au poste : sol impose sauf K_sat et porosites, Linacre
+# calee, seuil pluie/neige au bulbe humide, fonte regionale ancree, aquifere.
+env MEANDRE_NSUBSTEP=64 JOINT_FX_SUFFIX=$SFX ETL_FORCE=1 ETL_REGION=$REG \
+    ETL_COMPILE=${ETL_COMPILE:-1} \
+    ETL_WSNOW=0 ETL_NO_LATENT=1 ETL_ETP=linacre ETL_INIT_HYDROTEL=sauf_ks \
+    ETL_MELT_DIR="$MEANDRE_PLATEFORMES/LN24HA/${MAJ}_LN24HA_2020" \
+    "${AUX[@]}" ETL_SEUIL_NEIGE=0 ETL_SEUIL_TWB=-0.8 ETL_MELT_SAISON=0.5 \
+    ETL_AQUIFER=1 ETL_KREC_LIBRE=1 ETL_KGW_FIELD=1 \
+    ETL_TAG=${ETL_TAG:--fir} ETL_EPOCHS=${ETL_EPOCHS:-30} \
+    python -u -m meandre.run.pilot
+
+# Les points de reprise produits redescendent dans l'espace de travail, pas dans le code.
+cp -f "$RACINE"/.runs/quebec/checkpoints/best-${REG}-etl${ETL_TAG:--fir}.pt \
+      "$TRAVAIL/meandre/checkpoints/" 2>/dev/null || true

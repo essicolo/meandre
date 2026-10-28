@@ -1,15 +1,15 @@
-"""Restriction d'un territoire au sous-bassin en amont d'une station (.runs/quebec/subbasin.py)."""
+"""Restriction d'un territoire au sous-bassin en amont d'une station (meandre/run/subbasin.py)."""
 import os
 import sys
 
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".runs", "quebec"))
+
 
 from meandre.routing.graph import RiverGraph
 from meandre.spatial.territorial import TerritorialFeatures
-import subbasin
+from meandre.run import subbasin
 
 
 def _graphe():

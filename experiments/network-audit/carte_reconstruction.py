@@ -20,7 +20,7 @@ le magasin des débits journaliers data/meandre/debits.zarr, que git ignore. MEA
 désigne un magasin hébergé ailleurs. L'application elle-même n'est jamais copiée : servir le
 dépôt feuillage et ouvrir index.html?config=config-meandre-reconstruction.json.
 
-    MEANDRE_CARTE_DUMPS=D:/meandre-data/carte-essai uv run python .runs/quebec/carte_reconstruction.py
+    MEANDRE_CARTE_DUMPS=D:/meandre-data/carte-essai python experiments/network-audit/carte_reconstruction.py
 """
 import json
 import os

@@ -6,7 +6,7 @@ modele (bilan mensuel ETL_BILAN). Moyenne des noeuds, et separement sur les noeu
 Question (2026-10-09) : MOD16 est-il trop haut en ete dans le sud agricole ? SSEBop voit le
 stress hydrique par la temperature de surface, MOD16 non.
 
-    python .runs/quebec/et_sources_comparees.py mont outv
+    python experiments/seasonal-diagnostics/et_sources_comparees.py mont outv
 """
 import glob
 import os

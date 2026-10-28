@@ -6,7 +6,7 @@ ETL_DUMP_Q). Mediane des rapports par station et par mois. Pose pour la Montereg
 l'ete simule par meandre vaut la moitie de l'observe (R326, R329) : si Hydrotel, meme
 PHYSITEL et krigeage des stations, a l'ete juste, PHYSITEL n'est pas la limite.
 
-    python .runs/quebec/ete_hydrotel_vs_meandre.py mont <q-mont.npz> [<q-mont-autre.npz> ...]
+    python experiments/seasonal-diagnostics/ete_hydrotel_vs_meandre.py mont <q-mont.npz> [<q-mont-autre.npz> ...]
 """
 import glob
 import os

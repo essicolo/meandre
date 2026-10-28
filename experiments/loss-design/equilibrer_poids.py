@@ -15,7 +15,7 @@ La méthode ne suppose rien de la forme des termes. On mesure la matrice de sens
 ligne par défaut et une colonne par terme, puis on cherche les poids positifs qui rendent le
 vecteur des détections le plus uniforme possible, en écart-type du logarithme.
 
-    .venv/Scripts/python.exe .runs/quebec/equilibrer_poids.py
+    python experiments/loss-design/equilibrer_poids.py
 """
 import os
 import sys

@@ -26,7 +26,7 @@ from meandre.utils import settings as _settings
 
 FORCING_VARIABLES = ["P", "Tmin", "Tmax", "Rn", "u2", "ea"]
 QC_RAW = f"{_paths.DATA_ROOT}/quebec/territorial-raw-QC.parquet"
-QC_STATS = ".runs/quebec/data/territorial_stats_QC.csv"
+QC_STATS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "territorial_stats_QC.csv")
 # Bases et forçages propres à un territoire, hors de la famille québécoise (banc SLSO historique).
 LEGACY_FORCINGS = {"slso": f"{_paths.DATA_ROOT}/slso/forcing-casr-corr.nc"}
 LEGACY_DBS = {"slso": ".runs/slso/data/slso.duckdb"}

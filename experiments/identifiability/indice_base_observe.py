@@ -11,7 +11,7 @@ Mesure du 2026-09-19 : 0,58 en médiane sur les 16 stations de l'Outaouais, quar
 0,64, et 0,54 sur les 25 stations du Saint-Laurent nord-ouest. Le modèle en produit quatre à
 six fois moins.
 
-    .venv/bin/python .runs/quebec/indice_base_observe.py outv slno
+    python experiments/identifiability/indice_base_observe.py outv slno
 """
 import glob
 import os

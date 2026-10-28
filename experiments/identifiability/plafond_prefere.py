@@ -12,7 +12,7 @@ est calculée pour chaque plafond ; le plafond préféré est le minimum d'une p
 logarithme du plafond sur les trois points autour du meilleur. Puis chaque territoire est
 prédit par un modèle ajusté sur les autres, contre le témoin qui prédit la moyenne des autres.
 
-    .venv/Scripts/python.exe .runs/quebec/plafond_prefere.py <dossier des npz> mont slso slno outv gasp sagu
+    python experiments/identifiability/plafond_prefere.py <dossier des npz> mont slso slno outv gasp sagu
 """
 import os
 import re

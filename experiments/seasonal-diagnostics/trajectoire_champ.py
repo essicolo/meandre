@@ -5,12 +5,11 @@ alors qu'à la dernière époque toutes les cibles de la perte poussent K_c vers
 ces bassins (R307). Lire le champ de chaque point de reprise dit quand et comment il est
 descendu, sans aucune simulation.
 
-    python .runs/quebec/trajectoire_champ.py <base.duckdb> <sortie> <station,station,...> <point de reprise>...
+    python experiments/seasonal-diagnostics/trajectoire_champ.py <base.duckdb> <sortie> <station,station,...> <point de reprise>...
 """
 import sys
 import os
 
-sys.path.insert(0, ".runs/quebec")
 sys.path.insert(0, ".")
 import numpy as np
 import torch

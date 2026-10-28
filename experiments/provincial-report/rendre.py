@@ -7,9 +7,9 @@ alors PAS : il ecrit un HTML sans executer un seul bloc de code, en laissant le 
 et on a produit une coquille avec les figures de la veille. Ce script pose QUARTO_PYTHON
 sur l'interpreteur du depot et VERIFIE que les blocs ont bien tourne.
 
-    python .runs/quebec/rendre.py                 # presentation + rapport
-    python .runs/quebec/rendre.py presentation
-    python .runs/quebec/rendre.py rapport
+    python experiments/provincial-report/rendre.py                 # presentation + rapport
+    python experiments/provincial-report/rendre.py presentation
+    python experiments/provincial-report/rendre.py rapport
 """
 import os
 import subprocess

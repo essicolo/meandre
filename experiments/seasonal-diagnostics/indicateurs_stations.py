@@ -2,7 +2,7 @@
 pilote (ETL_DUMP_Q) : minimum annuel du débit moyen sur 7 jours, jours sous le Q90 observé,
 volume d'août-septembre, KGE. Médianes sur les stations, un fichier par ligne.
 
-    python .runs/quebec/indicateurs_stations.py <q-<reg>-<tag>.npz> [...]
+    python experiments/seasonal-diagnostics/indicateurs_stations.py <q-<reg>-<tag>.npz> [...]
 """
 import sys
 import numpy as np

@@ -16,7 +16,7 @@ Trois lectures, de la plus grossière à la plus utile :
   part de la variation d'un terme expliquée par TOUS les autres, qui dit la redondance ;
   nombre de directions indépendantes dans le jeu de termes, par valeurs singulières.
 
-    .venv/Scripts/python.exe .runs/quebec/redondance_perte.py
+    python experiments/loss-design/redondance_perte.py
 """
 import os
 import sys

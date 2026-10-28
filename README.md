@@ -72,7 +72,8 @@ meandre/
   utils/        state, metrics, quantile head, declared settings
   hydrotel/     ports of the Hydrotel C++ physics, validated per unit against the binary
   model.py      HydroModel, the top-level orchestrator
-.runs/quebec/   provincial pilot (etl_run.py), configurations, evaluation scripts
+.runs/quebec/   recipe.toml only: the provincial model recipe
+meandre/run/    the pilot, territory and province assembly (python -m meandre run <recipe>)
 experiments/    hypothesis register, experiment log and ongoing experiments (in French)
 docs/           architecture, basin database schema
 tests/          unit tests, mirroring meandre/
@@ -83,15 +84,14 @@ tests/          unit tests, mirroring meandre/
 ```bash
 uv sync
 
-# Train the provincial model from scratch (about 10 h on an 8 GB GPU)
-ETL_CONFIG=.runs/quebec/config/modele-provincial-2026-10.toml \
-ETL_REGION=quebec python .runs/quebec/etl_run.py
+# Train the provincial model (about 10 h on an 8 GB GPU)
+python -m meandre run .runs/quebec/recipe.toml --region quebec
 
 # Forward pass on a frozen checkpoint, no training
-ETL_EPOCHS=0 ETL_WARM_FROM=<checkpoint.pt> <same variables> python .runs/quebec/etl_run.py
+python -m meandre run .runs/quebec/recipe.toml --region quebec --epochs 0 --warm-from <checkpoint.pt>
 
 # Quantile head on the frozen model
-ETL_QUANTILE=1 ETL_WARM_FROM=<checkpoint.pt> <same variables> python .runs/quebec/etl_run.py
+ETL_QUANTILE=1 python -m meandre run .runs/quebec/recipe.toml --region quebec --warm-from <checkpoint.pt>
 
 # Tests
 pytest tests/ -x -q
@@ -101,7 +101,7 @@ Data paths are read from `MEANDRE_DATA` and related variables (`meandre/utils/pa
 
 ## Configuration
 
-A model is defined by a TOML file. Every setting of the package and the pilot is declared once in `meandre/utils/settings.py`, with its key in the file, a legacy environment alias, a default and a role; an alias set in the environment takes precedence over the file, and the file over the default. An unknown key in a declared section stops the run. Each checkpoint writes the configuration that produced it to `<name>.recette.toml`, readable without torch. The frozen provincial model is described by `.runs/quebec/config/modele-provincial-2026-10.toml`.
+A model is defined by a TOML file. Every setting of the package and the pilot is declared once in `meandre/utils/settings.py`, with its key in the file, a legacy environment alias, a default and a role; an alias set in the environment takes precedence over the file, and the file over the default. An unknown key in a declared section stops the run. Each checkpoint writes the configuration that produced it to `<name>.recette.toml`, readable without torch. The frozen provincial model is described by `experiments/archive/config/modele-provincial-2026-10.toml`.
 
 The other sections carry the physics: `[soil]` declares processes per layer, `[et]` the evapotranspiration formula, `[phenology]` the seasonal cycle of vegetation, `[loss]` the loss weights, `[training]` the optimiser settings.
 

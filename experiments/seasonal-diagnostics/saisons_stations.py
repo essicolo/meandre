@@ -3,7 +3,7 @@
 pilote, qui est un rapport de SOMMES et explose la ou l'observe d'hiver est nul ou absent
 (Abitibi, Cote-Nord : 1e12 le 2026-10-08).
 
-    python .runs/quebec/saisons_stations.py q-*.npz
+    python experiments/seasonal-diagnostics/saisons_stations.py q-*.npz
 """
 import os
 import sys
