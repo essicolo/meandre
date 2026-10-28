@@ -50,9 +50,22 @@ def _stock_above(ctx, prm):
     return w * torch.nn.functional.softplus(s / w)
 
 
+def _conductivity(ctx, prm):
+    """Conductivité à la teneur en eau courante, K(theta). Si le processus déclare `conductivity`
+    (un nombre en m/h, ou une valeur par tronçon posée par le pilote, par exemple celle du
+    substratum tirée de la classe de drainage), la courbe K(theta) de la couche est rééchelonnée
+    pour valoir cette conductivité à saturation : la dynamique est celle du dépôt, la forme reste
+    celle du sol (2026-10-27)."""
+    k = ctx["conductivity"]
+    c = prm.get("conductivity")
+    if c is None:
+        return k
+    return k / torch.clamp(ctx["k_sat"], min=1e-12) * torch.as_tensor(c, dtype=k.dtype, device=k.device)
+
+
 def base_linear(ctx, prm):
     """Darcy le long du versant, forme d'Hydrotel pour la couche 2 : K(theta) · sin(pente) · z."""
-    return ctx["conductivity"] * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
+    return _conductivity(ctx, prm) * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
 
 
 def base_thresh_power(ctx, prm):
@@ -115,7 +128,7 @@ def perc_gravity(ctx, prm):
     sa teneur en eau, K(theta) (2026-10-27). La vidange suit ainsi le sol, sans constante de
     temps : rapide quand la couche est humide, lente sous la capacité au champ, où K(theta)
     s'effondre. Un plafond déclaré représente le substratum."""
-    return ctx["conductivity"] * prm.get("factor", 1.0)
+    return _conductivity(ctx, prm) * prm.get("factor", 1.0)
 
 
 # Catalogue. La clé est le nom Raven, la valeur la fonction et les paramètres exigés.

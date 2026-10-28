@@ -352,11 +352,11 @@ class BV3C2Clone(torch.nn.Module):
             _profile = p.get("soil_profile")
             if _profile is not None:
                 _ctx2 = {"theta": t2, "theta_fc": p.get("thetacc2"), "thickness": z2,
-                         "conductivity": k2, "sin_slope": sin_slope, "porosity": ths2,
+                         "conductivity": k2, "k_sat": ks2, "sin_slope": sin_slope, "porosity": ths2,
                          "theta_wp": p.get("thetapf2"), "z_top": z1, "agri_frac": p.get("agri_frac"),
                          "frost_frac": froz_frac, "visc": p.get("visc2")}
                 _ctx3 = {"theta": t3, "theta_fc": p.get("thetacc3"), "thickness": z3,
-                         "conductivity": k3, "sin_slope": sin_slope, "porosity": ths3,
+                         "conductivity": k3, "k_sat": ks3, "sin_slope": sin_slope, "porosity": ths3,
                          "theta_wp": p.get("thetapf3"), "z_top": z1 + z2, "agri_frac": p.get("agri_frac"),
                          "frost_frac": froz_frac, "visc": p.get("visc3")}
                 _zero = torch.zeros_like(q2)

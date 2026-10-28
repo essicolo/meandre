@@ -172,3 +172,16 @@ def test_la_percolation_gravitaire_vaut_la_conductivite_et_s_effondre_au_sec():
     assert torch.allclose(proc.flux(ctx), k)
     plafonne = sp.SoilProcess(layer=3, kind="percolation", form="PERC_GRAVITY", ceiling=1e-4)
     assert torch.allclose(plafonne.flux(ctx), torch.tensor([1e-4, 1e-6]))
+
+
+def test_la_conductivite_declaree_reechelonne_la_courbe_k_theta():
+    """`conductivity` declaree : K(theta) est rapportee a la saturation puis multipliee par la valeur
+    declaree ; la forme en theta reste celle du sol (2026-10-27)."""
+    ctx = {"theta": torch.tensor([0.3, 0.4]), "conductivity": torch.tensor([1e-4, 1e-2]), "k_sat": torch.tensor([1e-2, 1e-2]), "sin_slope": torch.tensor([0.1, 0.1]), "thickness": torch.tensor([1.0, 1.0])}
+    sub = torch.tensor([2e-5, 4e-5])
+    perc = sp.SoilProcess(layer=3, kind="percolation", form="PERC_GRAVITY", params={"conductivity": sub})
+    assert torch.allclose(perc.flux(ctx), torch.tensor([2e-7, 4e-5]))
+    lat = sp.SoilProcess(layer=3, kind="lateral", form="BASE_LINEAR", params={"conductivity": sub})
+    assert torch.allclose(lat.flux(ctx), torch.tensor([2e-8, 4e-6]))
+    sans = sp.SoilProcess(layer=3, kind="lateral", form="BASE_LINEAR")
+    assert torch.allclose(sans.flux(ctx), torch.tensor([1e-5, 1e-3]))

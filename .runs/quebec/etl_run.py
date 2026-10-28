@@ -871,17 +871,30 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
         _dr[:] = r["domain"].drainage_class
     _sp = model.vertical_column.soil_profile
     _procs = []
+    _mm = np.clip(10 ** (float(_cd["intercept"]) + float(_cd["slope"]) * _dr), float(_cd["min_mm_per_day"]), float(_cd["max_mm_per_day"]))
+    _pl_sub = None
     for _pr in _sp.processes:
         if _pr.kind == "percolation" and isinstance(_pr.ceiling, (int, float)):
-            _mm = np.clip(10 ** (float(_cd["intercept"]) + float(_cd["slope"]) * _dr), float(_cd["min_mm_per_day"]), float(_cd["max_mm_per_day"]))
             _decl = float(_pr.ceiling)
             _pl = np.where(np.isfinite(_dr), _mm / 24000.0, _decl)
+            _pl_sub = _pl if _pl_sub is None else _pl_sub
             _pr = _rempl(_pr, ceiling=torch.tensor(_pl, dtype=torch.get_default_dtype(), device=DEVICE))
             print(f"[etl] plafond de percolation par la classe de drainage : mediane {np.median(_pl) * 24000:.2f} mm/j, "
                   f"10e-90e centiles {np.quantile(_pl, 0.1) * 24000:.2f}-{np.quantile(_pl, 0.9) * 24000:.2f} mm/j, "
                   f"{int(np.isfinite(_dr).sum())}/{n_nodes} troncons avec classe, les autres au plafond declare {_decl * 24000:.2f} mm/j")
         _procs.append(_pr)
-    model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs))
+    # CONDUCTIVITE DU SUBSTRATUM (2026-10-27) : un processus qui declare `conductivity = "substratum"`
+    # recoit la meme conductivite par troncon que le plafond, tiree de la classe de drainage ; sa
+    # courbe K(theta) est reechelonnee pour la valoir a saturation. Aucun facteur pose a la main.
+    _procs2 = []
+    for _pr in _procs:
+        if _pr.params.get("conductivity") == "substratum":
+            if _pl_sub is None:
+                raise ValueError("conductivity = \"substratum\" demande un processus de percolation a plafond declare, dont la regle de drainage fournit la conductivite")
+            _pr = _rempl(_pr, params={**_pr.params, "conductivity": torch.tensor(_pl_sub, dtype=torch.get_default_dtype(), device=DEVICE)})
+            print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : conductivite du substratum par troncon (classe de drainage), mediane {np.median(_pl_sub) * 24000:.2f} mm/j")
+        _procs2.append(_pr)
+    model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs2))
 # ASSEMBLAGE (promu par défaut le 2026-08-09) : Hydrotel étale la production au VERSANT
 # par son hydrogramme géomorphologique (<=10 j) avant le canal ; méandre livrait tout le
 # jour même. Mesuré : r réseau contre Hydrotel 0.335 -> 0.470, +0.027 aux jauges en
