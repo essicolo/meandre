@@ -189,4 +189,4 @@ max_mm_per_day = 4.0
 
 [stations]
 area_ratio = true                   # observe rapporte a l'aire du troncon qui porte la station (R429) ; 062002 est en amont de SAGU01101 et se corrige ainsi
-attachment_table = "{DERIVES}/auxiliaires/rattachement-stations.csv"   # audit_stations.py : 3 troncons voisins meilleurs, 02E901 hors territoire (R430)
+attachment_table = "{DERIVES}/auxiliaires/station-attachment.csv"   # audit_stations.py : 3 troncons voisins meilleurs, 02E901 hors territoire (R430) ; fichier renomme le 2026-10-28, ex-name rattachement-stations.csv

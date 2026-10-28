@@ -162,7 +162,7 @@ CE QUI REMPLACE CE CHANTIER. Quand le facteur de contrôle n'est pas cartographi
 
 Ouvert le 2026-09-20 sur une remarque d'Essi : la perte porte le KGE, l'écart quadratique et le biais, soit plusieurs fois la même information.
 
-Mesuré, sans aucune simulation, sur 32 stations et 9 déformations (`.runs/quebec/redondance_perte.py`) : huit termes de débit, mais trois directions indépendantes portent 90 % de leur variation. Le KGE est expliqué à 96,9 % par les autres, l'écart quadratique à 99,1 %, les pics à 98,5 %. Écart quadratique et pics corrèlent à 0,99 : ce sont pratiquement le même terme, pesant 0,1 et 0,5. Seuls le biais de volume et le soutien d'étiage sont distincts, et le soutien d'étiage, plus grand angle mort de la recette à 48,2 %, est à poids NUL. C'est la grandeur que le projet vise.
+Mesuré, sans aucune simulation, sur 32 stations et 9 déformations (`.runs/quebec/loss-redundancy.py`) : huit termes de débit, mais trois directions indépendantes portent 90 % de leur variation. Le KGE est expliqué à 96,9 % par les autres, l'écart quadratique à 99,1 %, les pics à 98,5 %. Écart quadratique et pics corrèlent à 0,99 : ce sont pratiquement le même terme, pesant 0,1 et 0,5. Seuls le biais de volume et le soutien d'étiage sont distincts, et le soutien d'étiage, plus grand angle mort de la recette à 48,2 %, est à poids NUL. C'est la grandeur que le projet vise.
 
 Livré : `w_r`, `w_beta` et `w_gamma` portent séparément les trois facteurs du KGE, à poids nuls par défaut, exposés par le pilote. À nombre de termes égal, cinq contre cinq, la recette en vigueur laisse 14,2 % de manque moyen et la version décomposée 2,8 %.
 

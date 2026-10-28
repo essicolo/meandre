@@ -258,7 +258,7 @@ scp essi@192.168.40.165:meandre-data/carte-essai/mont-corr1006-dt-q-journalier.n
 
 3. Calculer les indicateurs :
 ```bash
-python .runs/quebec/indicateurs_stations.py D:/meandre-data/carte-essai/mont-corr1006-dt-q-journalier.npz
+python .runs/quebec/station-indicators.py D:/meandre-data/carte-essai/mont-corr1006-dt-q-journalier.npz
 ```
 
 4. **Comparer avec le socle** :
@@ -318,8 +318,8 @@ Si CaSR été est multiplié par 1,3 (inverse de 0,77) :
 
 ### 7.3. Scripts de vérification
 
-- `.runs/quebec/indicateurs_stations.py` : Calcul des indicateurs par territoire
-- `.runs/quebec/pluie_casr_vs_stations.py` : Comparaison CaSR vs stations GHCN
+- `.runs/quebec/station-indicators.py` : Calcul des indicateurs par territoire
+- `.runs/quebec/casr-rain-vs-stations.py` : Comparaison CaSR vs stations GHCN
 - `tests/test_prelevements_tranche.py` : Test des prélèvements dans les tranches
 
 ### 7.4. Données

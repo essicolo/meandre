@@ -70,7 +70,7 @@ def test_normalized_term_is_order_one():
 def test_subbasin_bench_normalizes():
     """Garde-fou : le banc doit passer station_var a sa perte. Il ne le faisait pas
     jusqu'au 2026-09-13 et minimisait donc autre chose que la region qu'il represente."""
-    src = open("experiments/subbasin-bench/banc_sousbassin.py", encoding="utf-8").read()
+    src = open("experiments/subbasin-bench/subbasin_bench.py", encoding="utf-8").read()
     debut = src.index("loss_fn = HydroLoss(")
     fin = src.index("loss_fn = HydroLoss(", debut + 10)
     assert "station_var=" in src[debut:fin + 600], "le banc construit une perte sans station_var"
@@ -82,7 +82,7 @@ def test_bench_exposes_both_recipe_terms():
     peut pas reproduire ses defauts. Deux termes y manquaient jusqu'au 2026-09-13 :
     l'ecart quadratique sur le logarithme des debits, que la recette pose a 0,3 et qui
     vise les basses eaux, et le terme de pics, pose a 0,5."""
-    src = open("experiments/subbasin-bench/banc_sousbassin.py", encoding="utf-8").read()
+    src = open("experiments/subbasin-bench/subbasin_bench.py", encoding="utf-8").read()
     assert '"--w-log-mse"' in src
     assert '"--w-peak"' in src
     assert "w_log_mse=float(w_log_mse)" in src

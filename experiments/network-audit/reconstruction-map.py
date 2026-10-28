@@ -1,0 +1,351 @@
+"""Cartes feuillage de la reconstruction des débits et des prélèvements ponctuels.
+
+Deux cartes pour la présentation (demande d'Essi, 2026-10-05) :
+
+1. Les prélèvements et rejets ponctuels : un point par site de la table io-eau ingérée par
+   meandre, coloré par le signe du débit net (rouge pour un prélèvement, bleu pour un
+   rejet), d'aire proportionnelle à son débit moyen.
+2. La reconstruction des débits : les tronçons du réseau PHYSITEL, colorés par l'influence
+   relative des prélèvements et rejets sur le débit d'étiage. Le clic ouvre l'hydrogramme
+   journalier modélisé (avec prélèvements et rejets) et naturalisé (sans), selon les
+   couches allumées.
+
+Entrées : les caches du pilote produits par ETL_DUMP_REACH et ETL_DUMP_NATUREL=1, soit
+<reg>-journalier.npz et <reg>-sans-journalier.npz dans MEANDRE_CARTE_DUMPS. Les territoires
+sans cache sont omis : la carte s'étend à mesure que les simulations arrivent.
+
+Sortie, selon la convention du dépôt feuillage (MEANDRE_FEUILLAGE, défaut ../feuillage) :
+les couches dans data/meandre/, la configuration config-meandre-reconstruction.json à la racine,
+le magasin des débits journaliers data/meandre/debits.zarr, que git ignore. MEANDRE_CARTE_ZARR_URL
+désigne un magasin hébergé ailleurs. L'application elle-même n'est jamais copiée : servir le
+dépôt feuillage et ouvrir index.html?config=config-meandre-reconstruction.json.
+
+    MEANDRE_CARTE_DUMPS=D:/meandre-data/carte-essai python experiments/network-audit/reconstruction-map.py
+"""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+import duckdb
+import numpy as np
+import pandas as pd
+import zarr
+
+from meandre.utils import paths as _paths
+
+DUMPS = os.environ.get("MEANDRE_CARTE_DUMPS", f"{_paths.DATA_ROOT}/carte-essai")
+_DEPOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+IO_EAU = os.environ.get("MEANDRE_IO_EAU", os.path.join(os.path.dirname(_DEPOT), "io-eau", "data", "derived"))
+FEUILLAGE = os.environ.get("MEANDRE_FEUILLAGE", os.path.join(os.path.dirname(_DEPOT), "feuillage"))
+OUTPUT = os.path.join(FEUILLAGE, "data", "meandre")
+# Le magasin porte l'heure de sa construction dans son nom : les fichiers de ses morceaux sont
+# nommés par position (c/0/<indice>/0), et l'indice d'un tronçon change à chaque territoire
+# ajouté. Un navigateur qui garde en cache un morceau d'une construction précédente affichait
+# alors l'hydrogramme d'un autre tronçon (2026-10-07, rivière du Diable). Les anciens magasins
+# sont supprimés à chaque construction.
+import datetime as _dt
+STORE_NAME = f"debits-{_dt.datetime.now():%Y%m%dT%H%M}.zarr"
+ZARR_URL = os.environ.get("MEANDRE_CARTE_ZARR_URL", f"./data/meandre/{STORE_NAME}")
+# Période des hydrogrammes et des indicateurs, en années civiles complètes.
+DEBUT = os.environ.get("MEANDRE_CARTE_DEBUT", "2015-01-01")
+FIN = os.environ.get("MEANDRE_CARTE_FIN", "2024-12-31")
+# Plancher du débit naturalisé d'étiage, en m³/s, sous lequel l'influence relative n'est pas
+# calculée : un rapport à un débit quasi nul n'a pas de sens physique.
+Q_PLANCHER = float(os.environ.get("MEANDRE_CARTE_Q_PLANCHER", "0.01"))
+REGIONS = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont", "outm",
+           "outv", "sagu", "slno", "slso", "vaud"]
+# Rouge pour une perte d'eau, bleu pour un apport, gris neutre au centre : le blanc des
+# palettes divergentes usuelles disparaît sur le fond de carte.
+DIVERGENTE = ["#b2182b", "#ef8a62", "#7f7f7f", "#67a9cf", "#2166ac"]
+MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+
+
+def io_eau_dir():
+    if os.path.exists(os.path.join(IO_EAU, "io-eau-meandre.parquet")):
+        return IO_EAU
+    raise FileNotFoundError(f"table io-eau-meandre.parquet introuvable dans {IO_EAU} (MEANDRE_IO_EAU)")
+
+
+def q7min_annuel(q, dates):
+    """Moyenne sur les années du minimum annuel du débit moyen sur sept jours, par tronçon."""
+    q7 = pd.DataFrame(q, index=dates).rolling(7, min_periods=7).mean()
+    return q7.groupby(q7.index.year).min().mean(axis=0).to_numpy()
+
+
+def sites_ponctuels(d):
+    """Un point par site : débit net moyen et estival sur la période, nom et nature."""
+    p = os.path.join(d, "io-eau-meandre.parquet")
+    df = duckdb.sql(f"""
+        SELECT site_id, any_value(lon) AS lon, any_value(lat) AS lat, any_value(source) AS source,
+               any_value(IDTRONCON) AS troncon, date, sum(net_withdrawal) AS q
+        FROM '{p}' WHERE date BETWEEN '{DEBUT}' AND '{FIN}'
+        GROUP BY site_id, date""").df()
+    df["mois"] = pd.to_datetime(df.date).dt.month
+    noms = {}
+    for f, nature in (("prelevements", "prélèvement"), ("rejets", "rejet")):
+        for ft in json.load(open(os.path.join(d, f + ".geojson"), encoding="utf-8"))["features"]:
+            pr = ft["properties"]
+            noms[pr["id"]] = {"nom": pr.get("nom"), "secteur": pr.get("secteur"),
+                              "municipalite": pr.get("municipalite"), "nature_declaree": nature}
+    # Coordonnées du nœud de chaque tronçon rattaché, pour mesurer l'écart entre le site déclaré
+    # et le tronçon où le modèle applique son débit (R327 : un site peut être à 28 km).
+    noeuds = {}
+    for reg in sorted({t[:4].lower() for t in df.troncon.dropna()}):
+        base = _paths.data_path("quebec", f"{reg}.duckdb")
+        if os.path.exists(base):
+            con = duckdb.connect(base, read_only=True)
+            for nid_, lo_, la_ in con.execute("SELECT node_id, lon, lat FROM nodes").fetchall():
+                noeuds[f"{reg.upper()}{int(nid_):05d}"] = (float(lo_), float(la_))
+            con.close()
+    feats = []
+    for sid, g in df.groupby("site_id"):
+        base = sid.replace("_synth", "")
+        info = noms.get(base, {})
+        moy = float(g.q.mean())
+        ete = float(g[g.mois.isin([7, 8, 9])].q.mean())
+        profil = g.groupby("mois").q.mean().reindex(range(1, 13))
+        pr = {
+            "site": sid,
+            "nom": info.get("nom") or sid,
+            "municipalite": info.get("municipalite"),
+            "secteur": info.get("secteur"),
+            "source": g.source.iloc[0],
+            "troncon": g.troncon.iloc[0],
+            "nature": "rejet" if moy > 0 else ("prélèvement" if moy < 0 else "débit net nul"),
+            "origine": "retour estimé" if sid.endswith("_synth") else "déclaré",
+            "debit_net_l_s": round(1000.0 * moy, 2),
+            "distance_troncon_km": (round(float(np.hypot((g.lon.iloc[0] - noeuds[g.troncon.iloc[0]][0]) * 78.0,
+                                                          (g.lat.iloc[0] - noeuds[g.troncon.iloc[0]][1]) * 111.0)), 1)
+                                    if g.troncon.iloc[0] in noeuds else None),
+            "debit_net_ete_l_s": round(1000.0 * ete, 2) if np.isfinite(ete) else None,
+            "profil_mensuel": json.dumps({"labels": MOIS,
+                                          "values": [round(1000.0 * float(v), 2) if np.isfinite(v) else None
+                                                     for v in profil]}, ensure_ascii=False),
+        }
+        feats.append({"type": "Feature",
+                      "geometry": {"type": "Point",
+                                   "coordinates": [round(float(g.lon.iloc[0]), 5), round(float(g.lat.iloc[0]), 5)]},
+                      "properties": pr})
+    # Les petits sites au-dessus des gros : l'ordre des entités fixe l'ordre de dessin.
+    feats.sort(key=lambda f: -abs(f["properties"]["debit_net_l_s"]))
+    return feats
+
+
+def charge_territoire(reg):
+    # Le débit seul, extrait sur la grappe, ou le fichier journalier complet du pilote.
+    fa = os.path.join(DUMPS, f"{reg}-q-journalier.npz")
+    if not os.path.exists(fa):
+        fa = os.path.join(DUMPS, f"{reg}-journalier.npz")
+    fs = os.path.join(DUMPS, f"{reg}-sans-journalier.npz")
+    if not (os.path.exists(fa) and os.path.exists(fs)):
+        return None
+    a, s = np.load(fa), np.load(fs)
+    dates = pd.DatetimeIndex(a["dates"])
+    garde = (dates >= DEBUT) & (dates <= FIN)
+    db = _paths.data_path("quebec", f"{reg}.duckdb")
+    con = duckdb.connect(db, read_only=True)
+    try:
+        nodes = con.execute("SELECT node_idx, node_id, lon, lat, is_lake FROM nodes ORDER BY node_idx").df()
+    finally:
+        con.close()
+    return dict(reg=reg, dates=dates[garde], q=a["q"][garde], qn=s["q"][garde],
+                ids=[f"{reg.upper()}{int(n):05d}" for n in nodes.node_id],
+                node_id=nodes.node_id.to_numpy(), lac=nodes.is_lake.to_numpy(), lacs=polygones_lacs(reg))
+
+
+def polygones_lacs(reg):
+    """Polygones des lacs du projet PHYSITEL, par identifiant de tronçon.
+
+    Dans lacs.shp, un lac porte l'identifiant de son tronçon au signe près (-51 pour le
+    tronçon 51). Les lacs en plusieurs morceaux sont fusionnés, puis la géométrie est
+    simplifiée à environ 100 m pour garder la couche légère.
+    """
+    import geopandas as gpd
+    import shapely
+    from shapely.geometry import mapping
+
+    f = os.path.join(_paths.PLATFORMS_ROOT, "LN24HA", f"{reg.upper()}_LN24HA_2020", "physitel", "lacs.shp")
+    if not os.path.exists(f):
+        return {}
+    g = gpd.read_file(f).to_crs(4326).dissolve(by="ident")
+    g["geometry"] = shapely.set_precision(g.geometry.simplify(0.001, preserve_topology=True).values, 1e-5)
+    return {int(-i): mapping(geom) for i, geom in g.geometry.items()}
+
+
+def main():
+    os.makedirs(OUTPUT, exist_ok=True)
+    d_io = io_eau_dir()
+
+    feats_sites = sites_ponctuels(d_io)
+    with open(os.path.join(OUTPUT, "prelevements-rejets.geojson"), "w", encoding="utf-8") as f:
+        json.dump({"type": "FeatureCollection", "features": feats_sites}, f, ensure_ascii=False, separators=(",", ":"))
+    print(f"prelevements_rejets.geojson : {len(feats_sites)} sites")
+
+    geom = {}
+    for ft in json.load(open(os.path.join(d_io, "_gj_troncons.json"), encoding="utf-8"))["features"]:
+        geom[ft["properties"]["id"]] = (ft["properties"].get("nom"), ft["geometry"])
+
+    terr = [t for t in (charge_territoire(r) for r in REGIONS) if t is not None]
+    if not terr:
+        print(f"aucun cache journalier dans {DUMPS} : carte des tronçons non produite")
+        return
+    dates = terr[0]["dates"]
+    for t in terr:
+        if not t["dates"].equals(dates):
+            raise ValueError(f"{t['reg']} : axe temporel différent de {terr[0]['reg']}")
+
+    feats_tr, series = [], []
+    for t in terr:
+        q, qn = t["q"], t["qn"]
+        q7, q7n = q7min_annuel(q, t["dates"]), q7min_annuel(qn, t["dates"])
+        moy, moyn = q.mean(axis=0), qn.mean(axis=0)
+        n_sans_geom = 0
+        for i, tid in enumerate(t["ids"]):
+            if tid in geom:
+                nom, g = geom[tid]
+            elif t["lac"][i] and int(t["node_id"][i]) in t["lacs"]:
+                # Un tronçon de lac est le polygone du lac.
+                nom, g = None, t["lacs"][int(t["node_id"][i])]
+            else:
+                n_sans_geom += 1
+                continue
+            pr = {"troncon": tid, "zidx": len(series), "nom": nom,
+                  "q_moyen_m3s": round(float(moy[i]), 4),
+                  "q_nat_moyen_m3s": round(float(moyn[i]), 4),
+                  "q7min_m3s": round(float(q7[i]), 4),
+                  "q7min_nat_m3s": round(float(q7n[i]), 4)}
+            if q7n[i] >= Q_PLANCHER:
+                pr["influence_etiage_pct"] = round(100.0 * float((q7[i] - q7n[i]) / q7n[i]), 2)
+            if moyn[i] >= Q_PLANCHER:
+                pr["influence_annuelle_pct"] = round(100.0 * float((moy[i] - moyn[i]) / moyn[i]), 2)
+            feats_tr.append({"type": "Feature", "geometry": g, "properties": pr})
+            series.append((q[:, i], qn[:, i]))
+        print(f"  {t['reg']} : {len(t['ids']) - n_sans_geom} tronçons"
+              + (f", {n_sans_geom} sans géométrie" if n_sans_geom else ""))
+
+    with open(os.path.join(OUTPUT, "reconstruction-troncons.geojson"), "w", encoding="utf-8") as f:
+        json.dump({"type": "FeatureCollection", "features": feats_tr}, f, ensure_ascii=False, separators=(",", ":"))
+    print(f"troncons.geojson : {len(feats_tr)} tronçons, "
+          f"{os.path.getsize(os.path.join(OUTPUT, 'reconstruction-troncons.geojson')) / 1e6:.1f} Mo")
+
+    # Un chunk par tronçon et les deux séries ensemble : un clic lit un seul fichier.
+    n, T = len(series), len(dates)
+    arr = np.empty((3, n, T), dtype=np.float32)
+    for k, (qa, qb) in enumerate(series):
+        arr[0, k], arr[1, k], arr[2, k] = qa, qb, qa - qb
+    import glob as _glob
+    import shutil as _shutil
+    for ancien in _glob.glob(os.path.join(OUTPUT, "debits*.zarr")):
+        _shutil.rmtree(ancien, ignore_errors=True)
+    root = zarr.open_group(os.path.join(OUTPUT, STORE_NAME), mode="w")
+    root.create_array("debit", data=arr, chunks=(3, 1, T), dimension_names=["serie", "zidx", "time"])
+    root.create_array("serie", data=np.array([0, 1, 2], dtype=np.int32), dimension_names=["serie"])
+    root.create_array("zidx", data=np.arange(n, dtype=np.int32), dimension_names=["zidx"])
+    tz = root.create_array("time", data=((dates - pd.Timestamp("1970-01-01")).days.to_numpy().astype(np.int32)),
+                           dimension_names=["time"])
+    tz.attrs["units"] = "days since 1970-01-01"
+    root["serie"].attrs["description"] = "0 : modélisé avec prélèvements et rejets ; 1 : naturalisé ; 2 : modélisé moins naturalisé"
+    root.attrs["description"] = f"Débits journaliers simulés par meandre, m³/s, {DEBUT[:4]}-{FIN[:4]}"
+    zarr.consolidate_metadata(root.store)
+    print(f"{STORE_NAME} : {n} tronçons x {T} jours")
+
+    ecrit_config(feats_sites, feats_tr)
+
+
+def ecrit_config(feats_sites, feats_tr):
+    infl = np.array([f["properties"].get("influence_etiage_pct", np.nan) for f in feats_tr], dtype=float)
+    borne = float(np.nanpercentile(np.abs(infl), 98)) if np.isfinite(infl).any() else 10.0
+    borne = max(1.0, min(50.0, round(borne)))
+    nom_mod = "Débit modélisé, avec prélèvements et rejets"
+    nom_nat = "Débit naturalisé"
+    nom_inf = "Influence des prélèvements et rejets sur l'étiage (%)"
+    graphique = {
+        "type": "chart", "chart_type": "line",
+        "data_source": {"type": "zarr", "store_url": ZARR_URL, "value_array": "debit",
+                        "feature_dim": "zidx", "feature_id_property": "zidx", "time_array": "time",
+                        # Chart.js dessine la première série par-dessus : le modélisé, fin,
+                        # reste visible sur le naturalisé, large, là où les deux coïncident.
+                        "series": [{"name": "modélisé", "role": "main", "layer": nom_mod, "color": "rgba(37, 99, 235, 1)",
+                                    "width": 1.2, "indexers": {"serie": 0}},
+                                   {"name": "naturalisé", "role": "main", "layer": nom_nat, "color": "rgba(217, 119, 6, 0.9)",
+                                    "width": 3, "indexers": {"serie": 1}}]},
+        "options": {"title": f"Débit journalier, {DEBUT[:4]}-{FIN[:4]}", "xlabel": "Date",
+                    "ylabel": "m³/s"}}
+    graphique_ecart = {
+        "type": "chart", "chart_type": "line",
+        "data_source": {"type": "zarr", "store_url": ZARR_URL, "value_array": "debit",
+                        "feature_dim": "zidx", "feature_id_property": "zidx", "time_array": "time",
+                        "series": [{"name": "modélisé moins naturalisé", "role": "main",
+                                    "color": "rgba(124, 58, 237, 1)", "indexers": {"serie": 2}}]},
+        "options": {"title": "Effet des prélèvements et rejets : modélisé moins naturalisé", "xlabel": "Date",
+                    "ylabel": "m³/s"}}
+    fiche_troncon = {"title": "Tronçon {properties.troncon} {properties.nom}", "display": "sidebar",
+                     "sections": [graphique, graphique_ecart,
+                                  {"type": "properties",
+                                   "fields": ["q_moyen_m3s", "q_nat_moyen_m3s", "q7min_m3s", "q7min_nat_m3s",
+                                              "influence_etiage_pct", "influence_annuelle_pct"],
+                                   "labels": {"q_moyen_m3s": "Débit moyen modélisé (m³/s)",
+                                              "q_nat_moyen_m3s": "Débit moyen naturalisé (m³/s)",
+                                              "q7min_m3s": "Étiage modélisé, Q7 min. (m³/s)",
+                                              "q7min_nat_m3s": "Étiage naturalisé, Q7 min. (m³/s)",
+                                              "influence_etiage_pct": "Écart de l'étiage (%)",
+                                              "influence_annuelle_pct": "Écart du débit moyen (%)"}}]}
+    largeur = {"property": "q_nat_moyen_m3s", "range": [1.8, 7]}
+    config = {
+        "view": {"name": "meandre : débits reconstruits",
+                 "description": "Débits modélisés et naturalisés, prélèvements et rejets ponctuels",
+                 "center": [47.0, -72.5], "zoom": 5.5, "basemap": "esri-gris"},
+        "layers": [
+            {"name": nom_inf, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": True, "popup_template": "troncon",
+             "color_by": {"property": "influence_etiage_pct", "colors": DIVERGENTE,
+                          "domain": [-borne, borne], "label": "écart du débit d'étiage, %"},
+             "width_by": largeur, "fill_opacity": 0.75},
+            {"name": nom_mod, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": False, "popup_template": "troncon",
+             "color": "#2563eb", "width_by": largeur, "fill_opacity": 0},
+            {"name": nom_nat, "url": "./data/meandre/reconstruction-troncons.geojson", "visible": False, "popup_template": "troncon",
+             "color": "#d97706", "width_by": largeur, "fill_opacity": 0},
+            {"name": "Prélèvements et rejets ponctuels", "url": "./data/meandre/prelevements-rejets.geojson",
+             "visible": True, "popup_template": "site",
+             "color_by": {"property": "debit_net_l_s", "colors": DIVERGENTE,
+                          "domain": [-5, 5], "label": "débit net, L/s (rouge : prélèvement)"},
+             "size_by": {"property": "debit_net_l_s", "range": [1.5, 14]}},
+        ],
+        "popup_templates": {
+            "troncon": fiche_troncon,
+            "site": {"title": "{properties.nom}", "display": "sidebar",
+                     "sections": [{"type": "properties",
+                                   "fields": ["nature", "origine", "source", "secteur", "municipalite",
+                                              "debit_net_l_s", "debit_net_ete_l_s", "troncon", "distance_troncon_km"],
+                                   "labels": {"nature": "Nature", "origine": "Origine", "source": "Milieu",
+                                              "secteur": "Secteur", "municipalite": "Municipalité",
+                                              "debit_net_l_s": "Débit net moyen (L/s)",
+                                              "debit_net_ete_l_s": "Débit net, juil. à sept. (L/s)",
+                                              "troncon": "Tronçon où le débit est appliqué",
+                                              "distance_troncon_km": "Distance du site à ce tronçon (km)"}},
+                                  {"type": "chart", "chart_type": "bar", "data_field": "profil_mensuel",
+                                   "options": {"title": f"Débit net moyen par mois, {DEBUT[:4]}-{FIN[:4]}",
+                                               "xlabel": "Mois", "ylabel": "L/s"}}]},
+        },
+    }
+    # Deux cartes de présentation sur les mêmes données : la reconstruction des débits, les
+    # sites masqués au départ, et les sites seuls.
+    sites = config["layers"][-1]
+    prelev = {"view": {**config["view"], "name": "meandre : prélèvements et rejets ponctuels",
+                       "description": "Débit net moyen par site, 2015-2024, table io-eau"},
+              "layers": [sites], "popup_templates": {"site": config["popup_templates"]["site"]}}
+    config["layers"][-1] = {**sites, "visible": True}
+    for nom, c in (("config-meandre-reconstruction.json", config), ("config-meandre-prelevements.json", prelev)):
+        with open(os.path.join(FEUILLAGE, nom), "w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False, indent=2)
+    print(f"config-meandre-reconstruction.json et config-meandre-prelevements.json écrits dans {FEUILLAGE} "
+          f"(influence en étiage bornée à ±{borne:.0f} %)")
+
+
+if __name__ == "__main__":
+    main()
