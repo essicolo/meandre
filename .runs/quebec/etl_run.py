@@ -1207,7 +1207,8 @@ print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
 if os.environ.get("MEANDRE_SONDE_CONFLIT") == "1":
     # CONFLIT CRUE CONTRE ETIAGE (2026-10-27) : derivee des erreurs de crue et d'etiage par champ.
     from importlib.machinery import SourceFileLoader as _SFL2
-    _sc = _SFL2("sonde_conflit", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sonde_conflit.py")).load_module()
+    # La sonde appartient a son experience (experiments/couche3_drainage), pas au pilote.
+    _sc = _SFL2("sonde_conflit", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "experiments", "couche3_drainage", "sonde_conflit.py")).load_module()
     # Groupes de stations facultatifs : un fichier station_id,regime (MEANDRE_SONDE_CONFLIT_GROUPES).
     _grp = None
     if os.environ.get("MEANDRE_SONDE_CONFLIT_GROUPES"):
