@@ -13,14 +13,14 @@ façon systématique, sans autre réseau que celui de PHYSITEL :
    est la plus proche de celle de la station. Une station posée sur le chenal près d'un noeud tombe
    dans l'unité d'un tronçon ou de son voisin selon la grille de PHYSITEL ; l'aire tranche. Le
    rattachement d'Hydrotel est gardé sauf gain net (plus de 5 % sur le rapport) ;
-6. statut : « garde », « change », « hors territoire » (coordonnées hors de toute unité du projet :
-   la station n'a pas de tronçon dans ce domaine, à exclure), « sans coordonnées » (fiche vide,
+6. statut : `kept`, `changed`, `outside_territory` (coordonnées hors de toute unité du projet : la
+   station n'a pas de tronçon dans ce domaine, à exclure), `no_coordinates` (fiche vide,
    rattachement d'Hydrotel gardé) ;
 7. rapport aire du tronçon retenu / aire de la station, celui que pose `[stations] area_ratio`.
 
-Sorties : `derives/auxiliaires/audit-stations.csv` (une ligne par station) et
-`derives/auxiliaires/rattachement-stations.csv` (territoire, station, tronçon retenu, statut), lu
-par le chargeur quand `[stations] attachment_table` le nomme.
+Sorties : `derives/auxiliaires/station-audit.csv` (une ligne par station) et
+`derives/auxiliaires/station-attachment.csv` (territory, station, reach_id, status), lu par le
+chargeur quand `[stations] attachment_table` le nomme.
 Usage : python .runs/quebec/audit_stations.py [territoire ...]
 """
 import os
@@ -38,146 +38,146 @@ from meandre.adapters.physitel import database_path, project_dir
 from meandre.adapters.physitel.cehq_loader import fetch_station
 from meandre.utils import paths
 
-CACHE = os.path.join(paths.DERIVED_ROOT, "auxiliaires", "cehq-entetes")
-SORTIE = os.path.join(paths.DERIVED_ROOT, "auxiliaires", "audit-stations.csv")
+HEADER_CACHE = os.path.join(paths.DERIVED_ROOT, "auxiliaires", "cehq-entetes")
+AUDIT_TABLE = os.path.join(paths.DERIVED_ROOT, "auxiliaires", "station-audit.csv")
+ATTACHMENT_TABLE = os.path.join(paths.DERIVED_ROOT, "auxiliaires", "station-attachment.csv")
 # Une station n'est pas descendue sous un tronçon dont l'aire vaut au moins 90 % de la sienne :
 # l'aire déclarée par le CEHQ et celle de PHYSITEL diffèrent couramment de quelques pour cent.
-TOLERANCE = 0.10
+AREA_TOLERANCE = 0.10
 # Gain minimal, en logarithme du rapport d'aires, pour quitter le rattachement d'Hydrotel.
-GAIN_MIN = np.log(1.05)
-RATTACHEMENT = os.path.join(paths.DERIVED_ROOT, "auxiliaires", "rattachement-stations.csv")
+MIN_GAIN = np.log(1.05)
 
 
-def entete(station_id):
+def station_header(station_id):
     """En-tête de la fiche CEHQ (texte), depuis le cache ou le site."""
-    os.makedirs(CACHE, exist_ok=True)
-    f = os.path.join(CACHE, f"{station_id}.txt")
-    if os.path.exists(f):
-        return open(f, encoding="utf-8").read()
+    os.makedirs(HEADER_CACHE, exist_ok=True)
+    path = os.path.join(HEADER_CACHE, f"{station_id}.txt")
+    if os.path.exists(path):
+        return open(path, encoding="utf-8").read()
     try:
-        texte = fetch_station(station_id)
+        text = fetch_station(station_id)
     except Exception as e:
         return f"ERREUR {e}"
-    tete = "\n".join(texte.splitlines()[:8])
-    open(f, "w", encoding="utf-8").write(tete)
+    header = "\n".join(text.splitlines()[:8])
+    open(path, "w", encoding="utf-8").write(header)
     time.sleep(0.3)
-    return tete
+    return header
 
 
 def dms(d, m, s):
     return float(d) + float(m) / 60 + float(s) / 3600
 
 
-def coordonnees(tete):
+def parse_header(header):
     """(lon, lat, aire km², régime) lus dans l'en-tête ; NaN quand absents."""
-    lon = lat = aire = np.nan
+    lon = lat = area = np.nan
     regime = ""
-    c = re.search(r"Coordonn\w+:\s*\(NAD83\)\s*(-?\d+)°\s*(\d+)'\s*(\d+)\"\s*//\s*(-?\d+)°\s*(\d+)'\s*(\d+)\"", tete)
+    c = re.search(r"Coordonn\w+:\s*\(NAD83\)\s*(-?\d+)°\s*(\d+)'\s*(\d+)\"\s*//\s*(-?\d+)°\s*(\d+)'\s*(\d+)\"", header)
     if c:
         lat = dms(*c.group(1, 2, 3))
         lon = -dms(c.group(4).lstrip("-"), *c.group(5, 6))
-    a = re.search(r"Bassin versant:\s*([\d.,]+)\s*km", tete)
+    a = re.search(r"Bassin versant:\s*([\d.,]+)\s*km", header)
     if a:
-        aire = float(a.group(1).replace(",", "."))
-    r = re.search(r"R\w+gime:\s*(.+?)\s*$", tete, flags=re.M)
+        area = float(a.group(1).replace(",", "."))
+    r = re.search(r"R\w+gime:\s*(.+?)\s*$", header, flags=re.M)
     if r:
         regime = r.group(1).strip()
-    return lon, lat, aire, regime
+    return lon, lat, area, regime
 
 
-def troncons(projet):
-    """Depuis troncon.trl : unité -> tronçon, et tronçon -> (noeud aval, noeuds amont)."""
-    lignes = open(os.path.join(projet, "physitel", "troncon.trl"), encoding="latin-1").read().split("\n")
-    debut = next(i for i, l in enumerate(lignes) if l.strip() == "TRONCONS") + 1
-    uhrh_vers = {}
-    aval, amont = {}, {}
-    for l in lignes[debut:]:
-        t = l.split()
+def read_reaches(project):
+    """Depuis troncon.trl : unité -> tronçon, tronçon -> tronçon aval, tronçon -> tronçons amont."""
+    lines = open(os.path.join(project, "physitel", "troncon.trl"), encoding="latin-1").read().split("\n")
+    first = next(i for i, line in enumerate(lines) if line.strip() == "TRONCONS") + 1
+    reach_of_unit = {}
+    down_node, up_nodes = {}, {}
+    for line in lines[first:]:
+        t = line.split()
         if len(t) < 8:
             continue
-        ident, kind = int(t[0]), int(t[1])
+        reach, kind = int(t[0]), int(t[1])
         if kind == 1:
             # rivière : ident, type, noeud aval, noeud amont, longueur, largeur, manning, n, unités..., ordre
-            aval[ident], amont[ident] = int(t[2]), [int(t[3])]
+            down_node[reach], up_nodes[reach] = int(t[2]), [int(t[3])]
             n = int(t[7])
-            unites = t[8:8 + n]
+            units = t[8:8 + n]
         else:
             # lac : ident, type, noeud aval, k, k noeuds amont, quatre réels, n, unités..., ordre
             k = int(t[3])
-            aval[ident], amont[ident] = int(t[2]), [int(x) for x in t[4:4 + k]]
+            down_node[reach], up_nodes[reach] = int(t[2]), [int(x) for x in t[4:4 + k]]
             n = int(t[4 + k + 4])
-            unites = t[4 + k + 5:4 + k + 5 + n]
-        for u in unites:
-            uhrh_vers[int(u)] = ident
-    # tronçon en aval : celui dont un noeud amont est le noeud aval du tronçon courant
-    par_noeud_amont = {nd: r for r, nds in amont.items() for nd in nds}
-    suivant = {r: par_noeud_amont.get(aval[r]) for r in aval}
-    precedents = {}
-    for r, sv in suivant.items():
-        if sv is not None:
-            precedents.setdefault(sv, []).append(r)
-    return uhrh_vers, suivant, precedents
+            units = t[4 + k + 5:4 + k + 5 + n]
+        for u in units:
+            reach_of_unit[int(u)] = reach
+    # tronçon aval : celui dont un noeud amont est le noeud aval du tronçon courant
+    reach_by_up_node = {nd: r for r, nds in up_nodes.items() for nd in nds}
+    downstream = {r: reach_by_up_node.get(down_node[r]) for r in down_node}
+    upstream = {}
+    for r, d in downstream.items():
+        if d is not None:
+            upstream.setdefault(d, []).append(r)
+    return reach_of_unit, downstream, upstream
 
 
-def auditer(territoire):
-    con = duckdb.connect(str(database_path(territoire)), read_only=True)
-    st = con.execute("select s.station_id, s.node_idx, s.drainage_area_km2 from stations s").df()
-    nd = con.execute("select n.node_idx, n.node_id, t.area_km2_physical as aire from nodes n join territorial t using (node_idx)").df()
+def audit_territory(territory):
+    con = duckdb.connect(str(database_path(territory)), read_only=True)
+    stations = con.execute("select station_id, node_idx, drainage_area_km2 from stations").df()
+    nodes = con.execute("select n.node_idx, n.node_id, t.area_km2_physical as area from nodes n join territorial t using (node_idx)").df()
     con.close()
-    aire_par_ident = dict(zip(nd.node_id.astype(int), nd.aire.astype(float)))
-    ident_par_idx = dict(zip(nd.node_idx.astype(int), nd.node_id.astype(int)))
-    projet = project_dir(territoire)
-    uhrh_vers, suivant, precedents = troncons(projet)
-    uhrh = gpd.read_file(os.path.join(projet, "physitel", "uhrh.shp"))
-    lignes = []
-    for _, s in st.iterrows():
+    area_of_reach = dict(zip(nodes.node_id.astype(int), nodes.area.astype(float)))
+    reach_of_index = dict(zip(nodes.node_idx.astype(int), nodes.node_id.astype(int)))
+    project = project_dir(territory)
+    reach_of_unit, downstream, upstream = read_reaches(project)
+    units = gpd.read_file(os.path.join(project, "physitel", "uhrh.shp"))
+    rows = []
+    for _, s in stations.iterrows():
         sid = str(s.station_id)
-        lon, lat, aire_cehq, regime = coordonnees(entete(sid))
-        actuel = ident_par_idx.get(int(s.node_idx))
-        aire_st = aire_cehq if np.isfinite(aire_cehq) else float(s.drainage_area_km2)
-        unite = propose = np.nan
-        chemin = ""
+        lon, lat, cehq_area, regime = parse_header(station_header(sid))
+        current = reach_of_index.get(int(s.node_idx))
+        st_area = cehq_area if np.isfinite(cehq_area) else float(s.drainage_area_km2)
+        unit = located = np.nan
+        path = ""
         if np.isfinite(lon):
-            p = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(uhrh.crs).iloc[0]
-            dedans = uhrh[uhrh.contains(p)]
-            if len(dedans):
-                unite = int(dedans.iloc[0]["ident"])
-                r = uhrh_vers.get(unite)
-                pas = [r]
-                while r is not None and aire_par_ident.get(r, np.inf) < aire_st * (1 - TOLERANCE) and suivant.get(r) is not None:
-                    r = suivant[r]
-                    pas.append(r)
-                propose = r
-                chemin = ">".join(str(x) for x in pas)
-        a_act = aire_par_ident.get(actuel, np.nan)
-        a_pro = aire_par_ident.get(propose, np.nan) if np.isfinite(propose) else np.nan
+            point = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(units.crs).iloc[0]
+            inside = units[units.contains(point)]
+            if len(inside):
+                unit = int(inside.iloc[0]["ident"])
+                r = reach_of_unit.get(unit)
+                steps = [r]
+                while r is not None and area_of_reach.get(r, np.inf) < st_area * (1 - AREA_TOLERANCE) and downstream.get(r) is not None:
+                    r = downstream[r]
+                    steps.append(r)
+                located = r
+                path = ">".join(str(x) for x in steps)
+        a_current = area_of_reach.get(current, np.nan)
+        a_located = area_of_reach.get(located, np.nan) if np.isfinite(located) else np.nan
         # Choix final : voisinage d'écoulement du tronçon trouvé, aire la plus proche ; Hydrotel
         # gardé sauf gain net.
         if not np.isfinite(lon):
-            statut, retenu = "sans coordonnées", actuel
-        elif not np.isfinite(propose):
-            statut, retenu = "hors territoire", np.nan
+            status, chosen = "no_coordinates", current
+        elif not np.isfinite(located):
+            status, chosen = "outside_territory", np.nan
         else:
-            voisins = {int(propose)} | {x for x in [suivant.get(int(propose))] if x is not None} | set(precedents.get(int(propose), []))
-            ecart = {r: abs(np.log(aire_par_ident[r] / aire_st)) for r in voisins if r in aire_par_ident}
-            meilleur = min(ecart, key=ecart.get)
-            retenu = actuel if abs(np.log(a_act / aire_st)) <= ecart[meilleur] + GAIN_MIN else meilleur
-            statut = "garde" if retenu == actuel else "change"
-        a_ret = aire_par_ident.get(retenu, np.nan) if np.isfinite(retenu) else np.nan
-        lignes.append(dict(territoire=territoire, station=sid, regime=regime, lon=lon, lat=lat, aire_station=aire_st,
-                           troncon_actuel=actuel, aire_actuel=a_act, rapport_actuel=a_act / aire_st,
-                           uhrh=unite, troncon_propose=propose, aire_propose=a_pro, rapport_propose=a_pro / aire_st,
-                           descente=chemin, troncon_retenu=retenu, aire_retenu=a_ret, rapport_retenu=a_ret / aire_st, statut=statut))
-    return pd.DataFrame(lignes)
+            neighbours = {int(located)} | {x for x in [downstream.get(int(located))] if x is not None} | set(upstream.get(int(located), []))
+            gap = {r: abs(np.log(area_of_reach[r] / st_area)) for r in neighbours if r in area_of_reach}
+            best = min(gap, key=gap.get)
+            chosen = current if abs(np.log(a_current / st_area)) <= gap[best] + MIN_GAIN else best
+            status = "kept" if chosen == current else "changed"
+        a_chosen = area_of_reach.get(chosen, np.nan) if np.isfinite(chosen) else np.nan
+        rows.append(dict(territory=territory, station=sid, regime=regime, lon=lon, lat=lat, station_area=st_area,
+                         current_reach=current, current_area=a_current, current_ratio=a_current / st_area,
+                         unit=unit, located_reach=located, located_area=a_located, located_ratio=a_located / st_area,
+                         descent=path, reach_id=chosen, reach_area=a_chosen, ratio=a_chosen / st_area, status=status))
+    return pd.DataFrame(rows)
 
 
-def main(territoires):
-    if not territoires:
-        territoires = sorted(os.path.basename(f)[:-7] for f in os.listdir(os.path.dirname(str(database_path("sagu")))) if f.endswith(".duckdb") and len(f) == 11)
+def main(territories):
+    if not territories:
+        territories = sorted(os.path.basename(f)[:-7] for f in os.listdir(os.path.dirname(str(database_path("sagu")))) if f.endswith(".duckdb") and len(f) == 11)
     tables = []
-    for t in territoires:
+    for t in territories:
         try:
-            d = auditer(t)
+            d = audit_territory(t)
         except Exception as e:
             print(f"{t} : non audité ({type(e).__name__} : {e})")
             continue
@@ -185,15 +185,15 @@ def main(territoires):
             print(f"{t} : aucune station")
             continue
         tables.append(d)
-        print(f"{t} : {len(d)} stations | " + ", ".join(f"{k} {v}" for k, v in d.statut.value_counts().items()))
+        print(f"{t} : {len(d)} stations | " + ", ".join(f"{k} {v}" for k, v in d.status.value_counts().items()))
     d = pd.concat(tables)
-    d.to_csv(SORTIE, index=False)
-    d[["territoire", "station", "troncon_retenu", "statut"]].to_csv(RATTACHEMENT, index=False)
-    print(f"\necrit : {SORTIE}\necrit : {RATTACHEMENT}")
-    hors = d[(d.statut != "garde") | (np.abs(np.log(d.rapport_retenu.fillna(1))) > np.log(1.5))]
-    print(f"\n{len(hors)} station(s) changee(s), hors territoire, sans coordonnees, ou a plus d'un facteur 1,5 apres choix :")
-    cols = ["territoire", "station", "statut", "aire_station", "troncon_actuel", "rapport_actuel", "troncon_retenu", "rapport_retenu"]
-    print(hors[cols].to_string(index=False, float_format=lambda x: f"{x:.3g}"))
+    d.to_csv(AUDIT_TABLE, index=False)
+    d[["territory", "station", "reach_id", "status"]].to_csv(ATTACHMENT_TABLE, index=False)
+    print(f"\necrit : {AUDIT_TABLE}\necrit : {ATTACHMENT_TABLE}")
+    flagged = d[(d.status != "kept") | (np.abs(np.log(d.ratio.fillna(1))) > np.log(1.5))]
+    print(f"\n{len(flagged)} station(s) changee(s), hors territoire, sans coordonnees, ou a plus d'un facteur 1,5 apres choix :")
+    cols = ["territory", "station", "status", "station_area", "current_reach", "current_ratio", "reach_id", "ratio"]
+    print(flagged[cols].to_string(index=False, float_format=lambda x: f"{x:.3g}"))
 
 
 if __name__ == "__main__":

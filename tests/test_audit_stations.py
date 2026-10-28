@@ -4,23 +4,23 @@ from importlib.machinery import SourceFileLoader
 
 import numpy as np
 
-ICI = os.path.dirname(os.path.abspath(__file__))
-audit = SourceFileLoader("audit_stations", os.path.join(ICI, "..", ".runs", "quebec", "audit_stations.py")).load_module()
+HERE = os.path.dirname(os.path.abspath(__file__))
+audit = SourceFileLoader("audit_stations", os.path.join(HERE, "..", ".runs", "quebec", "audit_stations.py")).load_module()
 
 
 def test_coordonnees_de_la_fiche_cehq():
-    tete = ("Station:        062002         Rouge - en amont du ponceau sur la route 169\n"
+    header = ("Station:        062002         Rouge - en amont du ponceau sur la route 169\n"
             "Bassin versant: 26.8 km²       Régime: Non influencé\n"
             "Coordonnées:    (NAD83) 48° 48' 14\" // -72° 29' 31\"\n")
-    lon, lat, aire, regime = audit.coordonnees(tete)
+    lon, lat, area, regime = audit.parse_header(header)
     assert abs(lat - (48 + 48 / 60 + 14 / 3600)) < 1e-9
     assert abs(lon + (72 + 29 / 60 + 31 / 3600)) < 1e-9
-    assert aire == 26.8 and regime == "Non influencé"
+    assert area == 26.8 and regime == "Non influencé"
 
 
 def test_fiche_sans_coordonnees():
-    lon, lat, aire, _ = audit.coordonnees("Bassin versant: 1051 km²\nCoordonnées:    (NAD83)           //          \n")
-    assert np.isnan(lon) and np.isnan(lat) and aire == 1051.0
+    lon, lat, area, _ = audit.parse_header("Bassin versant: 1051 km²\nCoordonnées:    (NAD83)           //          \n")
+    assert np.isnan(lon) and np.isnan(lat) and area == 1051.0
 
 
 def test_lecture_de_troncon_trl(tmp_path):
@@ -30,7 +30,7 @@ def test_lecture_de_troncon_trl(tmp_path):
         "2\n2\nTRONCONS\n"
         "2 2 2 2 3 4 644075.25 365.66 74.6 1.5 2 3 4 60\n"
         "3 1 3 43 9389.95 3.43 0.04 3 48 49 50 1\n", encoding="latin-1")
-    uhrh_vers, suivant, precedents = audit.troncons(str(tmp_path))
-    assert uhrh_vers[48] == 3 and uhrh_vers[50] == 3 and uhrh_vers[3] == 2
-    assert suivant[3] == 2 and suivant[2] is None
-    assert precedents[2] == [3]
+    reach_of_unit, downstream, upstream = audit.read_reaches(str(tmp_path))
+    assert reach_of_unit[48] == 3 and reach_of_unit[50] == 3 and reach_of_unit[3] == 2
+    assert downstream[3] == 2 and downstream[2] is None
+    assert upstream[2] == [3]

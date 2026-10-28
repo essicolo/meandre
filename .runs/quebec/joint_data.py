@@ -66,85 +66,80 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     for ni in station_indices:
         station_mask[ni] = True
     q_obs = _q.values
-    # STATIONS EXCLUES ET RAPPORT D'AIRES (2026-10-28, R429). Une station hors du reseau modelise
-    # n'a pas de troncon : on la retire. Pour les autres, l'observe est rapporte a l'aire du
-    # troncon qui porte la station, a debit specifique uniforme ; 9 stations sur 178 sont a plus
-    # d'un facteur 1,5 de leur troncon, et 062002 (26,8 km2 sur un troncon de 56,6) sortait a -1,27 de KGE.
-    from meandre.utils import settings as _settings_st
+    # REGLES DE STATIONS (2026-10-28, R429, R430, R435), dans cet ordre : table de rattachement,
+    # stations exclues, debits reconstitues retires, rapport d'aires sur le troncon effectif.
+    from meandre.utils import settings as _st_settings
     from meandre.observations import area_ratio as _area_ratio
     _sites = [str(x) for x in _q.sites]
-    _exclues = {x for x in (_settings_st.get("stations.excluded") or "").replace(" ", "").split(",") if x}
-    # TABLE DE RATTACHEMENT (2026-10-28, `.runs/quebec/audit_stations.py`) : troncon retenu par
-    # station d'apres ses coordonnees CEHQ et les unites hydrologiques du projet ; une station
-    # « hors territoire » n'a pas de troncon dans ce domaine et rejoint les exclues.
-    _table = _settings_st.get("stations.attachment_table")
-    if _table:
+    _excluded = {x for x in (_st_settings.get("stations.excluded") or "").replace(" ", "").split(",") if x}
+    # Table de rattachement (`.runs/quebec/audit_stations.py`) : troncon retenu par station d'apres
+    # ses coordonnees et les unites hydrologiques du projet ; une station hors du territoire rejoint
+    # les exclues.
+    _table_path = _st_settings.get("stations.attachment_table")
+    if _table_path:
         import pandas as _pd_st
         from meandre.utils import paths as _mpaths
-        _t = _pd_st.read_csv(_table.replace("{DERIVES}", _mpaths.DERIVED_ROOT), dtype={"station": str})
-        _t = _t[_t["territoire"].str.lower() == reg]
-        _idx_par_ident = {int(i_): k_ for k_, i_ in enumerate(np.asarray(node_ids).tolist())}
-        _changes = []
-        for _, _l in _t.iterrows():
-            if _l["station"] not in _sites:
+        _table = _pd_st.read_csv(_table_path.replace("{DERIVES}", _mpaths.DERIVED_ROOT), dtype={"station": str})
+        _table = _table[_table["territory"].str.lower() == reg]
+        _index_of_reach = {int(i_): k_ for k_, i_ in enumerate(np.asarray(node_ids).tolist())}
+        _moved = []
+        for _, _row in _table.iterrows():
+            if _row["station"] not in _sites:
                 continue
-            if _l["statut"] == "hors territoire":
-                _exclues.add(_l["station"])
-            elif _l["statut"] == "change" and np.isfinite(_l["troncon_retenu"]):
-                j_ = _sites.index(_l["station"])
-                nouveau = _idx_par_ident[int(_l["troncon_retenu"])]
-                _changes.append(f"{_l['station']} {int(node_ids[station_indices[j_]])}->{int(_l['troncon_retenu'])}")
-                station_indices[j_] = nouveau
-                station_node_map[_l["station"]] = nouveau
-        station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
-        for ni in station_indices:
-            station_mask[ni] = True
-        if _changes:
-            print(f"[stations] rattachement change par la table ({len(_changes)}) : {', '.join(_changes)}")
-    if _exclues:
-        _garde = [j for j, sid in enumerate(_sites) if sid not in _exclues]
-        _retirees = [sid for sid in _sites if sid in _exclues]
-        if _retirees:
-            print(f"[stations] {len(_retirees)} station(s) exclue(s) par stations.excluded : {', '.join(_retirees)}")
-        q_obs = q_obs[:, torch.as_tensor(_garde, dtype=torch.long, device=q_obs.device)]
-        _sites = [_sites[j] for j in _garde]
-        station_indices = [station_indices[j] for j in _garde]
-        station_node_map = {s_: n_ for s_, n_ in station_node_map.items() if s_ not in _exclues}
+            if _row["status"] == "outside_territory":
+                _excluded.add(_row["station"])
+            elif _row["status"] == "changed" and np.isfinite(_row["reach_id"]):
+                _col = _sites.index(_row["station"])
+                _new_index = _index_of_reach[int(_row["reach_id"])]
+                _moved.append(f"{_row['station']} {int(node_ids[station_indices[_col]])}->{int(_row['reach_id'])}")
+                station_indices[_col] = _new_index
+                station_node_map[_row["station"]] = _new_index
+        if _moved:
+            print(f"[stations] rattachement change par la table ({len(_moved)}) : {', '.join(_moved)}")
+    if _excluded:
+        _kept = [j for j, sid in enumerate(_sites) if sid not in _excluded]
+        _dropped = [sid for sid in _sites if sid in _excluded]
+        if _dropped:
+            print(f"[stations] {len(_dropped)} station(s) exclue(s) : {', '.join(_dropped)}")
+        q_obs = q_obs[:, torch.as_tensor(_kept, dtype=torch.long, device=q_obs.device)]
+        _sites = [_sites[j] for j in _kept]
+        station_indices = [station_indices[j] for j in _kept]
+        station_node_map = {s_: n_ for s_, n_ in station_node_map.items() if s_ not in _excluded}
         n_stations = len(station_indices)
-        station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
-        for ni in station_indices:
-            station_mask[ni] = True
-    # DEBITS RECONSTITUES (2026-10-28, decision d'Essi, R385) : de janvier a mars, 66 a 82 % des
-    # debits observes sont interpoles entre jaugeages ; retires, le modele n'apprend plus a les imiter.
-    if _settings_st.get("stations.exclude_reconstructed"):
-        import duckdb as _ddb_r
+    station_mask = torch.zeros(n_nodes, dtype=torch.bool, device=device)
+    for ni in station_indices:
+        station_mask[ni] = True
+    # Debits reconstitues (R385, R435) : de janvier a mars, 66 a 82 % des debits observes sont
+    # interpoles entre jaugeages ; retires, le modele n'apprend plus a les imiter.
+    if _st_settings.get("stations.exclude_reconstructed"):
+        import duckdb as _ddb_flags
         from meandre.observations import mask_flagged as _mask_flagged
-        _con_r = _ddb_r.connect(str(_paths(reg)[0]), read_only=True)
-        _fl = _con_r.execute("select station_id, date from observations where reconstructed").fetchall()
-        _con_r.close()
-        _marques = {}
-        for _sid_r, _d_r in _fl:
-            _marques.setdefault(str(_sid_r), set()).add(_d_r)
+        _con_flags = _ddb_flags.connect(str(_paths(reg)[0]), read_only=True)
+        _flag_rows = _con_flags.execute("select station_id, date from observations where reconstructed").fetchall()
+        _con_flags.close()
+        _flagged = {}
+        for _sid, _day in _flag_rows:
+            _flagged.setdefault(str(_sid), set()).add(_day)
         assert q_obs.shape[0] == len(times), f"q_obs {tuple(q_obs.shape)} et {len(times)} dates ne s'alignent pas"
-        _finies = int(torch.isfinite(q_obs).sum())
-        q_obs, _retire = _mask_flagged(q_obs, times, _sites, _marques)
-        print(f"[stations] debits reconstitues retires (stations.exclude_reconstructed) : {_retire} valeurs sur {_finies} ({100 * _retire / max(_finies, 1):.0f} %)")
+        _n_finite = int(torch.isfinite(q_obs).sum())
+        q_obs, _n_removed = _mask_flagged(q_obs, times, _sites, _flagged)
+        print(f"[stations] debits reconstitues retires (stations.exclude_reconstructed) : {_n_removed} valeurs sur {_n_finite} ({100 * _n_removed / max(_n_finite, 1):.0f} %)")
+    # Rapport d'aires : observe x aire du troncon effectif / aire de la station.
     station_area_ratio = torch.ones(n_stations, dtype=torch.float32, device=device)
-    if _settings_st.get("stations.area_ratio"):
-        import duckdb as _ddb
-        _con = _ddb.connect(str(_paths(reg)[0]), read_only=True)
-        # Aire de la station, et aire du troncon EFFECTIF (apres la table de rattachement).
-        _a_station = {str(r_[0]): r_[1] for r_ in _con.execute("select station_id, drainage_area_km2 from stations").fetchall()}
-        _a_noeud = {int(r_[0]): r_[1] for r_ in _con.execute("select node_idx, area_km2_physical from territorial").fetchall()}
-        _con.close()
-        _a_st = np.array([_a_station.get(sid, np.nan) for sid in _sites], dtype=float)
-        _a_tr = np.array([_a_noeud.get(int(ni), np.nan) for ni in station_indices], dtype=float)
-        _r = _area_ratio(_a_st, _a_tr)
-        station_area_ratio = torch.as_tensor(_r, dtype=torch.float32, device=device)
+    if _st_settings.get("stations.area_ratio"):
+        import duckdb as _ddb_areas
+        _con_areas = _ddb_areas.connect(str(_paths(reg)[0]), read_only=True)
+        _station_area = {str(r_[0]): r_[1] for r_ in _con_areas.execute("select station_id, drainage_area_km2 from stations").fetchall()}
+        _reach_area = {int(r_[0]): r_[1] for r_ in _con_areas.execute("select node_idx, area_km2_physical from territorial").fetchall()}
+        _con_areas.close()
+        _a_station = np.array([_station_area.get(sid, np.nan) for sid in _sites], dtype=float)
+        _a_reach = np.array([_reach_area.get(int(ni), np.nan) for ni in station_indices], dtype=float)
+        _ratio = _area_ratio(_a_station, _a_reach)
+        station_area_ratio = torch.as_tensor(_ratio, dtype=torch.float32, device=device)
         q_obs = q_obs * station_area_ratio
-        _loin = [(sid, a_, b_, r_) for sid, a_, b_, r_ in zip(_sites, _a_st, _a_tr, _r) if abs(r_ - 1) > 0.01]
-        print(f"[stations] observe rapporte a l'aire du troncon (stations.area_ratio) : {len(_loin)}/{n_stations} station(s) a plus de 1 % ; "
-              + "; ".join(f"{sid} {a_:.1f}->{b_:.1f} km2 x{r_:.3f}" for sid, a_, b_, r_ in sorted(_loin, key=lambda t: -abs(np.log(t[3])))[:8]))
+        _off = [(sid, a_, b_, r_) for sid, a_, b_, r_ in zip(_sites, _a_station, _a_reach, _ratio) if abs(r_ - 1) > 0.01]
+        print(f"[stations] observe rapporte a l'aire du troncon (stations.area_ratio) : {len(_off)}/{n_stations} station(s) a plus de 1 % ; "
+              + "; ".join(f"{sid} {a_:.1f}->{b_:.1f} km2 x{r_:.3f}" for sid, a_, b_, r_ in sorted(_off, key=lambda t: -abs(np.log(t[3])))[:8]))
     withdrawals = dom.withdrawals
     et_obs = dom.observations["et"].values if "et" in dom.observations else None
     et_weight = dom.observations["et"].weight if "et" in dom.observations else None

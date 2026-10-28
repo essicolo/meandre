@@ -117,19 +117,19 @@ def mask_flagged(values, times, station_ids, flagged):
     import numpy as np
     import pandas as pd
     import torch
-    jours = [pd.Timestamp(t).date() for t in times]
-    rang = {d: i for i, d in enumerate(jours)}
-    masque = np.zeros(tuple(values.shape), dtype=bool)
-    for j, sid in enumerate(station_ids):
+    days = [pd.Timestamp(t).date() for t in times]
+    row_of_day = {d: i for i, d in enumerate(days)}
+    mask = np.zeros(tuple(values.shape), dtype=bool)
+    for col, sid in enumerate(station_ids):
         for d in flagged.get(str(sid), ()):
-            i = rang.get(d)
-            if i is not None:
-                masque[i, j] = True
+            row = row_of_day.get(d)
+            if row is not None:
+                mask[row, col] = True
     if isinstance(values, torch.Tensor):
-        m = torch.as_tensor(masque, device=values.device)
-        retire = int((torch.isfinite(values) & m).sum())
-        return values.masked_fill(m, float("nan")), retire
-    v = np.array(values, dtype=float, copy=True)
-    retire = int((np.isfinite(v) & masque).sum())
-    v[masque] = np.nan
-    return v, retire
+        m = torch.as_tensor(mask, device=values.device)
+        removed = int((torch.isfinite(values) & m).sum())
+        return values.masked_fill(m, float("nan")), removed
+    out = np.array(values, dtype=float, copy=True)
+    removed = int((np.isfinite(out) & mask).sum())
+    out[mask] = np.nan
+    return out, removed

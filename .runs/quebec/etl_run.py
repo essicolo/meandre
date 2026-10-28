@@ -872,12 +872,12 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
     _sp = model.vertical_column.soil_profile
     _procs = []
     _mm = np.clip(10 ** (float(_cd["intercept"]) + float(_cd["slope"]) * _dr), float(_cd["min_mm_per_day"]), float(_cd["max_mm_per_day"]))
-    _pl_sub = None
+    _substratum_k = None
     for _pr in _sp.processes:
         if _pr.kind == "percolation" and isinstance(_pr.ceiling, (int, float)):
             _decl = float(_pr.ceiling)
             _pl = np.where(np.isfinite(_dr), _mm / 24000.0, _decl)
-            _pl_sub = _pl if _pl_sub is None else _pl_sub
+            _substratum_k = _pl if _substratum_k is None else _substratum_k
             _pr = _rempl(_pr, ceiling=torch.tensor(_pl, dtype=torch.get_default_dtype(), device=DEVICE))
             print(f"[etl] plafond de percolation par la classe de drainage : mediane {np.median(_pl) * 24000:.2f} mm/j, "
                   f"10e-90e centiles {np.quantile(_pl, 0.1) * 24000:.2f}-{np.quantile(_pl, 0.9) * 24000:.2f} mm/j, "
@@ -886,26 +886,26 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
     # CONDUCTIVITE DU SUBSTRATUM (2026-10-27) : un processus qui declare `conductivity = "substratum"`
     # recoit la meme conductivite par troncon que le plafond, tiree de la classe de drainage ; sa
     # courbe K(theta) est reechelonnee pour la valoir a saturation. Aucun facteur pose a la main.
-    _procs2 = []
+    _resolved_procs = []
     for _pr in _procs:
         if _pr.params.get("conductivity") == "substratum":
-            if _pl_sub is None:
+            if _substratum_k is None:
                 raise ValueError("conductivity = \"substratum\" demande un processus de percolation a plafond declare, dont la regle de drainage fournit la conductivite")
-            _pr = _rempl(_pr, params={**_pr.params, "conductivity": torch.tensor(_pl_sub, dtype=torch.get_default_dtype(), device=DEVICE)})
-            print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : conductivite du substratum par troncon (classe de drainage), mediane {np.median(_pl_sub) * 24000:.2f} mm/j")
+            _pr = _rempl(_pr, params={**_pr.params, "conductivity": torch.tensor(_substratum_k, dtype=torch.get_default_dtype(), device=DEVICE)})
+            print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : conductivite du substratum par troncon (classe de drainage), mediane {np.median(_substratum_k) * 24000:.2f} mm/j")
         # FORME PAR CLASSE DE DRAINAGE (2026-10-28, R432) : `drainage_select = "poor"` garde le
         # processus sur les troncons dont la classe depasse `drainage_threshold` (4,5 par defaut :
         # classes 5 a 7, imparfaitement a tres mal draine), `"good"` sur les autres et sur les
         # troncons sans classe ; la part (`share`) vaut 1 ou 0 par troncon.
-        _sel = _pr.params.get("drainage_select")
-        if _sel is not None:
-            _seuil_cl = float(_pr.params.get("drainage_threshold", 4.5))
-            _mal = np.isfinite(_dr) & (_dr > _seuil_cl)
-            _part = _mal if _sel == "poor" else ~_mal
-            _pr = _rempl(_pr, params={**_pr.params, "share": torch.tensor(_part.astype(np.float32), device=DEVICE)})
-            print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : drainage_select={_sel}, actif sur {int(_part.sum())}/{n_nodes} troncons (classe {'>' if _sel == 'poor' else '<='} {_seuil_cl:g})")
-        _procs2.append(_pr)
-    model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_procs2))
+        _select = _pr.params.get("drainage_select")
+        if _select is not None:
+            _class_threshold = float(_pr.params.get("drainage_threshold", 4.5))
+            _poorly_drained = np.isfinite(_dr) & (_dr > _class_threshold)
+            _share = _poorly_drained if _select == "poor" else ~_poorly_drained
+            _pr = _rempl(_pr, params={**_pr.params, "share": torch.tensor(_share.astype(np.float32), device=DEVICE)})
+            print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : drainage_select={_select}, actif sur {int(_share.sum())}/{n_nodes} troncons (classe {'>' if _select == 'poor' else '<='} {_class_threshold:g})")
+        _resolved_procs.append(_pr)
+    model.vertical_column.soil_profile = type(_sp)(layers=_sp.layers, processes=tuple(_resolved_procs))
 # ASSEMBLAGE (promu par défaut le 2026-08-09) : Hydrotel étale la production au VERSANT
 # par son hydrogramme géomorphologique (<=10 j) avant le canal ; méandre livrait tout le
 # jour même. Mesuré : r réseau contre Hydrotel 0.335 -> 0.470, +0.027 aux jauges en
@@ -998,15 +998,15 @@ if "ETL_WARM_FROM" in os.environ:
 if _settings.get("spatial.priors"):
     from meandre import priors as _priors
     _dom = r["domain"]
-    _k3c = None
+    _k3_center = None
     if _settings.get("priors.k_sat_3_center") == "substratum":
         # Centre de K_sat_3 : conductivite du substratum par troncon (classe de drainage), en m/j.
-        if globals().get("_pl_sub") is None:
+        if globals().get("_substratum_k") is None:
             raise ValueError("priors.k_sat_3_center = substratum demande [soil.ceiling_from_drainage] et un processus de percolation a plafond")
-        _k3c = np.asarray(_pl_sub, dtype=float) * 24.0
-        print(f"[etl] prior de K_sat_3 centre sur le substratum : mediane {np.median(_k3c) * 1000:.2f} mm/j")
-    _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m, k_sat_3_center_m_per_day=_k3c)
-    _depart_centre = tuple(k for k in (_settings.get("priors.start_at_center") or "").replace(" ", "").split(",") if k)
+        _k3_center = np.asarray(_substratum_k, dtype=float) * 24.0
+        print(f"[etl] prior de K_sat_3 centre sur le substratum : mediane {np.median(_k3_center) * 1000:.2f} mm/j")
+    _pri = _priors.soil_priors(n_nodes, _dom.texture_fractions, _dom.deposit_thickness_m, k_sat_3_center_m_per_day=_k3_center)
+    _start_at_center = tuple(k for k in (_settings.get("priors.start_at_center") or "").replace(" ", "").split(",") if k)
     _porte = any(k.startswith("spatial_encoder._pr_o_") for k in torch.load(os.environ["ETL_WARM_FROM"], map_location="cpu")["state_dict"]) if "ETL_WARM_FROM" in os.environ else False
     if _porte:
         for _k, (_c, _s) in _pri.items():
@@ -1014,9 +1014,9 @@ if _settings.get("spatial.priors"):
         model.load(os.environ["ETL_WARM_FROM"])
         print(f"[etl] priors par troncon relus du point de reprise ({len(_pri)} sorties)")
     else:
-        _rap = model.spatial_encoder.adopt_priors(td.node_coords, r["territorial"].data, _pri, preserve="ETL_WARM_FROM" in os.environ, start_at_center=_depart_centre)
-        if _depart_centre:
-            print(f"[etl] priors : depart au centre pour {', '.join(_depart_centre)}")
+        _rap = model.spatial_encoder.adopt_priors(td.node_coords, r["territorial"].data, _pri, preserve="ETL_WARM_FROM" in os.environ, start_at_center=_start_at_center)
+        if _start_at_center:
+            print(f"[etl] priors : depart au centre pour {', '.join(_start_at_center)}")
         print(f"[etl] priors par troncon adoptes ({len(_pri)} sorties) ; " + _priors.summary(_pri))
         for _k, (_m, _q) in sorted(_rap.items()):
             print(f"       {_k:16s} deviation standardisee au depart : mediane {_m:.2f}, 90e centile {_q:.2f}")
@@ -1028,12 +1028,12 @@ if os.environ.get("ETL_MULT_FIXE"):
 if os.environ.get("MEANDRE_DUMP_CHAMPS"):
     # CHAMPS SEULS (2026-10-27) : les sorties du champ spatial par troncon, modele charge (priors et
     # prolongements compris), sans simuler ; quelques minutes, sur processeur au besoin.
-    import dataclasses as _dcf
+    import dataclasses as _dataclasses
     with torch.no_grad():
-        _spf = model.spatial_encoder(td.node_coords, r["territorial"].data if hasattr(r["territorial"], "data") else td.territorial.to_tensor())
-    _chf = {f.name: getattr(_spf, f.name).detach().cpu().numpy() for f in _dcf.fields(type(_spf)) if torch.is_tensor(getattr(_spf, f.name))}
-    np.savez_compressed(os.environ["MEANDRE_DUMP_CHAMPS"], node_ids=np.asarray(r["node_ids"]), **_chf)
-    print(f"[etl] champs ecrits : {os.environ['MEANDRE_DUMP_CHAMPS']} ({len(_chf)} sorties)")
+        _fields_out = model.spatial_encoder(td.node_coords, r["territorial"].data if hasattr(r["territorial"], "data") else td.territorial.to_tensor())
+    _field_arrays = {f.name: getattr(_fields_out, f.name).detach().cpu().numpy() for f in _dataclasses.fields(type(_fields_out)) if torch.is_tensor(getattr(_fields_out, f.name))}
+    np.savez_compressed(os.environ["MEANDRE_DUMP_CHAMPS"], node_ids=np.asarray(r["node_ids"]), **_field_arrays)
+    print(f"[etl] champs ecrits : {os.environ['MEANDRE_DUMP_CHAMPS']} ({len(_field_arrays)} sorties)")
     sys.stdout.flush()
     os._exit(0)
 # CE QUI EST IMPRIME DOIT ETRE CE QUI TOURNE. La ligne annoncait `etp_channel=6
@@ -1207,16 +1207,16 @@ print(f"[etl] diagnostics retenus pour le gradient : {_garde or 'aucun'}")
 if os.environ.get("MEANDRE_SONDE_CONFLIT") == "1":
     # CONFLIT CRUE CONTRE ETIAGE (2026-10-27) : derivee des erreurs de crue et d'etiage par champ.
     from importlib.machinery import SourceFileLoader as _SFL2
-    # La sonde appartient a son experience (experiments/couche3_drainage), pas au pilote.
-    _sc = _SFL2("sonde_conflit", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "experiments", "couche3_drainage", "sonde_conflit.py")).load_module()
+    # La sonde appartient a son experience (experiments/layer3_drainage), pas au pilote.
+    _probe = _SFL2("conflict_probe", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "experiments", "layer3_drainage", "conflict_probe.py")).load_module()
     # Groupes de stations facultatifs : un fichier station_id,regime (MEANDRE_SONDE_CONFLIT_GROUPES).
-    _grp = None
+    _groups = None
     if os.environ.get("MEANDRE_SONDE_CONFLIT_GROUPES"):
         import pandas as _pd_g
-        _tg = _pd_g.read_csv(os.environ["MEANDRE_SONDE_CONFLIT_GROUPES"], dtype={"station_id": str})
-        _grp = dict(zip(_tg["station_id"], _tg["regime"]))
+        _regimes = _pd_g.read_csv(os.environ["MEANDRE_SONDE_CONFLIT_GROUPES"], dtype={"station_id": str})
+        _groups = dict(zip(_regimes["station_id"], _regimes["regime"]))
     # Longueur des blocs entre lesquels l'etat est detache (MEANDRE_SONDE_CONFLIT_BLOC, 30 jours par defaut).
-    _sc.mesurer(model, td, DEVICE, bloc=int(os.environ.get("MEANDRE_SONDE_CONFLIT_BLOC", "30")), sortie=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"), station_ids=r.get("station_ids"), groupes=_grp)
+    _probe.measure(model, td, DEVICE, block=int(os.environ.get("MEANDRE_SONDE_CONFLIT_BLOC", "30")), output=os.environ.get("MEANDRE_SONDE_CONFLIT_SORTIE"), station_ids=r.get("station_ids"), groups=_groups)
     sys.stdout.flush()
     os._exit(0)
 
