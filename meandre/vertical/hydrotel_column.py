@@ -193,7 +193,7 @@ class HydrotelColumn(nn.Module):
         # NeRF/littérature (objectif ultime : découplé). Posé via set_calibrated_soil.
         self._calib_soil = None
         self._static = None      # posé par set_static()
-        self.z1 = 0.15           # épaisseur couche 1 (config ; Z2/Z3 du NeRF)
+        self.z1 = float(settings.get("column.z1"))   # épaisseur de la couche 1, déclarée (column.z1) ; Z2 et Z3 viennent du champ
 
         # ── Paramètres globaux apprenables (absents du NeRF) ──
         import math as _m
