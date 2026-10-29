@@ -6100,3 +6100,19 @@ Passes avant du modèle gelé, une seule modification chacune (délai moyen prin
 | z1 = 0,30 m | 3,35 / 3,40 | 74 % / 77 % | 1,2624 / 0,8439 |
 
 La perte se dégrade à 5 cm parce que les autres paramètres ont été appris avec 15 cm : la porosité collée à 0,60 et les couches 2 et 3 collées à leurs bornes basses compensent une couche de surface trop épaisse. Lecture (avec Essi) : la couche 1 joue le rôle de l'horizon organique, mince, très poreux et vite saturé ; son épaisseur et sa porosité doivent être libres, par tronçon, et l'on peut s'attendre à ce que la porosité redevienne raisonnable une fois l'épaisseur libérée. L'épaisseur était une constante en dur (`self.z1 = 0.15`), devenue le réglage `column.z1` (défaut inchangé, identique au bit près). Suite : sortie du champ pour z1 avec une plage de porosité propre à la couche 1, puis entraînement. Configurations : `experiments/response-timing/`.
+
+## R440 — Couche 1 d'épaisseur apprise par tronçon : en une époque l'épaisseur descend de 15 à 9 cm (médiane, 5 à 11 cm), le retard d'un jour recule en toutes saisons, le terme KGE s'améliore, mais l'étiage se dégrade et la perte 2022-2024 reste au-dessus du témoin (1,158 contre 1,116) (2026-10-29) — OUVERT, Montérégie seule, une graine
+
+Affinage depuis le modèle gelé, deux époques, graine 1234, taux 2e-4, Ubuntu ; les deux bras retiennent l'époque 1 (meilleure validation). Bras : témoin (configuration gelée) ; épaisseur de la couche 1 apprise (`spatial.z1_head`, bornes 2 à 40 cm, départ 15 cm) avec porosité de la couche 1 prolongée de 0,60 jusqu'à 0,90 et plancher de gradient 0,02. Contrôle : les deux passes à zéro époque donnent la même perte, 1,1617.
+
+| perte 2022-2024, Montérégie | sans entraînement | témoin | couche 1 apprise |
+|---|---|---|---|
+| totale | 1,1617 | 1,1155 | 1,1584 |
+| terme KGE | 0,4024 | 0,3954 | 0,3582 |
+| terme d'étiage | 0,5608 | 0,5350 | 0,6085 |
+
+Délai médian après les épisodes d'apport (jours) et part des stations en retard d'un jour, sans entraînement / témoin / couche 1 apprise : printemps (observé 2,34) 3,12 / 3,03 / 2,86, retard 91 % / 74 % / 61 % ; été (2,51) 2,42 / 2,40 / 2,32, 30 % / 35 % / 13 % ; automne (2,59) 3,22 / 3,24 / 3,08, 83 % / 87 % / 48 % ; hiver (2,40) 2,96 / 2,85 / 2,72, 43 % / 39 % / 22 %.
+
+Champs appris : épaisseur de la couche 1 de 5 à 11 cm (p5 à p95, médiane 9 cm). La porosité de la couche 1 ne dépasse 0,60 sur aucun tronçon : la sortie brute est saturée à 13,6, il faudrait la monter de 0,5 pour atteindre le prolongement, et le plancher de gradient ne l'y porte pas en une époque. Z2 et Z3 restent collées à leurs bornes basses dans les deux bras. L'époque se paie 31,6 min contre 16,7 pour le témoin à la première (compilation du sol avec une épaisseur tensorielle), à revérifier hors de la première époque.
+
+Lecture : le calendrier se corrige par l'épaisseur comme en passe avant, et le KGE suit ; la perte totale est perdue par l'étiage, cohérent avec un stock de surface réduit sans porosité pour le compenser. Une graine, un territoire, une époque retenue : ni le gain de KGE ni la perte d'étiage ne sont établis.
