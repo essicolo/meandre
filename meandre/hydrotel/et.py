@@ -35,7 +35,7 @@ def _stress(ftheta: Tensor, alpha: Tensor) -> Tensor:
 
 
 def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
-                thetacc, thetapf, alpha, z11, z22, z33, des, coef_assech):
+                thetacc, thetapf, alpha, z11, z22, z33, des, coef_assech, layered=None):
     """CalculeEtr (bv3c2.cpp:2211), un pas de temps, sommé sur les classes
     perméables. Tout vectorisé sur les nœuds ; les listes par classe sont des
     listes Python (peu de classes).
@@ -44,6 +44,10 @@ def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
     root_depth, leaf_index : listes (même longueur) [m] et [-] par classe/jour.
     thetacc/thetapf/alpha : props sol couche 1 (par nœud). z11/z22/z33 : épaisseurs [m].
     des : coef extinction Beer (indice foliaire). coef_assech : coef d'assèchement.
+    layered : None (fidele : stress de la zone racinaire juge sur la capacite au champ et le
+    point de fletrissement de la couche 1), ou ((cc2, pf2), (cc3, pf3)) : stress juge sur l'eau
+    utile de chaque couche ponderee par sa part racinaire (2026-10-29, R445). Hydrotel suppose une
+    texture homogene ; une couche 1 organique jugeait les couches minerales presque seches.
     Retourne (etr1, etr2, etr3) [m]."""
     z1 = z11
     z2 = z11 + z22
@@ -75,7 +79,13 @@ def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
         dz3 = torch.clamp(zc - z2t, min=0.0)
 
         theta_rz = (theta1 * dz1 + theta2 * dz2 + theta3 * dz3) / torch.clamp(zc, min=1e-12)
-        ftheta_rz = torch.clamp((theta_rz - thetapf) / denom_cc, 0.0, 1.0)
+        if layered is None:
+            ftheta_rz = torch.clamp((theta_rz - thetapf) / denom_cc, 0.0, 1.0)
+        else:
+            (cc2, pf2), (cc3, pf3) = layered
+            useful = (theta1 - thetapf) * dz1 + (theta2 - pf2) * dz2 + (theta3 - pf3) * dz3
+            capacity = (thetacc - thetapf) * dz1 + (cc2 - pf2) * dz2 + (cc3 - pf3) * dz3
+            ftheta_rz = torch.clamp(useful / torch.clamp(capacity, min=1e-12), 0.0, 1.0)
         kat = _stress(ftheta_rz, alpha)
         ratio = torch.where(evapo > 0.0, esnu / torch.clamp(evapo, min=1e-12), torch.zeros_like(evapo))
         tp = (coef_assech * kat) * ((etp - evapo) * (BETA + (1.0 - BETA) * ratio))

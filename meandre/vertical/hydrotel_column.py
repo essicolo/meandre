@@ -642,6 +642,8 @@ class HydrotelColumn(nn.Module):
         p_etr = dict(thetacc=sp.theta_fc_1, thetapf=sp.theta_wp_1, alpha=alpha * torch.ones_like(like),
                      des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
                      z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc, class_names=list(self._pheno_names))
+        if settings.get("column.root_zone_stress") == "layered":
+            p_etr["layered"] = ((sp.theta_fc_2, sp.theta_wp_2), (sp.theta_fc_3, sp.theta_wp_3))
 
         # milieu humide isolé : actif SI le territorial porte la géométrie par nœud
         # (wet_a_raw). Sinon None (colonne sol seul, ex SLSO). Masqué + sûr gradient.
@@ -1311,7 +1313,8 @@ class HydrotelColumn(nn.Module):
                 leaves.append(_interp1d(d, jbp_t, leaf_t).expand_as(P))
         e1, e2, e3 = calcule_etr(state.theta1, state.theta2, state.theta3,
                                  etp_classes, roots, leaves, pe["thetacc"], pe["thetapf"],
-                                 pe["alpha"], pe["z11"], pe["z22"], pe["z33"], pe["des"], pe["coef_assech"])
+                                 pe["alpha"], pe["z11"], pe["z22"], pe["z33"], pe["des"], pe["coef_assech"],
+                                 layered=pe.get("layered"))
 
         # 5. bilan sol BV3C2 (porte gel via prof_gel_cm + couvert nival)
         cover_mm = snow_new["couvert_nival_mm"]

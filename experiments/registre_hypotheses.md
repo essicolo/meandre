@@ -6156,3 +6156,16 @@ Lecture : la liberté sert le calendrier là où il vient du sol (Montérégie),
 ## R444 — L'aire contributive commandée par la saturation des couches 1 et 2 (pondérées par l'épaisseur) au lieu de la couche 1 seule ne change rien : perte 2022-2024 1,1623 contre 1,1617 (gelé, Montérégie), 0,8025 contre 0,8019 (gelé, Outaouais), 1,0778 contre 1,0757 (couche 1 organique, Montérégie) (2026-10-29) — RÉFUTÉ à poids figés
 
 Hypothèse : une couche 1 mince saturée à chaque averse déclarait tout le versant contributif, d'où le ruissellement d'été accru et la recharge réduite sous couche mince (R443 : production de surface d'été 0,31 → 0,50 mm/j, recharge 0,070 → 0,058 mm/j, biais des bas débits −0,03 → −0,05 à −0,09). La mesure dit que non : le ruissellement d'aire saturée n'est pas le canal. Option retirée du code.
+
+## R445 — Le stress hydrique de la transpiration jugeait toute la zone racinaire sur la capacité au champ et le point de flétrissement de la COUCHE 1 (fidèle à Hydrotel, qui suppose une texture homogène) ; avec l'eau utile de chaque couche (`column.root_zone_stress = "layered"`), le modèle gelé gagne un peu sur les deux territoires, et le gain de la couche 1 organique de R441 disparaît : il venait de ce défaut (2026-10-29) — ÉTABLI à poids figés
+
+`meandre/hydrotel/et.py`, option `layered` : f = Σ dz_i (θ_i − pf_i) / Σ dz_i (cc_i − pf_i) sur la part racinaire de chaque couche ; identique au fidèle quand les couches ont les mêmes propriétés. Avant, les sorties `theta_fc_2`, `theta_wp_2`, `theta_wp_3` n'étaient lues par rien (sensibilité nulle) ; elles le sont désormais.
+
+| perte 2022-2024, poids figés | Montérégie | Outaouais |
+|---|---|---|
+| gelé | 1,1617 | 0,8019 |
+| gelé, stress par couche | 1,1594 | 0,7883 |
+| couche 1 organique (R441, R442) | 1,0757 | 1,0101 |
+| couche 1 organique, stress par couche | 1,2287 | 0,8354 |
+
+Bilan juin-septembre (moyenne des stations, mm/j), couche organique sans et avec stress par couche : évapotranspiration Montérégie 2,95 → 3,37 (gelé 3,36), Outaouais 1,91 → 2,65 (gelé 2,65). La couche organique relevait le point de flétrissement de référence à ≈0,27 m³/m³ alors que les couches minérales tiennent ≈0,33 : les racines se croyaient presque sèches et la transpiration d'été s'effondrait ; en Montérégie, dont les étés étaient sous-simulés, l'eau ainsi rendue au débit améliorait la perte. Le gain de R441 était donc un artefact. Stress corrigé, la couche organique fait monter la production de surface (Montérégie 0,31 → 0,51, Outaouais 0,65 → 0,92 mm/j) et baisser l'hypodermique et la recharge (recharge 0,070 → 0,037 et 0,154 → 0,087) : bas débits trop faibles (biais des log −0,18 et −0,04). Une couche 1 mince déborde par saturation à chaque averse, faute de percolation vers la couche 2. Suite : affinages avec stress par couche, avec et sans couche 1 libre.
