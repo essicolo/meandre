@@ -6062,7 +6062,7 @@ Passe sans entraînement de `.runs/quebec/recipe.toml` depuis `qv848-e32` (condu
 
 La passe de l'Outaouais-Montréal avait échoué : sa base n'avait pas le drapeau des débits reconstitués, le constructeur `ingest_cehq_flags` omettant `outm` de sa liste par défaut (ajouté, drapeau ingéré sur les deux machines : 4 stations, 12,7 % des valeurs reconstituées).
 
-## R438 — Analyses du modèle gelé sur le domaine provincial, 2020-2024, débits reconstitués retirés de l'évaluation : meandre en dessous d'Hydrotel sur le KGE de tous les jours et en crue, au-dessus en étiage ; les attributs de terrain ne prédisent pas l'erreur d'étiage ni de crue ; la couche profonde d'Hydrotel est presque inerte (2026-10-28) — ÉTABLI SANS ENTRAÎNER
+## R438 — CHIFFRES ANNULÉS le 2026-10-29 : les débits venaient d'une passe faite sur le poste, dont la table d'attributs diffère de celle de l'entraînement (débit provincial −12 %, juillet −20 % par rapport à la même passe sur Ubuntu) ; à refaire sur Ubuntu. Énoncé d'origine : Analyses du modèle gelé sur le domaine provincial, 2020-2024, débits reconstitués retirés de l'évaluation : meandre en dessous d'Hydrotel sur le KGE de tous les jours et en crue, au-dessus en étiage ; les attributs de terrain ne prédisent pas l'erreur d'étiage ni de crue ; la couche profonde d'Hydrotel est presque inerte (2026-10-28) — ÉTABLI SANS ENTRAÎNER
 
 Sources : `meandre-analyse` (notebooks `flow-comparison`, `kge-drivers`, `water-balance`, `io-effects`), passe provinciale du modèle gelé avec les prélèvements d'io-eau du 21 octobre (fichiers `reach-quebec-gele-daily*` et `reach-quebec-gele-diag` sous `D:/meandre-data/quebec/modele-provincial-2026-10`), Hydrotel = médiane des six versions.
 
