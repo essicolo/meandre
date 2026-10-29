@@ -421,7 +421,8 @@ class HydrotelColumn(nn.Module):
         ps1 = self._sig(self.psis1_raw, self._psis_bounds); ps2 = self._sig(self.psis2_raw, self._psis_bounds); ps3 = self._sig(self.psis3_raw, self._psis_bounds)
         o1, m1, n1 = self._spline(b1, ps1); o2, m2, n2 = self._spline(b2, ps2); o3, m3, n3 = self._spline(b3, ps3)
         ob = lambda v: v * torch.ones_like(like)
-        p_soil = dict(z1=torch.full_like(like, self.z1), z2=sp.Z2, z3=sp.Z3,
+        z1_node = getattr(sp, "Z1", None)
+        p_soil = dict(z1=torch.full_like(like, self.z1) if z1_node is None else z1_node, z2=sp.Z2, z3=sp.Z3,
                       thetas1=sp.porosity_1, thetas2=sp.porosity_2, thetas3=sp.porosity_3,
                       ks1=sp.K_sat_1 / 24.0, ks2=sp.K_sat_2 / 24.0, ks3=sp.K_sat_3 / 24.0,
                       b1=ob(b1), b2=ob(b2), b3=ob(b3), psis1=ob(ps1), psis2=ob(ps2), psis3=ob(ps3),
@@ -625,9 +626,13 @@ class HydrotelColumn(nn.Module):
         z22_s = float(sp.Z2.detach().mean())
         z33_s = float(sp.Z3.detach().mean())
         z11 = self.z1
+        if getattr(sp, "Z1", None) is not None:
+            z11 = sp.Z1 if _z_tensor else float(sp.Z1.detach().mean())
+        z11_s = float(z11.detach().mean()) if torch.is_tensor(z11) else float(z11)
         z22, z33 = (sp.Z2, sp.Z3) if _z_tensor else (z22_s, z33_s)
         if self._calib_soil is not None and self._calib_z is not None:
             z11, z22, z33 = self._calib_z
+            z11_s = float(z11)
             z22_s = float(z22.detach().mean()) if torch.is_tensor(z22) else float(z22)
             z33_s = float(z33.detach().mean()) if torch.is_tensor(z33) else float(z33)
         # K_c (coefficient cultural) par nœud, prédit par le NeRF (borné [0.3,1.5],
@@ -643,7 +648,7 @@ class HydrotelColumn(nn.Module):
         wetland = self._wetland_from_territorial(territorial, like)
 
         # Le maillage de gel compte des intervalles : il lui faut un SCALAIRE.
-        n_depth = n_intervalles(float(z11) + z22_s + z33_s, self.frost.dz)
+        n_depth = n_intervalles(z11_s + z22_s + z33_s, self.frost.dz)
         self.set_static(p_snow, p_soil, p_etr, wetland=wetland, n_depth=n_depth,
                         frost_state={k: getattr(sp, k, None)
                              for k in ("diff_gel", "fs_neige")})

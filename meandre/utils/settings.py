@@ -33,6 +33,7 @@ SCHEMA: dict[str, Setting] = {
     # -- Colonne verticale --------------------------------------------------------------
     "column.n_substeps": Setting("MEANDRE_NSUBSTEP", int, None, "Sous-pas du sol par jour ; absent, l'argument de construction de la colonne s'applique."),
     "column.z1": Setting("MEANDRE_Z1", float, 0.15, "Épaisseur de la couche 1 du sol, en mètres, uniforme ; 0,15 jusqu'ici en dur dans la colonne. Épreuve du calendrier de la réponse (2026-10-29) : une couche de surface mince et poreuse joue le rôle de l'horizon organique."),
+    "spatial.z1_head": Setting("MEANDRE_Z1_CHAMP", bool, False, "Épaisseur de la couche 1 apprise par tronçon : tête linéaire du champ (fc_z1), nulle au départ en poids et dont le biais rend column.z1, bornée par Z1 de [field.bounds] (2026-10-29) ; absente, column.z1 uniforme."),
     "column.root_depth_scale": Setting("MEANDRE_RACINES_ECHELLE", float, 1.0, "Facteur sur la profondeur racinaire de toutes les classes d'occupation (épreuve de l'extraction profonde, R216) ; 1, les profondeurs du projet. Lu par la colonne à sa construction (2026-10-27) ; le banc de sous-bassin pose encore l'attribut directement."),
     "column.z_tensor": Setting("MEANDRE_Z_TENSEUR", bool, True, "Épaisseurs Z2 et Z3 en tenseurs sur la voie racinaire."),
     "column.penman_snow": Setting("MEANDRE_PENMAN_NEIGE", bool, False, "Couvert nival dans l'ETP de Penman (R265)."),

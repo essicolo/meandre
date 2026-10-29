@@ -69,7 +69,7 @@ FIELD_BOUNDS = {
     "f_vert_1": (0.0, 1.0), "f_vert_3": (0.0, 1.0), "k_gw": (3.355e-4, 0.1353, "log"),
     "T_gw": (3.0, 13.0), "K_atm": (0.05, 0.55), "alpha_T": (0.01, 0.05), "vg_n": (1.3, 2.7),
     "f_vert_2": (0.0, 1.0), "x_musk": (0.01, 0.49), "K_c": (0.3, 1.5),
-    "rain_hours": (3.0, 24.0), "Z2": (0.30, 1.50), "Z3": (0.50, 4.00), "vsa_b": (0.5, 5.0),
+    "rain_hours": (3.0, 24.0), "Z1": (0.02, 0.40), "Z2": (0.30, 1.50), "Z3": (0.50, 4.00), "vsa_b": (0.5, 5.0),
     "krec": (1e-7, 1e-4, "log"), "diff_gel": (4e-8, 2.2e-7), "fs_neige": (0.5, 6.0),
     "dT_canopee_feu": (0.0, 3.0), "dT_canopee_conif": (0.0, 3.0), "k_sub": (2e-6, 2e-3, "log"),
 }
@@ -411,6 +411,16 @@ class SpatialFieldNetwork(nn.Module):
             self.act = nn.SiLU()
             self.drop1 = nn.Dropout(p=dropout)
             self.drop2 = nn.Dropout(p=dropout)
+            # EPAISSEUR DE LA COUCHE 1 PAR TRONCON (2026-10-29, R439) : tete separee de fc_out pour
+            # que les points de reprise existants se relisent ; poids nuls et biais rendant
+            # column.z1, donc un depart identique a la couche uniforme.
+            if settings.get("spatial.z1_head"):
+                lo, hi = self.bounds["Z1"][:2]
+                u = (float(settings.get("column.z1")) - lo) / (hi - lo)
+                self.fc_z1 = nn.Linear(hidden, 1)
+                nn.init.zeros_(self.fc_z1.weight)
+                with torch.no_grad():
+                    self.fc_z1.bias.fill_(math.log(u / (1.0 - u)))
             if predict_lake_params:
                 # 2 sorties : k_lake (log) et beta. Biais initialisé pour
                 # reproduire les défauts globaux (k=1e-4, beta=1.5) au départ.
@@ -632,7 +642,8 @@ class SpatialFieldNetwork(nn.Module):
             n_nodes = coords.shape[0]
             raw = self.static_params.unsqueeze(0).expand(n_nodes, -1)
         else:
-            raw = self.fc_out(self._trunk(coords, territorial))
+            h = self._trunk(coords, territorial)
+            raw = self.fc_out(h)
             if self.use_latent_codes and self.latent_mode == "additive":
                 # Effet aléatoire : offset par nœud sur les params BRUTS (avant
                 # contraintes). raw = effet_fixe(features) + effet_aléatoire(z_n).
@@ -680,7 +691,11 @@ class SpatialFieldNetwork(nn.Module):
             # puis par l'ancrage sur la litterature, et seule la somme fait le gradient du bloc.
             raw.retain_grad()
             self.raw_capture = getattr(self, "raw_capture", []) + [raw]
-        return self._apply_constraints(raw)
+        sp = self._apply_constraints(raw)
+        if getattr(self, "fc_z1", None) is not None:
+            lo, hi = self.bounds["Z1"][:2]
+            sp.Z1 = lo + (hi - lo) * torch.sigmoid(self.fc_z1(h).squeeze(-1))
+        return sp
 
     def enable_routing_head(self, n_territorial: int) -> None:
         """Ajoute la tete lineaire du temps de transfert (parametres routing_head.*), nulle au depart."""
