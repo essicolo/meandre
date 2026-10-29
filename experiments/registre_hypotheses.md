@@ -6136,3 +6136,19 @@ Lecture : la porosité seule n'apporte rien, l'eau en plus est gravitaire et dra
 ## R442 — La couche 1 organique imposée (5 cm, porosité 0,85, rétention relevée) ne se transfère pas à l'Outaouais : perte 2022-2024 de 1,010 contre 0,802 pour le gelé, calendrier inchangé, volume d'été et d'automne en hausse de 31 à 42 % (2026-10-29) — RÉFUTÉ comme réglage uniforme, à poids figés
 
 Configuration déclarée `experiments/response-timing/organic-layer1.toml` (`priors.porosity_1_center`, porosité sous prior à départ au centre, épaisseur apprise partant de 5 cm). Montérégie : 1,0757 (gelé 1,1617), comme le multiplicateur fixe de R441. Outaouais, 16 stations : 1,0101 contre 0,8019 ; KGE médian 0,680 contre 0,713 ; retard d'un jour 44 à 62 % des stations selon la saison, ni mieux ni pire ; rapport des volumes simulé sur observé printemps, été, automne, hiver 1,17 / 1,31 / 1,42 / 1,11 contre 1,13 / 0,96 / 1,11 / 1,03. Une couche 1 mince réduit l'eau accessible aux racines, l'évapotranspiration baisse et l'eau part en débit. En Montérégie, dont les étés étaient sous-simulés, ce volume ajouté explique sans doute une partie du gain : le gain de R441 n'est pas attribuable au seul calendrier. Le retard de l'Outaouais vient d'ailleurs (lacs, routage). La ronde provinciale prévue sous condition n'a pas été lancée. Suite : couche 1 LIBRE par tronçon depuis le gelé (`free-layer1.toml`), Montérégie et Outaouais, contre témoins.
+
+## R443 — Couche 1 libre par tronçon (épaisseur apprise, porosité sous prior sans saturation), affinage de deux époques depuis le gelé : l'optimiseur amincit la couche partout (8 cm en Montérégie, 12 cm en Outaouais, médianes) mais ne cherche pas l'horizon organique (porosité médiane 0,59 et 0,61) ; perte 2022-2024 légèrement meilleure que le témoin en Outaouais (0,752 contre 0,761), moins bonne en Montérégie (1,140 contre 1,116) (2026-10-29) — OUVERT, une graine
+
+Configuration `experiments/response-timing/free-layer1.toml` ; contrôle d'identité à zéro époque : 1,1617 en Montérégie, comme le gelé. Époque retenue par la validation : la première en Montérégie, la seconde en Outaouais, dans les deux bras.
+
+| 2022-2024 | gelé | témoin affiné | couche 1 libre |
+|---|---|---|---|
+| Montérégie, perte | 1,162 | 1,116 | 1,140 |
+| Montérégie, terme d'étiage | 0,561 | 0,535 | 0,595 |
+| Montérégie, KGE médian | 0,601 | 0,606 | 0,662 |
+| Outaouais, perte | 0,802 | 0,761 | 0,752 |
+| Outaouais, KGE médian | 0,713 | 0,737 | 0,725 |
+
+Champs appris (p5 / médiane / p95) : épaisseur Montérégie 4 / 8 / 11 cm, Outaouais 8 / 12 / 14 cm ; porosité Montérégie 0,57 / 0,59 / 0,61, Outaouais 0,43 / 0,61 / 0,72 ; capacité au champ Outaouais 0,29 / 0,47 / 0,60. Retard d'un jour en Montérégie, témoin contre libre : printemps 74 % / 52 %, été 35 % / 17 %, automne 87 % / 52 %, hiver 39 % / 22 % ; en Outaouais inchangé (56 à 69 %) dans les deux bras.
+
+Lecture : la liberté sert le calendrier là où il vient du sol (Montérégie), au prix de l'étiage hors entraînement, comme R440 ; en Outaouais le retard ne vient pas de la couche 1. L'optimiseur n'atteint pas la couche organique de R441 en deux époques, et rien ne dit que la perte la préfère : R442 montre qu'imposée, elle perd en Outaouais. Écarts de l'ordre de 0,01 à 0,03 sur une graine : sous le seuil de décision.
