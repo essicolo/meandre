@@ -6116,3 +6116,19 @@ Délai médian après les épisodes d'apport (jours) et part des stations en ret
 Champs appris : épaisseur de la couche 1 de 5 à 11 cm (p5 à p95, médiane 9 cm). La porosité de la couche 1 ne dépasse 0,60 sur aucun tronçon : la sortie brute est saturée à 13,6, il faudrait la monter de 0,5 pour atteindre le prolongement, et le plancher de gradient ne l'y porte pas en une époque. Z2 et Z3 restent collées à leurs bornes basses dans les deux bras. L'époque se paie 31,6 min contre 16,7 pour le témoin à la première (compilation du sol avec une épaisseur tensorielle), à revérifier hors de la première époque.
 
 Lecture : le calendrier se corrige par l'épaisseur comme en passe avant, et le KGE suit ; la perte totale est perdue par l'étiage, cohérent avec un stock de surface réduit sans porosité pour le compenser. Une graine, un territoire, une époque retenue : ni le gain de KGE ni la perte d'étiage ne sont établis.
+
+## R441 — Une couche 1 mince, poreuse ET rétentive bat le modèle gelé sans aucun entraînement : 5 cm, porosité 0,85, capacité au champ et point de flétrissement relevés dans la même proportion (×1,42), perte 2022-2024 de 1,078 contre 1,162 pour le gelé et 1,116 pour son affinage de deux époques (2026-10-29) — OUVERT, Montérégie seule, poids figés
+
+Passes avant du modèle gelé, Montérégie, 2022-2024, Ubuntu, multiplicateurs fixes sur les sorties du champ (`ETL_MULT_FIXE`) et épaisseur `column.z1` :
+
+| variante | perte | terme KGE | terme d'étiage | KGE médian | pointes sim/obs |
+|---|---|---|---|---|---|
+| modèle gelé (15 cm) | 1,1617 | 0,402 | 0,561 | 0,601 | 0,58 |
+| 5 cm | 1,3335 | 0,376 | 0,738 | 0,649 | 1,01 |
+| 5 cm, porosité ×1,25 (≈0,75) | 1,3264 | 0,389 | 0,714 | 0,614 | 0,94 |
+| 5 cm, porosité ×1,42 (≈0,85) | 1,3318 | 0,396 | 0,707 | 0,605 | 0,86 |
+| 5 cm, porosité, capacité au champ et flétrissement ×1,42 | 1,0781 | 0,347 | 0,549 | 0,662 | 0,85 |
+
+Retard d'un jour (part des stations), gelé contre dernière variante : printemps 91 % / 52 %, été 30 % / 13 %, automne 83 % / 43 %, hiver 43 % / 22 %.
+
+Lecture : la porosité seule n'apporte rien, l'eau en plus est gravitaire et draine. Ce qui rend l'étiage, c'est la RÉTENTION de l'horizon (capacité au champ ≈0,69 m³/m³), propriété d'un horizon organique ; la minceur garde la réponse rapide. Aucun entraînement : les autres paramètres restent ceux appris avec 15 cm. À vérifier sur un territoire forestier (Outaouais) puis la province avant toute conclusion.
