@@ -81,6 +81,8 @@ PRIOR_SAFETY = {
     "porosity": (0.05, 0.75), "theta_fc_frac": (0.10, 0.98), "theta_wp_frac": (0.05, 0.95),
     "K_sat_1": (1e-5, 500.0), "K_sat_2": (1e-5, 500.0), "K_sat_3": (1e-5, 500.0),
     "Z2": (0.02, 5.0), "Z3": (0.05, 10.0),
+    # Couche 1 en horizon organique (R441) : porosite jusqu'a 0,95, tourbe et litiere.
+    "porosity_1": (0.05, 0.95),
 }
 PRIOR_KEYS = tuple(f"{f}_{l}" for f in ("porosity", "theta_fc_frac", "theta_wp_frac", "K_sat") for l in (1, 2, 3)) + ("Z2", "Z3")
 
@@ -1096,7 +1098,7 @@ class SpatialFieldNetwork(nn.Module):
                 off = getattr(self, f"_pr_o_{k}", None)
                 z = x if off is None else x + off.to(x.device)
                 self._last_z[k] = z
-                lo_s, hi_s = PRIOR_SAFETY[field_name]
+                lo_s, hi_s = PRIOR_SAFETY.get(k, PRIOR_SAFETY[field_name])
                 return torch.clamp(c * torch.exp(s * z), lo_s, hi_s)
             if field_name in NB:
                 llo = torch.log(getattr(self, f"_nb_lo_{field_name}")).to(x.device)
