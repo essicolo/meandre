@@ -6082,3 +6082,21 @@ Attributs de bassin contre KGE borné (forêt aléatoire, territoire retiré à 
 Bilan d'eau, 113 bassins à 90 % de jours observés : évapotranspiration médiane de meandre 467 mm/an contre 485 exigés par CaSR et le débit observé ; Hydrotel 471 (apport moins débit simulé) contre 444 exigés par sa météo. L'ET de meandre suit la diagonale de l'exigence de bilan d'une station à l'autre, celle d'Hydrotel reste entre 400 et 550 mm/an quelle que soit l'exigence. Recharge de meandre (couche 3 vers la nappe) 117 mm/an en médiane ; percolation d'Hydrotel de la couche 2 vers la couche 3 de 0,02 mm/an et écoulement de base de sa couche 3 de 1,45 mm/an : dans Hydrotel, tout l'écoulement lent passe par la couche 2.
 
 Prélèvements et rejets (io-eau du 21 octobre, débit net provincial −17,7 m³/s) : 327 tronçons sur 27 831 voient leur Q2-7 baisser d'au moins 10 %, aucun leur crue Q2 ; 15 stations sur 177 ont un Q2-7 altéré d'au moins 5 %.
+
+## R439 — Le jour de retard de la réponse aux pluies de printemps et d'automne vient de l'épaisseur de la couche 1, fixée en dur à 15 cm : à 5 cm, le délai d'automne rejoint l'observé (2,87 contre 2,86 jours) et la part des stations en retard d'un jour passe de 69 % à 23 % ; à 30 cm le retard s'aggrave (2026-10-29) — ÉTABLI EN PASSE AVANT, modèle gelé, Montérégie et Outaouais, 2019-2024, Ubuntu
+
+Constat de départ (analyses de `meandre-analyse`, 2022-2024, passe provinciale d'Ubuntu) : meandre corrèle moins bien qu'Hydrotel sur 86 % des stations, et le décalage de corrélation maximale le met en retard d'un jour sur 52 à 65 % des stations au printemps, en été et à l'automne, contre 4 à 16 % pour Hydrotel. L'écart de KGE médian (0,696 contre 0,721) tient surtout à l'effet d'ensemble : les six versions d'Hydrotel prises seules vont de 0,663 à 0,753. Le KGE de la médiane probabiliste de meandre est celui du déterministe (tête de quantiles à médiane imposée).
+
+Épisodes d'apport d'au moins 10 mm après trois jours secs, profil de la hausse du débit sur sept jours, délai moyen (centre de gravité) : été 2,51 simulé contre 2,54 observé, sans retard ; printemps 3,22 contre 2,54 ; automne 3,24 contre 2,86. Au printemps et à l'automne, la réponse passe par l'écoulement hypodermique de la couche 2 (pointe à deux jours et plus dans 71 à 75 % des épisodes), l'été par la surface au jour même.
+
+Passes avant du modèle gelé, une seule modification chacune (délai moyen printemps / automne ; part des stations en retard d'un jour printemps / automne ; perte 2019-2024 Montérégie / Outaouais) :
+
+| variante | délai | retard d'un jour | perte |
+|---|---|---|---|
+| modèle gelé (z1 = 0,15 m) | 3,22 / 3,24 | 79 % / 69 % | 1,2388 / 0,8345 |
+| porosité bornée à 0,50 | 3,18 / 3,25 | 74 % / 67 % | 1,2109 / 0,8434 |
+| couches 2 et 3 minces (bornes 0,10 et 0,20 m) | 2,90 / 3,21 | 49 % / 49 % | 1,1603 / 0,9119 |
+| z1 = 0,05 m | 2,88 / 2,87 | 33 % / 23 % | 1,3907 / 1,0047 |
+| z1 = 0,30 m | 3,35 / 3,40 | 74 % / 77 % | 1,2624 / 0,8439 |
+
+La perte se dégrade à 5 cm parce que les autres paramètres ont été appris avec 15 cm : la porosité collée à 0,60 et les couches 2 et 3 collées à leurs bornes basses compensent une couche de surface trop épaisse. Lecture (avec Essi) : la couche 1 joue le rôle de l'horizon organique, mince, très poreux et vite saturé ; son épaisseur et sa porosité doivent être libres, par tronçon, et l'on peut s'attendre à ce que la porosité redevienne raisonnable une fois l'épaisseur libérée. L'épaisseur était une constante en dur (`self.z1 = 0.15`), devenue le réglage `column.z1` (défaut inchangé, identique au bit près). Suite : sortie du champ pour z1 avec une plage de porosité propre à la couche 1, puis entraînement. Configurations : `experiments/response-timing/`.
