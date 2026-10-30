@@ -6210,7 +6210,7 @@ Lecture : R449 a identifié un écart réel (récession des bas débits observé
 
 ## R452 — Le ruissellement par distribution de capacités de stockage (INF_PDM sur les couches 1-2) est RÉFUTÉ en passe avant, comme l'aire saturée seule commandée par la nappe (TOPMODEL) : en dix variantes éprouvées, aucune ne rend la pente de la pluie ni celle de l'humidité antérieure (2026-10-30) — ÉTABLI EN PASSE AVANT à poids figés, modèle gelé, Montérégie 23 stations / 765 épisodes et Outaouais 16 stations / 453 à 480 épisodes, juin à octobre 2019-2024, Ubuntu
 
-Pentes log-log du coefficient de ruissellement des épisodes (même protocole que R447 : catalogue d'épisodes observés fixe, volume de crue mesuré sur la série simulée aux mêmes dates, correction d'échelle par tronçon) :
+Pentes log-log du coefficient de ruissellement des épisodes (même protocole que R447 : catalogue d'épisodes observés fixe, volume de crue mesuré sur la série simulée aux mêmes dates, correction d'échelle par tronçon). L'entrée R448 porte le même épreuve aux quatre jeus couches 1-2 en Montérégie : les chiffres concordent au dixième de pente ; R449 à R451 portent la lecture du sol qui ne sèche (la nappe trop lente, la couche 3 aux racines) : cette entrée mesure les formes de dépassement au-delà des couches 1-2 et le levier de la nappe :
 
 | variante | pluie MONT | veille MONT | pluie OUTV | veille OUTV |
 |---|---|---|---|---|
