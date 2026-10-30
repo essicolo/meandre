@@ -303,7 +303,10 @@ class HydrotelColumn(nn.Module):
         f_urban = z("f_urban_raw", 0.0); f_forest = z("f_forest_raw", 0.0)
         f_wet = z("f_wetland_raw", 0.0)
         fse = torch.clamp(f_water + f_lake, 0.0, 1.0)
-        fsi = torch.clamp(f_urban, 0.0, 1.0)
+        # SURFACE IMPERMEABLE RACCORDEE (2026-10-30, R454) : seule une part des surfaces
+        # imperméables rend sa pluie directement à la rivière ; le reste s'égoutte sur le sol
+        # perméable voisin et compte avec lui. 1 = toute la surface imperméable est raccordée (fidèle).
+        fsi = torch.clamp(f_urban * float(settings.get("column.connected_impervious_share")), 0.0, 1.0)
         fsa = torch.clamp(1.0 - fse - fsi, 0.0, 1.0)
         # GARDE-FOU D'ENTRÉES (dette #3 du registre). `get_physical` renvoie None quand
         # la colonne demandée n'existe pas, et le code prend alors un DÉFAUT sans le
