@@ -6233,3 +6233,19 @@ Pentes log-log du coefficient de ruissellement des épisodes (même protocole qu
 **Pertes totales 2019-2024 (moyenne des stations).** Montérégie : témoin 1,2388 ; TOPMODEL 1,3970 (échelle 500 : 1,5217 ; combinée 1,6751) ; INF_PDM b0,5f1 1,5720 ; seau mince b2 1,9106. Outaouais : INF_PDM b0,5f1 0,9070 contre 0,8345 pour le témoin. Aucune variante ne gagne sur le témoin, ni en forme ni en perte. Niveaux : toutes les variantes sur-répondent la crue des petites averses (simulé/observé de 2 à 19 fois sous 20 mm) et la sous-répondent aux grosses sur l'Outaouais (0,58 à 0,63), comme le témoin.
 
 Lecture. L'épreuve établit NEGATIVEMENT que le dépassement par un état épais du sol (les couches 1-2) ne peut pas porter la forme observée, à aucun jeu testé d'exposant et de facteur ; et que la manette de nappe porte le levier d'humidité mais pas celui de la taille de l'averse. Les deux leviers manquants sont DISTINCTS : la pente de la pluie demande un dépassement non linéaire à l'échelle du jour (des dizaines de mm, pas des centaines : un seau de la couche 1, dont les pentes mesurées ici sont déjà plus raides que les couches 1-2) ; la pente de la veille demande l'aire saturée commandée par la nappe. Les deux formes restent à éprouver SEUL puis COUPLÉ (le dépassement du jour commandé par la nappe, forme TOPMODEL appliquée à l'ESPACE LIBRE de la couche 1). Configurations, mesure et sorties : `experiments/response-timing/pdm-runoff*.toml`, `pentes-pdm.py`, `/d/meandre-data/analysis/pdm-2026-10-30/`.
+
+## R452 — Bac à sable, une seule physique (Campbell, Darcy vertical et latéral par K(θ)), sans calage : le profil continu de 2,5 m à densité racinaire décroissante (Jackson et al. 1996, β = 0,97) tient l'étiage d'été deux à quatre fois mieux que le même sol en trois couches de 0,95 m à portée des racines, ET rend la dépendance à l'humidité antérieure, sans perdre la croissance avec la pluie (2026-10-30) — ÉTABLI EN BAC À SABLE, qualitatif, Outaouais et Montérégie, 2019-2024
+
+`experiments/continuous-column/sandbox.py`. Entrée : apport au sol du modèle gelé (moyenne du bassin de chaque station), ETP de Priestley-Taylor ; loam de Clapp et Hornberger partout, versant de 50 m à 5 % ; aucun lac, aucune nappe, aucun routage, aucun calage.
+
+| | pente pluie | pente humidité | débit médian juil. / août / sept. sur juin | volume sim/obs |
+|---|---|---|---|---|
+| Montérégie, observé | 1,51 | 0,64 | 0,88 / 0,85 / 0,70 | |
+| Montérégie, trois couches | 1,93 | 0,37 | 0,12 / 0,00 / 0,16 | 0,65 |
+| Montérégie, continu | 1,74 | 0,63 | 0,71 / 0,41 / 0,54 | 0,63 |
+| Outaouais, observé | 1,32 | 0,33 | 0,87 / 0,65 / 0,55 | |
+| Outaouais, trois couches | 2,02 | 0,40 | 0,30 / 0,14 / 0,16 | 0,61 |
+| Outaouais, continu | 1,79 | 0,73 | 0,45 / 0,25 / 0,32 | 0,61 |
+| meandre gelé (rappel, R447) | 0,8 | 0,25 | | |
+
+Lecture. (1) La croissance du coefficient avec la pluie sort d'elle-même de la loi K(θ) dans les deux découpages (pentes 1,7 à 2,0) ; l'aplatissement de meandre (0,8) ne vient donc pas de la profondeur du profil mais de ce que la colonne ajoute ou de ce que l'optimiseur en a fait (aire contributive (θ1/θs)^8 éteinte par la porosité collée à 0,60, conductivités apprises : R339, R346, R403, R404). (2) À physique égale, le seul passage d'un profil mince à portée des racines à un profil profond à racines décroissantes relève l'étiage d'été d'un facteur deux à quatre et la dépendance à l'humidité antérieure au niveau observé en Montérégie : crue et étiage s'améliorent ENSEMBLE, sans catégorie d'eau. (3) Limites : volume à 0,6 (ETP non calée), pas de lacs (l'Outaouais en dépend), loam et versant uniformes, épaisseur de 2,5 m arbitraire (à moduler par SIGEOM en inflexion). Le bac à sable établit le sens du mécanisme, pas une valeur.
