@@ -160,6 +160,28 @@ def inf_pdm(ctx, prm):
     return torch.clamp(ctx["input"] - (s_after - s), min=0.0)
 
 
+def topmodel_runoff(ctx, prm):
+    """Ruissellement par aire saturée commandée par la nappe libre (forme TOPMODEL, R447).
+
+    Une portion du tronçon voit la nappe affleurer et ruisselle tout l'apport du jour ; le reste
+    s'infiltre. La portion croît avec le stock de nappe : a = (s_gw / scale)^exponent, bornée à
+    un. Le levier est mesuré sans simulation : sur les épisodes d'été de R447, le stock de nappe du
+    modèle gelé prédit le coefficient de ruissellement observé à pente log-log 0,63 en Montérégie
+    et 0,33 sur l'Outaouais, au niveau du débit de la veille, et il est redondant avec lui. Le
+    contexte porte `s_gw`, le stock de nappe de la veille en mètres, posé par la colonne quand la
+    nappe libre est activée ; sans nappe, la forme n'a pas de levier et refuse. Paramètres propres :
+    `exponent` et `scale` (le TOML le donne en `scale_mm`, un stock de nappe en millimètres, et
+    from_toml le convertit en mètres comme pour la loi en exposant). Retourne le ruissellement
+    en mètres pour le pas.
+    """
+    s = ctx.get("s_gw")
+    if s is None:
+        raise ValueError("la forme TOPMODEL demande la nappe libre : le contexte doit porter s_gw")
+    a = torch.clamp(s / torch.as_tensor(prm["scale"], dtype=s.dtype, device=s.device), 0.0, 1.0)
+    a = a.pow(torch.as_tensor(float(prm["exponent"]), dtype=s.dtype, device=s.device))
+    return ctx["input"] * a
+
+
 def drain_hooghoudt(ctx, prm):
     """Drainage souterrain agricole, formule de Hooghoudt (2026-10-04).
 
@@ -195,6 +217,7 @@ FORMS = {
     "PERC_GRAVITY": (perc_gravity, ()),
     "DRAIN_HOOGHOUDT": (drain_hooghoudt, ("spacing_m", "depth_m", "share")),
     "INF_PDM": (inf_pdm, ("exponent",)),
+    "TOPMODEL": (topmodel_runoff, ("exponent", "scale")),
 }
 
 FORMS_BY_KIND = {
@@ -202,7 +225,8 @@ FORMS_BY_KIND = {
     KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_POWER_LAW", "PERC_GRAVITY"),
     # Un processus « runoff » porte sur l'apport du jour, avant le sol ; `layer` est la couche la
     # plus profonde dont le stock entre dans la distribution de capacités (1 : couche 1 seule).
-    KIND_RUNOFF: ("INF_PDM",),
+    # TOPMODEL ignore ce stock : sa manette est le stock de nappe du contexte.
+    KIND_RUNOFF: ("INF_PDM", "TOPMODEL"),
 }
 
 

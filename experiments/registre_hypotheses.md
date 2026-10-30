@@ -6207,3 +6207,29 @@ Lecture : R449 a identifié un écart réel (récession des bas débits observé
 ## R451 — En forêt, la couche qui soutient l'étiage est celle qui évapore le plus l'été : en Outaouais la couche 3 fournit 44 à 46 % de l'évapotranspiration de juin à août et sa teneur en eau tombe de 0,435 à 0,372 m³/m³ d'avril à août ; le profil simulé (0,95 m) est entièrement à portée des racines forestières de PHYSITEL (1,26 m en Montérégie, 1,53 m en Outaouais), quand les dépôts meubles SIGEOM font 1,7 à 3,3 m en médiane (2026-10-30) — ÉTABLI, passe avant du modèle gelé, 2019-2024
 
 Évapotranspiration par couche, moyenne des bassins des stations, juillet : Outaouais 0,87 / 0,78 / 1,39 mm/j (couches 1 / 2 / 3), Montérégie 2,23 / 0,52 / 0,97 (agriculture : racines de 0,11 m, couche 1 seule). Teneur en eau en Outaouais : les couches 1 et 2 se suivent (0,318 en août), la couche 3 reste au-dessus (0,372). La couche 3 porte la sortie latérale à seuil au-dessus de la capacité au champ et la percolation vers la nappe : c'est la source de l'étiage, et les racines la vident. Lecture (avec Essi : c'est la même eau à des tensions différentes, pas deux catégories) : il n'existe dans le profil simulé aucune eau hors de portée de la transpiration ; pour soutenir l'étiage, le modèle doit garder humide tout le profil, qui ne sèche donc jamais (R339), d'où la réponse aplatie aux averses (R447). Contrainte de conception : une couche n'a qu'une teneur en eau, donc l'eau sous les racines doit être une couche distincte dont la limite haute est la base des racines ; épaisser la couche 3 au-delà des racines la laisserait mélangée et évaporée. L'épaisseur SIGEOM entre comme inflexion entre tronçons, jamais comme profondeur imposée (Essi).
+
+## R448 — Le ruissellement par distribution de capacités de stockage (INF_PDM sur les couches 1-2) est RÉFUTÉ en passe avant, comme l'aire saturée seule commandée par la nappe (TOPMODEL) : en dix variantes éprouvées, aucune ne rend la pente de la pluie ni celle de l'humidité antérieure (2026-10-30) — ÉTABLI EN PASSE AVANT à poids figés, modèle gelé, Montérégie 23 stations / 765 épisodes et Outaouais 16 stations / 453 à 480 épisodes, juin à octobre 2019-2024, Ubuntu
+
+Pentes log-log du coefficient de ruissellement des épisodes (même protocole que R447 : catalogue d'épisodes observés fixe, volume de crue mesuré sur la série simulée aux mêmes dates, correction d'échelle par tronçon) :
+
+| variante | pluie MONT | veille MONT | pluie OUTV | veille OUTV |
+|---|---|---|---|---|
+| observations (cible de la fenêtre) | 1,52 | 0,64 | 1,29 | 0,46 |
+| témoin gelé (aire contributive θ1/θs^8) | 0,77 | 0,27 | 0,96 | 0,14 |
+| INF_PDM couches 1-2, b 0,5 facteur 1 | 0,29 | 0,14 | 0,66 | 0,02 |
+| INF_PDM couches 1-2, b 2 facteur 1 | 0,23 | 0,11 | 0,58 | −0,07 |
+| INF_PDM couches 1-2, b 0,5 facteur 3 | 0,51 | 0,19 | 0,84 | 0,06 |
+| INF_PDM couches 1-2, b 2 facteur 3 | 0,41 | 0,14 | 0,76 | 0,01 |
+| INF_PDM couche 1 seule (seau mince), b 0,5 | 0,45 | 0,08 | (non éprouvé) | |
+| INF_PDM couche 1 seule (seau mince), b 2 | 0,34 | 0,07 | (non éprouvé) | |
+| TOPMODEL (nappe), échelle 1500 mm | 0,35 | 0,14 | (non éprouvé) | |
+| TOPMODEL (nappe), échelle 500 mm | 0,21 | 0,09 | (non éprouvé) | |
+| TOPMODEL + INF_PDM couche 1 | 0,38 | 0,08 | (non éprouvé) | |
+
+**Cause mesurée du plat de INF_PDM.** Avant routage, la production de surface du tronçon est déjà plate (Montérégie, TOPMODEL : pente pluie 0,20 ; le PDM des couches 1-2 : 0,18 à 0,27). Le stock des couches couvertes reste rempli à 30 à 70 % de sa capacité en été ; la part déjà saturée de la distribution fait tout passer, rendement presque constante, coefficient quasi indépendant de la pluie. Ni l'exposant (0,5 contre 2) ni le facteur (1 contre 3) ne décollent cette platitude : l'exacte non-identifiabilité mesurée à R447.
+
+**Le levier confirmé sans simulation.** Sur les mêmes épisodes, le stock de nappe du témoin (s_gw, médiane 20 mm en Montérégie, 39 mm sur l'Outaouais) prédit le coefficient de ruissellement OBSERVÉ à pente log-log 0,63 (Montérégie) et 0,33 (Outaouais), au niveau du débit de la veille et redondant avec lui : le stock de nappe du modèle porte l'humidité antérieure que le ruissellement devrait suivre ; dans TOPMODEL branché seul, la manette rend sa pente sur la production de surface mais la régression sur le débit de la semaine la réduit (0,14), la manette restant lente contre une crue qui répond au jour même.
+
+**Pertes totales 2019-2024 (moyenne des stations).** Montérégie : témoin 1,2388 ; TOPMODEL 1,3970 (échelle 500 : 1,5217 ; combinée 1,6751) ; INF_PDM b0,5f1 1,5720 ; seau mince b2 1,9106. Outaouais : INF_PDM b0,5f1 0,9070 contre 0,8345 pour le témoin. Aucune variante ne gagne sur le témoin, ni en forme ni en perte. Niveaux : toutes les variantes sur-répondent la crue des petites averses (simulé/observé de 2 à 19 fois sous 20 mm) et la sous-répondent aux grosses sur l'Outaouais (0,58 à 0,63), comme le témoin.
+
+Lecture. L'épreuve établit NEGATIVEMENT que le dépassement par un état épais du sol (les couches 1-2) ne peut pas porter la forme observée, à aucun jeu testé d'exposant et de facteur ; et que la manette de nappe porte le levier d'humidité mais pas celui de la taille de l'averse. Les deux leviers manquants sont DISTINCTS : la pente de la pluie demande un dépassement non linéaire à l'échelle du jour (des dizaines de mm, pas des centaines : un seau de la couche 1, dont les pentes mesurées ici sont déjà plus raides que les couches 1-2) ; la pente de la veille demande l'aire saturée commandée par la nappe. Les deux formes restent à éprouver SEUL puis COUPLÉ (le dépassement du jour commandé par la nappe, forme TOPMODEL appliquée à l'ESPACE LIBRE de la couche 1). Configurations, mesure et sorties : `experiments/response-timing/pdm-runoff*.toml`, `pentes-pdm.py`, `/d/meandre-data/analysis/pdm-2026-10-30/`.

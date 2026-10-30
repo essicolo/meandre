@@ -805,6 +805,10 @@ class HydrotelColumn(nn.Module):
             _soil = self._static["soil"]
             _z_soil = _soil["z1"] + _soil["z2"] + _soil["z3"]
             self._l3_gradient = torch.clamp((_z_previous_day - _z_soil) / _p["coupling"], 0.0, 1.0)
+        # Stock de nappe de la VEILLE, en millimetres : la recharge du jour y entre plus bas. Il est
+        # la manette des formes d'aire saturee du profil de sol declare, comme TOPMODEL (R447) :
+        # une nappe qui tient l'etiage haut elargit l'aire ruisselante. Pose avant l'appel au sol.
+        self._day_s_gw = state.S_gw if self._water_table is not None else None
         prod, a, diag = self.forward(P, tmin, tmax, Rn, u2, ea,
                                      doy if doy is not None else 1, a, sw_in=sw_in, storm_hours=storm_hours,
                                      etp_ext=etp_ext)
@@ -1024,6 +1028,8 @@ class HydrotelColumn(nn.Module):
         field_names = []
         procs = []
         for i, proc in enumerate(profile.processes):
+            if proc.form == "TOPMODEL" and self._water_table is None:
+                raise ValueError("la forme TOPMODEL demande la nappe libre activée ([groundwater])")
             params = dict(proc.params)
             ceiling_value = proc.ceiling
             for key in proc.learn:
@@ -1391,6 +1397,11 @@ class HydrotelColumn(nn.Module):
             pso = dict(pso)
             pso["ks1"], pso["ks2"], pso["ks3"] = pso["ks1"] * _visc[0], pso["ks2"] * _visc[1], pso["ks3"] * _visc[2]
             pso["visc2"], pso["visc3"] = _visc[1], _visc[2]
+        # Stock de nappe de la veille en m, lu par les formes d'aire saturee du profil
+        # declare (TOPMODEL) ; pose a chaque pas, jamais en static.
+        if getattr(self, "_day_s_gw", None) is not None:
+            pso = dict(pso)
+            pso["s_gw"] = self._day_s_gw / 1000.0
         ps_surf, ph, pb, rech, (t1, t2, t3), sdiag = self.soil(
             state.theta1, state.theta2, state.theta3, apport, etp, frost_depth_cm, cover_mm, pso,
             etr1_mm=e1_soil * 1000.0, etr2_mm=e2_soil * 1000.0, etr3_mm=e3_soil * 1000.0, storm_hours=storm_hours)

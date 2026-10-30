@@ -180,7 +180,12 @@ class BV3C2Clone(torch.nn.Module):
             for q in _declared_runoff:
                 _store = sum(torch.clamp(_thetas[i] - _wps[i], min=0.0) * _zs[i] for i in range(q.layer))
                 _cap = sum(torch.clamp(_ths[i] - _wps[i], min=1e-6) * _zs[i] for i in range(q.layer))
-                _r_decl = _r_decl + q.flux({"storage": _store, "capacity": _cap, "input": apport_mm / 1000.0})
+                _ctx = {"storage": _store, "capacity": _cap, "input": apport_mm / 1000.0}
+                # Le stock de nappe de la veille (m), posé par la colonne quand la nappe libre
+                # est activée : la manette des formes d'aire saturée comme TOPMODEL.
+                if p.get("s_gw") is not None:
+                    _ctx["s_gw"] = p["s_gw"]
+                _r_decl = _r_decl + q.flux(_ctx)
             _r_decl = torch.minimum(_r_decl * 1000.0, apport_mm)
             apport_mm = apport_mm - _r_decl
             runoff_horton = runoff_horton + _r_decl
