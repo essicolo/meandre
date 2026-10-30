@@ -17,7 +17,7 @@ densité de racines et l'eau utile de la maille, débordement de surface quand l
 Entrée : apport au sol du modèle gelé (pluie et fonte, moyenne du bassin), ETP de Priestley-Taylor.
 Sortie : écoulement en mm/j, comparé à l'observé par les pentes d'épisode de R447 et la tenue de l'étiage.
 
-Usage : python sandbox.py <dossier des dumps> <territoire> [beta]
+Usage : python sandbox.py <dossier des dumps> <territoire> [beta] [variantes : base,continu,retention,lateral,vsa,tout]
 """
 import sys
 
@@ -56,9 +56,15 @@ def root_fractions(edges_m, beta, max_depth_m=None):
     return r / r.sum()
 
 
-def run(apport_mm, etp_mm, thickness_m, roots):
+def run(apport_mm, etp_mm, thickness_m, roots, theta_s=None, theta_fc=None, theta_wp=None, lateral_threshold=True, vsa_b=None, direct_fraction=0.0):
+    """Options, une à la fois, pour réintroduire les éléments de la colonne de meandre : rétention par
+    maille (`theta_s`, `theta_fc`, `theta_wp`), écoulement latéral sans seuil de capacité au champ
+    (Darcy sur toute l'eau, forme BASE_LINEAR), aire contributive (θ1/θs)^b sur l'apport."""
     n_days, n_cells = len(apport_mm), len(thickness_m)
-    theta = np.full(n_cells, 0.5 * (THETA_FC + THETA_S))
+    ts = np.full(n_cells, THETA_S) if theta_s is None else np.asarray(theta_s, float)
+    fc = np.full(n_cells, THETA_FC) if theta_fc is None else np.asarray(theta_fc, float)
+    wp = np.full(n_cells, THETA_WP) if theta_wp is None else np.asarray(theta_wp, float)
+    theta = 0.5 * (fc + ts)
     centers = np.cumsum(thickness_m) - thickness_m / 2
     gap = np.diff(centers)
     dt = 1.0 / SUBSTEPS
@@ -69,28 +75,38 @@ def run(apport_mm, etp_mm, thickness_m, roots):
         demand = etp_mm[day] / 1000.0
         runoff = lateral = et = 0.0
         for _ in range(SUBSTEPS):
-            k = conductivity(theta)
-            psi = potential(theta)
+            k = K_S * np.clip(theta / ts, 1e-6, 1.0) ** (2 * B + 3)
+            psi = PSI_S * np.clip(theta / ts, 1e-3, 1.0) ** (-B)
             k_face = np.sqrt(k[:-1] * k[1:])
             q_down = k_face * ((psi[:-1] - psi[1:]) / gap + 1.0) * dt
             store = theta * thickness_m
             # un flux ne prend pas plus que l'eau au-dessus du point de flétrissement de la maille donneuse
-            q_down = np.where(q_down > 0, np.minimum(q_down, np.maximum(store[:-1] - THETA_WP * thickness_m[:-1], 0) * 0.5), np.maximum(q_down, -np.maximum(store[1:] - THETA_WP * thickness_m[1:], 0) * 0.5))
+            q_down = np.where(q_down > 0, np.minimum(q_down, np.maximum(store[:-1] - wp[:-1] * thickness_m[:-1], 0) * 0.5), np.maximum(q_down, -np.maximum(store[1:] - wp[1:] * thickness_m[1:], 0) * 0.5))
             q_lat = k * SLOPE * thickness_m / HILLSLOPE_M * dt
-            q_lat = np.minimum(q_lat, np.maximum(store - THETA_FC * thickness_m, 0) * 0.5 + 1e-12)
-            stress = np.clip((theta - THETA_WP) / (THETA_FC - THETA_WP), 0, 1)
+            floor = fc if lateral_threshold else wp
+            q_lat = np.minimum(q_lat, np.maximum(store - floor * thickness_m, 0) * 0.5 + 1e-12)
+            stress = np.clip((theta - wp) / (fc - wp), 0, 1)
             uptake = demand * dt * roots * stress
-            uptake = np.minimum(uptake, np.maximum(store - THETA_WP * thickness_m, 0))
+            uptake = np.minimum(uptake, np.maximum(store - wp * thickness_m, 0))
             store = store - uptake - q_lat
             store[:-1] -= q_down
             store[1:] += q_down
-            store[0] += p * dt
-            excess = np.maximum(store - THETA_S * thickness_m, 0)
+            p_in = p * dt
+            if direct_fraction > 0:
+                # pluie sur les surfaces imperméables et l'eau libre, rendue directement à la rivière
+                runoff += p_in * direct_fraction
+                p_in -= p_in * direct_fraction
+            if vsa_b is not None:
+                r_vsa = p_in * np.clip(theta[0] / ts[0], 0, 1) ** vsa_b
+                runoff += r_vsa
+                p_in -= r_vsa
+            store[0] += p_in
+            excess = np.maximum(store - ts * thickness_m, 0)
             # le surplus d'une maille saturée remonte vers la surface, puis ruisselle
             for i in range(n_cells - 1, 0, -1):
                 store[i - 1] += excess[i]
                 store[i] -= excess[i]
-                excess[i - 1] = max(store[i - 1] - THETA_S * thickness_m[i - 1], 0)
+                excess[i - 1] = max(store[i - 1] - ts[i - 1] * thickness_m[i - 1], 0)
             runoff += excess[0]
             store[0] -= excess[0]
             theta = store / thickness_m
@@ -139,14 +155,24 @@ def main(folder, territory, beta=0.97):
     etp = np.clip(1.26 * delta / (delta + 0.066) * rn / 2.45, 0, None)
     obs = qz["q_obs"] * 86.4 / meta["drainage_area_km2"].to_numpy()[None, :]
 
-    variants = {
-        "trois couches, 0,95 m, racines partout": (np.array([0.15, 0.30, 0.50]), None),
-        "continu, 2,5 m, racines de Jackson": (np.full(20, 0.125), beta),
+    three = np.array([0.15, 0.30, 0.50])
+    meandre_retention = dict(theta_s=[0.60, 0.60, 0.60], theta_fc=[0.49, 0.41, 0.51], theta_wp=[0.15, 0.17, 0.22])
+    chosen = sys.argv[4].split(",") if len(sys.argv) > 4 else ["base", "continu"]
+    catalogue = {
+        "base": ("trois couches, 0,95 m, racines partout", three, None, {}),
+        "continu": ("continu, 2,5 m, racines de Jackson", np.full(20, 0.125), beta, {}),
+        "retention": ("trois couches + rétention de meandre", three, None, meandre_retention),
+        "lateral": ("trois couches + latéral sans seuil", three, None, dict(lateral_threshold=False)),
+        "vsa": ("trois couches + aire contributive b=8", three, None, dict(vsa_b=8.0)),
+        "direct": ("trois couches + 8 % direct (imperméable, eau)", three, None, dict(direct_fraction=0.08)),
+        "continu-direct": ("continu + 8 % direct", np.full(20, 0.125), beta, dict(direct_fraction=0.08)),
+        "tout": ("trois couches + les trois", three, None, dict(meandre_retention, lateral_threshold=False, vsa_b=8.0)),
     }
+    variants = {catalogue[c][0]: catalogue[c][1:] for c in chosen}
     summer = np.isin(months, (7, 8, 9))
     bo, wo, n = event_slopes(P, obs, obs, months)
     print(f"{territory} : {P.shape[1]} stations ; OBSERVÉ pente pluie {bo:+.2f}, pente humidité {wo:+.2f} ({n} épisodes)")
-    for label, (thick, b) in variants.items():
+    for label, (thick, b, options) in variants.items():
         edges = np.concatenate([[0.0], np.cumsum(thick)])
         roots = root_fractions(edges, b) if b is not None else thick / thick.sum()
         Q = np.zeros_like(P)
@@ -156,7 +182,7 @@ def main(folder, territory, beta=0.97):
             n0 = 365
             run_in = np.concatenate([P[:n0, k], P[:, k]])
             e_in = np.concatenate([etp[:n0, k], etp[:, k]])
-            q, e = run(run_in, e_in, thick, roots)
+            q, e = run(run_in, e_in, thick, roots, **options)
             Q[:, k], ET[:, k] = q[n0:], e[n0:]
         bs, ws, n = event_slopes(P, Q, Q, months)
         low = [np.nanmedian(Q[summer & (months == mo)]) / max(np.nanmedian(Q[months == 6]), 1e-9) for mo in (7, 8, 9)]
