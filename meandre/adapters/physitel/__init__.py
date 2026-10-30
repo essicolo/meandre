@@ -131,6 +131,14 @@ def deposit_thickness(name: str, node_ids, manifest: Manifest | None = None) -> 
     return d.epaisseur_m.reindex(np.asarray(node_ids, dtype=int)).to_numpy(dtype=float)
 
 
+def measured_impervious(name: str, node_ids, table: str) -> np.ndarray:
+    """Fraction réellement imperméable par tronçon (par exemple le bâti ESA WorldCover), NaN pour
+    un tronçon absent de la table ; remplace la classe d'usage urbain de PHYSITEL (R455)."""
+    t = pd.read_parquet(table)
+    t = t[t.territory.str.lower() == name.lower()].set_index("node_id")["impervious"]
+    return t.reindex(np.asarray(node_ids, dtype=int)).to_numpy(dtype=float)
+
+
 def drainage_class(name: str, node_ids, table: str) -> np.ndarray:
     """Classe de drainage des Pédo-paysages par tronçon, NaN sans couverture."""
     td = pd.read_parquet(table)

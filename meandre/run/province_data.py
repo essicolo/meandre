@@ -446,6 +446,14 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
             pl = f"{_mp.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
             d = load_land_cover(pl, p["node_ids"], device="cpu")
             d.update(load_wetlands(pl, p["node_ids"], device="cpu"))
+            # Surfaces imperméables mesurées à la place de la classe d'usage urbain (R455).
+            from meandre.utils import settings as _st_imp
+            if _st_imp.get("land_cover.impervious_table") and "f_urban_raw" in d:
+                import numpy as _np_imp
+                from meandre.adapters.physitel import measured_impervious
+                _new = measured_impervious(p["name"], p["node_ids"], _st_imp.get("land_cover.impervious_table").replace("{DERIVES}", _mp.DERIVED_ROOT))
+                _old = d["f_urban_raw"].numpy().astype(float)
+                d["f_urban_raw"] = torch.as_tensor(_np_imp.where(_np_imp.isfinite(_new), _new, _old), dtype=d["f_urban_raw"].dtype)
             lc_parts.append(d)
             mp_parts.append(load_melt_nodes(pl, p["node_ids"], device="cpu"))
             if phenology is None:

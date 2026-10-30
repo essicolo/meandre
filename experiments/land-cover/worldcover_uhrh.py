@@ -19,6 +19,7 @@ import pandas as pd
 import rasterio
 import rasterio.transform
 import rasterio.warp
+import rasterio.errors
 import rasterio.windows
 from pyproj import Transformer
 
@@ -36,7 +37,10 @@ def main(project, tiles_dir, output):
     for tif in sorted(Path(tiles_dir).glob("ESA_WorldCover_*_Map.tif")):
         with rasterio.open(tif) as src:
             win = rasterio.windows.from_bounds(west, south, east, north, src.transform).round_offsets().round_lengths()
-            win = win.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
+            try:
+                win = win.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
+            except rasterio.errors.WindowError:
+                continue   # tuile hors de l'emprise du projet
             row0, col0 = int(win.row_off), int(win.col_off)
             n_rows = (int(win.height) // BLOCK) * BLOCK
             n_cols = (int(win.width) // BLOCK) * BLOCK
