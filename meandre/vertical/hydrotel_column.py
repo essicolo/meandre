@@ -490,6 +490,7 @@ class HydrotelColumn(nn.Module):
             p_soil["thetacc3"] = sp.theta_fc_3
             # Points de fletrissement des couches 2 et 3, lus par la vidange lente au-dessus
             # du point de fletrissement (2026-10-02) ; sorties du champ jusque-la mortes.
+            p_soil["thetapf1"] = sp.theta_wp_1
             p_soil["thetapf2"] = sp.theta_wp_2
             p_soil["thetapf3"] = sp.theta_wp_3
         _l3n = getattr(self, "l3_drain_exp", None)

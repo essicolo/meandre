@@ -30,7 +30,8 @@ import torch
 # Identifiants en anglais, y compris dans la configuration : c'est la convention du dépôt.
 KIND_LATERAL = "lateral"
 KIND_PERCOLATION = "percolation"
-KINDS = (KIND_LATERAL, KIND_PERCOLATION)
+KIND_RUNOFF = "runoff"
+KINDS = (KIND_LATERAL, KIND_PERCOLATION, KIND_RUNOFF)
 
 
 def _storage_above(ctx, prm):
@@ -132,6 +133,33 @@ def perc_gravity(ctx, prm):
 
 
 # Catalogue. La clé est le nom Raven, la valeur la fonction et les paramètres exigés.
+def inf_pdm(ctx, prm):
+    """Ruissellement par distribution de capacités de stockage (Moore 1985, INF_PDM chez Raven),
+    forme intégrée équivalente à Xinanjiang (2026-10-30, R447).
+
+    Le tronçon est une mosaïque de réservoirs de capacité c, répartie en F(c) = 1 − (1 − c/cmax)^b
+    sur [0, cmax] ; la capacité moyenne vaut S_max = cmax / (b + 1). Pour un stock S et un apport
+    P, les réservoirs déjà pleins et ceux que P remplit débordent ; le reste s'infiltre. Deux
+    propriétés mesurées sur 175 stations motivent la forme : le coefficient de ruissellement croît
+    avec la taille de l'averse (pente log-log 1,2 observée) et avec l'humidité antérieure (0,6).
+
+    Contexte : `storage` et `capacity` en mètres (eau au-dessus du point de flétrissement des
+    couches incluses, et son maximum à saturation), `input` en mètres (apport du jour). Paramètres :
+    `exponent` b, et `factor` (1 par défaut) qui multiplie la capacité tirée du sol : c'est le
+    paramètre propre de la loi, distinct de la porosité et de la conductivité, apprenable.
+    Retourne le ruissellement en mètres pour le pas.
+    """
+    b = torch.as_tensor(prm["exponent"], dtype=ctx["input"].dtype, device=ctx["input"].device)
+    s_max = torch.clamp(ctx["capacity"] * torch.as_tensor(prm.get("factor", 1.0), dtype=ctx["input"].dtype, device=ctx["input"].device), min=1e-6)
+    s = torch.clamp(ctx["storage"], torch.zeros_like(s_max), s_max)
+    c_max = s_max * (b + 1.0)
+    # Capacité critique : les réservoirs de capacité inférieure sont pleins.
+    c_star = c_max * (1.0 - torch.clamp(1.0 - s / s_max, min=1e-9) ** (1.0 / (b + 1.0)))
+    x = torch.clamp((c_star + ctx["input"]) / c_max, max=1.0)
+    s_after = s_max * (1.0 - (1.0 - x) ** (b + 1.0))
+    return torch.clamp(ctx["input"] - (s_after - s), min=0.0)
+
+
 def drain_hooghoudt(ctx, prm):
     """Drainage souterrain agricole, formule de Hooghoudt (2026-10-04).
 
@@ -166,11 +194,15 @@ FORMS = {
     "PERC_POWER_LAW": (perc_power_law, ("krec", "exponent")),
     "PERC_GRAVITY": (perc_gravity, ()),
     "DRAIN_HOOGHOUDT": (drain_hooghoudt, ("spacing_m", "depth_m", "share")),
+    "INF_PDM": (inf_pdm, ("exponent",)),
 }
 
 FORMS_BY_KIND = {
     KIND_LATERAL: ("BASE_LINEAR", "BASE_THRESH_POWER", "DRAIN_HOOGHOUDT"),
     KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_POWER_LAW", "PERC_GRAVITY"),
+    # Un processus « runoff » porte sur l'apport du jour, avant le sol ; `layer` est la couche la
+    # plus profonde dont le stock entre dans la distribution de capacités (1 : couche 1 seule).
+    KIND_RUNOFF: ("INF_PDM",),
 }
 
 
@@ -260,7 +292,7 @@ class SoilProcess:
         # VISCOSITE (R384) : les vidanges a constante de temps sont des ecoulements gravitaires,
         # proportionnels a la conductivite donc a l'inverse de la viscosite. Les formes qui lisent
         # deja la conductivite (BASE_LINEAR, DRAIN_HOOGHOUDT) la recoivent corrigee.
-        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "DRAIN_HOOGHOUDT", "PERC_GRAVITY"):
+        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "DRAIN_HOOGHOUDT", "PERC_GRAVITY", "INF_PDM"):
             q = q * ctx["visc"]
         f = self.params.get("frost_factor")
         if f is not None and ctx.get("frost_frac") is not None:

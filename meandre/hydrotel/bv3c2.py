@@ -165,6 +165,26 @@ class BV3C2Clone(torch.nn.Module):
         # orages d'ete rendaient 0,64 du volume d'evenement observe (0,32 en Monteregie).
         # Comme le hortonien : retire de l'apport du sol, ajoute au ruissellement de fsa.
         _vsa = settings.get("column.saturated_area_exponent")
+        # RUISSELLEMENT DECLARE (2026-10-30, R447) : un processus « runoff » du profil, par
+        # exemple INF_PDM, prend la place de l'aire contributive ci-dessous. Le stock lu est
+        # l'eau au-dessus du point de fletrissement des couches 1 a `layer`, sa capacite celle a
+        # saturation ; les deux viennent du sol, le processus n'ajoute aucun etat.
+        _profile_runoff = p.get("soil_profile")
+        _declared_runoff = [q for q in getattr(_profile_runoff, "processes", ()) if q.kind == "runoff"]
+        if _declared_runoff:
+            _thetas = (theta1, theta2, theta3)
+            _ths = (ths1, ths2, ths3)
+            _wps = (p.get("thetapf1"), p.get("thetapf2"), p.get("thetapf3"))
+            _zs = (z1, z2, z3)
+            _r_decl = torch.zeros_like(apport_mm)
+            for q in _declared_runoff:
+                _store = sum(torch.clamp(_thetas[i] - _wps[i], min=0.0) * _zs[i] for i in range(q.layer))
+                _cap = sum(torch.clamp(_ths[i] - _wps[i], min=1e-6) * _zs[i] for i in range(q.layer))
+                _r_decl = _r_decl + q.flux({"storage": _store, "capacity": _cap, "input": apport_mm / 1000.0})
+            _r_decl = torch.minimum(_r_decl * 1000.0, apport_mm)
+            apport_mm = apport_mm - _r_decl
+            runoff_horton = runoff_horton + _r_decl
+            _vsa = None
         if _vsa is not None:
             _se1 = torch.clamp(theta1 / torch.clamp(ths1, min=1e-6), 0.0, 1.0)
             _r_vsa = apport_mm * _se1 ** float(_vsa)
