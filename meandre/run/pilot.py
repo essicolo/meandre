@@ -776,6 +776,18 @@ try:
         # Territoire seul : l'occupation vient du domaine (adaptateur PHYSITEL, 2026-10-26).
         _all = r["domain"].land_cover or {}
     _lc = {k: v.to(DEVICE) for k, v in _all.items() if k not in _WET}
+    # SURFACES IMPERMEABLES MESUREES (2026-10-30, R455) : la classe « imperméable » de PHYSITEL
+    # est une classe d'usage urbain, environ trois fois le bâti mesuré par WorldCover. Une table
+    # (territory, node_id, impervious) la remplace par tronçon ; les tronçons absents gardent PHYSITEL.
+    if _settings.get("land_cover.impervious_table") and not DOMAIN:
+        import pandas as _pd_imp
+        _imp = _pd_imp.read_parquet(_settings.get("land_cover.impervious_table").replace("{DERIVES}", _paths.DERIVED_ROOT))
+        _imp = _imp[_imp.territory.str.lower() == REG.lower()].set_index("node_id")["impervious"]
+        _ids = np.asarray(r["node_ids"], dtype=int)
+        _new = _imp.reindex(_ids).to_numpy(dtype=float)
+        _old = _lc["f_urban_raw"].detach().cpu().numpy().astype(float)
+        _lc["f_urban_raw"] = torch.as_tensor(np.where(np.isfinite(_new), _new, _old), dtype=_lc["f_urban_raw"].dtype, device=DEVICE)
+        print(f"[etl] surfaces imperméables mesurées : {int(np.isfinite(_new).sum())} tronçons sur {len(_ids)}, moyenne {float(np.nanmean(_new)):.3f} contre {float(_old.mean()):.3f} pour PHYSITEL")
     _mh = {k: v.to(DEVICE) for k, v in _all.items() if k in _WET}
     _lc.update(_mh)
     model.vertical_column.set_land_cover(_lc)
