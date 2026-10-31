@@ -1040,7 +1040,7 @@ if os.environ.get("MEANDRE_DUMP_CHAMPS"):
     _field_arrays = {f.name: getattr(_fields_out, f.name).detach().cpu().numpy() for f in _dataclasses.fields(type(_fields_out)) if torch.is_tensor(getattr(_fields_out, f.name))}
     if getattr(_fields_out, "Z1", None) is not None:
         _field_arrays["Z1"] = _fields_out.Z1.detach().cpu().numpy()
-    np.savez_compressed(os.environ["MEANDRE_DUMP_CHAMPS"], node_ids=np.asarray(r["node_ids"]), **_field_arrays)
+    np.savez_compressed(os.environ["MEANDRE_DUMP_CHAMPS"], node_ids=np.asarray(r.get("node_ids", np.arange(len(td.node_coords)))), **_field_arrays)
     print(f"[etl] champs ecrits : {os.environ['MEANDRE_DUMP_CHAMPS']} ({len(_field_arrays)} sorties)")
     sys.stdout.flush()
     os._exit(0)
