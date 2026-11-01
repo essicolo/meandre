@@ -35,7 +35,7 @@ def _stress(ftheta: Tensor, alpha: Tensor) -> Tensor:
 
 
 def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
-                thetacc, thetapf, alpha, z11, z22, z33, des, coef_assech, layered=None):
+                thetacc, thetapf, alpha, z11, z22, z33, des, coef_assech, layered=None, root_beta=None):
     """CalculeEtr (bv3c2.cpp:2211), un pas de temps, sommé sur les classes
     perméables. Tout vectorisé sur les nœuds ; les listes par classe sont des
     listes Python (peu de classes).
@@ -48,6 +48,9 @@ def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
     point de fletrissement de la couche 1), ou ((cc2, pf2), (cc3, pf3)) : stress juge sur l'eau
     utile de chaque couche ponderee par sa part racinaire (2026-10-29, R445). Hydrotel suppose une
     texture homogene ; une couche 1 organique jugeait les couches minerales presque seches.
+    root_beta : None (fidele : prelevement de chaque couche au prorata de son epaisseur dans la
+    zone racinaire), ou le beta de Jackson et al. (1996), fraction cumulee des racines 1 - beta^z
+    (z en cm) : chaque couche pese la part des racines qu'elle contient (2026-10-31, R463).
     Retourne (etr1, etr2, etr3) [m]."""
     z1 = z11
     z2 = z11 + z22
@@ -77,6 +80,17 @@ def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
         dz1 = torch.clamp(torch.minimum(zc, z1t), min=0.0)
         dz2 = torch.clamp(torch.minimum(zc, z2t) - z1t, min=0.0)
         dz3 = torch.clamp(zc - z2t, min=0.0)
+        if root_beta is not None:
+            # Densite racinaire continue : l'epaisseur de chaque couche est remplacee par la part des
+            # racines qu'elle porte, rapportee a la zone racinaire ; la somme reste zc.
+            b = float(root_beta)
+            cum = lambda d: 1.0 - b ** (100.0 * d)
+            total = torch.clamp(cum(zc), min=1e-12)
+            top1, top2 = torch.zeros_like(zc), torch.minimum(z1t, zc)
+            top3 = torch.minimum(z2t, zc)
+            dz1 = (cum(top2) - cum(top1)) / total * zc
+            dz2 = (cum(top3) - cum(top2)) / total * zc
+            dz3 = (cum(zc) - cum(top3)) / total * zc
 
         theta_rz = (theta1 * dz1 + theta2 * dz2 + theta3 * dz3) / torch.clamp(zc, min=1e-12)
         if layered is None:

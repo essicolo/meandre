@@ -1324,7 +1324,7 @@ class HydrotelColumn(nn.Module):
         e1, e2, e3 = calcule_etr(state.theta1, state.theta2, state.theta3,
                                  etp_classes, roots, leaves, pe["thetacc"], pe["thetapf"],
                                  pe["alpha"], pe["z11"], pe["z22"], pe["z33"], pe["des"], pe["coef_assech"],
-                                 layered=pe.get("layered"))
+                                 layered=pe.get("layered"), root_beta=settings.get("column.root_beta"))
 
         # 5. bilan sol BV3C2 (porte gel via prof_gel_cm + couvert nival)
         cover_mm = snow_new["couvert_nival_mm"]
