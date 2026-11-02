@@ -1134,6 +1134,29 @@ tconf = TrainingConfig(
 # dette #14 : `w_snow = 0.3` etait annonce alors que la cible avait ete perdue en route).
 # On imprime le poids ET la presence de la cible, cote a cote.
 _lf = r["loss_fn"]
+# PAIRES DE STATIONS EMBOITEES (2026-11-02, R467) : une station amont dans le bassin d'une station
+# aval, d'aire inferieure a 80 % de celle de l'aval ; aires drainees du modele.
+if getattr(_lf, "w_nested", 0.0) > 0:
+    _src, _dst = td.graph.edge_index[0].cpu().numpy(), td.graph.edge_index[1].cpu().numpy()
+    _parents = {}
+    for _a, _b in zip(_src, _dst):
+        _parents.setdefault(int(_b), []).append(int(_a))
+    _area_local = td.territorial.get_physical("area_km2_local").float().cpu().numpy()
+    _sidx = [int(i) for i in torch.as_tensor(td.station_idx).cpu().tolist()]
+    _basins = []
+    for _n0 in _sidx:
+        _seen, _stack = {_n0}, [_n0]
+        while _stack:
+            for _p in _parents.get(_stack.pop(), []):
+                if _p not in _seen:
+                    _seen.add(_p)
+                    _stack.append(_p)
+        _basins.append(_seen)
+    _basin_area = [float(_area_local[list(b)].sum()) for b in _basins]
+    _pairs = [(i, j) for i in range(len(_sidx)) for j in range(len(_sidx)) if i != j and _sidx[i] in _basins[j] and _basin_area[i] < 0.8 * _basin_area[j]]
+    _lf.nested_pairs = torch.as_tensor(_pairs, dtype=torch.long, device=DEVICE).reshape(-1, 2)
+    _lf.nested_areas = torch.as_tensor([(_basin_area[i], _basin_area[j]) for i, j in _pairs], dtype=torch.float32, device=DEVICE).reshape(-1, 2)
+    print(f"[etl] attenuation entre stations emboitees : {len(_pairs)} paires, poids {_lf.w_nested:g}")
 print("[etl] contraintes auxiliaires effectives :")
 for _name, _weights, _target in (
         ("MODIS ET (MOD16)", getattr(_lf, "w_et", 0.0), td.et_obs),

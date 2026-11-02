@@ -207,6 +207,42 @@ def differentiable_pbias_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     return pbias.abs()
 
 
+def differentiable_nested_loss(q_obs: Tensor, q_sim: Tensor, pairs: Tensor, areas: Tensor, min_days: int = 30) -> Tensor:
+    """Atténuation entre stations emboîtées, simulée contre observée (2026-11-02, R467).
+
+    Pour chaque paire (station amont, station aval) : rapport de l'écart-type des hausses
+    journalières de débit spécifique, aval sur amont. Il vaut près de 1 quand le réseau transmet
+    la crue intacte, moins quand il l'amortit. Mesuré sur 58 paires : il suit l'atténuation des
+    vingt plus fortes crues (rang 0,81 observé, 0,85 simulé). Le terme est l'écart absolu des
+    logarithmes du rapport simulé et du rapport observé, moyen sur les paires ; il contraint le
+    stockage du réseau là où l'observation existe, avec une seule règle pour tout le domaine.
+    `pairs` : (P, 2) colonnes de station (amont, aval) ; `areas` : (P, 2) aires drainées en km².
+    """
+    if pairs is None or pairs.numel() == 0 or q_obs.shape[0] < 3:
+        return torch.zeros((), device=q_sim.device)
+    up, down = pairs[:, 0], pairs[:, 1]
+    ok = torch.isfinite(q_obs[:, up]) & torch.isfinite(q_obs[:, down])
+    ok = ok[1:] & ok[:-1]
+    keep = ok.sum(dim=0) >= min_days
+    if not bool(keep.any()):
+        return torch.zeros((), device=q_sim.device)
+    m = ok.to(q_sim.dtype)
+    cnt = m.sum(dim=0).clamp(min=1.0)
+
+    def spread(x):
+        r = torch.relu(x[1:] - x[:-1]) * m
+        mean = r.sum(0) / cnt
+        return torch.sqrt((((r - mean) ** 2) * m).sum(0) / cnt + 1e-12)
+
+    def ratio(q):
+        return spread(q[:, down] / areas[:, 1]) / spread(q[:, up] / areas[:, 0]).clamp(min=1e-12)
+
+    r_obs = ratio(torch.nan_to_num(q_obs))
+    r_sim = ratio(q_sim)
+    gap = torch.abs(torch.log(r_sim.clamp(min=1e-6)) - torch.log(r_obs.clamp(min=1e-6)))
+    return gap[keep].mean()
+
+
 def differentiable_dq_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     """Rapport des ecarts-types des VARIATIONS journalieres, simule sur observe.
 
@@ -817,6 +853,7 @@ class HydroLoss(nn.Module):
         w_peak_ratio: float = 0.0,
         w_recession: float = 0.0,
         w_flat: float = 0.0,
+        w_nested: float = 0.0,
         flat_threshold: float = 0.01,
         flat_width: float = 0.003,
         flat_months: tuple = (12, 1, 2, 3),
@@ -874,6 +911,10 @@ class HydroLoss(nn.Module):
         self.w_peak = w_peak  # Pondération pics (seuil climato Q_p75 par station)
         # FORME (2026-09-05) : variations journalieres et soutien d'etiage.
         self.w_dq = w_dq
+        # Atténuation entre stations emboîtées (R467) : paires posées par le pilote.
+        self.w_nested = w_nested
+        self.nested_pairs = None
+        self.nested_areas = None
         self.w_dq_log = w_dq_log
         self.w_fdc_low = w_fdc_low
         self.w_low_flow = w_low_flow
@@ -1242,6 +1283,8 @@ class HydroLoss(nn.Module):
         else:
             L_peak = torch.tensor(0.0, device=q_sim.device)
 
+        L_nested = (differentiable_nested_loss(q_obs, q_sim_at_stations, self.nested_pairs, self.nested_areas)
+                    if self.w_nested > 0 and self.nested_pairs is not None else torch.tensor(0.0, device=q_sim.device))
         loss = (self.w_nse * L_nse + self.w_pbias * L_pbias
                 + self.w_kge * L_kge + self.w_mse * L_mse
                 + self.w_nrmse * L_nrmse
@@ -1255,7 +1298,8 @@ class HydroLoss(nn.Module):
                 + self.w_low_flow * L_low_flow
                 + self.w_r * L_r + self.w_beta * L_beta + self.w_gamma * L_gamma
                 + self.w_peak_ratio * L_peak_ratio + self.w_recession * L_recession
-                + self.w_flat * L_flat)
+                + self.w_flat * L_flat
+                + self.w_nested * L_nested)
         components = {"nse_loss": L_nse, "pbias_loss": L_pbias,
                       "dq_loss": L_dq, "dq_log_loss": L_dql, "fdc_bas_loss": L_fdc, "etiage_loss": L_low_flow,
                       "kge_loss": L_kge, "mse_loss": L_mse,
@@ -1265,7 +1309,8 @@ class HydroLoss(nn.Module):
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
                       "tol_mse_loss": L_tol_mse,
-                      "peak_loss": L_peak}
+                      "peak_loss": L_peak,
+                      "nested_loss": L_nested}
 
         if self.w_snow > 0 and swe_obs is not None and swe_sim is not None:
             # Meme piege que pour l'evapotranspiration : sous MEANDRE_DIAG_CPU=1 le simule
