@@ -143,15 +143,20 @@ extraction_fraction = 0.15
 
 [spatial]
 no_latent_codes = true
-priors = true                 # conductivite de la couche 3 sous prior du depot (R423)
+priors = true                 # conductivite de la couche 3 sous prior du depot (R423), porosites sous prior de texture (R462)
 init_from_hydrotel = false
 global_normalization = true
 
 [priors]
-keys = "K_sat_3"                      # seule la conductivite de la couche 3 est sous prior
+keys = "K_sat_3,porosity_1,porosity_2,porosity_3"   # conductivite de la couche 3 (R423) ; porosites des trois couches, centre = texture de Saxton et Rawls (R462)
 k_sat_3_center = "substratum"         # centre : conductivite de la classe de drainage, par troncon (R423)
 start_at_center = "K_sat_3"           # depart au centre : le modele gele n'a jamais vu cette grandeur
-level_keys = "K_sat_3"                # jugee en niveau : la carte tient le niveau, la donnee apprend le facteur
+level_keys = "K_sat_3,porosity_1,porosity_2,porosity_3"   # jugees en niveau : la porosite collait a la borne 0,60, ou le sol ne conduit plus (R459)
+
+[land_cover]
+# Surfaces impermeables mesurees (bati ESA WorldCover 2021, 10 m) a la place de la classe d'usage urbain de
+# PHYSITEL, deux a cinq fois plus etendue ; sa pluie allait entiere a la riviere le jour meme (R455, R457, R462).
+impervious_table = "{DERIVES}/auxiliaires/impermeable-worldcover-troncons.parquet"
 
 [evaporation]
 open_water = true
