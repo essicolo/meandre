@@ -26,7 +26,9 @@ Grandeurs par tronçon :
 - rapport_humide_sec_20 : coefficient après pluie sur coefficient après sécheresse, orage de 20 mm ;
 - etiage_rapport : débit latéral minimal sur 7 jours de la sécheresse du 15 juillet au
   15 septembre de la deuxième année, rapporté à sa moyenne de juin ;
-- etr_<année 2>_mm : évapotranspiration réelle de la deuxième année.
+- etr_mm : évapotranspiration réelle de la deuxième année ;
+- part_avril_mai, part_juin_juillet : part de l'écoulement annuel de la deuxième année en avril-mai
+  et du 1er juin au 14 juillet (témoin, sans orage) ; ecoulement_annuel_mm : son total.
 """
 from __future__ import annotations
 
@@ -39,7 +41,7 @@ import torch
 
 from meandre.utils import settings
 
-COLUMNS = ["coef_sec_10", "coef_sec_20", "coef_sec_60", "coef_humide_20", "riviere_20j_sec_20", "pente_pluie", "rapport_humide_sec_20", "etiage_rapport", "etr_mm"]
+COLUMNS = ["coef_sec_10", "coef_sec_60", "pente_pluie", "rapport_humide_sec_20", "part_avril_mai", "part_juin_juillet", "etiage_rapport", "ecoulement_annuel_mm", "etr_mm"]
 QUANTILES = [0.1, 0.5, 0.9]
 
 
@@ -76,6 +78,15 @@ def metrics(dates, storms, run, control):
     q7 = np.lib.stride_tricks.sliding_window_view(total[drought], 7, axis=0).mean(axis=-1).min(axis=0)
     out["etiage_rapport"] = q7 / np.clip(total[june].mean(axis=0), 1e-6, None)
     out["etr_mm"] = etr[dates.year == year2].sum(axis=0)
+    # Calendrier de l'écoulement de la deuxième année, sans orage fabriqué (témoin) : part de
+    # l'écoulement annuel en avril-mai (fonte) et du 1er juin au 14 juillet (début d'été).
+    year = dates.year == year2
+    annual = np.clip(total[year].sum(axis=0), 1e-6, None)
+    spring = (dates >= f"{year2}-04-01") & (dates <= f"{year2}-05-31")
+    early = (dates >= f"{year2}-06-01") & (dates <= f"{year2}-07-14")
+    out["part_avril_mai"] = total[spring].sum(axis=0) / annual
+    out["part_juin_juillet"] = total[early].sum(axis=0) / annual
+    out["ecoulement_annuel_mm"] = total[year].sum(axis=0)
     return pd.DataFrame(out)
 
 
@@ -131,7 +142,7 @@ def run_bench(simulate, model, forcing, dates, area_km2, path, output):
     medians = pd.DataFrame({k: m[COLUMNS].median() for k, m in results.items()}).T
     print(f"[banc] médianes sur {len(results[first])} tronçons")
     print(medians.round(3).to_string())
-    for k, m in results.items():
-        if k != first:
-            print(f"[banc] {k} moins {first}, appariée par tronçon, quantiles 10 %, 50 %, 90 %")
-            print((m[COLUMNS] - results[first][COLUMNS]).quantile(QUANTILES).round(3).T.to_string())
+    effects = pd.DataFrame({k: (m[COLUMNS] - results[first][COLUMNS]).median() for k, m in results.items() if k != first}).T
+    print(f"[banc] effet de chaque variante : médiane des différences appariées avec {first}")
+    print(effects.round(3).to_string())
+    effects.to_csv(f"{output}/effets.csv")

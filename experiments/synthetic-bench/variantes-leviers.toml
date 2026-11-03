@@ -1,0 +1,59 @@
+# Banc fictif : un levier a la fois, effet sur la forme de la reponse aux orages, le calendrier
+# printemps / debut d'ete, l'etiage et le bilan (2026-11-03). Un levier qui ne bouge qu'une
+# signature est un potentiometre ; deux leviers qui bougent les memes se compensent.
+storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "K_sat_1 x1,25"
+multipliers = { K_sat_1 = 1.25 }
+
+[[variant]]
+name = "K_sat_2 x1,25"
+multipliers = { K_sat_2 = 1.25 }
+
+[[variant]]
+name = "K_sat_3 x1,25"
+multipliers = { K_sat_3 = 1.25 }
+
+[[variant]]
+name = "porosites x0,9"
+multipliers = { porosity_1 = 0.9, porosity_2 = 0.9, porosity_3 = 0.9, theta_fc_1 = 0.9, theta_fc_2 = 0.9, theta_fc_3 = 0.9, theta_wp_1 = 0.9, theta_wp_2 = 0.9, theta_wp_3 = 0.9 }
+
+[[variant]]
+name = "capacite au champ x0,9"
+multipliers = { theta_fc_1 = 0.9, theta_fc_2 = 0.9, theta_fc_3 = 0.9 }
+
+[[variant]]
+name = "Z2 x1,5"
+multipliers = { Z2 = 1.5 }
+
+[[variant]]
+name = "Z3 x1,5"
+multipliers = { Z3 = 1.5 }
+
+[[variant]]
+name = "K_c x1,1"
+multipliers = { K_c = 1.1 }
+
+[[variant]]
+name = "C_f x1,25"
+multipliers = { C_f = 1.25 }
+
+[[variant]]
+name = "k_gw x1,25"
+multipliers = { k_gw = 1.25 }
+
+[[variant]]
+name = "interception x1,5"
+multipliers = { interception_capacity = 1.5 }
+
+[[variant]]
+name = "eau libre en reservoir"
+open_water_reservoir = "10,1.5,0.5"
+
+[[variant]]
+name = "aire contributive b16"
+settings = { "column.saturated_area_exponent" = 16.0 }
