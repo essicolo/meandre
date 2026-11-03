@@ -398,6 +398,13 @@ model = HydroModel(
     # krec 5e-5 + k_gw 0.068 = baseflow 24%, +0.07 KGE en inférence pure.
     use_aquifer=_settings.raw("groundwater.aquifer", "0") == "1",
 ).to(DEVICE)
+# RUISSELLEMENT HORTONIEN (column.hortonian, 2026-11-03) : capacite d'infiltration ks1 x duree
+# d'orage, lue au canal 6 du forcage ; l'exces ruisselle avant le sol. Exige un forcage qui
+# porte la duree d'orage (forcage fictif avec la colonne storm_hours).
+if _settings.get("column.hortonian"):
+    model.vertical_column.use_hortonian = True
+    model.vertical_column.storm_channel = 6
+    print("[etl] ruissellement hortonien : capacite d'infiltration K_sat_1 x duree d'orage (canal 6)")
 lp = dict(cfg.get("literature_prior") or {})
 lp.setdefault("K_c", 1.0)   # autour de la demande apprise : 1,0 neutre
 if _settings.raw("groundwater.kgw_prior") is not None:

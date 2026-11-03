@@ -1,0 +1,10 @@
+# Banc fictif : ruissellement hortonien allume au chargement (column.hortonian), duree d'orage dans la meteo (2026-11-03).
+storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
+
+[[variant]]
+name = "horton"
+
+[[variant]]
+name = "horton-eau10-vsa16"
+open_water_reservoir = "10,1.5,0.5"
+settings = { "column.saturated_area_exponent" = 16.0 }

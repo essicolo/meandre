@@ -219,11 +219,17 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     # BANC FICTIF (forcing.synthetic) : une meteo fabriquee, la meme pour tous les troncons, remplace
     # le forcage ; les reponses ne different plus que par les parametres et les attributs du troncon.
     _synthetic = _settings.get("forcing.synthetic")
+    forcing_variables = list(FORCING_VARIABLES)
     if _synthetic:
-        _syn = pd.read_csv(_synthetic)[FORCING_VARIABLES].to_numpy(dtype=np.float32)
+        _table = pd.read_csv(_synthetic)
+        # Duree d'orage en heures (colonne storm_hours, facultative) : septieme canal, lu par le
+        # ruissellement hortonien (column.hortonian).
+        _cols = FORCING_VARIABLES + (["storm_hours"] if "storm_hours" in _table.columns else [])
+        _syn = _table[_cols].to_numpy(dtype=np.float32)
         if len(_syn) < len(times):
             raise ValueError(f"forcage fictif {_synthetic} : {len(_syn)} jours pour une fenetre de {len(times)} (poser debug.simulate_end)")
-        F = np.broadcast_to(_syn[:len(times), None, :], F.shape).copy()
+        F = np.broadcast_to(_syn[:len(times), None, :], (len(times), F.shape[1], len(_cols))).copy()
+        forcing_variables = _cols
         print(f"[domaine] {name}: forcage fictif {os.path.basename(_synthetic)}, identique sur les {F.shape[1]} troncons")
     forcing = torch.tensor(F, dtype=torch.float32, device=device)
     n_nodes = h["n_nodes"]
@@ -331,7 +337,7 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     except Exception as e:
         print(f"[adaptateur] {name}: fractions de texture non chargees ({type(e).__name__}: {e})")
     pieces["deposit_thickness_m"] = deposit_thickness(name, node_ids, manifest)
-    domain = Domain(name=name, node_ids=node_ids, node_coords=h["node_coords"], graph=graph, attributes=territorial, attribute_columns=attribute_columns, forcing=forcing, forcing_variables=list(FORCING_VARIABLES), times=times, initial_state=h["initial_state"], withdrawals=withdrawals, observations=obs, manifest=manifest, **pieces)
+    domain = Domain(name=name, node_ids=node_ids, node_coords=h["node_coords"], graph=graph, attributes=territorial, attribute_columns=attribute_columns, forcing=forcing, forcing_variables=forcing_variables, times=times, initial_state=h["initial_state"], withdrawals=withdrawals, observations=obs, manifest=manifest, **pieces)
     issues = domain.validate()
     if issues:
         raise ValueError(f"domaine {name} invalide : " + " ; ".join(issues))
