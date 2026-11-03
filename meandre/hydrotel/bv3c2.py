@@ -75,6 +75,53 @@ def campbell_psi(theta, thetas, psis, b, omegpi, mm, nn):
     return torch.where(omega < omegpi, psi_pow, psi_spline)
 
 
+def vg_K(theta, thetas, ks, n, theta_r):
+    """Conductivité de Mualem-van Genuchten : K = Ks·Se^½·(1 − (1 − Se^(1/m))^m)², m = 1 − 1/n."""
+    m = 1.0 - 1.0 / n
+    se = torch.clamp((theta - theta_r) / torch.clamp(thetas - theta_r, min=1e-6), 1e-3, 1.0)
+    return ks * se.sqrt() * (1.0 - (1.0 - se.pow(1.0 / m)).clamp(min=0.0).pow(m)).pow(2.0)
+
+
+def vg_psi(theta, thetas, n, theta_r, alpha):
+    """Succion de van Genuchten (m, positive) : psi = (Se^(−1/m) − 1)^(1/n) / alpha."""
+    m = 1.0 - 1.0 / n
+    se = torch.clamp((theta - theta_r) / torch.clamp(thetas - theta_r, min=1e-6), 1e-3, 1.0)
+    return (se.pow(-1.0 / m) - 1.0).clamp(min=0.0).pow(1.0 / n) / alpha
+
+
+PSI_FC_M = 33.0 / 9.80665      # capacité au champ : succion de 33 kPa, en mètres d'eau
+PSI_WP_M = 1500.0 / 9.80665    # point de flétrissement : 1 500 kPa
+
+
+def vg_through(thetas, theta_fc, theta_wp, n, iterations=60):
+    """Teneur résiduelle et alpha de van Genuchten pour que la courbe de rétention passe par la
+    capacité au champ et le point de flétrissement du tronçon, n donné.
+
+    Le rapport des succions aux deux points ne dépend que de theta_r : il croît de sa valeur à
+    theta_r = 0 vers l'infini quand theta_r approche le point de flétrissement. On le cherche par
+    dichotomie ; si le rapport à theta_r = 0 dépasse déjà la cible, theta_r = 0. Alpha s'en déduit
+    à la capacité au champ. Aucun paramètre ajusté : les deux points sont ceux du sol.
+    """
+    m = 1.0 - 1.0 / n
+    target = PSI_WP_M / PSI_FC_M
+
+    def x(theta, theta_r):
+        se = torch.clamp((theta - theta_r) / torch.clamp(thetas - theta_r, min=1e-6), 1e-6, 1.0)
+        return (se.pow(-1.0 / m) - 1.0).clamp(min=1e-12).pow(1.0 / n)
+
+    with torch.no_grad():
+        lo = torch.zeros_like(theta_wp)
+        hi = theta_wp * 0.999
+        for _ in range(iterations):
+            mid = 0.5 * (lo + hi)
+            above = x(theta_wp, mid) / x(theta_fc, mid) > target
+            hi = torch.where(above, mid, hi)
+            lo = torch.where(above, lo, mid)
+        theta_r = torch.where(x(theta_wp, torch.zeros_like(lo)) / x(theta_fc, torch.zeros_like(lo)) > target, torch.zeros_like(lo), 0.5 * (lo + hi))
+    alpha = x(theta_fc, theta_r) / PSI_FC_M
+    return theta_r, alpha
+
+
 def init_spline_coeffs(b):
     """omegpi, mm, nn pour le raccord C1 de psi (bv3c2.cpp Initialise, ~l.400-416).
     omegpi=(1+2b)/(2+2b). À omegpi, psi_pow et sa dérivée doivent égaler la spline
@@ -237,11 +284,26 @@ class BV3C2Clone(torch.nn.Module):
         tr = torch.full_like(t1, DT_H)                  # temps restant (h) par nœud
         fdtcmin = DT_H / (24.0 * 60.0 * 60.0 * 1000.0)  # _fDTCMin C++ (l.744)
 
+        # RETENTION ET CONDUCTIVITE (2026-11-03) : Campbell par defaut (clone fidele), ou
+        # Mualem-van Genuchten quand la colonne pose vg_n/vg_alpha/theta_r (column.retention).
+        if p.get("vg_alpha1") is not None:
+            _K1 = lambda t: vg_K(t, ths1, ks1, p["vg_n1"], p["theta_r1"])
+            _K2 = lambda t: vg_K(t, ths2, ks2, p["vg_n2"], p["theta_r2"])
+            _K3 = lambda t: vg_K(t, ths3, ks3, p["vg_n3"], p["theta_r3"])
+            _P1 = lambda t: vg_psi(t, ths1, p["vg_n1"], p["theta_r1"], p["vg_alpha1"])
+            _P2 = lambda t: vg_psi(t, ths2, p["vg_n2"], p["theta_r2"], p["vg_alpha2"])
+            _P3 = lambda t: vg_psi(t, ths3, p["vg_n3"], p["theta_r3"], p["vg_alpha3"])
+        else:
+            _K1 = lambda t: campbell_K(t, ths1, ks1, b1)
+            _K2 = lambda t: campbell_K(t, ths2, ks2, b2)
+            _K3 = lambda t: campbell_K(t, ths3, ks3, b3)
+            _P1 = lambda t: campbell_psi(t, ths1, psis1, b1, p["omegpi1"], p["mm1"], p["nn1"])
+            _P2 = lambda t: campbell_psi(t, ths2, psis2, b2, p["omegpi2"], p["mm2"], p["nn2"])
+            _P3 = lambda t: campbell_psi(t, ths3, psis3, b3, p["omegpi3"], p["mm3"], p["nn3"])
+
         for _ in range(self.n_substep):                 # cap d'itérations (sécurité)
-            k1 = campbell_K(t1, ths1, ks1, b1); k2 = campbell_K(t2, ths2, ks2, b2); k3 = campbell_K(t3, ths3, ks3, b3)
-            ps1 = campbell_psi(t1, ths1, psis1, b1, p["omegpi1"], p["mm1"], p["nn1"])
-            ps2 = campbell_psi(t2, ths2, psis2, b2, p["omegpi2"], p["mm2"], p["nn2"])
-            ps3 = campbell_psi(t3, ths3, psis3, b3, p["omegpi3"], p["mm3"], p["nn3"])
+            k1 = _K1(t1); k2 = _K2(t2); k3 = _K3(t3)
+            ps1 = _P1(t1); ps2 = _P2(t2); ps3 = _P3(t3)
             k12 = torch.maximum(k1, k2); k23 = torch.maximum(k2, k3)
             qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)
             qq23 = k23 * (2.0 * (ps3 - ps2) / (z2 + z3) + 1.0)
@@ -481,12 +543,12 @@ class BV3C2Clone(torch.nn.Module):
                 # schema explicite du clone est retrouve.
                 with torch.no_grad():
                     h = 1e-5
-                    dk1 = (campbell_K(t1 + h, ths1, ks1, b1) - k1) / h
-                    dk2 = (campbell_K(t2 + h, ths2, ks2, b2) - k2) / h
-                    dk3 = (campbell_K(t3 + h, ths3, ks3, b3) - k3) / h
-                    dp1 = (campbell_psi(t1 + h, ths1, psis1, b1, p["omegpi1"], p["mm1"], p["nn1"]) - ps1) / h
-                    dp2 = (campbell_psi(t2 + h, ths2, psis2, b2, p["omegpi2"], p["mm2"], p["nn2"]) - ps2) / h
-                    dp3 = (campbell_psi(t3 + h, ths3, psis3, b3, p["omegpi3"], p["mm3"], p["nn3"]) - ps3) / h
+                    dk1 = (_K1(t1 + h) - k1) / h
+                    dk2 = (_K2(t2 + h) - k2) / h
+                    dk3 = (_K3(t3 + h) - k3) / h
+                    dp1 = (_P1(t1 + h) - ps1) / h
+                    dp2 = (_P2(t2 + h) - ps2) / h
+                    dp3 = (_P3(t3 + h) - ps3) / h
                     g12 = 2.0 * (ps2 - ps1) / (z1 + z2) + 1.0
                     g23 = 2.0 * (ps3 - ps2) / (z2 + z3) + 1.0
                     c12 = 2.0 / (z1 + z2)

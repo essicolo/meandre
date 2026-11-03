@@ -65,8 +65,21 @@ def _conductivity(ctx, prm):
 
 
 def base_linear(ctx, prm):
-    """Darcy le long du versant, forme d'Hydrotel pour la couche 2 : K(theta) · sin(pente) · z."""
-    return _conductivity(ctx, prm) * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
+    """Darcy le long du versant, forme d'Hydrotel pour la couche 2 : K(theta) · sin(pente) · z.
+
+    `gravitational = true` (2026-11-03) : seule l'eau gravitaire s'écoule le long du versant. Le
+    flux est multiplié par la part de la porosité drainable occupée, (theta − capacité au champ) /
+    (porosité − capacité au champ), bornée entre 0 et 1 : sous la capacité au champ l'eau est tenue
+    par capillarité et ne part plus latéralement, à saturation le flux est celui d'Hydrotel. Aucun
+    paramètre nouveau : les deux niveaux sont ceux du sol.
+    """
+    q = _conductivity(ctx, prm) * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
+    if prm.get("gravitational"):
+        fc, ths = ctx["theta_fc"], ctx["porosity"]
+        if fc is None:
+            raise ValueError("BASE_LINEAR gravitational : capacité au champ de la couche absente")
+        q = q * torch.clamp((ctx["theta"] - fc) / torch.clamp(ths - fc, min=1e-6), 0.0, 1.0)
+    return q
 
 
 def base_thresh_power(ctx, prm):

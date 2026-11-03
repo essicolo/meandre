@@ -445,6 +445,14 @@ class HydrotelColumn(nn.Module):
                       krec=sp.krec,
                       slope=slope, cin=torch.full_like(like, 0.03),
                       fsa=fsa, fse=fse, fsi=fsi, coef_recharge=torch.zeros_like(like))
+        # MUALEM-VAN GENUCHTEN (column.retention = "van_genuchten", 2026-11-03) : n est la sortie
+        # vg_n du champ ; theta_r et alpha font passer la courbe par la capacite au champ et le
+        # point de fletrissement de chaque couche. Sans le reglage, Campbell (clone fidele).
+        if settings.get("column.retention") == "van_genuchten":
+            from meandre.hydrotel.bv3c2 import vg_through
+            for _i, (_ths, _fc, _wp) in enumerate(((sp.porosity_1, sp.theta_fc_1, sp.theta_wp_1), (sp.porosity_2, sp.theta_fc_2, sp.theta_wp_2), (sp.porosity_3, sp.theta_fc_3, sp.theta_wp_3)), start=1):
+                _thr, _alpha = vg_through(_ths, _fc, _wp, sp.vg_n)
+                p_soil[f"vg_n{_i}"], p_soil[f"theta_r{_i}"], p_soil[f"vg_alpha{_i}"] = sp.vg_n, _thr, _alpha
         # Drainage non lineaire de L3 (opt-in, R37) : posee par le pilote via
         # `l3_drain_exp` (float). None = drainage lineaire fidele.
         # ── DRAINAGE SOUTERRAIN AGRICOLE (opt-in, O12) ──────────────────────
