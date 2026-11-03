@@ -1,0 +1,30 @@
+# Banc fictif : porosite relative et exposant de l'aire contributive (2026-11-03).
+# La premiere variante sert de reference aux differences appariees.
+storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "p68"
+multipliers = { porosity_1 = 0.68, porosity_2 = 0.68, porosity_3 = 0.68, theta_fc_1 = 0.68, theta_fc_2 = 0.68, theta_fc_3 = 0.68, theta_wp_1 = 0.68, theta_wp_2 = 0.68, theta_wp_3 = 0.68 }
+
+[[variant]]
+name = "p80"
+multipliers = { porosity_1 = 0.8, porosity_2 = 0.8, porosity_3 = 0.8, theta_fc_1 = 0.8, theta_fc_2 = 0.8, theta_fc_3 = 0.8, theta_wp_1 = 0.8, theta_wp_2 = 0.8, theta_wp_3 = 0.8 }
+
+[[variant]]
+name = "p90"
+multipliers = { porosity_1 = 0.9, porosity_2 = 0.9, porosity_3 = 0.9, theta_fc_1 = 0.9, theta_fc_2 = 0.9, theta_fc_3 = 0.9, theta_wp_1 = 0.9, theta_wp_2 = 0.9, theta_wp_3 = 0.9 }
+
+[[variant]]
+name = "vsa16"
+settings = { "column.saturated_area_exponent" = 16.0 }
+
+[[variant]]
+name = "vsa32"
+settings = { "column.saturated_area_exponent" = 32.0 }
+
+[[variant]]
+name = "vsa100"
+settings = { "column.saturated_area_exponent" = 100.0 }

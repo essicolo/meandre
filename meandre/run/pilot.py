@@ -994,7 +994,16 @@ if _settings.raw("evaporation.open_water", "0") == "1":
     _rw = torch.zeros_like(_Alw) if _lak is None else torch.where(td.graph.is_lake.bool().cpu(), _lak.float().cpu(), torch.zeros_like(_Alw))
     _fw = torch.clamp(_lcw["f_water_raw"].float().cpu() - _rw / _Alw.clamp(min=1e-6), 0.0, 1.0)
     model.set_open_water_evaporation(_fw.to(DEVICE))
+    # Part de l'eau libre hors lacs routes : lue par le reservoir de l'eau libre, ici ou au banc fictif.
+    model._open_water_part = torch.where(_lcw["f_water_raw"].float().cpu() > 0, _fw / _lcw["f_water_raw"].float().cpu().clamp(min=1e-6), torch.zeros_like(_fw)).to(DEVICE)
     print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
+    if _settings.get("evaporation.open_water_reservoir"):
+        # RESERVOIR DE L'EAU LIBRE (2026-11-03) : la pluie sur l'eau libre hors lacs routes passe par
+        # un stock au lieu de rejoindre la riviere le jour meme ; part = eau libre hors lacs routes
+        # sur eau libre totale. L'evaporation reste prise sur le debit lateral (R285).
+        _T, _beta, _href = (float(x) for x in _settings.get("evaporation.open_water_reservoir").split(","))
+        model.set_open_water_reservoir(model._open_water_part, _T, _beta, _href, evap_lateral=True)
+        print(f"[etl] reservoir de l'eau libre : sejour {_T:g} j a {_href:g} m, exposant {_beta:g}")
 if "ETL_WARM_FROM" in os.environ:
     model.load(os.environ["ETL_WARM_FROM"])
     print(f"[etl] départ à chaud depuis {os.path.basename(os.environ['ETL_WARM_FROM'])}")
@@ -1357,6 +1366,18 @@ _WANTS_DIAGNOSTICS = _WANTS_DIAGNOSTICS or (bool(os.environ.get("ETL_DUMP_REACH"
 # ETL_DUMP_STATIONS demande les diagnostics pour lui aussi (2026-10-23) : le chemin rapide
 # ne se lit pas dans le debit, il se lit dans la part de surface et la part laterale.
 _WANTS_DIAGNOSTICS = _WANTS_DIAGNOSTICS or bool(os.environ.get("ETL_DUMP_STATIONS"))
+# BANC FICTIF EN UN SEUL PROCESSUS (bench.variants, 2026-11-03) : le modele charge une fois, chaque
+# variante et son temoin sans orages simules en memoire, grandeurs par troncon ; puis arret.
+if _settings.get("bench.variants"):
+    from meandre.probes.synthetic_bench import run_bench
+
+    def _bench_simulate(forcing):
+        with torch.no_grad():
+            return model.simulate(forcing=forcing, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
+                                  graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
+                                  withdrawals=td.withdrawals, day_of_year=td.day_of_year, return_diagnostics=True)[2]
+    run_bench(_bench_simulate, model, f7, r["times"], td.territorial.get_physical("area_km2_local").float().cpu().numpy(), _settings.get("bench.variants"), _settings.get("bench.output"))
+    raise SystemExit(0)
 with torch.no_grad():
     if _WANTS_DIAGNOSTICS:
         Q, _, _DIAG = model.simulate(

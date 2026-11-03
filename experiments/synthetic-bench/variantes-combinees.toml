@@ -1,0 +1,23 @@
+# Banc fictif : combinaisons du reservoir de l'eau libre, de l'aire contributive et de la porosite (2026-11-03).
+storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "eau10-vsa16-p75"
+open_water_reservoir = "10,1.5,0.5"
+settings = { "column.saturated_area_exponent" = 16.0 }
+multipliers = { porosity_1 = 0.75, porosity_2 = 0.75, porosity_3 = 0.75, theta_fc_1 = 0.75, theta_fc_2 = 0.75, theta_fc_3 = 0.75, theta_wp_1 = 0.75, theta_wp_2 = 0.75, theta_wp_3 = 0.75 }
+
+[[variant]]
+name = "eau10-vsa16-p68"
+open_water_reservoir = "10,1.5,0.5"
+settings = { "column.saturated_area_exponent" = 16.0 }
+multipliers = { porosity_1 = 0.68, porosity_2 = 0.68, porosity_3 = 0.68, theta_fc_1 = 0.68, theta_fc_2 = 0.68, theta_fc_3 = 0.68, theta_wp_1 = 0.68, theta_wp_2 = 0.68, theta_wp_3 = 0.68 }
+
+[[variant]]
+name = "eau10-vsa16-p60"
+open_water_reservoir = "10,1.5,0.5"
+settings = { "column.saturated_area_exponent" = 16.0 }
+multipliers = { porosity_1 = 0.6, porosity_2 = 0.6, porosity_3 = 0.6, theta_fc_1 = 0.6, theta_fc_2 = 0.6, theta_fc_3 = 0.6, theta_wp_1 = 0.6, theta_wp_2 = 0.6, theta_wp_3 = 0.6 }

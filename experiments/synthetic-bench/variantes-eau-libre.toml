@@ -1,0 +1,23 @@
+# Banc fictif : la pluie tombee sur l'eau libre hors lacs routes passe par un reservoir (2026-11-03).
+# L'evaporation reste prise sur le debit lateral (R285) ; R287 l'avait prise dans le seul stock.
+storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "eau5"
+open_water_reservoir = "5,1.5,0.5"
+
+[[variant]]
+name = "eau10"
+open_water_reservoir = "10,1.5,0.5"
+
+[[variant]]
+name = "eau20"
+open_water_reservoir = "20,1.5,0.5"
+
+[[variant]]
+name = "eau10-vsa16"
+open_water_reservoir = "10,1.5,0.5"
+settings = { "column.saturated_area_exponent" = 16.0 }

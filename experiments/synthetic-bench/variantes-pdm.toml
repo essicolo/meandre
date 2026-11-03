@@ -1,0 +1,14 @@
+# Banc fictif : ruissellement INF_PDM (configuration chargee) avec et sans reservoir de l'eau libre et porosites ramenees (2026-11-03).
+storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
+
+[[variant]]
+name = "pdm"
+
+[[variant]]
+name = "pdm-eau10"
+open_water_reservoir = "10,1.5,0.5"
+
+[[variant]]
+name = "pdm-eau10-p80"
+open_water_reservoir = "10,1.5,0.5"
+multipliers = { porosity_1 = 0.8, porosity_2 = 0.8, porosity_3 = 0.8, theta_fc_1 = 0.8, theta_fc_2 = 0.8, theta_fc_3 = 0.8, theta_wp_1 = 0.8, theta_wp_2 = 0.8, theta_wp_3 = 0.8 }

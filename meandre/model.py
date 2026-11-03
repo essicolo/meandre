@@ -646,13 +646,19 @@ class HydroModel(nn.Module):
                 lateral_inflow = lateral_inflow - _in
                 ow_S = ow_S + _in
                 _Ew = torch.clamp(_vdw["etp"] - _vdw["apport"], min=0.0) * _f if ("etp" in _vdw and "apport" in _vdw) else torch.zeros_like(ow_S)
-                _Ew = torch.minimum(_Ew, ow_S)
-                ow_S = ow_S - _Ew
+                if not _owr.get("evap_lateral"):
+                    _Ew = torch.minimum(_Ew, ow_S)
+                    ow_S = ow_S - _Ew
                 _k = 1.0 / (_owr["T"] * _owr["h_ref"] ** (_owr["beta"] - 1.0))
                 _h = ow_S / torch.clamp(_f, min=1e-6) * 1e-3
                 _q = torch.minimum(_f * _k * torch.pow(_h + 1e-9, _owr["beta"]) * 1e3, ow_S)
                 ow_S = ow_S - _q
                 lateral_inflow = lateral_inflow + _q
+                if _owr.get("evap_lateral"):
+                    # Evaporation prise sur le debit lateral comme sans reservoir (R285) : un lac
+                    # reel evapore l'eau que lui apporte son bassin, pas seulement sa propre pluie.
+                    _Ew = torch.minimum(_Ew, torch.clamp(lateral_inflow, min=0.0))
+                    lateral_inflow = lateral_inflow - _Ew
                 self._ow_S_last = ow_S.detach()
                 self._open_water_evap_last = _Ew.detach()
             elif _fow is not None:
@@ -1033,12 +1039,14 @@ class HydroModel(nn.Module):
         d'evaporation (ETP - apport)+ est retire du debit lateral. f=None l'eteint."""
         self._open_water_f = f
 
-    def set_open_water_reservoir(self, part, T, beta, h_ref) -> None:
+    def set_open_water_reservoir(self, part, T, beta, h_ref, evap_lateral=False) -> None:
         """Fait passer la pluie nette sur l'eau libre par un reservoir (voir la boucle). part :
         part de la pluie nette sur l'eau libre de la colonne qui revient a l'eau libre hors lacs
         routes (tenseur n_nodes) ; T temps de sejour (jours) a la hauteur h_ref (m) ; beta
-        exposant de la loi de vidange. Exige set_open_water_evaporation. part=None l'eteint."""
-        self._open_water_reservoir = None if part is None else dict(part=part, T=float(T), beta=float(beta), h_ref=float(h_ref))
+        exposant de la loi de vidange. Exige set_open_water_evaporation. part=None l'eteint.
+        evap_lateral : le deficit d'evaporation est pris sur le debit lateral (R285) et non dans
+        le seul stock, forme refutee par R287 parce que le stock est vide par temps sec."""
+        self._open_water_reservoir = None if part is None else dict(part=part, T=float(T), beta=float(beta), h_ref=float(h_ref), evap_lateral=bool(evap_lateral))
 
     def set_distributed_lakes(self, f, c, T, beta, h_ref, bounds, learn=()) -> None:
         """Pose les lacs hors reseau. f : fraction d'eau libre du noeud hors lacs routes
