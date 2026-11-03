@@ -421,6 +421,10 @@ class HydrotelColumn(nn.Module):
 
         # sol BV3C2 : NeRF (thetas/ks) + Campbell global
         b1 = self._sig(self.b1_raw, self._b_bounds); b2 = self._sig(self.b2_raw, self._b_bounds); b3 = self._sig(self.b3_raw, self._b_bounds)
+        # Exposant de Campbell impose (column.campbell_b, « b1,b2,b3 ») : passes avant seulement.
+        _cb = settings.get("column.campbell_b")
+        if _cb:
+            b1, b2, b3 = (torch.tensor(float(x), device=b1.device, dtype=b1.dtype) for x in _cb.split(","))
         ps1 = self._sig(self.psis1_raw, self._psis_bounds); ps2 = self._sig(self.psis2_raw, self._psis_bounds); ps3 = self._sig(self.psis3_raw, self._psis_bounds)
         o1, m1, n1 = self._spline(b1, ps1); o2, m2, n2 = self._spline(b2, ps2); o3, m3, n3 = self._spline(b3, ps3)
         ob = lambda v: v * torch.ones_like(like)

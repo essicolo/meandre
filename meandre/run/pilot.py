@@ -1638,7 +1638,7 @@ if os.environ.get("ETL_DUMP_STATIONS"):
             _ix = np.fromiter(_vus, int)
             _W[_k, _ix] = _area[_ix] / _area[_ix].sum()
         _Wt = torch.from_numpy(_W.T)
-        for _att in ("theta1", "theta2", "theta3", "prod_surf", "prod_hypo", "prod_base",
+        for _att in ("theta1", "theta2", "theta3", "prod_surf", "prod_hypo", "prod_base", "q_baseflow",
                      "lateral_mm", "swe", "recharge", "s_gw", "etr", "etr1", "etr2", "etr3", "frost_depth_cm", "snowmelt"):
             _v = getattr(_dg_st, _att, None)
             if _v is None or not hasattr(_v, "shape") or _v.shape[-1] != n_nodes:
