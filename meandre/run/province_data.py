@@ -107,7 +107,10 @@ def _memmap_forcing(parts, names, device):
     # Un sous-bassin (ETL_SUBBASIN) entre aussi dans la cle : deux sous-bassins de meme
     # taille partageraient sinon le meme fichier.
     _sb = os.environ.get("ETL_SUBBASIN", "").replace(":", "-")
-    key_name = "-".join(names) + (f"-sb{_sb}" if _sb else "") + _sfx + f"_{T}x{N}x{C}"
+    # Un forcage fictif (forcing.synthetic) aussi : il remplace la meteo a fenetre egale.
+    _syn = _settings.get("forcing.synthetic")
+    _syn_key = "-fictif-" + os.path.splitext(os.path.basename(_syn))[0] if _syn else ""
+    key_name = "-".join(names) + (f"-sb{_sb}" if _sb else "") + _sfx + _syn_key + f"_{T}x{N}x{C}"
     if len(key_name) > 120:                      # noms de fichiers Windows
         import hashlib
         key_name = f"dom{len(names)}_{T}x{N}x{C}_{hashlib.md5(key_name.encode()).hexdigest()[:8]}"

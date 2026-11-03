@@ -1107,7 +1107,13 @@ class Trainer:
             self._probe_mult = {k_: torch.ones(self.model.n_nodes, device=data.forcing.device, requires_grad=True)
                                 for k_ in _fields_s}
             self._probe_acc = {}
-            self.model.spatial_encoder.multipliers = self._probe_mult
+            # Les multiplicateurs fixes deja poses (ETL_MULT_FIXE) restent appliques : la sonde
+            # mesure le gradient au point deplace, pas au point appris.
+            self._fixed_mult = dict(getattr(self.model.spatial_encoder, "multipliers", None) or {})
+            _combined = dict(self._fixed_mult)
+            for k_, f_ in self._probe_mult.items():
+                _combined[k_] = self._fixed_mult.get(k_, 1.0) * f_
+            self.model.spatial_encoder.multipliers = _combined
         sp_tensor: Tensor | None = None  # parametres spatiaux du bloc, pour la tete de quantiles
         # HISTORIQUE DÉTACHÉ des débits aux stations, pour que le KGE et la famille
         # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
@@ -2022,7 +2028,7 @@ class Trainer:
             print(f"[sonde] gradient par terme, somme sur le domaine (negatif : le champ sera pousse vers le haut) -> {_out}", flush=True)
             for t_, d_ in sorted(self._probe_acc.items()):
                 print(f"[sonde]   {t_:14s} " + "  ".join(f"{k_} {float(g_.sum()):+.3e}" for k_, g_ in d_.items()), flush=True)
-            self.model.spatial_encoder.multipliers = None
+            self.model.spatial_encoder.multipliers = getattr(self, "_fixed_mult", None) or None
             self._probe_mult = None
         comp_tensors = {k: torch.tensor(v) for k, v in all_components.items()}
         return total_loss, comp_tensors

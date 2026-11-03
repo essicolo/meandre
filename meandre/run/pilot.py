@@ -317,6 +317,9 @@ _NO_WITHDRAWALS = os.environ.get("ETL_SANS_PRELEV", "0") == "1"
 def _no_withdrawals(d):
     """Retourne une copie de d dont les prelevements sont nuls."""
     from meandre.routing.withdrawals import WithdrawalData
+    # Le domaine provincial stocke les prelevements en creux : il a son propre scenario naturalise.
+    if hasattr(d.withdrawals, "empty_like"):
+        return _dc_replace(d, withdrawals=d.withdrawals.empty_like())
     return _dc_replace(d, withdrawals=WithdrawalData.zeros_like(d.withdrawals))
 
 

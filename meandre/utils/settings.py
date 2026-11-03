@@ -144,6 +144,7 @@ SCHEMA: dict[str, Setting] = {
     "spatial.global_normalization": Setting("JOINT_GLOBAL_NORM", str, None, "Attributs du territoire normalisés sur toute la province."),
     "evaporation.open_water": Setting("ETL_EVAP_EAU_LIBRE", str, None, "Évaporation de l'eau libre par temps sec (R285, R286)."),
     "evaporation.mod16_snow_scale_mm": Setting("ETL_ET_NEIGE_MM", str, None, "Échelle, en mm, de la pondération du terme MOD16 hors neige, w = exp(−SWE/échelle) ; absent, poids 1."),
+    "forcing.synthetic": Setting("MEANDRE_FORCAGE_FICTIF", str, None, "Banc fictif : fichier CSV d'une météo fabriquée (colonnes P, Tmin, Tmax, Rn, u2, ea, une ligne par jour depuis le début du forçage), appliquée telle quelle à tous les tronçons à la place du forçage ; à combiner avec debug.simulate_end. Jamais dans un modèle livré (2026-11-03)."),
     "forcing.suffix": Setting("JOINT_FX_SUFFIX", str, None, "Forçage météo d'entrée : suffixe du fichier, -casr-brut pour CaSR brut."),
     "groundwater.frost_factor": Setting("ETL_NAPPE_GEL", str, None, "Porte de gel sur la vidange de la nappe : facteur appliqué quand le gel atteint 30 cm (R316) ; absent, pas de porte."),
     "groundwater.conductance_field": Setting("ETL_NAPPE_KB_CHAMP", str, None, "Conductance de la nappe par tronçon, « référence_1/j,exposant » : k_b × (k_gw/référence)^exposant (R380) ; absent, uniforme."),

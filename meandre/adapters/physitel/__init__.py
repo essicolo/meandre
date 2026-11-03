@@ -216,6 +216,15 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
         F, times = F[:_k], times[:_k]
         date_end = str(times[-1].date())
         print(f"[domaine] {name}: fenetre courte, simulation jusqu'au {date_end} ({_k} jours)")
+    # BANC FICTIF (forcing.synthetic) : une meteo fabriquee, la meme pour tous les troncons, remplace
+    # le forcage ; les reponses ne different plus que par les parametres et les attributs du troncon.
+    _synthetic = _settings.get("forcing.synthetic")
+    if _synthetic:
+        _syn = pd.read_csv(_synthetic)[FORCING_VARIABLES].to_numpy(dtype=np.float32)
+        if len(_syn) < len(times):
+            raise ValueError(f"forcage fictif {_synthetic} : {len(_syn)} jours pour une fenetre de {len(times)} (poser debug.simulate_end)")
+        F = np.broadcast_to(_syn[:len(times), None, :], F.shape).copy()
+        print(f"[domaine] {name}: forcage fictif {os.path.basename(_synthetic)}, identique sur les {F.shape[1]} troncons")
     forcing = torch.tensor(F, dtype=torch.float32, device=device)
     n_nodes = h["n_nodes"]
 
