@@ -220,6 +220,20 @@ def load_domain(name: str, date_start: str, date_end: str, device="cuda", observ
     # le forcage ; les reponses ne different plus que par les parametres et les attributs du troncon.
     _synthetic = _settings.get("forcing.synthetic")
     forcing_variables = list(FORCING_VARIABLES)
+    # DUREE D'AVERSE (forcing.storm_hours, 2026-11-03) : septieme canal tire du CaSR horaire
+    # (build_storm_hours.py), lu par le ruissellement hortonien (column.hortonian).
+    if _settings.get("forcing.storm_hours") and not _synthetic:
+        _sh_path = f"{_paths.DATA_ROOT}/quebec/storm-hours-{name}.npy"
+        if not os.path.exists(_sh_path):
+            raise FileNotFoundError(f"{name} : duree d'averse absente, {_sh_path} (build_storm_hours.py)")
+        _sh = np.load(_sh_path, mmap_mode="r")
+        _days = pd.date_range("2000-01-01", periods=_sh.shape[0], freq="D")
+        _k0 = int(np.searchsorted(_days.values, np.datetime64(times[0])))
+        if _sh.shape[1] != F.shape[1] or _k0 + len(times) > _sh.shape[0]:
+            raise ValueError(f"{name} : duree d'averse {_sh.shape} incompatible avec le forcage {F.shape}")
+        F = np.concatenate([F, np.asarray(_sh[_k0:_k0 + len(times)], dtype=np.float32)[:, :, None]], axis=2)
+        forcing_variables = forcing_variables + ["storm_hours"]
+        print(f"[domaine] {name}: duree d'averse en septieme canal (CaSR horaire)")
     if _synthetic:
         _table = pd.read_csv(_synthetic)
         # Duree d'orage en heures (colonne storm_hours, facultative) : septieme canal, lu par le
