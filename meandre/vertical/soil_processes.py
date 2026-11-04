@@ -195,6 +195,27 @@ def topmodel_runoff(ctx, prm):
     return ctx["input"] * a
 
 
+def spill_gw(ctx, prm):
+    """Débordement commandé par la nappe (2026-11-04, R481 à R486).
+
+    Les crues observées dépendent du stock lent du bassin (pente 0,49), pas de la pluie récente,
+    et préfèrent un seuil à une part proportionnelle (R484). Le tronçon porte une capacité de
+    rétention de l'apport du jour (dépressions, horizons perchés) dont la part libre diminue quand
+    la nappe monte : capacité libre = capacité · max(plancher, 1 − s_gw / référence). L'apport qui
+    la dépasse ruisselle, le reste s'infiltre. Nappe basse : capacité entière, rien ne déborde aux
+    orages ordinaires et l'eau d'étiage n'est pas touchée. Paramètres : `capacity` et `reference`
+    (TOML : `capacity_mm`, `reference_mm`), `floor` (0,05 par défaut). Retourne le ruissellement en
+    mètres pour le pas.
+    """
+    s = ctx.get("s_gw")
+    if s is None:
+        raise ValueError("la forme SPILL_GW demande la nappe libre : le contexte doit porter s_gw")
+    ref = torch.as_tensor(prm["reference"], dtype=s.dtype, device=s.device)
+    cap = torch.as_tensor(prm["capacity"], dtype=s.dtype, device=s.device)
+    free = cap * torch.clamp(1.0 - s / ref, min=float(prm.get("floor", 0.05)), max=1.0)
+    return torch.clamp(ctx["input"] - free, min=0.0)
+
+
 def drain_hooghoudt(ctx, prm):
     """Drainage souterrain agricole, formule de Hooghoudt (2026-10-04).
 
@@ -231,6 +252,7 @@ FORMS = {
     "DRAIN_HOOGHOUDT": (drain_hooghoudt, ("spacing_m", "depth_m", "share")),
     "INF_PDM": (inf_pdm, ("exponent",)),
     "TOPMODEL": (topmodel_runoff, ("exponent", "scale")),
+    "SPILL_GW": (spill_gw, ("capacity", "reference")),
 }
 
 FORMS_BY_KIND = {
@@ -239,7 +261,7 @@ FORMS_BY_KIND = {
     # Un processus « runoff » porte sur l'apport du jour, avant le sol ; `layer` est la couche la
     # plus profonde dont le stock entre dans la distribution de capacités (1 : couche 1 seule).
     # TOPMODEL ignore ce stock : sa manette est le stock de nappe du contexte.
-    KIND_RUNOFF: ("INF_PDM", "TOPMODEL"),
+    KIND_RUNOFF: ("INF_PDM", "TOPMODEL", "SPILL_GW"),
 }
 
 
@@ -442,6 +464,10 @@ def from_toml(section: dict | None) -> SoilProfile | None:
         if "scale_mm" in entry:
             params["scale"] = float(entry["scale_mm"]) * M_PER_MM
             params.pop("scale_mm", None)
+        for _key in ("capacity", "reference"):
+            if f"{_key}_mm" in entry:
+                params[_key] = float(entry[f"{_key}_mm"]) * M_PER_MM
+                params.pop(f"{_key}_mm", None)
         if "smooth_mm" in entry:
             params["smooth"] = float(entry["smooth_mm"]) * M_PER_MM
             params.pop("smooth_mm", None)
