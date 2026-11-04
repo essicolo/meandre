@@ -687,15 +687,18 @@ class HydroModel(nn.Module):
                         diffuse_lake_S = _lp.to(lateral_inflow.device)
                     else:
                         diffuse_lake_S = torch.zeros_like(lateral_inflow)
-                _in = _rd * lateral_inflow
+                # Le ruissellement des processus declares (debordement commande par la nappe)
+                # contourne les lacs : il rejoint la riviere le jour meme (2026-11-04, R492).
+                _vd0 = getattr(vc_out, "diag", None) or {}
+                _bypass = torch.clamp(torch.minimum(_vd0.get("ruiss_declare_mm", torch.zeros_like(lateral_inflow)), lateral_inflow), min=0.0)
+                _in = _rd * (lateral_inflow - _bypass)
                 _h = torch.clamp(diffuse_lake_S, min=0.0) / torch.clamp(_f, min=1e-6) * 1e-3
                 _q = _f * _kc["k"] * torch.pow(_h + 1e-9, _ld["beta"]) * 1e3
                 _q = torch.minimum(_q, diffuse_lake_S + _in)
-                _vd0 = getattr(vc_out, "diag", None) or {}
                 _E = (torch.clamp(_vd0["etp"] - _vd0["apport"], min=0.0) * _f) if ("etp" in _vd0 and "apport" in _vd0) else torch.zeros_like(_q)
                 _E = torch.minimum(_E, diffuse_lake_S + _in - _q)
                 diffuse_lake_S = torch.clamp(diffuse_lake_S + _in - _q - _E, min=0.0)
-                lateral_inflow = (1.0 - _rd) * lateral_inflow + _q
+                lateral_inflow = (1.0 - _rd) * (lateral_inflow - _bypass) + _bypass + _q
                 self._diffuse_lake_last = diffuse_lake_S.detach()
 
             # 4. Temperature lateral heat load

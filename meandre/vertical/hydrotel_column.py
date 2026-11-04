@@ -938,7 +938,7 @@ class HydrotelColumn(nn.Module):
             # du modele : evaporation des lacs routes, de l'eau libre, reservoir d'eau libre
             # (2026-10-04). Avant, ces termes s'eteignaient silencieusement dans toute
             # simulation sans diagnostics, dont l'evaluation du pilote regional.
-            diag=(diag if return_diagnostics else {k: diag[k] for k in ("etp", "apport", "ruiss_eau_mm") if k in diag}))
+            diag=(diag if return_diagnostics else {k: diag[k] for k in ("etp", "apport", "ruiss_eau_mm", "ruiss_declare_mm") if k in diag}))
 
     def enable_free_water_table(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
                             z_ext=9.0, exponent=2.0, n_substep=4, coupling=0.0, learned=False):
@@ -1489,6 +1489,8 @@ class HydrotelColumn(nn.Module):
         # pluie nette sur l'eau libre, partie du ruissellement de surface (2026-10-04)
         if "ruiss_eau_mm" in sdiag:
             diag["ruiss_eau_mm"] = sdiag["ruiss_eau_mm"]
+        if "ruiss_declare_mm" in sdiag:
+            diag["ruiss_declare_mm"] = sdiag["ruiss_declare_mm"]
         if _etr_mh is not None:
             diag["etr_mh_mm"] = _etr_mh
             diag["wet_vol_mm"] = _wvol_mm

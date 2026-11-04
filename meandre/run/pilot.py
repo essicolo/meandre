@@ -1004,6 +1004,16 @@ if _settings.raw("evaporation.open_water", "0") == "1":
     # Part de l'eau libre hors lacs routes : lue par le reservoir de l'eau libre, ici ou au banc fictif.
     model._open_water_part = torch.where(_lcw["f_water_raw"].float().cpu() > 0, _fw / _lcw["f_water_raw"].float().cpu().clamp(min=1e-6), torch.zeros_like(_fw)).to(DEVICE)
     print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
+    if _settings.get("lakes.distributed"):
+        # LACS HORS RESEAU (lakes.distributed, 2026-11-04) : une part de la production locale traverse
+        # un reservoir de la surface d'eau libre hors lacs routes, qui retient la fonte et la rend
+        # l'ete (R267-R279, R491) ; le ruissellement des processus declares le contourne (R492).
+        _c_l, _T_l, _b_l, _h_l = (float(x) for x in _settings.get("lakes.distributed").split(","))
+        _bounds_l = {x.split(":")[0]: (float(x.split(":")[1]), float(x.split(":")[2])) for x in _settings.get("lakes.distributed_bounds").split(",")}
+        _learn_l = tuple(x for x in (_settings.get("lakes.distributed_learn") or "").split(",") if x)
+        model.set_distributed_lakes(_fw.to(DEVICE), _c_l, _T_l, _b_l, _h_l, _bounds_l, learn=_learn_l)
+        _rd_l = 1.0 - torch.exp(-_c_l * _fw)
+        print(f"[etl] lacs hors reseau : part de la production qui les traverse {float((_rd_l * _Alw).sum() / _Alw.sum()):.2f}, sejour {_T_l:g} j a {_h_l:g} m, exposant {_b_l:g}, appris : {', '.join(_learn_l) or 'aucun'}")
     if _settings.get("evaporation.open_water_reservoir"):
         # RESERVOIR DE L'EAU LIBRE (2026-11-03) : la pluie sur l'eau libre hors lacs routes passe par
         # un stock au lieu de rejoindre la riviere le jour meme ; part = eau libre hors lacs routes

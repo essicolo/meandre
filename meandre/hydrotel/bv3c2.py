@@ -218,6 +218,7 @@ class BV3C2Clone(torch.nn.Module):
         # saturation ; les deux viennent du sol, le processus n'ajoute aucun etat.
         _profile_runoff = p.get("soil_profile")
         _declared_runoff = [q for q in getattr(_profile_runoff, "processes", ()) if q.kind == "runoff"]
+        _r_decl_out = torch.zeros_like(apport_mm)
         if _declared_runoff:
             _thetas = (theta1, theta2, theta3)
             _ths = (ths1, ths2, ths3)
@@ -234,6 +235,7 @@ class BV3C2Clone(torch.nn.Module):
                     _ctx["s_gw"] = p["s_gw"]
                 _r_decl = _r_decl + q.flux(_ctx)
             _r_decl = torch.minimum(_r_decl * 1000.0, apport_mm)
+            _r_decl_out = _r_decl
             apport_mm = apport_mm - _r_decl
             runoff_horton = runoff_horton + _r_decl
             _vsa = None
@@ -672,7 +674,10 @@ class BV3C2Clone(torch.nn.Module):
                     # min(apport, ETP), puisque seul l'excedent ruisselle. Perte reelle,
                     # jamais publiee : sans elle l'audit de bilan lit +1,5 % en Outaouais.
                     evap_eau_mm=(lprec - leau) * fse * 1000.0,
-                    ruiss_eau_mm=leau * fse * 1000.0)
+                    ruiss_eau_mm=leau * fse * 1000.0,
+                    # Ruissellement des processus declares (« runoff »), mm sur le troncon : les lacs
+                    # hors reseau le laissent passer (2026-11-04, R492).
+                    ruiss_declare_mm=_r_decl_out * fsa)
         return (torch.clamp(prod_surf, min=0.0) * 1000.0,      # mm
                 torch.clamp(prod_hypo, min=0.0) * 1000.0,
                 torch.clamp(prod_base, min=0.0) * 1000.0,
