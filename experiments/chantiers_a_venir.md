@@ -2,6 +2,20 @@
 
 Ouvert le 2026-09-08, remis en ordre le 2026-09-16. Ce document liste les chantiers identifiés mais non entrepris, avec leur raison d'être, leur coût et le test qui dira s'ils tiennent. Le registre des hypothèses dit ce qui est vrai aujourd'hui ; le journal des expériences raconte ce qui a été fait. Un chantier n'entre ici qu'avec un critère de réussite mesurable.
 
+## Ordre de priorité au 2026-11-05
+
+L'ordre du 6 octobre est remplacé. Depuis, les lacs hors réseau ont découplé la crue de l'étiage en passe avant (perte 2019-2024 de 1,111 à 0,987 à poids figés, les trois termes de débit en baisse, R496 à R505), et le code a été nettoyé de ses options réfutées ou mortes (R504). Plusieurs chantiers anciens ci-dessous portent sur des options retirées, dont le drainage agricole de Hooghoudt (chantiers 1 et 14) : ils sont caducs dans leur forme d'alors.
+
+| rang | chantier | raison du rang |
+|---|---|---|
+| 1 | Verdict de l'entraînement provincial avec lacs hors réseau (en cours depuis le 2026-11-05, 8 époques, configuration `province-wc-texture-lacs-appris.toml`) | Dit si le gain à poids figés tient quand le champ s'adapte, et quelles part et hauteur d'eau mobilisable l'optimiseur retient ; s'il tient, les lacs entrent dans la recette provinciale |
+| 2 | Mise en régime absente de l'entraînement | La période d'entraînement commence le 2000-01-01, donc la mise en régime vaut zéro (`spinup_end = min(730, train_slice.start)`) : le modèle part d'un état vide et la perte compte dès le 91e jour, nappe encore en remplissage ; le commentaire « l'année 2000 sert de mise en régime » est faux. Corriger après l'entraînement en cours, pour ne pas mélanger deux changements dans une comparaison : simuler 2000 sans perte et entraîner à partir de 2001, durée déclarée dans `[training]`. Critère : la perte de 2001-2002 n'est plus au-dessus de celle des années suivantes |
+| 3 | Constantes en dur passées au TOML | Paramètres physiques et choix numériques (groupes A et B de l'inventaire du 2026-11-05) rendus réglables avec leur valeur actuelle, sur la branche `recette-complete` ; fusion après l'entraînement en cours. Les constantes du clone fidèle d'Hydrotel restent en dur |
+| 4 | Sorties mortes du champ spatial | Une vingtaine des 43 sorties n'agissent pas sur le débit (interception, Manning, k_gw, durée d'orage...) et ne comptent que dans le rappel vers la littérature ; les retirer change la taille du réseau, donc au prochain entraînement de zéro |
+| 5 | Dépendance de la crue au stock lent | Les lacs seuls inversent la pente des épisodes sur le stock lent (−0,12 contre +0,47 observé), la porte commandée par la nappe la rend (+0,23) mais coûte 0,06 de perte ; départager les deux structures après apprentissage |
+| 6 | Écart entre machines | Le poste simule environ 12 % de débit de moins qu'Ubuntu à configuration égale ; seules les comparaisons sur une même machine sont valides tant que la cause n'est pas trouvée |
+| 7 | Lisibilité de la déclaration des lacs | `distributed = "c,T,beta,h_ref"` en chaîne de quatre nombres, à remplacer par des clés nommées |
+
 ## Ordre de priorité au 2026-10-06
 
 L'ordre du 30 septembre est remplacé. Deux défauts de l'entraîneur ont été corrigés le 6 octobre : les prélèvements n'entraient pas dans l'entraînement, et la référence du terme MOD16 centré n'était jamais posée au pilote régional. La Montérégie entière, jamais relancée après la semaine de banc sur la Châteauguay, sort à 0,55 de KGE. Le détail est au registre, entrées du 5 et du 6 octobre.
