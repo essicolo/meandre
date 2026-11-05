@@ -1,0 +1,38 @@
+# Banc sur debits reels, nuit du 2026-11-04 : configuration porte (SPILL_GW 65 mm, reference 80 mm) + lacs hors
+# reseau (c 5, sejour 30 j), variantes de la part et du sejour des lacs, de la capacite et de la reference de la porte.
+# La variante sans lacs doit redonner la passe de la porte seule (perte 1,1135 sur ce poste) : controle du banc.
+
+[[variant]]
+name = "porte-lacs"
+
+[[variant]]
+name = "sans-lacs"
+lakes = "none"
+
+[[variant]]
+name = "lacs-sejour60"
+lakes = "5.0,60.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c10"
+lakes = "10.0,30.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c2.5"
+lakes = "2.5,30.0,1.0,0.5"
+
+[[variant]]
+name = "porte-cap50"
+soil_params = { "SPILL_GW.capacity_mm" = 50.0 }
+
+[[variant]]
+name = "porte-cap80"
+soil_params = { "SPILL_GW.capacity_mm" = 80.0 }
+
+[[variant]]
+name = "porte-ref60"
+soil_params = { "SPILL_GW.reference_mm" = 60.0 }
+
+[[variant]]
+name = "porte-ref100"
+soil_params = { "SPILL_GW.reference_mm" = 100.0 }

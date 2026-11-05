@@ -1395,6 +1395,47 @@ if _settings.get("bench.variants"):
                                   withdrawals=td.withdrawals, day_of_year=td.day_of_year, return_diagnostics=True)[2]
     run_bench(_bench_simulate, model, f7, r["times"], td.territorial.get_physical("area_km2_local").float().cpu().numpy(), _settings.get("bench.variants"), _settings.get("bench.output"))
     raise SystemExit(0)
+# BANC SUR DEBITS REELS (bench.real_variants, 2026-11-04) : le domaine charge une fois, chaque variante
+# simulee en memoire sur le forcage reel ; debits aux stations de la periode d'evaluation ecrits comme
+# --dump-q, sans recharger le domaine (une passe provinciale en moins de chargement par variante).
+if _settings.get("bench.real_variants"):
+    from meandre.probes.synthetic_bench import run_real_variants
+
+    _HO_b = os.environ.get("ETL_HELDOUT", "2022-01-01,2024-12-31").split(",")
+    _sl_b = (r["times"] >= _HO_b[0].strip()) & (r["times"] <= _HO_b[1].strip())
+    _slt_b = torch.tensor(_sl_b.values if hasattr(_sl_b, "values") else _sl_b, device=DEVICE)
+    _qo_b_src = _qo_full if _fold_test is not None else td.q_obs
+    _qo_b = _qo_b_src[np.flatnonzero(_sl_b)[0] - td.train_slice.start : np.flatnonzero(_sl_b)[-1] - td.train_slice.start + 1].cpu().numpy()
+
+    def _bench_q():
+        with torch.no_grad():
+            _Qb, _ = model.simulate(forcing=f7, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
+                                    graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
+                                    withdrawals=td.withdrawals, day_of_year=td.day_of_year)
+        return _Qb[_slt_b][:, td.station_idx].cpu().numpy(), _qo_b
+    from meandre.training import loss as _lmod_b
+    _lf_b = r["loss_fn"]
+    _terms_b = {"kge": (_lf_b.w_kge, _lmod_b.differentiable_kge_loss), "pbias": (_lf_b.w_pbias, _lmod_b.differentiable_pbias_loss),
+                "log_mse": (getattr(_lf_b, "w_log_mse", 0.0), _lmod_b.differentiable_log_mse_loss),
+                "etiage": (getattr(_lf_b, "w_low_flow", 0.0), _lmod_b.differentiable_low_flow_loss),
+                "fdc_bas": (getattr(_lf_b, "w_fdc_low", 0.0), _lmod_b.differentiable_fdc_low_loss)}
+
+    def _bench_score(qs, qo):
+        """Perte d'evaluation, memes termes et memes poids que la ligne PERTE du pilote, et KGE median."""
+        qs_t, qo_t = torch.as_tensor(qs).float(), torch.as_tensor(qo).float()
+        parts, kges = {k: [] for k, (w, _) in _terms_b.items() if w > 0}, []
+        for s_ in range(qs_t.shape[1]):
+            v_ = ~torch.isnan(qo_t[:, s_]) & ~torch.isnan(qs_t[:, s_])
+            if v_.sum() < 60:
+                continue
+            kges.append(1.0 - float(_lmod_b.differentiable_kge_loss(qo_t[v_, s_], qs_t[v_, s_])))
+            for k_ in parts:
+                w_, f_ = _terms_b[k_]
+                parts[k_].append(w_ * float(f_(qo_t[v_, s_], qs_t[v_, s_])))
+        tot = sum(np.mean(x) for x in parts.values())
+        return f"perte {tot:.4f} | " + " | ".join(f"{k_} {np.mean(x):.4f}" for k_, x in parts.items()) + f" | KGE median {np.median(kges):.4f}"
+    run_real_variants(_bench_q, model, r["times"][_sl_b], r.get("station_ids", []), _settings.get("bench.real_variants"), _settings.get("bench.output"), score=_bench_score)
+    raise SystemExit(0)
 with torch.no_grad():
     if _WANTS_DIAGNOSTICS:
         Q, _, _DIAG = model.simulate(

@@ -103,6 +103,82 @@ def _control_forcing(forcing, dates, storms):
     return out
 
 
+def apply_variant(model, v):
+    """Pose une variante sur le modèle chargé ; rend la fonction qui la retire.
+
+    Clés : `multipliers` (sorties du champ), `settings` (réglages déclarés), `open_water_reservoir`
+    (« T,beta,h_ref »), `lakes` (« c,T,beta,h_ref » des lacs hors réseau, ou « none »), `soil_params`
+    (« FORME.cle » = valeur, les clés en _mm converties en mètres, sur les processus déclarés)."""
+    from dataclasses import replace
+
+    from meandre.vertical.soil_processes import M_PER_MM
+    spatial_encoder = model.spatial_encoder
+    fixed = dict(getattr(spatial_encoder, "multipliers", None) or {})
+    mult = dict(fixed)
+    for k, factor in (v.get("multipliers") or {}).items():
+        mult[k] = mult.get(k, 1.0) * torch.tensor(float(factor))
+    spatial_encoder.multipliers = mult or None
+    saved = {k: settings.get(k) for k in (v.get("settings") or {})}
+    for k, value in (v.get("settings") or {}).items():
+        settings.override(k, value, force=True)
+    reservoir = getattr(model, "_open_water_reservoir", None)
+    if v.get("open_water_reservoir"):
+        T, beta, h_ref = (float(x) for x in v["open_water_reservoir"].split(","))
+        model.set_open_water_reservoir(model._open_water_part, T, beta, h_ref, evap_lateral=True)
+    lakes = getattr(model, "_distributed_lakes", None)
+    lake_buffers = {n: getattr(model, n) for n in ("lakes_fixed_c", "lakes_fixed_T") if hasattr(model, n)}
+    if v.get("lakes") == "none":
+        model._distributed_lakes = None
+    elif v.get("lakes"):
+        c, T, beta, h_ref = (float(x) for x in v["lakes"].split(","))
+        bounds = {x.split(":")[0]: (float(x.split(":")[1]), float(x.split(":")[2])) for x in settings.get("lakes.distributed_bounds").split(",")}
+        model.set_distributed_lakes(model._open_water_f, c, T, beta, h_ref, bounds)
+    column = model.vertical_column
+    profile = getattr(column, "soil_profile", None)
+    if v.get("soil_params") and profile is not None:
+        procs = []
+        for proc in profile.processes:
+            params = dict(proc.params)
+            for key, value in v["soil_params"].items():
+                form, name = key.split(".")
+                if form == proc.form:
+                    if name.endswith("_mm"):
+                        params[name[:-3]] = float(value) * M_PER_MM
+                    else:
+                        params[name] = float(value)
+            procs.append(replace(proc, params=params))
+        column.soil_profile = type(profile)(layers=profile.layers, processes=tuple(procs))
+
+    def undo():
+        spatial_encoder.multipliers = fixed or None
+        for k, value in saved.items():
+            settings.override(k, value, force=True)
+        model._open_water_reservoir = reservoir
+        model._distributed_lakes = lakes
+        for n, t in lake_buffers.items():
+            setattr(model, n, t)
+        column.soil_profile = profile
+    return undo
+
+
+def run_real_variants(simulate_q, model, dates, station_ids, path, output, score=None):
+    """Débits réels : chaque variante simulée en mémoire sur le forçage du pilote, débits aux stations
+    de la période d'évaluation écrits comme `--dump-q` (q-<nom>.npz), sans recharger le domaine.
+
+    simulate_q() -> (q_sim, q_obs) aux stations sur la période d'évaluation, tableaux (jours, stations)."""
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+    for v in cfg["variant"]:
+        t0 = time.perf_counter()
+        undo = apply_variant(model, v)
+        try:
+            qs, qo = simulate_q()
+        finally:
+            undo()
+        np.savez_compressed(f"{output}/q-{v['name']}.npz", q_sim=qs, q_obs=qo, station_ids=np.array(station_ids, dtype=object), dates=np.array([str(x)[:10] for x in dates]))
+        print(f"[banc reel] {v['name']} : {time.perf_counter() - t0:.0f} s" + (f" | {score(qs, qo)}" if score else ""), flush=True)
+
+
 def run_bench(simulate, model, forcing, dates, area_km2, path, output):
     """Simule chaque variante et son témoin ; écrit un parquet par variante et imprime les quantiles.
 
