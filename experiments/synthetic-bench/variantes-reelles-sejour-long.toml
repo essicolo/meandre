@@ -1,0 +1,22 @@
+# Banc sur debits reels, troisieme serie de la nuit du 2026-11-04 : la perte baisse encore a 120 jours de sejour (1,0195),
+# borne superieure des lacs hors reseau ; bornes elargies pour chercher le minimum.
+
+[[variant]]
+name = "sejour180"
+settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
+lakes = "5.0,180.0,1.0,0.5"
+
+[[variant]]
+name = "sejour365"
+settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
+lakes = "5.0,365.0,1.0,0.5"
+
+[[variant]]
+name = "c3-sejour240"
+settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
+lakes = "3.0,240.0,1.0,0.5"
+
+[[variant]]
+name = "c7.5-sejour180"
+settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
+lakes = "7.5,180.0,1.0,0.5"
