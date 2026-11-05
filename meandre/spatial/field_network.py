@@ -76,21 +76,36 @@ FIELD_BOUNDS = {
 # PLANCHER ET PLAFOND DE SECURITE des sorties centrees sur un prior (etape 3, 2026-10-26) : la
 # loi p = centre * exp(sigma * z) n'a pas de borne ; la penalite sur z tient le parametre pres
 # de son prior, et ces limites n'arretent qu'une valeur physiquement absurde (porosite au-dela
-# de 0,75, couche de dix metres). Cles : nom de la borne, sans la couche.
-PRIOR_SAFETY = {
-    "porosity": (0.05, 0.75), "theta_fc_frac": (0.10, 0.98), "theta_wp_frac": (0.05, 0.95),
-    "K_sat_1": (1e-5, 500.0), "K_sat_2": (1e-5, 500.0), "K_sat_3": (1e-5, 500.0),
-    "Z2": (0.02, 5.0), "Z3": (0.05, 10.0),
-    # Couche 1 en horizon organique (R441) : porosite jusqu'a 0,95, tourbe et litiere.
-    "porosity_1": (0.05, 0.95),
+# de 0,75, couche de dix metres). Cles : nom de la borne, sans la couche ; valeurs declarees dans
+# [priors] (meandre/utils/settings.py). Couche 1 en horizon organique (R441) : porosite jusqu'a 0,95.
+PRIOR_SAFETY_SETTINGS = {
+    "porosity": "priors.safety_porosity", "theta_fc_frac": "priors.safety_theta_fc_frac", "theta_wp_frac": "priors.safety_theta_wp_frac",
+    "K_sat_1": "priors.safety_K_sat", "K_sat_2": "priors.safety_K_sat", "K_sat_3": "priors.safety_K_sat",
+    "Z2": "priors.safety_Z2", "Z3": "priors.safety_Z3", "porosity_1": "priors.safety_porosity_1",
 }
+
+
+def prior_safety(key: str, field_name: str) -> tuple[float, float]:
+    """Plancher et plafond de securite d'une sortie sous prior : cle de la couche, sinon nom de la borne."""
+    return tuple(settings.get(PRIOR_SAFETY_SETTINGS[key] if key in PRIOR_SAFETY_SETTINGS else PRIOR_SAFETY_SETTINGS[field_name]))
+
+
 PRIOR_KEYS = tuple(f"{f}_{l}" for f in ("porosity", "theta_fc_frac", "theta_wp_frac", "K_sat") for l in (1, 2, 3)) + ("Z2", "Z3")
 
 # Centre (valeur pour une sortie brute nulle) et pente au centre des sorties log-normales,
 # repris des anciennes lois exp(0,3 x + log centre) pour que les points de reprise existants
-# rendent la meme valeur au voisinage du centre.
-_LOG_CENTERS = {"K_sat_1": 0.5, "K_sat_2": 0.1, "K_sat_3": 0.02, "k_gw": 0.02, "krec": KREC_REF, "k_sub": KSUB_REF}
-_LOG_SLOPE = 0.3
+# rendent la meme valeur au voisinage du centre. Valeurs declarees dans [field_constraints].
+_LOG_CENTER_FIELDS = ("K_sat_1", "K_sat_2", "K_sat_3", "k_gw", "krec", "k_sub")
+
+
+def _log_center(field_name: str) -> float:
+    if field_name not in _LOG_CENTER_FIELDS:
+        raise KeyError(field_name)
+    return float(settings.get(f"field_constraints.log_center_{field_name}"))
+
+
+def _log_slope() -> float:
+    return float(settings.get("field_constraints.log_slope"))
 
 
 def field_bounds_from_toml(cfg):
@@ -413,7 +428,7 @@ class SpatialFieldNetwork(nn.Module):
     def init_from_literature(
         self,
         targets: dict[str, float] | None = None,
-        weight_shrink: float = 0.1,
+        weight_shrink: float | None = None,
     ) -> None:
         """Initialise fc_out bias so _apply_constraints produces literature defaults.
 
@@ -461,6 +476,8 @@ class SpatialFieldNetwork(nn.Module):
             return
 
         # Shrink output weights so initial output ≈ bias + small per-node deviation
+        if weight_shrink is None:
+            weight_shrink = float(settings.get("field_constraints.literature_weight_shrink"))
         with torch.no_grad():
             self.fc_out.weight.mul_(weight_shrink)
             bias = self._literature_raw_vector(targets)
@@ -569,10 +586,10 @@ class SpatialFieldNetwork(nn.Module):
             lo, hi = B[field_name][0], B[field_name][1]
             if len(B[field_name]) > 2 and B[field_name][2] == "log":
                 llo, lhi = math.log(lo), math.log(hi)
-                c = min(max(math.log(_LOG_CENTERS[field_name]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
+                c = min(max(math.log(_log_center(field_name)), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
                 u = (c - llo) / (lhi - llo)
                 b0 = math.log(u / (1.0 - u))
-                a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
+                a = _log_slope() / ((lhi - llo) * u * (1.0 - u))
                 f = (math.log(val) - llo) / (lhi - llo)
                 f = max(1e-4, min(1.0 - 1e-4, f))
                 return (math.log(f / (1.0 - f)) - b0) / a
@@ -843,16 +860,19 @@ class SpatialFieldNetwork(nn.Module):
         # transfère pas (+0.002 hors échantillon sur OUTV) alors que la même contrainte
         # imposée en inférence rapporte +0.026. On ancre donc, et la tête module autour.
         _anc = getattr(self, "_lake_k_anchor", None)
-        log_anc = math.log(1e-4) if _anc is None else torch.log(_anc.to(raw.device))
-        # Borne DOUCE en log entre 1e-6 et 1e-2 (2026-10-01) : sigmoide centree sur l'ancre, pente
-        # 0,5 au centre comme l'ancienne loi exp(clamp(0,5 x + log ancre)), sans plancher sans gradient.
-        _llo, _lhi = math.log(1e-6), math.log(1e-2)
+        log_anc = math.log(float(settings.get("routed_lakes.k_default"))) if _anc is None else torch.log(_anc.to(raw.device))
+        # Borne DOUCE en log entre 1e-6 et 1e-2 (2026-10-01, routed_lakes.k_bounds) : sigmoide centree sur
+        # l'ancre, pente 0,5 au centre comme l'ancienne loi exp(clamp(0,5 x + log ancre)), sans plancher sans gradient.
+        _klo, _khi = settings.get("routed_lakes.k_bounds")
+        _llo, _lhi = math.log(_klo), math.log(_khi)
         _u = torch.clamp((torch.as_tensor(log_anc, device=raw.device, dtype=raw.dtype) - _llo) / (_lhi - _llo), 1e-4, 1.0 - 1e-4)
         log_k = _llo + (_lhi - _llo) * torch.sigmoid(0.5 * raw[:, 0] / ((_lhi - _llo) * _u * (1.0 - _u)) + torch.log(_u / (1.0 - _u)))
         k_lake = torch.exp(log_k)
-        # beta : [1.0, 2.5], centré à 1.5 pour raw=0. 1.0 + 1.5*s = 1.5 → s=1/3,
-        # donc décalage logit(1/3) = -log(2).
-        beta = 1.0 + 1.5 * torch.sigmoid(raw[:, 1] - math.log(2.0))
+        # beta : [1.0, 2.5] (routed_lakes.beta_bounds), centré à 1.5 (routed_lakes.beta_default) pour raw=0 :
+        # lo + (hi - lo) s = centre, s = (centre - lo)/(hi - lo), décalage logit(s) = log((centre - lo)/(hi - centre)).
+        _blo, _bhi = settings.get("routed_lakes.beta_bounds")
+        _b0 = float(settings.get("routed_lakes.beta_default"))
+        beta = _blo + (_bhi - _blo) * torch.sigmoid(raw[:, 1] + math.log((_b0 - _blo) / (_bhi - _b0)))
         return k_lake, beta
 
     def set_prior(self, key: str, center, sigma: float, offset=None) -> None:
@@ -1021,21 +1041,21 @@ class SpatialFieldNetwork(nn.Module):
                 off = getattr(self, f"_pr_o_{k}", None)
                 z = x if off is None else x + off.to(x.device)
                 self._last_z[k] = z
-                lo_s, hi_s = PRIOR_SAFETY.get(k, PRIOR_SAFETY[field_name])
+                lo_s, hi_s = prior_safety(k, field_name)
                 return torch.clamp(c * torch.exp(s * z), lo_s, hi_s)
             if field_name in NB:
                 llo = torch.log(getattr(self, f"_nb_lo_{field_name}")).to(x.device)
                 lhi = torch.log(getattr(self, f"_nb_hi_{field_name}")).to(x.device)
-                a = _LOG_SLOPE / ((lhi - llo) * 0.25)
+                a = _log_slope() / ((lhi - llo) * 0.25)
                 return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x))
             lo, hi = B[field_name][0], B[field_name][1]
             if len(B[field_name]) > 2 and B[field_name][2] == "log":
                 # Sigmoide en log : centre et pente au centre de l'ancienne loi exp(0,3 x + log c).
                 llo, lhi = math.log(lo), math.log(hi)
-                c = min(max(math.log(_LOG_CENTERS[field_name]), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
+                c = min(max(math.log(_log_center(field_name)), llo + 1e-6 * (lhi - llo)), lhi - 1e-6 * (lhi - llo))
                 u = (c - llo) / (lhi - llo)
                 b0 = math.log(u / (1.0 - u))
-                a = _LOG_SLOPE / ((lhi - llo) * u * (1.0 - u))
+                a = _log_slope() / ((lhi - llo) * u * (1.0 - u))
                 return torch.exp(llo + (lhi - llo) * torch.sigmoid(a * x + b0))
             return bounded(x, lo, hi, field_name, k)
 
@@ -1249,42 +1269,46 @@ class SpatialFieldNetwork(nn.Module):
         def tg(key, fallback):
             return float(t.get(key, fallback))
 
+        def wt(key):
+            """Poids relatif du terme, declare dans [physical_prior_weights]."""
+            return float(settings.get(f"physical_prior_weights.{key}"))
+
         # K_sat en log-espace (moyenne du log = médiane géométrique du champ)
         for k, key, fb in [(params.K_sat_1, "K_sat_1", 0.08),
                            (params.K_sat_2, "K_sat_2", 0.04),
                            (params.K_sat_3, "K_sat_3", 0.015)]:
-            loss = loss + ((torch.log(k + 1e-8).mean() - math.log(tg(key, fb))) ** 2) * 0.3
+            loss = loss + ((torch.log(k + 1e-8).mean() - math.log(tg(key, fb))) ** 2) * wt("K_sat")
 
         # Porosity (cibles par couche, alignées init)
         for p, key, fb in [(params.porosity_1, "porosity_1", 0.46),
                            (params.porosity_2, "porosity_2", 0.44),
                            (params.porosity_3, "porosity_3", 0.42)]:
-            loss = loss + ((p.mean() - tg(key, fb)) ** 2)
+            loss = loss + ((p.mean() - tg(key, fb)) ** 2) * wt("porosity")
 
         # C_f (aligné init Hock 4.5, plus 3.0)
-        loss = loss + ((params.C_f.mean() - tg("C_f", 4.5)) ** 2) * 0.3
+        loss = loss + ((params.C_f.mean() - tg("C_f", 4.5)) ** 2) * wt("C_f")
 
         # T_melt
-        loss = loss + ((params.T_melt.mean() - tg("T_melt", -0.5)) ** 2) * 0.5
+        loss = loss + ((params.T_melt.mean() - tg("T_melt", -0.5)) ** 2) * wt("T_melt")
         # Retards de canopee : prior FAIBLE (poids 0.1 contre 0.5 pour T_melt), parce
         # que les deux calages d'Hydrotel s'accordent sur l'ORDRE mais pas du tout sur
         # l'amplitude. L'ordre est deja garanti par la construction (offsets bornes
         # positifs, empiles) ; ce terme ne sert qu'a eviter la derive vers les bornes
         # en debut d'entrainement, pas a imposer une valeur.
-        loss = loss + ((params.dT_canopee_feu.mean() - tg("dT_canopee_feu", 1.0)) ** 2) * 0.1
-        loss = loss + ((params.dT_canopee_conif.mean() - tg("dT_canopee_conif", 1.0)) ** 2) * 0.1
+        loss = loss + ((params.dT_canopee_feu.mean() - tg("dT_canopee_feu", 1.0)) ** 2) * wt("dT_canopee")
+        loss = loss + ((params.dT_canopee_conif.mean() - tg("dT_canopee_conif", 1.0)) ** 2) * wt("dT_canopee")
 
         # frost_alpha
-        loss = loss + ((params.frost_alpha.mean() - tg("frost_alpha", 0.5)) ** 2) * 0.3
+        loss = loss + ((params.frost_alpha.mean() - tg("frost_alpha", 0.5)) ** 2) * wt("frost_alpha")
 
         # alpha_T
-        loss = loss + ((params.alpha_T.mean() - tg("alpha_T", 0.03)) ** 2)
+        loss = loss + ((params.alpha_T.mean() - tg("alpha_T", 0.03)) ** 2) * wt("alpha_T")
 
         # vg_n
-        loss = loss + ((params.vg_n.mean() - tg("vg_n", 1.5)) ** 2) * 0.3
+        loss = loss + ((params.vg_n.mean() - tg("vg_n", 1.5)) ** 2) * wt("vg_n")
 
         # k_gw récession (log-espace)
-        loss = loss + ((torch.log(params.k_gw + 1e-8).mean() - math.log(tg("k_gw", 0.02))) ** 2) * 0.3
+        loss = loss + ((torch.log(params.k_gw + 1e-8).mean() - math.log(tg("k_gw", 0.02))) ** 2) * wt("k_gw")
 
         # krec, drainage profond de la couche 3 (log-espace, comme k_gw).
         #
@@ -1310,7 +1334,7 @@ class SpatialFieldNetwork(nn.Module):
         # calage Hydrotel, 1.3e-7, qui donne 0.0036 mm/j : un robinet fermé.
         if getattr(self, "prior_on_krec", False) and hasattr(params, "krec"):
             loss = loss + ((torch.log(params.krec + 1e-12).mean()
-                            - math.log(tg("krec", KREC_REF))) ** 2) * 0.3
+                            - math.log(tg("krec", KREC_REF))) ** 2) * wt("krec")
 
         # PLAFOND DE PERCOLATION DU SUBSTRATUM : ancrage de la MOYENNE SEULE, comme krec
         # et k_gw. Opt-in par `prior_on_k_sub`.
@@ -1325,11 +1349,11 @@ class SpatialFieldNetwork(nn.Module):
         # de le tenir uniforme, jamais d'écraser la variance du champ.
         if getattr(self, "prior_on_k_sub", False) and hasattr(params, "k_sub"):
             loss = loss + ((torch.log(params.k_sub + 1e-12).mean()
-                            - math.log(tg("k_sub", KSUB_REF))) ** 2)                 * float(getattr(self, "poids_k_sub", 0.3))
+                            - math.log(tg("k_sub", KSUB_REF))) ** 2)                 * float(getattr(self, "poids_k_sub", wt("k_sub")))
 
         # K_c (aligné sur la cible d'init, ex. 0.6 via [literature_prior])
         if hasattr(params, 'K_c'):
-            loss = loss + ((params.K_c.mean() - tg("K_c", 1.0)) ** 2) * 0.2
+            loss = loss + ((params.K_c.mean() - tg("K_c", 1.0)) ** 2) * wt("K_c")
 
         return loss
 

@@ -49,8 +49,10 @@ def _kge_components(q_obs: Tensor, q_sim: Tensor) -> tuple[Tensor, Tensor, Tenso
     # n'apprenait donc RIEN de l'epoque (validation identique a la quatrieme decimale
     # d'une epoque a l'autre, perte qui ne bougeait que par le prior). Un plancher de
     # 0.1 % du debit moyen rend le gradient fini partout, sans effet mesurable ailleurs.
-    floor_obs = (1e-3 * q_obs.mean().abs()).clamp(min=1e-6)
-    floor_sim = (1e-3 * q_sim.mean().abs()).clamp(min=1e-6)
+    # Fraction declaree : loss_terms.kge_std_floor.
+    _floor = float(settings.get("loss_terms.kge_std_floor"))
+    floor_obs = (_floor * q_obs.mean().abs()).clamp(min=1e-6)
+    floor_sim = (_floor * q_sim.mean().abs()).clamp(min=1e-6)
     std_obs = torch.sqrt(var_obs + floor_obs ** 2)
     std_sim = torch.sqrt(var_sim + floor_sim ** 2)
     r = (x * y).mean() / (std_obs * std_sim)
@@ -321,7 +323,7 @@ def differentiable_flat_days_loss(q_obs: Tensor, q_sim: Tensor, seuil: float = 0
 
 
 def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
-                                bas: float = 0.2, ref: float = 0.5) -> Tensor:
+                                bas: float | None = None, ref: float | None = None) -> Tensor:
     """Ecart sur le SOUTIEN d'etiage : quantile bas rapporte a la mediane.
 
     Substitut differentiable et bon marche de l'indice d'ecoulement de base. Un modele
@@ -333,6 +335,10 @@ def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
     """
     if q_obs.numel() < 10:
         return torch.zeros((), device=q_sim.device)
+    # Quantiles absents : réglage loss_terms.fdc_low_quantiles (0,2 et 0,5).
+    _qb, _qr = settings.get("loss_terms.fdc_low_quantiles")
+    bas = _qb if bas is None else bas
+    ref = _qr if ref is None else ref
     qb_o = torch.quantile(q_obs, bas); qr_o = torch.quantile(q_obs, ref)
     qb_s = torch.quantile(q_sim, bas); qr_s = torch.quantile(q_sim, ref)
     r_o = qb_o / qr_o.clamp(min=1e-8)
@@ -345,8 +351,8 @@ def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
     return torch.abs(r_s - r_o)
 
 
-def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float = 0.3,
-                               eps: float = 1e-3) -> Tensor:
+def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float | None = None,
+                               eps: float | None = None) -> Tensor:
     """Écart absolu des logarithmes du débit sur les jours d'étiage observés.
 
     Les jours d'étiage sont ceux où le débit observé est sous son quantile `quantile` de la
@@ -359,6 +365,9 @@ def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float =
     ok = torch.isfinite(q_obs) & torch.isfinite(q_sim)
     if int(ok.sum()) < 10:
         return torch.zeros((), device=q_sim.device)
+    # Absents : réglages loss_terms.low_flow_quantile (0,3) et loss_terms.low_flow_eps_m3s (1e-3).
+    quantile = float(settings.get("loss_terms.low_flow_quantile")) if quantile is None else quantile
+    eps = float(settings.get("loss_terms.low_flow_eps_m3s")) if eps is None else eps
     qo, qs = q_obs[ok], q_sim[ok]
     seuil = torch.quantile(qo, quantile)
     bas = qo <= seuil
@@ -485,72 +494,6 @@ def differentiable_mse_loss(
     return mse
 
 
-def timing_tolerant_mse(
-    q_o: Tensor, q_s: Tensor, tol: int = 1, var: Tensor | None = None,
-    w: Tensor | None = None,
-) -> Tensor:
-    """MSE tolérante au décalage temporel ±``tol`` jours, SYMÉTRIQUE, chunk-safe.
-
-    Motivation (revue 2026-07-01) : la MSE point-à-point paie ~7× moins cher un
-    pic APLATI au bon jour qu'un pic PARFAIT décalé d'un jour. Face à un lag
-    résiduel (bruit convectif CaSR ±1j, irréductible), l'optimum de la loss est
-    donc le lissage — le modèle re-lisse après avoir trouvé le bon régime. Cette
-    perte cesse de punir un pic bien formé mais décalé de ≤ tol jours : l'erreur
-    à t est le MIN de l'écart quadratique sur une fenêtre glissante ±tol.
-
-    SYMÉTRIQUE pour rester honnête : terme (a) « le sim est-il expliqué par une
-    obs voisine ? » + terme (b) « chaque obs est-elle expliquée par un sim
-    voisin ? ». Sans (b), un sim plat près du baseline matcherait le creux
-    pré-pic de l'obs dans la fenêtre et échapperait à la pénalité du pic manqué.
-
-    q_o, q_s : (T, S), NaN autorisés (obs manquantes). Retourne une perte scalaire
-    (moyenne par station sur le temps, pondérée par ``w`` si fourni).
-    """
-    T = q_o.shape[0]
-    BIG = 1e12
-    row = torch.arange(T, device=q_o.device).unsqueeze(1)  # (T,1) bords enroulés
-    # ASSAINIR les NaN AVANT toute arithmétique : sinon (a - NaN)² = NaN, et même
-    # masqué par torch.where, le backward fait 0×NaN = NaN (piège classique). On
-    # remplace les NaN par 0 et on porte la validité dans des masques float.
-    o_valid = (~torch.isnan(q_o)).to(q_o.dtype)
-    s_valid = (~torch.isnan(q_s)).to(q_s.dtype)
-    o_f = torch.nan_to_num(q_o, nan=0.0)
-    s_f = torch.nan_to_num(q_s, nan=0.0)
-
-    def windowed(a_f: Tensor, a_valid: Tensor, b_f: Tensor, b_valid: Tensor):
-        # pour chaque t : min_d (a(t) - b(t+d))^2 sur d ∈ [-tol, tol], arithmétique
-        # 100% finie (les candidats invalides sont poussés à BIG additivement).
-        cands = []
-        for d in range(-tol, tol + 1):
-            bs = torch.roll(b_f, -d, dims=0)            # b(t+d) aligné sur t
-            bv = torch.roll(b_valid, -d, dims=0)
-            if d > 0:
-                edge = (row >= (T - d)).to(a_f.dtype)
-            elif d < 0:
-                edge = (row < (-d)).to(a_f.dtype)
-            else:
-                edge = torch.zeros_like(a_f)
-            usable = bv * (1.0 - edge)                  # 1 si candidat exploitable
-            e = (a_f - bs) ** 2
-            e = e * usable + BIG * (1.0 - usable)       # invalides -> BIG (fini)
-            cands.append(e)
-        m = torch.stack(cands, 0).amin(dim=0)           # (T,S)
-        any_valid = (m < BIG * 0.5).to(a_f.dtype)
-        used = a_valid * any_valid                       # compte : a valide ET voisin dispo
-        return m * used, used                            # zéro (fini) là où inutilisé
-
-    m_s, u_s = windowed(s_f, s_valid, o_f, o_valid)   # sim expliqué par obs voisines
-    m_o, u_o = windowed(o_f, o_valid, s_f, s_valid)   # obs expliquée par sim voisins
-    per_s = m_s.sum(dim=0) / (u_s.sum(dim=0) + 1e-8)  # moyenne masquée par station
-    per_o = m_o.sum(dim=0) / (u_o.sum(dim=0) + 1e-8)
-    per = 0.5 * (per_s + per_o)                        # (S,)
-    if var is not None:
-        per = per / (var + 1e-8)
-    if w is not None:
-        return (per * w).sum()
-    return per.mean()
-
-
 def differentiable_nrmse_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
     """Normalized RMSE: RMSE / mean(obs). Dimensionless, lower is better."""
     mse = ((q_obs - q_sim) ** 2).mean()
@@ -558,14 +501,17 @@ def differentiable_nrmse_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
 
 
 def differentiable_log_mse_loss(
-    q_obs: Tensor, q_sim: Tensor, eps: float = 1.0
+    q_obs: Tensor, q_sim: Tensor, eps: float | None = None
 ) -> Tensor:
     """MSE on log-transformed flows. Scale-invariant AND chunk-safe.
 
     Unlike log-NSE, this has no observation-variance denominator, so it remains
     additive across temporal chunks. The log transform naturally equalizes the
-    gradient contribution of low-flow and high-flow periods.
+    gradient contribution of low-flow and high-flow periods. Décalage absent : réglage
+    loss_terms.log_offset_m3s (1 m³/s).
     """
+    if eps is None:
+        eps = float(settings.get("loss_terms.log_offset_m3s"))
     log_obs = torch.log(q_obs + eps)
     log_sim = torch.log(q_sim.clamp(min=0.0) + eps)
     return ((log_obs - log_sim) ** 2).mean()
@@ -744,8 +690,6 @@ class HydroLoss(nn.Module):
         w_nrmse: float = 0.0,
         w_log_nse: float = 0.0,
         w_log_mse: float = 0.0,
-        w_tol_mse: float = 0.0,
-        tol_days: int = 1,
         w_snow: float = 0.0,
         w_swe_mass: float = 0.0,
         w_et: float = 0.0,
@@ -782,8 +726,6 @@ class HydroLoss(nn.Module):
         self.w_nrmse = w_nrmse
         self.w_log_nse = w_log_nse
         self.w_log_mse = w_log_mse
-        self.w_tol_mse = w_tol_mse
-        self.tol_days = int(tol_days)
         self.w_snow = w_snow
         # CanSWE : masse du manteau mesurée au sol (R24). Calculé dans le
         # trainer, qui seul dispose du SWE simulé par nœud et de la table
@@ -914,19 +856,19 @@ class HydroLoss(nn.Module):
             _n_hist = torch.zeros_like(valid_counts)
             if q_obs_hist is not None and q_sim_hist is not None and q_obs_hist.numel() > 0:
                 _n_hist = (~torch.isnan(q_obs_hist) & ~torch.isnan(q_sim_hist)).sum(dim=0)
-            keep = ((valid_counts + _n_hist) >= 30) & (valid_counts >= 1)
+            _min_obs = int(settings.get("loss_terms.min_station_obs"))
+            keep = ((valid_counts + _n_hist) >= _min_obs) & (valid_counts >= 1)
             n_keep = keep.sum().item()
 
             if n_keep == 0:
                 logger.warning(
-                    "No stations have >= 30 valid observations in this chunk "
+                    f"No stations have >= {_min_obs} valid observations in this chunk "
                     "(total stations: %d, max valid count: %s). "
                     "Loss will be zero with no gradient.",
                     n_stations,
                     int(valid_counts.max().item()) if n_stations > 0 else "N/A",
                 )
                 L_nse = L_pbias = L_kge = L_mse = L_nrmse = L_log_nse = L_log_mse = zero
-                L_tol_mse = zero
                 # Les termes de forme aussi, sans quoi un bloc sans aucune station gardee
                 # leve une erreur au lieu de rendre une perte nulle (2026-09-09).
                 L_dq = L_dql = L_fdc = zero
@@ -990,21 +932,12 @@ class HydroLoss(nn.Module):
 
                 # ── Vectorized log-MSE ───────────────────────────────────
                 if self.w_log_mse > 0:
-                    log_sq = ((torch.log(q_o + 1.0)
-                               - torch.log(q_s.clamp(min=0.0) + 1.0)) * _m) ** 2
+                    _lo = float(settings.get("loss_terms.log_offset_m3s"))
+                    log_sq = ((torch.log(q_o + _lo)
+                               - torch.log(q_s.clamp(min=0.0) + _lo)) * _m) ** 2
                     L_log_mse = ((log_sq.sum(dim=0) / _n_val) * w).sum()
                 else:
                     L_log_mse = zero
-
-                # ── MSE tolérante au timing ±tol_days (chunk-safe) ───────
-                # Ne punit plus un pic bien formé décalé de ≤ tol jours (bruit
-                # convectif CaSR irréductible) : casse le couplage lag→lissage
-                # qui faisait re-lisser le modèle après le bon régime.
-                if self.w_tol_mse > 0:
-                    _var = self.station_var[keep] if self.station_var is not None else None
-                    L_tol_mse = timing_tolerant_mse(q_o, q_s, tol=self.tol_days, var=_var, w=w)
-                else:
-                    L_tol_mse = zero
 
                 # ── Per-station loop only for metrics that need it ───────
                 # NSE, KGE, NRMSE, log-NSE require per-station variance
@@ -1085,7 +1018,7 @@ class HydroLoss(nn.Module):
                             # jours des mois cibles, aucune compensation entre saisons.
                             _month = _month_of_day(self.doy_block.to(v.device))
                             _k = v & torch.isin(_month, torch.tensor(self.flat_months, device=v.device))
-                            if int(_k.sum()) >= 20:
+                            if int(_k.sum()) >= int(settings.get("loss_terms.flat_min_days")):
                                 flat_v.append(differentiable_flat_days_loss(
                                     q_obs[_k, si], q_sim_at_stations[_k, si], self.flat_threshold, self.flat_width))
                             else:
@@ -1165,7 +1098,6 @@ class HydroLoss(nn.Module):
             _zero = torch.tensor(0.0, device=q_s.device)
             L_log_nse = differentiable_log_nse_loss(q_o, q_s) if self.w_log_nse > 0 else _zero
             L_log_mse = differentiable_log_mse_loss(q_o, q_s) if self.w_log_mse > 0 else _zero
-            L_tol_mse = _zero   # tolérance timing : chemin per_station uniquement
             L_dq = differentiable_dq_loss(q_o, q_s) if self.w_dq > 0 else _zero
             L_dql = differentiable_dq_log_loss(q_o, q_s) if self.w_dq_log > 0 else _zero
             L_fdc = differentiable_fdc_low_loss(q_o, q_s) if self.w_fdc_low > 0 else _zero
@@ -1189,7 +1121,6 @@ class HydroLoss(nn.Module):
                 + self.w_nrmse * L_nrmse
                 + self.w_log_nse * L_log_nse
                 + self.w_log_mse * L_log_mse
-                + self.w_tol_mse * L_tol_mse
                 + self.w_peak * L_peak
                 + self.w_dq * L_dq
                 + self.w_dq_log * L_dql
@@ -1207,7 +1138,6 @@ class HydroLoss(nn.Module):
                       "nrmse_loss": L_nrmse,
                       "log_nse_loss": L_log_nse,
                       "log_mse_loss": L_log_mse,
-                      "tol_mse_loss": L_tol_mse,
                       "peak_loss": L_peak,
                       "nested_loss": L_nested}
 
@@ -1228,8 +1158,8 @@ class HydroLoss(nn.Module):
             # on la comparait à l'ETR simulée de CE jour précis. Confronter une moyenne
             # de 8 jours à une valeur journalière ajoute du bruit pur et fausse toute
             # statistique de variance. On moyenne donc le simulé sur la même fenêtre.
-            # `et_window` = 8 par défaut ; 1 restaure l'ancien comportement.
-            et_sim = rolling_mean(et_sim, int(getattr(self, "et_window", 8)))
+            # `et_window` = loss_terms.et_window_days (8) par défaut ; 1 restaure l'ancien comportement.
+            et_sim = rolling_mean(et_sim, int(getattr(self, "et_window", settings.get("loss_terms.et_window_days"))))
             # MEANDRE_DIAG_CPU=1 accumule les diagnostics sur le processeur pour tenir dans
             # la memoire de la carte : l'evapotranspiration simulee arrive alors sur un
             # appareil different de l'observee et la comparaison levait une exception, ce

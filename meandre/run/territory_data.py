@@ -210,11 +210,14 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     station_var = torch.ones(n_stations, dtype=torch.float32, device=device)
     peak_thr = torch.full((n_stations,), float("inf"), dtype=torch.float32, device=device)
     q_train = q_obs[train_sl]
+    # Seuil d'observations et quantile des pics declares dans [loss_terms].
+    _min_obs = int(_settings.get("loss_terms.station_stats_min_obs"))
+    _peak_q = float(_settings.get("loss_terms.peak_quantile"))
     for i in range(n_stations):
         m = ~torch.isnan(q_train[:, i])
-        if m.sum() > 100:
+        if m.sum() > _min_obs:
             station_var[i] = q_train[m, i].var()
-            peak_thr[i] = torch.quantile(q_train[m, i], 0.75)
+            peak_thr[i] = torch.quantile(q_train[m, i], _peak_q)
     loss_fn = HydroLoss(
         w_nse=lcfg.get("w_nse", 0.0), w_kge=lcfg.get("w_kge", 0.0), w_pbias=lcfg.get("w_pbias", 0.0),
         w_mse=lcfg.get("w_mse", 0.0), w_nrmse=lcfg.get("w_nrmse", 0.0),
@@ -239,6 +242,11 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
         w_gamma=lcfg.get("w_gamma", 0.0), w_peak_ratio=lcfg.get("w_peak_ratio", 0.0),
         w_recession=lcfg.get("w_recession", 0.0),
         w_flat=lcfg.get("w_flat", 0.0),
+        # Forme du terme de platitude : seuil et largeur de la variation journaliere du log du debit,
+        # mois cibles. Lus dans [loss] et jamais transmis jusqu'au 2026-11-05 (defauts de HydroLoss).
+        flat_threshold=lcfg.get("flat_threshold", 0.01),
+        flat_width=lcfg.get("flat_width", 0.003),
+        flat_months=tuple(lcfg.get("flat_months", (12, 1, 2, 3))),
         w_nested=lcfg.get("w_nested", 0.0),
         w_physics=lcfg.get("w_physics", 0.0),
         per_station=True, station_weights=None, station_var=station_var,
@@ -255,6 +263,9 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     _forgotten = [k for k, v in lcfg.items()
                  if k.startswith("w_") and k in _accepted and float(v or 0.0) > 0
                  and abs(float(getattr(loss_fn, k, 0.0)) - float(v)) > 1e-12]
+    # Meme garde pour la forme du terme de platitude, longtemps lue et jamais posee.
+    _forgotten += [k for k in ("flat_threshold", "flat_width", "flat_months") if k in lcfg
+                   and getattr(loss_fn, k) != (tuple(int(m) for m in lcfg[k]) if k == "flat_months" else float(lcfg[k]))]
     if _forgotten:
         raise ValueError("poids demandes et non poses sur la perte : " + ", ".join(sorted(_forgotten)))
 

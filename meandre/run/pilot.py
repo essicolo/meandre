@@ -652,12 +652,12 @@ if _cd and getattr(model.vertical_column, "soil_profile", None) is not None:
             _pr = _rempl(_pr, params={**_pr.params, "conductivity": torch.tensor(_substratum_k, dtype=torch.get_default_dtype(), device=DEVICE)})
             print(f"[etl] couche {_pr.layer} {_pr.kind} {_pr.form} : conductivite du substratum par troncon (classe de drainage), mediane {np.median(_substratum_k) * 24000:.2f} mm/j")
         # FORME PAR CLASSE DE DRAINAGE (2026-10-28, R432) : `drainage_select = "poor"` garde le
-        # processus sur les troncons dont la classe depasse `drainage_threshold` (4,5 par defaut :
+        # processus sur les troncons dont la classe depasse `drainage_threshold` (drainage.class_threshold, 4,5 par defaut :
         # classes 5 a 7, imparfaitement a tres mal draine), `"good"` sur les autres et sur les
         # troncons sans classe ; la part (`share`) vaut 1 ou 0 par troncon.
         _select = _pr.params.get("drainage_select")
         if _select is not None:
-            _class_threshold = float(_pr.params.get("drainage_threshold", 4.5))
+            _class_threshold = float(_pr.params.get("drainage_threshold", _settings.get("drainage.class_threshold")))
             _poorly_drained = np.isfinite(_dr) & (_dr > _class_threshold)
             _share = _poorly_drained if _select == "poor" else ~_poorly_drained
             _pr = _rempl(_pr, params={**_pr.params, "share": torch.tensor(_share.astype(np.float32), device=DEVICE)})
@@ -720,15 +720,16 @@ for _name, _ids, _o, _n in _territories():
 _lake_b = td.graph.is_lake.bool().cpu().numpy()
 _cv = _npl.isfinite(_surf) & _lake_b & (_surf > 0)
 _cvt = torch.tensor(_cv, device=DEVICE)
-_ktl = torch.tensor(_npl.nan_to_num(_npl.where(_cv, _c / _npl.clip(_surf*1e6, 1, None), _npl.nan), nan=1e-4),
+# Lacs sans loi de tarage : valeurs declarees de [routed_lakes] (k_default, beta_default, area_km2_default).
+_ktl = torch.tensor(_npl.nan_to_num(_npl.where(_cv, _c / _npl.clip(_surf*1e6, 1, None), _npl.nan), nan=float(_settings.get("routed_lakes.k_default"))),
                     dtype=torch.float32, device=DEVICE)
-_btl = torch.tensor(_npl.nan_to_num(_k, nan=1.5), dtype=torch.float32, device=DEVICE)
+_btl = torch.tensor(_npl.nan_to_num(_k, nan=float(_settings.get("routed_lakes.beta_default"))), dtype=torch.float32, device=DEVICE)
 _olp = model.spatial_encoder.lake_params
 def _lp_trl(*a, _o=_olp, **kw):
     kk3, bb3 = _o(*a, **kw)
     return torch.where(_cvt, _ktl, kk3), torch.where(_cvt, _btl, bb3)
 model.spatial_encoder.lake_params = _lp_trl
-model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, 1.0), dtype=torch.float32))
+model.set_lake_area(torch.tensor(_npl.where(_cv, _surf, float(_settings.get("routed_lakes.area_km2_default"))), dtype=torch.float32))
 print(f"[etl] lacs troncon.trl imposes : {int(_cv.sum())}/{int(_lake_b.sum())} | "
       f"k_lake med {float(_npl.nanmedian(_npl.where(_cv, _c/_npl.clip(_surf*1e6,1,None), _npl.nan))):.2e} /s")
 if _settings.raw("evaporation.open_water", "0") == "1":
@@ -898,6 +899,24 @@ tconf = TrainingConfig(
     # du motif « construction par enumeration » (dettes #14, #15).
     patience=int(tcfg.get("patience", 0)),
     val_every=1,
+    # Constantes de la boucle d'entrainement, declarees dans [training] (2026-11-05) ; defauts = valeurs jusque-la en dur.
+    weight_decay=float(tcfg.get("weight_decay", 1e-4)),
+    eta_min_factor=float(tcfg.get("eta_min_factor", 0.01)),
+    spinup_steps=int(tcfg.get("spinup_steps", 730)),
+    warm_spinup_steps=int(tcfg.get("warm_spinup_steps", 90)),
+    best_metric_tolerance=float(tcfg.get("best_metric_tolerance", 0.005)),
+    autopilot_gamma_threshold=float(tcfg.get("autopilot_gamma_threshold", 0.20)),
+    autopilot_restart_min_no_improve=int(tcfg.get("autopilot_restart_min_no_improve", 3)),
+    autopilot_restart_lr_factor=float(tcfg.get("autopilot_restart_lr_factor", 0.5)),
+    burn_in_days=int(tcfg.get("burn_in_days", 60)),
+    burn_in_first_days=int(tcfg.get("burn_in_first_days", 90)),
+    chunk_merge_days=int(tcfg.get("chunk_merge_days", 60)),
+    random_chunk_offset=bool(tcfg.get("random_chunk_offset", True)),
+    rollback_spike_factor=float(tcfg.get("rollback_spike_factor", 3.0)),
+    rollback_ema_weight=float(tcfg.get("rollback_ema_weight", 0.2)),
+    rollback_max=int(tcfg.get("rollback_max", 3)),
+    rollback_lr_factor=float(tcfg.get("rollback_lr_factor", 0.5)),
+    aux_ema_weight=float(tcfg.get("aux_ema_weight", 0.02)),
 )
 # CE QUI CONTRAINT REELLEMENT LE MODELE, lu dans l'objet de perte et dans les donnees,
 # jamais dans la config (dette #15 : une ligne codee en dur a fait croire pendant des

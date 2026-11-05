@@ -24,6 +24,8 @@ import math
 import torch
 from torch import Tensor
 
+from meandre.utils import settings as _settings
+
 # ── Constantes (constantes.hpp) ──
 DENSITE_EAU = 1000.0        # kg/m3
 CHALEUR_FONTE = 335000.0    # J/kg (chaleur latente de fusion)
@@ -342,7 +344,8 @@ class DegreJourModifie(torch.nn.Module):
         _amp = p.get("melt_seasonal_amp")
         if _amp is not None:
             _j = jour if torch.is_tensor(jour) else torch.as_tensor(float(jour))
-            _saison = 1.0 + _amp * torch.sin(2.0 * torch.pi * (_j - 81.0) / 365.0)
+            # Phase déclarée (snow.seasonal_melt_phase_day) : la modulation est un ajout de méandre, pas du C++.
+            _saison = 1.0 + _amp * torch.sin(2.0 * torch.pi * (_j - float(_settings.get("snow.seasonal_melt_phase_day"))) / 365.0)
         else:
             _saison = None
         pluie_m = pluie_mm / 1000.0

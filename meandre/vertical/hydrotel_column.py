@@ -172,15 +172,16 @@ class HydrotelColumn(nn.Module):
 
         # ── Paramètres globaux apprenables (absents du NeRF) ──
         import math as _m
-        self._b_bounds = (1.4, 6.0); self._psis_bounds = (0.01, 1.0); self._krec_bounds = (1e-7, 1e-4)
+        # Bornes de Campbell, déclarées (column.campbell_b_bounds, column.campbell_psi_s_bounds_m).
+        self._b_bounds = tuple(settings.get("column.campbell_b_bounds")); self._psis_bounds = tuple(settings.get("column.campbell_psi_s_bounds_m"))
         def _inv(v, lo, hi):
             f = min(max((v - lo) / (hi - lo), 1e-4), 1 - 1e-4)
             return torch.tensor(_m.log(f / (1 - f)))
-        tx = SOIL_TEXTURES["sandy_loam"]   # init Campbell (sera régionalisé plus tard)
+        tx = SOIL_TEXTURES[settings.get("column.campbell_initial_texture")]   # init Campbell (column.campbell_initial_texture)
         for i in (1, 2, 3):
             setattr(self, f"b{i}_raw", nn.Parameter(_inv(1.0 / tx["lam"], *self._b_bounds)))
             setattr(self, f"psis{i}_raw", nn.Parameter(_inv(tx["psis"], *self._psis_bounds)))
-        self.log_etr_alpha = nn.Parameter(torch.tensor(_m.log(4.5)))      # assèchement ETR
+        self.log_etr_alpha = nn.Parameter(torch.tensor(_m.log(float(settings.get("column.etr_alpha_init")))))      # assèchement ETR (column.etr_alpha_init)
         # fonte degré-jour par classe (softplus pour positivité), init Hydrotel 12/14/16
         self.sp_fonte_conif = nn.Parameter(torch.tensor(_m.log(_m.exp(12.0) - 1)))
         self.sp_fonte_feu = nn.Parameter(torch.tensor(_m.log(_m.exp(14.0) - 1)))
@@ -289,10 +290,11 @@ class HydrotelColumn(nn.Module):
         # pente = géométrie universelle. Priorité : slope_fraction (présent dans le
         # cache PHYSITEL, déjà en fraction), sinon mean_slope_pct_raw/100, sinon défaut.
         slope_frac = gp("slope_fraction")
+        _slo, _shi = settings.get("column.slope_bounds")
         if slope_frac is not None:
-            slope = torch.clamp(slope_frac.to(like.dtype), 1e-3, 0.5)
+            slope = torch.clamp(slope_frac.to(like.dtype), _slo, _shi)
         else:
-            slope = torch.clamp(z("mean_slope_pct_raw", 4.0) / 100.0, 1e-3, 0.5)
+            slope = torch.clamp(z("mean_slope_pct_raw", float(settings.get("column.slope_default_pct"))) / 100.0, _slo, _shi)
 
         # orientation depuis l'aspect (sin/cos dans .data) → code 0-7
         try:
@@ -301,7 +303,7 @@ class HydrotelColumn(nn.Module):
             asp = (torch.rad2deg(torch.atan2(si, co)) % 360.0)
             orient = torch.round(asp / 45.0) % 8
         except (ValueError, AttributeError):
-            orient = torch.full_like(like, 7.0)
+            orient = torch.full_like(like, float(settings.get("column.aspect_default_code")))
         lat = node_coords[:, 1].to(like.dtype)
         ce1, ce0 = init_ce(lat, slope, orient)
 
@@ -314,9 +316,10 @@ class HydrotelColumn(nn.Module):
         else:                               # fallback OD : toute la forêt en feuillus
             pct_conifer = torch.zeros_like(like); pct_deciduous = f_forest
         sp_ = torch.nn.functional.softplus
-        # échelle de fonte par nœud (NeRF C_f / 4.5), sinon 1.0 partout
+        # échelle de fonte par nœud (C_f / snow.melt_scale_reference, bornée par snow.melt_scale_bounds), sinon 1.0 partout
         if self.spatial_melt and hasattr(sp, "C_f"):
-            mscale = torch.clamp(sp.C_f / 4.5, 0.15, 1.8)
+            _mlo, _mhi = settings.get("snow.melt_scale_bounds")
+            mscale = torch.clamp(sp.C_f / float(settings.get("snow.melt_scale_reference")), _mlo, _mhi)
         else:
             mscale = torch.ones_like(like)
         if getattr(self, "_melt_anchored", False):
@@ -401,7 +404,7 @@ class HydrotelColumn(nn.Module):
                       # scalaire krec_raw est RETIRE : le laisser en repli en aurait
                       # fait une quatorzieme sortie morte (dette #5 du registre).
                       krec=sp.krec,
-                      slope=slope, cin=torch.full_like(like, 0.03),
+                      slope=slope, cin=torch.full_like(like, float(settings.get("column.courant_variation"))),
                       fsa=fsa, fse=fse, fsi=fsi, coef_recharge=torch.zeros_like(like))
         # MUALEM-VAN GENUCHTEN (column.retention = "van_genuchten", 2026-11-03) : n est la sortie
         # vg_n du champ ; theta_r et alpha font passer la courbe par la capacite au champ et le
@@ -529,7 +532,7 @@ class HydrotelColumn(nn.Module):
         # et laisse le NeRF caler le volume (β) par nœud. Levier de découplage.
         kc = sp.K_c if hasattr(sp, "K_c") else torch.ones_like(like)
         p_etr = dict(thetacc=sp.theta_fc_1, thetapf=sp.theta_wp_1, alpha=alpha * torch.ones_like(like),
-                     des=torch.full_like(like, 0.6), coef_assech=torch.full_like(like, 1.0),
+                     des=torch.full_like(like, float(settings.get("column.etr_des"))), coef_assech=torch.full_like(like, float(settings.get("column.etr_drying_coefficient"))),
                      z11=z11, z22=z22, z33=z33, classes=et_classes, K_c=kc, class_names=list(self._pheno_names))
         if settings.get("column.root_zone_stress") == "layered":
             p_etr["layered"] = ((sp.theta_fc_2, sp.theta_wp_2), (sp.theta_fc_3, sp.theta_wp_3))
@@ -564,9 +567,11 @@ class HydrotelColumn(nn.Module):
             return None
         z = lambda k, d: (gp(k) if gp(k) is not None else torch.full_like(like, d))
         area = torch.clamp(z("area_km2_local", 1.0), min=1e-6)   # aire locale du troncon [km2]
-        wetdmax = z("wetdmax_raw", 0.3); frac = z("frac_raw", 0.8); wetdnor = z("wetdnor_raw", 0.2)
+        # Valeurs de repli, déclarées dans [wetland] : seulement quand le projet ne porte pas la colonne.
+        _wd_max, _wd_frac, _wd_nor = (float(settings.get(k)) for k in ("wetland.max_depth_m", "wetland.area_fraction", "wetland.normal_depth_m"))
+        wetdmax = z("wetdmax_raw", _wd_max); frac = z("frac_raw", _wd_frac); wetdnor = z("wetdnor_raw", _wd_nor)
         wet_dra_fr = z("wet_dra_fr_raw", 0.0)
-        wet_k = z("ksat_bs_raw", 0.5); c_ev = z("c_ev_raw", 0.6); c_prod = z("c_prod_raw", 10.0)
+        wet_k = z("ksat_bs_raw", float(settings.get("wetland.bottom_ksat"))); c_ev = z("c_ev_raw", float(settings.get("wetland.evaporation_coefficient"))); c_prod = z("c_prod_raw", float(settings.get("wetland.production_days")))
         # Constante de vidange imposable (R39, voie rapide-lente) : c_prod est la
         # duree de restitution du stock de crue au-dessus du volume normal (defaut
         # SWAT 10 j). L'override permet de tester la retention de quelques semaines
@@ -577,9 +582,9 @@ class HydrotelColumn(nn.Module):
         # géométrie factice POSITIVE sur les nœuds sans MH (sinon log10(0)=−inf→NaN
         # dans wetland_geom_vec ; ces nœuds sont masqués en aval de toute façon).
         wet_a_safe = torch.where(wmask, wet_a, torch.ones_like(wet_a))
-        wetdmax_s = torch.where(wmask, wetdmax, torch.full_like(wetdmax, 0.3))
-        frac_s = torch.where(wmask, frac, torch.full_like(frac, 0.8))
-        wetdnor_s = torch.where(wmask, wetdnor, torch.full_like(wetdnor, 0.2))
+        wetdmax_s = torch.where(wmask, wetdmax, torch.full_like(wetdmax, _wd_max))
+        frac_s = torch.where(wmask, frac, torch.full_like(frac, _wd_frac))
+        wetdnor_s = torch.where(wmask, wetdnor, torch.full_like(wetdnor, _wd_nor))
         A, B, wetnvol, wetmxvol = wetland_geom_vec(wet_a_safe, wetdmax_s, frac_s, wetdnor_s)
         return dict(wet_fr_area=torch.clamp(wet_a / area, 0.0, 1.0), hru_ha=area * 100.0,
                     wet_dra_fr=torch.where(wmask, wet_dra_fr, torch.zeros_like(wet_dra_fr)),
@@ -772,7 +777,7 @@ class HydrotelColumn(nn.Module):
             diag=(diag if return_diagnostics else {k: diag[k] for k in ("etp", "apport", "ruiss_eau_mm", "ruiss_declare_mm") if k in diag}))
 
     def enable_free_water_table(self, sy=0.05, k_b=2.0e-3, z_riv=8.0, h_ref=4.0, e_frac=0.35,
-                            z_ext=9.0, exponent=2.0, n_substep=4, coupling=0.0, learned=False):
+                            z_ext=9.0, exponent=2.0, n_substep=None, coupling=None, learned=None):
         """Remplace le réservoir restituant par une nappe libre, paramètres uniformes.
 
         Valeurs par défaut issues du banc du 2026-09-18 : temps de réponse de 100 jours,
@@ -782,6 +787,10 @@ class HydrotelColumn(nn.Module):
         """
         from meandre.vertical.water_table import WaterTable
 
+        # Sous-pas, couplage et apprentissage : réglages déclarés de [groundwater] quand l'appelant ne les pose pas.
+        n_substep = settings.get("groundwater.water_table_substeps") if n_substep is None else n_substep
+        coupling = settings.get("groundwater.water_table_coupling") if coupling is None else coupling
+        learned = settings.get("groundwater.water_table_learned") if learned is None else learned
         self.free_water_table = WaterTable(n_substep=n_substep, exponent=exponent)
         self._water_table = dict(sy=float(sy), k_b=float(k_b), z_riv=float(z_riv),
                            h_ref=float(h_ref), e_frac=float(e_frac), z_ext=float(z_ext),
@@ -1002,13 +1011,14 @@ class HydrotelColumn(nn.Module):
         # rayonnement net du forcage suppose un albedo de 0,23 ; la Linacre d'Hydrotel
         # prenait l'albedo de la neige sous le manteau, Penman non. On rapporte la demande
         # au rayonnement absorbe, avec une fraction enneigee continue
-        # f = 1 - exp(-SWE / 5 mm) : facteur 1 - f + f (1 - albedo_neige) / (1 - 0,23).
+        # f = 1 - exp(-SWE / 5 mm) : facteur 1 - f + f (1 - albedo_neige) / (1 - 0,23) ; échelle et albédo
+        # déclarés (column.penman_snow_swe_scale_mm, column.penman_forcing_albedo).
         if settings.get("column.penman_snow"):
             _cover_values = snow_new.get("couvert_nival_mm", high * 1000.0)
             _albn = sum(ps[f"pct_{c}" if c != "decouver" else "pct_autres"]
                         * snow_new[f"albedo_{c}"] for c in DegreJourModifie.CLASSES)
-            _fn = 1.0 - torch.exp(-torch.clamp(_cover_values, min=0.0) / 5.0)
-            etp = etp * (1.0 - _fn + _fn * torch.clamp(1.0 - _albn, min=0.0) / 0.77)
+            _fn = 1.0 - torch.exp(-torch.clamp(_cover_values, min=0.0) / float(settings.get("column.penman_snow_swe_scale_mm")))
+            etp = etp * (1.0 - _fn + _fn * torch.clamp(1.0 - _albn, min=0.0) / (1.0 - float(settings.get("column.penman_forcing_albedo"))))
 
         # 4. ETR par couche (sur theta DÉBUT de pas). Phénologie interpolée en
         # TORCH (breakpoints cachés en tenseurs) — plus de np.interp ni de synchro
