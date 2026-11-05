@@ -1,4 +1,4 @@
-# Lacs hors reseau seuls (sans porte) sur la recette corrigee, part et sejour APPRIS, depart part 5 sejour 30 j (perte 1,000 a poids figes contre 1,111, R501, 2026-11-05). (R455 a R459) : surfaces impermeables mesurees (bati ESA WorldCover) a la place de la classe d'usage urbain de PHYSITEL, et porosites des trois couches par troncon tirees de la texture (pedotransfert de Saxton et Rawls), sous prior en mode niveau, au lieu d'une sortie bornee qui collait a 0,60. Comparaison : le modele gele, meme recette, sur 2022-2024.
+# Lacs hors reseau seuls (sans porte), sejour deduit par troncon du volume des lacs (T = D f / (rd R)), part et hauteur d'eau mobilisable APPRISES, depart part 10 et D 200 mm (perte 0,987 a poids figes contre 1,111 pour la recette, R505, 2026-11-05). Base : recette corrigee (bati WorldCover, porosites tirees de la texture, R455 a R462).
 
 # Modele provincial gele pour la production (octobre 2026) : socle du 13 octobre, plus les bornes de texture sur la conductivite, la viscosite de l'eau froide, l'aire contributive saturee (b = 8) et le terme de variations journalieres. Entraine de zero sur le Quebec entier (27 834 troncons), 2001-2018 ; point de reprise best-quebec-etl-qv848-e32.pt (derniere epoque). Perte 2022-2024 de 0,886 sur le Quebec entier, KGE median par station 0,70 sur 143 stations.
 #
@@ -185,6 +185,7 @@ keys = "porosity_1,porosity_2,porosity_3"
 level_keys = "porosity_1,porosity_2,porosity_3"
 
 [lakes]
-distributed = "5.0,30.0,1.0,0.5" # c, sejour (j), exposant, hauteur de reference (m) (R501)
-distributed_bounds = "c:0.5:50,T:2:365"
+distributed = "10.0,200.0,1.0,0.5" # part c, hauteur d'eau mobilisable D (mm), exposant, hauteur de reference (m) (R505)
+residence_from_volume = true # sejour deduit du volume des lacs par troncon
+distributed_bounds = "c:0.5:50,T:20:2000" # bornes de c et de D (mm)
 distributed_learn = "c,T"
