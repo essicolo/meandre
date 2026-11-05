@@ -125,7 +125,6 @@ w_gamma = 0.0 # facteur de variabilite du KGE, ecart absolu
 w_peak_ratio = 0.0 # rapport des magnitudes au-dessus du seuil observe ; ne prefere jamais le lissage
 w_recession = 0.0 # forme des recessions
 w_dq_log = 0.0 # variations journalieres du logarithme du debit
-w_tol_mse = 0.0 # ecart quadratique tolerant un decalage d'un jour
 w_flat = 0.0 # penalite des suites de debits plats en hiver
 w_nested = 0.0 # coherence des stations emboitees ; degrade la perte (R469)
 w_quantile = 0.0 # perte de quantiles (phase probabiliste seulement)
