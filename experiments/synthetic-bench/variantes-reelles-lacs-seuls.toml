@@ -1,0 +1,18 @@
+# Banc sur debits reels, cinquieme serie de la nuit du 2026-11-04 : lacs hors reseau sur la configuration de reference
+# (sans porte), optimum de la part et du sejour ; le Q7 minimal d'ete depasse l'observe des 60 jours (1,17).
+
+[[variant]]
+name = "lacs-sejour30"
+lakes = "5.0,30.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c3-sejour60"
+lakes = "3.0,60.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c2.5-sejour120"
+lakes = "2.5,120.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c7.5-sejour30"
+lakes = "7.5,30.0,1.0,0.5"
