@@ -1,0 +1,19 @@
+# Banc sur debits reels, quatrieme serie de la nuit du 2026-11-04 : la configuration de base (aire contributive, sans porte
+# commandee par la nappe) avec lacs hors reseau ; la porte est-elle encore utile une fois les lacs poses ?
+# Controle : la variante base doit redonner la passe de reference de ce poste (perte 1,1109).
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "lacs-sejour60"
+lakes = "5.0,60.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-sejour120"
+lakes = "5.0,120.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c3-sejour240"
+settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
+lakes = "3.0,240.0,1.0,0.5"
