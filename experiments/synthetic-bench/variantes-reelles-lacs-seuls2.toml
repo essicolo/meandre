@@ -1,0 +1,13 @@
+# Banc sur debits reels, septieme serie : lacs hors reseau seuls, autour du minimum (part 5 a 7,5, sejour 30 j, perte 1,00).
+
+[[variant]]
+name = "lacs-c10-sejour20"
+lakes = "10.0,20.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-c7.5-sejour45"
+lakes = "7.5,45.0,1.0,0.5"
+
+[[variant]]
+name = "lacs-sejour30-exp1.5"
+lakes = "5.0,30.0,1.5,0.5"
