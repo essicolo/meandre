@@ -23,6 +23,8 @@ column_theta_init_frac = 0.9 # theta init = 0.9·thetas (init Hydrotel validé, 
 compile_soil = true # ~1.5x plus rapide qu'en mode eager
 field_hidden = 256 # neurones par couche du champ spatial ; meme taille pour un territoire et pour le Quebec entier
 spatial_melt = true
+predict_lake_params = true # parametres des lacs routes (k, beta) predits par le champ spatial
+use_latent_codes = true # codes latents par troncon ; [spatial] no_latent_codes les eteint
 
 [column]
 # Reglages de la colonne verticale, declares dans meandre/utils/settings.py.
@@ -32,9 +34,16 @@ penman_snow = true # couvert nival dans Penman (R265)
 transpiration_soil_temp_ref = 1.0 # transpiration freinee par le sol froid, echelle 1 degre (R264)
 viscosity_tref = 5.0 # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
 saturated_area_exponent = 8.0 # ruissellement sur les aires saturees, part (theta1/thetas1)^8
+z1 = 0.15 # Épaisseur de la couche 1 du sol, en mètres, uniforme ; 0,15 jusqu'ici en dur dans la colonne.
+frozen_gate_amplitude = 1.0 # Amplitude de la porte de gel : capacité d'infiltration ks1 (1 − a · fraction gelée), et même facteur sur le drainage de la couche 1 ; 1 reproduit la porte d'origine, qui ferme le sol dès que le gel atteint l'épaisseur de la couche 1 (2026-10-23).
+root_zone_stress = "layer1" # Stress hydrique de la transpiration : « layer1 » (fidèle, eau de la zone racinaire jugée sur la capacité au champ et le point de flétrissement de la couche 1) ou « layered » (eau utile de chaque couche, pondérée par sa part racinaire) ; une couche 1 organique jugeait les couches minérales presque sèches (R445, 2026-10-29).
+retention = "campbell" # Loi de rétention et de conductivité du sol : campbell (clone fidèle) ou van_genuchten (Mualem-van Genuchten, n = sortie vg_n du champ, theta_r et alpha tels que la courbe passe par la capacité au champ et le point de flétrissement de chaque couche) (2026-11-03).
+dynamic_compile = false # Compilation du sol en formes dynamiques ; faux garde le mode fixe mesuré à x17,6.
 
 [routing]
 muskingum_k_hours = [4.0, 48.0, 24.0] # temps de transfert, en heures : borne basse, borne haute, valeur initiale
+substeps = 2 # Sous-pas du routage par jour.
+lake_evaporation = true # Évaporation des lacs routés par temps sec.
 
 [compute]
 operator_block = 4096 # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
@@ -44,11 +53,18 @@ gradient_segments = 10 # gradient recalcule par segments de 10 jours : la provin
 # Phase probabiliste (ETL_QUANTILE=1), sans effet sur le modele deterministe.
 log_step = 0.05 # largeur de chaque niveau de quantile, dans le logarithme du debit
 log_bound = 4.0 # un quantile extreme reste entre e^-4 et e^4 fois la mediane
+enabled = false # Tête de quantiles (phase probabiliste, épine dorsale gelée).
 
 [trainer]
 # Reglages de l'entraineur, declares dans meandre/utils/settings.py.
 step_per_block = true # un pas d'optimisation par bloc ; sans lui une epoque = un pas (R78, R288)
 lr_mult_heads = 1.0 # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
+lr_mult_soil = 50.0 # Multiplicateur du taux du profil de sol appris.
+lr_mult_routing = 100.0 # Multiplicateur du taux de la tête du temps de transfert.
+lr_mult_lakes = 50.0 # Multiplicateur du taux des scalaires des lacs hors réseau.
+save_every_epoch = false # Un point de reprise par époque, pour évaluer toute la trajectoire.
+# abandon = (absent) # Arrêt époque:seuil si la métrique de sélection reste sous le seuil après cette époque.
+history_priming = false # Passe sans gradient en début d'époque pour que chaque bloc voie le KGE de toute la période.
 
 [soil]
 layers = 3
@@ -79,6 +95,9 @@ autopilot_restart_regression = 0.05
 autopilot_restart_max = 3
 # Rappel doux des parametres vers les valeurs de la litterature, en ecart de logarithme.
 w_prior = 0.005
+w_latent_reg = 1e-3 # rappel des codes latents par troncon vers zero (sans effet sans codes latents)
+lake_lr_mult = 50.0 # multiplicateur du taux de la tete des lacs routes
+# best_metric = (absent) # choix du point de reprise : val_loss quand l'etiage est dans la perte, sinon kge_median
 
 [loss]
 # Section lue d'un bloc par le pilote ; une variable ETL_W... posee au lancement remplace le poids.
@@ -100,6 +119,16 @@ w_dq = 0.5 # variations journalieres du debit
 w_snow = 0.0 # pas de supervision de la fonte par la couverture MODIS
 w_nrmse = 0.0
 w_physics = 0.01
+w_r = 0.0 # facteur de correlation du KGE, porte seul (1 - r)
+w_beta = 0.0 # facteur de volume du KGE, ecart absolu
+w_gamma = 0.0 # facteur de variabilite du KGE, ecart absolu
+w_peak_ratio = 0.0 # rapport des magnitudes au-dessus du seuil observe ; ne prefere jamais le lissage
+w_recession = 0.0 # forme des recessions
+w_dq_log = 0.0 # variations journalieres du logarithme du debit
+w_tol_mse = 0.0 # ecart quadratique tolerant un decalage d'un jour
+w_flat = 0.0 # penalite des suites de debits plats en hiver
+w_nested = 0.0 # coherence des stations emboitees ; degrade la perte (R469)
+w_quantile = 0.0 # perte de quantiles (phase probabiliste seulement)
 
 [literature_prior]
 K_c = 1.0 # coefficient cultural initial, autour de la demande apprise
@@ -123,17 +152,28 @@ river_depth_m = 5
 reference_head_m = 2
 extinction_depth_m = 6
 extraction_fraction = 0.15
+# krec = (absent) # Constante de recharge imposée, uniforme ; absent, celle du champ.
+# krec_frozen = (absent) # Constante de recharge imposée gelée de bout en bout, y compris après le chargement d'un point de reprise.
+# krec_prior = (absent) # Valeur de krec visée par le prior physique ; absent, défaut du prior.
 
 [spatial]
 no_latent_codes = true
 priors = true # conductivite de la couche 3 sous prior du depot (R423), porosites sous prior de texture (R462)
 global_normalization = true
+z1_head = false # Épaisseur de la couche 1 apprise par tronçon : tête linéaire du champ (fc_z1), nulle au départ en poids et dont le biais rend column.z1, bornée par Z1 de [field.bounds] (2026-10-29) ; absente, column.z1 uniforme.
 
 [priors]
 keys = "K_sat_3,porosity_1,porosity_2,porosity_3" # conductivite de la couche 3 (R423) ; porosites des trois couches, centre = texture de Saxton et Rawls (R462)
 k_sat_3_center = "substratum" # centre : conductivite de la classe de drainage, par troncon (R423)
 start_at_center = "K_sat_3" # depart au centre : le modele gele n'a jamais vu cette grandeur
 level_keys = "K_sat_3,porosity_1,porosity_2,porosity_3" # jugees en niveau : la porosite collait a la borne 0,60, ou le sol ne conduit plus (R459)
+mode = "anomaly" # Comparaison du champ à ses priors : level (niveau de la carte), anomaly (contrastes entre tronçons, niveau libre, comme MOD16), shape (motif seul, niveau et amplitude libres, comme GRACE).
+sigma_k_sat = 1.609 # Écart-type, en logarithme naturel, du prior de conductivité : ln 5.
+sigma_porosity = 0.2 # Écart-type en logarithme du prior de porosité (pédotransfert de Saxton et Rawls) ; non mesuré contre une donnée indépendante.
+sigma_theta_fc_frac = 0.2 # Écart-type en logarithme du prior de capacité au champ, en fraction de la porosité ; non mesuré.
+sigma_theta_wp_frac = 0.3 # Écart-type en logarithme du prior de point de flétrissement, en fraction de la capacité au champ ; non mesuré.
+sigma_z2 = 0.693 # Écart-type en logarithme du prior d'épaisseur de la couche 2 : ln 2 ; non mesuré.
+sigma_z3 = 0.916 # Écart-type en logarithme du prior d'épaisseur de la couche 3 (épaisseur des dépôts SIGEOM) : ln 2,5 ; non mesuré.
 
 [land_cover]
 # Surfaces impermeables mesurees (bati ESA WorldCover 2021, 10 m) a la place de la classe d'usage urbain de PHYSITEL, deux a cinq fois plus etendue ; sa pluie allait entiere a la riviere le jour meme (R455, R457, R462).
@@ -142,6 +182,7 @@ impervious_table = "{DERIVES}/auxiliaires/impermeable-worldcover-troncons.parque
 [evaporation]
 open_water = true
 mod16_snow_scale_mm = 10.0
+# open_water_reservoir = (absent) # Réservoir de la pluie tombée sur l'eau libre hors lacs routés, « T,beta,h_ref » (séjour en jours à la hauteur h_ref en m, exposant de vidange) ; l'évaporation reste prise sur le débit latéral (R285).
 
 [forcing]
 suffix = "-casr-brut"
@@ -201,3 +242,19 @@ max_mm_per_day = 4.0
 area_ratio = true # observe rapporte a l'aire du troncon qui porte la station (R429) ; 062002 est en amont de SAGU01101 et se corrige ainsi
 attachment_table = "{DERIVES}/auxiliaires/station-attachment.csv" # audit_stations.py : 3 troncons voisins meilleurs, 02E901 hors territoire (R430)
 exclude_reconstructed = true # debits reconstitues sous la glace retires de la perte (R385, decision du 2026-10-28)
+# excluded = (absent) # Stations retirées de la comparaison et de l'entraînement, séparées par des virgules, par exemple une station hors du réseau modélisé (062002, R429).
+
+[data]
+withdrawals_table = "withdrawals" # Table des prélèvements lue dans la base de chaque territoire.
+territorial_extra = "" # Tables territoriales supplémentaires ajoutées aux attributs du champ, séparées par des virgules.
+
+[withdrawals]
+disabled = false # Simulation sans prélèvements ni rejets (débits naturalisés).
+
+[lakes]
+# distributed = (absent) # Lacs hors réseau (HydroModel.set_distributed_lakes), « c,T,beta,h_ref » : part de la production locale qui les traverse 1 − exp(−c · eau libre hors lacs routés), séjour T jours à la hauteur h_ref (m), exposant de vidange beta ; le ruissellement des processus déclarés les contourne.
+spill_bypass = true # Le ruissellement des processus déclarés (débordement commandé par la nappe) contourne les lacs hors réseau ; faux, il les traverse comme le reste de la production (2026-11-05).
+residence_from_volume = false # Séjour des lacs hors réseau déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R) ; le deuxième nombre de lakes.distributed est alors la hauteur d'eau mobilisable D (mm), et ses bornes celles de T (2026-11-05).
+runoff_ratio = 0.5 # Coefficient d'écoulement qui convertit la précipitation moyenne du tronçon en écoulement moyen R, pour le séjour déduit du volume des lacs.
+distributed_bounds = "c:0.5:50,T:2:120" # Bornes douces des lacs hors réseau, « c:min:max,T:min:max ».
+distributed_learn = "" # Paramètres appris des lacs hors réseau parmi c et T, séparés par des virgules ; vide, aucun.
