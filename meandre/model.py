@@ -690,9 +690,12 @@ class HydroModel(nn.Module):
                     else:
                         diffuse_lake_S = torch.zeros_like(lateral_inflow)
                 # Le ruissellement des processus declares (debordement commande par la nappe)
-                # contourne les lacs : il rejoint la riviere le jour meme (2026-11-04, R492).
+                # contourne les lacs : il rejoint la riviere le jour meme (2026-11-04, R492),
+                # sauf si lakes.spill_bypass est faux (2026-11-05, R501).
                 _vd0 = getattr(vc_out, "diag", None) or {}
                 _bypass = torch.clamp(torch.minimum(_vd0.get("ruiss_declare_mm", torch.zeros_like(lateral_inflow)), lateral_inflow), min=0.0)
+                if not settings.get("lakes.spill_bypass"):
+                    _bypass = torch.zeros_like(_bypass)
                 _in = _rd * (lateral_inflow - _bypass)
                 _h = torch.clamp(diffuse_lake_S, min=0.0) / torch.clamp(_f, min=1e-6) * 1e-3
                 _q = _f * _kc["k"] * torch.pow(_h + 1e-9, _ld["beta"]) * 1e3
