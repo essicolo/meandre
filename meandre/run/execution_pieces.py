@@ -1,16 +1,14 @@
 """Pieces de la RECETTE D'EXECUTION partagees entre le pilote et les diagnostics.
 
 Un point de reprise ne definit pas un modele : occupation du sol, milieux humides,
-phenologie, noyau de versant, surfaces de lac, ancrages ETP/fonte et regle de courbe
-de retention sont poses A L'EXECUTION. Chaque fois qu'une de ces pieces a ete recopiee
+phenologie, noyau de versant, surfaces de lac et ancrages de fonte sont poses A
+L'EXECUTION. Chaque fois qu'une de ces pieces a ete recopiee
 d'un script a l'autre, elle a fini par diverger, et un diagnostic a mesure autre chose
 que le champion :
 
   2026-08-19, surface de lac : le pilote la corrige par HydroLAKES (+0.015 mesure en
   tenu de cote), les diagnostics ne le faisaient pas -> le champion aq30 ressortait a
   0.7591 au lieu de 0.7880.
-  2026-08-19, courbe de retention : regle divergente sur krec (cf.
-  hydrotel_calib.imposed_retention_curve).
 
 Toute piece de recette qui se retrouve dans DEUX fichiers doit atterrir ici.
 """

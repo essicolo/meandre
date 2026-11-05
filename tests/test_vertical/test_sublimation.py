@@ -75,7 +75,7 @@ def _column(mode=None, n=3):
     psnow, psoil, petr = build_static_params(
         n, lat=46.0, slope=0.03, orientation=7, texture="sandy_loam",
         z=(0.1, 0.4, 1.0), land_cover_table=occ)
-    col = HydrotelColumn(et_mode="mcguinness", use_frost=True)
+    col = HydrotelColumn(use_frost=True)
     if mode is not None:
         col.sublimation_mode = mode
     col.set_static(psnow, psoil, petr, wetland=None, n_depth=n_intervalles(1.5, 0.05))

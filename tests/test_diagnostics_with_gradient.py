@@ -1,10 +1,8 @@
 """Les diagnostics retenus se décident sur l'objet de perte, pas sur la configuration.
 
-Certains poids sont posés sur l'objet de perte après sa construction, et `w_nappe` était dans
-ce cas : lu dans la configuration il valait zéro, le diagnostic du souterrain n'était pas
-retenu, et le terme des puits tournait sans gradient tout en s'affichant comme actif. La
-garde du pilote d'entraînement l'a signalé ; la source de vérité doit être la même des deux
-côtés.
+Certains poids sont posés sur l'objet de perte après sa construction : lus dans la
+configuration ils valaient zéro, et le diagnostic dont le terme dérive n'était pas retenu. La
+source de vérité doit être la même des deux côtés.
 """
 import pytest
 
@@ -18,8 +16,7 @@ def besoins(loss_fn, lcfg):
 
     d = {"etr": poids("w_et"),
          "swe": poids("w_snow") or poids("w_swe_mass"),
-         "s_gw": poids("w_water_table") or poids("w_tws"),
-         "profondeur_nappe_m": poids("w_water_table"),
+         "s_gw": poids("w_tws"),
          "theta1": poids("w_tws")}
     return sorted(k for k, v in d.items() if v > 0.0)
 
@@ -31,9 +28,9 @@ class _Loss:
 
 
 def test_weight_set_afterwards_is_seen():
-    """Le cas exact qui a echoue : w_nappe absent de la configuration."""
-    assert "s_gw" in besoins(_Loss(w_water_table=1.0), {})
-    assert "profondeur_nappe_m" in besoins(_Loss(w_water_table=1.0), {})
+    """Un poids pose sur l'objet de perte, absent de la configuration."""
+    assert "s_gw" in besoins(_Loss(w_tws=1.0), {})
+    assert "theta1" in besoins(_Loss(w_tws=1.0), {})
 
 
 def test_configuration_only_weight_is_seen():

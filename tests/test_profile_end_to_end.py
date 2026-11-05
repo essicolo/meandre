@@ -83,8 +83,7 @@ def test_three_catalogue_forms_return_finite_positive_fluxes():
            "sin_slope": torch.full((5,), 0.04)}
     for shape_value, params in (("BASE_LINEAR", {}), ("BASE_THRESH_POWER", {"tau": 72.0}),
                           ("BASE_THRESH_POWER", {"tau": 72.0, "exponent": 2.0}),
-                          ("PERC_LINEAR", {"krec": 2e-5}),
-                          ("PERC_POWER_LAW", {"krec": 2e-5, "exponent": 3.0})):
+                          ("PERC_LINEAR", {"krec": 2e-5})):
         kind = "lateral" if shape_value.startswith("BASE") else "percolation"
         q = sp.SoilProcess(layer=3, kind=kind, form=shape_value, params=params).flux(ctx)
         assert torch.all(torch.isfinite(q)), f"{shape_value} {params} rend des valeurs non finies"

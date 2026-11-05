@@ -99,23 +99,6 @@ def test_envelope_proportional_to_discharge():
                 "le rapport quantile/mediane change d'ordre de grandeur avec le debit"
 
 
-def test_additive_form_restored_by_variable():
-    """Le temoin de l'ancienne forme reste disponible pour comparaison."""
-    h = _head()
-    Q = torch.rand(20, 3) * 5 + 0.5
-    sp = torch.randn(3, 8)
-    os.environ["MEANDRE_QUANTILE_ADDITIF"] = "1"
-    try:
-        with torch.no_grad():
-            off_add = h(sp, Q)
-    finally:
-        del os.environ["MEANDRE_QUANTILE_ADDITIF"]
-    with torch.no_grad():
-        off_mul = h(sp, Q)
-    assert not torch.allclose(off_add, off_mul), "la variable temoin n'a aucun effet"
-    assert (off_add.diff(dim=-1) > 0).all(), "forme additive non monotone"
-
-
 def test_finite_gradient():
     """La perte doit pouvoir remonter dans la tete."""
     h = _head()

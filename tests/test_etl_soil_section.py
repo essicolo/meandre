@@ -23,8 +23,16 @@ def _real_sections():
                 cfg = tomllib.load(fh)
             except tomllib.TOMLDecodeError:
                 continue
-        if "soil" in cfg:
+        if "soil" in cfg and not _retired_forms(f, cfg["soil"]):
             yield f, cfg["soil"]
+
+
+def _retired_forms(f, section):
+    """Configuration archivee qui declare une forme retiree du catalogue (Hooghoudt, PDM, TOPMODEL...) :
+    elle decrit une experience passee et n'est plus lisible, ce qui est voulu."""
+    raw = section.get("process") or section.get("processes") or []
+    raw = [raw] if isinstance(raw, dict) else raw
+    return "archive" in f.replace("\\", "/").split("/") and any(e.get("form") not in sp.FORMS for e in raw)
 
 
 def test_repository_configurations_do_not_crash():

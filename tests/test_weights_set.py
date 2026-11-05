@@ -17,7 +17,7 @@ from meandre.training.loss import HydroLoss, normalize_loss_section
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PILOT = os.path.join(ROOT, "meandre", "run", "territory_data.py")
 # Poses ailleurs que dans l'appel de construction, par le pilote ou la phase quantile.
-OUTSIDE_CALL = {"w_water_table", "w_quantile"}
+OUTSIDE_CALL = {"w_quantile"}
 
 
 def _weights_of_the_call():

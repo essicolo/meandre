@@ -40,7 +40,7 @@ def _column():
     psnow, psoil, petr = build_static_params(
         N, lat=45.3, slope=0.026, orientation=7, texture="sandy_loam",
         z=(0.1, 0.4, 1.0), land_cover_table=occ)
-    col = HydrotelColumn(et_mode="mcguinness", use_frost=True)
+    col = HydrotelColumn(use_frost=True)
     col.set_static(psnow, psoil, petr, wetland=None, n_depth=n_intervalles(1.5, 0.05))
     return col
 

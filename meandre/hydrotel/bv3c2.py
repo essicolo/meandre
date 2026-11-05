@@ -24,10 +24,7 @@ from __future__ import annotations
 import os
 import torch
 
-# Fermeture de masse (2026-08-09) debrayable pour test temoin : BV3C_FERMETURE=0
-# reproduit le comportement historique (fuite du temps non traite).
 from meandre.utils import settings
-_FERMETURE_MASSE = settings.get("column.mass_closure")
 from torch import Tensor
 
 # Table proprietehydrolique.sol (Hydrotel) — thetas, thetacc, thetapf, ks(m/h), psis(m), lambda
@@ -50,7 +47,6 @@ _DTC_DETACHE = settings.get("debug.detach_dtc")
 
 
 _SEMI_IMPLICITE = settings.get("column.semi_implicit_soil")
-_GEL_SANS_NEIGE = settings.get("column.freeze_without_snow")
 
 
 def _cd(x):
@@ -138,15 +134,9 @@ def init_spline_coeffs(b):
 class BV3C2Clone(torch.nn.Module):
     """Bilan vertical BV3C2 fidèle, un pas de temps (journalier), vectorisé."""
 
-    def __init__(self, n_substep=48, static=False, frozen_gate_continuous=False,
-                 horton_precomputed=False):
+    def __init__(self, n_substep=48, static=False, frozen_gate_continuous=False):
         super().__init__()
         self.n_substep = n_substep   # sous-pas internes (le C++ adapte ; on fixe)
-        # horton_precomputed : le canal storm_hours porte le QUICKFLOW journalier (mm)
-        # précalculé offline depuis l'horaire CaSR (intensité réelle), au lieu de la
-        # durée d'orage DT_eff. Test sous-journalier SCALABLE : le modèle reste
-        # journalier, l'excès d'infiltration est calculé une fois hors-ligne.
-        self.horton_precomputed = bool(horton_precomputed)
         # EXP-2 : porte de gel CONTINUE sur l'infiltration. Le clone fidèle coupe
         # pinf=0 dès frost>0 (binaire). Ici pinf = min(prec,ks1)·(1−froz_frac),
         # cohérent avec le drainage déjà continu (throttle=1−froz_frac). Plus
@@ -161,7 +151,6 @@ class BV3C2Clone(torch.nn.Module):
         # Reglages relus a la construction : les constantes de module ci-dessus sont evaluees
         # a l'import, avant que le pilote ne lise son fichier de configuration.
         self.semi_implicite = settings.get("column.semi_implicit_soil")
-        self.gel_sans_neige = settings.get("column.freeze_without_snow")
         # static=True : pas de break data-dépendant (les itérations no-op après
         # convergence sont idempotentes, dtc=0). Permet torch.compile (pas de
         # synchro GPU `bool().all()` par itération, boucle statique fusionnable).
@@ -170,80 +159,52 @@ class BV3C2Clone(torch.nn.Module):
         self.static = static
 
     def forward(self, theta1, theta2, theta3, apport_mm, etp_mm,
-                frozen_depth_cm, swe_mm, p, etr1_mm=None, etr2_mm=None, etr3_mm=None,
-                storm_hours=None):
+                frozen_depth_cm, swe_mm, p, etr1_mm=None, etr2_mm=None, etr3_mm=None):
         """Un pas de temps BV3C2. theta en m3/m3, apport/etp en mm/jour.
         p : dict de tenseurs par nœud (thetas/ks/psis/b/omegpi/mm/nn par couche,
         z1/z2/z3, slope, krec, cin, fsa/fse/fsi, coef_recharge).
-        storm_hours : durée effective d'orage (h, DAILY, depuis l'horaire CaSR). Si
-        fourni, active l'EXCÈS D'INFILTRATION hortonien sous-journalier : capacité
-        d'infiltration = ks1·storm_hours, l'excès ruisselle AVANT le sol. Récupère le
-        ruissellement convectif d'été que le pas journalier (DT_H=24) écrase. OFF = clone fidèle.
         Retourne prod_surf, prod_hypo, prod_base (mm), recharge (mm), thetas new."""
         eps = 1e-9
         z1, z2, z3 = p["z1"], p["z2"], p["z3"]
         ths1, ths2, ths3 = p["thetas1"], p["thetas2"], p["thetas3"]
         ks1, ks2, ks3 = p["ks1"], p["ks2"], p["ks3"]
-        # ── EXCÈS D'INFILTRATION hortonien (opt-in, intensité sous-journalière) ──
-        # Le hortonien est un processus de la fraction SOL (fsa) : les fractions eau
-        # (fse) et imperméable (fsi) reçoivent l'apport TOTAL (sinon fuite de masse
-        # H·(fse+fsi), revue 2026-07-01).
-        runoff_horton = torch.zeros_like(apport_mm)
+        # Ruissellement pris sur l'apport AVANT le sol (aire contributive, processus « runoff »
+        # declares). Processus de la fraction SOL (fsa) : les fractions eau (fse) et impermeable
+        # (fsi) recoivent l'apport TOTAL.
+        runoff_before_soil = torch.zeros_like(apport_mm)
         apport_total_mm = apport_mm
-        if storm_hours is not None:
-            if self.horton_precomputed:
-                # storm_hours = quickflow journalier (mm) précalculé depuis l'horaire.
-                # Borné par l'eau disponible ; s'annule si sol gelé sous neige (déjà
-                # traité par la porte du sol, on ne double pas).
-                runoff_horton = torch.clamp(storm_hours, min=0.0)
-                runoff_horton = torch.minimum(runoff_horton, apport_mm)
-            else:
-                _frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
-                # mm infiltrable pendant l'orage = ks1[m/h]·storm_hours[h]·1000 ; gelé -> 0
-                infil_cap = torch.where(_frozen, torch.zeros_like(apport_mm),
-                                        ks1 * storm_hours * 1000.0)
-                runoff_horton = torch.clamp(apport_mm - infil_cap, min=0.0)
-            apport_mm = apport_mm - runoff_horton    # le reste entre dans le sol (fraction fsa)
         # ── AIRE CONTRIBUTIVE VARIABLE (2026-10-16, R386, opt-in MEANDRE_VSA_B) ──
         # Une part de l'apport, croissante avec l'humidite de la couche de surface, ruisselle
         # directement : les bandes riveraines et bas de versant satures, forme VIC/TOPMODEL,
         # part = (theta1/thetas1)^b. Le clone n'avait de ruissellement de saturation que si
         # toute la couche 1 saturait, ce qui n'arrive jamais a l'echelle du troncon ; les
         # orages d'ete rendaient 0,64 du volume d'evenement observe (0,32 en Monteregie).
-        # Comme le hortonien : retire de l'apport du sol, ajoute au ruissellement de fsa.
+        # Retire de l'apport du sol, ajoute au ruissellement de fsa.
         _vsa = settings.get("column.saturated_area_exponent")
         # RUISSELLEMENT DECLARE (2026-10-30, R447) : un processus « runoff » du profil, par
-        # exemple INF_PDM, prend la place de l'aire contributive ci-dessous. Le stock lu est
-        # l'eau au-dessus du point de fletrissement des couches 1 a `layer`, sa capacite celle a
-        # saturation ; les deux viennent du sol, le processus n'ajoute aucun etat.
+        # exemple SPILL_GW, prend la place de l'aire contributive ci-dessous ; il n'ajoute aucun etat.
         _profile_runoff = p.get("soil_profile")
         _declared_runoff = [q for q in getattr(_profile_runoff, "processes", ()) if q.kind == "runoff"]
         _r_decl_out = torch.zeros_like(apport_mm)
         if _declared_runoff:
-            _thetas = (theta1, theta2, theta3)
-            _ths = (ths1, ths2, ths3)
-            _wps = (p.get("thetapf1"), p.get("thetapf2"), p.get("thetapf3"))
-            _zs = (z1, z2, z3)
             _r_decl = torch.zeros_like(apport_mm)
             for q in _declared_runoff:
-                _store = sum(torch.clamp(_thetas[i] - _wps[i], min=0.0) * _zs[i] for i in range(q.layer))
-                _cap = sum(torch.clamp(_ths[i] - _wps[i], min=1e-6) * _zs[i] for i in range(q.layer))
-                _ctx = {"storage": _store, "capacity": _cap, "input": apport_mm / 1000.0}
+                _ctx = {"input": apport_mm / 1000.0}
                 # Le stock de nappe de la veille (m), posé par la colonne quand la nappe libre
-                # est activée : la manette des formes d'aire saturée comme TOPMODEL.
+                # est activée : la manette des formes d'aire saturée comme SPILL_GW.
                 if p.get("s_gw") is not None:
                     _ctx["s_gw"] = p["s_gw"]
                 _r_decl = _r_decl + q.flux(_ctx)
             _r_decl = torch.minimum(_r_decl * 1000.0, apport_mm)
             _r_decl_out = _r_decl
             apport_mm = apport_mm - _r_decl
-            runoff_horton = runoff_horton + _r_decl
+            runoff_before_soil = runoff_before_soil + _r_decl
             _vsa = None
         if _vsa is not None:
             _se1 = torch.clamp(theta1 / torch.clamp(ths1, min=1e-6), 0.0, 1.0)
             _r_vsa = apport_mm * _se1 ** float(_vsa)
             apport_mm = apport_mm - _r_vsa
-            runoff_horton = runoff_horton + _r_vsa
+            runoff_before_soil = runoff_before_soil + _r_vsa
         b1, b2, b3 = p["b1"], p["b2"], p["b3"]
         psis1, psis2, psis3 = p["psis1"], p["psis2"], p["psis3"]
         krec, slope, cin = p["krec"], p["slope"], p["cin"]
@@ -256,11 +217,7 @@ class BV3C2Clone(torch.nn.Module):
         # Le clone ne ferme le sol gele que sous moins de 10 mm de neige, alors que le module
         # de gel tient deja compte de l'isolation du manteau : la condition compte deux fois
         # la neige, et laisse s'infiltrer les redoux d'hiver sur sol gele (2026-09-29).
-        # MEANDRE_GEL_SANS_NEIGE=1 ferme le sol des que le gel existe, manteau ou non.
-        if _GEL_SANS_NEIGE or getattr(self, "gel_sans_neige", False):
-            frozen = frozen_depth_cm > 0.0
-        else:
-            frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
+        frozen = (frozen_depth_cm > 0.0) & (swe_mm < 10.0)
         # Amplitude de la porte continue (2026-10-23) : mesurée contre la réponse observée aux pluies
         # d'automne, la porte d'amplitude 1 ruisselle deux à trois fois trop sur sol gelé sans neige.
         _gate_amp = settings.get("column.frozen_gate_amplitude")
@@ -279,7 +236,6 @@ class BV3C2Clone(torch.nn.Module):
         cin = p["cin"]
         t1, t2, t3 = theta1, theta2, theta3
         lruis = torch.zeros_like(t1); lhyp = torch.zeros_like(t1); lbase = torch.zeros_like(t1)
-        ldrain = torch.zeros_like(t1)   # drainage souterrain agricole (opt-in)
         froz_frac = torch.clamp(frozen_depth_cm / 100.0 / z1, 0.0, 1.0)
         # Le gel freine aussi le drainage de la couche 1 ; même amplitude que la porte d'infiltration.
         throttle = torch.where(frozen, torch.clamp(1.0 - _gate_amp * froz_frac, 0.0, 1.0), torch.ones_like(t1))
@@ -310,128 +266,9 @@ class BV3C2Clone(torch.nn.Module):
             qq12 = k12 * (2.0 * (ps2 - ps1) / (z1 + z2) + 1.0)
             qq23 = k23 * (2.0 * (ps3 - ps2) / (z2 + z3) + 1.0)
             q2 = k2 * sin_slope * z2
-            # ── ECOULEMENT HYPODERMIQUE PROFOND (opt-in, 2026-09-19) ─────────
-            # La couche 2 possede un drainage lateral, la couche 3 n'a que la percolation
-            # verticale. Consequence mesuree : plafonner cette percolation par le substratum
-            # force la couche a se RESATURER, l'eau refusee n'ayant nulle part ou aller, et
-            # le modele revient a son defaut d'origine (plafond a 0,5 mm/j : eau gravitaire
-            # de nouveau a 443 mm, maximum de recharge de retour en aout). Volume et saison
-            # restent donc lies tant que la couche profonde n'a qu'une seule sortie.
-            # Dans un sol reel, l'eau qui percole se perche sur le till et repart
-            # LATERALEMENT : c'est l'ecoulement hypodermique profond. Meme forme que q2,
-            # conductivite de Campbell de la couche fois la pente. Absent = clone fidele.
+            # Couche 3 du clone : aucune sortie laterale, percolation lineaire en teneur en eau.
             q3_lat = torch.zeros_like(q2)
-            if "l3_tau_lat" in p:
-                # FORME RETENUE : on vide l'eau gravitaire LATERALEMENT avec sa propre
-                # constante de temps, comme on la vide verticalement. La partition entre
-                # les deux chemins devient alors le rapport de deux constantes, sans
-                # dependre d'un champ tiers. Mesure du 2026-09-19 qui a impose cette
-                # forme : la variante proportionnelle a la conductivite de Campbell donnait
-                # 0,75 d'hypodermique en Outaouais et 0,91 au Saint-Laurent nord-ouest au
-                # MEME multiplicateur, la conductivite de la couche 3 y valant quatre fois
-                # plus. Un parametre non transferable est redhibitoire pour une recette
-                # provinciale unique.
-                # CONVERGENCE mesuree le 2026-09-19, couche de 2,70 m partant de 0,52 sous
-                # 2 mm/j de pluie, hypodermique cumule sur 30 jours : a 5 jours de constante
-                # la loi est convergee au plafond de production, 266,7 mm a 64 sous-pas
-                # contre 267,9 a 512 ; a 20 jours elle ne l'est pas, 168,2 contre 204,4.
-                # Le mecanisme s'inverse par rapport au drainage vertical : un ecoulement
-                # lateral RAPIDE vide la couche, qui reste sous sa saturation, ce qui
-                # relache la condition de Courant. Une constante longue laisse la couche
-                # pleine et la troncature revient.
-                q3_lat = torch.clamp(t3 - p["thetacc3"], min=0.0) * z3 / p["l3_tau_lat"]
-            elif "l3_lateral" in p:
-                # Forme initiale, gardee pour rejouer les essais du 2026-09-19.
-                q3_lat = p["l3_lateral"] * k3 * sin_slope * z3
-            # ── DRAINAGE SOUTERRAIN AGRICOLE (opt-in, 2026-08-26) ────────────
-            # La colonne n'a AUCUN chemin qui sorte de la couche 2 vers le troncon par
-            # un SEUIL DE PROFONDEUR, or c'est exactement ce qu'est un drain agricole.
-            # En Monteregie (33.7 % de terres cultivees, le territoire le plus mauvais
-            # du domaine a 0.4821 contre 0.6953 pour son champion regional, O12), le
-            # drain convertit un interflux lent en chemin rapide a seuil : crue
-            # printaniere plus haute et plus precoce, etiage estival plus bas.
-            #
-            # Hooghoudt en regime permanent : q = (8*K*de*m + 4*K*m^2) / L^2, ou m est
-            # la hauteur de nappe AU-DESSUS du plan des drains, de la profondeur
-            # equivalente sous les drains et L l'espacement. Continue et derivable.
-            # Le modele n'ayant pas de nappe explicite, on lit la hauteur saturee de la
-            # couche 2 comme s2 = z2 * theta2/thetas2 et on la compare a la position du
-            # drain mesuree depuis la BASE de cette couche.
-            #
-            # Le flux ne s'applique qu'a la fraction DRAINEE (drain_frac, typiquement
-            # une part des terres cultivees) : c'est une moyenne surfacique, et la masse
-            # se conserve puisque le meme terme quitte t2 et rejoint ldrain. ATTENTION,
-            # drain_frac est une fraction de la surface de SOL (fsa) et non du troncon,
-            # puisque les theta et ldrain vivent tous deux dans ce referentiel.
-            # ABSENT DU DICTIONNAIRE = clone fidele au bit pres.
-            if "drain_spacing" in p:
-                _L = p["drain_spacing"]                       # espacement (m)
-                _prof = p["drain_depth"]                      # profondeur de pose (m)
-                _fdr = p["drain_frac"]                        # fraction drainee [0,1]
-                _de = p.get("drain_equiv_depth", z3)          # profondeur equivalente
-                _s2 = z2 * t2 / (ths2 + eps)                  # hauteur saturee dans L2
-                _h_drain = torch.clamp((z1 + z2) - _prof, min=0.0)  # drain au-dessus de la base
-                _m = torch.clamp(_s2 - _h_drain, min=0.0)     # charge sur les drains
-                # UNITES : on garde la forme algebrique de q2 (k2 * facteur * z2) et
-                # on met Hooghoudt dans le facteur, qui est alors SANS DIMENSION
-                # (des metres carres sur des metres carres). Ecrire (8*K*de*m +
-                # 4*K*m^2)/L^2 directement donnerait un flux d'une dimension differente
-                # de celui que la couche attend, et l'erreur serait invisible : elle ne
-                # ferait que decaler l'echelle du parametre appris.
-                _hoog = (8.0 * _de * _m + 4.0 * _m * _m) / (_L * _L)
-                # Un drain ne transmet pas plus que la capacite laterale saturee du sol
-                # qui l'alimente : le facteur est borne a 1, ce qui plafonne q_drain a
-                # k2*z2. Sans cette borne, Hooghoudt hors de son domaine de validite
-                # (forte charge, faible espacement) viderait la couche en un sous-pas.
-                q_drain = _fdr * k2 * z2 * torch.clamp(_hoog, max=1.0)
-            else:
-                q_drain = torch.zeros_like(q2)
-            # ── Drainage NON LINEAIRE de L3 (opt-in, 2026-08-22) ──
-            # Le drainage fidele est LINEAIRE en theta : q3 = krec*z3*t3. Consequence
-            # mesuree (R34/R37) : theta3 s'epingle a saturation, la recharge est
-            # constante, la nappe est plate, et la crue d'avril part en surface faute
-            # de place. La variante q3 = krec*z3*ths3*(t3/ths3)^n (n>1) draine au MEME
-            # plafond a saturation mais se coupe en dessous : L3 se vide quand les
-            # entrees faiblissent (hiver) et la fonte la re-remplit (printemps) --
-            # c'est la respiration que GRACE exige, et les deux constantes de temps
-            # des recessions mesurees (37 j et 111 j) emergent de la meme courbure
-            # (Wittenberg 1999 ; ici a la VANNE, pas a la nappe). n=1 == fidele exact.
-            # ── DRAINAGE DE L'EAU GRAVITAIRE (opt-in, 2026-09-19) ────────────
-            # Mesure sur l'Outaouais : la couche 3 se tient entre 0,507 et 0,523 toute
-            # l'annee alors que sa capacite au champ vaut 0,345 et sa porosite 0,519. Elle
-            # retient donc 0,175 m3/m3 sur 2,70 m, soit 472 mm d'eau GRAVITAIRE en
-            # permanence, cinq fois la recharge annuelle simulee. Par definition de la
-            # capacite au champ, cette eau s'ecoule en quelques jours : la loi fidele, dont
-            # la constante de temps est ajustee sur les recessions de DEBIT, ne l'evacue
-            # jamais. Consequences en chaine : aucune capacite disponible a la fonte, donc
-            # la crue part en surface ; teneur en eau constante, donc recharge constante.
-            # `l3_tau_fc` (heures) draine l'exces au-dessus de la capacite au champ et rien
-            # en dessous. Absent du dictionnaire = clone fidele.
-            # CONVERGENCE mesuree le 2026-09-19 sur une couche de 2,70 m partant de 0,52,
-            # drainage cumule sur 30 jours : a 2 et 5 jours de constante, la loi est
-            # convergee des 32 sous-pas (269 et 266 mm contre 269 et 268 a 512). A 15 jours
-            # elle ne l'est PAS meme a 128 sous-pas (223 contre 229). Une constante longue
-            # demande donc un plafond releve, sans quoi le resultat lu est un artefact de
-            # troncature.
-            _tau = p.get("l3_tau_fc")
-            _n3 = p.get("l3_drain_exp")
-            if _tau is not None:
-                q3 = torch.clamp(t3 - p["thetacc3"], min=0.0) * z3 / _tau
-                # PLAFOND DU SUBSTRATUM. Le sol se ressuie vite, mais l'eau qui quitte le
-                # profil doit traverser le depot et le socle, dont la conductivite est de
-                # plusieurs ordres de grandeur inferieure a celle du sol. Sans ce plafond,
-                # toute la percolation descend et la recharge atteint 537 mm/an sur
-                # l'Outaouais, soit la quasi-totalite de l'ecoulement du bassin (mesure du
-                # 2026-09-19). Dans un sol reel l'exces repart LATERALEMENT au-dessus de
-                # l'interface : c'est l'ecoulement hypodermique, que la cascade de
-                # saturation de la couche produit deja. Le plafond est une propriete du
-                # substratum, donc du depot et du socle, que la geologie decrit par troncon.
-                if "l3_k_sub" in p:
-                    q3 = torch.minimum(q3, p["l3_k_sub"])
-            elif _n3 is None:
-                q3 = krec * z3 * t3
-            else:
-                q3 = krec * z3 * ths3 * torch.clamp(t3 / ths3, min=0.0) ** _n3
+            q3 = krec * z3 * t3
             # ── PROFIL DE SOL DECLARE (opt-in, 2026-09-20) ───────────────────
             # Quand une section `[soil]` declare des processus par couche, elle REMPLACE
             # les sorties calculees ci-dessus. Une couche sans processus declare n'a pas
@@ -442,12 +279,10 @@ class BV3C2Clone(torch.nn.Module):
             if _profile is not None:
                 _ctx2 = {"theta": t2, "theta_fc": p.get("thetacc2"), "thickness": z2,
                          "conductivity": k2, "k_sat": ks2, "sin_slope": sin_slope, "porosity": ths2,
-                         "theta_wp": p.get("thetapf2"), "z_top": z1, "agri_frac": p.get("agri_frac"),
-                         "frost_frac": froz_frac, "visc": p.get("visc2")}
+                         "theta_wp": p.get("thetapf2"), "agri_frac": p.get("agri_frac"), "visc": p.get("visc2")}
                 _ctx3 = {"theta": t3, "theta_fc": p.get("thetacc3"), "thickness": z3,
                          "conductivity": k3, "k_sat": ks3, "sin_slope": sin_slope, "porosity": ths3,
-                         "theta_wp": p.get("thetapf3"), "z_top": z1 + z2, "agri_frac": p.get("agri_frac"),
-                         "frost_frac": froz_frac, "visc": p.get("visc3")}
+                         "theta_wp": p.get("thetapf3"), "agri_frac": p.get("agri_frac"), "visc": p.get("visc3")}
                 _zero = torch.zeros_like(q2)
                 _q2 = _profile.total(2, "lateral", _ctx2)
                 q2 = _zero if _q2 is None else _q2
@@ -530,7 +365,7 @@ class BV3C2Clone(torch.nn.Module):
             # ET BRUTE (C++ l.2036 : v_etr1 sans clamp) ; la négativité éventuelle
             # est refoulée depuis la couche du dessous (l.2118), PAS masquée.
             f1 = (pinf - qq12 - e1) / z1
-            f2 = (qq12 - qq23 - e2 - q2 - q_drain) / z2
+            f2 = (qq12 - qq23 - e2 - q2) / z2
             f3 = (qq23 - q3 - q3_lat - e3) / z3
             if _SEMI_IMPLICITE or getattr(self, "semi_implicite", False):
                 # EULER LINEAIREMENT IMPLICITE sur les echanges de Darcy entre couches
@@ -609,7 +444,6 @@ class BV3C2Clone(torch.nn.Module):
             t3 = torch.clamp(t3, min=0.0)
             lruis = lruis + ruis_rate * dtc + ov1 * z1
             lhyp = lhyp + (q2 + q3_lat) * dtc
-            ldrain = ldrain + q_drain * dtc
             lbase = lbase + q3 * dtc
             tr = torch.clamp(tr - dtc, min=0.0)
             if not self.static:                      # break = synchro GPU + graph-break
@@ -634,28 +468,24 @@ class BV3C2Clone(torch.nn.Module):
         # prorata du temps traité : l'eau « évaporée » restait dans le sol et
         # ressortait plus tard en débordement (sur-correction mesurée +199 puis +130
         # mm/an avec les fermetures naïves). Négativité refoulée comme dans la boucle.
-        if _FERMETURE_MASSE:
-            lruis = lruis + prec * tr
-            t1 = t1 - e1 * tr / z1
-            t2 = t2 - e2 * tr / z2
-            t3 = t3 - e3 * tr / z3
-            neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
-            neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
-            t3 = torch.clamp(t3, min=0.0)
+        lruis = lruis + prec * tr
+        t1 = t1 - e1 * tr / z1
+        t2 = t2 - e2 * tr / z2
+        t3 = t3 - e3 * tr / z3
+        neg1 = torch.clamp(-t1, min=0.0); t1 = t1 + neg1; t2 = t2 - neg1 * z1 / z2
+        neg2 = torch.clamp(-t2, min=0.0); t2 = t2 + neg2; t3 = t3 - neg2 * z2 / z3
+        t3 = torch.clamp(t3, min=0.0)
 
         # ── CalculeUHRH (l.820) : production avec split occupation du sol ──
         # leau = (pluie − ET) sur fraction EAU ; lprec = pluie sur IMPERMÉABLE
-        # fractions eau/imperméable : apport TOTAL (le hortonien ne les concerne pas)
+        # fractions eau/imperméable : apport TOTAL (le ruissellement avant le sol ne les concerne pas)
         lprec = (apport_total_mm / 1000.0)               # m (pluie totale du pas)
         leau = torch.clamp((apport_total_mm - etp_mm) / 1000.0, min=0.0)
-        # le ruissellement hortonien (excès d'infiltration) s'ajoute au ruissellement
-        # de la fraction sol perméable (fsa), avant pondération.
-        lruis = lruis + runoff_horton / 1000.0           # m
+        # le ruissellement pris avant le sol s'ajoute au ruissellement de la fraction sol
+        # perméable (fsa), avant pondération.
+        lruis = lruis + runoff_before_soil / 1000.0           # m
         prod_surf = lruis * fsa + leau * fse + lprec * fsi      # m
-        # Le drain rejoint la production HYPODERMIQUE : c'est un chemin subsurfacique
-        # rapide vers le fosse, pas du ruissellement de surface. Il est expose a part
-        # dans les diagnostics pour qu'on puisse le juger seul.
-        prod_hypo = (lhyp + ldrain) * fsa
+        prod_hypo = lhyp * fsa
         prod_base = lbase * fsa
         recharge = coef_rech * (prod_hypo + prod_base)
         prod_hypo = prod_hypo - prod_hypo * coef_rech
@@ -669,7 +499,6 @@ class BV3C2Clone(torch.nn.Module):
         diag = dict(pinf=pinf, ruis_hortonien=ruis_rate * DT_H * 1000.0,
                     sat_t1=(t1 / (ths1 + eps)),
                     temps_non_traite=tr / DT_H,
-                    drain_mm=ldrain * fsa * 1000.0,
                     # Evaporation de la fraction EAU (2026-10-02) : l'eau libre perd
                     # min(apport, ETP), puisque seul l'excedent ruisselle. Perte reelle,
                     # jamais publiee : sans elle l'audit de bilan lit +1,5 % en Outaouais.

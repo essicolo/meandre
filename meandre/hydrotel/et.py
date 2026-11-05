@@ -1,10 +1,7 @@
 """Clone FIDÈLE de la chaîne évapotranspiration d'Hydrotel, porté ligne-à-ligne
 du C++ vers PyTorch, vectorisé, différentiable. Sous-projet PROPRE.
 
-Deux étages :
-  1. ETP potentielle Hydro-Québec (hydro_quebec.cpp:72), formule température
-     (Tmin/Tmax journalières). ETP par classe = ETP × pourcentage × coef_mult.
-  2. ETR réelle par couche (bv3c2.cpp:2211 CalculeEtr) : évaporation sol nu
+ETR réelle par couche (bv3c2.cpp:2211 CalculeEtr) : évaporation sol nu
      (esnu, couche 1, atténuée par l'indice foliaire via Beer-Lambert) +
      transpiration (tp, répartie entre couches par racine × humidité). Boucle
      sur les classes d'occupation perméables (_index_autres = hors eau/imperm).
@@ -19,14 +16,6 @@ from torch import Tensor
 BETA = 1.1   # constantes.hpp:48
 
 
-def hydro_quebec_etp(tmin_j: Tensor, tmax_j: Tensor, poids: float = 1.0) -> Tensor:
-    """ETP potentielle Hydro-Québec [mm/jour] (hydro_quebec.cpp:72). Tmin/Tmax
-    JOURNALIÈRES (°C). poids = Repartition (1.0 au pas journalier). C'est l'ETP
-    de base par unité de surface ; l'ETP par classe = etp × pct × coef_mult."""
-    return poids * 0.029718 * (tmax_j - tmin_j) * torch.exp(
-        0.019 * ((9.0 / 5.0) * (tmax_j + tmin_j) + 64.0))
-
-
 def _stress(ftheta: Tensor, alpha: Tensor) -> Tensor:
     """kas/kat (bv3c2.cpp:2266) : (1-e^{-α·f}) / (1 - 2e^{-α} + e^{-α·f})."""
     ea = torch.exp(-alpha)
@@ -35,7 +24,7 @@ def _stress(ftheta: Tensor, alpha: Tensor) -> Tensor:
 
 
 def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
-                thetacc, thetapf, alpha, z11, z22, z33, des, coef_assech, layered=None, root_beta=None):
+                thetacc, thetapf, alpha, z11, z22, z33, des, coef_assech, layered=None):
     """CalculeEtr (bv3c2.cpp:2211), un pas de temps, sommé sur les classes
     perméables. Tout vectorisé sur les nœuds ; les listes par classe sont des
     listes Python (peu de classes).
@@ -48,9 +37,6 @@ def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
     point de fletrissement de la couche 1), ou ((cc2, pf2), (cc3, pf3)) : stress juge sur l'eau
     utile de chaque couche ponderee par sa part racinaire (2026-10-29, R445). Hydrotel suppose une
     texture homogene ; une couche 1 organique jugeait les couches minerales presque seches.
-    root_beta : None (fidele : prelevement de chaque couche au prorata de son epaisseur dans la
-    zone racinaire), ou le beta de Jackson et al. (1996), fraction cumulee des racines 1 - beta^z
-    (z en cm) : chaque couche pese la part des racines qu'elle contient (2026-10-31, R463).
     Retourne (etr1, etr2, etr3) [m]."""
     z1 = z11
     z2 = z11 + z22
@@ -80,18 +66,6 @@ def calcule_etr(theta1, theta2, theta3, etp_classes, root_depth, leaf_index,
         dz1 = torch.clamp(torch.minimum(zc, z1t), min=0.0)
         dz2 = torch.clamp(torch.minimum(zc, z2t) - z1t, min=0.0)
         dz3 = torch.clamp(zc - z2t, min=0.0)
-        if root_beta is not None:
-            # Densite racinaire continue : l'epaisseur de chaque couche est remplacee par la part des
-            # racines qu'elle porte, rapportee a la zone racinaire ; la somme reste zc.
-            b = float(root_beta)
-            cum = lambda d: 1.0 - b ** (100.0 * d)
-            total = torch.clamp(cum(zc), min=1e-12)
-            top1, top2 = torch.zeros_like(zc), torch.minimum(z1t, zc)
-            top3 = torch.minimum(z2t, zc)
-            dz1 = (cum(top2) - cum(top1)) / total * zc
-            dz2 = (cum(top3) - cum(top2)) / total * zc
-            dz3 = (cum(zc) - cum(top3)) / total * zc
-
         theta_rz = (theta1 * dz1 + theta2 * dz2 + theta3 * dz3) / torch.clamp(zc, min=1e-12)
         if layered is None:
             ftheta_rz = torch.clamp((theta_rz - thetapf) / denom_cc, 0.0, 1.0)

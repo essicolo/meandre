@@ -417,94 +417,6 @@ def tws_anomaly_loss(
     return resid.pow(2).mean()
 
 
-def water_table_anomaly_loss(
-    z_sim_month: Tensor, level_obs_month: Tensor, mask: Tensor | None = None,
-    sy: Tensor | float | None = None, amplitude_sim: Tensor | None = None,
-    amplitude_obs: Tensor | None = None, porosity_weight: float = 0.0,
-) -> Tensor:
-    """Anomalies mensuelles de la nappe simulée contre les niveaux mesurés, RÉDUITES.
-
-    Pourquoi réduites. Le balayage du 2026-09-18 sur 27 puits en nappe libre montre que la
-    mesure distingue fortement la PRÉSENCE des mécanismes souterrains et leur phase, et
-    faiblement la valeur de leurs paramètres : le temps de réponse et l'exposant de la loi
-    stock-débit ne déplacent la corrélation saisonnière que de 0,12 sur toute leur plage
-    plausible. Un terme qui viserait l'amplitude absolue demanderait une porosité de drainage
-    par puits, que rien ne prédit encore, et chaque puits absorberait son erreur locale. On
-    contraint donc ce qui est identifiable : la forme de la variation.
-
-    Chaque série est centrée sur SA PROPRE MOYENNE, puis divisée par son écart-type. La
-    moyenne des carrés des écarts vaut alors 2 (1 − r), avec r la corrélation : minimiser ce
-    terme maximise la corrélation, sans rien imposer à l'échelle.
-
-    Le centrage porte sur la moyenne du puits et NON sur chaque mois calendaire, si bien que
-    le cycle saisonnier reste dans l'anomalie et se trouve contraint. C'est délibéré : le
-    même balayage montre que le cycle saisonnier est ce que la mesure voit, alors que les
-    écarts d'une année à l'autre ne répondent à aucun paramètre souterrain et renvoient à la
-    recharge. Centrer par mois calendaire viserait donc précisément ce que ce terme ne peut
-    pas corriger.
-
-    La profondeur simulée et le niveau mesuré varient en SENS OPPOSÉS, une nappe qui monte
-    étant une profondeur qui diminue. La réduction se charge du signe pourvu qu'on inverse
-    l'une des deux, ce qui est fait ici sur la simulation.
-
-    Parameters
-    ----------
-    z_sim_month : (M, W) profondeur simulée de la surface libre, en mètres, par mois et puits.
-    niveau_obs_month : (M, W) niveau mesuré, en mètres, même convention de signe que la
-        profondeur simulée (profondeur sous le repère du tubage).
-    masque : (M, W) booléen, vrai là où la mesure existe. Un puits comptant moins de
-        24 mois observés est écarté : sa corrélation n'aurait pas de sens.
-    sy, amplitude_sim, amplitude_obs, poids_porosite : garde-fou physique optionnel. La
-        porosité de drainage impliquée, sy × amplitude simulée / amplitude mesurée, doit
-        rester entre 0,01 dans le roc fracturé et 0,30 dans les sables ; l'écart hors de
-        cette plage est pénalisé en logarithme. Poids nul = garde-fou inactif.
-
-    Returns
-    -------
-    Scalaire. Vaut 0 sans aucune mesure utilisable.
-    """
-    if z_sim_month.numel() == 0:
-        return torch.zeros((), device=z_sim_month.device)
-    m = torch.ones_like(z_sim_month, dtype=torch.bool) if mask is None else mask
-    n = m.sum(dim=0)
-    valid_ = n >= 24
-    if not bool(valid_.any()):
-        return torch.zeros((), device=z_sim_month.device)
-
-    def _center_series(x):
-        """Écart à la moyenne, sur les seuls pas observés."""
-        xm = torch.where(m, x, torch.zeros_like(x))
-        mean_ = xm.sum(dim=0) / torch.clamp(n, min=1)
-        return torch.where(m, x - mean_, torch.zeros_like(x))
-
-    # La perte vaut 2 (1 - r), avec r la corrélation, ce qui la BORNE entre 0 et 4. On la
-    # calcule par la corrélation plutôt qu'en réduisant chaque série : diviser par
-    # l'écart-type simulé explose quand celui-ci tend vers zéro, ce qui est PRÉCISÉMENT le
-    # cas du stock souterrain qu'on cherche à corriger. Mesuré le 2026-09-19 : le terme
-    # atteignait 311 contre 2,2 pour tous les autres réunis, soit 9305 pour cent de la
-    # perte, et écrasait l'entraînement. Un terme de perte doit être borné par construction.
-    c_sim = _center_series(-z_sim_month)
-    c_obs = _center_series(-level_obs_month)
-    cov = (c_sim * c_obs).sum(dim=0)
-    n_sim = torch.sqrt((c_sim.pow(2)).sum(dim=0))
-    n_obs = torch.sqrt((c_obs.pow(2)).sum(dim=0))
-    # Un puits dont la simulation ne varie pas ne porte aucune information de forme : sa
-    # corrélation n'est pas définie et on lui donne la valeur NEUTRE, ni récompense ni
-    # punition, plutôt qu'une valeur infinie.
-    flat = (n_sim < 1e-6 * torch.clamp(n_obs, min=1e-12)) | (n_obs < 1e-12)
-    r = cov / torch.clamp(n_sim * n_obs, min=1e-12)
-    r = torch.where(flat, torch.zeros_like(r), torch.clamp(r, -1.0, 1.0))
-    loss_value = (2.0 * (1.0 - r))[valid_].mean()
-
-    if porosity_weight > 0.0 and sy is not None and amplitude_sim is not None:
-        # Le garde-fou ne cale RIEN : il interdit seulement une porosité que la géologie
-        # rendrait impossible, et reste nul tant qu'on est dans la plage connue.
-        implies = sy * amplitude_sim / torch.clamp(amplitude_obs, min=1e-6)
-        too_low = torch.clamp(torch.log(torch.tensor(0.01)) - torch.log(torch.clamp(implies, min=1e-6)), min=0.0)
-        too_high = torch.clamp(torch.log(torch.clamp(implies, min=1e-6)) - torch.log(torch.tensor(0.30)), min=0.0)
-        loss_value = loss_value + porosity_weight * (too_low + too_high)[valid_].pow(2).mean()
-    return loss_value
-
 
 def peak_weighted_mse_loss(
     q_obs: Tensor, q_sim: Tensor, q_threshold: Tensor,
@@ -839,7 +751,6 @@ class HydroLoss(nn.Module):
         w_et: float = 0.0,
         et_mode: str = "level",
         w_tws: float = 0.0,
-        w_water_table: float = 0.0,
         w_tws_clim: float = 0.0,
         w_quantile: float = 0.0,
         w_peak: float = 0.0,
@@ -900,8 +811,6 @@ class HydroLoss(nn.Module):
                              "(attendu 'level', 'anomaly', 'bassin' ou 'forme')")
         self.et_mode = et_mode
         self.w_tws = w_tws  # GRACE TWS (calculé dans le trainer, lu via loss_fn.w_tws)
-        # Niveaux de nappe mesurés (2026-09-19), contrainte de FORME en anomalies réduites.
-        self.w_water_table = w_water_table
         # Biais saisonnier GRACE par mois calendaire (R23). Le terme mensuel
         # ci-dessus juge à l'incertitude d'UNE observation (25 mm) et laisse
         # passer un biais systématique de 26 mm ; celui-ci le juge à
@@ -1037,15 +946,6 @@ class HydroLoss(nn.Module):
                 q_s = q_sim_at_stations[:, keep]                 # (T, S_keep), jamais NaN
                 _m = valid[:, keep].to(q_s.dtype)                # 1 si observe, 0 sinon
                 _n_val = _m.sum(dim=0).clamp(min=1.0)            # (S_keep,)
-                if settings.get("debug.nan_mask"):
-                    # TEMOIN : restitue le masquage par NaN d'avant le 2026-09-08, pour
-                    # mesurer en apparie ce que le correctif change. A n'utiliser que pour
-                    # cela : il empoisonne le gradient de tout bloc a lacune (R92).
-                    q_o = q_obs[:, keep].clone(); q_s = q_sim_at_stations[:, keep].clone()
-                    _inv = ~valid[:, keep]
-                    q_o[_inv] = float("nan"); q_s[_inv] = float("nan")
-                    _m = torch.ones_like(q_s); _n_val = torch.full((int(keep.sum()),), float(q_s.shape[0]),
-                                                                   device=q_s.device, dtype=q_s.dtype)
 
                 # Weights for kept stations
                 if self.station_weights is not None and len(self.station_weights) == n_stations:
@@ -1074,9 +974,8 @@ class HydroLoss(nn.Module):
                     # combattait tout transfert d'eau entre saisons : 0,44 de la perte
                     # d'entrainement de la Monteregie contre 0,06 sur la serie entiere qui sert
                     # de juge. Comme le KGE : historique detache plus bloc courant, gradient
-                    # remis a l'echelle du jour vivant. MEANDRE_PBIAS_CONTINU=0 restitue le bloc.
-                    if (settings.get("loss_options.pbias_continuous") and q_obs_hist is not None
-                            and q_sim_hist is not None and q_obs_hist.numel() > 0):
+                    # remis a l'echelle du jour vivant.
+                    if (q_obs_hist is not None and q_sim_hist is not None and q_obs_hist.numel() > 0):
                         _ho = q_obs_hist[:, keep]
                         _hs = q_sim_hist[:, keep]
                         _hm = (~torch.isnan(_ho) & ~torch.isnan(_hs)).to(q_s.dtype)
@@ -1372,7 +1271,7 @@ class HydroLoss(nn.Module):
 
 # Anciennes clés françaises de la section [loss], renommées le 2026-10-28 (identifiants en
 # anglais). Une configuration ou une recette archivée qui les porte se relit telle quelle.
-LEGACY_LOSS_KEYS = {"w_etiage": "w_low_flow", "w_fdc_bas": "w_fdc_low", "w_plat": "w_flat", "w_nappe": "w_water_table", "plat_seuil": "flat_threshold", "plat_mois": "flat_months", "plat_largeur": "flat_width"}
+LEGACY_LOSS_KEYS = {"w_etiage": "w_low_flow", "w_fdc_bas": "w_fdc_low", "w_plat": "w_flat", "plat_seuil": "flat_threshold", "plat_mois": "flat_months", "plat_largeur": "flat_width"}
 
 
 def normalize_loss_section(section: dict) -> dict:

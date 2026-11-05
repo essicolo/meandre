@@ -146,8 +146,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
     from meandre.model import HydroModel
     from meandre.routing.withdrawals import WithdrawalData
     from meandre.utils.state import HydroState
-    from meandre.adapters.physitel.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
-                                             load_rain_snow_transition)
+    from meandre.adapters.physitel.hydrotel_calib import load_melt_nodes, load_rain_snow_transition
 
     # GRAINE FIXE, comme dans `entrainer`. Elle manquait ici jusqu'au 2026-09-13, si bien
     # que deux passes de la meme configuration differaient d'autant qu'un traitement : le
@@ -187,7 +186,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
 
     m = HydroModel(n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
                    use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode="nerf",
-                   column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
+                   column_mode="hydrotel", use_temperature=False,
                    use_latent_codes=False, spatial_melt=True,
                    routing_mode="operator-lagged", predict_lake_params=True,
                    compile_soil=False, use_aquifer=aquifere)
@@ -196,12 +195,6 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         maj = reg.upper()
         plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
         col = m.vertical_column
-        # MEANDRE_BANC_ETP_MODE (2026-09-28) : formule d'ETP autre que Linacre calée, par
-        # exemple penman, dont la forme saisonnière suit MOD16 (avril / octobre 1,58 contre 1,63).
-        col.et_mode = os.environ.get("MEANDRE_BANC_ETP_MODE", "linacre")
-        col.etp_channel = None
-        col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"],
-                                                   device=torch.device("cpu")))
         try:
             col.set_melt_params(load_melt_nodes(plat, s["node_ids"],
                                                 device=torch.device("cpu")))
@@ -221,19 +214,7 @@ def simuler(reg, station, annees=6, ancrer=True, kc=None, kmusk=None,
         except Exception as e:
             print(f"  [ancrage] occupation non chargee : {type(e).__name__} {e}")
     if sol is not None:
-        # SOL D'HYDROTEL IMPOSE. sol="complet" : tout le calage bv3c, krec et recharge
-        # compris, ce qui reproduit Hydrotel qui n'a pas de voie profonde (a coupler avec
-        # aquifere=False). sol="sauf_ks" : tout sauf les conductivites a saturation, qui
-        # restent au champ -- c'est la loi des ancrages.
-        from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil
-        maj = reg.upper()
-        plat = f"{_p.PLATFORMS_ROOT}/LN24HA/{maj}_LN24HA_2020"
-        z1 = float(getattr(m.vertical_column, "z1", 0.15))
-        calib = load_calibrated_soil(plat, s["node_ids"], z1, device=torch.device("cpu"))
-        if sol == "sauf_ks":
-            for k in ("ks1", "ks2", "ks3"):
-                calib.pop(k, None)
-        m.vertical_column.set_calibrated_soil(calib)
+        raise SystemExit("sol d'Hydrotel impose : retire le 2026-11-05 avec l'ancrage du sol sur le calage ; le banc tourne a sol libre")
     if melt_saison is not None:
         m.vertical_column.melt_seasonal_amp = float(melt_saison)
     if melt_diurne:
@@ -374,14 +355,14 @@ def rapport(reg, station, **kw):
 
 
 
-def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
+def entrainer(reg, station, epoques=20, lr=5e-4, sol=None, aquifere=True,
               debut_train=2010, fin_train=2017, fin_val=2019, debut_eval=2020,
               kge_continu=True, etat_continu=True, device=None, tag="",
               pas_par_bloc=True, amorce=False, aux=True, fin_charge=None,
               substeps=None, chunk=45, w_et=0.4, w_kge=1.0, w_pbias=0.5, w_mse=0.1,
               w_dq=0.0, w_fdc=0.0, w_dq_log=0.0, quantile=False, charger=None,
               w_log_mse=0.0, w_peak=0.0,
-              w_water_table=0.0, nappe_valid=0.5):
+              nappe_valid=0.5):
     """LE TEST QUI DECIDE : un champ entraine sous une boucle JUSTE rend-il les
     hydrogrammes plus nets ou plus plats ?
 
@@ -403,12 +384,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     from meandre.utils.state import HydroState
     from meandre.training.trainer import Trainer, TrainingConfig, TrainingData
     from meandre.training.loss import HydroLoss
-    from meandre.adapters.physitel.hydrotel_calib import (load_linacre_nodes, load_melt_nodes,
-                                             load_rain_snow_transition,
-                                             load_land_cover, load_calibrated_soil)
+    from meandre.adapters.physitel.hydrotel_calib import load_melt_nodes, load_rain_snow_transition, load_land_cover
 
-    os.environ["MEANDRE_KGE_CONTINU"] = "1" if kge_continu else "0"
-    os.environ["MEANDRE_ETAT_CONTINU"] = "1" if etat_continu else "0"
+    if not (kge_continu and etat_continu):
+        raise SystemExit("etat et KGE non continus : retires le 2026-11-05, la boucle est toujours continue")
+    if sol is not None:
+        raise SystemExit("sol d'Hydrotel impose : retire le 2026-11-05 avec l'ancrage du sol sur le calage ; le banc tourne a sol libre")
     os.environ["MEANDRE_PAS_PAR_BLOC"] = "1" if pas_par_bloc else "0"
     os.environ["MEANDRE_HISTORIQUE_AMORCE"] = "1" if amorce else "0"
     if substeps is not None:
@@ -519,7 +500,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     def _construire():
         m = HydroModel(field_bounds=_field_bounds, n_nodes=n, n_territorial=terr.data.shape[1], n_forcing=6,
                        use_frost_rankinen=True, column_theta_init_frac=0.9, param_mode=_mode, n_coord_freqs=_freqs,
-                       column_mode="hydrotel", et_mode="mcguinness", use_temperature=False,
+                       column_mode="hydrotel", use_temperature=False,
                        use_latent_codes=False, spatial_melt=True,
                        routing_mode="operator-lagged", predict_lake_params=True,
                        # SOUS-PAS DU ROUTAGE (2026-09-30) : a deux sous-pas de 12 h, tout temps de
@@ -563,11 +544,6 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             if _isl.any():
                 print(f"  lacs : surface {_src}, mediane {np.median(_alac[_isl]):.2f} km2 sur {int(_isl.sum())} lacs (aire drainee mediane {np.median(_A[_isl]):.1f} km2)", flush=True)
         col = m.vertical_column
-        # MEANDRE_BANC_ETP_MODE (2026-09-28) : formule d'ETP autre que Linacre calée, par
-        # exemple penman, dont la forme saisonnière suit MOD16 (avril / octobre 1,58 contre 1,63).
-        col.et_mode = os.environ.get("MEANDRE_BANC_ETP_MODE", "linacre")
-        col.etp_channel = None
-        col.set_linacre_params(*load_linacre_nodes(plat, s["node_ids"], device=dev))
         col.set_melt_params(load_melt_nodes(plat, s["node_ids"], device=dev))
         sn = load_rain_snow_transition(plat)
         if sn:
@@ -585,14 +561,12 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  fonte saisonniere, amplitude {col.melt_seasonal_amp:g}", flush=True)
         # MILIEUX HUMIDES ET PHENOLOGIE DU PROJET (2026-10-02), comme le pilote : le banc ne
         # posait que l'occupation, si bien que le reservoir de milieu humide n'existait pas.
-        # Memes cles que le pilote : ETL_SANS_MH=1 l'eteint, ETL_MH_FIDELE=1 restitue le
-        # couplage d'Hydrotel ; MEANDRE_BANC_PHENO_PROJET=0 garde la phenologie par defaut.
+        # Memes cles que le pilote : ETL_SANS_MH=1 l'eteint ; MEANDRE_BANC_PHENO_PROJET=0 garde la
+        # phenologie par defaut.
         _lc = load_land_cover(plat, s["node_ids"], device=dev)
         if os.environ.get("ETL_SANS_MH", "0") != "1":
             from meandre.adapters.physitel.hydrotel_calib import load_wetlands
             _mh = load_wetlands(plat, s["node_ids"], device=dev)
-            if os.environ.get("ETL_MH_FIDELE", "0") == "1":
-                col.mh_conservatif = False
             # EPREUVE DE SENSIBILITE (2026-10-02) : un projet sans fichier de milieux humides
             # (Saint-Laurent nord-ouest) n'a aucun reservoir. MEANDRE_BANC_MH_OCCUPATION=r
             # le construit depuis l'occupation : surface = fraction humide x aire locale,
@@ -647,13 +621,6 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             if _ph:
                 col.set_phenology(_ph)
                 print(f"  phenologie du projet : {len(_ph)} classes", flush=True)
-        if sol:
-            z1 = float(getattr(col, "z1", 0.15))
-            calib = load_calibrated_soil(plat, s["node_ids"], z1, device=dev)
-            if sol == "sauf_ks":
-                for k in ("ks1", "ks2", "ks3"):
-                    calib.pop(k, None)
-            col.set_calibrated_soil(calib)
         # PORTE DE GEL, PROFIL DE SOL ET NAPPE LIBRE, lus depuis les MEMES variables que le
         # pilote regional. Les couches du sol se declarent par MEANDRE_BANC_SOIL_TOML.
         if os.environ.get("MEANDRE_GEL_CONTINU") == "1":
@@ -677,20 +644,8 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             print(f"  profil de sol declare : {_profile.layers} couches, {len(_profile.processes)} processus, appris : {', '.join(_appris) or 'aucun'}", flush=True)
             for _pr in _profile.processes:
                 print(f"    couche {_pr.layer} {_pr.kind} {_pr.form} {_pr.params}", flush=True)
-        if os.environ.get("PROV_DRAIN", "0") == "1":
-            # Drainage souterrain agricole (Hooghoudt), memes cles que le pilote provincial.
-            col.drainage_agricole = dict(espacement_m=float(os.environ.get("PROV_DRAIN_L", "15")),
-                                         profondeur_m=float(os.environ.get("PROV_DRAIN_Z", "1.0")),
-                                         part_cultive=float(os.environ.get("PROV_DRAIN_F", "0.6")))
-            print(f"  drainage agricole : {col.drainage_agricole}", flush=True)
-        if "MEANDRE_RACINES_ECHELLE" in os.environ:
-            col.root_depth_scale = float(os.environ["MEANDRE_RACINES_ECHELLE"])
-            print(f"  racines : profondeur x {col.root_depth_scale:g}", flush=True)
         if os.environ.get("ETL_NAPPE_LIBRE", "0") == "1":
             col.enable_free_water_table(sy=float(os.environ.get("ETL_NAPPE_SY", 0.05)), k_b=float(os.environ.get("ETL_NAPPE_KB", 2.0e-3)), z_riv=float(os.environ.get("ETL_NAPPE_ZRIV", 8.0)), h_ref=float(os.environ.get("ETL_NAPPE_HREF", 4.0)), e_frac=float(os.environ.get("ETL_NAPPE_EFRAC", 0.35)), z_ext=float(os.environ.get("ETL_NAPPE_ZEXT", 9.0)), exponent=float(os.environ.get("ETL_NAPPE_EXP", 2.0)), coupling=float(os.environ.get("ETL_NAPPE_COUPLAGE", 0.0)), learned=os.environ.get("ETL_NAPPE_APPRIS") == "1")
-            if "ETL_NAPPE_GEL" in os.environ:
-                col.water_table_frost_factor = float(os.environ["ETL_NAPPE_GEL"])
-                print(f"  porte de gel sur la nappe : facteur {os.environ['ETL_NAPPE_GEL']}", flush=True)
         return m
 
     def _tranche(a, b):
@@ -738,17 +693,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
     # vaut 0.82. J'avais attribue cet ecart au trainer (R75) ; il etait dans ce banc.
     tr_sl = _tranche(debut_train, fin_train)
     va_sl = _tranche(fin_train + 1, fin_val)
-    # PUITS DU SOUS-BASSIN (2026-09-23). La question posee au banc : le terme des puits
-    # achete-t-il de la nappe INDEPENDANTE une fois l'optimiseur converge, ce que huit
-    # epoques regionales ne peuvent pas dire. Les puits du domaine sont restreints aux
-    # nœuds du sous-bassin, puis partages par un ordre stable : la moitie dans la perte, la
-    # moitie tenue de cote et evaluee en fin d'entrainement.
-    water_table_obs = water_table_idx = None
+    # PUITS DU SOUS-BASSIN (2026-09-23), hors perte : une part des puits du sous-bassin, choisie
+    # par un ordre stable, est evaluee en fin d'entrainement contre la nappe simulee.
     puits_garde, nappe_garde = [], None
-    # Les puits sont extraits des que la moitie tenue de cote doit etre evaluee, y compris
-    # pour le temoin a poids nul : sans cela le temoin n'avait pas de ligne de puits a
-    # comparer (2026-09-23). Seul le terme de perte reste conditionne au poids.
-    if float(w_water_table) > 0 or float(nappe_valid) > 0:
+    if float(nappe_valid) > 0:
         import pandas as _pdn
         from meandre.adapters.physitel.rsesq_loader import _path_default, read_rsesq
 
@@ -769,18 +717,14 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
             puits_garde = sorted(_rang[::max(len(_pu) // max(_n_val, 1), 1)][:_n_val]) if _n_val else []
             _entraine = [i for i in range(len(_pu)) if i not in set(puits_garde)]
             _sb_idx = [_pos[int(_cn.node_idx[_dans[i]])] for i in range(len(_pu))]
-            if float(w_water_table) > 0:
-                water_table_obs = torch.tensor(_val[:, _entraine], device=dev)
-                water_table_idx = torch.tensor([_sb_idx[i] for i in _entraine], dtype=torch.long, device=dev)
             nappe_garde = (_val[:, puits_garde], [_sb_idx[i] for i in puits_garde],
                            [_pu[i] for i in puits_garde])
             print(f"  puits : {len(_pu)} dans le sous-bassin, {len(_entraine)} "
-                  f"{'dans la perte' if float(w_water_table) > 0 else 'hors perte (poids nul)'}, "
+                  f"hors perte, "
                   f"{len(puits_garde)} tenus de cote "
                   f"({', '.join(_pu[i] for i in puits_garde) or 'aucun'})", flush=True)
         else:
-            print("  puits : aucun puits recevable dans ce sous-bassin, terme inactif", flush=True)
-            w_water_table = 0.0
+            print("  puits : aucun puits recevable dans ce sous-bassin", flush=True)
     # POIDS DU TERME MOD16 HORS NEIGE (2026-10-03), MEANDRE_ET_NEIGE_MM = tau en mm d'equivalent
     # en eau : w = exp(-SWE_NEISIM / tau) par noeud et par jour, sur l'axe du forcage. Une
     # donnee et non le manteau simule, donc un poids fixe. Voir TrainingData.et_weight.
@@ -794,14 +738,10 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         print(f"  terme MOD16 pondere hors neige : w = exp(-SWE NEISIM / {_tau_n:g} mm), poids moyen {float(commun['et_weight'].mean()):.2f}", flush=True)
     td = TrainingData(train_slice=tr_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[tr_sl.start:],
-                         "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None),
-                         "water_table_obs": (water_table_obs[tr_sl.start:] if water_table_obs is not None else None),
-                         "water_table_idx": water_table_idx})
+                         "et_obs": (et_obs[tr_sl.start:] if et_obs is not None else None)})
     vd = TrainingData(train_slice=va_sl, val_slice=va_sl,
                       **{**commun, "q_obs": q_obs[va_sl.start:],
-                         "et_obs": (et_obs[va_sl.start:] if et_obs is not None else None),
-                         "water_table_obs": (water_table_obs[va_sl.start:] if water_table_obs is not None else None),
-                         "water_table_idx": water_table_idx})
+                         "et_obs": (et_obs[va_sl.start:] if et_obs is not None else None)})
 
     def _evaluer(m, etiquette):
         m.eval()
@@ -911,38 +851,6 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
         _aire_m2 = float(s["aire"]) * 1e6 if s.get("aire") else float(_a.sum()) * 1e6
         _month = pd.DatetimeIndex(temps).month
         _ok_t = pd.DatetimeIndex(temps).year >= 2011
-        if os.environ.get("MEANDRE_BANC_ETP_FORMES") == "1":
-            # FORME SAISONNIÈRE DE L'ETP (2026-09-28) : chaque formule de la colonne calculée
-            # jour par jour sur le forçage du sous-bassin, moyennée sur le bassin et par mois,
-            # contre MOD16. Aucune simulation : ne dépend que du forçage et des ancrages.
-            col = m.vertical_column
-            lat_n = coords[:, 1].to(dev)
-            res = {}
-            for _mode in ("linacre", "mcguinness", "oudin", "penman"):
-                col.et_mode = _mode
-                vals = []
-                with torch.no_grad():
-                    for t in range(len(temps)):
-                        f = F[t]
-                        z = torch.zeros(n, device=dev)
-                        try:
-                            e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n), cover=z, albn=z)
-                        except TypeError:
-                            e = col._etp(f[:, 1], f[:, 2], f[:, 3], f[:, 4], f[:, 5], lat_n, doy[t:t + 1].to(dev).float().expand(n))
-                        vals.append(float((e * _w).sum()))
-                res[_mode] = np.array(vals)
-            col.et_mode = "linacre"
-            if et_obs is not None:
-                _vo = torch.isfinite(et_obs)
-                MODs = (torch.nan_to_num(et_obs) * _w * _vo).sum(dim=1) / (_w * _vo).sum(dim=1).clamp(min=1e-9)
-                MODs = torch.where(_vo.any(dim=1), MODs, torch.full_like(MODs, float("nan"))).cpu().numpy()
-            else:
-                MODs = np.full(len(temps), np.nan)
-            dfe = pd.DataFrame({"mois": _month, "MOD16": MODs, **res})[_ok_t].groupby("mois").mean()
-            print("  ETP mensuelle par formule, mm/j, moyennes du bassin, contre MOD16 (evapotranspiration REELLE) :", flush=True)
-            print(dfe.round(2).to_string(), flush=True)
-            print("  rapport avril / octobre : " + ", ".join(f"{c} {dfe.loc[4, c] / dfe.loc[10, c]:.2f}" for c in dfe.columns), flush=True)
-            return
         for _ck in os.environ["MEANDRE_BANC_MENSUEL"].split(";"):
             if _ck != "initial":
                 m.load(_ck)
@@ -1473,7 +1381,7 @@ def entrainer(reg, station, epoques=20, lr=5e-4, sol="sauf_ks", aquifere=True,
                             w_log_nse=0.0, w_log_mse=float(w_log_mse),
                             w_peak=float(w_peak),
                             peak_threshold=_pthr if float(w_peak) > 0 else None,
-                            w_et=float(w_et), w_water_table=float(w_water_table), per_station=True,
+                            w_et=float(w_et), per_station=True,
                             # TENDANCE, pas niveau (R24, socle.toml et_mode = "anomaly") :
                             # MOD16 donne la forme de l'ET, jamais son volume. Le banc
                             # laissait le defaut « level » jusqu'a 15 h 30 le 2026-09-04,
@@ -1618,8 +1526,6 @@ def main():
                     help="soutien d'etiage Q20/Q50 (contraint le chemin de l'eau)")
     ap.add_argument("--w-et", type=float, default=0.4,
                     help="poids du terme MOD16 (0 = meme perte sans le terme d ET)")
-    ap.add_argument("--w-nappe", type=float, default=0.0,
-                    help="poids du terme des niveaux de nappe ; part plafonnee par ETL_NAPPE_PART_MAX")
     ap.add_argument("--nappe-valid", type=float, default=0.5,
                     help="part des puits tenue de cote pour la validation independante")
     ap.add_argument("--chunk", type=int, default=45,
@@ -1644,7 +1550,7 @@ def main():
         raise SystemExit("usage : subbasin_bench.py <region> <station>")
     if a.entrainer and a.rapide:
         entrainer(a.region, a.station, epoques=a.entrainer,
-                  sol=(None if a.sol == "libre" else (a.sol or "sauf_ks")), aquifere=not a.sans_aquifere,
+                  sol=(None if a.sol in (None, "libre") else a.sol), aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,
@@ -1653,11 +1559,11 @@ def main():
                   w_kge=a.w_kge, w_pbias=a.w_pbias, w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc,
                   w_dq_log=a.w_dq_log, quantile=a.quantile, charger=a.charger,
                   w_log_mse=a.w_log_mse, w_peak=a.w_peak,
-                  w_water_table=a.w_water_table, nappe_valid=a.nappe_valid)
+                  nappe_valid=a.nappe_valid)
         return
     if a.entrainer:
         entrainer(a.region, a.station, epoques=a.entrainer,
-                  sol=(None if a.sol == "libre" else (a.sol or "sauf_ks")), aquifere=not a.sans_aquifere,
+                  sol=(None if a.sol in (None, "libre") else a.sol), aquifere=not a.sans_aquifere,
                   kge_continu=not a.ancienne_boucle, etat_continu=not a.ancienne_boucle,
                   device=a.device, tag=a.tag, pas_par_bloc=not a.pas_par_epoque, lr=a.lr,
                   amorce=a.amorce, aux=not a.kge_seul,
@@ -1665,7 +1571,7 @@ def main():
                   w_mse=a.w_mse, w_dq=a.w_dq, w_fdc=a.w_fdc, w_dq_log=a.w_dq_log,
                   quantile=a.quantile, charger=a.charger,
                   w_log_mse=a.w_log_mse, w_peak=a.w_peak,
-                  w_water_table=a.w_water_table, nappe_valid=a.nappe_valid)
+                  nappe_valid=a.nappe_valid)
         return
     if a.simuler:
         rapport(a.region, a.station, ancrer=not a.sans_ancrage,

@@ -65,21 +65,8 @@ def _conductivity(ctx, prm):
 
 
 def base_linear(ctx, prm):
-    """Darcy le long du versant, forme d'Hydrotel pour la couche 2 : K(theta) · sin(pente) · z.
-
-    `gravitational = true` (2026-11-03) : seule l'eau gravitaire s'écoule le long du versant. Le
-    flux est multiplié par la part de la porosité drainable occupée, (theta − capacité au champ) /
-    (porosité − capacité au champ), bornée entre 0 et 1 : sous la capacité au champ l'eau est tenue
-    par capillarité et ne part plus latéralement, à saturation le flux est celui d'Hydrotel. Aucun
-    paramètre nouveau : les deux niveaux sont ceux du sol.
-    """
-    q = _conductivity(ctx, prm) * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
-    if prm.get("gravitational"):
-        fc, ths = ctx["theta_fc"], ctx["porosity"]
-        if fc is None:
-            raise ValueError("BASE_LINEAR gravitational : capacité au champ de la couche absente")
-        q = q * torch.clamp((ctx["theta"] - fc) / torch.clamp(ths - fc, min=1e-6), 0.0, 1.0)
-    return q
+    """Darcy le long du versant, forme d'Hydrotel pour la couche 2 : K(theta) · sin(pente) · z."""
+    return _conductivity(ctx, prm) * ctx["sin_slope"] * ctx["thickness"] * prm.get("factor", 1.0)
 
 
 def base_thresh_power(ctx, prm):
@@ -130,69 +117,12 @@ def perc_thresh_power(ctx, prm):
     return base_thresh_power(ctx, prm)
 
 
-def perc_power_law(ctx, prm):
-    """Percolation en puissance de la saturation : krec · z · theta_s · (theta/theta_s)^n."""
-    ths = ctx["porosity"]
-    return (prm["krec"] * ctx["thickness"] * ths
-            * torch.clamp(ctx["theta"] / ths, min=0.0) ** prm["exponent"])
-
-
 def perc_gravity(ctx, prm):
     """Écoulement gravitaire sous gradient unitaire : le flux vaut la conductivité de la couche à
     sa teneur en eau, K(theta) (2026-10-27). La vidange suit ainsi le sol, sans constante de
     temps : rapide quand la couche est humide, lente sous la capacité au champ, où K(theta)
     s'effondre. Un plafond déclaré représente le substratum."""
     return _conductivity(ctx, prm) * prm.get("factor", 1.0)
-
-
-# Catalogue. La clé est le nom Raven, la valeur la fonction et les paramètres exigés.
-def inf_pdm(ctx, prm):
-    """Ruissellement par distribution de capacités de stockage (Moore 1985, INF_PDM chez Raven),
-    forme intégrée équivalente à Xinanjiang (2026-10-30, R447).
-
-    Le tronçon est une mosaïque de réservoirs de capacité c, répartie en F(c) = 1 − (1 − c/cmax)^b
-    sur [0, cmax] ; la capacité moyenne vaut S_max = cmax / (b + 1). Pour un stock S et un apport
-    P, les réservoirs déjà pleins et ceux que P remplit débordent ; le reste s'infiltre. Deux
-    propriétés mesurées sur 175 stations motivent la forme : le coefficient de ruissellement croît
-    avec la taille de l'averse (pente log-log 1,2 observée) et avec l'humidité antérieure (0,6).
-
-    Contexte : `storage` et `capacity` en mètres (eau au-dessus du point de flétrissement des
-    couches incluses, et son maximum à saturation), `input` en mètres (apport du jour). Paramètres :
-    `exponent` b, et `factor` (1 par défaut) qui multiplie la capacité tirée du sol : c'est le
-    paramètre propre de la loi, distinct de la porosité et de la conductivité, apprenable.
-    Retourne le ruissellement en mètres pour le pas.
-    """
-    b = torch.as_tensor(prm["exponent"], dtype=ctx["input"].dtype, device=ctx["input"].device)
-    s_max = torch.clamp(ctx["capacity"] * torch.as_tensor(prm.get("factor", 1.0), dtype=ctx["input"].dtype, device=ctx["input"].device), min=1e-6)
-    s = torch.clamp(ctx["storage"], torch.zeros_like(s_max), s_max)
-    c_max = s_max * (b + 1.0)
-    # Capacité critique : les réservoirs de capacité inférieure sont pleins.
-    c_star = c_max * (1.0 - torch.clamp(1.0 - s / s_max, min=1e-9) ** (1.0 / (b + 1.0)))
-    x = torch.clamp((c_star + ctx["input"]) / c_max, max=1.0)
-    s_after = s_max * (1.0 - (1.0 - x) ** (b + 1.0))
-    return torch.clamp(ctx["input"] - (s_after - s), min=0.0)
-
-
-def topmodel_runoff(ctx, prm):
-    """Ruissellement par aire saturée commandée par la nappe libre (forme TOPMODEL, R447).
-
-    Une portion du tronçon voit la nappe affleurer et ruisselle tout l'apport du jour ; le reste
-    s'infiltre. La portion croît avec le stock de nappe : a = (s_gw / scale)^exponent, bornée à
-    un. Le levier est mesuré sans simulation : sur les épisodes d'été de R447, le stock de nappe du
-    modèle gelé prédit le coefficient de ruissellement observé à pente log-log 0,63 en Montérégie
-    et 0,33 sur l'Outaouais, au niveau du débit de la veille, et il est redondant avec lui. Le
-    contexte porte `s_gw`, le stock de nappe de la veille en mètres, posé par la colonne quand la
-    nappe libre est activée ; sans nappe, la forme n'a pas de levier et refuse. Paramètres propres :
-    `exponent` et `scale` (le TOML le donne en `scale_mm`, un stock de nappe en millimètres, et
-    from_toml le convertit en mètres comme pour la loi en exposant). Retourne le ruissellement
-    en mètres pour le pas.
-    """
-    s = ctx.get("s_gw")
-    if s is None:
-        raise ValueError("la forme TOPMODEL demande la nappe libre : le contexte doit porter s_gw")
-    a = torch.clamp(s / torch.as_tensor(prm["scale"], dtype=s.dtype, device=s.device), 0.0, 1.0)
-    a = a.pow(torch.as_tensor(float(prm["exponent"]), dtype=s.dtype, device=s.device))
-    return ctx["input"] * a
 
 
 def spill_gw(ctx, prm):
@@ -216,52 +146,22 @@ def spill_gw(ctx, prm):
     return torch.clamp(ctx["input"] - free, min=0.0)
 
 
-def drain_hooghoudt(ctx, prm):
-    """Drainage souterrain agricole, formule de Hooghoudt (2026-10-04).
-
-    q = f · K · z · min(1, (8·d_e·m + 4·m²) / L²), f la fraction drainee (part `share` des terres
-    agricoles du troncon), K la conductivite de la couche, z son epaisseur, m la charge de la
-    zone saturee au-dessus des drains, d_e la profondeur equivalente sous les drains (par defaut
-    l'epaisseur de la couche) et L l'espacement. La hauteur saturee se lit comme z·theta/theta_s
-    depuis la base de la couche, et le drain est pose a `depth_m` sous la surface. Le facteur de
-    Hooghoudt, sans dimension, est borne a 1 : un drain ne transmet pas plus que la capacite
-    laterale saturee de la couche. Meme forme que la branche historique de bv3c2, qu'un profil
-    declare n'execute pas.
-    """
-    z = ctx["thickness"]
-    agri = ctx.get("agri_frac")
-    if agri is None:
-        return torch.zeros_like(ctx["theta"])
-    frac = torch.clamp(prm["share"] * agri, 0.0, 1.0)
-    s = z * ctx["theta"] / (ctx["porosity"] + 1e-9)
-    h_drain = torch.clamp(ctx["z_top"] + z - prm["depth_m"], min=0.0)
-    m = torch.clamp(s - h_drain, min=0.0)
-    de = prm.get("equiv_depth_m", z)
-    L = prm["spacing_m"]
-    hoog = (8.0 * de * m + 4.0 * m * m) / (L * L)
-    return frac * ctx["conductivity"] * z * torch.clamp(hoog, max=1.0)
-
-
+# Catalogue. La clé est le nom Raven, la valeur la fonction et les paramètres exigés.
 FORMS = {
     "BASE_LINEAR": (base_linear, ()),
     "BASE_THRESH_POWER": (base_thresh_power, ("tau",)),
     "PERC_LINEAR": (perc_linear, ("krec",)),
     "PERC_THRESH_POWER": (perc_thresh_power, ("tau",)),
-    "PERC_POWER_LAW": (perc_power_law, ("krec", "exponent")),
     "PERC_GRAVITY": (perc_gravity, ()),
-    "DRAIN_HOOGHOUDT": (drain_hooghoudt, ("spacing_m", "depth_m", "share")),
-    "INF_PDM": (inf_pdm, ("exponent",)),
-    "TOPMODEL": (topmodel_runoff, ("exponent", "scale")),
     "SPILL_GW": (spill_gw, ("capacity", "reference")),
 }
 
 FORMS_BY_KIND = {
-    KIND_LATERAL: ("BASE_LINEAR", "BASE_THRESH_POWER", "DRAIN_HOOGHOUDT"),
-    KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_POWER_LAW", "PERC_GRAVITY"),
-    # Un processus « runoff » porte sur l'apport du jour, avant le sol ; `layer` est la couche la
-    # plus profonde dont le stock entre dans la distribution de capacités (1 : couche 1 seule).
-    # TOPMODEL ignore ce stock : sa manette est le stock de nappe du contexte.
-    KIND_RUNOFF: ("INF_PDM", "TOPMODEL", "SPILL_GW"),
+    KIND_LATERAL: ("BASE_LINEAR", "BASE_THRESH_POWER"),
+    KIND_PERCOLATION: ("PERC_LINEAR", "PERC_THRESH_POWER", "PERC_GRAVITY"),
+    # Un processus « runoff » porte sur l'apport du jour, avant le sol ; sa manette est le stock
+    # de nappe du contexte.
+    KIND_RUNOFF: ("SPILL_GW",),
 }
 
 
@@ -342,35 +242,25 @@ class SoilProcess:
     def flux(self, ctx):
         """Flux en mètres par heure, dans les unités internes de la boucle de sous-pas."""
         q = FORMS[self.form][0](ctx, self.params)
-        # PORTE DE GEL (2026-10-06, R316) : `frost_factor` multiplie le flux par ce facteur
-        # quand le sol est gelé sur toute la couche de surface, et par une valeur
-        # intermédiaire quand le gel est partiel (poids = profondeur de gel de Rankinen
-        # rapportée à la couche 1, indépendant du manteau). Opt-in : sans la clé, rien ne
-        # change. Motif : en décembre-janvier, la voie latérale lente de la couche 3 porte
-        # plus de la moitié du débit des grands bassins du nord, trop fort de 30 à 40 %.
         # VISCOSITE (R384) : les vidanges a constante de temps sont des ecoulements gravitaires,
         # proportionnels a la conductivite donc a l'inverse de la viscosite. Les formes qui lisent
-        # deja la conductivite (BASE_LINEAR, DRAIN_HOOGHOUDT) la recoivent corrigee.
-        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "DRAIN_HOOGHOUDT", "PERC_GRAVITY", "INF_PDM"):
+        # deja la conductivite (BASE_LINEAR, PERC_GRAVITY) la recoivent corrigee.
+        if ctx.get("visc") is not None and self.form not in ("BASE_LINEAR", "PERC_GRAVITY"):
             q = q * ctx["visc"]
-        f = self.params.get("frost_factor")
-        if f is not None and ctx.get("frost_frac") is not None:
-            q = q * (1.0 - (1.0 - f) * ctx["frost_frac"])
         # FRACTION D'OCCUPATION (2026-10-08, R346) : `cover = "agri"` restreint le flux à la part
         # du tronçon portant cette occupation, multipliée par `share` (1 par défaut). Un chemin
-        # d'événement propre aux terres cultivées drainées se déclare ainsi sans borner le flux
-        # par la conductivité apprise, ce que fait DRAIN_HOOGHOUDT. Le contexte expose
+        # d'événement propre aux terres cultivées drainées se déclare ainsi. Le contexte expose
         # aujourd'hui `agri_frac` ; une autre occupation demande sa fraction dans le contexte.
         cover = self.params.get("cover")
         if cover is not None:
             frac = ctx.get(f"{cover}_frac")
             if frac is None:
                 raise KeyError(f"occupation « {cover} » absente du contexte du sol (fractions connues : "
-                               f"{sorted(k[:-5] for k in ctx if k.endswith('_frac') and k != 'frost_frac')})")
+                               f"{sorted(k[:-5] for k in ctx if k.endswith('_frac'))})")
             q = q * torch.clamp(frac * self.params.get("share", 1.0), 0.0, 1.0)   # `share` peut etre appris (tenseur)
-        elif "share" in self.params and self.form != "DRAIN_HOOGHOUDT":
+        elif "share" in self.params:
             # Sans occupation, `share` est la part du flux prise sur toutes les occupations
-            # (2026-10-15). DRAIN_HOOGHOUDT lit deja `share` dans sa forme.
+            # (2026-10-15).
             q = q * torch.clamp(torch.as_tensor(self.params["share"], dtype=q.dtype, device=q.device), 0.0, 1.0)
         if self.ceiling is not None:
             if isinstance(self.ceiling, str):

@@ -103,7 +103,6 @@ class QuantileHead(nn.Module):
 
         # log_w (T, N, K) = a + b · log|Q|, broadcast
         log_w = a.unsqueeze(0) + b.unsqueeze(0) * log_q.unsqueeze(-1)
-        w = log_w.exp()                              # (T, N, K) > 0
 
         # ENVELOPPE MULTIPLICATIVE, EN LOG (2026-09-11). Les largeurs cumulees etaient
         # appliquees ADDITIVEMENT au debit, si bien que le cote bas pouvait passer sous
@@ -115,15 +114,6 @@ class QuantileHead(nn.Module):
         # rend chaque quantile strictement positif et l'enveloppe dissymetrique comme la
         # variable. Le contrat exterieur ne change pas, la fonction rend toujours des
         # ecarts a ajouter a la mediane.
-        # MEANDRE_QUANTILE_ADDITIF=1 restitue l'ancienne forme, pour comparaison seulement.
-        w_lower = w[..., : self.n_lower]             # (T, N, n_lower)
-        cum_lower = -w_lower.flip(-1).cumsum(dim=-1).flip(-1)   # <= 0, ordre τ ascendant
-        w_upper = w[..., self.n_lower:]              # (T, N, n_upper)
-        cum_upper = w_upper.cumsum(dim=-1)           # >= 0, ordre τ ascendant
-        cum = torch.cat([cum_lower, cum_upper], dim=-1)         # (T, N, K)
-        from meandre.utils import settings
-        if settings.get("quantile.additive"):
-            return cum
         # ECHELLE (2026-09-11, deuxieme passe). Les largeurs `w` sont calibrees en unites
         # de DEBIT : les reutiliser telles quelles comme largeurs en LOGARITHME les fait
         # exploser. Mesure sur quatre regions apres la premiere version de ce correctif :

@@ -15,7 +15,7 @@ OCC = dict(feuillus=0.6, conifers=0.3, ouverts=0.1, humides=0.0, urbain=0.0, rou
 def _column(learned_value):
     torch.set_default_dtype(torch.float64)
     psnow, psoil, petr = build_static_params(N, lat=45.3, slope=0.02, orientation=7, texture="loam", z=(0.2, 0.4, 1.0), land_cover_table=OCC)
-    col = HydrotelColumn(et_mode="mcguinness", use_frost=False, use_aquifer=True)
+    col = HydrotelColumn(use_frost=False, use_aquifer=True)
     col.set_static(psnow, psoil, petr, wetland=None, n_depth=n_intervalles(1.5, 0.05))
     col.enable_free_water_table(sy=0.05, k_b=1.5e-3, z_riv=5.0, h_ref=2.0, e_frac=0.15, z_ext=6.0, exponent=2.0, learned=learned_value)
     return col

@@ -76,27 +76,23 @@ class PhenologyModulator(nn.Module):
         sharpness_emerg: float = 50.0,
         sharpness_senesc: float = 100.0,
         senesc_offset: float = 600.0,
-        mode: str | None = None,
         params=None,
     ) -> None:
-        """`mode` et `params` viennent de la configuration déclarée ([phenology] du TOML) ;
-        absents, les réglages phenology.mode et phenology.params s'appliquent
-        (meandre/utils/settings.py)."""
+        """`params` vient de la configuration déclarée ([phenology] du TOML) ; absent, le
+        réglage phenology.params s'applique (meandre/utils/settings.py)."""
         super().__init__()
         # Paramètres appris (4)
         self.gdd_emerg = nn.Parameter(torch.tensor(float(gdd_emerg_init)))
         self.gdd_mid = nn.Parameter(torch.tensor(float(gdd_mid_init)))
         self.k_c_min = nn.Parameter(torch.tensor(float(k_c_min_init)))
         self.k_c_max_factor = nn.Parameter(torch.tensor(float(k_c_max_factor_init)))
-        # SÉNESCENCE PAR LA PHOTOPÉRIODE (2026-09-28, suggestion d'Essi). Mode « photo » :
-        # la chute d'automne n'est plus déclenchée par un cumul de degrés-jours mais par
+        # SÉNESCENCE PAR LA PHOTOPÉRIODE (2026-09-28, suggestion d'Essi) : la chute d'automne n'est plus déclenchée par un cumul de degrés-jours mais par
         # la longueur du jour, qui décroît après le solstice ; c'est le déclencheur
         # principal de la sénescence des feuillus tempérés (Delpierre et al. 2009). Seuil
         # de longueur du jour photo_crit_h = 12 + 3·tanh(photo_crit), initialisé à 12 h.
-        self.mode = mode or settings.get("phenology.mode")
-        if self.mode == "photo":
-            self.photo_crit = nn.Parameter(torch.tensor(0.0))
-            self.register_buffer("photo_pente_h", torch.tensor(0.5))
+        self.mode = "photo"
+        self.photo_crit = nn.Parameter(torch.tensor(0.0))
+        self.register_buffer("photo_pente_h", torch.tensor(0.5))
         # PARAMÈTRES CALÉS SUR MODIS (2026-09-28). MEANDRE_PHENOLOGIE_PARAMS =
         # « emerg,crit,s1,s2 » : seuil de débourrement (degrés-jours), seuil de longueur du
         # jour de la sénescence (heures), et les deux largeurs de transition. Ces valeurs
@@ -104,7 +100,7 @@ class PhenologyModulator(nn.Module):
         # et GELÉES : la saison vient d'une observation indépendante du débit, et reste
         # pilotée par la seule météo, donc utilisable en prédiction.
         _cal = params if params is not None else settings.get("phenology.params")
-        if _cal and self.mode == "photo":
+        if _cal:
             _vals = _cal.split(",") if isinstance(_cal, str) else list(_cal)
             e, c, s1, s2 = [float(x) for x in _vals]
             with torch.no_grad():
@@ -114,27 +110,6 @@ class PhenologyModulator(nn.Module):
             self.photo_crit.requires_grad_(False)
             self.gdd_mid.requires_grad_(False)
             self._s1_cal, self._s2_cal = s1, s2
-        # PHÉNOLOGIE OBSERVÉE (2026-09-28). Mode « modis » : la forme saisonnière est
-        # l'indice foliaire MODIS (MOD15A2H) moyen par jour de l'année, rapporté à son
-        # maximum, lu dans MEANDRE_LAI_MODIS_CSV (colonnes date, lai_median). Aucun
-        # paramètre de forme n'est appris : la saison vient de l'observation, levée et
-        # récolte comprises. Seuls K_c_min et K_c_max_factor restent libres.
-        if self.mode == "modis":
-            import numpy as _np
-            import pandas as _pd
-            _csv = settings.get("phenology.lai_modis_csv")
-            if _csv is None:
-                raise KeyError("phenologie modis : le reglage phenology.lai_modis_csv (MEANDRE_LAI_MODIS_CSV) n'est pas pose")
-            t = _pd.read_csv(_csv, parse_dates=["date"])
-            t["doy"] = t.date.dt.dayofyear
-            clim = t.groupby("doy").lai_median.mean()
-            days = _np.arange(1, 367)
-            # Interpolation circulaire sur l'année.
-            x = _np.concatenate([clim.index.values - 366, clim.index.values, clim.index.values + 366])
-            y = _np.concatenate([clim.values, clim.values, clim.values])
-            shape_value = _np.interp(days, x, y)
-            shape_value = shape_value / shape_value.max()
-            self.register_buffer("forme_modis", torch.tensor(shape_value, dtype=torch.float32))
         # Hyperparamètres fixes (largeurs des transitions, non appris)
         self.register_buffer("sharpness_emerg", torch.tensor(float(sharpness_emerg)))
         self.register_buffer("sharpness_senesc", torch.tensor(float(sharpness_senesc)))
@@ -157,24 +132,16 @@ class PhenologyModulator(nn.Module):
         x = -torch.tan(torch.deg2rad(lat_deg)) * math.tan(decl)
         return 24.0 / math.pi * torch.arccos(x.clamp(-1.0, 1.0))
 
-    def shape_value(self, gdd_cum: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, like: Tensor | None = None, calendar=None) -> Tensor:
-        """Forme saisonnière de la végétation, de 0 (dormance) à 1 (plateau).
-
-        `calendar` (mode photo seulement) : (levée en degrés-jours, seuil de longueur du jour en
-        heures, largeur de la levée, largeur de la sénescence) remplaçant ceux du modulateur, pour
-        une classe d'occupation au calendrier propre (cultures, 2026-10-24)."""
-        K_c_base = like if like is not None else gdd_cum
-        if self.mode == "modis" and doy is not None:
-            shape = self.forme_modis[min(max(int(doy), 1), 366) - 1].expand_as(K_c_base)
-        elif self.mode == "photo" and doy is not None and lat_deg is not None:
+    def shape_value(self, gdd_cum: Tensor, doy: int | None = None, lat_deg: Tensor | None = None) -> Tensor:
+        """Forme saisonnière de la végétation, de 0 (dormance) à 1 (plateau) : levée par les
+        degrés-jours, sénescence par la longueur du jour ; sans jour ni latitude, la double
+        logistique en degrés-jours."""
+        if doy is not None and lat_deg is not None:
             s1 = getattr(self, "_s1_cal", None) or self.sharpness_emerg
             s2 = getattr(self, "_s2_cal", None) or self.photo_pente_h
-            emerg = self.gdd_emerg
-            if calendar is not None:
-                emerg, _crit_h, s1, s2 = calendar
-            ramp = torch.sigmoid((gdd_cum - emerg) / s1)
+            ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / s1)
             if doy > 172:
-                seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit) if calendar is None else _crit_h
+                seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit)
                 senesc = torch.sigmoid((self.day_length(lat_deg, doy) - seuil) / s2)
             else:
                 senesc = torch.ones_like(ramp)
@@ -183,14 +150,14 @@ class PhenologyModulator(nn.Module):
             shape = self.shape(gdd_cum)                                   # ∈ [0, 1]
         return shape
 
-    def forward(self, gdd_cum: Tensor, K_c_base: Tensor, doy: int | None = None, lat_deg: Tensor | None = None, calendar=None) -> Tensor:
+    def forward(self, gdd_cum: Tensor, K_c_base: Tensor, doy: int | None = None, lat_deg: Tensor | None = None) -> Tensor:
         """Modulateur K_c effectif au temps t.
 
         gdd_cum  : (N,) ou (T, N) — GDD cumulé
         K_c_base : (N,) — K_c de référence par nœud (sortie NeRF)
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
-        shape = self.shape_value(gdd_cum, doy, lat_deg, like=K_c_base, calendar=calendar)
+        shape = self.shape_value(gdd_cum, doy, lat_deg)
         # Born K_c_min ≥ 0.05 (floor strict), K_c_max_factor ≥ 0.5 (pas de réduction excessive)
         kc_min_safe = self.k_c_min.clamp(min=0.05, max=1.0)
         kc_max_safe = self.k_c_max_factor.clamp(min=0.5, max=2.0)

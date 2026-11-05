@@ -14,7 +14,7 @@ def _reinitialise():
 def test_default_without_configuration(monkeypatch):
     monkeypatch.delenv("MEANDRE_NSUBSTEP", raising=False)
     assert settings.get("column.n_substeps") is None
-    assert settings.get("column.z_tensor") is True
+    assert settings.get("column.semi_implicit_soil") is False
 
 
 def test_environment_alias_without_configuration(monkeypatch):
@@ -40,34 +40,34 @@ def test_unknown_key_refused():
 
 
 def test_ambiguous_boolean_refused(monkeypatch):
-    monkeypatch.setenv("MEANDRE_Z_TENSEUR", "true")
+    monkeypatch.setenv("MEANDRE_SOL_SEMI_IMPLICITE", "true")
     with pytest.raises(ValueError, match="ni 0 ni 1"):
-        settings.get("column.z_tensor")
+        settings.get("column.semi_implicit_soil")
 
 
 def test_snapshot_keeps_only_differences(monkeypatch):
     monkeypatch.delenv("MEANDRE_NSUBSTEP", raising=False)
-    monkeypatch.delenv("MEANDRE_Z_TENSEUR", raising=False)
-    settings.configure({"column": {"n_substeps": 64, "z_tensor": True}})
+    monkeypatch.delenv("MEANDRE_SOL_SEMI_IMPLICITE", raising=False)
+    settings.configure({"column": {"n_substeps": 64, "semi_implicit_soil": False}})
     snap = settings.snapshot()
     assert snap.get("column.n_substeps") == 64
-    assert "column.z_tensor" not in snap
+    assert "column.semi_implicit_soil" not in snap
 
 
 def test_pilot_section_neither_read_nor_refused(monkeypatch):
-    monkeypatch.delenv("MEANDRE_PHENOLOGIE_MODE", raising=False)
-    taken = settings.configure({"phenology": {"enabled": True, "mode": "photo", "classes": ["feuillus"]}})
+    monkeypatch.delenv("MEANDRE_PHENOLOGIE_CLASSES", raising=False)
+    taken = settings.configure({"phenology": {"enabled": True, "classes": ["feuillus"]}})
     assert not [k for k in taken if k.startswith("phenology.")]
-    assert settings.get("phenology.mode") == "gdd"
-    monkeypatch.setenv("MEANDRE_PHENOLOGIE_MODE", "photo")
-    assert settings.get("phenology.mode") == "photo"
+    assert settings.get("phenology.classes") is None
+    monkeypatch.setenv("MEANDRE_PHENOLOGIE_CLASSES", "feuillus")
+    assert settings.get("phenology.classes") == "feuillus"
 
 
 def test_pilot_text_setting(monkeypatch):
-    for v in ("ETL_AQUIFER", "ETL_NAPPE_EXP", "ETL_SEUIL_NEIGE"):
+    for v in ("ETL_AQUIFER", "ETL_NAPPE_EXP", "ETL_EVAP_EAU_LIBRE"):
         monkeypatch.delenv(v, raising=False)
-    settings.configure({"groundwater": {"aquifer": True, "exponent": 2.0}, "snow": {"project_threshold": False}})
+    settings.configure({"groundwater": {"aquifer": True, "exponent": 2.0}, "evaporation": {"open_water": False}})
     assert settings.raw("groundwater.aquifer") == "1"
     assert settings.raw("groundwater.exponent") == "2.0"
-    assert settings.raw("snow.project_threshold") == "0"
+    assert settings.raw("evaporation.open_water") == "0"
     assert settings.raw("groundwater.specific_yield", 0.05) == 0.05

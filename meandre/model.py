@@ -65,6 +65,10 @@ OBSOLETE_INIT_KEYS = (
     "cqh_n_features",
     "cqh_taus",
     "cqh_hidden",
+    # Retirées le 2026-11-05 : seule l'ETP de Penman reste, le ruissellement hortonien est réfuté.
+    "et_mode",
+    "use_hortonian",
+    "horton_precomputed",
 )
 
 
@@ -177,7 +181,6 @@ class HydroModel(nn.Module):
         soil_mode: str = "meandre",
         soil_clone_substep: int = 48,
         soil_clone_krec_init: float = 1e-5,
-        et_mode: str = "penman",
         column_mode: str = "hydrotel",   # "hydrotel" = colonne fidèle clonée (seule restante depuis 2026-06-27 ; le natif "meandre" est retiré)
         column_theta_init_frac: float = 0.9,  # theta init = frac·thetas (init Hydrotel validé) en mode hydrotel ; 0 = garder la theta du cache
         use_frost_rankinen: bool = True,
@@ -186,8 +189,6 @@ class HydroModel(nn.Module):
         use_hillslope_uh: bool = False,
         melt_mode: str = "degree_day",   # "degree_day" (clone fidèle) ou "eti" (fonte radiation réelle CaSR)
         use_aquifer: bool = False,   # aquifère restituant optionnel (soutien d'étiage, meandre > Hydrotel)
-        use_hortonian: bool = False,   # excès d'infiltration sous-journalier (quickflow d'orage, canal DT_eff)
-        horton_precomputed: bool = False,  # canal = quickflow précalculé (horaire) au lieu de DT_eff
         spatial_melt: bool = False,       # facteur de fonte spatialisé (NeRF C_f/4.5 module les classes)
         canopy_melt_lag: bool = False,    # seuil de fonte par classe appris (R56) au lieu du verrou calé
         soil_bounds: dict | None = None,
@@ -196,7 +197,7 @@ class HydroModel(nn.Module):
         quantile_taus: tuple[float, ...] = (0.05, 0.10, 0.25, 0.75, 0.90, 0.95),
         # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD
         use_phenology_modulator: bool = False,
-        # Section [phenology] declaree : mode, params, target ("kc" ou "lai"), classes.
+        # Section [phenology] declaree : params, classes.
         phenology: dict | None = None,
         # Routage : "level" (balayage par niveau, historique), "operator"
         # (solve triangulaire par étages de lacs, sémantique identique) ou
@@ -253,7 +254,6 @@ class HydroModel(nn.Module):
         self.column_theta_init_frac = float(column_theta_init_frac)
         # Mémorise les flags de construction de la colonne pour save() (sinon les
         # métadonnées du checkpoint hydrotel sont re-dérivées du sol natif = fausses).
-        self._build_et_mode = str(et_mode)
         self._build_use_frost_rankinen = bool(use_frost_rankinen)
         self._build_compile_soil = bool(compile_soil)
         # Colonne native (VerticalColumn/soil.py/aquifer.py) RETIRÉE 2026-06-27
@@ -264,15 +264,12 @@ class HydroModel(nn.Module):
                 "a été retirée (nettoyage 2026-06-27). Utiliser column_mode='hydrotel'.")
         from meandre.vertical.hydrotel_column import HydrotelColumn
         self.vertical_column = HydrotelColumn(
-            et_mode=(et_mode if et_mode in ("mcguinness", "hydro_quebec", "penman", "oudin", "linacre") else "mcguinness"),
             use_frost=use_frost_rankinen,
             compile_soil=bool(compile_soil),
             use_hillslope_uh=bool(use_hillslope_uh),
             melt_mode=str(melt_mode),
             use_aquifer=bool(use_aquifer),
-            use_hortonian=bool(use_hortonian),
             frozen_gate_continuous=bool(soil_frozen_gate),
-            horton_precomputed=bool(horton_precomputed),
             spatial_melt=bool(spatial_melt),
             canopy_melt_lag=bool(canopy_melt_lag),
         )
@@ -305,15 +302,10 @@ class HydroModel(nn.Module):
         # PhenologyModulator (IHI Phase B étape 1) : K_c modulé par GDD cumulé
         self.use_phenology_modulator = use_phenology_modulator
         _ph = dict(phenology or {})
-        self.phenology_target = _ph.get("target")
         self.phenology_classes = _ph.get("classes")
         if use_phenology_modulator:
             from meandre.temporal.phenology_modulator import PhenologyModulator
-            self.phenology_modulator = PhenologyModulator(mode=_ph.get("mode"), params=_ph.get("params"))
-            # Calendrier propre aux cultures (2026-10-24) : levée plus tardive que la forêt. Aucun
-            # paramètre nouveau n'est appris ; les bornes du coefficient restent celles du modulateur.
-            _agri = _ph.get("params_agri") or settings.get("phenology.params_agri")
-            self.phenology_calendar_agri = tuple(float(x) for x in (_agri.split(",") if isinstance(_agri, str) else _agri)) if _agri else None
+            self.phenology_modulator = PhenologyModulator(params=_ph.get("params"))
 
         # Muskingum K and x are now per-node spatial params from the NeRF
         # (SpatialParams.K_musk_hours and SpatialParams.x_musk).
@@ -394,8 +386,7 @@ class HydroModel(nn.Module):
         if getattr(self.vertical_column, "soil_mode", "meandre") == "clone" \
                 and getattr(self.vertical_column, "_clone_static", "x") is None:
             self.vertical_column.set_clone_static(territorial)
-        # Latitude par nœud pour l'ETP McGuinness (et_mode="mcguinness").
-        # node_coords = [lon, lat] ; statique, posée une fois par simulate.
+        # Latitude par nœud. node_coords = [lon, lat] ; statique, posée une fois par simulate.
         self.vertical_column._node_lat = node_coords[:, 1]
         # Colonne fidèle Hydrotel : assemble params (NeRF→clone) + init état riche.
         if getattr(self, "column_mode", "meandre") == "hydrotel":
@@ -575,14 +566,7 @@ class HydroModel(nn.Module):
                     _doy_p = int(day_of_year[t].item()) if day_of_year is not None else None
                     if self.phenology_classes is not None:
                         self.vertical_column.phenology_classes = self.phenology_classes
-                    if (self.phenology_target or settings.get("phenology.target")) == "lai":
-                        # La phénologie module l'INDICE FOLIAIRE, donc la seule transpiration :
-                        # l'évaporation du sol nu reste entière hors saison (2026-09-28).
-                        self.vertical_column._lai_shape = self.phenology_modulator.shape_value(state.gdd_cum, _doy_p, node_coords[:, 1], like=spatial_params.K_c)
-                    else:
-                        self.vertical_column._kc_dynamic = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
-                        _cal_agri = getattr(self, "phenology_calendar_agri", None)
-                        self.vertical_column._kc_dynamic_agri = (self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1], calendar=_cal_agri) if _cal_agri is not None else None)
+                    self.vertical_column._kc_dynamic = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
                 vc_out = self.vertical_column.column_step(
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,
@@ -950,15 +934,11 @@ class HydroModel(nn.Module):
         # quatre jours (0.6051 mesuré 0.4449, 0.781 mesuré 0.735...). load() compare
         # désormais la fiche à l'état du modèle et avertit sur chaque écart.
         record = {
-            "et_mode": getattr(self.vertical_column, "et_mode", None),
-            "etp_channel": getattr(self.vertical_column, "etp_channel", None),
             "t_neige_seuil": float(getattr(self.vertical_column, "t_neige_seuil", 0.0)),
             "land_cover": getattr(self.vertical_column, "_land_cover", None) is not None,
             "phenology": getattr(self.vertical_column, "_pheno", None) is not None,
-            "calib_soil": getattr(self.vertical_column, "_calib_soil", None) is not None,
             "hgm": getattr(self, "_hgm_kernel", None) is not None,
             "lake_area": getattr(self, "_lake_area_km2", None) is not None,
-            "mcg_coeff": getattr(self.vertical_column, "mcg_coeff", None) is not None,
         }
         # RECETTE (inventaire du 2026-09-03) : la fiche ci-dessus dit l'etat du MODELE,
         # pas ce qui l'a produit. Soixante-dix reglages de physique ne vivaient que dans
@@ -1009,7 +989,6 @@ class HydroModel(nn.Module):
                 "soil_clone_krec_init": 1e-5,  # init scalaire seul ; cl_krec_raw appris est dans le state_dict
                 # Flags de construction (corrects pour TOUTE colonne, y c. hydrotel ;
                 # ne pas re-dériver du sol natif qui n'existe pas en mode hydrotel).
-                "et_mode": getattr(self, "_build_et_mode", "penman"),
                 "use_frost_rankinen": getattr(self, "_build_use_frost_rankinen", True),
                 "compile_soil": getattr(self, "_build_compile_soil", False),
                 "column_mode": getattr(self, "column_mode", "meandre"),
@@ -1020,7 +999,6 @@ class HydroModel(nn.Module):
                 "spatial_melt": getattr(self.vertical_column, "spatial_melt", False),
                 "canopy_melt_lag": getattr(self.vertical_column, "canopy_melt_lag", False),
                 "use_aquifer": getattr(self.vertical_column, "use_aquifer", False),
-                "use_hortonian": getattr(self.vertical_column, "use_hortonian", False),
             },
         }, path)
         # Document accompagnant, lisible sans torch : meme contenu en TOML a cote du
@@ -1123,15 +1101,11 @@ class HydroModel(nn.Module):
         _f = checkpoint.get("fiche_execution") if isinstance(checkpoint, dict) else None
         if _f:
             _act = {
-                "et_mode": getattr(self.vertical_column, "et_mode", None),
-                "etp_channel": getattr(self.vertical_column, "etp_channel", None),
                 "t_neige_seuil": float(getattr(self.vertical_column, "t_neige_seuil", 0.0)),
                 "land_cover": getattr(self.vertical_column, "_land_cover", None) is not None,
                 "phenology": getattr(self.vertical_column, "_pheno", None) is not None,
-                "calib_soil": getattr(self.vertical_column, "_calib_soil", None) is not None,
                 "hgm": getattr(self, "_hgm_kernel", None) is not None,
                 "lake_area": getattr(self, "_lake_area_km2", None) is not None,
-                "mcg_coeff": getattr(self.vertical_column, "mcg_coeff", None) is not None,
             }
             for _k, _v in _act.items():
                 if _k in _f and _f[_k] != _v:

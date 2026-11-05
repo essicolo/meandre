@@ -77,8 +77,6 @@ def soil_priors(n_nodes: int, texture: dict[int, tuple] | None = None, deposit_t
     priors["Z2"] = (z2, SIGMAS["Z2"])
     priors["Z3"] = (z3, SIGMAS["Z3"])
     from meandre.utils import settings
-    if settings.get("priors.porosity_1_center") is not None:
-        priors["porosity_1"] = (np.full(n_nodes, float(settings.get("priors.porosity_1_center"))), SIGMAS["porosity"])
     chosen = [k for k in (settings.get("priors.keys") or "").replace(" ", "").split(",") if k]
     if chosen:
         unknown_keys = set(chosen) - set(priors)

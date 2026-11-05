@@ -30,7 +30,6 @@ spatial_melt = true
 [column]
 # Reglages de la colonne verticale, declares dans meandre/utils/settings.py.
 n_substeps = 64 # sous-pas du sol par jour (stabilite du Muskingum a K court)
-z_tensor = true # Z2/Z3 en tenseurs sur la voie racinaire
 semi_implicit_soil = true # schema lineairement implicite du sol : gradient borne, graines reproductibles
 penman_snow = true # couvert nival dans Penman (R265)
 transpiration_soil_temp_ref = 1.0 # transpiration freinee par le sol froid, echelle 1 degre (R264)
@@ -51,13 +50,8 @@ log_bound = 4.0 # un quantile extreme reste entre e^-4 et e^4 fois la mediane
 
 [trainer]
 # Reglages de l'entraineur, declares dans meandre/utils/settings.py.
-state_continuous = true # l'etat riche traverse les frontieres de bloc (R64)
-kge_continuous = true # le KGE porte sur la sequence continue (R67)
 step_per_block = true # un pas d'optimisation par bloc ; sans lui une epoque = un pas (R78, R288)
 lr_mult_heads = 1.0 # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
-
-[et]
-formula = "penman" # Linacre inverse la saison de l'evapotranspiration (avril/octobre 0,7 contre 1,6 pour MOD16), Penman la reproduit (R208)
 
 [soil]
 layers = 3
@@ -67,9 +61,6 @@ z2_min = 0.30
 z2_max = 1.50
 z3_min = 0.50
 z3_max = 4.00
-# Duree d'orage sous-journaliere (exces d'infiltration d'Eagleson)
-rain_hours_min = 2.0 # h (orages convectifs intenses)
-rain_hours_max = 8.0 # h (longues pluies frontales)
 
 [training]
 lr = 2e-4 # taux de depart : trajectoires convergees, ecart entre graines divise par trois (R283)
@@ -123,13 +114,10 @@ factor = 3.0 # conductivite bornee par la texture du sol, facteur 3 de part et d
 [snow]
 wet_bulb_threshold = -0.8
 seasonal_melt_amplitude = 0.5
-project_threshold = false
 
 [groundwater]
 aquifer = true
 free_recession = true
-conductivity_field = true
-conductivity_modulation = true
 water_table = true
 exponent = 2.0
 specific_yield = 0.05
@@ -142,7 +130,6 @@ extraction_fraction = 0.15
 [spatial]
 no_latent_codes = true
 priors = true # porosites par troncon tirees de la texture
-init_from_hydrotel = false
 global_normalization = true
 
 [evaporation]
@@ -154,9 +141,7 @@ suffix = "-casr-brut"
 
 [phenology]
 enabled = true
-mode = "photo" # senescence par la longueur du jour ; seuil cale sur MODIS, 11,8 a 11,9 h sur les deux bassins d'essai
 params = [56.81, 11.82, 21.1, 0.9] # emergence (degres-jours), seuil (h), largeurs ; jeu forestier de l'Outaouais
-target = "kc"
 classes = ["feuillus", "agri"] # les coniferes gardent leur demande
 
 # -- Sol declare par couche (2026-09-30, R223 a R229) ----------------------------------------

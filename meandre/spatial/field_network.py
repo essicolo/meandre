@@ -96,15 +96,14 @@ _LOG_SLOPE = 0.3
 def field_bounds_from_toml(cfg):
     """Bornes declarees dans un TOML : `[field.bounds]`, plus les cles historiques de `[soil]`.
 
-    Les cles `z2_min`, `z2_max`, `z3_min`, `z3_max`, `rain_hours_min`, `rain_hours_max` de
-    `[soil]` n'etaient pas transmises par le pilote ; elles passent par la meme table. Une
-    sortie inconnue est refusee bruyamment.
+    Les cles `z2_min`, `z2_max`, `z3_min`, `z3_max` de `[soil]` n'etaient pas transmises par le
+    pilote ; elles passent par la meme table. Une sortie inconnue est refusee bruyamment.
     """
     out = {}
     if not cfg:
         return out
     soil = cfg.get("soil") or {}
-    for field_name, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
+    for field_name, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max")):
         if a in soil or b in soil:
             lo0, hi0 = FIELD_BOUNDS[field_name][:2]
             out[field_name] = (float(soil.get(a, lo0)), float(soil.get(b, hi0)))
@@ -286,27 +285,6 @@ class SpatialParams:
         )
 
 
-class _SigmoidGradientFloor(torch.autograd.Function):
-    """Sigmoide dont la derivee, au retropropage seulement, ne descend pas sous un plancher.
-
-    Une sortie collee a sa borne a une derivee de sigmoide quasi nulle : l'optimiseur ne peut
-    plus l'en sortir, meme quand la perte le demande (2026-10-26, champs colles du modele
-    provincial). La valeur est celle de la sigmoide ordinaire ; seul le gradient change.
-    """
-
-    @staticmethod
-    def forward(ctx, x, floor):
-        s = torch.sigmoid(x)
-        ctx.save_for_backward(s)
-        ctx.floor = floor
-        return s
-
-    @staticmethod
-    def backward(ctx, g):
-        (s,) = ctx.saved_tensors
-        return g * torch.clamp(s * (1.0 - s), min=ctx.floor), None
-
-
 class SpatialFieldNetwork(nn.Module):
     """NeRF-style MLP: (coords + territorial features) -> hydrological params.
 
@@ -373,18 +351,17 @@ class SpatialFieldNetwork(nn.Module):
         self.predict_lake_params = predict_lake_params
         # Soil bounds (configurable via toml [soil] section).
         # Z1 is fixed (passed to SoilModule directly), Z2/Z3 are learnable
-        # within these bounds. rain_hours bounds also configurable.
+        # within these bounds.
         defaults = dict(
             z2_min=0.30, z2_max=1.50,
             z3_min=0.50, z3_max=4.00,
-            rain_hours_min=3.0, rain_hours_max=24.0,
         )
         if soil_bounds:
             defaults.update(soil_bounds)
         self.soil_bounds = defaults
         # Table des bornes en vigueur : defauts, puis soil_bounds historiques, puis field_bounds.
         self.bounds = {k: tuple(v) for k, v in FIELD_BOUNDS.items()}
-        for field_name, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max"), ("rain_hours", "rain_hours_min", "rain_hours_max")):
+        for field_name, a, b in (("Z2", "z2_min", "z2_max"), ("Z3", "z3_min", "z3_max")):
             self.bounds[field_name] = (float(defaults[a]), float(defaults[b])) + tuple(FIELD_BOUNDS[field_name][2:])
         for field_name, v in (field_bounds or {}).items():
             if field_name not in FIELD_BOUNDS:
@@ -1018,64 +995,10 @@ class SpatialFieldNetwork(nn.Module):
         B = self.bounds
 
         NB = getattr(self, "node_bounds", None) or set()
-        from meandre.utils import settings as _settings
-        _floor = _settings.get("spatial.gradient_floor")
-        _with_floor = set((_settings.get("spatial.gradient_floor_outputs") or "").replace(" ", "").split(",")) - {""}
-        _extended, _given_thresholds = {}, {}
-        _extended_high, _given_high_thresholds = {}, {}
-        for setting, target, thresholds in (("spatial.extend_below", _extended, _given_thresholds), ("spatial.extend_above", _extended_high, _given_high_thresholds)):
-            for a in (_settings.get(setting) or "").replace(" ", "").split(","):
-                if a:
-                    pieces = a.split(":")
-                    target[pieces[0]] = float(pieces[1])
-                    if len(pieces) > 2:
-                        thresholds[pieces[0]] = float(pieces[2])
-
-        def _target(table, field_name, key):
-            # Une sortie se designe par sa cle (porosity_3, une seule couche) ou par sa famille (porosity).
-            return key if key in table else (field_name if field_name in table else None)
-
-        def sigm(field_name, x, key=None):
-            if _floor is not None and (field_name in _with_floor or key in _with_floor):
-                return _SigmoidGradientFloor.apply(x, float(_floor))
-            return torch.sigmoid(x)
 
         def bounded(x, lo, hi, field_name=None, key=None):
-            """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4.
-
-            PROLONGEMENT SOUS LA BORNE (2026-10-26). Abaisser une borne remappe tous les
-            troncons, puisque la valeur depend de la borne a sortie brute egale : une couche 3 de
-            0,75 m passait a 0,47 m sans que l'optimiseur ait rien choisi. Ici la loi d'origine
-            est conservee au-dessus d'un seuil de sortie brute pose au premier appel sous la plus
-            basse sortie du domaine, et prolongee en dessous vers la nouvelle borne : aucun
-            troncon ne bouge au depart, et seul l'optimiseur peut les faire descendre.
-
-            PROLONGEMENT AU-DESSUS (2026-10-27) : symetrique, au-dessus de la plus haute sortie
-            brute du domaine, vers une nouvelle borne haute (spatial.extend_above). Une sortie
-            collee a sa borne haute y passe sans que les valeurs de depart changent.
-            """
-            v = lo + (hi - lo) * sigm(field_name, x, key)
-            c = _target(_extended, field_name, key)
-            if c is not None:
-                threshold = _given_thresholds.get(c, self._extension_thresholds.get(c))
-                if threshold is None:
-                    threshold = float(x.detach().min()) - 0.5
-                    self._extension_thresholds[c] = threshold
-                    print(f"[champ] prolongement de {c} sous {lo:g} jusqu'a {_extended[c]:g} : seuil de sortie brute {threshold:.4f} (a reprendre tel quel a l'evaluation : {c}:{_extended[c]:g}:{threshold:.4f})")
-                v = v - (lo - _extended[c]) * (1.0 - torch.exp(-torch.relu(threshold - x)))
-            c = _target(_extended_high, field_name, key)
-            if c is not None:
-                threshold_key = "haut:" + c
-                threshold = _given_high_thresholds.get(c, self._extension_thresholds.get(threshold_key))
-                if threshold is None:
-                    threshold = float(x.detach().max()) + 0.5
-                    self._extension_thresholds[threshold_key] = threshold
-                    print(f"[champ] prolongement de {c} au-dessus de {hi:g} jusqu'a {_extended_high[c]:g} : seuil de sortie brute {threshold:.4f} (a reprendre tel quel a l'evaluation : {c}:{_extended_high[c]:g}:{threshold:.4f})")
-                v = v + (_extended_high[c] - hi) * (1.0 - torch.exp(-torch.relu(x - threshold)))
-            return v
-
-        if not hasattr(self, "_extension_thresholds"):
-            self._extension_thresholds = {}
+            """Sigmoid-bounded: lo + (hi-lo) * sigmoid(x). Max grad = (hi-lo)/4."""
+            return lo + (hi - lo) * torch.sigmoid(x)
 
         self._last_z = {}
 
@@ -1449,66 +1372,3 @@ class SpatialFieldNetwork(nn.Module):
             loss = loss + torch.clamp(cv_target - cv, min=0.0)
             n += 1
         return loss / max(n, 1)
-
-
-    def fit_to_field(self, node_coords, territorial_data, target_list: dict,
-                          n_iter: int = 3000, lr: float = 3e-3, log_keys=("K_sat_1", "K_sat_2",
-                          "K_sat_3", "k_gw"), verbose: bool = True):
-        """Ajuste le champ par RÉGRESSION sur des valeurs cibles PAR NŒUD.
-
-        Proposition d'Essi (2026-08-13) : « pourquoi ne pas démarrer le NeRF sur le champ
-        Hydrotel puis optimiser ? ». C'est le seul départ qui donne à la fois le NIVEAU et
-        le CONTRASTE tout en laissant le champ LIBRE ensuite :
-          - `init_from_literature` pose un champ constant (dispersion mesurée 0.0017) ;
-          - `set_calibrated_soil` COURT-CIRCUITE la sortie du réseau, qui n'apprend alors
-            plus rien sur le sol ;
-          - le motif de pédotransfert donne le contraste sans le niveau.
-        Mesuré le 2026-08-13 sur OUTV : le champ appris reste collé à son initialisation
-        (K_sat 0.0373 pour un prior à 0.04) alors que la valeur calibrée vaut 0.317, et en
-        30 époques le gradient du débit ne porte la dispersion que de 0.0017 à 0.054 quand
-        il en faudrait 0.74. Le point de départ est donc le verrou, pas la capacité.
-
-        cibles : {nom_du_champ: tenseur (n_nodes,)} — les noms sont ceux de SpatialParams.
-        log_keys : champs ajustés en log (grandeurs positives couvrant des ordres de
-        grandeur) ; les autres en linéaire.
-        """
-        import torch as _t
-        target_list = {k: _t.as_tensor(v, dtype=_t.float32).to(node_coords.device).detach()
-                  for k, v in target_list.items()}
-        opt = _t.optim.Adam(self.parameters(), lr=lr)
-        n0 = None
-        for it in range(n_iter):
-            opt.zero_grad()
-            sp = self(node_coords, territorial_data)
-            loss_value = 0.0
-            for k, target in target_list.items():
-                pred = getattr(sp, k)
-                if k in log_keys:
-                    loss_value = loss_value + ((_t.log(pred.clamp(min=1e-9))
-                                      - _t.log(target.clamp(min=1e-9))) ** 2).mean()
-                else:
-                    ech = target.abs().mean().clamp(min=1e-6)
-                    loss_value = loss_value + (((pred - target) / ech) ** 2).mean()
-            loss_value.backward()
-            opt.step()
-            if n0 is None:
-                n0 = float(loss_value)
-            if verbose and (it % max(n_iter // 4, 1) == 0 or it == n_iter - 1):
-                print(f"    [ajust] iter {it:5d} | perte {float(loss_value):.5f}")
-        if verbose:
-            with _t.no_grad():
-                sp = self(node_coords, territorial_data)
-            print(f"    [ajust] perte {n0:.5f} -> {float(loss_value):.5f}")
-            for k, target in target_list.items():
-                p = getattr(sp, k).detach()
-                cv_p = float(p.std() / p.abs().mean().clamp(min=1e-12))
-                cv_c = float(target.std() / target.abs().mean().clamp(min=1e-12))
-                print(f"    [ajust] {k:14s} médiane {float(p.median()):.4f} "
-                      f"(cible {float(target.median()):.4f}) | dispersion {cv_p:.3f} "
-                      f"(cible {cv_c:.3f})")
-        return self
-
-
-# Alias de compatibilite (nettoyage 2026-08-24, convention anglaise pour le code).
-# L'identifiant francais reste appelable ; les scripts .runs historiques y tiennent.
-SpatialFieldNetwork.adjust_on_field = SpatialFieldNetwork.fit_to_field

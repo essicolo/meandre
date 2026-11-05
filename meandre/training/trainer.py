@@ -254,8 +254,6 @@ class TrainingData:
     # et le tableau des lignes rouges les ecarte. Profondeur sous le repere du tubage, en
     # metres, par PUITS et non par noeud, NaN quand la mesure manque. Puits captifs et puits
     # influences deja retires par le chargeur.
-    water_table_obs: Tensor | None = None   # (n_timesteps, n_puits)
-    water_table_idx: Tensor | None = None   # (n_puits,) indice du noeud portant chaque puits
     # CanSWE : MASSE du manteau mesurée au sol, par SITE et non par nœud (R24). Plusieurs
     # sites peuvent viser le même tronçon et les agréger détruirait la dispersion
     # intra-nœud, qui EST la mesure de l'incertitude de représentativité ponctuelle.
@@ -672,8 +670,6 @@ class Trainer:
                     au milieu de termes pondérés, sous un en-tête annonçant le contraire.
                     C'est le piège décrit juste au-dessus pour le prior, qui valait pour
                     presque tous les termes de débit (constaté le 2026-09-20)."""
-                    if term_name == "nappe" and "nappe_poids_applique" in train_comps:
-                        return float(train_comps["nappe_poids_applique"])
                     if term_name in _weights:
                         return _weights[term_name]
                     for source in (self.loss_fn, self.config):
@@ -685,17 +681,10 @@ class Trainer:
                 _nz = {}
                 for k, v in train_comps.items():
                     v = float(v)
-                    if abs(v) <= 1e-9 or math.isnan(v) or k == "nappe_poids_applique":
+                    if abs(v) <= 1e-9 or math.isnan(v):
                         continue
                     _name = k.replace("_loss", "")
                     _nz[_name] = v * _weight_of(_name)
-                # Le poids APPLIQUE aux puits s'imprime en clair : le plafond peut le reduire
-                # sous le poids demande, et le produit seul ne permet pas de le voir.
-                if "nappe" in _nz and "nappe_poids_applique" in train_comps:
-                    _nz["nappe"] = _nz["nappe"]
-                    _pa = float(train_comps["nappe_poids_applique"])
-                    print(f"            puits : poids demande {self.loss_fn.w_water_table:.2f}, "
-                          f"poids applique moyen {_pa:.2f}", flush=True)
                 if _nz:
                     _tot = float(train_loss) or 1.0
                     print("            composantes ponderees | " + "  ".join(
@@ -850,10 +839,6 @@ class Trainer:
                 )
         else:
             # Full spinup from cold start
-            _ref_et = (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
-                       and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
-                       and getattr(self, "_et_sim_base", None) is None
-                       and not settings.get("trainer.et_center_ema"))
             with torch.no_grad(), torch.amp.autocast("cuda", dtype=self._amp_dtype, enabled=self._use_amp):
                 _res = self.model.simulate(
                     forcing=data.forcing[:spinup_end],
@@ -863,23 +848,8 @@ class Trainer:
                     territorial=data.territorial,
                     withdrawals=data.withdrawals.slice(0, spinup_end),
                     day_of_year=data.day_of_year[:spinup_end],
-                    return_diagnostics=_ref_et,
                 )
             spun_state = _res[1]
-            if _ref_et and len(_res) == 3 and settings.get("trainer.et_reference_from_spinup"):
-                # Reference initiale de l'ET centree : annees completes de la mise en regime.
-                _n_years = spinup_end // 365
-                if _n_years >= 1:
-                    _a0 = spinup_end - 365 * _n_years
-                    _e = _res[2].etr[_a0:spinup_end].to(device)
-                    _Wsp = getattr(data, "et_weight", None)
-                    if _Wsp is not None:
-                        _ww = _Wsp[_a0:spinup_end].to(device, _e.dtype)
-                        self._et_sim_base = ((_ww * _e).sum(dim=0) / _ww.sum(dim=0).clamp(min=1e-6)).detach()
-                    else:
-                        self._et_sim_base = _e.mean(dim=0).detach()
-                    logger.info("ET centree : reference initiale sur %d an(s) de mise en regime, moyenne %.3f mm/j", _n_years, float(self._et_sim_base.mean()))
-
         # Cache for next epoch
         self._cached_spinup_state = spun_state.detach()
         return spun_state
@@ -919,7 +889,6 @@ class Trainer:
         for term_weight, target_value, term_name in (
             (getattr(self.loss_fn, "w_snow", 0.0), data.swe_obs, "w_snow / swe_obs (MODIS snow cover)"),
             (getattr(self.loss_fn, "w_tws", 0.0), data.tws_obs, "w_tws / tws_obs (GRACE TWS)"),
-            (getattr(self.loss_fn, "w_water_table", 0.0), data.water_table_obs, "w_nappe / nappe_obs (niveaux de nappe)"),
             (getattr(self.loss_fn, "w_et", 0.0), data.et_obs, "w_et / et_obs (MODIS MOD16)"),
             (getattr(self.loss_fn, "w_swe_mass", 0.0), data.swe_mass_obs,
              "w_swe_mass / swe_mass_obs (CanSWE, masse du manteau)"),
@@ -969,8 +938,7 @@ class Trainer:
         # surestimees de l'ecart entre la moyenne annuelle et celle de janvier, et le terme
         # poussait toute l'ET vers le bas (052805, deux epoques : K_c 0,63, ET 1,05 contre 1,44).
         # Desormais : moyenne exacte de l'epoque precedente sur toute la periode d'entrainement,
-        # et, a la premiere, moyenne sur les annees completes de la mise en regime.
-        # MEANDRE_ET_CENTRAGE_EMA=1 restitue l'ancienne reference.
+        # et, a la premiere, moyenne exacte de la passe de reference (`_et_reference_exact`).
         _acc = getattr(self, "_et_sim_acc", None)
         _d = et_sim.detach()
         _wd = w if w is not None else torch.ones_like(_d)
@@ -980,7 +948,7 @@ class Trainer:
             _acc[0] = _acc[0] + (_wd * _d).sum(dim=0)
             _acc[1] = _acc[1] + _wd.sum(dim=0)
             _acc[2] = _acc[2] + (_wd * _d * _d).sum(dim=0)
-        if settings.get("trainer.et_center_ema") or getattr(self, "_et_sim_base", None) is None:
+        if getattr(self, "_et_sim_base", None) is None:
             cur = _d.mean(dim=0)
             prev = getattr(self, "_et_sim_base", None)
             self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
@@ -1006,7 +974,7 @@ class Trainer:
         """Pose la reference simulee de l'ET centree sur la moyenne exacte de l'epoque qui
         s'acheve (somme des blocs sur toute la periode d'entrainement), puis remet a zero."""
         _acc = getattr(self, "_et_sim_acc", None)
-        if _acc is not None and not settings.get("trainer.et_center_ema"):
+        if _acc is not None:
             _n = torch.as_tensor(_acc[1])
             if bool((_n > 0).all()):
                 self._et_sim_base = _acc[0] / _n
@@ -1023,8 +991,7 @@ class Trainer:
         le pilote evalue avant d'entrainer, si bien que la premiere mise en regime tourne sur
         les donnees de validation, sans MOD16, et que l'epoque reprend ensuite l'etat en
         cache. La reference n'etait alors jamais posee, et `_center_et` retombait sur la
-        moyenne du premier bloc d'hiver (2026-10-06, R311). MEANDRE_ET_REF_MISE_EN_REGIME=1
-        restitue la reference de la mise en regime.
+        moyenne du premier bloc d'hiver (2026-10-06, R311).
         """
         device = data.forcing.device
         _Wsp = getattr(data, "et_weight", None)
@@ -1081,8 +1048,6 @@ class Trainer:
         _spinup_has_run = min(self.config.spinup_steps, data.train_slice.start) > 0
         if (getattr(self.loss_fn, "et_mode", "level") in ("anomaly", "bassin", "forme")
                 and getattr(self.loss_fn, "w_et", 0.0) > 0 and data.et_obs is not None
-                and not settings.get("trainer.et_center_ema")
-                and not settings.get("trainer.et_reference_from_spinup")
                 and (getattr(self, "_et_sim_base", None) is None or getattr(self, "_et_sim_std", None) is None)):
             self._et_reference_exact(data, initial_state)
             # La passe laisse l'etat interne (manteau, gel, lacs) a la fin de la periode :
@@ -1117,10 +1082,7 @@ class Trainer:
         sp_tensor: Tensor | None = None  # parametres spatiaux du bloc, pour la tete de quantiles
         # HISTORIQUE DÉTACHÉ des débits aux stations, pour que le KGE et la famille
         # Nash-Sutcliffe portent sur la séquence CONTINUE et non sur un bloc de 45 jours
-        # (voir la note dans loss.py). MEANDRE_KGE_CONTINU=0 restitue le comportement
-        # historique, pour comparaison.
-        _kge_continuous = settings.get("trainer.kge_continuous")
-        _continuous_state = settings.get("trainer.state_continuous")
+        # (voir la note dans loss.py).
         _steps_per_block = settings.get("trainer.step_per_block")
         if settings.get("debug.nan_level") == "2" and not torch.is_anomaly_enabled():
             # NIVEAU 2 : mode anomalie pose des la passe AVANT, seul moyen d'obtenir la
@@ -1137,7 +1099,7 @@ class Trainer:
         # 0.83 -> 0.55 apres 65 pas). Ici, une passe SANS gradient en debut d'epoque
         # fournit la serie de toute la periode ; le bloc k voit alors le KGE de toute la
         # periode, lui-meme en direct et le reste detache.
-        _primer = settings.get("trainer.history_priming") and _kge_continuous
+        _primer = settings.get("trainer.history_priming")
         _pre_o = _pre_s = None
         _hist_o: list[Tensor] = []
         _hist_s: list[Tensor] = []
@@ -1164,7 +1126,7 @@ class Trainer:
                     graph=data.graph, node_coords=data.node_coords,
                     territorial=data.territorial, withdrawals=data.withdrawals.slice(data.train_slice.start, data.train_slice.stop),
                     day_of_year=data.day_of_year[data.train_slice],
-                    continue_state=(_continuous_state and _spinup_has_run),
+                    continue_state=_spinup_has_run,
                 )
             _T = data.train_slice.stop - data.train_slice.start
             _pre_s = _Qp[:, data.station_mask].detach()
@@ -1198,8 +1160,6 @@ class Trainer:
             # gradient) plutôt qu'un 2e forward détaché.
             _need_et = (self.loss_fn.w_et > 0 and data.et_obs is not None)
             _need_tws = (self.loss_fn.w_tws > 0 and data.tws_obs is not None)
-            _need_water_table = (getattr(self.loss_fn, "w_water_table", 0.0) > 0
-                           and data.water_table_obs is not None and data.water_table_idx is not None)
             # Neige : MODIS snow cover (fraction) cale le taux de FONTE (sp_fonte).
             # On compare une fraction de couverture SIMULÉE = 1-exp(-SWE/SWE_REF)
             # (différentiable, monotone) à snow_frac MODIS. data.swe_obs porte le
@@ -1224,13 +1184,12 @@ class Trainer:
                     # le profil de gel, le milieu humide et le stockage des lacs vivent
                     # hors de HydroState et repartaient de zero a chaque bloc, soit tous
                     # les 45 jours. L'entrainement ne voyait donc jamais un hiver
-                    # continu (2026-09-03). MEANDRE_ETAT_CONTINU=0 restitue l'ancien
-                    # comportement, pour un banc apparie.
+                    # continu (2026-09-03).
                     # ... et aussi au PREMIER bloc quand une mise en regime vient de
                     # tourner : sans cela le manteau spinne etait jete au passage, le
                     # premier hiver de chaque epoque etait faux et le premier bloc
                     # rendait des gradients NaN en janvier (2026-09-04).
-                    continue_state=(_continuous_state and (n_chunks > 0 or _spinup_has_run)),
+                    continue_state=(n_chunks > 0 or _spinup_has_run),
                 )
                 if _need_diag:
                     Q_chunk, state_out, _diag_chunk = _sim_out
@@ -1259,7 +1218,6 @@ class Trainer:
                     self._gradient_guard_done = True
                     _to_check = [("evapotranspiration MODIS", _need_et, "etr"),
                                    ("neige", _need_snow, "swe"),
-                                   ("niveaux de puits", _need_water_table, "s_gw"),
                                    ("gravimetrie GRACE", _need_tws, "theta3")]
                     # Le terme de pics par rapport a besoin d'un SEUIL venu de
                     # l'observation. Sans lui il est silencieusement nul, et c'est justement
@@ -1306,90 +1264,13 @@ class Trainer:
                     swe_sim=scf_sim_chunk,
                     q_obs_hist=(torch.cat([_pre_o[:obs_offset + burnin], _pre_o[obs_offset + chunk_len:]])
                                 if _primer else
-                                (torch.cat(_hist_o) if (_kge_continuous and _hist_o) else None)),
+                                (torch.cat(_hist_o) if _hist_o else None)),
                     q_sim_hist=(torch.cat([_pre_s[:obs_offset + burnin], _pre_s[obs_offset + chunk_len:]])
                                 if _primer else
-                                (torch.cat(_hist_s) if (_kge_continuous and _hist_s) else None)),
+                                (torch.cat(_hist_s) if _hist_s else None)),
                 )
-                if _kge_continuous:
-                    _hist_o.append(q_obs_chunk.detach())
-                    _hist_s.append(Q_chunk_loss[:, data.station_mask].detach())
-
-                # NIVEAU ANNUEL DE L'ET (2026-10-09, R360). Le terme MOD16 centre ne voit que la
-                # forme ; rien n'ancrait le niveau, et le modele evapore 412 mm/an sur les bassins
-                # jauges de l'Outaouais contre 550 d'ET implicite (pluie moins debit) et 502 a 540
-                # pour MOD16, d'ou un exces de volume de 6 a 17 %. Ici : rapport, par noeud, de
-                # l'ET simulee moyenne de l'epoque precedente a la moyenne MOD16 de la periode
-                # d'entrainement ; son ecart a 1, en forme absolue (premier ordre au-dela de 5 %),
-                # pousse l'ET du bloc vers le niveau observe. MEANDRE_W_ET_NIVEAU (poids, defaut 0).
-                _w_level = float(settings.get("trainer.et_level_weight"))
-                L_et_level = None
-                if (_w_level > 0 and _need_et and getattr(self, "_et_sim_base", None) is not None
-                        and getattr(self, "_et_obs_base", None) is not None):
-                    _raw_et = _diag_chunk.etr[burnin:]
-                    _bo = torch.nan_to_num(self._et_obs_base.to(_raw_et.device), nan=0.0)
-                    _ok_n = _bo > 0.05
-                    _r_n = (self._et_sim_base.to(_raw_et.device) / _bo.clamp(min=0.05)).detach()
-                    _coef = torch.clamp((_r_n - 1.0) / 0.05, -1.0, 1.0)
-                    L_et_level = (_coef * _raw_et.mean(dim=0) / _bo.clamp(min=0.05))[_ok_n].mean()
-                    self.loss_fn.w_et_level = _w_level
-                    loss_chunk = loss_chunk + _w_level * L_et_level
-                    all_components["et_niveau"] = all_components.get("et_niveau", 0.0) + float(((_r_n - 1.0).abs())[_ok_n].mean()) * _block_share
-
-                # ── NIVEAUX DE NAPPE MESURES : contrainte de FORME ──────────
-                # Anomalies REDUITES, centrees et normalisees DANS LE BLOC, donc compatible
-                # avec l'accumulation par blocs sans calendrier a transporter. La serie est
-                # prise au pas journalier plutot qu'au mois : le lissage mensuel servait au
-                # diagnostic, la perte gagne a voir tous les points.
-                if _need_water_table:
-                    from meandre.training.loss import water_table_anomaly_loss
-                    # La grandeur simulee est la PROFONDEUR de la surface libre quand la
-                    # nappe libre est active, sinon le STOCK souterrain. Le terme travaille
-                    # sur des anomalies reduites, donc l'echelle est eliminee et les deux
-                    # conviennent ; il faut seulement le meme sens que le niveau mesure, qui
-                    # est une profondeur sous le repere du tubage. Un stock qui monte est
-                    # une profondeur qui diminue, d'ou le signe. Sans cela le terme ne
-                    # s'appliquerait qu'aux configurations portant la nappe libre, et une
-                    # ronde appariee cesserait de l'etre.
-                    _pn = getattr(_diag_chunk, "water_table_depth", None)
-                    _zn = (_pn[burnin:] if _pn is not None else -_diag_chunk.s_gw[burnin:])
-                    # L'indice des puits vit sur la carte et le diagnostic peut vivre sur
-                    # le processeur : on aligne AVANT d'indexer, un tenseur d'indices
-                    # devant etre sur l'appareil du tenseur indexe.
-                    _zn = _zn[:, data.water_table_idx.to(_zn.device)]
-                    # On calcule LA OU VIT LE DIAGNOSTIC, sans le rapatrier sur la carte :
-                    # sous MEANDRE_DIAG_CPU=1 il est sur le processeur, et le ramener a
-                    # sature les 8 Go de la carte. Le gradient traverse les appareils.
-                    _on = data.water_table_obs[obs_offset + burnin:obs_offset + chunk_len]
-                    if _on.device != _zn.device:
-                        _on = _on.to(_zn.device)
-                    _mn = ~torch.isnan(_on)
-                    L_water_table = water_table_anomaly_loss(_zn, torch.nan_to_num(_on), mask=_mn)
-                    # PART PLAFONNEE (2026-09-23). Le terme vaut 2(1 - r) en moyenne sur les
-                    # puits : la ou la nappe est mal simulee, il prend jusqu'a la moitie de la
-                    # perte a poids egal, 53 % au Saint-Laurent nord-ouest et 49 % en Gaspesie
-                    # contre 15 % en Outaouais, et tire le volume du debit, beta tombant de
-                    # 1,05 a 0,90 en huit epoques. On borne sa part aux termes de debit du
-                    # bloc par un facteur DETACHE : la direction du gradient est conservee,
-                    # seule son amplitude est limitee.
-                    # La reference est le reste de la perte du bloc a cet instant : les
-                    # termes de debit, plus l'evapotranspiration et la neige que la fonction
-                    # de perte a deja ajoutes. La gravimetrie et la masse du manteau viennent
-                    # apres et n'en font pas partie.
-                    _part_max = float(settings.get("trainer.groundwater_max_share"))
-                    _weight_n = self.loss_fn.w_water_table
-                    _ref = float(loss_chunk.detach())
-                    if _part_max > 0 and _ref > 0 and float(L_water_table.detach()) > 0:
-                        _weight_n = min(_weight_n, _part_max * _ref / float(L_water_table.detach()))
-                    loss_chunk = loss_chunk + _weight_n * L_water_table
-                    all_components["nappe_loss"] = (
-                        all_components.get("nappe_loss", 0.0) + float(L_water_table.detach()) * _block_share)
-                    # Le bilan multiplie chaque terme par son poids NOMINAL. Pour les puits le
-                    # poids applique peut etre plus petit, a cause du plafond : on garde le
-                    # poids reellement applique, moyenne sur l'epoque, pour que le bilan
-                    # montre ce que l'optimiseur a vu et non ce que la configuration demandait.
-                    all_components["nappe_poids_applique"] = (
-                        all_components.get("nappe_poids_applique", 0.0) + _weight_n * _block_share)
+                _hist_o.append(q_obs_chunk.detach())
+                _hist_s.append(Q_chunk_loss[:, data.station_mask].detach())
 
                 # ── GRACE TWS : stockage total basin-moyen (avec gradient) ──
                 # storage = Σθ_i·z_i·1000 + SWE + S_gw + canopy + wetland (mm).
@@ -1521,22 +1402,17 @@ class Trainer:
                             # terme etait eteint a 30 jours (0,0004) et explosait a 90 jours
                             # (83,9, 98 % de la perte). Observation : toute la serie, une fois ;
                             # simulation : moyenne mobile detachee, comme la ligne de base.
-                            # MEANDRE_TWS_SD_BLOC=1 restitue l'ecart-type du bloc.
-                            if settings.get("debug.tws_sd_block"):
-                                _ss = _rs.detach().std().clamp(min=1e-3)
-                                _so = _ro.std().clamp(min=1e-3)
-                            else:
-                                if getattr(self, "_tws_obs_sd", None) is None:
-                                    # anomalie par bassin quand il y a des groupes, pour ne pas
-                                    # compter l'ecart de niveau entre bassins comme une amplitude
-                                    _a2 = data.tws_obs - (self._tws_obs_base if data.tws_obs.ndim == 2 and _gi is not None else 0.0)
-                                    _ao2 = _a2[~torch.isnan(_a2)]
-                                    self._tws_obs_sd = (_ao2.std() if _ao2.numel() > 2 else torch.ones((), device=_s.device)).clamp(min=1e-3)
-                                _so = self._tws_obs_sd
-                                _v2 = _rs.detach().pow(2).mean()
-                                _pv = getattr(self, "_tws_sim_var", None)
-                                self._tws_sim_var = _v2 if _pv is None else (0.98 * _pv + 0.02 * _v2)
-                                _ss = self._tws_sim_var.sqrt().clamp(min=1e-3)
+                            if getattr(self, "_tws_obs_sd", None) is None:
+                                # anomalie par bassin quand il y a des groupes, pour ne pas
+                                # compter l'ecart de niveau entre bassins comme une amplitude
+                                _a2 = data.tws_obs - (self._tws_obs_base if data.tws_obs.ndim == 2 and _gi is not None else 0.0)
+                                _ao2 = _a2[~torch.isnan(_a2)]
+                                self._tws_obs_sd = (_ao2.std() if _ao2.numel() > 2 else torch.ones((), device=_s.device)).clamp(min=1e-3)
+                            _so = self._tws_obs_sd
+                            _v2 = _rs.detach().pow(2).mean()
+                            _pv = getattr(self, "_tws_sim_var", None)
+                            self._tws_sim_var = _v2 if _pv is None else (0.98 * _pv + 0.02 * _v2)
+                            _ss = self._tws_sim_var.sqrt().clamp(min=1e-3)
                             L_tws = ((_rs / _ss) - (_ro / _so)).pow(2).mean()
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
                             all_components["tws_loss"] = (
@@ -1802,9 +1678,7 @@ class Trainer:
                            if torch.is_tensor(v_) and v_.requires_grad and k_ not in ("total", "total_loss")}
                 for _name, _var in (("prior", locals().get("prior_loss")),
                                    ("tws", locals().get("L_tws")),
-                                   ("tws_clim", locals().get("L_tws_clim")),
-                                   ("nappe", locals().get("L_nappe")),
-                                   ("et_niveau", locals().get("L_et_niv"))):
+                                   ("tws_clim", locals().get("L_tws_clim"))):
                     if torch.is_tensor(_var) and _var.requires_grad:
                         _terms[_name] = _var
                 _names_m = list(self._probe_mult)
@@ -2188,7 +2062,6 @@ class Trainer:
         return float(sum(term_list) / len(term_list)) if term_list else float("inf")
 
     def _val_epoch_metrics(self) -> dict[str, float]:
-        _continuous_state_val = settings.get("trainer.state_continuous")
         """Validation: simulate val period, compute evaluation metrics.
 
         Reports both pooled metrics (all stations flattened) and per-station
@@ -2241,7 +2114,7 @@ class Trainer:
                         withdrawals=data.withdrawals.slice(data.val_slice.start, data.val_slice.stop),
                         day_of_year=data.day_of_year[data.val_slice],
                         tbptt_steps=self.config.tbptt_steps,
-                        continue_state=_continuous_state_val,
+                        continue_state=True,
                     )
                 else:
                     # Slow path: no cached state (e.g. before first train epoch).
@@ -2254,7 +2127,7 @@ class Trainer:
                     Q_full, _ = self.model.simulate(
                         forcing=data.forcing[full_slice],
                         initial_state=initial_state,
-                        continue_state=(_continuous_state_val and spinup_end > 0),
+                        continue_state=(spinup_end > 0),
                         graph=data.graph,
                         node_coords=data.node_coords,
                         territorial=data.territorial,

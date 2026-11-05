@@ -1,6 +1,6 @@
 """Les trois pièces du banc entrent dans le pilote par la configuration, pas par l'environnement.
 
-Le modulateur phénologique prend son mode et ses paramètres en arguments, la colonne lit les
+Le modulateur phénologique prend ses paramètres en argument, la colonne lit les
 classes phénologiques en attribut, et le fichier de configuration candidate déclare Penman, la
 phénologie et la porte de gel continue (2026-09-30).
 """
@@ -14,10 +14,8 @@ from meandre.temporal.phenology_modulator import PhenologyModulator
 
 
 def test_modulator_takes_parameters_as_arguments():
-    os.environ.pop("MEANDRE_PHENOLOGIE_MODE", None)
     os.environ.pop("MEANDRE_PHENOLOGIE_PARAMS", None)
-    m = PhenologyModulator(mode="photo", params=[56.81, 11.82, 21.1, 0.9])
-    assert m.mode == "photo"
+    m = PhenologyModulator(params=[56.81, 11.82, 21.1, 0.9])
     assert abs(float(m.gdd_emerg) - 56.81) < 1e-3
     seuil = 12.0 + 3.0 * math.tanh(float(m.photo_crit))
     assert abs(seuil - 11.82) < 1e-4
@@ -26,13 +24,11 @@ def test_modulator_takes_parameters_as_arguments():
 
 
 def test_without_argument_environment_keeps_its_role():
-    os.environ["MEANDRE_PHENOLOGIE_MODE"] = "photo"
     os.environ["MEANDRE_PHENOLOGIE_PARAMS"] = "207.94,11.91,88.4,0.99"
     try:
         m = PhenologyModulator()
-        assert m.mode == "photo" and abs(float(m.gdd_emerg) - 207.94) < 1e-3
+        assert abs(float(m.gdd_emerg) - 207.94) < 1e-3
     finally:
-        os.environ.pop("MEANDRE_PHENOLOGIE_MODE", None)
         os.environ.pop("MEANDRE_PHENOLOGIE_PARAMS", None)
 
 

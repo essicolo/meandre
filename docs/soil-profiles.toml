@@ -10,7 +10,8 @@
 #                BASE_THRESH_POWER    vide l'eau gravitaire, tau_days, exponent facultatif
 #   percolation  PERC_LINEAR          krec · épaisseur · theta, la loi d'Hydrotel
 #                PERC_THRESH_POWER    vide l'eau gravitaire vers le bas, tau_days
-#                PERC_POWER_LAW       krec · épaisseur · theta_s · (theta/theta_s)^exponent
+#                PERC_GRAVITY         K(theta), écoulement sous gradient unitaire
+#   ruissellement SPILL_GW          débordement de l'apport commandé par le stock de la nappe
 #
 # Ce fichier n'est pas exécutable seul : il sert de bibliothèque à copier.
 

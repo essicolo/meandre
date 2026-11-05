@@ -19,7 +19,6 @@ import torch
 
 from meandre.hydrotel.hydrotel_params import load_project, uhrh_fractions
 from meandre.adapters.physitel.physitel_loader import _parse_reach
-from meandre.utils import settings
 
 
 def _spline_coeffs(b, psis):
@@ -103,77 +102,6 @@ def load_calibrated_soil(project_dir, node_ids, z1_fixed,
         p[f"b{i}"] = b.clone(); p[f"omegpi{i}"] = omegpi.clone()
         p[f"mm{i}"] = mm.clone(); p[f"nn{i}"] = nn.clone()
     return p
-
-
-def imposed_retention_curve(cs: dict, use_aquifer: bool) -> dict:
-    """Sous-ensemble du sol calibré à IMPOSER au modèle (mode d'ancrage sauf_ks).
-
-    Tout est imposé SAUF les conductivités et porosités, qui restent au champ appris
-    (loi des ancrages : ancrer les processus scalaires, jamais figer le sol en bloc).
-
-    ET, quand l'aquifère restituant est actif, SAUF krec et coef_recharge. Le calage
-    Hydrotel porte une recharge quasi nulle (~1e-7 m/h) parce que chez lui c'est une
-    fuite jamais restituée, que son calage étrangle. L'imposer à notre aquifère revient
-    à brancher le réservoir en aval d'un robinet fermé : la recharge tombe à zéro et
-    toute variation de krec devient sans effet.
-
-    Cette fonction existe pour que le PILOTE d'entraînement et les DIAGNOSTICS ne
-    puissent plus diverger sur ce point. Ils avaient divergé (2026-08-19) : le balayage
-    recharge x vidange mesurait un champion à 0.7591 au lieu de 0.7880, avec une
-    recharge nulle partout et un krec inopérant, parce que le diagnostic imposait krec
-    et le pilote non. Sixième occurrence de « la recette d'exécution ne se déduit pas
-    du point de reprise ».
-    """
-    # LA CAPACITE AU CHAMP ET LE POINT DE FLETRISSEMENT RESTENT AU CHAMP SPATIAL (Essi,
-    # 2026-09-22). Ils sont dans la table de sol du projet, mais cette table et la carte des
-    # textures qui l'indexe sont ajustees pour le debit : les imposer remplacerait notre
-    # ajustement par le leur, sans rien gagner en physique. `MEANDRE_THETA_CC_CALAGE=1` les
-    # impose pour qui veut comparer.
-    excluded_prefixes = ("ks", "thetas")
-    if not settings.get("data.field_capacity_from_calibration"):
-        excluded_prefixes = excluded_prefixes + ("thetacc", "thetapf")
-    excluded_keys = ("krec", "coef_recharge") if use_aquifer else ()
-    return {k: v for k, v in cs.items()
-            if not k.startswith(excluded_prefixes) and k not in excluded_keys}
-
-
-def load_linacre_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
-                       device="cpu", dtype=None):
-    """Params Linacre par NŒUD (troncon) : lat/alti (uhrh.csv) + linacre.csv
-    (t_froid, t_chaud, albedo, COEFF MULTIPLICATIF OPTIMISATION = calage régional
-    d'ETP des plateformes LN24HA), agrégés UHRH→troncon pondérés par superficie."""
-    from pathlib import Path
-    dtype = dtype or torch.get_default_dtype()
-    proj = load_project(str(project_dir), sim_subdir)
-    reaches = _parse_reach(Path(project_dir) / "physitel" / "troncon.trl")
-    t2u = {t["id"]: t["uhrh_ids"] for t in reaches}
-    uhrh = proj["uhrh"]
-    lin = {}
-    for ln in open(f"{project_dir}/{sim_subdir}/linacre.csv", encoding="latin-1").read().splitlines():
-        c = ln.split(";")
-        if len(c) >= 5 and c[0].strip().isdigit():
-            lin[int(c[0])] = [float(x) for x in c[1:5]]
-    cols = {k: [] for k in ("lat", "alti", "tf", "tc", "alb", "coeff")}
-    n_missing = 0
-    for tid in node_ids:
-        uids = [u for u in t2u.get(int(tid), []) if u in uhrh and u in lin]
-        if not uids:
-            n_missing += 1
-            cols["lat"].append(46.0); cols["alti"].append(200.0); cols["tf"].append(-10.0)
-            cols["tc"].append(20.0); cols["alb"].append(0.23); cols["coeff"].append(0.45)
-            continue
-        w = torch.tensor([max(uhrh[u]["area_km2"], 1e-9) for u in uids]); w = w / w.sum()
-        agg = lambda vals: float((w * torch.tensor(vals)).sum())
-        cols["lat"].append(agg([uhrh[u]["lat"] for u in uids]))
-        cols["alti"].append(agg([uhrh[u]["altitude"] for u in uids]))
-        cols["tf"].append(agg([lin[u][0] for u in uids]))
-        cols["tc"].append(agg([lin[u][1] for u in uids]))
-        cols["alb"].append(agg([lin[u][2] for u in uids]))
-        cols["coeff"].append(agg([lin[u][3] for u in uids]))
-    if n_missing:
-        print(f"[linacre] {n_missing}/{len(node_ids)} troncons sans UHRH -> défauts")
-    T = lambda k: torch.tensor(cols[k], dtype=dtype, device=device)
-    return T("lat"), T("alti"), T("tf"), T("tc"), T("alb"), T("coeff")
 
 
 def load_melt_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
@@ -468,44 +396,3 @@ def provincial_matching(region: str, local_reaches, provincial_ids):
             f"ressemblent à {str(provincial_ids[0])!r}, on cherchait "
             f"{id_provincial(region, local_reaches[0])!r}")
     return ranks
-
-
-def load_mcguinness_nodes(project_dir, node_ids, sim_subdir="simulation/simulation",
-                          device="cpu"):
-    """Coefficient multiplicatif d'optimisation de l'ETP McGuinness
-    (etp-mc-guiness.csv), agrégé UHRH -> tronçon au prorata des superficies.
-
-    TROUVÉ LE 2026-08-16, remarque d'Essi : CINQ plateformes sur six utilisent
-    McGuinness et une seule Linacre — les préfixes l'encodent (MG contre LN). Or notre
-    socle était ancré sur LN24HA, la seule Linacre ET la moins bonne des six (0.7531
-    contre 0.830 pour MG24HK). Pire, `mcguinness_etp` était appelé SANS ce coefficient,
-    qui vaut 0.600 sur MG24HK et 0.850 sur MG24HS : notre ETP McGuinness était donc
-    jusqu'à 67 % trop forte. Neuvième fichier de calage présent et jamais lu.
-    """
-    from pathlib import Path
-    import numpy as np
-    import torch as _t
-    proj = load_project(str(project_dir), sim_subdir)
-    reaches = _parse_reach(Path(project_dir) / "physitel" / "troncon.trl")
-    t2u = {t["id"]: t["uhrh_ids"] for t in reaches}
-    uhrh = proj["uhrh"]
-    f = Path(project_dir) / sim_subdir / "etp-mc-guiness.csv"
-    if not f.exists():
-        return None
-    coef = {}
-    for ln in f.read_text(encoding="latin-1").splitlines():
-        t = [x.strip() for x in ln.split(";")]
-        if len(t) >= 2 and t[0].isdigit():
-            coef[int(t[0])] = float(t[1])
-    if not coef:
-        return None
-    out = np.ones(len(node_ids), dtype=np.float32)
-    for j, nid in enumerate(node_ids):
-        vs, ws = [], []
-        for u in t2u.get(int(nid), []):
-            u = abs(int(u))
-            if u in coef:
-                vs.append(coef[u]); ws.append(max(uhrh.get(u, {}).get("area_km2", 1.0), 1e-9))
-        if vs:
-            out[j] = float(np.average(vs, weights=ws))
-    return _t.tensor(out, dtype=_t.float32, device=device)

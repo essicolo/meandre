@@ -230,15 +230,12 @@ def _domain_pieces(parts, sizes):
         ks = [np.asarray(d.hgm_kernel)[i] for d, i in zip(doms, idx)]
         L = max(k.shape[1] for k in ks)
         hgm = np.concatenate([np.pad(k, ((0, 0), (0, L - k.shape[1]))) for k in ks], axis=0)
-    kgw = None
-    if all(d.groundwater_conductivity is not None for d in doms):
-        kgw = torch.cat([d.groundwater_conductivity[torch.as_tensor(i)] for d, i in zip(doms, idx)])
     tf = None
     if all(d.texture_fractions is not None for d in doms):
         tf = {c: (np.concatenate([np.asarray(d.texture_fractions[c][0])[i] for d, i in zip(doms, idx)]), np.concatenate([np.asarray(d.texture_fractions[c][1])[i] for d, i in zip(doms, idx)])) for c in doms[0].texture_fractions}
     return types.SimpleNamespace(
         texture_conductivity=tex, drainage_class=cat_arr(lambda d: d.drainage_class), lake_geometry=lakes,
-        hgm_kernel=hgm, groundwater_conductivity=kgw, texture_fractions=tf,
+        hgm_kernel=hgm, texture_fractions=tf,
         deposit_thickness_m=cat_arr(lambda d: d.deposit_thickness_m),
         phenology=doms[0].phenology, observations=doms[0].observations)
 
@@ -501,90 +498,6 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
         print(f"[domaine] ATTENTION ancrages de plateforme INDISPONIBLES ({exc}) : "
               "le territoire sera traite en classe DECOUVERT, ce qui coute ~0.27 de KGE")
 
-    # ── ETP LINACRE et CHAMP k_gw : les deux autres ancrages de la flotte gen1 ──
-    # Meme famille que l'occupation : des DONNEES par troncon livrees par plateforme
-    # (Linacre) ou par un champ provincial deja estime (k_gw, GP sur les recessions de
-    # 127 stations). Les omettre ne casse rien de visible, ca change juste la recette --
-    # et comparer la province aux champions gen1 sous une AUTRE recette ne mesurerait
-    # pas l'architecture. C'est l'erreur que l'occupation du sol a failli faire commettre.
-    linacre, kgw = None, None
-    try:
-        from meandre.adapters.physitel.hydrotel_calib import load_linacre_nodes
-        from meandre.utils import paths as _mp2
-        # six champs par noeud : lat, altitude, T froide, T chaude, albedo, coefficient
-        # d'optimisation regional (~0.4-0.5). Ils se concatenent comme les autres.
-        cols_lin = None
-        for p in parts:
-            pl = f"{_mp2.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
-            v = load_linacre_nodes(pl, p["node_ids"], device="cpu")
-            cols_lin = [[x] for x in v] if cols_lin is None else                 [c + [x] for c, x in zip(cols_lin, v)]
-        linacre = tuple(torch.cat(c).to(device) for c in cols_lin)
-        print(f"[domaine] ETP Linacre du projet : {len(linacre)} champs, coefficient "
-              f"median {float(linacre[5].median()):.3f}")
-    except Exception as exc:
-        print(f"[domaine] Linacre indisponible ({exc}) : ETP McGuinness par defaut")
-    try:
-        import pandas as _pd
-        _cf = _pd.read_parquet(f"{_mpaths_root()}/quebec/champ_kgw_QC.parquet")
-        vals = []
-        for p, sz in zip(parts, sizes):
-            sub = _cf[_cf.region == p["name"]].sort_values("node_idx").iloc[p["node_index"]]
-            if len(sub) != sz:
-                raise ValueError(f"{p['name']} : {len(sub)} noeuds dans le champ k_gw "
-                                 f"pour {sz} attendus")
-            vals.append(torch.tensor(sub.k_gw.values, dtype=torch.float32))
-        kgw = torch.cat(vals).to(device)
-        print(f"[domaine] champ k_gw provincial : med {float(kgw.median()):.4f} | "
-              f"q10-q90 {float(kgw.quantile(0.1)):.4f}-{float(kgw.quantile(0.9)):.4f}")
-    except Exception as exc:
-        print(f"[domaine] champ k_gw indisponible ({exc}) : k_gw laisse au NeRF")
-
-    # ── SOL CALIBRE HYDROTEL, par noeud : le depart de la flotte gen1 ──────
-    # Ce n'est PAS un ancrage qui fige le sol (la loi des ancrages l'interdit), c'est un
-    # POINT DE DEPART : le champ est ajuste par regression sur les valeurs calibrees,
-    # puis rendu entierement libre. Mesure du 2026-08-13 : le reseau reproduit le champ
-    # a 2 % pres et sa dispersion passe de 0.0017 a 0.741 -- la capacite n'etait pas le
-    # verrou, le point de depart l'etait. Decisif pour un run court : sans lui, quatre
-    # epochs partent d'un champ plat au K_sat huit fois trop bas.
-    soil = None
-    try:
-        from meandre.adapters.physitel.hydrotel_calib import load_calibrated_soil
-        from meandre.utils import paths as _mp3
-        cs_parts = []
-        for p in parts:
-            pl = f"{_mp3.PLATFORMS_ROOT}/LN24HA/{p['name'].upper()}_LN24HA_2020"
-            cs_parts.append(load_calibrated_soil(pl, p["node_ids"], 0.15, device="cpu"))
-        shared_keys = set(cs_parts[0])
-        for d in cs_parts[1:]:
-            shared_keys &= set(d)
-        soil = {}
-        for k in sorted(shared_keys):
-            v = [d[k] for d in cs_parts]
-            if all(hasattr(x, "shape") and x.ndim >= 1 and x.shape[0] == sz
-                   for x, sz in zip(v, sizes)):
-                soil[k] = torch.cat(v).to(device)
-        print(f"[domaine] sol calibre Hydrotel : {len(soil)} champs par noeud")
-    except Exception as exc:
-        print(f"[domaine] sol calibre indisponible ({exc}) : depart litterature")
-
-    # FRACTION AGRICOLE BRUTE. Les attributs du champ ne la portent qu'en z-score, ce
-    # qui ne peut pas servir de fraction de surface. Le parquet provincial la garde en
-    # brut ; on la joint a l'occupation pour que le drainage agricole sache ou draîner.
-    try:
-        import pandas as _pd2
-        _raw = _pd2.read_parquet(f"{_mpaths_root()}/quebec/territorial-raw-QC.parquet")
-        _ag = []
-        for p, sz in zip(parts, sizes):
-            sub = _raw[_raw.region == p["name"]].iloc[p["node_index"]]
-            if len(sub) != sz:
-                raise ValueError(f"{p['name']} : {len(sub)} lignes pour {sz} noeuds")
-            _ag.append(torch.tensor(sub["f_agriculture"].to_numpy(), dtype=torch.float32))
-        land_cover["pct_agricole"] = torch.cat(_ag).to(device)
-        print(f"[domaine] fraction agricole : moyenne {float(land_cover['pct_agricole'].mean()):.3f}"
-              f" | q90 {float(land_cover['pct_agricole'].quantile(0.9)):.3f}")
-    except Exception as exc:
-        print(f"[domaine] fraction agricole indisponible ({exc}) : drainage agricole inerte")
-
     slices = {p["name"]: (int(a), int(b)) for p, a, b in zip(parts, offs[:-1], offs[1:])}
     print(f"[domaine] {len(parts)} plateformes fondues | {n_total} troncons | "
           f"{q_obs.shape[1]} jauges | {graph.n_edges} aretes | "
@@ -595,7 +508,6 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
                 times=parts[0]["times"], station_ids=st_ids, slices=slices,
                 n_gauges=q_obs.shape[1], land_cover=land_cover,
                 melt_params=melt_params, phenology=phenology,
-                linacre=linacre, kgw=kgw, soil=soil,
                 # Par territoire : nom, identifiants locaux des troncons dans l'ordre des
                 # noeuds, decalage et taille dans le domaine. Sert aux donnees livrees par
                 # projet PHYSITEL (lacs, noyau de versant, tables par troncon).
