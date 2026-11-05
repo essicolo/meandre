@@ -49,8 +49,10 @@ def _kge_components(q_obs: Tensor, q_sim: Tensor) -> tuple[Tensor, Tensor, Tenso
     # n'apprenait donc RIEN de l'epoque (validation identique a la quatrieme decimale
     # d'une epoque a l'autre, perte qui ne bougeait que par le prior). Un plancher de
     # 0.1 % du debit moyen rend le gradient fini partout, sans effet mesurable ailleurs.
-    floor_obs = (1e-3 * q_obs.mean().abs()).clamp(min=1e-6)
-    floor_sim = (1e-3 * q_sim.mean().abs()).clamp(min=1e-6)
+    # Fraction declaree : loss_terms.kge_std_floor.
+    _floor = float(settings.get("loss_terms.kge_std_floor"))
+    floor_obs = (_floor * q_obs.mean().abs()).clamp(min=1e-6)
+    floor_sim = (_floor * q_sim.mean().abs()).clamp(min=1e-6)
     std_obs = torch.sqrt(var_obs + floor_obs ** 2)
     std_sim = torch.sqrt(var_sim + floor_sim ** 2)
     r = (x * y).mean() / (std_obs * std_sim)
@@ -321,7 +323,7 @@ def differentiable_flat_days_loss(q_obs: Tensor, q_sim: Tensor, seuil: float = 0
 
 
 def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
-                                bas: float = 0.2, ref: float = 0.5) -> Tensor:
+                                bas: float | None = None, ref: float | None = None) -> Tensor:
     """Ecart sur le SOUTIEN d'etiage : quantile bas rapporte a la mediane.
 
     Substitut differentiable et bon marche de l'indice d'ecoulement de base. Un modele
@@ -333,6 +335,10 @@ def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
     """
     if q_obs.numel() < 10:
         return torch.zeros((), device=q_sim.device)
+    # Quantiles absents : réglage loss_terms.fdc_low_quantiles (0,2 et 0,5).
+    _qb, _qr = settings.get("loss_terms.fdc_low_quantiles")
+    bas = _qb if bas is None else bas
+    ref = _qr if ref is None else ref
     qb_o = torch.quantile(q_obs, bas); qr_o = torch.quantile(q_obs, ref)
     qb_s = torch.quantile(q_sim, bas); qr_s = torch.quantile(q_sim, ref)
     r_o = qb_o / qr_o.clamp(min=1e-8)
@@ -345,8 +351,8 @@ def differentiable_fdc_low_loss(q_obs: Tensor, q_sim: Tensor,
     return torch.abs(r_s - r_o)
 
 
-def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float = 0.3,
-                               eps: float = 1e-3) -> Tensor:
+def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float | None = None,
+                               eps: float | None = None) -> Tensor:
     """Écart absolu des logarithmes du débit sur les jours d'étiage observés.
 
     Les jours d'étiage sont ceux où le débit observé est sous son quantile `quantile` de la
@@ -359,6 +365,9 @@ def differentiable_low_flow_loss(q_obs: Tensor, q_sim: Tensor, quantile: float =
     ok = torch.isfinite(q_obs) & torch.isfinite(q_sim)
     if int(ok.sum()) < 10:
         return torch.zeros((), device=q_sim.device)
+    # Absents : réglages loss_terms.low_flow_quantile (0,3) et loss_terms.low_flow_eps_m3s (1e-3).
+    quantile = float(settings.get("loss_terms.low_flow_quantile")) if quantile is None else quantile
+    eps = float(settings.get("loss_terms.low_flow_eps_m3s")) if eps is None else eps
     qo, qs = q_obs[ok], q_sim[ok]
     seuil = torch.quantile(qo, quantile)
     bas = qo <= seuil
@@ -492,14 +501,17 @@ def differentiable_nrmse_loss(q_obs: Tensor, q_sim: Tensor) -> Tensor:
 
 
 def differentiable_log_mse_loss(
-    q_obs: Tensor, q_sim: Tensor, eps: float = 1.0
+    q_obs: Tensor, q_sim: Tensor, eps: float | None = None
 ) -> Tensor:
     """MSE on log-transformed flows. Scale-invariant AND chunk-safe.
 
     Unlike log-NSE, this has no observation-variance denominator, so it remains
     additive across temporal chunks. The log transform naturally equalizes the
-    gradient contribution of low-flow and high-flow periods.
+    gradient contribution of low-flow and high-flow periods. Décalage absent : réglage
+    loss_terms.log_offset_m3s (1 m³/s).
     """
+    if eps is None:
+        eps = float(settings.get("loss_terms.log_offset_m3s"))
     log_obs = torch.log(q_obs + eps)
     log_sim = torch.log(q_sim.clamp(min=0.0) + eps)
     return ((log_obs - log_sim) ** 2).mean()
@@ -844,12 +856,13 @@ class HydroLoss(nn.Module):
             _n_hist = torch.zeros_like(valid_counts)
             if q_obs_hist is not None and q_sim_hist is not None and q_obs_hist.numel() > 0:
                 _n_hist = (~torch.isnan(q_obs_hist) & ~torch.isnan(q_sim_hist)).sum(dim=0)
-            keep = ((valid_counts + _n_hist) >= 30) & (valid_counts >= 1)
+            _min_obs = int(settings.get("loss_terms.min_station_obs"))
+            keep = ((valid_counts + _n_hist) >= _min_obs) & (valid_counts >= 1)
             n_keep = keep.sum().item()
 
             if n_keep == 0:
                 logger.warning(
-                    "No stations have >= 30 valid observations in this chunk "
+                    f"No stations have >= {_min_obs} valid observations in this chunk "
                     "(total stations: %d, max valid count: %s). "
                     "Loss will be zero with no gradient.",
                     n_stations,
@@ -919,8 +932,9 @@ class HydroLoss(nn.Module):
 
                 # ── Vectorized log-MSE ───────────────────────────────────
                 if self.w_log_mse > 0:
-                    log_sq = ((torch.log(q_o + 1.0)
-                               - torch.log(q_s.clamp(min=0.0) + 1.0)) * _m) ** 2
+                    _lo = float(settings.get("loss_terms.log_offset_m3s"))
+                    log_sq = ((torch.log(q_o + _lo)
+                               - torch.log(q_s.clamp(min=0.0) + _lo)) * _m) ** 2
                     L_log_mse = ((log_sq.sum(dim=0) / _n_val) * w).sum()
                 else:
                     L_log_mse = zero
@@ -1004,7 +1018,7 @@ class HydroLoss(nn.Module):
                             # jours des mois cibles, aucune compensation entre saisons.
                             _month = _month_of_day(self.doy_block.to(v.device))
                             _k = v & torch.isin(_month, torch.tensor(self.flat_months, device=v.device))
-                            if int(_k.sum()) >= 20:
+                            if int(_k.sum()) >= int(settings.get("loss_terms.flat_min_days")):
                                 flat_v.append(differentiable_flat_days_loss(
                                     q_obs[_k, si], q_sim_at_stations[_k, si], self.flat_threshold, self.flat_width))
                             else:
@@ -1144,8 +1158,8 @@ class HydroLoss(nn.Module):
             # on la comparait à l'ETR simulée de CE jour précis. Confronter une moyenne
             # de 8 jours à une valeur journalière ajoute du bruit pur et fausse toute
             # statistique de variance. On moyenne donc le simulé sur la même fenêtre.
-            # `et_window` = 8 par défaut ; 1 restaure l'ancien comportement.
-            et_sim = rolling_mean(et_sim, int(getattr(self, "et_window", 8)))
+            # `et_window` = loss_terms.et_window_days (8) par défaut ; 1 restaure l'ancien comportement.
+            et_sim = rolling_mean(et_sim, int(getattr(self, "et_window", settings.get("loss_terms.et_window_days"))))
             # MEANDRE_DIAG_CPU=1 accumule les diagnostics sur le processeur pour tenir dans
             # la memoire de la carte : l'evapotranspiration simulee arrive alors sur un
             # appareil different de l'observee et la comparaison levait une exception, ce

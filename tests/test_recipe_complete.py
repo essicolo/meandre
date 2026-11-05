@@ -52,4 +52,9 @@ def test_pilot_sections_are_written_in_the_recipe():
     for name in inspect.signature(HydroLoss.__init__).parameters:
         if name.startswith("w_") and not _declared(text, "loss", name):
             missing.append(f"[loss] {name}")
+    # Cles de [loss] qui ne sont pas des poids (et_mode, forme du terme de platitude...), lues par l'assemblage du territoire.
+    territory = (RECIPE.parents[2] / "meandre" / "run" / "territory_data.py").read_text(encoding="utf-8")
+    for name in set(re.findall(r'\blcfg\.get\("([a-z_0-9]+)"', territory)):
+        if not name.startswith("w_") and not _declared(text, "loss", name):
+            missing.append(f"[loss] {name}")
     assert not missing, f"cles lues par le pilote, absentes de {RECIPE.name} : {missing}"

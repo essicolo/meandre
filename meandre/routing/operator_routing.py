@@ -53,6 +53,7 @@ import torch
 from torch import Tensor
 
 from meandre.routing.graph import RiverGraph
+from meandre.utils import settings
 
 
 class OperatorTopo(NamedTuple):
@@ -294,13 +295,20 @@ def build_operator_state(
     return OperatorState(alpha=alpha, gamma=gamma, beta=beta, W=W)
 
 
+def _dead_storage(zeros_l: Tensor, area_km2: Tensor) -> Tensor:
+    """Stock mort des lacs routés, en m3 : hauteur routed_lakes.dead_storage_m fois la surface ; zéro par défaut."""
+    _dead = float(settings.get("routed_lakes.dead_storage_m"))
+    return zeros_l if _dead == 0.0 else zeros_l + _dead * area_km2 * 1e6
+
+
 def _lagged_lake_release(
     lake_module, S: Tensor, area_km2: Tensor,
     k_lake: Tensor | None = None, beta: Tensor | None = None,
 ) -> Tensor:
     """Tarage explicite sur le stockage de la veille, plafonné à S/dt.
 
-    Q(S) = k_lake * ((S - S_dead)/A)^beta * A, S_dead = 0 (comme le balayage).
+    Q(S) = k_lake * ((S - S_dead)/A)^beta * A, S_dead = hauteur morte routed_lakes.dead_storage_m
+    fois la surface (0 par défaut, comme le balayage).
     Le plafond S/dt garantit la stabilité de l'Euler explicite (le lac ne peut
     pas relâcher plus que son stockage disponible en un jour). k_lake/beta par
     nœud (NeRF) ou scalaires globaux du module (None).
@@ -309,7 +317,9 @@ def _lagged_lake_release(
     k = lake_module.k_lake if k_lake is None else k_lake
     b = lake_module.beta if beta is None else beta
     A_safe = (area_km2 * 1e6).clamp(min=1.0)
-    depth = (S.clamp(min=0.0) / A_safe).clamp(min=1e-6)
+    _dead = float(settings.get("routed_lakes.dead_storage_m"))
+    S_live = S if _dead == 0.0 else S - _dead * A_safe
+    depth = (S_live.clamp(min=0.0) / A_safe).clamp(min=1e-6)
     Q_rate = k * depth ** b * A_safe
     return torch.minimum(Q_rate, S.clamp(min=0.0) / dt)
 
@@ -442,7 +452,7 @@ def route_operator(
             _ev = getattr(layer, "_lake_evap_mm", None)
             Q_lake, S_lake = layer.lake(
                 Q_in_total, lake_storage_new[li], area_l,
-                E_lake=(_ev[li] if _ev is not None else zeros_l), P_lake=zeros_l, S_dead=zeros_l,
+                E_lake=(_ev[li] if _ev is not None else zeros_l), P_lake=zeros_l, S_dead=_dead_storage(zeros_l, area_l),
                 k_lake=lake_k_all[li] if lake_k_all is not None else None,
                 beta=lake_b_all[li] if lake_b_all is not None else None,
             )

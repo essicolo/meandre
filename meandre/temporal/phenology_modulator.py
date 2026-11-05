@@ -71,8 +71,8 @@ class PhenologyModulator(nn.Module):
         # Cohérent avec Cleland et al. 2007, Chen & Ahmad 2015
         gdd_emerg_init: float = 80.0,
         gdd_mid_init: float = 600.0,
-        k_c_min_init: float = 0.3,
-        k_c_max_factor_init: float = 1.0,
+        k_c_min_init: float | None = None,
+        k_c_max_factor_init: float | None = None,
         sharpness_emerg: float = 50.0,
         sharpness_senesc: float = 100.0,
         senesc_offset: float = 600.0,
@@ -81,6 +81,11 @@ class PhenologyModulator(nn.Module):
         """`params` vient de la configuration déclarée ([phenology] du TOML) ; absent, le
         réglage phenology.params s'applique (meandre/utils/settings.py)."""
         super().__init__()
+        # Valeurs de départ absentes : réglages déclarés de [phenology_constants].
+        if k_c_min_init is None:
+            k_c_min_init = settings.get("phenology_constants.kc_min_init")
+        if k_c_max_factor_init is None:
+            k_c_max_factor_init = settings.get("phenology_constants.kc_max_factor_init")
         # Paramètres appris (4)
         self.gdd_emerg = nn.Parameter(torch.tensor(float(gdd_emerg_init)))
         self.gdd_mid = nn.Parameter(torch.tensor(float(gdd_mid_init)))
@@ -105,7 +110,8 @@ class PhenologyModulator(nn.Module):
             e, c, s1, s2 = [float(x) for x in _vals]
             with torch.no_grad():
                 self.gdd_emerg.fill_(e)
-                self.photo_crit.fill_(math.atanh(max(min((c - 12.0) / 3.0, 0.999), -0.999)))
+                _pc, _pr = float(settings.get("phenology_constants.photoperiod_center_h")), float(settings.get("phenology_constants.photoperiod_half_range_h"))
+                self.photo_crit.fill_(math.atanh(max(min((c - _pc) / _pr, 0.999), -0.999)))
             self.gdd_emerg.requires_grad_(False)
             self.photo_crit.requires_grad_(False)
             self.gdd_mid.requires_grad_(False)
@@ -140,8 +146,8 @@ class PhenologyModulator(nn.Module):
             s1 = getattr(self, "_s1_cal", None) or self.sharpness_emerg
             s2 = getattr(self, "_s2_cal", None) or self.photo_pente_h
             ramp = torch.sigmoid((gdd_cum - self.gdd_emerg) / s1)
-            if doy > 172:
-                seuil = 12.0 + 3.0 * torch.tanh(self.photo_crit)
+            if doy > int(settings.get("phenology_constants.senescence_start_doy")):
+                seuil = float(settings.get("phenology_constants.photoperiod_center_h")) + float(settings.get("phenology_constants.photoperiod_half_range_h")) * torch.tanh(self.photo_crit)
                 senesc = torch.sigmoid((self.day_length(lat_deg, doy) - seuil) / s2)
             else:
                 senesc = torch.ones_like(ramp)
@@ -158,11 +164,13 @@ class PhenologyModulator(nn.Module):
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
         shape = self.shape_value(gdd_cum, doy, lat_deg)
-        # Born K_c_min ≥ 0.05 (floor strict), K_c_max_factor ≥ 0.5 (pas de réduction excessive)
-        kc_min_safe = self.k_c_min.clamp(min=0.05, max=1.0)
-        kc_max_safe = self.k_c_max_factor.clamp(min=0.5, max=2.0)
+        # Bornes déclarées de [phenology_constants] : K_c_min entre 0,05 et 1, K_c_max_factor entre 0,5 et 2 ; la borne basse de K_c_min sert aussi de plancher au K_c effectif.
+        _kmin_lo, _kmin_hi = settings.get("phenology_constants.kc_min_bounds")
+        _kmax_lo, _kmax_hi = settings.get("phenology_constants.kc_max_factor_bounds")
+        kc_min_safe = self.k_c_min.clamp(min=_kmin_lo, max=_kmin_hi)
+        kc_max_safe = self.k_c_max_factor.clamp(min=_kmax_lo, max=_kmax_hi)
         K_c_eff = kc_min_safe + (kc_max_safe * K_c_base - kc_min_safe) * shape
-        return K_c_eff.clamp(min=0.05)                                    # safety floor
+        return K_c_eff.clamp(min=_kmin_lo)                                    # plancher de sécurité
 
     def extra_repr(self) -> str:
         return (f"GDD_emerg={self.gdd_emerg.item():.1f}, "
@@ -172,7 +180,7 @@ class PhenologyModulator(nn.Module):
 
 
 def update_gdd_cum(
-    gdd_cum_prev: Tensor, T_mean: Tensor, doy: int | Tensor, T_base: float = 10.0,
+    gdd_cum_prev: Tensor, T_mean: Tensor, doy: int | Tensor, T_base: float | None = None,
 ) -> Tensor:
     """Update GDD cumulé pour un pas de temps.
 
@@ -183,12 +191,14 @@ def update_gdd_cum(
     gdd_cum_prev : (N,) GDD cumulé du jour précédent
     T_mean : (N,) température moyenne aujourd'hui (°C)
     doy : int ou (1,) tensor, jour de l'année (1-366)
-    T_base : float, seuil base (°C). Default 10 (standard agronomique).
+    T_base : float, seuil base (°C). Absent, le réglage phenology_constants.gdd_base_c (10, standard agronomique).
 
     Returns
     -------
     gdd_cum_new : (N,) GDD cumulé après mise à jour
     """
+    if T_base is None:
+        T_base = float(settings.get("phenology_constants.gdd_base_c"))
     dgd = torch.relu(T_mean - T_base)
     doy_val = doy if isinstance(doy, int) else int(doy.item())
     if doy_val == 1:

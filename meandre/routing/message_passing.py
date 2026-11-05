@@ -44,6 +44,7 @@ from meandre.routing.graph import RiverGraph
 from meandre.routing.kinematic import MuskingumCunge
 from meandre.routing.lake import LakeModule
 from meandre.routing.withdrawals import WithdrawalData
+from meandre.routing.operator_routing import _dead_storage
 
 # Détachement du stockage des lacs entre pas de temps. True = comportement historique
 # (gradient tronqué, cause probable du gel de k_lake/beta) ; False = gradient complet,
@@ -364,7 +365,7 @@ class RoutingLayer(nn.Module):
                     area_l,
                     E_lake=zeros_l,
                     P_lake=zeros_l,
-                    S_dead=zeros_l,
+                    S_dead=_dead_storage(zeros_l, area_l),
                     k_lake=self._lake_k[li] if self._lake_k is not None else None,
                     beta=self._lake_beta[li] if self._lake_beta is not None else None,
                 )

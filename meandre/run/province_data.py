@@ -404,6 +404,8 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
         _weights["w_swe_mass"] = 0.0
     loss_fn = HydroLoss(
         **_weights, et_mode=lcfg.get("et_mode", "level"),
+        # Forme du terme de platitude, reprise du premier territoire (lue dans [loss]).
+        flat_threshold=ref.flat_threshold, flat_width=ref.flat_width, flat_months=ref.flat_months,
         per_station=True, station_weights=None,
         station_var=torch.cat(st_var).to(device),
         peak_threshold=(torch.cat(st_peak).to(device)

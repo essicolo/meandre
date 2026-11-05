@@ -185,6 +185,27 @@ class TrainingConfig:
     autopilot_restart_regression: float = 0.05  # 5% regression from best
     autopilot_restart_max: int = 3               # max restarts
     autopilot_restart_min_no_improve: int = 3    # consecutive bad epochs required
+    autopilot_restart_lr_factor: float = 0.5     # lr × 0.5 au redémarrage, plancher autopilot_lr_min
+
+    # Rodage exclu de la perte au début de chaque bloc : min(burn_in_days, bloc // 4), et
+    # min(burn_in_first_days, bloc // 4) pour le premier bloc après la mise en régime.
+    burn_in_days: int = 60
+    burn_in_first_days: int = 90
+    # Reliquat de fin de période plus court que ce nombre de jours : fusionné au dernier bloc.
+    chunk_merge_days: int = 60
+    # Décalage aléatoire des frontières de blocs, tiré par époque (graine = numéro d'époque).
+    random_chunk_offset: bool = True
+
+    # Garde contre la divergence : perte d'époque > rollback_spike_factor × moyenne mobile
+    # (poids rollback_ema_weight de la nouvelle valeur) -> rechargement du meilleur point et
+    # taux × rollback_lr_factor, au plus rollback_max fois.
+    rollback_spike_factor: float = 3.0
+    rollback_ema_weight: float = 0.2
+    rollback_max: int = 3
+    rollback_lr_factor: float = 0.5
+    # Poids de la nouvelle valeur dans les moyennes mobiles détachées des contraintes
+    # auxiliaires (ligne de base et variance GRACE simulées).
+    aux_ema_weight: float = 0.02
 
     # Phase-1 → phase-2 transition (Kendall-Gal recipe).  When the spatial
     # encoder is frozen at startup (``freeze_spatial=true``), the autopilot
@@ -409,8 +430,9 @@ class Trainer:
             water_table_params = [p for name, p in model.named_parameters() if "nappe_log_kb" in name or "nappe_logit_efrac" in name or "nappe_log_exp1" in name]
             if water_table_params:
                 base_params[:] = [p for p in base_params if id(p) not in set(id(g) for g in water_table_params)]
-                groups.append({"params": water_table_params, "lr": self.config.lr * 20.0, "weight_decay": 0.0})
-                logger.info("Discriminative LR: nappe scalaires=%.1e (20x), wd=0", self.config.lr * 20.0)
+                _mw = float(settings.get("trainer.lr_mult_water_table"))
+                groups.append({"params": water_table_params, "lr": self.config.lr * _mw, "weight_decay": 0.0})
+                logger.info("Discriminative LR: nappe scalaires=%.1e (%gx), wd=0", self.config.lr * _mw, _mw)
             # Parametres appris du profil de sol declare (2026-10-01) : scalaires en espace
             # logarithmique, taux x 50 pour qu'un facteur 3 a 10 soit atteignable en une
             # centaine de pas ; taux nominal pris de MEANDRE_LR_MULT_SOL si pose.
@@ -438,13 +460,14 @@ class Trainer:
             if gdd_threshold_params:
                 base_params[:] = [p for p in base_params
                                   if id(p) not in set(id(g) for g in gdd_threshold_params)]
+                _mp = float(settings.get("trainer.lr_mult_phenology"))
                 groups.append({"params": gdd_threshold_params,
-                               "lr": self.config.lr * 100.0,
+                               "lr": self.config.lr * _mp,
                                "weight_decay": 0.0})
                 logger.info(
-                    "Discriminative LR: phenology GDD thresholds=%.1e (100×), wd=0 "
+                    "Discriminative LR: phenology GDD thresholds=%.1e (%g×), wd=0 "
                     "— compensate for sigmoid gradient scale O(100)",
-                    self.config.lr * 100.0,
+                    self.config.lr * _mp, _mp,
                 )
             self.optimizer = AdamW(groups)
         # Autopilot: force val_every=1 for fast reaction
@@ -537,7 +560,7 @@ class Trainer:
         epochs_without_improvement = 0
         _loss_ema = None          # exponential moving average of train loss
         _rollback_count = 0       # number of LR reductions so far
-        _MAX_ROLLBACKS = 3        # stop reducing after this many
+        _MAX_ROLLBACKS = int(self.config.rollback_max)        # stop reducing after this many
         for epoch in pbar:
             self._cur_epoch = epoch   # utilisé par l'offset aléatoire des chunks
 
@@ -551,15 +574,17 @@ class Trainer:
             if _loss_ema is None:
                 _loss_ema = tl
             else:
-                _loss_ema = 0.8 * _loss_ema + 0.2 * tl
-            if tl > 3.0 * _loss_ema and _rollback_count < _MAX_ROLLBACKS and self.checkpoint_path:
+                _we = float(self.config.rollback_ema_weight)
+                _loss_ema = (1.0 - _we) * _loss_ema + _we * tl
+            _spike = float(self.config.rollback_spike_factor)
+            if tl > _spike * _loss_ema and _rollback_count < _MAX_ROLLBACKS and self.checkpoint_path:
                 _rollback_count += 1
                 self.model.load(self.checkpoint_path)
                 for pg in self.optimizer.param_groups:
-                    pg["lr"] *= 0.5
+                    pg["lr"] *= float(self.config.rollback_lr_factor)
                 new_lr = self.optimizer.param_groups[0]["lr"]
                 msg = (f"  [rollback {_rollback_count}/{_MAX_ROLLBACKS}] "
-                       f"train loss spike ({tl:.2f} > 3xEMA {_loss_ema:.2f}) -- "
+                       f"train loss spike ({tl:.2f} > {_spike:g}xEMA {_loss_ema:.2f}) -- "
                        f"reloaded best checkpoint, lr->{new_lr:.2e}")
                 print(msg, flush=True)
                 logger.warning(msg)
@@ -949,9 +974,7 @@ class Trainer:
             _acc[1] = _acc[1] + _wd.sum(dim=0)
             _acc[2] = _acc[2] + (_wd * _d * _d).sum(dim=0)
         if getattr(self, "_et_sim_base", None) is None:
-            cur = _d.mean(dim=0)
-            prev = getattr(self, "_et_sim_base", None)
-            self._et_sim_base = cur if prev is None else (0.98 * prev + 0.02 * cur)
+            self._et_sim_base = _d.mean(dim=0)
         if getattr(self.loss_fn, "et_mode", "") == "forme":
             # Chaque cote divise par son propre ecart-type : phase et forme seulement.
             _ss = getattr(self, "_et_sim_std", None)
@@ -1112,8 +1135,10 @@ class Trainer:
         # sinon), ce qui décale toutes les frontières suivantes. Mémoire : premier
         # chunk ≤ 2·chunk−1, dans l'enveloppe déjà tolérée par le merge de reliquat
         # (< chunk+60). Déterministe par epoch (reproductible).
-        _g = torch.Generator().manual_seed(int(getattr(self, "_cur_epoch", 0)))
-        _first_offset = int(torch.randint(0, chunk, (1,), generator=_g).item())
+        _first_offset = 0
+        if self.config.random_chunk_offset:
+            _g = torch.Generator().manual_seed(int(getattr(self, "_cur_epoch", 0)))
+            _first_offset = int(torch.randint(0, chunk, (1,), generator=_g).item())
 
         if _primer:
             _col = getattr(self.model, "vertical_column", None)
@@ -1144,7 +1169,7 @@ class Trainer:
             t_end = min(t_start + _len, data.train_slice.stop)
             # Merge tiny remainder into the previous chunk
             remainder = data.train_slice.stop - t_end
-            if 0 < remainder < 60:
+            if 0 < remainder < self.config.chunk_merge_days:
                 t_end = data.train_slice.stop
             sl = slice(t_start, t_end)
             chunk_len = t_end - t_start
@@ -1199,7 +1224,7 @@ class Trainer:
                 # Burn-in: first chunk after spinup needs longer burn-in to
                 # stabilize state; subsequent chunks only need a short warm-up
                 # since state is propagated from the previous chunk.
-                burnin = min(60, chunk_len // 4) if n_chunks > 0 else min(90, chunk_len // 4)
+                burnin = min(self.config.burn_in_days, chunk_len // 4) if n_chunks > 0 else min(self.config.burn_in_first_days, chunk_len // 4)
                 q_obs_chunk = data.q_obs[obs_offset + burnin:obs_offset + chunk_len]
                 Q_chunk_loss = Q_chunk[burnin:]
                 # Parametres spatiaux du bloc, calcules a la demande par la tete de quantiles.
@@ -1357,7 +1382,8 @@ class Trainer:
                         _pb = getattr(self, "_tws_sim_base", None)
                         if _gi is None:
                             _sb = _s.mean().detach()
-                            self._tws_sim_base = _sb if _pb is None else (0.98 * _pb + 0.02 * _sb)
+                            _wa = float(self.config.aux_ema_weight)
+                            self._tws_sim_base = _sb if _pb is None else ((1.0 - _wa) * _pb + _wa * _sb)
                         else:
                             _ng2 = int(data.tws_obs.shape[1])
                             _cs = torch.zeros(_ng2, device=_s.device).index_add_(0, _gi, _s.detach())
@@ -1375,8 +1401,9 @@ class Trainer:
                             if _pb is None:
                                 _pb = _sb.clone()
                                 _pb[~_vu] = _s.detach().mean()
+                            _wa = float(self.config.aux_ema_weight)
                             self._tws_sim_base = torch.where(
-                                _vu, 0.98 * _pb + 0.02 * _sb, _pb)
+                                _vu, (1.0 - _wa) * _pb + _wa * _sb, _pb)
                         _sbv = (self._tws_sim_base if _gi is None
                                 else self._tws_sim_base[_gi])
                         # ── GRACE EN FORME PLUTOT QU'EN NIVEAU (opt-in) ──────────
@@ -1411,7 +1438,8 @@ class Trainer:
                             _so = self._tws_obs_sd
                             _v2 = _rs.detach().pow(2).mean()
                             _pv = getattr(self, "_tws_sim_var", None)
-                            self._tws_sim_var = _v2 if _pv is None else (0.98 * _pv + 0.02 * _v2)
+                            _wa = float(self.config.aux_ema_weight)
+                            self._tws_sim_var = _v2 if _pv is None else ((1.0 - _wa) * _pv + _wa * _v2)
                             _ss = self._tws_sim_var.sqrt().clamp(min=1e-3)
                             L_tws = ((_rs / _ss) - (_ro / _so)).pow(2).mean()
                             loss_chunk = loss_chunk + self.loss_fn.w_tws * L_tws
@@ -2395,7 +2423,7 @@ class Trainer:
             self._ap_restart_count += 1
             self.model.load(self.checkpoint_path)
             for pg in self.optimizer.param_groups:
-                pg["lr"] = max(pg["lr"] * 0.5, cfg.autopilot_lr_min)
+                pg["lr"] = max(pg["lr"] * cfg.autopilot_restart_lr_factor, cfg.autopilot_lr_min)
             # Reset cached spinup state (model weights changed)
             self._cached_spinup_state = None
             actions.append(
