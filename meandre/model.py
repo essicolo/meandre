@@ -524,11 +524,11 @@ class HydroModel(nn.Module):
         do_temp = self.temperature is not None
 
         # Report d'un pas au suivant : tout ce que la boucle fait vivre d'un jour a l'autre.
-        carryover = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "lac_diffus_S": diffuse_lake_S}
+        carryover = {"state": state, "Q_out_prev": Q_out_prev, "lake_storage": lake_storage, "hgm_queue": hgm_queue, "ow_S": ow_S, "diffuse_lake_S": diffuse_lake_S}
 
         def run_step(t: int, c: dict) -> dict:
             """Un jour de simulation ; lit et met a jour le report `c`, rend les sorties du jour."""
-            state, Q_out_prev, lake_storage, hgm_queue, ow_S, diffuse_lake_S = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["lac_diffus_S"])
+            state, Q_out_prev, lake_storage, hgm_queue, ow_S, diffuse_lake_S = (c["state"], c["Q_out_prev"], c["lake_storage"], c["hgm_queue"], c["ow_S"], c["diffuse_lake_S"])
             step: dict[str, Tensor] = {}
             # Truncated BPTT: detach state and Q_out at chunk boundaries
             if tbptt_steps > 0 and t > 0 and t % tbptt_steps == 0:
@@ -661,7 +661,9 @@ class HydroModel(nn.Module):
                     lateral_inflow = lateral_inflow - _Ew
                 self._ow_S_last = ow_S.detach()
                 self._open_water_evap_last = _Ew.detach()
-            elif _fow is not None:
+            elif _fow is not None and getattr(self, "_distributed_lakes", None) is None:
+                # Avec les lacs hors reseau, c'est leur module qui evapore cette meme surface
+                # (4ter) : la retirer ici aussi la compterait deux fois (2026-11-04, R494).
                 _vdw = getattr(vc_out, "diag", None) or {}
                 if "etp" in _vdw and "apport" in _vdw:
                     _Ew = torch.clamp(_vdw["etp"] - _vdw["apport"], min=0.0) * _fow.to(lateral_inflow.device)
