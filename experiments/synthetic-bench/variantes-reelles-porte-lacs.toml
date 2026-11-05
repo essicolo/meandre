@@ -1,9 +1,6 @@
 # Banc sur debits reels, nuit du 2026-11-04 : configuration porte (SPILL_GW 65 mm, reference 80 mm) + lacs hors
 # reseau (c 5, sejour 30 j), variantes de la part et du sejour des lacs, de la capacite et de la reference de la porte.
-# La variante sans lacs doit redonner la passe de la porte seule (perte 1,1135 sur ce poste) : controle du banc.
-
-[[variant]]
-name = "porte-lacs"
+# La configuration elle-meme est la passe provinciale spill65-lacs2 ; la variante sans lacs doit redonner la passe de la porte seule (perte 1,1135 sur ce poste) : controle du banc.
 
 [[variant]]
 name = "sans-lacs"
