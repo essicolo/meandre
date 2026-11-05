@@ -132,7 +132,10 @@ def apply_variant(model, v):
     elif v.get("lakes"):
         c, T, beta, h_ref = (float(x) for x in v["lakes"].split(","))
         bounds = {x.split(":")[0]: (float(x.split(":")[1]), float(x.split(":")[2])) for x in settings.get("lakes.distributed_bounds").split(",")}
-        model.set_distributed_lakes(model._open_water_f, c, T, beta, h_ref, bounds)
+        runoff = getattr(model, "_lakes_runoff", None) if settings.get("lakes.residence_from_volume") else None
+        if settings.get("lakes.residence_from_volume") and runoff is None:
+            runoff = model._lakes_forcing_P_mean * float(settings.get("lakes.runoff_ratio"))
+        model.set_distributed_lakes(model._open_water_f, c, T, beta, h_ref, bounds, runoff_mm_day=runoff)
     column = model.vertical_column
     profile = getattr(column, "soil_profile", None)
     if v.get("soil_params") and profile is not None:

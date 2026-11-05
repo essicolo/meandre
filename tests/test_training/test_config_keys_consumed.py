@@ -32,7 +32,6 @@ CONFIGS = sorted((REPO / "experiments" / "archive" / "config").glob("*-v4.toml")
 # un registre, pas une poubelle : toute entree sans raison verifiable doit sauter.
 IGNOREES_SCIEMMENT = {
     "n_epochs": "remplace par ETL_EPOCHS (l'experimentation fixe la duree au lancement)",
-    "best_metric": "code en dur kge_median dans le pilote : les runs quebecois se comparent tous dessus",
     "val_every": "code en dur 1 : la validation par epoque est le protocole des diagnostics",
     "warm_start": "le pilote gere la reprise par ETL_TAG et le chargement explicite du checkpoint",
     "lr_finetune": "pas de warm-start TOML dans ce pilote (voir warm_start)",

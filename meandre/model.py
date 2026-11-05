@@ -1056,14 +1056,19 @@ class HydroModel(nn.Module):
         le seul stock, forme refutee par R287 parce que le stock est vide par temps sec."""
         self._open_water_reservoir = None if part is None else dict(part=part, T=float(T), beta=float(beta), h_ref=float(h_ref), evap_lateral=bool(evap_lateral))
 
-    def set_distributed_lakes(self, f, c, T, beta, h_ref, bounds, learn=()) -> None:
+    def set_distributed_lakes(self, f, c, T, beta, h_ref, bounds, learn=(), runoff_mm_day=None) -> None:
         """Pose les lacs hors reseau. f : fraction d'eau libre du noeud hors lacs routes
         (tenseur n_nodes). Part de la production locale qui les traverse rd = 1 - exp(-c f),
         continue et bornee par 1. Vidange q = f k h^beta, h hauteur au-dessus du seuil (m),
         parametree par le temps de sejour T (jours) a la hauteur h_ref : k = 1 / (T h_ref^(beta-1)).
         c et T sont bornes en douceur, sigmoide en espace logarithmique entre bounds[nom] =
         (min, max), comme les champs du reseau spatial ; learn nomme les appris parmi "c", "T"
-        (parametres lakes_learn_c et lakes_learn_T). f=None retire le reservoir."""
+        (parametres lakes_learn_c et lakes_learn_T). f=None retire le reservoir.
+
+        runoff_mm_day (tenseur n_nodes, ecoulement moyen du noeud) : le sejour n'est plus un
+        nombre unique mais se deduit du volume des lacs et de l'eau qui les traverse, T = D f / (rd R),
+        D la hauteur d'eau mobilisable des lacs (mm), f leur fraction de surface, rd la part de la
+        production qui les traverse, R l'ecoulement moyen ; T porte alors D (mm), borne par bounds["T"]."""
         if f is None:
             self._distributed_lakes = None
             return
@@ -1076,7 +1081,7 @@ class HydroModel(nn.Module):
                 setattr(self, f"lakes_learn_{field_name}", nn.Parameter(t))
             else:
                 self.register_buffer(f"lakes_fixed_{field_name}", t, persistent=False)
-        self._distributed_lakes = dict(f=f, beta=float(beta), h_ref=float(h_ref), bounds={k2: tuple(float(x) for x in v2) for k2, v2 in bounds.items()}, learn=tuple(learn))
+        self._distributed_lakes = dict(f=f, beta=float(beta), h_ref=float(h_ref), bounds={k2: tuple(float(x) for x in v2) for k2, v2 in bounds.items()}, learn=tuple(learn), runoff=runoff_mm_day)
 
     def distributed_lakes_values(self) -> dict:
         """Valeurs courantes des lacs hors reseau : c, T (jours) et k qui s'en deduit."""
@@ -1089,6 +1094,11 @@ class HydroModel(nn.Module):
                 t = getattr(self, f"lakes_fixed_{field_name}")
             lo, hi = (math.log(x) for x in ld["bounds"][field_name])
             out[field_name] = torch.exp(lo + (hi - lo) * torch.sigmoid(t))
+        if ld.get("runoff") is not None:
+            # sejour deduit du volume des lacs : T = D f / (rd R), D en mm (2026-11-05)
+            out["D"] = out["T"]
+            rd = 1.0 - torch.exp(-out["c"] * ld["f"])
+            out["T"] = torch.clamp(out["D"] * ld["f"] / torch.clamp(rd * ld["runoff"], min=1e-6), min=1.0)
         out["k"] = 1.0 / (out["T"] * ld["h_ref"] ** (ld["beta"] - 1.0))
         return out
 

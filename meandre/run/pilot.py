@@ -311,7 +311,7 @@ else:
 # Rappel : pour que la renaturalisation ait un sens, le modele doit avoir ete CALE
 # AVEC les prelevements. Sinon ses parametres les ont absorbes et les mettre a zero ne
 # renaturalise rien.
-_NO_WITHDRAWALS = os.environ.get("ETL_SANS_PRELEV", "0") == "1"
+_NO_WITHDRAWALS = _settings.get("withdrawals.disabled")
 
 
 def _no_withdrawals(d):
@@ -353,7 +353,7 @@ model = HydroModel(
     n_territorial=r["territorial"].n_features,
     # Sous-pas du routage (2026-10-05) : 2 par defaut ; 24 rend le gradient du temps de
     # transfert sous 7,5 h (R241), exige par la tete du temps de transfert (R299).
-    routing_substeps=int(os.environ.get("ETL_ROUTAGE_SOUSPAS", "2")),
+    routing_substeps=_settings.get("routing.substeps"),
     # Largeur du champ spatial ([model] field_hidden, 256 par defaut) : la meme pour un
     # territoire et pour le Quebec entier, dont le champ partage sous-ajuste (R374).
     field_hidden=int(mcfg.get("field_hidden", 256)),
@@ -372,7 +372,7 @@ model = HydroModel(
     # depuis la mediane = Q_sim -- le KGE du socle est PRESERVE par construction.
     # Pipeline etabli sur SLSO (memoire pipeline_final) : backbone GELE, w_quantile,
     # best_metric nll. Ici on le porte sur le pilote quebecois pour la 1.0.
-    use_quantile_head=(os.environ.get("ETL_QUANTILE", "0") == "1"),
+    use_quantile_head=_settings.get("quantile.enabled"),
     et_mode="mcguinness",   # court-circuité par etp_channel
     use_temperature=False,
     # ETL_NO_LATENT : les codes latents sont par NOEUD, donc non transferables entre
@@ -1001,6 +1001,7 @@ if _settings.raw("evaporation.open_water", "0") == "1":
     _rw = torch.zeros_like(_Alw) if _lak is None else torch.where(td.graph.is_lake.bool().cpu(), _lak.float().cpu(), torch.zeros_like(_Alw))
     _fw = torch.clamp(_lcw["f_water_raw"].float().cpu() - _rw / _Alw.clamp(min=1e-6), 0.0, 1.0)
     model.set_open_water_evaporation(_fw.to(DEVICE))
+    model._lakes_forcing_P_mean = f7[:, :, 0].float().mean(dim=0).to(DEVICE)  # precipitation moyenne (mm/j), lue par les lacs hors reseau
     # Part de l'eau libre hors lacs routes : lue par le reservoir de l'eau libre, ici ou au banc fictif.
     model._open_water_part = torch.where(_lcw["f_water_raw"].float().cpu() > 0, _fw / _lcw["f_water_raw"].float().cpu().clamp(min=1e-6), torch.zeros_like(_fw)).to(DEVICE)
     print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
@@ -1011,7 +1012,17 @@ if _settings.raw("evaporation.open_water", "0") == "1":
         _c_l, _T_l, _b_l, _h_l = (float(x) for x in _settings.get("lakes.distributed").split(","))
         _bounds_l = {x.split(":")[0]: (float(x.split(":")[1]), float(x.split(":")[2])) for x in _settings.get("lakes.distributed_bounds").split(",")}
         _learn_l = tuple(x for x in (_settings.get("lakes.distributed_learn") or "").split(",") if x)
-        model.set_distributed_lakes(_fw.to(DEVICE), _c_l, _T_l, _b_l, _h_l, _bounds_l, learn=_learn_l)
+        _R_l = None
+        if _settings.get("lakes.residence_from_volume"):
+            # sejour deduit du volume des lacs (2026-11-05) : R = precipitation moyenne x coefficient d'ecoulement
+            _R_l = model._lakes_forcing_P_mean * float(_settings.get("lakes.runoff_ratio"))
+        model.set_distributed_lakes(_fw.to(DEVICE), _c_l, _T_l, _b_l, _h_l, _bounds_l, learn=_learn_l, runoff_mm_day=_R_l)
+        model._lakes_runoff = _R_l
+        if _R_l is not None:
+            with torch.no_grad():
+                _Tn = model.distributed_lakes_values()["T"].cpu()
+            _sel = _fw > 0.005
+            print(f"[etl] lacs hors reseau : hauteur mobilisable {_T_l:g} mm, sejour deduit par troncon (eau libre > 0,5 %) mediane {float(_Tn[_sel].median()):.0f} j, 10e et 90e centiles {float(_Tn[_sel].quantile(0.1)):.0f} et {float(_Tn[_sel].quantile(0.9)):.0f} j")
         _rd_l = 1.0 - torch.exp(-_c_l * _fw)
         print(f"[etl] lacs hors reseau : part de la production qui les traverse {float((_rd_l * _Alw).sum() / _Alw.sum()):.2f}, sejour {_T_l:g} j a {_h_l:g} m, exposant {_b_l:g}, appris : {', '.join(_learn_l) or 'aucun'}")
     if _settings.get("evaporation.open_water_reservoir"):
@@ -1134,8 +1145,8 @@ tconf = TrainingConfig(
     w_latent_reg=float(tcfg.get("w_latent_reg", 1e-3)),
     # Choix du point de reprise (2026-10-01) : par la perte de debit sur la validation des que
     # l'etiage est dans la perte ; avec le KGE seul, l'etiage ne comptait pas dans le modele
-    # retenu. ETL_CHOIX force kge_median ou val_loss.
-    best_metric=os.environ.get("ETL_CHOIX", "val_loss" if (lcfg.get("w_low_flow", 0.0) > 0 or lcfg.get("w_fdc_low", 0.0) > 0) else "kge_median"),
+    # retenu. [training] best_metric le fixe, ETL_CHOIX le surcharge.
+    best_metric=os.environ.get("ETL_CHOIX") or tcfg.get("best_metric") or ("val_loss" if (lcfg.get("w_low_flow", 0.0) > 0 or lcfg.get("w_fdc_low", 0.0) > 0) else "kge_median"),
     # autopilot du TOML : LR plateau + garde-fou régression (sans lui, GASP/MONT-etl
     # divergeaient après le pic epoch ~7-12, val -0.15 non rattrapée — bug 2026-07-22)
     # Montee du taux : cinq epoques par defaut, ce qui vide un entrainement de huit epoques ;
@@ -1203,7 +1214,7 @@ for _name, _weights, _target in (
     print(f"        {_name:<26s} poids {_weights:<6g} cible "
           f"{'presente' if _target is not None else 'ABSENTE':<9s} -> {_state}")
 
-if os.environ.get("ETL_QUANTILE", "0") == "1":
+if _settings.get("quantile.enabled"):
     # GEL DU SOCLE : tout sauf la tete quantile. La mediane reste exactement le Q_sim
     # du point de reprise charge par ETL_WARM_FROM ; seule l'enveloppe s'apprend.
     _free = 0

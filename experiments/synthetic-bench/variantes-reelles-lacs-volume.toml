@@ -1,0 +1,23 @@
+# Banc sur debits reels, 2026-11-05 : sejour des lacs hors reseau deduit par troncon du volume des lacs, T = D f / (rd R),
+# contre le sejour unique de 30 jours (perte 1,000, R501). Configuration de reference (sans porte).
+# D = 200 mm redonne environ 30 jours la ou l'eau libre est rare (R = 0,5 fois la precipitation moyenne).
+
+[[variant]]
+name = "volume-D100"
+settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
+lakes = "5.0,100.0,1.0,0.5"
+
+[[variant]]
+name = "volume-D200"
+settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
+lakes = "5.0,200.0,1.0,0.5"
+
+[[variant]]
+name = "volume-D400"
+settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
+lakes = "5.0,400.0,1.0,0.5"
+
+[[variant]]
+name = "volume-c10-D200"
+settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
+lakes = "10.0,200.0,1.0,0.5"
