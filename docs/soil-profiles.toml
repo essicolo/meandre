@@ -1,14 +1,9 @@
 # ─── Profils de sol déclarés ──────────────────────────────────────────────────
-# Sections `[soil]` prêtes à coller dans une configuration de territoire. Elles remplacent
-# les variables d'environnement ETL_L3_* qui s'étaient accumulées au nombre de dix-sept.
+# Sections `[soil]` prêtes à coller dans une configuration de territoire. Elles remplacent les variables d'environnement ETL_L3_* qui s'étaient accumulées au nombre de dix-sept.
 #
-# Une déclaration est COMPLÈTE, comme chez Raven : une couche sans processus déclaré n'a
-# aucun flux. Elle ne complète pas les branches historiques, elle les remplace. Sans section
-# `[soil]`, la colonne garde son chemin d'origine et reproduit le binaire C++ au bit près.
+# Une déclaration est COMPLÈTE, comme chez Raven : une couche sans processus déclaré n'a aucun flux. Elle ne complète pas les branches historiques, elle les remplace. Sans section `[soil]`, la colonne garde son chemin d'origine et reproduit le binaire C++ au bit près.
 #
-# Les noms de formes sont ceux de Raven 3.8, de sorte que les plages de paramètres publiées
-# s'appliquent sans traduction. Les unités sont celles d'un hydrologue : le jour pour une
-# constante de temps, le millimètre par jour pour un plafond de flux.
+# Les noms de formes sont ceux de Raven 3.8, de sorte que les plages de paramètres publiées s'appliquent sans traduction. Les unités sont celles d'un hydrologue : le jour pour une constante de temps, le millimètre par jour pour un plafond de flux.
 #
 # Catalogue disponible :
 #   latéral      BASE_LINEAR          K(theta) · sin(pente) · épaisseur, la loi d'Hydrotel
@@ -20,9 +15,7 @@
 # Ce fichier n'est pas exécutable seul : il sert de bibliothèque à copier.
 
 # ─── Hydrotel tel quel ────────────────────────────────────────────────────────
-# Équivalent déclaratif du clone fidèle. La couche 2 draine latéralement, la couche 3
-# percole verticalement, et rien d'autre. Un test vérifie que cette déclaration donne
-# exactement la même sortie que l'absence de déclaration.
+# Équivalent déclaratif du clone fidèle. La couche 2 draine latéralement, la couche 3 percole verticalement, et rien d'autre. Un test vérifie que cette déclaration donne exactement la même sortie que l'absence de déclaration.
 [hydrotel.soil]
 layers = 3
 
@@ -38,24 +31,13 @@ form = "PERC_LINEAR"
 krec = 1.0e-6
 
 # ─── Pile de corrections du drainage profond ──────────────────────────────────
-# La configuration mesurée les 18 et 19 septembre 2026. La couche 3 y gagne une sortie
-# latérale, ce que le clone n'a pas, et sa percolation devient une vidange de l'eau
-# gravitaire plafonnée par la conductivité du substratum.
+# La configuration mesurée les 18 et 19 septembre 2026. La couche 3 y gagne une sortie latérale, ce que le clone n'a pas, et sa percolation devient une vidange de l'eau gravitaire plafonnée par la conductivité du substratum.
 #
-# Mesuré sur l'Outaouais : l'eau gravitaire retenue en permanence passe de 289-465 mm à
-# zéro, la troncature de la boucle de sous-pas de 0,10 à 0,007, et la part de ruissellement
-# de surface de 0,51 à 0,27. Filtré comme l'observation, l'indice d'écoulement de base passe
-# de 0,695 à 0,532 pour 0,581 mesuré.
+# Mesuré sur l'Outaouais : l'eau gravitaire retenue en permanence passe de 289-465 mm à zéro, la troncature de la boucle de sous-pas de 0,10 à 0,007, et la part de ruissellement de surface de 0,51 à 0,27. Filtré comme l'observation, l'indice d'écoulement de base passe de 0,695 à 0,532 pour 0,581 mesuré.
 #
-# ATTENTION AU TRANSFERT. Ces trois constantes ont été réglées à la main sur l'Outaouais et
-# ne transfèrent pas : au Saint-Laurent nord-ouest elles rendent l'hydrogramme trop lent de
-# douze centièmes d'indice et coûtent huit centièmes de KGE. Le plafond de percolation est
-# une propriété du dépôt, que la texture du sol prédit à 27 % contre le témoin ; en faire un
-# champ spatial est le chantier ouvert.
+# ATTENTION AU TRANSFERT. Ces trois constantes ont été réglées à la main sur l'Outaouais et ne transfèrent pas : au Saint-Laurent nord-ouest elles rendent l'hydrogramme trop lent de douze centièmes d'indice et coûtent huit centièmes de KGE. Le plafond de percolation est une propriété du dépôt, que la texture du sol prédit à 27 % contre le témoin ; en faire un champ spatial est le chantier ouvert.
 #
-# CONVERGENCE. À deux et cinq jours de constante, les lois sont convergées dès 32 sous-pas ;
-# à quinze jours elles ne le sont pas même à 128. Une constante longue laisse la couche
-# pleine, ce qui resserre la condition de Courant.
+# CONVERGENCE. À deux et cinq jours de constante, les lois sont convergées dès 32 sous-pas ; à quinze jours elles ne le sont pas même à 128. Une constante longue laisse la couche pleine, ce qui resserre la condition de Courant.
 [pile.soil]
 layers = 3
 
@@ -78,17 +60,9 @@ tau_days = 2.0
 ceiling_mm_per_day = 3.0
 
 # ─── Plafond de percolation prédit par le champ spatial ───────────────────────
-# Même pile que ci-dessus, à ceci près que le plafond ne vient plus d'une constante mais du
-# champ spatial, qui le prédit par tronçon. Le nom entre guillemets désigne une sortie du
-# champ et non un nombre ; il est résolu contre les paramètres du tronçon au moment du calcul.
+# Même pile que ci-dessus, à ceci près que le plafond ne vient plus d'une constante mais du champ spatial, qui le prédit par tronçon. Le nom entre guillemets désigne une sortie du champ et non un nombre ; il est résolu contre les paramètres du tronçon au moment du calcul.
 #
-# Pourquoi seulement le plafond. Épreuve par transfert sur 95 stations et cinq territoires,
-# chacun prédit par un modèle ajusté sur les autres : la texture du sol explique la part
-# souterraine du débit à 27 % contre le témoin, quand la géologie du socle n'en explique que
-# 3 %. Mais aucune covariable ne prédit la DYNAMIQUE : l'exposant de récession est prédit à
-# −8 % par la texture, les temps de vidange à +3 % et −19 %, donc pas du tout. Les attributs
-# de terrain disent combien d'eau passe par le souterrain, pas à quelle vitesse elle revient.
-# Les constantes de temps restent donc uniformes ici, et c'est un choix mesuré.
+# Pourquoi seulement le plafond. Épreuve par transfert sur 95 stations et cinq territoires, chacun prédit par un modèle ajusté sur les autres : la texture du sol explique la part souterraine du débit à 27 % contre le témoin, quand la géologie du socle n'en explique que 3 %. Mais aucune covariable ne prédit la DYNAMIQUE : l'exposant de récession est prédit à −8 % par la texture, les temps de vidange à +3 % et −19 %, donc pas du tout. Les attributs de terrain disent combien d'eau passe par le souterrain, pas à quelle vitesse elle revient. Les constantes de temps restent donc uniformes ici, et c'est un choix mesuré.
 [pile-spatiale.soil]
 layers = 3
 

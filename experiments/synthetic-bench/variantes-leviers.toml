@@ -1,6 +1,4 @@
-# Banc fictif : un levier a la fois, effet sur la forme de la reponse aux orages, le calendrier
-# printemps / debut d'ete, l'etiage et le bilan (2026-11-03). Un levier qui ne bouge qu'une
-# signature est un potentiometre ; deux leviers qui bougent les memes se compensent.
+# Banc fictif : un levier a la fois, effet sur la forme de la reponse aux orages, le calendrier printemps / debut d'ete, l'etiage et le bilan (2026-11-03). Un levier qui ne bouge qu'une signature est un potentiometre ; deux leviers qui bougent les memes se compensent.
 storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
 
 [[variant]]

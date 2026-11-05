@@ -1,6 +1,4 @@
-# Banc sur debits reels, seconde serie de la nuit du 2026-11-04 : le sejour de 60 jours des lacs hors reseau ameliore
-# a la fois le terme KGE et le terme d'etiage (perte 1,040) ; on cherche le sejour et la part qui donnent le minimum,
-# et l'effet de l'exposant (stock-debit non lineaire). Configuration de base : porte 65/80 mm, lacs c 5, sejour 30 j.
+# Banc sur debits reels, seconde serie de la nuit du 2026-11-04 : le sejour de 60 jours des lacs hors reseau ameliore a la fois le terme KGE et le terme d'etiage (perte 1,040) ; on cherche le sejour et la part qui donnent le minimum, et l'effet de l'exposant (stock-debit non lineaire). Configuration de base : porte 65/80 mm, lacs c 5, sejour 30 j.
 
 [[variant]]
 name = "sejour90"

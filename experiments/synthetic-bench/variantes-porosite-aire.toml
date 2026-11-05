@@ -1,5 +1,4 @@
-# Banc fictif : porosite relative et exposant de l'aire contributive (2026-11-03).
-# La premiere variante sert de reference aux differences appariees.
+# Banc fictif : porosite relative et exposant de l'aire contributive (2026-11-03). La premiere variante sert de reference aux differences appariees.
 storms = "/home/essi/meandre-data/analysis/banc-fictif/fictif-v1-orages.csv"
 
 [[variant]]

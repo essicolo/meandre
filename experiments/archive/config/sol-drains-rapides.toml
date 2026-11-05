@@ -1,7 +1,4 @@
-# EPREUVE (2026-10-08, R343-R345) : drains de Hooghoudt RAPIDES (espacement 3 m, soit 25 fois le debit de 15 m) sur 0,6 des terres agricoles, non appris : chemin d evenement propre aux sols cultives, sans vider la couche 2 partout.
-# Profil a deux vitesses plus drainage agricole de Hooghoudt sur la couche 2 (R296).
-# couche 2 lineaire d'Hydrotel ; couche 3 avec un ecoulement lateral rapide au-dessus de la capacite
-# au champ, un lent au-dessus du point de fletrissement (temps appris) et une percolation plafonnee.
+# EPREUVE (2026-10-08, R343-R345) : drains de Hooghoudt RAPIDES (espacement 3 m, soit 25 fois le debit de 15 m) sur 0,6 des terres agricoles, non appris : chemin d evenement propre aux sols cultives, sans vider la couche 2 partout. Profil a deux vitesses plus drainage agricole de Hooghoudt sur la couche 2 (R296). couche 2 lineaire d'Hydrotel ; couche 3 avec un ecoulement lateral rapide au-dessus de la capacite au champ, un lent au-dessus du point de fletrissement (temps appris) et une percolation plafonnee.
 [soil]
 layers = 3
 

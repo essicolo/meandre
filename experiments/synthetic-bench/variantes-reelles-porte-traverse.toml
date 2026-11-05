@@ -1,6 +1,4 @@
-# Banc sur debits reels, sixieme serie de la nuit du 2026-11-04 : avec la porte, les lacs a sejour 30 j donnent une perte de
-# 1,079, sans la porte 1,000. Le debordement de la porte contourne les lacs ; s'il les traverse, l'ecart disparait-il,
-# et la dependance de la crue au stock lent (pente +0,23 avec la porte, -0,12 sans) tient-elle ?
+# Banc sur debits reels, sixieme serie de la nuit du 2026-11-04 : avec la porte, les lacs a sejour 30 j donnent une perte de 1,079, sans la porte 1,000. Le debordement de la porte contourne les lacs ; s'il les traverse, l'ecart disparait-il, et la dependance de la crue au stock lent (pente +0,23 avec la porte, -0,12 sans) tient-elle ?
 
 [[variant]]
 name = "traverse-sejour30"

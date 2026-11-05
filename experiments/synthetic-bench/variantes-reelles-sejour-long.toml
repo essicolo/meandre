@@ -1,5 +1,4 @@
-# Banc sur debits reels, troisieme serie de la nuit du 2026-11-04 : la perte baisse encore a 120 jours de sejour (1,0195),
-# borne superieure des lacs hors reseau ; bornes elargies pour chercher le minimum.
+# Banc sur debits reels, troisieme serie de la nuit du 2026-11-04 : la perte baisse encore a 120 jours de sejour (1,0195), borne superieure des lacs hors reseau ; bornes elargies pour chercher le minimum.
 
 [[variant]]
 name = "sejour180"

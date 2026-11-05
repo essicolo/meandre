@@ -1,6 +1,4 @@
-# Profil a deux vitesses plus drainage agricole de Hooghoudt sur la couche 2 (R296).
-# couche 2 lineaire d'Hydrotel ; couche 3 avec un ecoulement lateral rapide au-dessus de la capacite
-# au champ, un lent au-dessus du point de fletrissement (temps appris) et une percolation plafonnee.
+# Profil a deux vitesses plus drainage agricole de Hooghoudt sur la couche 2 (R296). couche 2 lineaire d'Hydrotel ; couche 3 avec un ecoulement lateral rapide au-dessus de la capacite au champ, un lent au-dessus du point de fletrissement (temps appris) et une percolation plafonnee.
 [soil]
 layers = 3
 

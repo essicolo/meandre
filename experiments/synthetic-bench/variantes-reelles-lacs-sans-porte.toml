@@ -1,6 +1,4 @@
-# Banc sur debits reels, quatrieme serie de la nuit du 2026-11-04 : la configuration de base (aire contributive, sans porte
-# commandee par la nappe) avec lacs hors reseau ; la porte est-elle encore utile une fois les lacs poses ?
-# Controle : la variante base doit redonner la passe de reference de ce poste (perte 1,1109).
+# Banc sur debits reels, quatrieme serie de la nuit du 2026-11-04 : la configuration de base (aire contributive, sans porte commandee par la nappe) avec lacs hors reseau ; la porte est-elle encore utile une fois les lacs poses ? Controle : la variante base doit redonner la passe de reference de ce poste (perte 1,1109).
 
 [[variant]]
 name = "base"
