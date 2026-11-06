@@ -16,6 +16,7 @@ L'ordre du 6 octobre est remplacé. Depuis, les lacs hors réseau ont découplé
 | 6 | Écart entre machines | Le poste simule environ 12 % de débit de moins qu'Ubuntu à configuration égale ; seules les comparaisons sur une même machine sont valides tant que la cause n'est pas trouvée |
 | 7 | Lisibilité de la déclaration des lacs | `distributed = "c,T,beta,h_ref"` en chaîne de quatre nombres, à remplacer par des clés nommées |
 | 8 | Démarrage du domaine provincial | Chaque lancement passe 16 min (poste) à 30 min (Ubuntu) avant le premier calcul, compilation du sol comprise. Le forçage provincial est déjà en cache (`quebec/cache/forcage-*.npy`, lu en mémoire projetée) ; le reste est relu territoire par territoire : bases DuckDB, débits, MOD16, GRACE, attributs, occupation du sol, puis fusion. D'abord mesurer la part de chaque étape (horodatage du journal), puis mettre en cache le domaine fusionné entier, avec une empreinte des sources pour qu'un changement de donnée l'invalide. Critère : une passe avant provinciale démarre en moins de 5 min. |
+| 9 | Séries temporelles hors de la carte | PyTorch ne pagine pas la mémoire de la carte : une série envoyée entière y reste. MOD16 et la neige y immobilisaient environ 1 Go et ont fait manquer la mémoire le 2026-11-06 (corrigé, `HostSeries`). Règle à vérifier par un test : toute série (jours x tronçons) de `TrainingData` est une `HostSeries` découpée bloc par bloc, sauf les séries par station ou par bassin, petites. |
 
 ## Ordre de priorité au 2026-10-06
 
