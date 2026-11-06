@@ -264,6 +264,23 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     offs = np.cumsum([0] + sizes)
     n_total = int(offs[-1])
     T = len(parts[0]["times"])
+    # Les series d'observation d'un territoire commencent au debut de l'entrainement (train_slice.start),
+    # que mk() ci-dessous redecoupe : elles sont remises sur toute la periode, valeurs manquantes devant,
+    # avant la fusion. Sans cela, un debut d'entrainement apres le premier jour du forcage (mise en regime,
+    # 2026-11-06) decoupait deux fois et decalait les observations.
+    _s0 = int(parts[0]["train_data"].train_slice.start)
+    if any(int(p["train_data"].train_slice.start) != _s0 for p in parts):
+        raise ValueError("les territoires n'ont pas le meme debut d'entrainement")
+
+    def _full(t):
+        if t is None:
+            return None
+        if isinstance(t, HostSeries):
+            t = torch.from_numpy(np.ascontiguousarray(t._host))
+        t = t.cpu()
+        if _s0 == 0:
+            return t
+        return torch.cat([torch.full((_s0,) + tuple(t.shape[1:]), float("nan"), dtype=t.dtype), t])
 
     # ── graphe bloc-diagonal ────────────────────────────────────────────────
     ei, ea, tt, lake = [], [], [], []
@@ -325,7 +342,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     for p, o in zip(parts, offs[:-1]):
         td = p["train_data"]
         st_idx.append(td.station_idx + int(o))
-        q_cols.append(p["train_data"].q_obs)
+        q_cols.append(_full(p["train_data"].q_obs))
         _sar = getattr(p["train_data"], "station_area_ratio", None)
         ratio_cols.append(_sar if _sar is not None else torch.ones(p["train_data"].q_obs.shape[1]))
         st_ids += [f"{p['name']}:{s}" for s in p["station_ids"]]
@@ -354,7 +371,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # ET et SWE restent des tenseurs DENSES sur le GPU : le trainer ne fait pas que les
     # trancher, il les centre (`_center_et` balaye toute la serie), donc l'astuce de la
     # serie hote ne s'y applique pas. Le budget le permet une fois le forcage sorti.
-    et_obs = _cat_nodes([p["train_data"].et_obs for p in parts], sizes, T)
+    et_obs = _cat_nodes([_full(p["train_data"].et_obs) for p in parts], sizes, T)
     if et_obs is not None:
         et_obs = et_obs.to(device)
     # Poids du terme MOD16 hors neige (NEISIM), sur le CPU comme dans la region.
@@ -362,7 +379,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     if any(p["train_data"].et_weight is not None for p in parts):
         et_weight = torch.cat([(p["train_data"].et_weight if p["train_data"].et_weight is not None
                                 else torch.ones(T, sz)) for p, sz in zip(parts, sizes)], dim=1)
-    swe_obs = _cat_nodes([p["train_data"].swe_obs for p in parts], sizes, T)
+    swe_obs = _cat_nodes([_full(p["train_data"].swe_obs) for p in parts], sizes, T)
     if swe_obs is not None:
         swe_obs = swe_obs.to(device)
 
@@ -372,7 +389,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # les confronter a une seule serie satellitaire.
     tws_cols, tws_group = [], []
     for gi, (p, sz) in enumerate(zip(parts, sizes)):
-        t = p["train_data"].tws_obs
+        t = _full(p["train_data"].tws_obs)
         tws_cols.append(t if t is not None else torch.full((T,), float("nan")))
         tws_group.append(torch.full((sz,), gi, dtype=torch.long))
     tws_obs = torch.stack(tws_cols, dim=1).to(device)          # (T, G)
@@ -383,7 +400,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     for p, o in zip(parts, offs[:-1]):
         td = p["train_data"]
         if td.swe_mass_obs is not None and td.swe_mass_node is not None:
-            sm_obs.append(td.swe_mass_obs)
+            sm_obs.append(_full(td.swe_mass_obs))
             sm_node.append(td.swe_mass_node + int(o))
     swe_mass_obs = torch.cat(sm_obs, dim=1).to(device) if sm_obs else None
     swe_mass_node = torch.cat(sm_node).to(device) if sm_node else None
