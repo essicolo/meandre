@@ -767,7 +767,7 @@ if _settings.raw("evaporation.open_water", "0") == "1":
             _sel = _fw > 0.005
             print(f"[etl] lacs hors reseau : hauteur mobilisable {_T_l:g} mm, sejour deduit par troncon (eau libre > 0,5 %) mediane {float(_Tn[_sel].median()):.0f} j, 10e et 90e centiles {float(_Tn[_sel].quantile(0.1)):.0f} et {float(_Tn[_sel].quantile(0.9)):.0f} j")
         _rd_l = 1.0 - torch.exp(-_c_l * _fw)
-        print(f"[etl] lacs hors reseau : part de la production qui les traverse {float((_rd_l * _Alw).sum() / _Alw.sum()):.2f}, sejour {_T_l:g} j a {_h_l:g} m, exposant {_b_l:g}, appris : {', '.join(_learn_l) or 'aucun'}")
+        print(f"[etl] lacs hors reseau : part de la production qui les traverse {float((_rd_l * _Alw).sum() / _Alw.sum()):.2f}, " + (f"hauteur mobilisable {_T_l:g} mm" if _R_l is not None else f"sejour {_T_l:g} j") + f" a {_h_l:g} m, exposant {_b_l:g}, appris : {', '.join(_learn_l) or 'aucun'}")
     if _settings.get("evaporation.open_water_reservoir"):
         # RESERVOIR DE L'EAU LIBRE (2026-11-03) : la pluie sur l'eau libre hors lacs routes passe par
         # un stock au lieu de rejoindre la riviere le jour meme ; part = eau libre hors lacs routes

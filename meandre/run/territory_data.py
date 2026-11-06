@@ -203,7 +203,8 @@ def load_region(reg: str, lcfg: dict, device: str = "cuda", drainage_table: str 
     _te, _vs, _ve = split_spec()
     if (_te, _vs, _ve) != (TRAIN_END, VAL_START, VAL_END):
         print(f"[joint] découpage NON STANDARD : train -> {_te} | val {_vs}..{_ve}")
-    train_sl = sl(DATE_START, _te)
+    # Mise en régime (2026-11-06) : l'entraînement commence à period.train_start ; les jours qui précèdent sont simulés sans perte.
+    train_sl = sl(_settings.get("period.train_start"), _te)
     val_sl = sl(_vs, _ve)
 
     # loss régionale : poids partagés, stats stations locales

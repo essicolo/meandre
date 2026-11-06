@@ -1,4 +1,4 @@
-# Recette provinciale de novembre 2026 : modele gele d'octobre, regles de stations (R429, R430), couche 3 par classe de drainage (R432) et prior du depot sur sa conductivite (R423), blocs d'un an (R417).
+# Recette provinciale de novembre 2026 : modele gele d'octobre, regles de stations (R429, R430), couche 3 par classe de drainage (R432) et prior du depot sur sa conductivite (R423), blocs d'un an (R417). Depuis le 2026-11-06 : lacs hors reseau a sejour deduit du volume (R507) et mise en regime de l'annee 2000, simulee sans perte.
 #
 # Modele provincial gele pour la production (octobre 2026) : socle du 13 octobre, plus les bornes de texture sur la conductivite, la viscosite de l'eau froide, l'aire contributive saturee (b = 8) et le terme de variations journalieres. Entraine de zero sur le Quebec entier (27 834 troncons), 2001-2018 ; point de reprise best-quebec-etl-qv848-e32.pt (derniere epoque). Perte 2022-2024 de 0,886 sur le Quebec entier, KGE median par station 0,70 sur 143 stations.
 #
@@ -9,7 +9,8 @@
 # Chaque cle de ce fichier est lue par le pilote : verifie par meandre/run/trace_launch.py. Les sections autres que [period], [model], [training], [loss], [soil], [phenology], [literature_prior] et [field.texture_bounds], lues par le pilote, sont declarees dans meandre/utils/settings.py ; une variable d'environnement de l'ancien nom, posee au lancement, prime sur le fichier.
 
 [period]
-# Entrainement 2001-2018 (l'annee 2000 sert de mise en regime), validation 2019-2021, evaluation 2022-2024, jamais utilisee pour l'entrainement.
+# Mise en regime 2000 (simulee sans perte), entrainement 2001-2018, validation 2019-2021, evaluation 2022-2024, jamais utilisee pour l'entrainement.
+train_start = "2001-01-01" # debut de l'entrainement ; l'annee 2000 sert de mise en regime
 train_end = "2018-12-31"
 val_start = "2019-01-01"
 val_end = "2021-12-31"
@@ -359,12 +360,12 @@ territorial_extra = "" # Tables territoriales supplémentaires ajoutées aux att
 disabled = false # Simulation sans prélèvements ni rejets (débits naturalisés).
 
 [lakes]
-# distributed = (absent) # Lacs hors réseau (HydroModel.set_distributed_lakes), « c,T,beta,h_ref » : part de la production locale qui les traverse 1 − exp(−c · eau libre hors lacs routés), séjour T jours à la hauteur h_ref (m), exposant de vidange beta ; le ruissellement des processus déclarés les contourne.
+distributed = "6.7,171.0,1.0,0.5" # lacs hors reseau : part c, hauteur d'eau mobilisable D (mm, sejour deduit du volume), exposant, hauteur de reference (m) ; valeurs apprises a la graine 7 (R507)
 spill_bypass = true # Le ruissellement des processus déclarés (débordement commandé par la nappe) contourne les lacs hors réseau ; faux, il les traverse comme le reste de la production (2026-11-05).
-residence_from_volume = false # Séjour des lacs hors réseau déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R) ; le deuxième nombre de lakes.distributed est alors la hauteur d'eau mobilisable D (mm), et ses bornes celles de T (2026-11-05).
+residence_from_volume = true # Séjour des lacs hors réseau déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R) ; le deuxième nombre de lakes.distributed est alors la hauteur d'eau mobilisable D (mm), et ses bornes celles de T (2026-11-05).
 runoff_ratio = 0.5 # Coefficient d'écoulement qui convertit la précipitation moyenne du tronçon en écoulement moyen R, pour le séjour déduit du volume des lacs.
-distributed_bounds = "c:0.5:50,T:2:120" # Bornes douces des lacs hors réseau, « c:min:max,T:min:max ».
-distributed_learn = "" # Paramètres appris des lacs hors réseau parmi c et T, séparés par des virgules ; vide, aucun.
+distributed_bounds = "c:0.5:50,T:20:2000" # Bornes douces des lacs hors réseau, « c:min:max,T:min:max ».
+distributed_learn = "c,T" # Paramètres appris des lacs hors réseau parmi c et T, séparés par des virgules ; vide, aucun.
 
 [routed_lakes]
 area_km2_default = 1.0 # surface d'un lac route sans bloc lac dans troncon.trl, en km2
