@@ -945,18 +945,22 @@ class Trainer:
             w = _W[t0:t0 + et_sim.shape[0]].to(et_sim.device, et_sim.dtype)
         base_obs = getattr(self, "_et_obs_base", None)
         if base_obs is None:
-            eo = data.et_obs
+            # Calcul unique sur le processeur (2026-11-06) : sur la carte, la serie entiere de MOD16 et
+            # son poids (jours x troncons, environ 1 Go pour la province) faisaient manquer la memoire.
+            eo = data.et_obs.detach().cpu()
             if _W is not None:
                 _s0 = data.train_slice.start
-                _wo = _W[_s0:_s0 + eo.shape[0]].to(eo.device, eo.dtype) * (~torch.isnan(eo))
+                _wo = _W[_s0:_s0 + eo.shape[0]].cpu().to(eo.dtype) * (~torch.isnan(eo))
                 base_obs = (_wo * torch.nan_to_num(eo, nan=0.0)).sum(dim=0) / _wo.sum(dim=0).clamp(min=1e-6)
             else:
                 _wo = (~torch.isnan(eo)).to(eo.dtype)
                 cnt = (~torch.isnan(eo)).sum(dim=0).clamp(min=1)
                 base_obs = torch.nan_to_num(eo, nan=0.0).sum(dim=0) / cnt  # (n_nodes,)
-            self._et_obs_base = base_obs
             _var_o = (_wo * (torch.nan_to_num(eo, nan=0.0) - base_obs) ** 2).sum(dim=0) / _wo.sum(dim=0).clamp(min=1e-6)
-            self._et_obs_std = torch.sqrt(_var_o.clamp(min=1e-6))
+            del _wo
+            self._et_obs_base = base_obs.to(data.et_obs.device)
+            self._et_obs_std = torch.sqrt(_var_o.clamp(min=1e-6)).to(data.et_obs.device)
+            base_obs = self._et_obs_base
         # REFERENCE SIMULEE (corrigee le 2026-10-02). L'ancienne partait de la moyenne du
         # PREMIER bloc (45 jours d'hiver, ET ~0,05 mm/j) et la suivait par une moyenne mobile de
         # poids 0,02 par bloc, soit environ six ans de memoire : les anomalies simulees etaient
