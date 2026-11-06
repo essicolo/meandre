@@ -373,7 +373,9 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     # serie hote ne s'y applique pas. Le budget le permet une fois le forcage sorti.
     et_obs = _cat_nodes([_full(p["train_data"].et_obs) for p in parts], sizes, T)
     if et_obs is not None:
-        et_obs = et_obs.to(device)
+        # Gardee en memoire vive, chaque bloc n'en envoie que sa tranche sur la carte (2026-11-06) : entiere sur la
+        # carte, la serie provinciale immobilisait environ 1 Go pendant tout l'entrainement.
+        et_obs = HostSeries(et_obs, device)
     # Poids du terme MOD16 hors neige (NEISIM), sur le CPU comme dans la region.
     et_weight = None
     if any(p["train_data"].et_weight is not None for p in parts):
@@ -381,7 +383,7 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
                                 else torch.ones(T, sz)) for p, sz in zip(parts, sizes)], dim=1)
     swe_obs = _cat_nodes([_full(p["train_data"].swe_obs) for p in parts], sizes, T)
     if swe_obs is not None:
-        swe_obs = swe_obs.to(device)
+        swe_obs = HostSeries(swe_obs, device)
 
     # GRACE : un observable de BASSIN. La colonne g de `tws_obs` est la serie de la
     # plateforme g, et `tws_group` dit a quel bassin appartient chaque troncon. Sans

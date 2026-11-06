@@ -12,6 +12,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -947,7 +948,8 @@ class Trainer:
         if base_obs is None:
             # Calcul unique sur le processeur (2026-11-06) : sur la carte, la serie entiere de MOD16 et
             # son poids (jours x troncons, environ 1 Go pour la province) faisaient manquer la memoire.
-            eo = data.et_obs.detach().cpu()
+            eo = getattr(data.et_obs, "_host", data.et_obs)
+            eo = (eo if torch.is_tensor(eo) else torch.from_numpy(np.ascontiguousarray(eo))).detach().cpu()
             if _W is not None:
                 _s0 = data.train_slice.start
                 _wo = _W[_s0:_s0 + eo.shape[0]].cpu().to(eo.dtype) * (~torch.isnan(eo))

@@ -1052,6 +1052,7 @@ if os.environ.get("MEANDRE_SONDE_DOMAINE"):
     # donnees, juste avant l'entrainement. Un territoire seul et le meme territoire dans un
     # domaine doivent donner les memes valeurs a son decalage pres.
     def _np(x):
+        x = getattr(x, "_host", x)
         return x.detach().float().cpu().numpy() if torch.is_tensor(x) else np.asarray(x, dtype=float)
     _sd = {"node_coords": _np(td.node_coords), "q_obs": _np(td.q_obs), "station_idx": _np(td.station_idx),
            "station_var": _np(r["loss_fn"].station_var), "is_lake": _np(td.graph.is_lake)}
