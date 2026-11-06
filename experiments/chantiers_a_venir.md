@@ -15,6 +15,7 @@ L'ordre du 6 octobre est remplacé. Depuis, les lacs hors réseau ont découplé
 | 5 | Dépendance de la crue au stock lent | Les lacs seuls inversent la pente des épisodes sur le stock lent (−0,12 contre +0,47 observé), la porte commandée par la nappe la rend (+0,23) mais coûte 0,06 de perte ; départager les deux structures après apprentissage |
 | 6 | Écart entre machines | Le poste simule environ 12 % de débit de moins qu'Ubuntu à configuration égale ; seules les comparaisons sur une même machine sont valides tant que la cause n'est pas trouvée |
 | 7 | Lisibilité de la déclaration des lacs | `distributed = "c,T,beta,h_ref"` en chaîne de quatre nombres, à remplacer par des clés nommées |
+| 8 | Démarrage du domaine provincial | Chaque lancement passe 16 min (poste) à 30 min (Ubuntu) avant le premier calcul, compilation du sol comprise. Le forçage provincial est déjà en cache (`quebec/cache/forcage-*.npy`, lu en mémoire projetée) ; le reste est relu territoire par territoire : bases DuckDB, débits, MOD16, GRACE, attributs, occupation du sol, puis fusion. D'abord mesurer la part de chaque étape (horodatage du journal), puis mettre en cache le domaine fusionné entier, avec une empreinte des sources pour qu'un changement de donnée l'invalide. Critère : une passe avant provinciale démarre en moins de 5 min. |
 
 ## Ordre de priorité au 2026-10-06
 
