@@ -1008,6 +1008,8 @@ class HydroModel(nn.Module):
         # cote du fichier.
         from meandre.utils.recipe import capture_recipe, write_recipe_toml
         recipe = capture_recipe()
+        # Le dossier des points de reprise n'est pas suivi par git : une copie neuve du code ne l'a pas (2026-11-07).
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         torch.save({
             "state_dict": self.state_dict(),
             "spatial_field_names": [f.name for f in dataclasses.fields(SpatialParams)],
