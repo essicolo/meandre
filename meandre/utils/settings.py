@@ -198,8 +198,6 @@ SCHEMA: dict[str, Setting] = {
     "physical_prior_weights.C_f": Setting("MEANDRE_PRIOR_POIDS_CF", float, 0.3, "Poids relatif de l'écart du facteur de fonte moyen C_f."),
     "physical_prior_weights.T_melt": Setting("MEANDRE_PRIOR_POIDS_TMELT", float, 0.5, "Poids relatif de l'écart du seuil de fonte moyen T_melt."),
     "physical_prior_weights.dT_canopee": Setting("MEANDRE_PRIOR_POIDS_DTCANOPEE", float, 0.1, "Poids relatif de l'écart des retards de canopée moyens (feuillus et conifères)."),
-    "physical_prior_weights.frost_alpha": Setting("MEANDRE_PRIOR_POIDS_GEL", float, 0.3, "Poids relatif de l'écart de frost_alpha moyen."),
-    "physical_prior_weights.alpha_T": Setting("MEANDRE_PRIOR_POIDS_ALPHAT", float, 1.0, "Poids relatif de l'écart de alpha_T moyen."),
     "physical_prior_weights.vg_n": Setting("MEANDRE_PRIOR_POIDS_VGN", float, 0.3, "Poids relatif de l'écart de vg_n moyen."),
     "physical_prior_weights.k_gw": Setting("MEANDRE_PRIOR_POIDS_KGW", float, 0.3, "Poids relatif de l'écart de la moyenne du log de k_gw."),
     "physical_prior_weights.krec": Setting("MEANDRE_PRIOR_POIDS_KREC", float, 0.3, "Poids relatif de l'écart de la moyenne du log de krec, quand krec est libre."),

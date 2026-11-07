@@ -64,12 +64,9 @@ KSUB_REF = 1.0e-3 / 24.0
 FIELD_BOUNDS = {
     "K_sat_1": (3.355e-4, 54.6, "log"), "K_sat_2": (3.355e-4, 54.6, "log"), "K_sat_3": (3.355e-4, 54.6, "log"),
     "porosity": (0.20, 0.60), "theta_fc_frac": (0.30, 0.85), "theta_wp_frac": (0.05, 0.60),
-    "C_f": (0.5, 8.0), "T_melt": (-2.0, 3.0), "T_snow": (0.0, 2.0), "interception_capacity": (0.5, 2.5),
-    "manning_n": (0.01, 0.20), "frost_alpha": (0.0, 1.0), "f_wetland": (0.0, 0.10),
-    "f_vert_1": (0.0, 1.0), "f_vert_3": (0.0, 1.0), "k_gw": (3.355e-4, 0.1353, "log"),
-    "T_gw": (3.0, 13.0), "K_atm": (0.05, 0.55), "alpha_T": (0.01, 0.05), "vg_n": (1.3, 2.7),
-    "f_vert_2": (0.0, 1.0), "x_musk": (0.01, 0.49), "K_c": (0.3, 1.5),
-    "rain_hours": (3.0, 24.0), "Z1": (0.02, 0.40), "Z2": (0.30, 1.50), "Z3": (0.50, 4.00), "vsa_b": (0.5, 5.0),
+    "C_f": (0.5, 8.0), "T_melt": (-2.0, 3.0), "manning_n": (0.01, 0.20), "k_gw": (3.355e-4, 0.1353, "log"),
+    "T_gw": (3.0, 13.0), "K_atm": (0.05, 0.55), "vg_n": (1.3, 2.7), "x_musk": (0.01, 0.49), "K_c": (0.3, 1.5),
+    "Z1": (0.02, 0.40), "Z2": (0.30, 1.50), "Z3": (0.50, 4.00),
     "krec": (1e-7, 1e-4, "log"), "diff_gel": (4e-8, 2.2e-7), "fs_neige": (0.5, 6.0),
     "dT_canopee_feu": (0.0, 3.0), "dT_canopee_conif": (0.0, 3.0), "k_sub": (2e-6, 2e-3, "log"),
 }
@@ -91,6 +88,16 @@ def prior_safety(key: str, field_name: str) -> tuple[float, float]:
 
 
 PRIOR_KEYS = tuple(f"{f}_{l}" for f in ("porosity", "theta_fc_frac", "theta_wp_frac", "K_sat") for l in (1, 2, 3)) + ("Z2", "Z3")
+
+# ORDRE DES SORTIES DU CHAMP JUSQU'AU 2026-11-07, quarante-trois sorties. Les sorties ont ete ajoutees en fin de liste au fil du temps, si bien qu'un point de reprise plus ancien, de 36 a 42 sorties, porte un PREFIXE de cet ordre. `HydroModel.load` s'en sert pour relire, par leur nom, les lignes d'un point de reprise qui ne porte pas la liste de ses sorties.
+LEGACY_FIELD_ORDER = (
+    "K_sat_1", "K_sat_2", "K_sat_3", "porosity_1", "porosity_2", "porosity_3",
+    "theta_fc_1", "theta_fc_2", "theta_fc_3", "theta_wp_1", "theta_wp_2", "theta_wp_3",
+    "f_root_1", "f_root_2", "f_root_3", "C_f", "T_melt", "T_snow", "interception_capacity",
+    "manning_n", "frost_alpha", "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm",
+    "alpha_T", "vg_n", "f_vert_2", "K_musk_hours", "x_musk", "K_c", "rain_hours", "Z2", "Z3",
+    "vsa_b", "krec", "diff_gel", "fs_neige", "dT_canopee_feu", "dT_canopee_conif", "k_sub",
+)
 
 # Centre (valeur pour une sortie brute nulle) et pente au centre des sorties log-normales,
 # repris des anciennes lois exp(0,3 x + log centre) pour que les points de reprise existants
@@ -141,87 +148,50 @@ class SpatialParams:
     porosity_{1,2,3} Total porosity (m3/m3).
     theta_fc_{1,2,3} Field capacity (m3/m3).
     theta_wp_{1,2,3} Wilting point (m3/m3).
-    f_root_{1,2,3}  Root fraction per layer.
 
     Snow
     ----
     C_f             Degree-day melt factor (mm/C/day).
     T_melt          Melting temperature threshold (C), near 0.
-    T_snow          Rain/snow threshold temperature (C).
-
-    Canopy
-    ------
-    interception_capacity  Maximum canopy storage (mm).
 
     Routing
     -------
-    manning_n       Manning roughness coefficient.
+    manning_n       Manning roughness coefficient (profondeur d'eau diagnostique seulement).
     K_musk_hours    Muskingum travel time (hours) [4, 48].
     x_musk          Muskingum weighting factor [0, 0.5].
 
-    Frost
-    -----
-    frost_alpha     Frost K_sat reduction coefficient.
-
     Soil physics
     ------------
-    vg_n            van Genuchten n shape parameter [1.1, 2.7].
-    f_vert_{1,2,3}  Per-layer drainage partition (0, 1): fraction of excess
-                    drainage going DOWN (to next layer; aquifer for L3).
-                    1 - f_vert goes LATERALLY to the stream (interflow).
-                    Replaces the legacy slope_factor + k_interflow + krec
-                    triplet to break their equifinality coupling.
+    vg_n            van Genuchten n shape parameter [1.3, 2.7].
+
+    SORTIES RETIREES LE 2026-11-07 : f_root_{1,2,3}, T_snow, interception_capacity, frost_alpha, f_wetland, f_vert_{1,2,3}, alpha_T, rain_hours et vsa_b. Rien dans la simulation ne les lisait ; elles coutaient de la capacite au champ, et le prior physique tirait sur deux d'entre elles a travers le tronc partage. L'ordre des sorties d'avant cette date est `LEGACY_FIELD_ORDER`, qui sert a relire les anciens points de reprise.
     """
 
-    # Soil per layer (9 params x 3 layers)
+    # Soil per layer (4 params x 3 layers)
     K_sat_1: Tensor; K_sat_2: Tensor; K_sat_3: Tensor
     porosity_1: Tensor; porosity_2: Tensor; porosity_3: Tensor
     theta_fc_1: Tensor; theta_fc_2: Tensor; theta_fc_3: Tensor
     theta_wp_1: Tensor; theta_wp_2: Tensor; theta_wp_3: Tensor
-    f_root_1: Tensor; f_root_2: Tensor; f_root_3: Tensor
     # Snow
     C_f: Tensor
     T_melt: Tensor
-    T_snow: Tensor
-    # Canopy
-    interception_capacity: Tensor
-    # Routing
+    # Routing : Manning ne sert qu'a la profondeur d'eau diagnostique (HydroModel._water_depth)
     manning_n: Tensor
-    # Frost
-    frost_alpha: Tensor
-    # Wetland
-    f_wetland: Tensor
-    # Drainage partition (replaces slope_factor + k_interflow + krec
-    # competing for the same water budget — see softmax-partition design,
-    # 2026-05-11). Each f_vert_i is the fraction of the layer's excess
-    # drainage that goes *down* to the next layer (or aquifer for L3);
-    # 1 - f_vert_i goes laterally to the stream as interflow.
-    f_vert_1: Tensor        # partition layer 1: vertical fraction (0, 1)
-    f_vert_3: Tensor        # partition layer 3: recharge fraction (0, 1)
-    # Groundwater
+    # Groundwater : lu par le reservoir restituant seulement, pas par la nappe libre
     k_gw: Tensor            # aquifer recession coefficient (1/day) [0.001, 0.14]
-    # Stream temperature
+    # Stream temperature : lus seulement quand use_temperature est vrai
     T_gw: Tensor            # groundwater temperature (C) [3, 13]
     K_atm: Tensor           # atmospheric heat exchange coefficient (1/day) [0.05, 0.55]
-    # Frost thermal lag
-    alpha_T: Tensor         # soil thermal damping (1/day) [0.01, 0.05]
-    # --- New params (E, F, G) ---
     vg_n: Tensor            # van Genuchten n shape parameter [1.3, 2.7]
-    f_vert_2: Tensor        # partition layer 2: vertical fraction (0, 1)
     K_musk_hours: Tensor    # Muskingum travel time (hours) [4, 48]
     x_musk: Tensor          # Muskingum weighting factor [0.01, 0.49]
     # ETP scaling — équivalent au "coefficient multiplicatif" d'Hydrotel
     # (cf .par files SLSO MG24HS_2020 = 0.85 sur McGuinness, autres 0.5-1.0).
     K_c: Tensor             # ETP crop/calibration coefficient [0.3, 1.5]
-    # Sub-daily storm duration (hours) for Eagleson infiltration excess.
-    # Plus court = pluies intenses → plus de runoff. Borne configurable.
-    rain_hours: Tensor      # default range [3, 24] h
     # Soil layer thicknesses (m). Z1 fixe (root zone), Z2 et Z3 learnables.
     # Permet adaptation au bouclier (sol mince) vs alluvions (sol profond).
     Z2: Tensor              # default range [0.30, 1.50] m
     Z3: Tensor              # default range [0.50, 4.00] m
-
-    vsa_b: Tensor           # exposant aire-source-variable (ruissellement) [0.5, 5.0]
 
     # RECHARGE PROFONDE, par noeud (2026-08-20). Elle etait un SCALAIRE GLOBAL de la
     # colonne : une seule valeur pour toute une region. C'est bloquant pour ce que le
@@ -280,7 +250,7 @@ class SpatialParams:
     # par des zeros en poids ET en biais, se charge sans rien changer.
     k_sub: Tensor           # plafond de percolation du substratum (m/h) [2e-6, 2e-3]
 
-    N_PARAMS: ClassVar[int] = 43
+    N_PARAMS: ClassVar[int] = 30
 
     @classmethod
     def from_tensor(cls, x: Tensor) -> "SpatialParams":
@@ -361,7 +331,7 @@ class SpatialFieldNetwork(nn.Module):
             n_z = SpatialParams.N_PARAMS if latent_mode == "additive" else self.latent_dim
             self.latent_codes = nn.Parameter(torch.zeros(n_nodes, n_z))
         # Tête de lac optionnelle : k_lake et beta par nœud (sortie séparée de
-        # fc_out pour ne pas changer N_PARAMS=36 ni casser les checkpoints
+        # fc_out pour ne pas changer N_PARAMS ni casser les checkpoints
         # existants). Câblée au LakeModule par HydroModel quand activée.
         self.predict_lake_params = predict_lake_params
         # Soil bounds (configurable via toml [soil] section).
@@ -454,7 +424,7 @@ class SpatialFieldNetwork(nn.Module):
             Rawls et al. (1982). Estimation of soil water properties.
             Trans. ASAE 25(5):1316-1320.  Beven (2001) scale factor for
             sub-daily intensity → daily timestep.
-        - Snow degree-day (C_f, T_melt, T_snow):
+        - Snow degree-day (C_f, T_melt):
             Hock (2003). Temperature index melt modelling. J. Hydrol. 282.
         - Manning's n: Chow (1959) Open-Channel Hydraulics, table 5-6.
         - Reference ET (Penman-Monteith): Allen et al. (1998) FAO-56.
@@ -504,43 +474,24 @@ class SpatialFieldNetwork(nn.Module):
             "theta_fc_1": 0.30, "theta_fc_2": 0.30, "theta_fc_3": 0.28,
             # theta_wp — Rawls 1982: loam=0.117, silt_loam=0.133
             "theta_wp_1": 0.125, "theta_wp_2": 0.125, "theta_wp_3": 0.12,
-            # Root fractions — typical temperate forest (shallow dominant)
-            "f_root_1": 0.50, "f_root_2": 0.30, "f_root_3": 0.20,
             # Snow degree-day — Hock 2003, typical 4-5 mm/°C/day boreal
-            "C_f": 4.5, "T_melt": -0.5, "T_snow": 1.0,
-            # Canopy interception capacity (mm) — typical mixed forest
-            "interception_capacity": 1.5,
+            "C_f": 4.5, "T_melt": -0.5,
             # Manning's n — Chow 1959, table 5-6, mixed natural channel
             "manning_n": 0.10,
-            # Frost
-            "frost_alpha": 0.50,
-            # Wetland
-            "f_wetland": 0.02,
-            # Drainage partition per layer (softmax binary = sigmoid).
-            # L1 root zone : moitié-moitié — interflow dominant si pente.
-            # L2 transition : un peu plus vertical (percolation).
-            # L3 deep : majoritairement recharge aquifère.
-            "f_vert_1": 0.50, "f_vert_2": 0.60, "f_vert_3": 0.70,
             # Groundwater — recession ~50 jours (k_gw=0.02), réaliste pour
             # aquifères peu profonds tempérés. Auparavant 0.005 (140 jours).
             "k_gw": 0.02,
             # Stream temperature
             "T_gw": 6.0, "K_atm": 0.20,
-            # Frost thermal lag
-            "alpha_T": 0.03,
             # van Genuchten n — loam ~1.5
             "vg_n": 1.5,
             # Muskingum
             "K_musk_hours": _kmusk()[2], "x_musk": 0.20,
             # ETP scaling — défaut 1.0 (FAO-56 reference comme Hydrotel PM).
             "K_c": 1.0,
-            # Sub-daily storm duration — 12h par défaut (vs 6h hardcodé avant).
-            # Plus réaliste pour pluies frontales QC (vs orages convectifs courts).
-            "rain_hours": 12.0,
             # Soil layer thicknesses — Hydrotel BV3C standard
             "Z2": 0.70,
             "Z3": 1.00,
-            "vsa_b": 2.5,
             "krec": KREC_REF,
             # PROPRIETES THERMIQUES : valeurs du C++ (rankinen.cpp), pour que le champ
             # DEMARRE sur le clone fidele. Sans cela il partirait au MILIEU des bornes
@@ -605,15 +556,10 @@ class SpatialFieldNetwork(nn.Module):
             raw[i] = inv_bound("theta_fc_frac", d[f"theta_fc_{layer + 1}"] / d[f"porosity_{layer + 1}"]); i += 1
         for layer in range(3):
             raw[i] = inv_bound("theta_wp_frac", d[f"theta_wp_{layer + 1}"] / d[f"theta_fc_{layer + 1}"]); i += 1
-        # f_root : le biais [1.0, 0.5, -0.5] donne deja ~[50, 30, 20] ; brut nul.
-        for _ in range(3):
-            raw[i] = 0.0; i += 1
-        for field_name in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
-                    "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
+        for field_name in ("C_f", "T_melt", "manning_n", "k_gw", "T_gw", "K_atm", "vg_n"):
             raw[i] = inv_bound(field_name, d[field_name]); i += 1
         raw[i] = inv_bounded(d["K_musk_hours"], _kmusk()[0], _kmusk()[1]); i += 1
-        for field_name in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
-                    "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
+        for field_name in ("x_musk", "K_c", "Z2", "Z3", "krec", "diff_gel", "fs_neige", "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
             raw[i] = inv_bound(field_name, d[field_name]); i += 1
 
         return raw
@@ -1084,14 +1030,7 @@ class SpatialFieldNetwork(nn.Module):
         for layer in range(3):
             constrained.append(theta_fcs[layer] * bound("theta_wp_frac", cols[i], key=f"theta_wp_frac_{layer + 1}"))
             i += 1
-        # f_root : softmax, biais vers les couches superieures (50/30/20).
-        f_roots_raw = torch.stack(cols[i:i+3], dim=-1)
-        f_roots_raw = f_roots_raw * 0.3 + torch.tensor([1.0, 0.5, -0.5], device=raw.device)
-        f_roots = torch.softmax(f_roots_raw, dim=-1)
-        constrained.extend([f_roots[:, j] for j in range(3)])
-        i += 3
-        for field_name in ("C_f", "T_melt", "T_snow", "interception_capacity", "manning_n", "frost_alpha",
-                    "f_wetland", "f_vert_1", "f_vert_3", "k_gw", "T_gw", "K_atm", "alpha_T", "vg_n", "f_vert_2"):
+        for field_name in ("C_f", "T_melt", "manning_n", "k_gw", "T_gw", "K_atm", "vg_n"):
             constrained.append(bound(field_name, cols[i])); i += 1
         # K_musk_hours : bornes de MEANDRE_KMUSK, ou ancre geometrique modulee (set_routing_anchor).
         _kanc = getattr(self, "_k_musk_anchor", None)
@@ -1105,8 +1044,7 @@ class SpatialFieldNetwork(nn.Module):
             # Un noeud a ancre NaN, un lac notamment, garde le parametre borne libre.
             constrained.append(torch.where(torch.isfinite(_a), _anc,
                                            bounded(cols[i], _kmusk()[0], _kmusk()[1]))); i += 1
-        for field_name in ("x_musk", "K_c", "rain_hours", "Z2", "Z3", "vsa_b", "krec", "diff_gel", "fs_neige",
-                    "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
+        for field_name in ("x_musk", "K_c", "Z2", "Z3", "krec", "diff_gel", "fs_neige", "dT_canopee_feu", "dT_canopee_conif", "k_sub"):
             constrained.append(bound(field_name, cols[i])); i += 1
 
         sp = SpatialParams.from_tensor(torch.stack(constrained, dim=-1))
@@ -1237,11 +1175,11 @@ class SpatialFieldNetwork(nn.Module):
         h = torch.nn.functional.silu(self.fc2(h))
         raw = self.fc_out(h)
 
-        # Colonnes sigmoid-bornées : la liste couvrait 3-31 seulement ; les params
-        # 32-36 (K_c, rain_hours, Z2, Z3, vsa_b), sigmoid-bornés eux aussi, n'étaient
-        # pas surveillés contre la saturation (revue 2026-07-01).
-        sig_cols = (list(range(3, 12)) + list(range(15, 24))
-                    + [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36])
+        # Colonnes bornees par une sigmoide lineaire, designees par leur NOM : la liste etait
+        # une suite d'indices, que tout retrait de sortie aurait decalee sans bruit.
+        names = [f.name for f in _dc_fields(SpatialParams)]
+        sig_names = [n for n in names if n.startswith(("porosity_", "theta_fc_", "theta_wp_"))] + ["C_f", "T_melt", "manning_n", "T_gw", "K_atm", "vg_n", "K_musk_hours", "x_musk", "K_c", "Z2", "Z3"]
+        sig_cols = [names.index(n) for n in sig_names]
         sig = torch.sigmoid(raw[:, sig_cols])
         # |2σ-1| ∈ [0, 1]. Hinge active only when this exceeds sat_threshold.
         excess = torch.clamp(torch.abs(2.0 * sig - 1.0) - sat_threshold, min=0.0)
@@ -1297,12 +1235,6 @@ class SpatialFieldNetwork(nn.Module):
         # en debut d'entrainement, pas a imposer une valeur.
         loss = loss + ((params.dT_canopee_feu.mean() - tg("dT_canopee_feu", 1.0)) ** 2) * wt("dT_canopee")
         loss = loss + ((params.dT_canopee_conif.mean() - tg("dT_canopee_conif", 1.0)) ** 2) * wt("dT_canopee")
-
-        # frost_alpha
-        loss = loss + ((params.frost_alpha.mean() - tg("frost_alpha", 0.5)) ** 2) * wt("frost_alpha")
-
-        # alpha_T
-        loss = loss + ((params.alpha_T.mean() - tg("alpha_T", 0.03)) ** 2) * wt("alpha_T")
 
         # vg_n
         loss = loss + ((params.vg_n.mean() - tg("vg_n", 1.5)) ** 2) * wt("vg_n")
@@ -1376,7 +1308,7 @@ class SpatialFieldNetwork(nn.Module):
         eps = 1e-8
         loss = torch.tensor(0.0, device=params.K_sat_1.device)
         log_keys = ("K_sat_1", "K_sat_2", "K_sat_3", "k_gw")
-        lin_keys = ("f_vert_1", "f_vert_2", "f_vert_3", "K_c")
+        lin_keys = ("K_c",)
         n = 0
         # Charnière LINÉAIRE (pas au carré) : gradient constant fort tant que
         # cv < cv_target, nul au-dessus. Le carré s'annulait trop vite pour des

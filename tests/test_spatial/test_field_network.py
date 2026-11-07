@@ -23,15 +23,6 @@ def test_K_sat_positive():
     assert (params.K_sat_3 > 0).all()
 
 
-def test_root_fractions_sum_to_one():
-    net = SpatialFieldNetwork(n_territorial=17, hidden=64)
-    coords = torch.randn(15, 2)
-    features = torch.randn(15, 17)
-    params = net(coords, features)
-    f_sum = params.f_root_1 + params.f_root_2 + params.f_root_3
-    assert torch.allclose(f_sum, torch.ones(15), atol=1e-5)
-
-
 def test_parameter_ranges():
     net = SpatialFieldNetwork(n_territorial=17, hidden=64)
     coords = torch.randn(30, 2)

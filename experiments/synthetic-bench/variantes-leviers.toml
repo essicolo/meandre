@@ -45,10 +45,6 @@ name = "k_gw x1,25"
 multipliers = { k_gw = 1.25 }
 
 [[variant]]
-name = "interception x1,5"
-multipliers = { interception_capacity = 1.5 }
-
-[[variant]]
 name = "eau libre en reservoir"
 open_water_reservoir = "10,1.5,0.5"
 

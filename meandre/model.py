@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import dataclasses
 import os
 
 import torch
@@ -75,6 +76,66 @@ OBSOLETE_INIT_KEYS = (
 def drop_obsolete_init_kwargs(kw: dict) -> dict:
     """Copie de kw sans les clés d'init supprimées du code."""
     return {k: v for k, v in kw.items() if k not in OBSOLETE_INIT_KEYS}
+
+
+def remap_field_outputs(sd: dict, stored_names, encoder) -> None:
+    """Reprend, par leur NOM, les sorties du champ spatial d'un point de reprise (en place).
+
+    `stored_names` est la liste des sorties ecrite par `save` ; absente, le point de reprise est
+    anterieur au 2026-11-07 et porte un prefixe de LEGACY_FIELD_ORDER, de la longueur de fc_out.
+    Sont reprises les lignes de fc_out (ou de static_params), les colonnes des codes latents
+    additifs et celles de l'entree de la tete de quantiles. Une sortie retiree depuis est ecartee,
+    une sortie nouvelle est mise a zero, et les deux sont nommees.
+    """
+    from meandre.spatial.field_network import LEGACY_FIELD_ORDER
+    new_names = [f.name for f in dataclasses.fields(SpatialParams)]
+    p = "spatial_encoder."
+    if p + "fc_out.weight" in sd:
+        old_n = int(sd[p + "fc_out.weight"].shape[0])
+    elif p + "static_params" in sd:
+        old_n = int(sd[p + "static_params"].shape[0])
+    else:
+        return
+    if stored_names is None:
+        if old_n > len(LEGACY_FIELD_ORDER):
+            raise ValueError(f"point de reprise illisible : le champ spatial y porte {old_n} sorties, plus que les {len(LEGACY_FIELD_ORDER)} de l'ancien ordre, sans la liste de leurs noms (spatial_field_names)")
+        old_names = list(LEGACY_FIELD_ORDER[:old_n])
+    else:
+        old_names = list(stored_names)
+        if len(old_names) != old_n:
+            raise ValueError(f"point de reprise incoherent : {len(old_names)} noms de sorties du champ pour {old_n} lignes de fc_out")
+    if old_names == new_names:
+        return
+    where = {n: i for i, n in enumerate(old_names)}
+    missing = [n for n in new_names if n not in where]
+    dropped = [n for n in old_names if n not in set(new_names)]
+
+    def take(t, dim):
+        shape = list(t.shape)
+        shape[dim] = len(new_names)
+        out = torch.zeros(shape, dtype=t.dtype, device=t.device)
+        for j, n in enumerate(new_names):
+            if n in where:
+                out.select(dim, j).copy_(t.select(dim, where[n]))
+        return out
+
+    for key, dim in ((p + "fc_out.weight", 0), (p + "fc_out.bias", 0), (p + "static_params", 0)):
+        if key in sd and sd[key].shape[dim] == old_n:
+            sd[key] = take(sd[key], dim)
+    if getattr(encoder, "use_latent_codes", False) and getattr(encoder, "latent_mode", "") == "additive":
+        key = p + "latent_codes"
+        if key in sd and sd[key].dim() == 2 and sd[key].shape[1] == old_n:
+            sd[key] = take(sd[key], 1)
+    key = "quantile_head.net.0.weight"
+    if key in sd and sd[key].dim() == 2 and sd[key].shape[1] == old_n:
+        sd[key] = take(sd[key], 1)
+    if dropped:
+        print(f"[load] sorties du champ retirees depuis ce point de reprise, ecartees : {', '.join(dropped)}")
+    if missing:
+        print(f"[load] AVERTISSEMENT : le point de reprise porte {old_n} sorties de champ, "
+              f"et {len(missing)} des {len(new_names)} attendues y manquent. Elles sont remplies de ZEROS, "
+              f"donc figees au MILIEU de leurs bornes et identiques sur tous les troncons : "
+              f"{', '.join(missing)}. Ces parametres ne sont pas appris.")
 
 
 
@@ -949,6 +1010,7 @@ class HydroModel(nn.Module):
         recipe = capture_recipe()
         torch.save({
             "state_dict": self.state_dict(),
+            "spatial_field_names": [f.name for f in dataclasses.fields(SpatialParams)],
             "fiche_execution": record,
             "recipe": recipe,
             "init_kwargs": {
@@ -1155,45 +1217,15 @@ class HydroModel(nn.Module):
                     print(f"       ... et {len(gaps) - 12} autre(s)")
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             sd = checkpoint["state_dict"]
-            # Backward compatibility: pad fc_out if old checkpoint had fewer params.
-            # Le rembourrage est a ZERO, ce qui n'est pas neutre et vaut d'etre dit :
-            # une sortie brute nulle rend le MILIEU des bornes apres contrainte, pas
-            # la cible de litterature. Un dT_canopee borne [0, 3] demarre donc a 1.5
-            # sur un depart a chaud, contre 1.0 sur un depart a froid. Ecart benin
-            # tant qu'il est connu ; c'est la meme confusion brut/contraint qui avait
-            # invalide une comparaison d'epoque 0 le 2026-08-27.
-            fc_out_key = "spatial_encoder.fc_out.weight"
-            if fc_out_key in sd:
-                old_n = sd[fc_out_key].shape[0]
-                new_n = self.spatial_encoder.fc_out.out_features
-                if old_n < new_n:
-                    # Pad weight and bias with zeros for new params
-                    pad_w = torch.zeros(new_n - old_n, sd[fc_out_key].shape[1], device=device)
-                    sd[fc_out_key] = torch.cat([sd[fc_out_key], pad_w], dim=0)
-                    bias_key = "spatial_encoder.fc_out.bias"
-                    if bias_key in sd:
-                        pad_b = torch.zeros(new_n - old_n, device=device)
-                        sd[bias_key] = torch.cat([sd[bias_key], pad_b], dim=0)
-                    # Le rembourrage etait SILENCIEUX, et ses consequences invisibles :
-                    # une ligne nulle rend, apres contrainte, le MILIEU des bornes, la
-                    # meme valeur sur tous les troncons. Le parametre est alors une
-                    # constante non apprise que rien ne signale. Mesure du 2026-09-03 :
-                    # les modeles retenus portent 37 ou 38 sorties pour 42 attendues, si
-                    # bien que outv et gasp deploient krec, diff_gel, fs_neige et les deux
-                    # ecarts de canopee en constantes d'etalement NUL -- alors que la
-                    # recette annonce a chaque execution que krec est appris par le champ.
-                    # On nomme desormais les sorties concernees.
-                    try:
-                        from meandre.spatial.field_network import SpatialParams as _SP
-                        names = [f for f in _SP.__dataclass_fields__][:_SP.N_PARAMS]
-                        filled = names[old_n:new_n]
-                    except Exception:
-                        filled = [f"sortie {i}" for i in range(old_n, new_n)]
-                    print(f"[load] AVERTISSEMENT : le point de reprise porte {old_n} "
-                          f"sorties de champ pour {new_n} attendues. Les {new_n - old_n} "
-                          f"manquantes sont remplies de ZEROS, donc figees au MILIEU de "
-                          f"leurs bornes et identiques sur tous les troncons : "
-                          f"{', '.join(filled)}. Ces parametres ne sont pas appris.")
+            # SORTIES DU CHAMP RELUES PAR LEUR NOM (2026-11-07). Un point de reprise recent porte la
+            # liste de ses sorties (`spatial_field_names`) ; un plus ancien porte un prefixe de
+            # LEGACY_FIELD_ORDER. Les lignes de fc_out, les colonnes des codes latents additifs et de
+            # l'entree de la tete de quantiles sont reprises par nom : une sortie retiree est ecartee,
+            # une sortie nouvelle est mise a ZERO, donc au MILIEU de ses bornes apres contrainte, pas a
+            # la cible de litterature, et identique sur tous les troncons (mesure du 2026-09-03 : les
+            # modeles retenus portaient 37 ou 38 sorties pour 42 attendues, et krec, diff_gel,
+            # fs_neige et les retards de canopee y etaient des constantes non apprises).
+            remap_field_outputs(sd, checkpoint.get("spatial_field_names"), self.spatial_encoder)
 
             # Backward compatibility: pad fc1/fc2 if territorial features grew.
             # Use small Kaiming-scaled init (not zeros) so new features have
@@ -1240,9 +1272,8 @@ class HydroModel(nn.Module):
                                "vertical_column.soil.log_k_interflow"):
                 sd.pop(legacy_key, None)
 
-            # Drop any key whose shape mismatches the current model (e.g. when
-            # N_PARAMS grew 36→37 with vsa_b: quantile head changes
-            # input dim). strict=False ignores missing/unexpected keys but NOT
+            # Drop any key whose shape mismatches the current model (the field
+            # outputs are remapped by name above). strict=False ignores missing/unexpected keys but NOT
             # size mismatches → filter them so cross-architecture warm-start works.
             own = self.state_dict()
 
