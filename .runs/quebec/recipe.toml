@@ -360,12 +360,19 @@ territorial_extra = "" # Tables territoriales supplémentaires ajoutées aux att
 disabled = false # Simulation sans prélèvements ni rejets (débits naturalisés).
 
 [lakes]
-distributed = "6.7,171.0,1.0,0.5" # lacs hors reseau : part c, hauteur d'eau mobilisable D (mm, sejour deduit du volume), exposant, hauteur de reference (m) ; valeurs apprises a la graine 7 (R507)
+enabled = true # Lacs hors réseau : une part de la production locale traverse un réservoir de la surface d'eau libre hors lacs routés, qui retient la fonte et la rend l'été (2026-11-04).
+share_coefficient = 6.7 # Part de l'écoulement local qui traverse les lacs, 1 − exp(−c × fraction d'eau libre hors lacs routés) ; valeur apprise à la graine 7 (R507).
+residence_from_volume = true # Séjour déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R), D = mobilizable_depth_mm (2026-11-05).
+mobilizable_depth_mm = 171.0 # Hauteur d'eau mobilisable D des lacs, en mm, lue quand residence_from_volume ; valeur apprise à la graine 7 (R507).
+residence_days = 30.0 # Séjour uniforme, en jours, lu quand residence_from_volume est faux.
+outflow_exponent = 1.0 # Exposant de la loi de vidange q = f k h^beta.
+reference_height_m = 0.5 # Hauteur au-dessus du seuil où le séjour est défini, en mètres.
+share_bounds = [0.5, 50.0] # Bornes douces de share_coefficient.
+mobilizable_depth_bounds_mm = [20.0, 2000.0] # Bornes douces de mobilizable_depth_mm, en mm.
+residence_bounds_days = [2.0, 120.0] # Bornes douces de residence_days, en jours.
+learn = ["share_coefficient", "mobilizable_depth_mm"] # Paramètres appris, parmi share_coefficient et celui du séjour en vigueur (mobilizable_depth_mm ou residence_days).
 spill_bypass = true # Le ruissellement des processus déclarés (débordement commandé par la nappe) contourne les lacs hors réseau ; faux, il les traverse comme le reste de la production (2026-11-05).
-residence_from_volume = true # Séjour des lacs hors réseau déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R) ; le deuxième nombre de lakes.distributed est alors la hauteur d'eau mobilisable D (mm), et ses bornes celles de T (2026-11-05).
 runoff_ratio = 0.5 # Coefficient d'écoulement qui convertit la précipitation moyenne du tronçon en écoulement moyen R, pour le séjour déduit du volume des lacs.
-distributed_bounds = "c:0.5:50,T:20:2000" # Bornes douces des lacs hors réseau, « c:min:max,T:min:max ».
-distributed_learn = "c,T" # Paramètres appris des lacs hors réseau parmi c et T, séparés par des virgules ; vide, aucun.
 
 [routed_lakes]
 area_km2_default = 1.0 # surface d'un lac route sans bloc lac dans troncon.trl, en km2

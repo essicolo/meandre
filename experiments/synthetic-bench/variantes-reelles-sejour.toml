@@ -2,24 +2,24 @@
 
 [[variant]]
 name = "sejour90"
-lakes = "5.0,90.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 90.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "sejour120"
-lakes = "5.0,120.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 120.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "c10-sejour60"
-lakes = "10.0,60.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 10.0, residence_days = 60.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "c10-sejour90"
-lakes = "10.0,90.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 10.0, residence_days = 90.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "sejour60-exp1.5"
-lakes = "5.0,60.0,1.5,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 60.0, outflow_exponent = 1.5, reference_height_m = 0.5 }
 
 [[variant]]
 name = "c20-sejour90"
-lakes = "20.0,90.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 20.0, residence_days = 90.0, outflow_exponent = 1.0, reference_height_m = 0.5 }

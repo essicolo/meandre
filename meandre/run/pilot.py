@@ -748,26 +748,21 @@ if _settings.raw("evaporation.open_water", "0") == "1":
     # Part de l'eau libre hors lacs routes : lue par le reservoir de l'eau libre, ici ou au banc fictif.
     model._open_water_part = torch.where(_lcw["f_water_raw"].float().cpu() > 0, _fw / _lcw["f_water_raw"].float().cpu().clamp(min=1e-6), torch.zeros_like(_fw)).to(DEVICE)
     print(f"[etl] evaporation de l'eau libre par temps sec : fraction {float((_fw * _Alw).sum() / _Alw.sum()):.3f} du domaine")
-    if _settings.get("lakes.distributed"):
-        # LACS HORS RESEAU (lakes.distributed, 2026-11-04) : une part de la production locale traverse
+    if _settings.get("lakes.enabled"):
+        # LACS HORS RESEAU (section [lakes], 2026-11-04) : une part de la production locale traverse
         # un reservoir de la surface d'eau libre hors lacs routes, qui retient la fonte et la rend
         # l'ete (R267-R279, R491) ; le ruissellement des processus declares le contourne (R492).
-        _c_l, _T_l, _b_l, _h_l = (float(x) for x in _settings.get("lakes.distributed").split(","))
-        _bounds_l = {x.split(":")[0]: (float(x.split(":")[1]), float(x.split(":")[2])) for x in _settings.get("lakes.distributed_bounds").split(",")}
-        _learn_l = tuple(x for x in (_settings.get("lakes.distributed_learn") or "").split(",") if x)
-        _R_l = None
-        if _settings.get("lakes.residence_from_volume"):
-            # sejour deduit du volume des lacs (2026-11-05) : R = precipitation moyenne x coefficient d'ecoulement
-            _R_l = model._lakes_forcing_P_mean * float(_settings.get("lakes.runoff_ratio"))
-        model.set_distributed_lakes(_fw.to(DEVICE), _c_l, _T_l, _b_l, _h_l, _bounds_l, learn=_learn_l, runoff_mm_day=_R_l)
-        model._lakes_runoff = _R_l
-        if _R_l is not None:
+        # Sejour deduit du volume des lacs (2026-11-05) : R = precipitation moyenne x coefficient d'ecoulement.
+        model.set_distributed_lakes_from_settings(_fw.to(DEVICE), model._lakes_forcing_P_mean)
+        _c_l = float(_settings.get("lakes.share_coefficient"))
+        _learn_l = _settings.get("lakes.learn")
+        if model._lakes_runoff is not None:
             with torch.no_grad():
                 _Tn = model.distributed_lakes_values()["T"].cpu()
             _sel = _fw > 0.005
-            print(f"[etl] lacs hors reseau : hauteur mobilisable {_T_l:g} mm, sejour deduit par troncon (eau libre > 0,5 %) mediane {float(_Tn[_sel].median()):.0f} j, 10e et 90e centiles {float(_Tn[_sel].quantile(0.1)):.0f} et {float(_Tn[_sel].quantile(0.9)):.0f} j")
+            print(f"[etl] lacs hors reseau : hauteur mobilisable {_settings.get('lakes.mobilizable_depth_mm'):g} mm, sejour deduit par troncon (eau libre > 0,5 %) mediane {float(_Tn[_sel].median()):.0f} j, 10e et 90e centiles {float(_Tn[_sel].quantile(0.1)):.0f} et {float(_Tn[_sel].quantile(0.9)):.0f} j")
         _rd_l = 1.0 - torch.exp(-_c_l * _fw)
-        print(f"[etl] lacs hors reseau : part de la production qui les traverse {float((_rd_l * _Alw).sum() / _Alw.sum()):.2f}, " + (f"hauteur mobilisable {_T_l:g} mm" if _R_l is not None else f"sejour {_T_l:g} j") + f" a {_h_l:g} m, exposant {_b_l:g}, appris : {', '.join(_learn_l) or 'aucun'}")
+        print(f"[etl] lacs hors reseau : part de la production qui les traverse {float((_rd_l * _Alw).sum() / _Alw.sum()):.2f}, " + (f"hauteur mobilisable {_settings.get('lakes.mobilizable_depth_mm'):g} mm" if model._lakes_runoff is not None else f"sejour {_settings.get('lakes.residence_days'):g} j") + f" a {_settings.get('lakes.reference_height_m'):g} m, exposant {_settings.get('lakes.outflow_exponent'):g}, appris : {', '.join(_learn_l) or 'aucun'}")
     if _settings.get("evaporation.open_water_reservoir"):
         # RESERVOIR DE L'EAU LIBRE (2026-11-03) : la pluie sur l'eau libre hors lacs routes passe par
         # un stock au lieu de rejoindre la riviere le jour meme ; part = eau libre hors lacs routes

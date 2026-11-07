@@ -193,6 +193,11 @@ capacity_mm = 65.0 # reglage de l emulateur (R489)
 reference_mm = 80.0 # environ 1,8 fois le 90e centile d ete du stock lent (R489)
 
 [lakes]
-distributed = "5.0,90.0,1.0,0.5" # c, sejour (j), exposant, hauteur de reference (m) : depart au sejour qui baisse la perte a poids figes (R497, R498)
-distributed_bounds = "c:0.5:50,T:2:365"
-distributed_learn = "c,T" # appris : sur le poste, l optimum du sejour est deplace par le deficit de debit de la machine (R498)
+enabled = true
+share_coefficient = 5.0
+residence_days = 90.0 # depart au sejour qui baisse la perte a poids figes (R497, R498)
+outflow_exponent = 1.0
+reference_height_m = 0.5
+share_bounds = [0.5, 50.0]
+residence_bounds_days = [2.0, 365.0]
+learn = ["share_coefficient", "residence_days"] # appris : sur le poste, l optimum du sejour est deplace par le deficit de debit de la machine (R498)

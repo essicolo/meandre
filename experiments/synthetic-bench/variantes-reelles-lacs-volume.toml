@@ -3,20 +3,16 @@
 
 [[variant]]
 name = "volume-D100"
-settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
-lakes = "5.0,100.0,1.0,0.5"
+lakes = { residence_from_volume = true, share_coefficient = 5.0, mobilizable_depth_mm = 100.0, outflow_exponent = 1.0, reference_height_m = 0.5, mobilizable_depth_bounds_mm = [10.0, 5000.0] }
 
 [[variant]]
 name = "volume-D200"
-settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
-lakes = "5.0,200.0,1.0,0.5"
+lakes = { residence_from_volume = true, share_coefficient = 5.0, mobilizable_depth_mm = 200.0, outflow_exponent = 1.0, reference_height_m = 0.5, mobilizable_depth_bounds_mm = [10.0, 5000.0] }
 
 [[variant]]
 name = "volume-D400"
-settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
-lakes = "5.0,400.0,1.0,0.5"
+lakes = { residence_from_volume = true, share_coefficient = 5.0, mobilizable_depth_mm = 400.0, outflow_exponent = 1.0, reference_height_m = 0.5, mobilizable_depth_bounds_mm = [10.0, 5000.0] }
 
 [[variant]]
 name = "volume-c10-D200"
-settings = { "lakes.residence_from_volume" = true, "lakes.distributed_bounds" = "c:0.5:50,T:10:5000" }
-lakes = "10.0,200.0,1.0,0.5"
+lakes = { residence_from_volume = true, share_coefficient = 10.0, mobilizable_depth_mm = 200.0, outflow_exponent = 1.0, reference_height_m = 0.5, mobilizable_depth_bounds_mm = [10.0, 5000.0] }

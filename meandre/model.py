@@ -1061,6 +1061,31 @@ class HydroModel(nn.Module):
                 self.register_buffer(f"lakes_fixed_{field_name}", t, persistent=False)
         self._distributed_lakes = dict(f=f, beta=float(beta), h_ref=float(h_ref), bounds={k2: tuple(float(x) for x in v2) for k2, v2 in bounds.items()}, learn=tuple(learn), runoff=runoff_mm_day)
 
+    # Noms lisibles de la section [lakes] apprenables, vers les noms internes (c, T) que portent
+    # les paramètres stockés lakes_learn_c et lakes_learn_T des points de reprise.
+    LAKES_LEARNABLE = {"share_coefficient": "c", "mobilizable_depth_mm": "T", "residence_days": "T"}
+
+    def set_distributed_lakes_from_settings(self, f, precip_mm_day, learn=None) -> None:
+        """Pose les lacs hors reseau selon la section [lakes] des reglages declares.
+
+        f : fraction d'eau libre hors lacs routes (tenseur n_nodes) ; precip_mm_day : precipitation
+        moyenne du noeud, convertie en ecoulement moyen par lakes.runoff_ratio quand le sejour se
+        deduit du volume. learn : noms lisibles des parametres appris ; None, lakes.learn.
+        Le second parametre interne, T, porte la hauteur mobilisable (mm) si
+        lakes.residence_from_volume, sinon le sejour uniforme (jours), chacun avec ses bornes."""
+        from meandre.utils import settings
+        from_volume = bool(settings.get("lakes.residence_from_volume"))
+        t_name = "mobilizable_depth_mm" if from_volume else "residence_days"
+        t_bounds = "lakes.mobilizable_depth_bounds_mm" if from_volume else "lakes.residence_bounds_days"
+        learn = tuple(settings.get("lakes.learn") if learn is None else learn)
+        for name in learn:
+            if name not in ("share_coefficient", t_name):
+                raise ValueError(f"lakes.learn : '{name}' n'est pas apprenable ici, choisir parmi share_coefficient et {t_name}")
+        bounds = {"c": tuple(settings.get("lakes.share_bounds")), "T": tuple(settings.get(t_bounds))}
+        runoff = precip_mm_day * float(settings.get("lakes.runoff_ratio")) if from_volume else None
+        self.set_distributed_lakes(f, float(settings.get("lakes.share_coefficient")), float(settings.get(f"lakes.{t_name}")), float(settings.get("lakes.outflow_exponent")), float(settings.get("lakes.reference_height_m")), bounds, learn=tuple(self.LAKES_LEARNABLE[n] for n in learn), runoff_mm_day=runoff)
+        self._lakes_runoff = runoff
+
     def distributed_lakes_values(self) -> dict:
         """Valeurs courantes des lacs hors reseau : c, T (jours) et k qui s'en deduit."""
         import math

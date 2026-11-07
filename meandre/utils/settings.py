@@ -117,12 +117,19 @@ SCHEMA: dict[str, Setting] = {
     "evaporation.open_water": Setting("ETL_EVAP_EAU_LIBRE", str, None, "Évaporation de l'eau libre par temps sec (R285, R286)."),
     "evaporation.open_water_reservoir": Setting("MEANDRE_RESERVOIR_EAU_LIBRE", str, None, "Réservoir de la pluie tombée sur l'eau libre hors lacs routés, « T,beta,h_ref » (séjour en jours à la hauteur h_ref en m, exposant de vidange) ; l'évaporation reste prise sur le débit latéral (R285). Exige evaporation.open_water. Absent, la pluie sur l'eau libre rejoint la rivière le jour même (2026-11-03)."),
     "withdrawals.disabled": Setting("ETL_SANS_PRELEV", bool, False, "Simulation sans prélèvements ni rejets (débits naturalisés)."),
-    "lakes.distributed": Setting("MEANDRE_LACS_DIFFUS", str, None, "Lacs hors réseau (HydroModel.set_distributed_lakes), « c,T,beta,h_ref » : part de la production locale qui les traverse 1 − exp(−c · eau libre hors lacs routés), séjour T jours à la hauteur h_ref (m), exposant de vidange beta ; le ruissellement des processus déclarés les contourne. Exige evaporation.open_water. Absent, aucun (2026-11-04)."),
+    "lakes.enabled": Setting("MEANDRE_LACS_HORS_RESEAU", bool, False, "Lacs hors réseau (HydroModel.set_distributed_lakes) : une part de la production locale traverse un réservoir de la surface d'eau libre hors lacs routés, vidé par q = f k h^beta ; le ruissellement des processus déclarés les contourne (lakes.spill_bypass). Exige evaporation.open_water (2026-11-04)."),
+    "lakes.share_coefficient": Setting("MEANDRE_LACS_PART", float, 6.7, "Coefficient c de la part de la production locale qui traverse les lacs hors réseau, 1 − exp(−c × fraction d'eau libre hors lacs routés), sans dimension."),
+    "lakes.residence_from_volume": Setting("MEANDRE_LACS_DIFFUS_VOLUME", bool, False, "Séjour des lacs hors réseau déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R), D = lakes.mobilizable_depth_mm ; faux, séjour uniforme lakes.residence_days (2026-11-05)."),
+    "lakes.mobilizable_depth_mm": Setting("MEANDRE_LACS_HAUTEUR_MOBILISABLE", float, 171.0, "Hauteur d'eau mobilisable D des lacs hors réseau, en mm, lue quand lakes.residence_from_volume est vrai."),
+    "lakes.residence_days": Setting("MEANDRE_LACS_SEJOUR", float, 30.0, "Temps de séjour uniforme des lacs hors réseau à la hauteur de référence, en jours, lu quand lakes.residence_from_volume est faux."),
+    "lakes.outflow_exponent": Setting("MEANDRE_LACS_EXPOSANT", float, 1.0, "Exposant beta de la loi de vidange des lacs hors réseau, q = f k h^beta, sans dimension."),
+    "lakes.reference_height_m": Setting("MEANDRE_LACS_HAUTEUR_REF", float, 0.5, "Hauteur au-dessus du seuil à laquelle le temps de séjour est défini, k = 1 / (T h_ref^(beta − 1)), en mètres."),
+    "lakes.share_bounds": Setting("MEANDRE_LACS_PART_BORNES", tuple, (0.5, 50.0), "Bornes douces (sigmoïde en logarithme) du coefficient lakes.share_coefficient, min et max."),
+    "lakes.mobilizable_depth_bounds_mm": Setting("MEANDRE_LACS_HAUTEUR_BORNES", tuple, (20.0, 2000.0), "Bornes douces de la hauteur mobilisable lakes.mobilizable_depth_mm, en mm."),
+    "lakes.residence_bounds_days": Setting("MEANDRE_LACS_SEJOUR_BORNES", tuple, (2.0, 120.0), "Bornes douces du séjour uniforme lakes.residence_days, en jours."),
+    "lakes.learn": Setting("MEANDRE_LACS_APPRIS", list, (), "Paramètres appris des lacs hors réseau, parmi share_coefficient et celui du séjour en vigueur (mobilizable_depth_mm ou residence_days) ; vide, aucun. Points de reprise : lakes_learn_c et lakes_learn_T."),
     "lakes.spill_bypass": Setting("MEANDRE_LACS_DIFFUS_CONTOURNES", bool, True, "Le ruissellement des processus déclarés (débordement commandé par la nappe) contourne les lacs hors réseau ; faux, il les traverse comme le reste de la production (2026-11-05)."),
-    "lakes.residence_from_volume": Setting("MEANDRE_LACS_DIFFUS_VOLUME", bool, False, "Séjour des lacs hors réseau déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R) ; le deuxième nombre de lakes.distributed est alors la hauteur d'eau mobilisable D (mm), et ses bornes celles de T (2026-11-05)."),
     "lakes.runoff_ratio": Setting("MEANDRE_LACS_DIFFUS_COEF", float, 0.5, "Coefficient d'écoulement qui convertit la précipitation moyenne du tronçon en écoulement moyen R, pour le séjour déduit du volume des lacs."),
-    "lakes.distributed_bounds": Setting("MEANDRE_LACS_DIFFUS_BORNES", str, "c:0.5:50,T:2:120", "Bornes douces des lacs hors réseau, « c:min:max,T:min:max »."),
-    "lakes.distributed_learn": Setting("MEANDRE_LACS_DIFFUS_APPRIS", str, "", "Paramètres appris des lacs hors réseau parmi c et T, séparés par des virgules ; vide, aucun."),
     "evaporation.mod16_snow_scale_mm": Setting("ETL_ET_NEIGE_MM", str, None, "Échelle, en mm, de la pondération du terme MOD16 hors neige, w = exp(−SWE/échelle) ; absent, poids 1."),
     "forcing.synthetic": Setting("MEANDRE_FORCAGE_FICTIF", str, None, "Banc fictif : fichier CSV d'une météo fabriquée (colonnes P, Tmin, Tmax, Rn, u2, ea, une ligne par jour depuis le début du forçage), appliquée telle quelle à tous les tronçons à la place du forçage ; à combiner avec debug.simulate_end. Jamais dans un modèle livré (2026-11-03)."),
     "bench.variants": Setting("MEANDRE_BANC_VARIANTES", str, None, "Banc fictif en un seul processus : fichier TOML des variantes (multiplicateurs du champ, réglages) ; le pilote simule chacune avec son témoin sans orages, puis s'arrête (meandre/probes/synthetic_bench.py)."),
@@ -248,6 +255,9 @@ def _parse(key: str, raw: str):
         return SCHEMA[key].default
     if kind is tuple:
         return tuple(float(x) for x in raw.split(","))
+    if kind is list:
+        # Liste de noms : séparés par des virgules dans l'environnement, rendue en tuple.
+        return tuple(x.strip() for x in raw.split(",") if x.strip())
     return kind(raw)
 
 
@@ -260,6 +270,10 @@ def _from_file(key: str, value):
         raise ValueError(f"réglage {key} : {value!r} n'est pas un booléen")
     if kind is tuple:
         return tuple(float(x) for x in value)
+    if kind is list:
+        if isinstance(value, str) or not all(isinstance(x, str) for x in value):
+            raise ValueError(f"réglage {key} : {value!r} n'est pas une liste de noms")
+        return tuple(value)
     return kind(value) if kind in (int, float) else value
 
 

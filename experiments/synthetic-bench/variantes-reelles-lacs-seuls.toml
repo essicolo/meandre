@@ -2,16 +2,16 @@
 
 [[variant]]
 name = "lacs-sejour30"
-lakes = "5.0,30.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 30.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "lacs-c3-sejour60"
-lakes = "3.0,60.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 3.0, residence_days = 60.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "lacs-c2.5-sejour120"
-lakes = "2.5,120.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 2.5, residence_days = 120.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "lacs-c7.5-sejour30"
-lakes = "7.5,30.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 7.5, residence_days = 30.0, outflow_exponent = 1.0, reference_height_m = 0.5 }

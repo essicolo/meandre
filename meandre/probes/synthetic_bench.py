@@ -107,7 +107,8 @@ def apply_variant(model, v):
     """Pose une variante sur le modèle chargé ; rend la fonction qui la retire.
 
     Clés : `multipliers` (sorties du champ), `settings` (réglages déclarés), `open_water_reservoir`
-    (« T,beta,h_ref »), `lakes` (« c,T,beta,h_ref » des lacs hors réseau, ou « none »), `soil_params`
+    (« T,beta,h_ref »), `lakes` (« none », ou table de clés de la section [lakes] des lacs hors réseau,
+    par exemple `{ share_coefficient = 5.0, residence_days = 60.0 }`), `soil_params`
     (« FORME.cle » = valeur, les clés en _mm converties en mètres, sur les processus déclarés)."""
     from dataclasses import replace
 
@@ -126,16 +127,24 @@ def apply_variant(model, v):
         T, beta, h_ref = (float(x) for x in v["open_water_reservoir"].split(","))
         model.set_open_water_reservoir(model._open_water_part, T, beta, h_ref, evap_lateral=True)
     lakes = getattr(model, "_distributed_lakes", None)
+    lakes_runoff = getattr(model, "_lakes_runoff", None)
     lake_buffers = {n: getattr(model, n) for n in ("lakes_fixed_c", "lakes_fixed_T") if hasattr(model, n)}
+    lake_learned = {n: getattr(model, n) for n in ("lakes_learn_c", "lakes_learn_T") if hasattr(model, n)}
     if v.get("lakes") == "none":
         model._distributed_lakes = None
     elif v.get("lakes"):
-        c, T, beta, h_ref = (float(x) for x in v["lakes"].split(","))
-        bounds = {x.split(":")[0]: (float(x.split(":")[1]), float(x.split(":")[2])) for x in settings.get("lakes.distributed_bounds").split(",")}
-        runoff = getattr(model, "_lakes_runoff", None) if settings.get("lakes.residence_from_volume") else None
-        if settings.get("lakes.residence_from_volume") and runoff is None:
-            runoff = model._lakes_forcing_P_mean * float(settings.get("lakes.runoff_ratio"))
-        model.set_distributed_lakes(model._open_water_f, c, T, beta, h_ref, bounds, runoff_mm_day=runoff)
+        # Table de clés de la section [lakes] (share_coefficient, residence_days...) : posées le temps
+        # de la variante, le reste vient de la recette ; rien n'est appris au banc.
+        for k, value in v["lakes"].items():
+            key = f"lakes.{k}"
+            if key not in settings.SCHEMA:
+                raise ValueError(f"variante {v.get('name')} : clé de lacs inconnue {k}")
+            saved.setdefault(key, settings.get(key))
+            settings.override(key, settings._from_file(key, value), force=True)
+        # Un paramètre appris de la recette primerait sur la valeur fixe de la variante.
+        for n in lake_learned:
+            delattr(model, n)
+        model.set_distributed_lakes_from_settings(model._open_water_f, model._lakes_forcing_P_mean, learn=())
     column = model.vertical_column
     profile = getattr(column, "soil_profile", None)
     if v.get("soil_params") and profile is not None:
@@ -158,7 +167,10 @@ def apply_variant(model, v):
             settings.override(k, value, force=True)
         model._open_water_reservoir = reservoir
         model._distributed_lakes = lakes
+        model._lakes_runoff = lakes_runoff
         for n, t in lake_buffers.items():
+            setattr(model, n, t)
+        for n, t in lake_learned.items():
             setattr(model, n, t)
         column.soil_profile = profile
     return undo

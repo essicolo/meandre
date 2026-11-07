@@ -193,4 +193,8 @@ capacity_mm = 65.0 # reglage de l emulateur (R489)
 reference_mm = 80.0 # environ 1,8 fois le 90e centile d ete du stock lent (R489)
 
 [lakes]
-distributed = "5.0,30.0,1.0,0.5" # c, sejour (j), exposant, hauteur de reference (m) : environ 40 % de la production locale par 10 % d eau libre (R491)
+enabled = true
+share_coefficient = 5.0 # environ 40 % de la production locale par 10 % d eau libre (R491)
+residence_days = 30.0
+outflow_exponent = 1.0
+reference_height_m = 0.5

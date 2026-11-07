@@ -2,20 +2,16 @@
 
 [[variant]]
 name = "sejour180"
-settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
-lakes = "5.0,180.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 180.0, outflow_exponent = 1.0, reference_height_m = 0.5, residence_bounds_days = [2.0, 2000.0] }
 
 [[variant]]
 name = "sejour365"
-settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
-lakes = "5.0,365.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 365.0, outflow_exponent = 1.0, reference_height_m = 0.5, residence_bounds_days = [2.0, 2000.0] }
 
 [[variant]]
 name = "c3-sejour240"
-settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
-lakes = "3.0,240.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 3.0, residence_days = 240.0, outflow_exponent = 1.0, reference_height_m = 0.5, residence_bounds_days = [2.0, 2000.0] }
 
 [[variant]]
 name = "c7.5-sejour180"
-settings = { "lakes.distributed_bounds" = "c:0.5:50,T:2:2000" }
-lakes = "7.5,180.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 7.5, residence_days = 180.0, outflow_exponent = 1.0, reference_height_m = 0.5, residence_bounds_days = [2.0, 2000.0] }

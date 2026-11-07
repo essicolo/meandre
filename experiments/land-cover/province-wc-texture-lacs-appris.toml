@@ -185,7 +185,12 @@ keys = "porosity_1,porosity_2,porosity_3"
 level_keys = "porosity_1,porosity_2,porosity_3"
 
 [lakes]
-distributed = "10.0,200.0,1.0,0.5" # part c, hauteur d'eau mobilisable D (mm), exposant, hauteur de reference (m) (R505)
+enabled = true
+share_coefficient = 10.0 # part de l'ecoulement local qui traverse les lacs (R505)
 residence_from_volume = true # sejour deduit du volume des lacs par troncon
-distributed_bounds = "c:0.5:50,T:20:2000" # bornes de c et de D (mm)
-distributed_learn = "c,T"
+mobilizable_depth_mm = 200.0 # hauteur d'eau mobilisable D (R505)
+outflow_exponent = 1.0
+reference_height_m = 0.5
+share_bounds = [0.5, 50.0]
+mobilizable_depth_bounds_mm = [20.0, 2000.0]
+learn = ["share_coefficient", "mobilizable_depth_mm"]

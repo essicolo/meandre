@@ -7,9 +7,9 @@ settings = { "lakes.spill_bypass" = false }
 [[variant]]
 name = "traverse-sejour60"
 settings = { "lakes.spill_bypass" = false }
-lakes = "5.0,60.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 60.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "traverse-c7.5-sejour30"
 settings = { "lakes.spill_bypass" = false }
-lakes = "7.5,30.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 7.5, residence_days = 30.0, outflow_exponent = 1.0, reference_height_m = 0.5 }

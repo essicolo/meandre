@@ -6,15 +6,15 @@ lakes = "none"
 
 [[variant]]
 name = "lacs-sejour60"
-lakes = "5.0,60.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 5.0, residence_days = 60.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "lacs-c10"
-lakes = "10.0,30.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 10.0, residence_days = 30.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "lacs-c2.5"
-lakes = "2.5,30.0,1.0,0.5"
+lakes = { residence_from_volume = false, share_coefficient = 2.5, residence_days = 30.0, outflow_exponent = 1.0, reference_height_m = 0.5 }
 
 [[variant]]
 name = "porte-cap50"
