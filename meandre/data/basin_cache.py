@@ -845,11 +845,7 @@ class BasinCache:
 
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-            for _, row in df.iterrows():
-                t = date_idx.get(row["date"])
-                n = int(row["node_idx"])
-                if t is not None and n < n_nodes:
-                    et_arr[t, n] = float(row["etr_mm_day"])
+            _scatter_by_date_node(et_arr, df, date_idx, n_nodes, "etr_mm_day")
 
         import torch
         return torch.from_numpy(et_arr).to(device)
@@ -904,11 +900,7 @@ class BasinCache:
         arr = np.full((len(dates), n_nodes), np.nan, dtype=np.float32)
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"]).dt.normalize()
-            for _, row in df.iterrows():
-                t = date_idx.get(row["date"])
-                n = int(row["node_idx"])
-                if t is not None and n < n_nodes:
-                    arr[t, n] = float(row["snow_frac"])
+            _scatter_by_date_node(arr, df, date_idx, n_nodes, "snow_frac")
         import torch
         return torch.from_numpy(arr).to(device)
 
@@ -1474,3 +1466,17 @@ class BasinCache:
             S_gw=torch.zeros(n, dtype=torch.float32, device=device),
             T_water=torch.full((n,), 10.0, dtype=torch.float32, device=device),
         )
+
+
+def _scatter_by_date_node(arr, df, date_idx, n_nodes, column):
+    """Range une table longue (date, node_idx, valeur) dans arr[jour, troncon], en une affectation
+    vectorisee (2026-11-07) : la boucle ligne par ligne prenait plus de trois minutes par territoire
+    pour MOD16. Meme regle qu'elle : dates hors fenetre et troncons hors domaine ignores, et a date et
+    troncon egaux la derniere ligne l'emporte."""
+    import pandas as pd
+    t = df["date"].map(date_idx)
+    n = df["node_idx"].to_numpy()
+    keep = t.notna().to_numpy() & (n < n_nodes)
+    sub = pd.DataFrame({"t": t[keep].astype(np.int64).to_numpy(), "n": n[keep].astype(np.int64), "v": df[column].to_numpy()[keep]})
+    sub = sub.drop_duplicates(["t", "n"], keep="last")
+    arr[sub["t"].to_numpy(), sub["n"].to_numpy()] = sub["v"].to_numpy()
