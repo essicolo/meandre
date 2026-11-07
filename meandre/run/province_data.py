@@ -87,6 +87,13 @@ class HostSeries:
         return torch.device(self._device)
 
 
+def check_host_series(**series):
+    """Refuse une serie jours x troncons qui ne serait pas une HostSeries (None est accepte)."""
+    wrong = [name for name, v in series.items() if v is not None and not isinstance(v, HostSeries)]
+    if wrong:
+        raise TypeError(f"series a garder en memoire vive (HostSeries), recues entieres : {wrong}")
+
+
 def _memmap_forcing(parts, names, device):
     """Concatene le forcage des plateformes dans un fichier sur DISQUE, puis le relit
     en memmap. Ecrit plateforme par plateforme pour ne jamais tenir la province entiere
@@ -435,6 +442,10 @@ def load_domain(names: list[str], lcfg: dict, device: str = "cuda", schema_names
     train_sl = parts[0]["train_data"].train_slice
     val_sl = parts[0]["val_data"].val_slice
     day_of_year = parts[0]["train_data"].day_of_year.to(device)
+
+    # Regle (2026-11-06) : toute serie jours x troncons reste en memoire vive et ne passe sur la carte que
+    # bloc par bloc ; PyTorch ne pagine pas la memoire de la carte, une serie entiere y resterait.
+    check_host_series(forcing=forcing, et_obs=et_obs, swe_obs=swe_obs)
 
     def mk(sl_):
         return TrainingData(
