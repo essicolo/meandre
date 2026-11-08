@@ -2093,7 +2093,10 @@ for _m in range(1, 13):
     _k = _mo == _m
     if _k.sum() < 10:
         continue
-    _vo = np.nansum(_qo_np[_k]); _vs = np.nansum(_qs_np[_k])
+    # Simule et observe sur les MEMES jours mesures (2026-11-08) : sans ce masque, les debits reconstitues retires
+    # (stations.exclude_reconstructed) laissaient le simule compte sur tout l'hiver, d'ou des rapports de 50 a 90.
+    _ok = np.isfinite(_qo_np[_k])
+    _vo = np.nansum(np.where(_ok, _qo_np[_k], np.nan)); _vs = np.nansum(np.where(_ok, _qs_np[_k], np.nan))
     _vol_o[_m - 1], _vol_s[_m - 1] = _vo, _vs
 _tot_o = _vol_o.sum()
 print("[etl] ecart en VOLUME par mois (somme sur stations et annees, m3/s-jours) :")
