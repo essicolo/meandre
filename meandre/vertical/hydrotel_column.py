@@ -737,8 +737,21 @@ class HydrotelColumn(nn.Module):
                     _ef_t = torch.tensor(p["e_frac"], dtype=pb.dtype, device=pb.device)
                 e_max = torch.clamp(diag["etp"], min=0.0) * _ef_t / 1000.0
                 prel = None if gw_withdrawal_mm is None else -gw_withdrawal_mm / 1000.0
+                # CONNECTIVITE VERSANT-RIVIERE (2026-11-09, R515) : l'ecoulement hypodermique n'atteint
+                # la riviere que sur la part c = min(1, h / h_c) du versant connectee par la nappe, h la
+                # charge de la veille au-dessus du lit ; le reste recharge la nappe. Bassin humide, l'eau
+                # d'orage file a la riviere ; bassin sec, elle soutient l'etiage. Bilan ferme.
+                _h_c = float(settings.get("groundwater.connectivity_head_m"))
+                _divert = torch.zeros_like(pb)
+                if _h_c > 0.0:
+                    _head = torch.clamp(torch.full_like(pb, p["z_riv"]) - z, min=0.0)
+                    _conn = torch.clamp(_head / _h_c, max=1.0)
+                    _divert = (1.0 - _conn) * diag["prod_hypo"]
+                    prod = prod - _divert
+                    diag["prod_hypo"] = diag["prod_hypo"] - _divert
+                    recharge_mm = pb + _divert
                 z_new, q_m, e_m = self.free_water_table(
-                    z, pb / 1000.0, sy, torch.ones_like(pb) * _kb_t,
+                    z, (pb + _divert) / 1000.0, sy, torch.ones_like(pb) * _kb_t,
                     torch.full_like(pb, p["z_riv"]), torch.full_like(pb, p["h_ref"]),
                     e_max, torch.full_like(pb, p["z_ext"]), withdrawal=prel)
                 Q_bf = q_m * 1000.0

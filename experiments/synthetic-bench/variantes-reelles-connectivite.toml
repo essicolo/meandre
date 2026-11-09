@@ -1,0 +1,16 @@
+# Banc sur debits reels, 2026-11-09 : connectivite versant-riviere, la part min(1, h / h_c) de l'ecoulement hypodermique atteint la riviere, le reste recharge la nappe (R515). Recette corrigee sans lacs (wctex-s7), poids figes. Signature visee : pente des crues d'orage sur le stock lent (+0,47 observe, +0,13 au temoin) sans perte d'etiage.
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "connectivite-1m"
+settings = { "groundwater.connectivity_head_m" = 1.0 }
+
+[[variant]]
+name = "connectivite-2m"
+settings = { "groundwater.connectivity_head_m" = 2.0 }
+
+[[variant]]
+name = "connectivite-4m"
+settings = { "groundwater.connectivity_head_m" = 4.0 }
