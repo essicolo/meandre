@@ -61,6 +61,7 @@ Hydat_sqlite3_*.zip
 !/.runs/**/*.toml
 !/.runs/**/README*
 !/.runs/**/*.sbatch
+!/.runs/alliance/taches-*.list
 # Les scripts de lancement portent la CONFIGURATION REELLE des executions : jusqu'au
 # 2026-09-03 le fichier que CLAUDE.md designe comme « la reference de tout deploiement »
 # (file_generalisation.sh) n'existait que sur une seule machine, hors de git. Ce sont de

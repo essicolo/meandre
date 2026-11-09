@@ -1,0 +1,5 @@
+# Lacs hors reseau fixes (part 6,7, 171 mm), de zero, deux graines, blocs de 90 et de 365 jours (2026-11-09).
+experiments/land-cover/province-wc-texture-lacs-fixes.toml 7 -lacs-fixes-b90-s7 ETL_CHUNK=90
+experiments/land-cover/province-wc-texture-lacs-fixes.toml 1234 -lacs-fixes-b90-s1234 ETL_CHUNK=90
+experiments/land-cover/province-wc-texture-lacs-fixes.toml 7 -lacs-fixes-b365-s7 ETL_CHUNK=365
+experiments/land-cover/province-wc-texture-lacs-fixes.toml 1234 -lacs-fixes-b365-s1234 ETL_CHUNK=365
