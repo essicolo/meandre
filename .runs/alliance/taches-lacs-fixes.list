@@ -3,3 +3,6 @@ experiments/land-cover/province-wc-texture-lacs-fixes.toml 7 -lacs-fixes-b90-s7 
 experiments/land-cover/province-wc-texture-lacs-fixes.toml 1234 -lacs-fixes-b90-s1234 ETL_CHUNK=90
 experiments/land-cover/province-wc-texture-lacs-fixes.toml 7 -lacs-fixes-b365-s7 ETL_CHUNK=365
 experiments/land-cover/province-wc-texture-lacs-fixes.toml 1234 -lacs-fixes-b365-s1234 ETL_CHUNK=365
+# Temoin : meme recette corrigee sans lacs hors reseau, memes graines, blocs de 365 jours.
+experiments/land-cover/province-wc-texture.toml 7 -temoin-b365-s7 ETL_CHUNK=365
+experiments/land-cover/province-wc-texture.toml 1234 -temoin-b365-s1234 ETL_CHUNK=365
