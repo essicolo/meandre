@@ -46,13 +46,18 @@ cp -r "$D"/derives/auxiliaires/. "$LOCAL/derives/auxiliaires/"
 export MEANDRE_DATA="$LOCAL" MEANDRE_DERIVES="$LOCAL/derives" MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# Copie du code par tache : deux taches ne partagent pas le dossier des points de reprise.
+# Copie du code par tache. Le dossier des points de reprise est un lien vers un dossier propre a la
+# tache sur scratch : le meilleur modele y est ecrit des qu'il s'ameliore, et survit a une tache
+# coupee par la limite de temps (le disque local du noeud est efface a la fin de la tache).
 CODE=$SLURM_TMPDIR/code
 cp -r "$RACINE" "$CODE"
 cd "$CODE"
-mkdir -p .runs/quebec/checkpoints
-cp "$TRAVAIL"/meandre/points-de-reprise/*.pt .runs/quebec/checkpoints/ 2>/dev/null || true
+GARDE="$TRAVAIL/meandre/points-de-reprise/${TAG#-}"
+mkdir -p "$GARDE"
+cp "$TRAVAIL"/meandre/points-de-reprise/*.pt "$GARDE"/ 2>/dev/null || true
+rm -rf .runs/quebec/checkpoints
+ln -s "$GARDE" .runs/quebec/checkpoints
 
 env PYTHONIOENCODING=utf-8 ETL_FORCE=1 $RESTE python -u -m meandre run "$CONFIG" --region quebec --epochs "${ETL_EPOCHS:-32}" --seed "$GRAINE" --tag="$TAG"
-cp .runs/quebec/checkpoints/*"$TAG"* "$TRAVAIL/meandre/points-de-reprise/"
+ls -la "$GARDE"
 echo "fin $(date)"
