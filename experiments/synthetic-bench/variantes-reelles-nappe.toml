@@ -1,0 +1,24 @@
+# Banc sur debits reels, 2026-11-09 : deux mecanismes souterrains jamais eprouves, sur la recette corrigee sans lacs (point de reprise wctex-s7), poids figes. Retroaction de transmissivite : la nappe haute repond vite et fort, la nappe basse lentement (signature visee : pente des crues sur le stock lent, +0,47 observee). Echange souterrain : perte ou gain constant de la nappe, sur le reservoir lent seulement (signature visee : etiage sans toucher aux pointes).
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "transmissivite-2"
+settings = { "groundwater.transmissivity_feedback_mm_per_day" = 2.0, "groundwater.transmissivity_decay_m" = 0.5 }
+
+[[variant]]
+name = "transmissivite-5"
+settings = { "groundwater.transmissivity_feedback_mm_per_day" = 5.0, "groundwater.transmissivity_decay_m" = 0.5 }
+
+[[variant]]
+name = "transmissivite-5-m1"
+settings = { "groundwater.transmissivity_feedback_mm_per_day" = 5.0, "groundwater.transmissivity_decay_m" = 1.0 }
+
+[[variant]]
+name = "echange-perte-0.2"
+settings = { "groundwater.exchange_mm_per_day" = 0.2 }
+
+[[variant]]
+name = "echange-gain-0.2"
+settings = { "groundwater.exchange_mm_per_day" = -0.2 }
