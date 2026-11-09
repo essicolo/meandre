@@ -1210,6 +1210,13 @@ class HydroModel(nn.Module):
         if _rec:
             from meandre.utils.recipe import compare_recipe
             gaps = compare_recipe(_rec)
+            # DONNEES DIFFERENTES DE CELLES DE L'ENTRAINEMENT (2026-11-09, R519) : pendant six semaines,
+            # cet ecart n'a ete qu'une ligne perdue dans le journal. Il arrete desormais l'execution,
+            # sauf si data.on_fingerprint_mismatch vaut « warn » (evaluation croisee voulue).
+            from meandre.utils import settings as _st
+            _data_gaps = [g for g in gaps if g.startswith("domaine :")]
+            if _data_gaps and _st.get("data.on_fingerprint_mismatch") == "error":
+                raise RuntimeError("donnees differentes de celles de l'entrainement : " + " ; ".join(_data_gaps) + " (poser data.on_fingerprint_mismatch = warn pour une evaluation croisee voulue)")
             if gaps:
                 print(f"[load] AVERTISSEMENT recette : {len(gaps)} ecart(s) entre "
                       f"l'environnement de l'entrainement et celui d'aujourd'hui")

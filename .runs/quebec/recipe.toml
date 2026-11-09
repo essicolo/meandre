@@ -355,6 +355,7 @@ exclude_reconstructed = true # debits reconstitues sous la glace retires de la p
 # excluded = (absent) # Stations retirées de la comparaison et de l'entraînement, séparées par des virgules, par exemple une station hors du réseau modélisé (062002, R429).
 
 [data]
+on_fingerprint_mismatch = "error" # un fichier d'entree different de celui de l'entrainement arrete l'execution ; warn pour une evaluation croisee voulue
 withdrawals_table = "withdrawals" # Table des prélèvements lue dans la base de chaque territoire.
 territorial_extra = "" # Tables territoriales supplémentaires ajoutées aux attributs du champ, séparées par des virgules.
 

@@ -35,29 +35,52 @@ class Manifest:
 
     def add(self, key: str, path, origin: str = "", role: str = "") -> Source:
         s = source_of(path, origin, role)
-        self.sources[key] = s
+        # Clé préfixée par le territoire (2026-11-09) : dans un domaine de plusieurs territoires, les
+        # bases et les forçages de chacun s'écrasaient sous la même clé, et seul le dernier était vérifié.
+        self.sources[f"{self.name}_{key}" if self.name else key] = s
         return s
 
     def as_dict(self) -> dict:
         return {k: {"path": s.path, "fingerprint": s.fingerprint, "size": s.size, "modified": s.modified, "origin": s.origin, "role": s.role} for k, s in sorted(self.sources.items())}
 
     def differences(self, saved: dict | None) -> list[str]:
-        """Écarts entre ce manifeste et un dictionnaire sauvegardé (`as_dict`), en phrases."""
+        """Fichiers lus à l'entraînement ET maintenant dont l'empreinte diffère, en phrases.
+
+        La comparaison se fait par nom de fichier, pas par clé : elle vaut d'une machine à l'autre
+        (chemins différents) et pour les manifestes d'avant les clés préfixées par le territoire.
+        Un fichier présent d'un seul côté n'est pas un écart de données."""
         if not saved:
             return []
+        before = {os.path.basename(v.get("path", "")): v for v in saved.values()}
         out = []
-        for k in sorted(set(saved) | set(self.sources)):
-            a, c = saved.get(k), self.sources.get(k)
-            if a is None:
-                out.append(f"domaine : {k} présent maintenant, absent à l'entraînement")
-            elif c is None:
-                out.append(f"domaine : {k} présent à l'entraînement, absent maintenant")
-            elif a.get("fingerprint") != c.fingerprint:
-                out.append(f"domaine : {k} n'a pas la même empreinte qu'à l'entraînement ({os.path.basename(c.path)}, modifié {c.modified} contre {a.get('modified')})")
-        return out
+        for c in sorted(self.sources.values(), key=lambda x: os.path.basename(x.path)):
+            # Les dossiers se comparent par le script entre machines (meandre.run.data_fingerprint) :
+            # leur empreinte a changé de méthode le 2026-11-09 et ferait crier les anciens points de reprise.
+            if os.path.isdir(c.path):
+                continue
+            a = before.get(os.path.basename(c.path))
+            # Une empreinte d'avant le 2026-11-09 a été calculée octet par octet, fichiers texte compris.
+            if a is not None and a.get("fingerprint") != c.fingerprint and not (
+                    Path(c.path).is_file() and a.get("fingerprint") == fingerprint_bytes(c.path)):
+                out.append(f"domaine : {os.path.basename(c.path)} n'a pas la même empreinte qu'à l'entraînement (modifié {c.modified} contre {a.get('modified')})")
+        return sorted(set(out))
+
+
+TEXT_SUFFIXES = frozenset({".csv", ".trl", ".txt", ".config", ".toml", ".json"})
 
 
 def fingerprint(path, max_bytes: int = 4 * 1024 * 1024) -> str:
+    """Empreinte d'un fichier. Un fichier texte se lit sans ses retours chariot (2026-11-09) : la même
+    plateforme copiée sous Windows et sous Linux ne différait que par ses fins de ligne."""
+    p = Path(path)
+    if p.suffix.lower() in TEXT_SUFFIXES:
+        data = p.read_bytes().replace(b"\r", b"")
+        return hashlib.sha1(data + str(len(data)).encode()).hexdigest()[:16]
+    return fingerprint_bytes(p, max_bytes)
+
+
+def fingerprint_bytes(path, max_bytes: int = 4 * 1024 * 1024) -> str:
+    """Empreinte octet par octet : SHA-1 des premiers et derniers mégaoctets plus la taille."""
     p = Path(path)
     h = hashlib.sha1()
     size = p.stat().st_size
@@ -78,10 +101,35 @@ def fingerprint_dir(path, patterns: tuple[str, ...] = ("*",)) -> tuple[str, int,
     size, latest = 0, 0.0
     for f in files:
         st = f.stat()
-        h.update(f"{f.relative_to(p)}|{st.st_size}|{int(st.st_mtime)}".encode())
+        # Contenu et non date (2026-11-09) : une copie sur une autre machine change les dates.
+        h.update(f"{f.relative_to(p).as_posix()}|{fingerprint(f)}".encode())
         size += st.st_size
         latest = max(latest, st.st_mtime)
     return h.hexdigest()[:16], size, datetime.fromtimestamp(latest).isoformat(timespec="seconds") if files else ""
+
+
+# Tables d'une base de territoire que le modèle lit : une table ajoutée par un constructeur (barrages,
+# copies datées des prélèvements) ne change pas le modèle et ne doit pas déclencher d'alerte.
+TABLES_READ = frozenset({"nodes", "edges", "territorial", "territorial_siigsol", "observations", "stations", "modis_et",
+                         "modis_snow", "grace_tws", "snow_obs", "snow_sites", "initial_state", "metadata", "withdrawals"})
+
+
+def fingerprint_duckdb(path) -> str:
+    """Empreinte du CONTENU d'une base DuckDB, table par table (nombre de lignes et somme des
+    hachages de lignes) : deux bases au même contenu écrites différemment ont des fichiers
+    différents, et une empreinte de fichier les distinguerait à tort (2026-11-09)."""
+    import duckdb
+    h = hashlib.sha1()
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        for (table,) in sorted(con.execute("SHOW TABLES").fetchall()):
+            if table not in TABLES_READ:
+                continue
+            n, total = con.execute(f'SELECT count(*), sum(hash(t)) FROM "{table}" t').fetchone()
+            h.update(f"{table}|{n}|{total}".encode())
+    finally:
+        con.close()
+    return h.hexdigest()[:16]
 
 
 def source_of(path, origin: str = "", role: str = "") -> Source:
@@ -90,7 +138,8 @@ def source_of(path, origin: str = "", role: str = "") -> Source:
         fp, size, modified = fingerprint_dir(p)
     else:
         st = p.stat()
-        fp, size, modified = fingerprint(p), st.st_size, datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")
+        fp = fingerprint_duckdb(p) if p.suffix == ".duckdb" else fingerprint(p)
+        size, modified = st.st_size, datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")
     return Source(path=str(p), fingerprint=fp, size=size, modified=modified, origin=origin, role=role)
 
 
@@ -98,9 +147,16 @@ def source_of(path, origin: str = "", role: str = "") -> Source:
 _current: Manifest | None = None
 
 
-def register(manifest: Manifest) -> None:
+def register(manifest: Manifest | None) -> None:
+    """Pose le manifeste du domaine en cours ; les territoires d'un même domaine s'y ajoutent,
+    un territoire déjà présent est remplacé, et None remet à zéro."""
     global _current
-    _current = manifest
+    if manifest is None or _current is None or _current.name == manifest.name:
+        _current = manifest
+        return
+    prefix = f"{manifest.name}_"
+    _current.sources = {k: v for k, v in _current.sources.items() if not k.startswith(prefix)}
+    _current.sources.update(manifest.sources)
 
 
 def current() -> Manifest | None:

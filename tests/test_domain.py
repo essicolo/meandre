@@ -67,7 +67,7 @@ def test_manifest_detects_changed_file(tmp_path):
     m2 = Manifest("t")
     m2.add("attributes", f, "test", "attributes")
     assert any("empreinte" in s for s in m2.differences(saved))
-    assert fingerprint(f) != saved["attributes"]["fingerprint"]
+    assert fingerprint(f) != saved["t_attributes"]["fingerprint"]
 
 
 def test_recipe_carries_the_manifest(tmp_path, monkeypatch):
@@ -79,13 +79,13 @@ def test_recipe_carries_the_manifest(tmp_path, monkeypatch):
     _manifest.register(m)
     try:
         r = capture_recipe()
-        assert r["domain"]["forcing"]["fingerprint"] == fingerprint(f)
+        assert r["domain"]["t_forcing"]["fingerprint"] == fingerprint(f)
         p = write_recipe_toml(tmp_path / "modele.pt", r)
-        assert "[domain.forcing]" in p.read_text(encoding="utf-8")
+        assert "[domain.t_forcing]" in p.read_text(encoding="utf-8")
         f.write_bytes(b"g" * 10)
         m2 = Manifest("t")
         m2.add("forcing", f, "CaSR", "forcing")
         _manifest.register(m2)
-        assert any("domaine : forcing" in e for e in compare_recipe(r))
+        assert any("domaine : forcing.nc" in e for e in compare_recipe(r))
     finally:
         _manifest.register(None)

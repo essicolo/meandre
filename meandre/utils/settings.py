@@ -60,6 +60,7 @@ SCHEMA: dict[str, Setting] = {
     "diagnostics.kept": Setting("MEANDRE_DIAG_KEEP", str, None, "Diagnostics journaliers collectés pendant la simulation, séparés par des virgules (noms internes de la colonne : etr, recharge, q_baseflow...) ; absent, tous. Les autres valent None, ce qui fait tenir une passe provinciale avec diagnostics en mémoire."),
     "diagnostics.retained": Setting("MEANDRE_DIAG_DERIVES", str, None, "Diagnostics gardés avec leur graphe, séparés par des virgules ; absent, tous ceux qu'un terme peut dériver."),
     # -- Données -----------------------------------------------------------------------------
+    "data.on_fingerprint_mismatch": Setting("MEANDRE_EMPREINTES", str, "error", "Au chargement d'un point de reprise, un fichier d'entree dont l'empreinte differe de celle de l'entrainement : error arrete l'execution, warn avertit seulement (evaluation croisee voulue) (2026-11-09)."),
     "data.withdrawals_table": Setting("MEANDRE_WITHDRAWALS_TABLE", str, "withdrawals", "Table des prélèvements lue dans la base de chaque territoire."),
     "data.territorial_extra": Setting("MEANDRE_TERRITORIAL_EXTRA", str, "", "Tables territoriales supplémentaires ajoutées aux attributs du champ, séparées par des virgules."),
     # -- Entraîneur ---------------------------------------------------------------------------
