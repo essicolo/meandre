@@ -225,6 +225,9 @@ evaporation_coefficient = 0.6 # coefficient d'evaporation c_ev, sans dimension
 production_days = 10.0 # duree de restitution du stock au-dessus du volume normal c_prod, en jours
 
 [groundwater]
+transmissivity_feedback_mm_per_day = 0.0 # retroaction de transmissivite de la nappe, ecoulement lateral q0 exp(-z / m) a nappe haute, en mm/j a z = 0 ; 0 l'eteint
+transmissivity_decay_m = 0.5 # profondeur de decroissance m de cette retroaction, en metres
+exchange_mm_per_day = 0.0 # echange souterrain de la nappe, en mm/j : positif perte vers l'aquifere profond ou un bassin voisin, negatif gain ; 0 l'eteint
 aquifer = true
 free_recession = true
 water_table = true

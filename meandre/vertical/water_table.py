@@ -73,17 +73,31 @@ class WaterTable(nn.Module):
             q_base: débit de base moyen sur le pas (m/j).
             e_nappe: évapotranspiration prélevée sur la nappe, moyenne sur le pas (m/j).
         """
+        from meandre.utils import settings
         sub_dt = dt / self.n_substep
         q_cumulative = torch.zeros_like(z)
         e_cumulative = torch.zeros_like(z)
+        # Retroaction de transmissivite (2026-11-09) : quand la nappe remonte dans les horizons
+        # permeables, un ecoulement lateral q0 exp(-z / m) s'ajoute a la loi de Boussinesq, rapide a
+        # nappe haute et negligeable a nappe basse (forme exponentielle de TOPMODEL, Kendall et al.).
+        tf_q0 = float(settings.get("groundwater.transmissivity_feedback_mm_per_day")) * 1e-3
+        tf_m = float(settings.get("groundwater.transmissivity_decay_m"))
+        # Echange souterrain (2026-11-09) : perte (positive) ou gain (negatif) constant de la nappe vers
+        # un aquifere profond ou un bassin voisin, comme X2 de GR4J ; ne touche que le reservoir lent.
+        exchange = float(settings.get("groundwater.exchange_mm_per_day")) * 1e-3
         for _ in range(self.n_substep):
             h = torch.clamp(z_riv - z, min=0.0)
             q = k_b * (h / h_ref).pow(self.exponent)
+            if tf_q0 > 0.0:
+                q = q + tf_q0 * torch.exp(-z / tf_m)
             if e_max is not None:
                 e = e_max * torch.clamp(1.0 - z / z_ext, min=0.0, max=1.0)
             else:
                 e = torch.zeros_like(z)
             output = q + e
+            if exchange != 0.0:
+                # une perte ne vide pas plus que la charge au-dessus du lit ; un gain est toujours possible
+                output = output + (torch.where(h > 0, torch.full_like(z, exchange), torch.zeros_like(z)) if exchange > 0 else torch.full_like(z, exchange))
             if withdrawal is not None:
                 output = output + withdrawal
             # La nappe ne peut pas rendre plus que ce qu'elle contient au-dessus du lit :
