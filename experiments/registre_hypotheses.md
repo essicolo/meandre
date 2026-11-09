@@ -6497,3 +6497,7 @@ La base de la recette de novembre coûte environ 0,06 de perte à code égal (0,
 ## R511 — Entraînée de zéro avec le code actuel, la recette corrigée sans lacs donne 2022-2024 une perte de 0,874, un terme d'étiage de 0,373, un KGE médian de 0,704 (graine 7, 32 époques, Ubuntu, 8 novembre) ; avec lacs 0,876 (R510), avec l'ancien code 0,858 (R461) (2026-11-08) — ÉTABLI, une graine
 
 De zéro, les lacs hors réseau n'apportent rien (0,876 contre 0,874). Le code actuel (mise en régime de 2000, champ à 30 sorties) coûte peut-être 0,016, de l'ordre de l'écart entre graines (0,011, R461). Le gain des affinages avec lacs (R507, R508) n'a pas de témoin : un affinage de 8 époques sans lacs, même code et même départ, est lancé pour dire s'il vient des lacs ou des époques supplémentaires.
+
+## R512 — Témoin de l'affinage : 8 époques sans lacs depuis la recette corrigée (graine 7, même code et même départ que R507) n'améliorent rien, 2022-2024 perte 0,860 contre 0,858 au départ, étiage 0,362, KGE médian 0,702 ; avec lacs, 0,832 (R507) (2026-11-08) — ÉTABLI : le gain de l'affinage avec lacs vient des lacs
+
+Paradoxe ouvert : de zéro, les lacs ne gagnent rien (0,876 contre 0,874, R510, R511), et leurs paramètres appris dérivent (c 12,1, 256 mm contre 6,7 et 171 mm en affinage). Épreuves : affinage avec lacs sur le code actuel depuis le modèle sans lacs de zéro (R511) ; entraînement de zéro avec c et D fixés aux valeurs de l'affinage.
