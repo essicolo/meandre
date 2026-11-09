@@ -106,7 +106,8 @@ def _control_forcing(forcing, dates, storms):
 def apply_variant(model, v):
     """Pose une variante sur le modèle chargé ; rend la fonction qui la retire.
 
-    Clés : `multipliers` (sorties du champ), `settings` (réglages déclarés), `open_water_reservoir`
+    Clés : `multipliers` (sorties du champ), `lake_k_factor` (facteur sur la constante de vidange des
+    lacs routés), `settings` (réglages déclarés), `open_water_reservoir`
     (« T,beta,h_ref »), `lakes` (« none », ou table de clés de la section [lakes] des lacs hors réseau,
     par exemple `{ share_coefficient = 5.0, residence_days = 60.0 }`), `soil_params`
     (« FORME.cle » = valeur, les clés en _mm converties en mètres, sur les processus déclarés)."""
@@ -119,6 +120,9 @@ def apply_variant(model, v):
     for k, factor in (v.get("multipliers") or {}).items():
         mult[k] = mult.get(k, 1.0) * torch.tensor(float(factor))
     spatial_encoder.multipliers = mult or None
+    lake_k_factor = getattr(spatial_encoder, "lake_k_factor", None)
+    if v.get("lake_k_factor") is not None:
+        spatial_encoder.lake_k_factor = float(v["lake_k_factor"])
     saved = {k: settings.get(k) for k in (v.get("settings") or {})}
     for k, value in (v.get("settings") or {}).items():
         settings.override(k, value, force=True)
@@ -163,6 +167,7 @@ def apply_variant(model, v):
 
     def undo():
         spatial_encoder.multipliers = fixed or None
+        spatial_encoder.lake_k_factor = lake_k_factor
         for k, value in saved.items():
             settings.override(k, value, force=True)
         model._open_water_reservoir = reservoir

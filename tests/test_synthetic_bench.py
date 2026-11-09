@@ -37,3 +37,14 @@ def test_control_forcing_removes_only_storm_rain():
     assert float(c[days, :, 0].abs().sum()) == 0.0
     assert float(c[~days, :, 0].sum()) == float(f[~days, :, 0].sum())
     assert torch.equal(c[:, :, 1:], f[:, :, 1:])
+
+
+def test_lake_k_factor_is_set_then_restored():
+    from types import SimpleNamespace
+
+    from meandre.probes.synthetic_bench import apply_variant
+    model = SimpleNamespace(spatial_encoder=SimpleNamespace(), vertical_column=SimpleNamespace())
+    undo = apply_variant(model, {"name": "lacs", "lake_k_factor": 3})
+    assert model.spatial_encoder.lake_k_factor == 3.0
+    undo()
+    assert model.spatial_encoder.lake_k_factor is None

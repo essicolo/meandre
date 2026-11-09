@@ -486,6 +486,11 @@ class HydroModel(nn.Module):
             k_lake_n, beta_lake_n = self.spatial_encoder.lake_params(
                 node_coords, territorial.to_tensor(),
             )
+            # Sonde du banc (variante lake_k_factor) : facteur sur la constante de vidange des lacs
+            # routes ; absent de tout entrainement.
+            _lake_k_factor = getattr(self.spatial_encoder, "lake_k_factor", None)
+            if _lake_k_factor is not None:
+                k_lake_n = k_lake_n * float(_lake_k_factor)
             self.routing._lake_k = k_lake_n
             self.routing._lake_beta = beta_lake_n
         else:

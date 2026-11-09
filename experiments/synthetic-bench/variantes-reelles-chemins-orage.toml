@@ -1,0 +1,29 @@
+# Banc sur debits reels, 2026-11-09 : ou se perd la dependance des orages au stock lent ? Avant routage, la production hypodermique la porte (pente +0,57, observe +0,49) ; l'aire contributive de surface la dilue (+0,23) ; le routage l'efface (+0,03), surtout dans les bassins riches en lacs (-0,15 contre +0,25 observe). Poids figes, modele gele reentraine sur les donnees corrigees.
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "surface-16"
+settings = { "column.saturated_area_exponent" = 16.0 }
+
+[[variant]]
+name = "surface-32"
+settings = { "column.saturated_area_exponent" = 32.0 }
+
+[[variant]]
+name = "lacs-routes-k3"
+lake_k_factor = 3.0
+
+[[variant]]
+name = "lacs-routes-k10"
+lake_k_factor = 10.0
+
+[[variant]]
+name = "muskingum-k05"
+multipliers = { K_musk_hours = 0.5 }
+
+[[variant]]
+name = "surface-32-lacs-k10"
+settings = { "column.saturated_area_exponent" = 32.0 }
+lake_k_factor = 10.0
