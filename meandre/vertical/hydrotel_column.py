@@ -759,11 +759,12 @@ class HydrotelColumn(nn.Module):
                     torch.full_like(pb, p["z_riv"]), torch.full_like(pb, p["h_ref"]),
                     e_max, torch.full_like(pb, p["z_ext"]), withdrawal=prel)
                 Q_bf = q_m * 1000.0
-                S_gw_new = torch.clamp(torch.full_like(pb, p["z_riv"]) - z_new, min=0.0) * sy * 1000.0
-                # Eau tiree sous le lit de la riviere (mm) : le stock est borne a zero et la profondeur
-                # du lendemain repart de ce stock, si bien que ce deficit est efface chaque jour, comme
-                # si l'eau venait de nulle part. Expose pour l'audit du bilan (R528), sans rien changer.
-                diag["gw_deficit_mm"] = torch.clamp(z_new - torch.full_like(pb, p["z_riv"]), min=0.0) * sy * 1000.0
+                # MEMOIRE DU DEFICIT (2026-11-10, R528) : le stock peut devenir negatif quand le pompage
+                # ou l'evapotranspiration tirent la nappe sous le lit de la riviere ; le debit de base
+                # reste nul tant que la recharge n'a pas comble ce deficit. Borne a zero, le stock
+                # effacait chaque jour l'eau tiree sous le lit (80 % du pompage souterrain de la
+                # Chateauguay venait de nulle part).
+                S_gw_new = (torch.full_like(pb, p["z_riv"]) - z_new) * sy * 1000.0
                 # L'eau évaporée depuis la zone saturée est une SORTIE ATMOSPHÉRIQUE : sans
                 # elle au bilan, l'audit de fermeture lirait une fuite du volume de la nappe.
                 etr_water_table = e_m * 1000.0
