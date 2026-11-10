@@ -1,0 +1,9 @@
+# Plan de retrait un par un (2026-11-10) : recette complete, puis sans lacs du versant, sans phenologie des cultures, sans porte commandee par la nappe ; deux graines, blocs de 90 jours, de zero, MOD16 retire.
+experiments/land-cover/retrait-complet.toml 7 -retrait-complet-s7 ETL_CHUNK=90
+experiments/land-cover/retrait-complet.toml 1234 -retrait-complet-s1234 ETL_CHUNK=90
+experiments/land-cover/retrait-sans-lacs.toml 7 -retrait-sans-lacs-s7 ETL_CHUNK=90
+experiments/land-cover/retrait-sans-lacs.toml 1234 -retrait-sans-lacs-s1234 ETL_CHUNK=90
+experiments/land-cover/retrait-sans-cultures.toml 7 -retrait-sans-cultures-s7 ETL_CHUNK=90
+experiments/land-cover/retrait-sans-cultures.toml 1234 -retrait-sans-cultures-s1234 ETL_CHUNK=90
+experiments/land-cover/retrait-sans-porte.toml 7 -retrait-sans-porte-s7 ETL_CHUNK=90
+experiments/land-cover/retrait-sans-porte.toml 1234 -retrait-sans-porte-s1234 ETL_CHUNK=90

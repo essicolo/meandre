@@ -582,6 +582,8 @@ if _tb.get("enabled", False):
     from meandre.spatial.field_network import FIELD_BOUNDS as _FB
     # Domaine (2026-10-16) : textures lues territoire par territoire, dans l'ordre du domaine.
     _tx = r["domain"].texture_conductivity
+    if _tx is None:
+        raise RuntimeError("[field.texture_bounds] demande les conductivites de texture, que l'adaptateur n'a pas pu charger : voir les lignes « conductivite de texture non chargee » plus haut (le 2026-11-10 sur Narval : paquet nuee absent du venv)")
     _fac = float(_tb.get("factor", 3.0))
     for _c in [int(x) for x in _tb.get("layers", [1, 2, 3])]:
         _nm = f"K_sat_{_c}"
