@@ -136,7 +136,7 @@ aux_ema_weight = 0.02 # poids de la nouvelle valeur dans les moyennes mobiles de
 w_nse = 0.0
 w_kge = 1.0
 w_pbias = 0.5
-w_et = 0.4 # MOD16
+w_et = 0.0 # MOD16 retire de la perte le 2026-11-10 (decision d'Essi) : produit de Penman redondant avec l'ETP du modele et peu fiable, de l'avis unanime des hydrologues consultes ; garde au plus en evaluation (R534)
 et_mode = "anomaly" # MOD16 compare centre : la saison, jamais le niveau (R24, 2026-08-21)
 w_tws = 0.0 # GRACE retire : calcule par bloc, il etait eteint a 30 jours et explosait a 90 ; corrige dans le code, non eprouve
 w_tws_clim = 0.0
@@ -278,7 +278,7 @@ impervious_table = "{DERIVES}/auxiliaires/impermeable-worldcover-troncons.parque
 
 [evaporation]
 open_water = true
-mod16_snow_scale_mm = 10.0
+# mod16_snow_scale_mm = (absent) # Poids hors neige du terme MOD16 par NEISIM, sans objet depuis que MOD16 est retire de la perte (2026-11-10).
 # open_water_reservoir = (absent) # Réservoir de la pluie tombée sur l'eau libre hors lacs routés, « T,beta,h_ref » (séjour en jours à la hauteur h_ref en m, exposant de vidange) ; l'évaporation reste prise sur le débit latéral (R285).
 
 [forcing]
