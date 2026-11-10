@@ -1733,11 +1733,16 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         # prelevement souterrain net : il quitte la nappe sans passer par la riviere (R527)
         _gwp = (_DIAG.gw_withdrawal.cpu().numpy().sum(axis=0)
                 if getattr(_DIAG, "gw_withdrawal", None) is not None else 0.0)
+        # eau tiree sous le lit de la riviere, effacee chaque jour par la borne du stock : une
+        # entree sans origine physique (R528)
+        _gwd = (_DIAG.gw_deficit.cpu().numpy().sum(axis=0)
+                if getattr(_DIAG, "gw_deficit", None) is not None else 0.0)
         _sor = _etr.sum(axis=0) + _lat.sum(axis=0) + _evmh + _sub + _gwp
-        _err = _ent - _sor - _dS
+        _err = _ent + _gwd - _sor - _dS
         _rel = _err / np.clip(_ent, 1e-9, None)
         print("[etl] BILAN D'EAU de la colonne, cumul sur toute la simulation (mm) :")
         print(f"        precipitation      {np.nanmean(_ent):10.0f}")
+        print(f"        eau sous le lit    {np.nanmean(_gwd):10.0f}  (deficit de nappe efface chaque jour)")
         print(f"        ETR                {np.nanmean(_etr.sum(axis=0)):10.0f}")
         print(f"        production         {np.nanmean(_lat.sum(axis=0)):10.0f}")
         print(f"        evap. milieu humide{np.nanmean(_evmh):10.0f}")

@@ -109,6 +109,7 @@ class SimDiagnostics:
     water_table_depth: Tensor | None = None
     etr_water_table: Tensor | None = None
     gw_withdrawal: Tensor | None = None  # prelevement souterrain net (mm/j, positif quand on retire)
+    gw_deficit: Tensor | None = None  # eau tiree sous le lit, effacee par la borne du stock (mm/j)
     # PROFONDEUR D'EAU DANS LE TRONÇON, en metres (2026-09-22). Manning en section large :
     # h = (Q n / (w racine(pente)))^(3/5). C'est l'observable de l'altimetrie satellitaire,
     # qui mesure une elevation de surface libre et non un debit. L'ELEVATION absolue
