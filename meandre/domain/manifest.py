@@ -46,23 +46,30 @@ class Manifest:
     def differences(self, saved: dict | None) -> list[str]:
         """Fichiers lus à l'entraînement ET maintenant dont l'empreinte diffère, en phrases.
 
-        La comparaison se fait par nom de fichier, pas par clé : elle vaut d'une machine à l'autre
-        (chemins différents) et pour les manifestes d'avant les clés préfixées par le territoire.
-        Un fichier présent d'un seul côté n'est pas un écart de données."""
+        La comparaison se fait par clé (territoire et rôle du fichier), qui vaut d'une machine à
+        l'autre. Pour un manifeste d'avant les clés préfixées par le territoire, elle se rabat sur le
+        nom de fichier, seulement quand ce nom est unique : les quatorze territoires ont chacun leur
+        `troncon.trl`, et comparer par nom les confondait (2026-11-09). Un fichier présent d'un seul
+        côté n'est pas un écart de données."""
         if not saved:
             return []
-        before = {os.path.basename(v.get("path", "")): v for v in saved.values()}
+        by_name = {}
+        for v in saved.values():
+            by_name.setdefault(os.path.basename(v.get("path", "")), []).append(v)
         out = []
-        for c in sorted(self.sources.values(), key=lambda x: os.path.basename(x.path)):
+        for key, c in sorted(self.sources.items()):
             # Les dossiers se comparent par le script entre machines (meandre.run.data_fingerprint) :
             # leur empreinte a changé de méthode le 2026-11-09 et ferait crier les anciens points de reprise.
             if os.path.isdir(c.path):
                 continue
-            a = before.get(os.path.basename(c.path))
+            a = saved.get(key)
+            if a is None:
+                same_name = by_name.get(os.path.basename(c.path), [])
+                a = same_name[0] if len(same_name) == 1 else None
             # Une empreinte d'avant le 2026-11-09 a été calculée octet par octet, fichiers texte compris.
             if a is not None and a.get("fingerprint") != c.fingerprint and not (
                     Path(c.path).is_file() and a.get("fingerprint") == fingerprint_bytes(c.path)):
-                out.append(f"domaine : {os.path.basename(c.path)} n'a pas la même empreinte qu'à l'entraînement (modifié {c.modified} contre {a.get('modified')})")
+                out.append(f"domaine : {key} ({os.path.basename(c.path)}) n'a pas la même empreinte qu'à l'entraînement (modifié {c.modified} contre {a.get('modified')})")
         return sorted(set(out))
 
 

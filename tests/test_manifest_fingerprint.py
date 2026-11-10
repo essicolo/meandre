@@ -31,3 +31,21 @@ def test_differences_by_file_name_and_legacy_bytes(tmp_path):
     assert m.differences(legacy) == []
     changed = {"attributes": {"path": "/autre/machine/territorial-raw-QC.csv", "fingerprint": "0" * 16}}
     assert len(m.differences(changed)) == 1
+
+
+def test_same_file_name_in_two_territories_is_not_a_difference(tmp_path):
+    saved, m = {}, None
+    for reg, content in (("gasp", b"gaspesie"), ("mont", b"monteregie")):
+        (tmp_path / reg).mkdir()
+        f = tmp_path / reg / "troncon.trl"
+        f.write_bytes(content)
+        t = Manifest(reg)
+        t.add("trl", f)
+        saved.update(t.as_dict())
+        if m is None:
+            m = t
+        else:
+            m.sources.update(t.sources)
+    assert m.differences(saved) == []
+    saved["mont_trl"] = dict(saved["mont_trl"], fingerprint="0" * 16)
+    assert len(m.differences(saved)) == 1
