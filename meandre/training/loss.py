@@ -646,19 +646,24 @@ class CompositeKGELoss(nn.Module):
 
 
 def rolling_mean(x, window: int):
-    """Moyenne glissante causale sur l'axe TEMPS (axe 0), fenêtre en pas de temps.
+    """Moyenne glissante PROSPECTIVE sur l'axe TEMPS (axe 0) : au jour d, moyenne des jours d à
+    d + fenêtre − 1.
 
-    Sert à apparier l'ETR simulée AUX COMPOSITES MOD16A2GF, qui sont des moyennes sur
-    8 jours posées sur le seul jour de début de composite (bug d'appariement corrigé le
-    2026-08-10 : on comparait une moyenne de 8 jours à une valeur journalière). Les
-    `fenetre - 1` premiers pas sont laissés tels quels faute d'historique.
+    Sert à apparier l'ETR simulée AUX COMPOSITES MOD16A2GF, qui sont des moyennes sur 8 jours
+    posées sur le jour de DÉBUT du composite (bug d'appariement corrigé le 2026-08-10 : on
+    comparait une moyenne de 8 jours à une valeur journalière). Jusqu'au 2026-11-10 la moyenne
+    était causale (jours d − 7 à d) : la simulation était comparée avec une semaine de retard,
+    environ 0,2 mm/j d'erreur au printemps et à l'automne. En fin de série, la fenêtre est
+    tronquée aux jours disponibles.
     """
-    if window <= 1 or x.dim() < 1 or x.shape[0] < window:
+    if window <= 1 or x.dim() < 1 or x.shape[0] < 2:
         return x
-    c = torch.nn.functional.avg_pool1d(
-        x.transpose(0, -1).unsqueeze(0), kernel_size=window, stride=1,
-        padding=0, count_include_pad=False).squeeze(0).transpose(0, -1)
-    return torch.cat([x[:window - 1], c], dim=0)[:x.shape[0]]
+    n = x.shape[0]
+    s = torch.cat([torch.zeros_like(x[:1]), torch.cumsum(x, dim=0)], dim=0)
+    start = torch.arange(n, device=x.device)
+    stop = torch.clamp(start + window, max=n)
+    count = (stop - start).to(x.dtype).reshape(-1, *([1] * (x.dim() - 1)))
+    return (s[stop] - s[start]) / count
 
 
 class HydroLoss(nn.Module):

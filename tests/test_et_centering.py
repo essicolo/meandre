@@ -49,3 +49,12 @@ def test_snow_free_weight_excludes_winter_from_means():
     tr._et_reference_epoch_end()
     assert abs(float(tr._et_obs_base) - 3.2) < 1e-5
     assert abs(float(tr._et_sim_base) - 3.0) < 1e-5
+
+
+def test_observed_reference_uses_training_period_only():
+    """La moyenne de MOD16 ne lit pas les jours apres la periode d'entrainement (2026-11-10)."""
+    tr = _trainer_factice()
+    obs = torch.cat([torch.full((90, 2), 1.0), torch.full((30, 2), 5.0)])
+    data = types.SimpleNamespace(et_obs=obs, train_slice=slice(0, 90))
+    tr._center_et(torch.ones(90, 2), obs[:90], data, t0=0)
+    assert torch.allclose(tr._et_obs_base, torch.full((2,), 1.0))

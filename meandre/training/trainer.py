@@ -950,6 +950,12 @@ class Trainer:
             # son poids (jours x troncons, environ 1 Go pour la province) faisaient manquer la memoire.
             eo = getattr(data.et_obs, "_host", data.et_obs)
             eo = (eo if torch.is_tensor(eo) else torch.from_numpy(np.ascontiguousarray(eo))).detach().cpu()
+            # Moyenne de MOD16 sur la SEULE periode d'entrainement, comme la moyenne simulee
+            # (2026-11-10) : la serie va jusqu'en 2024 et sa moyenne entiere lisait la validation et
+            # l'evaluation (ecart de 0,001 a 0,004 mm/j, mais une fuite).
+            _ts = getattr(data, "train_slice", None)
+            if _ts is not None and _ts.stop is not None:
+                eo = eo[:max(int(_ts.stop) - int(_ts.start or 0), 1)]
             if _W is not None:
                 _s0 = data.train_slice.start
                 _wo = _W[_s0:_s0 + eo.shape[0]].cpu().to(eo.dtype) * (~torch.isnan(eo))

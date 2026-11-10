@@ -50,10 +50,11 @@ def test_rolling_mean_matches_composites():
     x = torch.arange(20.0).reshape(20, 1).repeat(1, 3)
     y = rolling_mean(x, 8)
     assert y.shape == x.shape
-    assert float(y[7, 0]) == pytest.approx(float(x[:8, 0].mean()))
-    assert float(y[19, 2]) == pytest.approx(float(x[12:20, 2].mean()))
+    # Le composite posé au jour d couvre les jours d à d + 7 (2026-11-10).
+    assert float(y[0, 0]) == pytest.approx(float(x[:8, 0].mean()))
+    assert float(y[12, 2]) == pytest.approx(float(x[12:20, 2].mean()))
+    assert float(y[17, 1]) == pytest.approx(float(x[17:, 1].mean()))  # fin de série : fenêtre tronquée
     assert torch.equal(rolling_mean(x, 1), x)          # fenêtre 1 = sans effet
-    assert torch.equal(rolling_mean(x[:3], 8), x[:3])  # série trop courte
 
 
 # ── OCCUPATION DU SOL : elle doit ATTEINDRE la physique ─────────────────────
