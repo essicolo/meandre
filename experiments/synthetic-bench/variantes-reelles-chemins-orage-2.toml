@@ -1,0 +1,20 @@
+# Banc sur debits reels, 2026-11-10 : la dependance des orages au stock lent se perd entre l'apport lateral et la station (R525) ; ni l'aire contributive, ni la vitesse des lacs routes, ni celle du routage n'y sont pour rien (R524). Pistes : la pluie sur l'eau libre hors lacs routes, envoyee a la riviere le jour meme quel que soit l'etat du bassin, et l'evaporation des lacs routes par temps sec. Poids figes, modele de R523.
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "eau-libre-sejour-10"
+open_water_reservoir = "10,1.0,0.5"
+
+[[variant]]
+name = "eau-libre-sejour-30"
+open_water_reservoir = "30,1.0,0.5"
+
+[[variant]]
+name = "eau-libre-sejour-100"
+open_water_reservoir = "100,1.0,0.5"
+
+[[variant]]
+name = "lacs-routes-sans-evaporation"
+settings = { "routing.lake_evaporation" = false }

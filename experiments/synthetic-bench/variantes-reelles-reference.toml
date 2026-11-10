@@ -1,0 +1,4 @@
+# Banc sur debits reels, 2026-11-10 : reference seule, lancee sans prelevements ni rejets (ETL_SANS_PRELEV=1).
+
+[[variant]]
+name = "sans-prelevements"
