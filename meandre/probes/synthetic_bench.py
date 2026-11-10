@@ -107,7 +107,8 @@ def apply_variant(model, v):
     """Pose une variante sur le modèle chargé ; rend la fonction qui la retire.
 
     Clés : `multipliers` (sorties du champ), `lake_k_factor` (facteur sur la constante de vidange des
-    lacs routés), `settings` (réglages déclarés), `open_water_reservoir`
+    lacs routés), `withdrawal_scale` ([surface, souterrain], facteurs sur les prélèvements
+    nets), `settings` (réglages déclarés), `open_water_reservoir`
     (« T,beta,h_ref »), `lakes` (« none », ou table de clés de la section [lakes] des lacs hors réseau,
     par exemple `{ share_coefficient = 5.0, residence_days = 60.0 }`), `soil_params`
     (« FORME.cle » = valeur, les clés en _mm converties en mètres, sur les processus déclarés)."""
@@ -123,6 +124,10 @@ def apply_variant(model, v):
     lake_k_factor = getattr(spatial_encoder, "lake_k_factor", None)
     if v.get("lake_k_factor") is not None:
         spatial_encoder.lake_k_factor = float(v["lake_k_factor"])
+    withdrawal_scale = getattr(model, "withdrawal_scale", None)
+    if v.get("withdrawal_scale") is not None:
+        surface, groundwater = (float(x) for x in v["withdrawal_scale"])
+        model.withdrawal_scale = (surface, groundwater)
     saved = {k: settings.get(k) for k in (v.get("settings") or {})}
     for k, value in (v.get("settings") or {}).items():
         settings.override(k, value, force=True)
@@ -168,6 +173,7 @@ def apply_variant(model, v):
     def undo():
         spatial_encoder.multipliers = fixed or None
         spatial_encoder.lake_k_factor = lake_k_factor
+        model.withdrawal_scale = withdrawal_scale
         for k, value in saved.items():
             settings.override(k, value, force=True)
         model._open_water_reservoir = reservoir

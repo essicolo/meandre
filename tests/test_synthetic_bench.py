@@ -48,3 +48,24 @@ def test_lake_k_factor_is_set_then_restored():
     assert model.spatial_encoder.lake_k_factor == 3.0
     undo()
     assert model.spatial_encoder.lake_k_factor is None
+
+
+def test_withdrawal_scale_multiplies_surface_and_groundwater_separately():
+    import torch
+
+    from meandre.routing.withdrawals import ScaledWithdrawals, WithdrawalData
+    base = WithdrawalData(net=torch.ones(3, 2), net_gw=torch.full((3, 2), 2.0))
+    w = ScaledWithdrawals(base, 0.5, 3.0)
+    assert torch.equal(w.net_withdrawal(1), torch.full((2,), 0.5))
+    assert torch.equal(w.gw_withdrawal(1), torch.full((2,), 6.0))
+
+
+def test_withdrawal_scale_variant_is_set_then_restored():
+    from types import SimpleNamespace
+
+    from meandre.probes.synthetic_bench import apply_variant
+    model = SimpleNamespace(spatial_encoder=SimpleNamespace(), vertical_column=SimpleNamespace())
+    undo = apply_variant(model, {"name": "x", "withdrawal_scale": [2, 0]})
+    assert model.withdrawal_scale == (2.0, 0.0)
+    undo()
+    assert model.withdrawal_scale is None

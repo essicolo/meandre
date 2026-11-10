@@ -86,3 +86,25 @@ class WithdrawalData:
         """Create a zero-withdrawal instance (naturalized baseline)."""
         z = torch.zeros(n_timesteps, n_reaches, device=device)
         return cls(net=z, net_gw=torch.zeros_like(z))
+
+
+class ScaledWithdrawals:
+    """Prélèvements nets multipliés par un facteur, de surface et souterrain séparément.
+
+    Sonde de l'analyse de sensibilité (variante `withdrawal_scale` du banc) : enveloppe n'importe
+    quelle source de prélèvements qui expose `net_withdrawal(t)` et `gw_withdrawal(t)`. Un facteur
+    multiplie le prélèvement NET, rejets compris."""
+
+    def __init__(self, base, surface: float = 1.0, groundwater: float = 1.0) -> None:
+        self._base = base
+        self._surface = float(surface)
+        self._groundwater = float(groundwater)
+
+    def net_withdrawal(self, t: int) -> Tensor:
+        return self._base.net_withdrawal(t) * self._surface
+
+    def gw_withdrawal(self, t: int) -> Tensor:
+        return self._base.gw_withdrawal(t) * self._groundwater
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)

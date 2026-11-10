@@ -1,0 +1,32 @@
+# Analyse de sensibilite, famille A (prelevements et rejets), 2026-11-10 : facteurs sur les prelevements NETS d'io-eau, surface et souterrain separement, [surface, souterrain]. Bassin isole (ETL_SUBBASIN), poids figes.
+
+[[variant]]
+name = "x1"
+
+[[variant]]
+name = "x0"
+withdrawal_scale = [0.0, 0.0]
+
+[[variant]]
+name = "x0.5"
+withdrawal_scale = [0.5, 0.5]
+
+[[variant]]
+name = "x2"
+withdrawal_scale = [2.0, 2.0]
+
+[[variant]]
+name = "x5"
+withdrawal_scale = [5.0, 5.0]
+
+[[variant]]
+name = "surface-seule"
+withdrawal_scale = [1.0, 0.0]
+
+[[variant]]
+name = "nappe-seule"
+withdrawal_scale = [0.0, 1.0]
+
+[[variant]]
+name = "nappe-x5"
+withdrawal_scale = [1.0, 5.0]

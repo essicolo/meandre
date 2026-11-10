@@ -438,6 +438,12 @@ class HydroModel(nn.Module):
         """
         n_timesteps = forcing.shape[0]
         state = initial_state
+        # Sonde du banc (variante withdrawal_scale) : facteurs sur les prelevements nets de surface et
+        # souterrains ; absent de tout entrainement.
+        _withdrawal_scale = getattr(self, "withdrawal_scale", None)
+        if _withdrawal_scale is not None:
+            from meandre.routing.withdrawals import ScaledWithdrawals
+            withdrawals = ScaledWithdrawals(withdrawals, *_withdrawal_scale)
 
         # Static spatial params (computed once per simulate call).
         spatial_params = self.spatial_encoder(
