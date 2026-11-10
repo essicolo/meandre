@@ -156,6 +156,20 @@ class PhenologyModulator(nn.Module):
             shape = self.shape(gdd_cum)                                   # ∈ [0, 1]
         return shape
 
+    def crop_kc(self, gdd_cum: Tensor, K_c_base: Tensor, params, doy: int | None = None, lat_deg: Tensor | None = None) -> Tensor:
+        """K_c effectif des grandes cultures (2026-11-10) : même dormance et même plateau que la
+        forme principale (k_c_min, k_c_max_factor appris), mais levée et sénescence propres,
+        déclarées (« levée en degrés-jours, seuil de longueur du jour en heures, largeur de la
+        levée, largeur de la sénescence ») et non apprises. Un maïs ou un soya lève fin mai et
+        ne couvre le sol qu'en juillet (FAO-56) ; la forme des feuillus monte dès la mi-mai."""
+        e, c, s1, s2 = (float(x) for x in params)
+        ramp = torch.sigmoid((gdd_cum - e) / s1)
+        if doy is not None and lat_deg is not None and doy > int(settings.get("phenology_constants.senescence_start_doy")):
+            senesc = torch.sigmoid((self.day_length(lat_deg, doy) - c) / s2)
+        else:
+            senesc = torch.ones_like(ramp)
+        return self.kc_from_shape(ramp * senesc, K_c_base)
+
     def forward(self, gdd_cum: Tensor, K_c_base: Tensor, doy: int | None = None, lat_deg: Tensor | None = None) -> Tensor:
         """Modulateur K_c effectif au temps t.
 
@@ -163,7 +177,10 @@ class PhenologyModulator(nn.Module):
         K_c_base : (N,) — K_c de référence par nœud (sortie NeRF)
         Returns  : K_c_eff même forme que gdd_cum, en respectant l'unité de K_c_base
         """
-        shape = self.shape_value(gdd_cum, doy, lat_deg)
+        return self.kc_from_shape(self.shape_value(gdd_cum, doy, lat_deg), K_c_base)
+
+    def kc_from_shape(self, shape: Tensor, K_c_base: Tensor) -> Tensor:
+        """K_c effectif d'une forme saisonnière de 0 (dormance) à 1 (plateau)."""
         # Bornes déclarées de [phenology_constants] : K_c_min entre 0,05 et 1, K_c_max_factor entre 0,5 et 2 ; la borne basse de K_c_min sert aussi de plancher au K_c effectif.
         _kmin_lo, _kmin_hi = settings.get("phenology_constants.kc_min_bounds")
         _kmax_lo, _kmax_hi = settings.get("phenology_constants.kc_max_factor_bounds")

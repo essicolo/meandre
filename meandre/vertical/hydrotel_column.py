@@ -1066,8 +1066,15 @@ class HydrotelColumn(nn.Module):
         _shapeless = None
         if _cl_pheno is not None and getattr(self, "_kc_dynamic", None) is not None and _kc_base is not None:
             _shapeless = etp * (_kc_base / torch.clamp(self._kc_dynamic, min=1e-6))
+        # Grandes cultures (phenology.crop_params, 2026-11-10) : leur propre forme saisonniere.
+        _kc_crop = getattr(self, "_kc_dynamic_crop", None)
+        _crop_classes = set(str(settings.get("phenology.crop_classes")).split(",")) if _kc_crop is not None else set()
+        _crop_etp = (etp * (_kc_crop / torch.clamp(self._kc_dynamic, min=1e-6))
+                     if _kc_crop is not None and getattr(self, "_kc_dynamic", None) is not None else None)
         for (pct, jbp_t, leaf_t, root_t), _field_name in zip(pheno, _field_names):
             _etp_cl = _shapeless if (_shapeless is not None and _field_name not in _cl_pheno) else etp
+            if _crop_etp is not None and _field_name in _crop_classes:
+                _etp_cl = _crop_etp
             etp_classes.append(_etp_cl * pct / 1000.0)
             roots.append(_interp1d(d, jbp_t, root_t).expand_as(P))
             leaves.append(_interp1d(d, jbp_t, leaf_t).expand_as(P))

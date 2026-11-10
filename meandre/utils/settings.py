@@ -100,6 +100,8 @@ SCHEMA: dict[str, Setting] = {
     "priors.sigma_z2": Setting("MEANDRE_PRIOR_SIGMA_Z2", float, 0.693, "Écart-type en logarithme du prior d'épaisseur de la couche 2 : ln 2 ; non mesuré."),
     "priors.sigma_z3": Setting("MEANDRE_PRIOR_SIGMA_Z3", float, 0.916, "Écart-type en logarithme du prior d'épaisseur de la couche 3 (épaisseur des dépôts SIGEOM) : ln 2,5 ; non mesuré."),
     "phenology.classes": Setting("MEANDRE_PHENOLOGIE_CLASSES", str, None, "Classes d'occupation modulées, séparées par des virgules ; absent, toutes."),
+    "phenology.crop_params": Setting("MEANDRE_PHENOLOGIE_CULTURES", tuple, None, "Forme saisonnière propre aux grandes cultures, « levée (degrés-jours), seuil de longueur du jour (h), largeur de la levée, largeur de la sénescence », non apprise ; même dormance et même plateau que la forme principale. Absent, les cultures suivent la forme principale (2026-11-10)."),
+    "phenology.crop_classes": Setting("MEANDRE_PHENOLOGIE_CLASSES_CULTURES", str, "agri", "Classes d'occupation qui suivent la forme des grandes cultures (phenology.crop_params), séparées par des virgules."),
     # -- Pilote régional : réglages lus sous forme de texte, comme dans l'environnement --------
     "snow.wet_bulb_threshold": Setting("ETL_SEUIL_TWB", str, None, "Seuil de partage pluie-neige au thermomètre mouillé, en degrés (Stull 2011) ; absent, seuil sur la température de l'air."),
     "snow.seasonal_melt_amplitude": Setting("ETL_MELT_SAISON", str, None, "Amplitude de la modulation saisonnière du facteur de fonte, s(j) = 1 + a sin(2π(j−81)/365) ; absent ou 0, clone fidèle."),

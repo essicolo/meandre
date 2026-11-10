@@ -639,6 +639,12 @@ class HydroModel(nn.Module):
                     if self.phenology_classes is not None:
                         self.vertical_column.phenology_classes = self.phenology_classes
                     self.vertical_column._kc_dynamic = self.phenology_modulator(state.gdd_cum, spatial_params.K_c, doy=_doy_p, lat_deg=node_coords[:, 1])
+                    # Forme propre aux grandes cultures (phenology.crop_params), lue a chaque pas pour
+                    # que le banc puisse la faire varier ; absente, les cultures suivent la forme principale.
+                    _crop = settings.get("phenology.crop_params")
+                    self.vertical_column._kc_dynamic_crop = (
+                        self.phenology_modulator.crop_kc(state.gdd_cum, spatial_params.K_c, _crop, doy=_doy_p, lat_deg=node_coords[:, 1])
+                        if _crop else None)
                 vc_out = self.vertical_column.column_step(
                     enriched, state,
                     doy=day_of_year[t] if day_of_year is not None else None,

@@ -1,0 +1,16 @@
+# Banc sur debits reels, 2026-11-10 : les grandes cultures suivent la phenologie des feuillus de l'Outaouais (levee a 57 degres-jours, mi-mai) ; un mais ou un soya leve fin mai et ne couvre le sol qu'en juillet (FAO-56). ECOSTRESS et MOD16 voient en juin des troncons cultives moins evaporants que les forestiers, meandre l'inverse. Forme propre aux cultures, levee a 300, 500 et 700 degres-jours (base 10 degres), poids figes.
+
+[[variant]]
+name = "base"
+
+[[variant]]
+name = "cultures-levee-300"
+settings = { "phenology.crop_params" = [300.0, 11.82, 80.0, 0.9] }
+
+[[variant]]
+name = "cultures-levee-500"
+settings = { "phenology.crop_params" = [500.0, 11.82, 100.0, 0.9] }
+
+[[variant]]
+name = "cultures-levee-700"
+settings = { "phenology.crop_params" = [700.0, 11.82, 100.0, 0.9] }
