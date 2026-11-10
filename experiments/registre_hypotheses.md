@@ -6595,3 +6595,7 @@ MOD16 reste lisible en évaluation, jamais comme cible. La sonde de gradient pro
 À poids figés, moins d'ET en juin fait monter le volume, que le reste du modèle, entraîné avec l'ancienne forme, ne compense pas. La forme est déclarée (`[phenology] crop_params`, commit 5c12e60) et éteinte par défaut. ECOSTRESS donnait, tronçon par tronçon dans la même région, −0,44 en juin ; le modèle actuel +0,48 (analyse de l'autre agent, `meandre-analyse/analyses/ecostress.py`). Script `.data/etr_juin_cultures.py`.
 
 ## R536 — Réadaptée, la phénologie propre aux grandes cultures est neutre sur la perte et ne dégrade rien : affinage de 4 époques sur la Châteauguay seule (214 tronçons, 5 stations évaluées), depuis le modèle de R523, MOD16 retiré, graine 7 ; 2022-2024, témoin / levée des cultures à 500 degrés-jours : perte 0,828 / 0,833, terme d'étiage 0,407 / 0,404, KGE médian 0,696 / 0,725, biais de volume 0,047 / 0,049 ; 15 à 24 min par époque sur Ubuntu (2026-11-10) — ÉTABLI, une graine ; écart de perte sous le bruit entre graines (0,011), gardée comme physique plus sensée (R535)
+
+## R537 — La perte de la dépendance des orages au stock lent n'est pas un artefact de la mesure : en remplaçant l'accroissement au-dessus du débit de la veille par l'écoulement rapide d'une séparation de Lyne-Hollick (alpha 0,925), modèle de R523, 2019-2024, pente sur le stock lent : débit observé +0,34 / +0,30, débit simulé +0,05 / +0,03, apport latéral +0,14 / +0,15 (veille / écoulement rapide) (2026-11-10) — ÉTABLI SANS SIMULER
+
+Script `.data/pente_ecoulement_rapide.py`.
