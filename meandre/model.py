@@ -540,7 +540,7 @@ class HydroModel(nn.Module):
                              # profond ne change plus rien. On ne pouvait meme pas
                              # verifier si le front simule est realiste (2026-08-27).
                              "prof_gel_cm", "temps_non_traite",
-                             "profondeur_nappe_m", "etr_nappe")}
+                             "profondeur_nappe_m", "etr_nappe", "gw_withdrawal_mm")}
             if return_diagnostics else {}
         )
         # Lake storage state (m3); only allocated when lake nodes exist.
@@ -813,7 +813,7 @@ class HydroModel(nn.Module):
                 step["etr"] = vc_out.diag["etr"]
                 step["snowmelt"] = vc_out.diag["snowmelt"]
                 for _k in ("etr_mh_mm", "wet_vol_mm", "subl_mm", "prof_gel_cm", "temps_non_traite",
-                           "profondeur_nappe_m", "etr_nappe"):
+                           "profondeur_nappe_m", "etr_nappe", "gw_withdrawal_mm"):
                     if _k in vc_out.diag:
                         step[_k] = vc_out.diag[_k]
                 for _k in ("prod_surf", "prod_hypo", "prod_base", "etr1", "etr2", "etr3"):
@@ -945,6 +945,7 @@ class HydroModel(nn.Module):
             untreated_time=stack_diagnostic("temps_non_traite"),
             water_table_depth=stack_diagnostic("profondeur_nappe_m"),
             etr_water_table=stack_diagnostic("etr_nappe"),
+            gw_withdrawal=stack_diagnostic("gw_withdrawal_mm"),
             q_lateral=stack_diagnostic("q_lateral"),
             q_upstream=stack_diagnostic("q_upstream"),
             recharge=stack_diagnostic("recharge"),

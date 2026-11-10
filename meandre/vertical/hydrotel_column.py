@@ -737,6 +737,10 @@ class HydrotelColumn(nn.Module):
                     _ef_t = torch.tensor(p["e_frac"], dtype=pb.dtype, device=pb.device)
                 e_max = torch.clamp(diag["etp"], min=0.0) * _ef_t / 1000.0
                 prel = None if gw_withdrawal_mm is None else -gw_withdrawal_mm / 1000.0
+                # Prélèvement souterrain net (mm/j, positif quand on retire) : il quitte la nappe sans
+                # passer par la rivière ; l'audit du bilan le compte parmi les sorties (R527).
+                if gw_withdrawal_mm is not None:
+                    diag["gw_withdrawal_mm"] = -gw_withdrawal_mm
                 # CONNECTIVITE VERSANT-RIVIERE (2026-11-09, R515) : l'ecoulement hypodermique n'atteint
                 # la riviere que sur la part c = min(1, h / h_c) du versant connectee par la nappe, h la
                 # charge de la veille au-dessus du lit ; le reste recharge la nappe. Bassin humide, l'eau
@@ -764,6 +768,8 @@ class HydrotelColumn(nn.Module):
                 diag["profondeur_nappe_m"] = z_new
             else:
                 Q_bf, S_gw_new = self.aquifer(pb, state.S_gw, kgw, gw_withdrawal=gw_withdrawal_mm)
+                if gw_withdrawal_mm is not None:
+                    diag["gw_withdrawal_mm"] = -gw_withdrawal_mm
             prod = prod - pb + Q_bf
             diag["prod_base"] = Q_bf
             diag["lateral_mm"] = prod

@@ -1730,7 +1730,10 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         # sublimation (opt-in) : sortie atmospherique au meme titre que l'ETR
         _sub = (_DIAG.sublimation.cpu().numpy().sum(axis=0)
                 if getattr(_DIAG, "sublimation", None) is not None else 0.0)
-        _sor = _etr.sum(axis=0) + _lat.sum(axis=0) + _evmh + _sub
+        # prelevement souterrain net : il quitte la nappe sans passer par la riviere (R527)
+        _gwp = (_DIAG.gw_withdrawal.cpu().numpy().sum(axis=0)
+                if getattr(_DIAG, "gw_withdrawal", None) is not None else 0.0)
+        _sor = _etr.sum(axis=0) + _lat.sum(axis=0) + _evmh + _sub + _gwp
         _err = _ent - _sor - _dS
         _rel = _err / np.clip(_ent, 1e-9, None)
         print("[etl] BILAN D'EAU de la colonne, cumul sur toute la simulation (mm) :")
@@ -1738,6 +1741,7 @@ if os.environ.get("ETL_BILAN", "0") == "1":
         print(f"        ETR                {np.nanmean(_etr.sum(axis=0)):10.0f}")
         print(f"        production         {np.nanmean(_lat.sum(axis=0)):10.0f}")
         print(f"        evap. milieu humide{np.nanmean(_evmh):10.0f}")
+        print(f"        prelevement nappe  {np.nanmean(_gwp):10.0f}")
         print(f"        variation de stock {np.nanmean(_dS):10.0f}")
         print(f"        ERREUR             {np.nanmean(_err):10.0f}  "
               f"({100*np.nanmean(_rel):+.2f} % de la precipitation)")
