@@ -425,7 +425,7 @@ if _settings.raw("snow.wet_bulb_threshold") is not None:
     model.vertical_column.split_mode = "wet_bulb"
     model.vertical_column.t_neige_seuil = float(_settings.raw("snow.wet_bulb_threshold"))
     print(f"[etl] partage pluie/neige au BULBE HUMIDE, seuil Twb "
-          f"{float(_settings.raw("snow.wet_bulb_threshold")):+.2f} degres (Stull 2011, e_a du forcage)")
+          f"{float(_settings.raw('snow.wet_bulb_threshold')):+.2f} degres (Stull 2011, e_a du forcage)")
 if _settings.raw("snow.seasonal_melt_amplitude") is not None:
     # Modulation saisonniere du facteur de fonte (R32). Un degre-jour constant absorbe
     # le cycle annuel de radiation ; cale sur la crue, il fond trop en novembre-decembre
