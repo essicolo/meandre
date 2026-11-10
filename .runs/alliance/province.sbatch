@@ -11,7 +11,7 @@
 # Le domaine provincial entier est copie sur le disque local du noeud ; une carte A100 tient des
 # blocs de 365 jours, que la carte de 8 Go d'Ubuntu refuse (chantier 10).
 #SBATCH --job-name=meandre-province
-#SBATCH --time=14:00:00
+#SBATCH --time=20:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96000M
 #SBATCH --gres=gpu:1
@@ -45,6 +45,11 @@ cp "$D"/quebec/cache/forcage-*casr-brut*.npy "$LOCAL/quebec/cache/" 2>/dev/null 
 cp -r "$D"/derives/auxiliaires/. "$LOCAL/derives/auxiliaires/"
 export MEANDRE_DATA="$LOCAL" MEANDRE_DERIVES="$LOCAL/derives" MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# Cache de compilation partage sur scratch (2026-11-10) : sans lui, chaque tache recompilait les noyaux
+# dans le disque temporaire de son noeud, environ 30 minutes avant la premiere epoque ; une epoque en
+# regime prend environ 30 minutes sur l'A100, d'ou la reservation de 20 heures pour 32 epoques.
+export TORCHINDUCTOR_CACHE_DIR="$TRAVAIL/meandre/cache-inductor"
+mkdir -p "$TORCHINDUCTOR_CACHE_DIR"
 
 # Copie du code par tache. Le dossier des points de reprise est un lien vers un dossier propre a la
 # tache sur scratch : le meilleur modele y est ecrit des qu'il s'ameliore, et survit a une tache
