@@ -31,6 +31,25 @@ PERIODS = [("ssp245", "reference", 1991, 2020), ("ssp245", "ssp245", 2041, 2070)
 VARIABLES = {"pr": (86400.0, 0.0), "tasmin": (1.0, -273.15), "tasmax": (1.0, -273.15)}
 
 
+def valid(values):
+    """Un bloc est valide si chaque jour porte le masque terre-mer attendu (environ 32 % de mailles
+    sans valeur dans la boîte) : le serveur renvoie parfois un bloc entier de zéros sans erreur
+    (constaté le 2026-11-11 : tasmax 1991-1995 et pr 2011-2015 de BCC-CSM2-MR)."""
+    nan_frac = np.isnan(values).reshape(values.shape[0], -1).mean(axis=1)
+    return bool((np.abs(nan_frac - 0.3168) < 0.01).all())
+
+
+def block(ds, var, a, b):
+    """Bloc d'années a à b, redemandé jusqu'à cinq fois s'il est invalide."""
+    for attempt in range(5):
+        x = ds[[var]].isel(time=slice((a - 1950) * 365, (b - 1950 + 1) * 365), rlat=RLAT, rlon=RLON).load()
+        if valid(x[var].values):
+            return x
+        print(f"{var} {a}-{b} : bloc invalide, nouvelle requête", flush=True)
+        time.sleep(30)
+    raise RuntimeError(f"{var} {a}-{b} : bloc invalide après cinq requêtes")
+
+
 def datasets():
     xml = urllib.request.urlopen(f"{ROOT}/catalog/{PATH}/catalog.xml", timeout=120).read().decode()
     return re.findall(r'urlPath="([^"]+\.ncml)"', xml)
@@ -59,7 +78,7 @@ def main():
                     try:
                         ds = xr.open_dataset(f"{ROOT}/dodsC/{by_key[(model, source)]}", decode_times=False)
                         # Requêtes de cinq ans : une seule de trente ans dépasserait la limite du serveur.
-                        blocks = [ds[[var]].isel(time=slice((a - 1950) * 365, (min(a + 4, y1) - 1950 + 1) * 365), rlat=RLAT, rlon=RLON).load() for a in range(y0, y1 + 1, 5)]
+                        blocks = [block(ds, var, a, min(a + 4, y1)) for a in range(y0, y1 + 1, 5)]
                         sub = xr.concat(blocks, dim="time").drop_vars("time")
                         sub[var] = sub[var] * scale + offset
                         sub[var].attrs = {"units": "mm/d" if var == "pr" else "degC"}
