@@ -1,0 +1,38 @@
+# Analyse de sensibilite sur le modele fige, famille C (occupation du sol, mode physique seule : les
+# fractions changent dans la colonne, le champ spatial garde ses attributs d'origine), 2026-11-11.
+# Part de la classe source de chaque troncon transferee a la classe cible. Bassin isole, poids figes.
+
+[[variant]]
+name = "x1"
+
+[[variant]]
+name = "deboisement-10"
+land_cover = { source = "forest", target = "agriculture", share = 0.10 }
+
+[[variant]]
+name = "deboisement-25"
+land_cover = { source = "forest", target = "agriculture", share = 0.25 }
+
+[[variant]]
+name = "deboisement-50"
+land_cover = { source = "forest", target = "agriculture", share = 0.50 }
+
+[[variant]]
+name = "reboisement-25"
+land_cover = { source = "agriculture", target = "forest", share = 0.25 }
+
+[[variant]]
+name = "reboisement-50"
+land_cover = { source = "agriculture", target = "forest", share = 0.50 }
+
+[[variant]]
+name = "urbanisation-10"
+land_cover = { source = "agriculture", target = "urban", share = 0.10 }
+
+[[variant]]
+name = "urbanisation-30"
+land_cover = { source = "agriculture", target = "urban", share = 0.30 }
+
+[[variant]]
+name = "sans-lacs"
+lakes = "none"

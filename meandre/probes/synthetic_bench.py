@@ -155,6 +155,9 @@ def apply_variant(model, v):
             delattr(model, n)
         model.set_distributed_lakes_from_settings(model._open_water_f, model._lakes_forcing_P_mean, learn=())
     column = model.vertical_column
+    land_cover = getattr(column, "_land_cover", None)
+    if v.get("land_cover"):
+        column._land_cover = moved_land_cover(land_cover, **v["land_cover"])
     profile = getattr(column, "soil_profile", None)
     if v.get("soil_params") and profile is not None:
         procs = []
@@ -184,7 +187,36 @@ def apply_variant(model, v):
         for n, t in lake_learned.items():
             setattr(model, n, t)
         column.soil_profile = profile
+        column._land_cover = land_cover
     return undo
+
+
+# Groupes de fractions brutes d'occupation déplacés ensemble ; les sous-classes de forêt suivent leur
+# part du total.
+LAND_COVER_GROUPS = {"forest": ("f_forest_raw", "f_forest_conifer_raw", "f_forest_deciduous_raw", "f_forest_mixed_raw"), "agriculture": ("f_agriculture_raw",), "urban": ("f_urban_raw",)}
+
+
+def moved_land_cover(lc, source, target, share):
+    """Copie des fractions d'occupation où la part `share` du groupe `source` de chaque tronçon passe
+    au groupe `target` (analyse de sensibilité, famille C, mode physique seule : le champ spatial
+    garde ses attributs d'origine). Le premier nom d'un groupe est son total ; un gain de forêt se
+    répartit entre ses sous-classes selon leurs parts, en feuillus là où il n'y en a aucune."""
+    if lc is None:
+        raise ValueError("scénario d'occupation sans occupation du sol posée (set_land_cover)")
+    out = dict(lc)
+    src, tgt = LAND_COVER_GROUPS[source], LAND_COVER_GROUPS[target]
+    moved = float(share) * lc[src[0]]
+    for k in src:
+        if k in lc:
+            out[k] = lc[k] * (1.0 - float(share))
+    out[tgt[0]] = lc[tgt[0]] + moved
+    subs = [k for k in tgt[1:] if k in lc]
+    if subs:
+        total = sum(lc[k] for k in subs)
+        for k in subs:
+            weight = torch.where(total > 0, lc[k] / total.clamp(min=1e-9), torch.full_like(total, 1.0 if k == "f_forest_deciduous_raw" else 0.0))
+            out[k] = lc[k] + moved * weight
+    return out
 
 
 def perturbed_forcing(forcing, spec):
