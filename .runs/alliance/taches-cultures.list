@@ -1,0 +1,3 @@
+# Recette complete avec la phenologie des cultures reellement active (R543, 2026-11-11) : deux graines, blocs de 90 jours, de zero, MOD16 retire.
+experiments/land-cover/retrait-complet.toml 7 -cultures-s7 ETL_CHUNK=90
+experiments/land-cover/retrait-complet.toml 1234 -cultures-s1234 ETL_CHUNK=90

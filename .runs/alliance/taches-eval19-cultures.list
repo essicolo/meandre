@@ -1,0 +1,3 @@
+# Evaluation 2019-2024 (pente des orages sur le stock lent) de la recette complete avec cultures, ETL_EPOCHS=0 (2026-11-11).
+experiments/land-cover/retrait-complet.toml 7 -eval19-cultures-s7 ETL_WARM_FROM=/home/atlas01/scratch/meandre/points-de-reprise/cultures-s7/best-quebec-etl-cultures-s7.pt ETL_DUMP_Q=/home/atlas01/scratch/meandre/evaluations/q19-cultures-s7.npz ETL_HELDOUT=2019-01-01,2024-12-31
+experiments/land-cover/retrait-complet.toml 1234 -eval19-cultures-s1234 ETL_WARM_FROM=/home/atlas01/scratch/meandre/points-de-reprise/cultures-s1234/best-quebec-etl-cultures-s1234.pt ETL_DUMP_Q=/home/atlas01/scratch/meandre/evaluations/q19-cultures-s1234.npz ETL_HELDOUT=2019-01-01,2024-12-31
