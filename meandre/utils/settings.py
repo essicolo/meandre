@@ -243,6 +243,9 @@ SCHEMA: dict[str, Setting] = {
 # Sections lues par le pilote lui-même et transmises au modèle : `configure` ne les lit pas,
 # et la valeur transmise prime sur l'alias d'environnement, qui ne sert qu'en son absence.
 PILOT_SECTIONS = frozenset({"phenology"})
+# Clés d'une section du pilote que le pilote ne lit pas et que le paquet lit par `get` : elles se
+# résolvent depuis le fichier comme les autres réglages.
+PACKAGE_KEYS_IN_PILOT_SECTIONS = frozenset({"phenology.crop_params", "phenology.crop_classes"})
 
 _configured: dict[str, object] = {}
 
@@ -299,7 +302,10 @@ def configure(sections: dict | None) -> list[str]:
     for key, s in SCHEMA.items():
         section, name = key.split(".", 1)
         raw = os.environ.get(s.env)
-        if section in PILOT_SECTIONS:
+        # Une section du pilote ([phenology]) est lue par le pilote lui-même, sauf les clés que
+        # seul le paquet lit (PACKAGE_KEYS_IN_PILOT_SECTIONS) : les sauter faisait ignorer en
+        # silence `[phenology] crop_params` du fichier (corrigé le 2026-11-11).
+        if section in PILOT_SECTIONS and key not in PACKAGE_KEYS_IN_PILOT_SECTIONS:
             continue
         if raw is not None:
             _configured[key] = _parse(key, raw)
