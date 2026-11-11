@@ -1,5 +1,5 @@
 """Télécharge les sorties journalières du MRCC5 piloté par CMIP6 (ensemble d'Ouranos, grille NAM-12,
-environ 12 km), découpées à une boîte couvrant le Québec méridional, par OPeNDAP depuis le serveur
+environ 12 km), découpées à l'emprise des tronçons du domaine de meandre, par OPeNDAP depuis le serveur
 THREDDS d'Ouranos (sans authentification).
 
 Variables : celles qu'il faut pour les six entrées de la colonne (précipitation, températures minimale
@@ -23,9 +23,10 @@ import xarray as xr
 ROOT = "https://esgf.ouranos.ca/thredds"
 BASE = "mrcc5-cmip6/CORDEX-CMIP6/DD/NAM-12/OURANOS"
 VARIABLES = ["pr", "tasmin", "tasmax", "rsds", "rsus", "rlds", "rlus", "sfcWind", "huss"]
-# Boîte du Québec méridional (44,5 à 63° N, 80 à 57° O) dans la grille tournée NAM-12, mesurée sur un
-# fichier du 2026-11-11 : 8,5 % du domaine.
-RLAT, RLON = slice(291, 490), slice(382, 558)
+# Boîte de la grille tournée NAM-12 qui couvre les 27 834 tronçons du domaine de meandre (43,3 à 53,1° N,
+# 81,3 à 55,8° O) avec un quart de degré de marge, mesurée le 2026-11-11 : chaque tronçon a une maille à
+# moins de 0,09° ; rien hors de cette emprise n'est téléchargé.
+RLAT, RLON = slice(276, 417), slice(394, 573)
 
 
 def links(path):
