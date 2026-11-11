@@ -1574,7 +1574,7 @@ if os.environ.get("ETL_DUMP_REACH"):
     # ce qui est arrive le jour meme avec les nappes mesurees. Environ 105 Mo par variable et
     # par region en float32. Le cache principal, lui, reste leger pour la carte et le rapport.
     _daily = {}
-    for _att, _name in (("recharge", "recharge"), ("etr", "etr"), ("swe", "swe"),
+    for _att, _name in (("recharge", "recharge"), ("etr", "etr"), ("etp", "etp"), ("swe", "swe"),
                        ("q_baseflow", "debit_base"), ("s_gw", "stock_nappe"),
                        ("wet_vol", "stock_mh"), ("etr_mh", "etr_mh"),
                        ("theta1", "theta1"), ("theta2", "theta2"), ("theta3", "theta3"),
