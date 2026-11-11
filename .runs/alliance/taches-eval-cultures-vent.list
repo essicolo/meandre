@@ -1,0 +1,3 @@
+# Evaluation 2022-2024 de la recette complete avec cultures, a soumettre avec ETL_EPOCHS=0 apres taches-cultures.list (2026-11-11).
+experiments/land-cover/cultures-vent.toml 7 -eval-cultures-vent-s7 ETL_WARM_FROM=/home/atlas01/scratch/meandre/points-de-reprise/cultures-vent-s7/best-quebec-etl-cultures-vent-s7.pt ETL_DUMP_Q=/home/atlas01/scratch/meandre/evaluations/q-cultures-vent-s7.npz
+experiments/land-cover/cultures-vent.toml 1234 -eval-cultures-vent-s1234 ETL_WARM_FROM=/home/atlas01/scratch/meandre/points-de-reprise/cultures-vent-s1234/best-quebec-etl-cultures-vent-s1234.pt ETL_DUMP_Q=/home/atlas01/scratch/meandre/evaluations/q-cultures-vent-s1234.npz

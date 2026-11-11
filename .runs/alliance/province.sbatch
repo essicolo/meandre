@@ -40,7 +40,7 @@ source "$HOME/venv-meandre/bin/activate"
 LOCAL=$SLURM_TMPDIR/donnees
 D=$PROJET/meandre/donnees
 mkdir -p "$LOCAL/quebec/cache" "$LOCAL/derives/auxiliaires"
-cp "$D"/quebec/*.duckdb "$D"/quebec/forcing-*-casr-brut.nc "$D"/quebec/*.parquet "$LOCAL/quebec/"
+cp "$D"/quebec/*.duckdb "$D"/quebec/forcing-*-casr-brut*.nc "$D"/quebec/*.parquet "$LOCAL/quebec/"
 cp "$D"/quebec/cache/forcage-*casr-brut*.npy "$LOCAL/quebec/cache/" 2>/dev/null || true
 cp -r "$D"/derives/auxiliaires/. "$LOCAL/derives/auxiliaires/"
 export MEANDRE_DATA="$LOCAL" MEANDRE_DERIVES="$LOCAL/derives" MEANDRE_PLATEFORMES="$PROJET/meandre/plateformes"

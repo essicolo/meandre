@@ -1,0 +1,3 @@
+# Recette complete avec la phenologie des cultures reellement active et vent en m/s (R543, 2026-11-11) : deux graines, blocs de 90 jours, de zero, MOD16 retire.
+experiments/land-cover/cultures-vent.toml 7 -cultures-vent-s7 ETL_CHUNK=90
+experiments/land-cover/cultures-vent.toml 1234 -cultures-vent-s1234 ETL_CHUNK=90

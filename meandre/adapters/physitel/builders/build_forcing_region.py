@@ -133,7 +133,9 @@ if __name__ == "__main__":
     Tmean = (Tmin + Tmax) / 2.0
     e_a = 0.6108 * np.exp(17.27 * TD / (TD + 237.3))
     R_n = (((1 - ALBEDO) * FB - (EMIS * SIGMA * (Tmean + 273.15)**4 - FI)) * 0.0864).clip(lower=0.0)
-    u2 = UVC * 0.748
+    # Vent de CaSR en noeuds : converti en m/s avant le passage de 10 m a 2 m (oublie jusqu'au 2026-11-11,
+    # u2 valait 1,94 fois le vent reel ; voir fix_forcing_wind.py).
+    u2 = UVC * 0.514444 * 0.748
     Pv = P.reindex(idx).values
     # QC_CASR_BRUT=1 (2026-10-01, decision d'Essi sur conseil d'Ouranos) : precipitation CaSR
     # telle quelle, sans calage de volume ; avec DRIZZLE_H=0, aucun dé-crachinage non plus.

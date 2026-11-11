@@ -4,7 +4,7 @@ THREDDS d'Ouranos (sans authentification).
 
 Variables : celles qu'il faut pour les six entrées de la colonne (précipitation, températures minimale
 et maximale, rayonnements descendants et montants de courtes et grandes longueurs d'onde pour le
-rayonnement net, vent à 10 m, humidité spécifique pour la pression de vapeur).
+rayonnement net, vent à 10 m, humidité spécifique et pression de surface pour la pression de vapeur).
 
 Un fichier par fichier source de cinq ans, compressé ; un fichier déjà présent est sauté (reprise).
 
@@ -22,7 +22,7 @@ import xarray as xr
 
 ROOT = "https://esgf.ouranos.ca/thredds"
 BASE = "mrcc5-cmip6/CORDEX-CMIP6/DD/NAM-12/OURANOS"
-VARIABLES = ["pr", "tasmin", "tasmax", "rsds", "rsus", "rlds", "rlus", "sfcWind", "huss"]
+VARIABLES = ["pr", "tasmin", "tasmax", "rsds", "rsus", "rlds", "rlus", "sfcWind", "huss", "ps"]
 # Boîte de la grille tournée NAM-12 qui couvre les 27 834 tronçons du domaine de meandre (43,3 à 53,1° N,
 # 81,3 à 55,8° O) avec un quart de degré de marge, mesurée le 2026-11-11 : chaque tronçon a une maille à
 # moins de 0,09° ; rien hors de cette emprise n'est téléchargé.
