@@ -1162,9 +1162,9 @@ if _settings.get("bench.real_variants"):
     _qo_b_src = _qo_full if _fold_test is not None else td.q_obs
     _qo_b = _qo_b_src[np.flatnonzero(_sl_b)[0] - td.train_slice.start : np.flatnonzero(_sl_b)[-1] - td.train_slice.start + 1].cpu().numpy()
 
-    def _bench_q():
+    def _bench_q(forcing=None):
         with torch.no_grad():
-            _Qb, _ = model.simulate(forcing=FORCING, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
+            _Qb, _ = model.simulate(forcing=FORCING if forcing is None else forcing, initial_state=HydroState.zeros(n_nodes, device=DEVICE),
                                     graph=td.graph, node_coords=td.node_coords, territorial=td.territorial,
                                     withdrawals=td.withdrawals, day_of_year=td.day_of_year)
         return _Qb[_slt_b][:, td.station_idx].cpu().numpy(), _qo_b
@@ -1189,7 +1189,7 @@ if _settings.get("bench.real_variants"):
                 parts[k_].append(w_ * float(f_(qo_t[v_, s_], qs_t[v_, s_])))
         tot = sum(np.mean(x) for x in parts.values())
         return f"perte {tot:.4f} | " + " | ".join(f"{k_} {np.mean(x):.4f}" for k_, x in parts.items()) + f" | KGE median {np.median(kges):.4f}"
-    run_real_variants(_bench_q, model, r["times"][_sl_b], r.get("station_ids", []), _settings.get("bench.real_variants"), _settings.get("bench.output"), score=_bench_score)
+    run_real_variants(_bench_q, model, r["times"][_sl_b], r.get("station_ids", []), _settings.get("bench.real_variants"), _settings.get("bench.output"), score=_bench_score, forcing=FORCING, forcing_dates=r["times"])
     raise SystemExit(0)
 with torch.no_grad():
     if _WANTS_DIAGNOSTICS:

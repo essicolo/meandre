@@ -1,0 +1,70 @@
+# Analyse de sensibilite sur le modele fige (recette complete du plan de retrait), 2026-11-11 : familles A
+# (prelevements nets d'io-eau, [surface, souterrain]) et B (meteo : facteur sur la precipitation, decalage
+# des temperatures a humidite relative constante). Bassin isole (ETL_SUBBASIN), poids figes, trois graines.
+
+[[variant]]
+name = "x1"
+
+[[variant]]
+name = "x0"
+withdrawal_scale = [0.0, 0.0]
+
+[[variant]]
+name = "x2"
+withdrawal_scale = [2.0, 2.0]
+
+[[variant]]
+name = "x5"
+withdrawal_scale = [5.0, 5.0]
+
+[[variant]]
+name = "surface-seule"
+withdrawal_scale = [1.0, 0.0]
+
+[[variant]]
+name = "nappe-seule"
+withdrawal_scale = [0.0, 1.0]
+
+[[variant]]
+name = "p0.8"
+forcing = { precip_factor = 0.8 }
+
+[[variant]]
+name = "p0.9"
+forcing = { precip_factor = 0.9 }
+
+[[variant]]
+name = "p1.1"
+forcing = { precip_factor = 1.1 }
+
+[[variant]]
+name = "p1.2"
+forcing = { precip_factor = 1.2 }
+
+[[variant]]
+name = "t-2"
+forcing = { temp_offset = -2.0 }
+
+[[variant]]
+name = "t+1"
+forcing = { temp_offset = 1.0 }
+
+[[variant]]
+name = "t+2"
+forcing = { temp_offset = 2.0 }
+
+[[variant]]
+name = "t+4"
+forcing = { temp_offset = 4.0 }
+
+[[variant]]
+name = "t+2-ete"
+forcing = { temp_offset = 2.0, months = [6, 7, 8] }
+
+[[variant]]
+name = "t+2-hiver"
+forcing = { temp_offset = 2.0, months = [12, 1, 2] }
+
+[[variant]]
+name = "p1.1-t+2"
+forcing = { precip_factor = 1.1, temp_offset = 2.0 }

@@ -187,18 +187,50 @@ def apply_variant(model, v):
     return undo
 
 
-def run_real_variants(simulate_q, model, dates, station_ids, path, output, score=None):
+def perturbed_forcing(forcing, spec):
+    """Copie du forçage modifiée pour un scénario météo (analyse de sensibilité, famille B).
+
+    Clés de `spec` : `precip_factor` (facteur sur la précipitation), `temp_offset` (°C ajoutés aux
+    températures minimale et maximale), `months` (mois touchés, tous par défaut, liste de 1 à 12, avec
+    `month_index` fourni par l'appelant). La pression de vapeur suit la température à humidité
+    relative constante (formule de Tetens sur la température moyenne), hypothèse usuelle des
+    scénarios par décalage ; rayonnement et vent sont inchangés."""
+    from meandre.data.forcing import FORCING_VARS
+    from meandre.run.province_data import HostSeries
+    host = np.array(forcing._host if isinstance(forcing, HostSeries) else forcing.detach().cpu().numpy(), dtype=np.float32, copy=True)
+    days = slice(None) if spec.get("months") is None else np.isin(spec["month_index"], spec["months"])
+    i_p, i_tn, i_tx, i_ea = (FORCING_VARS.index(k) for k in ("P", "T_min", "T_max", "e_a"))
+    host[days, :, i_p] *= float(spec.get("precip_factor", 1.0))
+    dt = float(spec.get("temp_offset", 0.0))
+    if dt:
+        tmean = 0.5 * (host[days, :, i_tn] + host[days, :, i_tx])
+        es = lambda t: np.exp(17.27 * t / (t + 237.3))
+        host[days, :, i_ea] *= es(tmean + dt) / es(tmean)
+        host[days, :, i_tn] += dt
+        host[days, :, i_tx] += dt
+    if isinstance(forcing, HostSeries):
+        return HostSeries(host, forcing._device)
+    return torch.as_tensor(host, device=forcing.device, dtype=forcing.dtype)
+
+
+def run_real_variants(simulate_q, model, dates, station_ids, path, output, score=None, forcing=None, forcing_dates=None):
     """Débits réels : chaque variante simulée en mémoire sur le forçage du pilote, débits aux stations
     de la période d'évaluation écrits comme `--dump-q` (q-<nom>.npz), sans recharger le domaine.
 
-    simulate_q() -> (q_sim, q_obs) aux stations sur la période d'évaluation, tableaux (jours, stations)."""
+    simulate_q(forcing=None) -> (q_sim, q_obs) aux stations sur la période d'évaluation, tableaux
+    (jours, stations) ; une variante qui porte une table `forcing` (voir perturbed_forcing) est
+    simulée sur une copie modifiée du forçage `forcing`, de dates `forcing_dates`."""
     with open(path, "rb") as f:
         cfg = tomllib.load(f)
     for v in cfg["variant"]:
         t0 = time.perf_counter()
         undo = apply_variant(model, v)
         try:
-            qs, qo = simulate_q()
+            if v.get("forcing"):
+                spec = dict(v["forcing"], month_index=pd.DatetimeIndex(forcing_dates).month.to_numpy())
+                qs, qo = simulate_q(perturbed_forcing(forcing, spec))
+            else:
+                qs, qo = simulate_q()
         finally:
             undo()
         np.savez_compressed(f"{output}/q-{v['name']}.npz", q_sim=qs, q_obs=qo, station_ids=np.array(station_ids, dtype=object), dates=np.array([str(x)[:10] for x in dates]))
