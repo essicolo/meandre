@@ -1,0 +1,2 @@
+# Phase probabiliste du modele gele du 2026-11-12 (regle de R388) : 12 epoques, ETL_EPOCHS=12 a la soumission, un point de reprise par epoque, -e12 retenu.
+experiments/probabilistic/quantile-gele-2026-11.toml 7 -quantile-gele-s7 ETL_WARM_FROM=/home/atlas01/scratch/meandre/points-de-reprise/cultures-vent-s7/best-quebec-etl-cultures-vent-s7.pt MEANDRE_SAUVER_EPOQUES=1 MEANDRE_EMPREINTES=warn

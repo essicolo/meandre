@@ -1,16 +1,16 @@
-# Recette provinciale de novembre 2026 : modele gele d'octobre, regles de stations (R429, R430), couche 3 par classe de drainage (R432) et prior du depot sur sa conductivite (R423), blocs d'un an (R417). Depuis le 2026-11-06 : lacs hors reseau a sejour deduit du volume (R507) et mise en regime de l'annee 2000, simulee sans perte.
-#
-# Modele provincial gele pour la production (octobre 2026) : socle du 13 octobre, plus les bornes de texture sur la conductivite, la viscosite de l'eau froide, l'aire contributive saturee (b = 8) et le terme de variations journalieres. Entraine de zero sur le Quebec entier (27 834 troncons), 2001-2018 ; point de reprise best-quebec-etl-qv848-e32.pt (derniere epoque). Perte 2022-2024 de 0,886 sur le Quebec entier, KGE median par station 0,70 sur 143 stations.
+# Modele provincial gele du 2026-11-12 : recette complete (lacs du versant fixes, phenologie des grandes cultures active, porte de ruissellement commandee par la nappe, MOD16 retire) sur le forcage CaSR brut avec le vent converti de noeuds en m/s.
+# Point de reprise de reference : best-quebec-etl-cultures-vent-s7.pt (graine 7, entraine sur Narval de zero sur le Quebec entier, 27 834 troncons, 2001-2018, arret anticipe a l'epoque 28).
+# Evaluation 2022-2024, 144 stations : perte 0,860, KGE median par station 0,736. Trois graines, perte 2019-2024 de 0,836 a 0,842 ; reponse de l'etiage a +2 degres concordante a 0,6 point pres entre graines (registre R547).
+# Le modele gele d'octobre se rejoue avec experiments/archive/config/modele-provincial-2026-10.toml.
 #
 # Ce fichier definit le modele : forcage, periodes, physique, perte. Restent au lancement : le territoire (quebec, ou une liste), les epoques, l'etiquette, le point de depart et la graine.
 #
 #   python -m meandre run .runs/quebec/recipe.toml --region quebec --epochs 0 --tag=-essai --warm-from <point de reprise>
 #
-# Chaque cle de ce fichier est lue par le pilote : verifie par meandre/run/trace_launch.py. Les sections autres que [period], [model], [training], [loss], [soil], [phenology], [literature_prior] et [field.texture_bounds], lues par le pilote, sont declarees dans meandre/utils/settings.py ; une variable d'environnement de l'ancien nom, posee au lancement, prime sur le fichier.
+# Chaque cle de ce fichier est lue par le pilote. Les sections autres que [period], [model], [training], [loss], [soil], [phenology], [literature_prior] et [field.texture_bounds], lues par le pilote, sont declarees dans meandre/utils/settings.py ; une variable d'environnement de l'ancien nom, posee au lancement, prime sur le fichier.
 
 [period]
-# Mise en regime 2000 (simulee sans perte), entrainement 2001-2018, validation 2019-2021, evaluation 2022-2024, jamais utilisee pour l'entrainement.
-train_start = "2001-01-01" # debut de l'entrainement ; l'annee 2000 sert de mise en regime
+# Entrainement 2001-2018 (l'annee 2000 sert de mise en regime), validation 2019-2021, evaluation 2022-2024, jamais utilisee pour l'entrainement.
 train_end = "2018-12-31"
 val_start = "2019-01-01"
 val_end = "2021-12-31"
@@ -24,8 +24,6 @@ column_theta_init_frac = 0.9 # theta init = 0.9·thetas (init Hydrotel validé, 
 compile_soil = true # ~1.5x plus rapide qu'en mode eager
 field_hidden = 256 # neurones par couche du champ spatial ; meme taille pour un territoire et pour le Quebec entier
 spatial_melt = true
-predict_lake_params = true # parametres des lacs routes (k, beta) predits par le champ spatial
-use_latent_codes = true # codes latents par troncon ; [spatial] no_latent_codes les eteint
 
 [column]
 # Reglages de la colonne verticale, declares dans meandre/utils/settings.py.
@@ -35,28 +33,9 @@ penman_snow = true # couvert nival dans Penman (R265)
 transpiration_soil_temp_ref = 1.0 # transpiration freinee par le sol froid, echelle 1 degre (R264)
 viscosity_tref = 5.0 # conductivite corrigee par la viscosite de l'eau (Vogel), reference 5 degres
 saturated_area_exponent = 8.0 # ruissellement sur les aires saturees, part (theta1/thetas1)^8
-z1 = 0.15 # Épaisseur de la couche 1 du sol, en mètres, uniforme ; 0,15 jusqu'ici en dur dans la colonne.
-frozen_gate_amplitude = 1.0 # Amplitude de la porte de gel : capacité d'infiltration ks1 (1 − a · fraction gelée), et même facteur sur le drainage de la couche 1 ; 1 reproduit la porte d'origine, qui ferme le sol dès que le gel atteint l'épaisseur de la couche 1 (2026-10-23).
-root_zone_stress = "layer1" # Stress hydrique de la transpiration : « layer1 » (fidèle, eau de la zone racinaire jugée sur la capacité au champ et le point de flétrissement de la couche 1) ou « layered » (eau utile de chaque couche, pondérée par sa part racinaire) ; une couche 1 organique jugeait les couches minérales presque sèches (R445, 2026-10-29).
-retention = "campbell" # Loi de rétention et de conductivité du sol : campbell (clone fidèle) ou van_genuchten (Mualem-van Genuchten, n = sortie vg_n du champ, theta_r et alpha tels que la courbe passe par la capacité au champ et le point de flétrissement de chaque couche) (2026-11-03).
-dynamic_compile = false # Compilation du sol en formes dynamiques ; faux garde le mode fixe mesuré à x17,6.
-campbell_b_bounds = [1.4, 6.0] # bornes de l'exposant b de Campbell, appris par couche, sans dimension
-campbell_psi_s_bounds_m = [0.01, 1.0] # bornes de la succion d'entree d'air psi_s de Campbell, en metres
-campbell_initial_texture = "sandy_loam" # texture dont b et psi_s donnent la valeur de depart des trois couches
-etr_alpha_init = 4.5 # valeur de depart du coefficient d'assechement alpha de l'ETR (appris), sans dimension
-etr_des = 0.6 # parametre des de l'ETR d'Hydrotel, sans dimension
-etr_drying_coefficient = 1.0 # coefficient d'assechement coef_assech de l'ETR d'Hydrotel, sans dimension
-courant_variation = 0.03 # variation relative maximale de la teneur en eau par sous-pas du sol (cin d'Hydrotel)
-slope_default_pct = 4.0 # pente du troncon, en pour cent, quand la base n'en porte pas
-slope_bounds = [0.001, 0.5] # bornes de la pente du troncon, en m/m
-aspect_default_code = 7.0 # code d'orientation (0 a 7, pas de 45 degres) quand la base n'en porte pas
-penman_snow_swe_scale_mm = 5.0 # echelle, en mm d'equivalent en eau, de la fraction enneigee 1 - exp(-SWE/echelle) dans Penman
-penman_forcing_albedo = 0.23 # albedo suppose par le rayonnement net du forcage, sans dimension
 
 [routing]
 muskingum_k_hours = [4.0, 48.0, 24.0] # temps de transfert, en heures : borne basse, borne haute, valeur initiale
-substeps = 2 # Sous-pas du routage par jour.
-lake_evaporation = true # Évaporation des lacs routés par temps sec.
 
 [compute]
 operator_block = 4096 # routage : etage de plus de 4096 rivieres decoupe en bassins independants, resultat identique ; sans lui la matrice du Quebec entier ne tient pas dans 8 Go
@@ -66,20 +45,11 @@ gradient_segments = 10 # gradient recalcule par segments de 10 jours : la provin
 # Phase probabiliste (ETL_QUANTILE=1), sans effet sur le modele deterministe.
 log_step = 0.05 # largeur de chaque niveau de quantile, dans le logarithme du debit
 log_bound = 4.0 # un quantile extreme reste entre e^-4 et e^4 fois la mediane
-enabled = false # Tête de quantiles (phase probabiliste, épine dorsale gelée).
 
 [trainer]
 # Reglages de l'entraineur, declares dans meandre/utils/settings.py.
 step_per_block = true # un pas d'optimisation par bloc ; sans lui une epoque = un pas (R78, R288)
 lr_mult_heads = 1.0 # tetes du champ au taux commun : la volatilite venait d'elles (R195, R276)
-lr_mult_soil = 50.0 # Multiplicateur du taux du profil de sol appris.
-lr_mult_routing = 100.0 # Multiplicateur du taux de la tête du temps de transfert.
-lr_mult_lakes = 50.0 # Multiplicateur du taux des scalaires des lacs hors réseau.
-save_every_epoch = false # Un point de reprise par époque, pour évaluer toute la trajectoire.
-# abandon = (absent) # Arrêt époque:seuil si la métrique de sélection reste sous le seuil après cette époque.
-history_priming = false # Passe sans gradient en début d'époque pour que chaque bloc voie le KGE de toute la période.
-lr_mult_water_table = 20.0 # multiplicateur du taux des scalaires de la nappe apprise
-lr_mult_phenology = 100.0 # multiplicateur du taux des seuils de la phenologie (degres-jours, longueur du jour)
 
 [soil]
 layers = 3
@@ -91,12 +61,10 @@ z3_min = 0.50
 z3_max = 4.00
 
 [training]
-chunk_steps = 365 # blocs d'un an : le gradient voit le printemps agir sur l'ete (R415, R417)
-w_deviation_prior = 0.1 # penalite du prior de la couche 3 (R423)
 lr = 2e-4 # taux de depart : trajectoires convergees, ecart entre graines divise par trois (R283)
 grad_clip = 1.0
 tbptt_steps = 365
-# A 30 jours le gradient ne voyait pas l'effet differe de la recharge sur l'etiage (R365)
+chunk_steps = 90 # blocs de 90 jours : a 30 jours le gradient ne voyait pas l'effet differe de la recharge sur l'etiage (R365)
 warmup_epochs = 0 # pas de montee du taux
 tws_shape_only = true # GRACE en forme, s'il est active
 patience = 8 # arret anticipe : au-dela de 6 epoques sans progres, le gain observe tombe sous le bruit (2026-08-21)
@@ -110,33 +78,14 @@ autopilot_restart_regression = 0.05
 autopilot_restart_max = 3
 # Rappel doux des parametres vers les valeurs de la litterature, en ecart de logarithme.
 w_prior = 0.005
-w_latent_reg = 1e-3 # rappel des codes latents par troncon vers zero (sans effet sans codes latents)
-lake_lr_mult = 50.0 # multiplicateur du taux de la tete des lacs routes
-weight_decay = 1e-4 # decroissance des poids d'AdamW sur le reseau du champ
-eta_min_factor = 0.01 # taux final du recuit en cosinus, en fraction du taux de depart
-spinup_steps = 730 # jours de mise en regime avant la periode d'entrainement, bornes par le debut des donnees
-warm_spinup_steps = 90 # jours de mise en regime refaits apres la premiere epoque, depuis l'etat garde
-best_metric_tolerance = 0.005 # amelioration relative minimale d'une metrique a minimiser pour retenir un point de reprise
-autopilot_gamma_threshold = 0.20 # derive de gamma du KGE, |gamma - 1|, au-dela de laquelle l'autopilote voit une derive
-autopilot_restart_min_no_improve = 3 # epoques sans progres exigees avant un redemarrage de l'autopilote
-autopilot_restart_lr_factor = 0.5 # facteur du taux au redemarrage de l'autopilote
-burn_in_days = 60 # jours de rodage exclus de la perte au debut de chaque bloc, au plus le quart du bloc
-burn_in_first_days = 90 # jours de rodage du premier bloc apres la mise en regime, au plus le quart du bloc
-chunk_merge_days = 60 # reliquat de fin de periode, en jours, en dessous duquel il est fusionne au dernier bloc
-random_chunk_offset = true # frontieres de blocs decalees au hasard a chaque epoque (graine = numero d'epoque)
-rollback_spike_factor = 3.0 # perte d'epoque, en multiple de sa moyenne mobile, qui declenche le retour au meilleur point
-rollback_ema_weight = 0.2 # poids de la nouvelle perte dans la moyenne mobile de la garde de divergence
-rollback_max = 3 # nombre maximal de retours au meilleur point
-rollback_lr_factor = 0.5 # facteur du taux a chaque retour au meilleur point
-aux_ema_weight = 0.02 # poids de la nouvelle valeur dans les moyennes mobiles detachees des contraintes auxiliaires (GRACE)
-# best_metric = (absent) # choix du point de reprise : val_loss quand l'etiage est dans la perte, sinon kge_median
+w_deviation_prior = 0.02 # rappel des porosites vers la texture, en ecart de logarithme (mode niveau)
 
 [loss]
 # Section lue d'un bloc par le pilote ; une variable ETL_W... posee au lancement remplace le poids.
 w_nse = 0.0
 w_kge = 1.0
 w_pbias = 0.5
-w_et = 0.0 # MOD16 retire de la perte le 2026-11-10 (decision d'Essi) : produit de Penman redondant avec l'ETP du modele et peu fiable, de l'avis unanime des hydrologues consultes ; garde au plus en evaluation (R534)
+w_et = 0.0 # MOD16 retire de la perte (R534)
 et_mode = "anomaly" # MOD16 compare centre : la saison, jamais le niveau (R24, 2026-08-21)
 w_tws = 0.0 # GRACE retire : calcule par bloc, il etait eteint a 30 jours et explosait a 90 ; corrige dans le code, non eprouve
 w_tws_clim = 0.0
@@ -145,64 +94,15 @@ w_mse = 0.1
 w_log_nse = 0.0
 w_log_mse = 0.3
 w_peak = 0.0
-w_low_flow = 1.0 # etiage
-w_fdc_low = 1.0 # soutien d'etiage
+w_etiage = 1.0 # etiage
+w_fdc_bas = 1.0 # soutien d'etiage
 w_dq = 0.5 # variations journalieres du debit
 w_snow = 0.0 # pas de supervision de la fonte par la couverture MODIS
 w_nrmse = 0.0
 w_physics = 0.01
-w_r = 0.0 # facteur de correlation du KGE, porte seul (1 - r)
-w_beta = 0.0 # facteur de volume du KGE, ecart absolu
-w_gamma = 0.0 # facteur de variabilite du KGE, ecart absolu
-w_peak_ratio = 0.0 # rapport des magnitudes au-dessus du seuil observe ; ne prefere jamais le lissage
-w_recession = 0.0 # forme des recessions
-w_dq_log = 0.0 # variations journalieres du logarithme du debit
-w_flat = 0.0 # penalite des suites de debits plats en hiver
-w_nested = 0.0 # coherence des stations emboitees ; degrade la perte (R469)
-w_quantile = 0.0 # perte de quantiles (phase probabiliste seulement)
-flat_threshold = 0.01 # variation journaliere du log du debit sous laquelle un jour est plat (terme w_flat)
-flat_width = 0.003 # largeur de la sigmoide autour de ce seuil, en log du debit
-flat_months = [12, 1, 2, 3] # mois ou le terme de platitude compare la part de jours plats
-
-[loss_terms]
-# Constantes des termes de perte, declarees dans meandre/utils/settings.py.
-kge_std_floor = 1e-3 # plancher des ecarts-types du KGE, en fraction du debit moyen de la station
-low_flow_quantile = 0.3 # quantile du debit observe sous lequel un jour est un jour d'etiage
-low_flow_eps_m3s = 1e-3 # decalage ajoute au debit avant le logarithme du terme d'etiage, en m3/s
-fdc_low_quantiles = [0.2, 0.5] # quantiles bas et de reference du soutien d'etiage
-log_offset_m3s = 1.0 # decalage ajoute au debit avant le logarithme de w_log_mse, en m3/s
-et_window_days = 8 # fenetre, en jours, de la moyenne glissante de l'ET simulee comparee a MOD16
-min_station_obs = 30 # observations minimales, historique compris, pour qu'une station entre dans la perte d'un bloc
-flat_min_days = 20 # jours minimaux des mois cibles dans un bloc pour le terme de platitude
-peak_quantile = 0.75 # quantile du debit observe d'entrainement qui fixe le seuil des pics de chaque station
-station_stats_min_obs = 100 # observations d'entrainement a depasser pour la variance et le seuil des pics d'une station
-
-[physical_prior_weights]
-# Poids relatifs des termes du prior de la litterature ([training] w_prior), ecart de la moyenne du champ a sa cible.
-K_sat = 0.3 # moyenne du log de K_sat, par couche
-porosity = 1.0 # porosite moyenne, par couche
-C_f = 0.3 # facteur de fonte moyen
-T_melt = 0.5 # seuil de fonte moyen
-dT_canopee = 0.1 # retards de canopee moyens, feuillus et coniferes
-vg_n = 0.3 # vg_n moyen
-k_gw = 0.3 # moyenne du log de k_gw
-krec = 0.3 # moyenne du log de krec, quand krec est libre
-k_sub = 0.3 # moyenne du log de k_sub, quand son prior est actif
-K_c = 0.2 # K_c moyen
 
 [literature_prior]
 K_c = 1.0 # coefficient cultural initial, autour de la demande apprise
-
-[field_constraints]
-# Sorties log-normales du champ : valeur pour une sortie brute nulle et pente au centre.
-log_slope = 0.3 # pente au centre, en log naturel par unite de sortie brute (aussi celle des bornes par troncon)
-log_center_K_sat_1 = 0.5 # K_sat_1 au centre, en m/j
-log_center_K_sat_2 = 0.1 # K_sat_2 au centre, en m/j
-log_center_K_sat_3 = 0.02 # K_sat_3 au centre, en m/j
-log_center_k_gw = 0.02 # k_gw au centre, en 1/j
-log_center_krec = 2e-5 # krec au centre, en m/h
-log_center_k_sub = 4.1666666666666665e-05 # k_sub au centre, en m/h (1 mm/j)
-literature_weight_shrink = 0.1 # facteur des poids de sortie du champ a l'initialisation par la litterature
 
 [field.texture_bounds]
 enabled = true
@@ -211,24 +111,8 @@ factor = 3.0 # conductivite bornee par la texture du sol, facteur 3 de part et d
 [snow]
 wet_bulb_threshold = -0.8
 seasonal_melt_amplitude = 0.5
-seasonal_melt_phase_day = 81.0 # jour de l'annee ou la modulation saisonniere de la fonte vaut 1 en montant (maximum au solstice d'ete)
-melt_scale_reference = 4.5 # C_f, en mm/(degre j), qui donne une echelle de fonte spatiale de 1
-melt_scale_bounds = [0.15, 1.8] # bornes de l'echelle de fonte spatiale C_f / reference, sans dimension
-
-[wetland]
-# Valeurs de repli des milieux humides isoles, utilisees seulement quand le projet Hydrotel ne porte pas la colonne (milieux_humides_isoles.csv les donne par UHRH).
-max_depth_m = 0.3 # profondeur maximale wetdmax, en metres
-area_fraction = 0.8 # part de l'aire drainee frac, sans dimension
-normal_depth_m = 0.2 # profondeur normale wetdnor, en metres
-bottom_ksat = 0.5 # conductivite du fond ksat_bs, unite du projet Hydrotel
-evaporation_coefficient = 0.6 # coefficient d'evaporation c_ev, sans dimension
-production_days = 10.0 # duree de restitution du stock au-dessus du volume normal c_prod, en jours
 
 [groundwater]
-connectivity_head_m = 0.0 # connectivite versant-riviere : part min(1, h / h_c) de l'ecoulement hypodermique qui atteint la riviere, le reste recharge la nappe ; h_c en metres, 0 l'eteint
-transmissivity_feedback_mm_per_day = 0.0 # retroaction de transmissivite de la nappe, ecoulement lateral q0 exp(-z / m) a nappe haute, en mm/j a z = 0 ; 0 l'eteint
-transmissivity_decay_m = 0.5 # profondeur de decroissance m de cette retroaction, en metres
-exchange_mm_per_day = 0.0 # echange souterrain de la nappe, en mm/j : positif perte vers l'aquifere profond ou un bassin voisin, negatif gain ; 0 l'eteint
 aquifer = true
 free_recession = true
 water_table = true
@@ -239,73 +123,31 @@ river_depth_m = 5
 reference_head_m = 2
 extinction_depth_m = 6
 extraction_fraction = 0.15
-water_table_substeps = 4 # sous-pas par jour de la nappe libre
-water_table_coupling = 0.0 # couplage nappe-colonne de la percolation de la couche 3 ; 0, aucun
-water_table_learned = false # conductance, extraction et exposant de la nappe poses, non appris
-# krec = (absent) # Constante de recharge imposée, uniforme ; absent, celle du champ.
-# krec_frozen = (absent) # Constante de recharge imposée gelée de bout en bout, y compris après le chargement d'un point de reprise.
-# krec_prior = (absent) # Valeur de krec visée par le prior physique ; absent, défaut du prior.
 
 [spatial]
 no_latent_codes = true
-priors = true # conductivite de la couche 3 sous prior du depot (R423), porosites sous prior de texture (R462)
+priors = true # porosites par troncon tirees de la texture
 global_normalization = true
-z1_head = false # Épaisseur de la couche 1 apprise par tronçon : tête linéaire du champ (fc_z1), nulle au départ en poids et dont le biais rend column.z1, bornée par Z1 de [field.bounds] (2026-10-29) ; absente, column.z1 uniforme.
-
-[priors]
-keys = "K_sat_3,porosity_1,porosity_2,porosity_3" # conductivite de la couche 3 (R423) ; porosites des trois couches, centre = texture de Saxton et Rawls (R462)
-k_sat_3_center = "substratum" # centre : conductivite de la classe de drainage, par troncon (R423)
-start_at_center = "K_sat_3" # depart au centre : le modele gele n'a jamais vu cette grandeur
-level_keys = "K_sat_3,porosity_1,porosity_2,porosity_3" # jugees en niveau : la porosite collait a la borne 0,60, ou le sol ne conduit plus (R459)
-mode = "anomaly" # Comparaison du champ à ses priors : level (niveau de la carte), anomaly (contrastes entre tronçons, niveau libre, comme MOD16), shape (motif seul, niveau et amplitude libres, comme GRACE).
-sigma_k_sat = 1.609 # Écart-type, en logarithme naturel, du prior de conductivité : ln 5.
-sigma_porosity = 0.2 # Écart-type en logarithme du prior de porosité (pédotransfert de Saxton et Rawls) ; non mesuré contre une donnée indépendante.
-sigma_theta_fc_frac = 0.2 # Écart-type en logarithme du prior de capacité au champ, en fraction de la porosité ; non mesuré.
-sigma_theta_wp_frac = 0.3 # Écart-type en logarithme du prior de point de flétrissement, en fraction de la capacité au champ ; non mesuré.
-sigma_z2 = 0.693 # Écart-type en logarithme du prior d'épaisseur de la couche 2 : ln 2 ; non mesuré.
-sigma_z3 = 0.916 # Écart-type en logarithme du prior d'épaisseur de la couche 3 (épaisseur des dépôts SIGEOM) : ln 2,5 ; non mesuré.
-safety_porosity = [0.05, 0.75] # plancher et plafond de securite de la porosite des couches 2 et 3 sous prior
-safety_porosity_1 = [0.05, 0.95] # plancher et plafond de securite de la porosite de la couche 1 sous prior (horizon organique)
-safety_theta_fc_frac = [0.10, 0.98] # plancher et plafond de la capacite au champ sous prior, en fraction de la porosite
-safety_theta_wp_frac = [0.05, 0.95] # plancher et plafond du point de fletrissement sous prior, en fraction de la capacite au champ
-safety_K_sat = [1e-5, 500.0] # plancher et plafond d'une conductivite sous prior, en m/j
-safety_Z2 = [0.02, 5.0] # plancher et plafond de l'epaisseur de la couche 2 sous prior, en metres
-safety_Z3 = [0.05, 10.0] # plancher et plafond de l'epaisseur de la couche 3 sous prior, en metres
-
-[land_cover]
-# Surfaces impermeables mesurees (bati ESA WorldCover 2021, 10 m) a la place de la classe d'usage urbain de PHYSITEL, deux a cinq fois plus etendue ; sa pluie allait entiere a la riviere le jour meme (R455, R457, R462).
-impervious_table = "{DERIVES}/auxiliaires/impermeable-worldcover-troncons.parquet"
 
 [evaporation]
 open_water = true
-# mod16_snow_scale_mm = (absent) # Poids hors neige du terme MOD16 par NEISIM, sans objet depuis que MOD16 est retire de la perte (2026-11-10).
-# open_water_reservoir = (absent) # Réservoir de la pluie tombée sur l'eau libre hors lacs routés, « T,beta,h_ref » (séjour en jours à la hauteur h_ref en m, exposant de vidange) ; l'évaporation reste prise sur le débit latéral (R285).
+# mod16_snow_scale_mm = (absent) # sans objet sans MOD16 (R534)
 
 [forcing]
-suffix = "-casr-brut"
+suffix = "-casr-brut-vent" # vent de CaSR converti de noeuds en m/s (2026-11-11)
 
 [phenology]
 enabled = true
-params = [56.81, 11.82, 21.1, 0.9] # emergence (degres-jours), seuil de longueur du jour de la senescence (h, cale sur MODIS), largeurs ; jeu forestier de l'Outaouais
+params = [56.81, 11.82, 21.1, 0.9] # emergence (degres-jours), seuil (h), largeurs ; jeu forestier de l'Outaouais
 classes = ["feuillus", "agri"] # les coniferes gardent leur demande
+crop_params = [500.0, 11.82, 100.0, 0.9] # forme propre aux grandes cultures, levee a 500 degres-jours (R535)
 
-[phenology_constants]
-gdd_base_c = 10.0 # temperature de base des degres-jours, en degres
-kc_min_init = 0.3 # valeur de depart du K_c de dormance (appris)
-kc_max_factor_init = 1.0 # valeur de depart de l'amplificateur du K_c au plateau (appris)
-kc_min_bounds = [0.05, 1.0] # bornes du K_c de dormance ; la borne basse est aussi le plancher du K_c effectif
-kc_max_factor_bounds = [0.5, 2.0] # bornes de l'amplificateur du K_c au plateau
-senescence_start_doy = 172 # jour de l'annee apres lequel la longueur du jour peut declencher la senescence
-photoperiod_center_h = 12.0 # centre du seuil de longueur du jour de la senescence, en heures
-photoperiod_half_range_h = 3.0 # demi-plage de ce seuil, en heures
-
-# Sol declare par couche (2026-09-30, R223 a R229)
+# -- Sol declare par couche (2026-09-30, R223 a R229) ----------------------------------------
 [[soil.process]]
 layer = 2
 kind = "lateral"
 form = "BASE_LINEAR"
 
-# Couche 3 par classe de drainage (R432) : Loi a seuil d'origine sur les troncons mal draines (classe > 4,5), Darcy sur les autres et sur les troncons sans classe.
 [[soil.process]]
 layer = 3
 kind = "lateral"
@@ -314,31 +156,20 @@ tau_days = 3.0
 exponent = 2.0
 scale_mm = 5.0
 max_ratio = 2.0
-drainage_select = "poor"
 
 [[soil.process]]
 layer = 3
 kind = "percolation"
 form = "PERC_THRESH_POWER"
 tau_days = 2.0
-ceiling_mm_per_day = 2.0
-drainage_select = "poor"
+ceiling_mm_per_day = 2.0 # troncons sans classe de drainage ; les autres recoivent la regle de [soil.ceiling_from_drainage]
 
 [[soil.process]]
-layer = 3
-kind = "lateral"
-form = "BASE_LINEAR"
-drainage_select = "good"
-
-[[soil.process]]
-layer = 3
-kind = "percolation"
-form = "PERC_GRAVITY"
-ceiling_mm_per_day = 2.0
-drainage_select = "good"
-
-[drainage]
-class_threshold = 4.5 # classe de drainage au-dessus de laquelle un troncon est mal draine (drainage_select = "poor")
+layer = 1 # la manette est hors du sol : le stock de nappe
+kind = "runoff"
+form = "SPILL_GW"
+capacity_mm = 65.0 # reglage de l emulateur (R489)
+reference_mm = 80.0 # environ 1,8 fois le 90e centile d ete du stock lent (R489)
 
 [soil.ceiling_from_drainage]
 # log10(plafond en mm/j) = intercept + slope x classe de drainage (1 tres rapidement a 7 tres mal draine), regle unique ajustee sur le plafond prefere par station de 83 stations et cinq territoires (R370).
@@ -350,37 +181,22 @@ max_mm_per_day = 4.0
 
 [stations]
 area_ratio = true # observe rapporte a l'aire du troncon qui porte la station (R429) ; 062002 est en amont de SAGU01101 et se corrige ainsi
-attachment_table = "{DERIVES}/auxiliaires/station-attachment.csv" # audit_stations.py : 3 troncons voisins meilleurs, 02E901 hors territoire (R430)
-exclude_reconstructed = true # debits reconstitues sous la glace retires de la perte (R385, decision du 2026-10-28)
-# excluded = (absent) # Stations retirées de la comparaison et de l'entraînement, séparées par des virgules, par exemple une station hors du réseau modélisé (062002, R429).
+attachment_table = "{DERIVES}/auxiliaires/station-attachment.csv" # audit_stations.py : 3 troncons voisins meilleurs, 02E901 hors territoire (R430) ; fichier renomme le 2026-10-28, ex-name rattachement-stations.csv
 
-[data]
-on_fingerprint_mismatch = "error" # un fichier d'entree different de celui de l'entrainement arrete l'execution ; warn pour une evaluation croisee voulue
-withdrawals_table = "withdrawals" # Table des prélèvements lue dans la base de chaque territoire.
-territorial_extra = "" # Tables territoriales supplémentaires ajoutées aux attributs du champ, séparées par des virgules.
+[land_cover]
+impervious_table = "{DERIVES}/auxiliaires/impermeable-worldcover-troncons.parquet"
 
-[withdrawals]
-disabled = false # Simulation sans prélèvements ni rejets (débits naturalisés).
+[priors]
+keys = "porosity_1,porosity_2,porosity_3"
+level_keys = "porosity_1,porosity_2,porosity_3"
 
 [lakes]
-enabled = true # Lacs hors réseau : une part de la production locale traverse un réservoir de la surface d'eau libre hors lacs routés, qui retient la fonte et la rend l'été (2026-11-04).
-share_coefficient = 6.7 # Part de l'écoulement local qui traverse les lacs, 1 − exp(−c × fraction d'eau libre hors lacs routés) ; valeur apprise à la graine 7 (R507).
-residence_from_volume = true # Séjour déduit par tronçon du volume des lacs et de l'eau qui les traverse, T = D f / (rd R), D = mobilizable_depth_mm (2026-11-05).
-mobilizable_depth_mm = 171.0 # Hauteur d'eau mobilisable D des lacs, en mm, lue quand residence_from_volume ; valeur apprise à la graine 7 (R507).
-residence_days = 30.0 # Séjour uniforme, en jours, lu quand residence_from_volume est faux.
-outflow_exponent = 1.0 # Exposant de la loi de vidange q = f k h^beta.
-reference_height_m = 0.5 # Hauteur au-dessus du seuil où le séjour est défini, en mètres.
-share_bounds = [0.5, 50.0] # Bornes douces de share_coefficient.
-mobilizable_depth_bounds_mm = [20.0, 2000.0] # Bornes douces de mobilizable_depth_mm, en mm.
-residence_bounds_days = [2.0, 120.0] # Bornes douces de residence_days, en jours.
-learn = ["share_coefficient", "mobilizable_depth_mm"] # Paramètres appris, parmi share_coefficient et celui du séjour en vigueur (mobilizable_depth_mm ou residence_days).
-spill_bypass = true # Le ruissellement des processus déclarés (débordement commandé par la nappe) contourne les lacs hors réseau ; faux, il les traverse comme le reste de la production (2026-11-05).
-runoff_ratio = 0.5 # Coefficient d'écoulement qui convertit la précipitation moyenne du tronçon en écoulement moyen R, pour le séjour déduit du volume des lacs.
-
-[routed_lakes]
-area_km2_default = 1.0 # surface d'un lac route sans bloc lac dans troncon.trl, en km2
-k_default = 1e-4 # coefficient de vidange d'un lac route sans loi de tarage, et centre de la tete du champ, en 1/s
-k_bounds = [1e-6, 1e-2] # bornes du coefficient de vidange predit par le champ, en 1/s
-beta_default = 1.5 # exposant de vidange d'un lac route sans loi de tarage, et depart de la tete du champ
-beta_bounds = [1.0, 2.5] # bornes de l'exposant de vidange predit par le champ
-dead_storage_m = 0.0 # hauteur d'eau morte des lacs routes, sous laquelle rien ne sort, en metres
+enabled = true
+share_coefficient = 6.7 # fixe a la valeur apprise en affinage (R507) ; appris de zero, il derive et le gain disparait (R510, R514)
+residence_from_volume = true # sejour deduit du volume des lacs par troncon
+mobilizable_depth_mm = 171.0 # fixe a la valeur apprise en affinage (R507)
+outflow_exponent = 1.0
+reference_height_m = 0.5
+share_bounds = [0.5, 50.0]
+mobilizable_depth_bounds_mm = [20.0, 2000.0]
+learn = []

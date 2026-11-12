@@ -1,0 +1,2 @@
+# Evaluation 2022-2024 de la tete de quantiles du modele gele (derniere epoque), enveloppe aux stations sauvee avec les debits, ETL_EPOCHS=0.
+experiments/probabilistic/quantile-gele-2026-11.toml 7 -eval-quantile-gele-s7 ETL_WARM_FROM=/home/atlas01/scratch/meandre/points-de-reprise/quantile-gele-s7/best-quebec-etl-quantile-gele-s7-e12.pt ETL_DUMP_Q=/home/atlas01/scratch/meandre/evaluations/q-quantile-gele-s7.npz MEANDRE_EMPREINTES=warn
