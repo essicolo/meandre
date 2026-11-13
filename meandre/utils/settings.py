@@ -54,6 +54,7 @@ SCHEMA: dict[str, Setting] = {
     "quantile.enabled": Setting("ETL_QUANTILE", bool, False, "Tête de quantiles (phase probabiliste, épine dorsale gelée)."),
     "quantile.log_step": Setting("MEANDRE_QUANTILE_LOG_STEP", float, 0.05, "Largeur de chaque niveau de quantile, dans le logarithme du débit."),
     "quantile.log_bound": Setting("MEANDRE_QUANTILE_LOG_BOUND", float, 4.0, "Un quantile extrême reste entre e^-b et e^b fois la médiane."),
+    "quantile.temporal": Setting("MEANDRE_QUANTILE_TEMPORAL", bool, False, "La largeur de l'enveloppe lit aussi la montée et la baisse du débit simulé d'un jour à l'autre (R551)."),
     # -- Diagnostics de sortie --------------------------------------------------------------
     "diagnostics.cpu": Setting("MEANDRE_DIAG_CPU", bool, False, "Diagnostics journaliers gardés sur le processeur plutôt que sur la carte graphique."),
     "diagnostics.half_precision": Setting("MEANDRE_DIAG_F16", bool, False, "Diagnostics non dérivés gardés en demi-précision sur le processeur."),

@@ -83,6 +83,17 @@ class QuantileHead(nn.Module):
             self.net[-1].bias[: self.K] = -1.0
             # b_τ ≈ 1 → mise à l'échelle hétéroscédastique log|Q|
             self.net[-1].bias[self.K:] = 1.0
+        # TERME TEMPOREL (2026-11-13, R551). La largeur ne lisait que les paramètres du tronçon et
+        # le débit du jour : elle ne savait pas qu'on était en montée de crue, où le modèle reste
+        # sous l'observé (7,9 % des observations au-dessus du quantile 0,95 en Montérégie). Deux
+        # pentes par niveau, pour la montée et pour la baisse du logarithme du débit simulé d'un
+        # jour au suivant. Initialisées à zéro : la tête part exactement de la tête sans ce terme,
+        # et un ancien point de reprise, qui n'a pas ces poids, se relit à l'identique.
+        self.temporal = None
+        if settings.get("quantile.temporal"):
+            self.temporal = nn.Linear(n_spatial_params, 2 * self.K)
+            nn.init.zeros_(self.temporal.weight)
+            nn.init.zeros_(self.temporal.bias)
 
     def forward(self, spatial_params: Tensor, Q: Tensor) -> Tensor:
         """
@@ -103,6 +114,12 @@ class QuantileHead(nn.Module):
 
         # log_w (T, N, K) = a + b · log|Q|, broadcast
         log_w = a.unsqueeze(0) + b.unsqueeze(0) * log_q.unsqueeze(-1)
+        if self.temporal is not None:
+            # Variation du logarithme du débit simulé depuis la veille ; nulle le premier jour.
+            change = torch.cat([torch.zeros_like(log_q[:1]), log_q[1:] - log_q[:-1]], dim=0)
+            slopes = self.temporal(spatial_params)           # (N, 2K)
+            rising, falling = change.clamp(min=0.0), change.clamp(max=0.0)
+            log_w = log_w + slopes[:, : self.K].unsqueeze(0) * rising.unsqueeze(-1) + slopes[:, self.K:].unsqueeze(0) * falling.unsqueeze(-1)
 
         # ENVELOPPE MULTIPLICATIVE, EN LOG (2026-09-11). Les largeurs cumulees etaient
         # appliquees ADDITIVEMENT au debit, si bien que le cote bas pouvait passer sous
