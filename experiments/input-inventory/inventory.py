@@ -27,7 +27,9 @@ OUTPUT = DATA / "analysis" / "input-inventory" / "inventory.csv"
 
 
 def by_reach(path, value, region="region", reach="troncon", one_based=True):
-    """Part des tronçons couverts, par territoire, d'une table dérivée (valeur non nulle)."""
+    """Part des tronçons couverts, par territoire, d'une table dérivée (valeur non nulle) ; vide si la table manque."""
+    if not Path(path).exists():
+        return pd.Series(dtype=float)
     t = pd.read_parquet(path)
     t = t.assign(_t=t[region].str.lower(), _ok=value(t))
     return t.groupby("_t")._ok.sum()
