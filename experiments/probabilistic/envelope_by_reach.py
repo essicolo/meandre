@@ -31,6 +31,8 @@ parser.add_argument("output")
 parser.add_argument("--check")
 parser.add_argument("--start", default="2022-01-01")
 parser.add_argument("--end", default="2024-12-31")
+parser.add_argument("--factors", help="facteurs conformes par territoire (conformal_recalibration.py)")
+parser.add_argument("--territories", help="parquet des attributs bruts (territorial-raw-QC.parquet), pour situer chaque tronçon dans son territoire")
 args = parser.parse_args()
 
 checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
@@ -54,6 +56,19 @@ low_90, low_50, high_50, high_90 = taus.index(0.05), taus.index(0.25), taus.inde
 width_90 = np.empty(n_reaches, dtype=np.float32)
 width_50 = np.empty(n_reaches, dtype=np.float32)
 width_90_low_flow = np.empty(n_reaches, dtype=np.float32)
+# Facteurs conformes par territoire : chaque écart logarithmique de la tête est multiplié par le
+# facteur de son niveau et du territoire du tronçon. Le domaine met les territoires bout à bout dans
+# l'ordre alphabétique de ceux qui portent une station.
+scale = np.ones((n_reaches, len(taus)), dtype=np.float32)
+if args.factors:
+    import pandas as pd
+    factors = pd.read_csv(args.factors, index_col=0)
+    counts = pd.read_parquet(args.territories, columns=["region"])["region"].value_counts()
+    order = ["abit", "cnda", "cndb", "cndc", "cndd", "cnde", "gasp", "labi", "mont", "outm", "outv", "sagu", "slno", "slso"]
+    bounds = np.cumsum([0] + [int(counts[t]) for t in order])
+    assert bounds[-1] == n_reaches, f"{bounds[-1]} tronçons attendus, {n_reaches} dans les débits"
+    for t, a, b in zip(order, bounds[:-1], bounds[1:]):
+        scale[a:b] = factors.loc[t].to_numpy(dtype=np.float32)
 block = 500
 with torch.no_grad():
     for a in range(0, n_reaches, block):
@@ -61,6 +76,9 @@ with torch.no_grad():
         median = torch.tensor(q[:, a:b], dtype=torch.float32)
         offsets = head(params[a:b], median).numpy()
         median = median.numpy()
+        if args.factors:
+            log_offsets = np.log(np.maximum(median[..., None] + offsets, 1e-9) / np.maximum(median[..., None], 1e-9))
+            offsets = median[..., None] * (np.exp(log_offsets * scale[a:b][None]) - 1.0)
         relative_90 = (offsets[:, :, high_90] - offsets[:, :, low_90]) / np.maximum(median, 1e-6)
         relative_50 = (offsets[:, :, high_50] - offsets[:, :, low_50]) / np.maximum(median, 1e-6)
         width_90[a:b] = np.median(relative_90, axis=0)
