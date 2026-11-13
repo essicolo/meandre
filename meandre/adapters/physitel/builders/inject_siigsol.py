@@ -8,8 +8,12 @@ predit a +42 %. La table est separee de `territorial` pour ne pas changer la dim
 d'entree des points de reprise existants.
 
     python -m meandre.adapters.physitel.builders.inject_siigsol mont slso slno outv gasp sagu
+
+`--dest DOSSIER` copie d'abord la base dans ce dossier et écrit la table dans la copie : la base
+en service, dont l'empreinte est inscrite dans les points de reprise, reste intacte.
 """
 import os
+import shutil
 import sys
 
 
@@ -22,7 +26,7 @@ SOURCE = f"{_paths.DERIVED_ROOT}/auxiliaires/siigsol-troncons.parquet"
 TABLE = "territorial_siigsol"
 
 
-def inject(reg, reduced=False):
+def inject(reg, reduced=False, dest=None):
     """`reduit` : trois attributs au lieu de dix-huit, moyennes sur les profondeurs des deux
     coordonnees ilr de texture et du logarithme de la matiere organique, table
     `territorial_siigsol3`. Les dix-huit attributs, dont 38 % de noeuds a la moyenne en
@@ -38,16 +42,22 @@ def inject(reg, reduced=False):
     t = s[["troncon"] + cols].copy()
     t["node_idx"] = t.troncon.astype(int) - 1
     t = t.drop(columns="troncon")
-    con = duckdb.connect(f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb")
+    base = f"{_paths.DATA_ROOT}/quebec/{reg}.duckdb"
+    if dest:
+        os.makedirs(dest, exist_ok=True)
+        base = shutil.copy2(base, os.path.join(dest, f"{reg}.duckdb"))
+    con = duckdb.connect(base)
     n = con.execute("SELECT count(*) FROM territorial").fetchone()[0]
     con.execute(f"DROP TABLE IF EXISTS {table}")
     con.execute(f"CREATE TABLE {table} AS SELECT * FROM t")
     covers = con.execute(f"SELECT count(*) FROM {table} WHERE {cols[0]} IS NOT NULL").fetchone()[0]
     con.close()
-    print(f"{reg}: {len(cols)} attributs SIIGSOL dans {table}, {covers} tronçons renseignes sur {n}")
+    print(f"{reg}: {len(cols)} attributs SIIGSOL dans {table}, {covers} tronçons renseignes sur {n} ({base})")
 
 
 if __name__ == "__main__":
     reduced = "--reduit" in sys.argv
-    for r in [a.lower() for a in sys.argv[1:] if not a.startswith("--")] or ["mont"]:
-        inject(r, reduced=reduced)
+    dest = sys.argv[sys.argv.index("--dest") + 1] if "--dest" in sys.argv else None
+    names = [a.lower() for a in sys.argv[1:] if not a.startswith("--") and a != dest]
+    for r in names or ["mont"]:
+        inject(r, reduced=reduced, dest=dest)
